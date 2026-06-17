@@ -1,6 +1,6 @@
 ---
 name: context-guard
-description: "Maintain and enforce a folder-scoped project context folder, route-map index, dynamic task queue, and bad-case/test-chain memory. Use at the beginning and end of every assistant response, especially when a Codex folder is first used, the user changes task direction, parks a design discussion for an urgent bug, resumes prior work, or performs coding/debugging/review/QA: load folder context, update concise route nodes, link nodes to bad cases and tests, and ask whether to resume parked work when appropriate."
+description: "Maintain and enforce a folder-scoped project context folder, route-map index, dynamic task queue, and bad-case/test-chain memory. Use at the beginning and end of every assistant response, especially when a Codex folder is first used, the user asks to show/open/export the roadmap, changes task direction, parks a design discussion for an urgent bug, resumes prior work, or performs coding/debugging/review/QA: load folder context, update concise route nodes, link nodes to bad cases and tests, display the roadmap when requested, and ask whether to resume parked work when appropriate."
 ---
 
 # Context Guard
@@ -60,7 +60,17 @@ Each node should include:
 - next step
 - links to task folder, linked bad cases, and relevant test-chain notes
 
-Support exporting the route map with `scripts/context_guard.py export-roadmap`, which reads `.codex/context/roadmap.md` and writes a human-friendly HTML roadmap under `.codex/context/exports/`. Use `--format md` only when an agent-readable Markdown export is needed.
+Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes a human-friendly HTML roadmap under `.codex/context/exports/`, and prints the generated file path and `file://` URL. Use `export-roadmap --format md` only when an agent-readable Markdown export is needed.
+
+### Show Roadmap Request
+
+When the user invokes `$context-guard` and asks to show, open, view, display, export, or 展示 the roadmap:
+
+1. Do not merely explain the command.
+2. Run `scripts/context_guard.py show-roadmap` from the current folder or the plugin/skill script path.
+3. If an in-app browser or file-opening capability is available, open the generated `file://` URL.
+4. Return a clickable link to the generated HTML file.
+5. If the roadmap has no nodes yet, still show the generated empty roadmap and say no nodes are recorded yet.
 
 ## Context Evidence and Guards
 
@@ -146,7 +156,7 @@ At the end of every response, include a compact context summary when development
 
 - Context folder used.
 - Current task index status.
-- Roadmap node updated or exported.
+- Roadmap node updated, exported, or displayed.
 - Bad-case intake result from this turn.
 - New or updated context.
 - Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.

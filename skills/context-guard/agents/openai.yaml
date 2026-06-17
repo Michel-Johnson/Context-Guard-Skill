@@ -1,4 +1,4 @@
 interface:
   display_name: "Context Guard"
   short_description: "Keep context regressions from recurring"
-  default_prompt: "Use $context-guard to maintain project context and verify fixed bad cases have not regressed."
+  default_prompt: "Use $context-guard to show the current roadmap."

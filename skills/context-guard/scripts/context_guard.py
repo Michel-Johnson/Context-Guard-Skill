@@ -7,6 +7,7 @@ import argparse
 import html
 import re
 import subprocess
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -148,6 +149,16 @@ def export_roadmap(root: Path, output_format: str = "html") -> Path:
         ),
         encoding="utf-8",
     )
+    return dest
+
+
+def show_roadmap(root: Path, open_browser: bool = False) -> Path:
+    dest = export_roadmap(root, "html")
+    uri = dest.resolve().as_uri()
+    print(f"[context-guard] roadmap html: {dest}")
+    print(f"[context-guard] roadmap url: {uri}")
+    if open_browser:
+        webbrowser.open(uri)
     return dest
 
 
@@ -421,8 +432,9 @@ def extract_bad_case_scan(text: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "export-roadmap"])
+    parser.add_argument("command", choices=["init", "export-roadmap", "show-roadmap"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
+    parser.add_argument("--open", action="store_true", help="Open the generated HTML roadmap with the default browser.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
 
@@ -438,6 +450,9 @@ def main() -> int:
         return 0
     if args.command == "export-roadmap":
         print(export_roadmap(root, args.format))
+        return 0
+    if args.command == "show-roadmap":
+        show_roadmap(root, args.open)
         return 0
     return 1
 
