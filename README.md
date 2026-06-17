@@ -39,7 +39,7 @@ For each project folder, Context Guard uses:
 - Reuses existing bad-case guards before inventing new tests or scripts.
 - Supports goal-mode work by recording compact checkpoints during long-running progress.
 - Exports a concise human roadmap with three horizontal tracks: Main Route, Bad Cases, and Test Chain.
-- Supports route branches and multiple parallel mainlines.
+- Supports route branches and multiple parallel mainlines with route-focused drilldown.
 - Keeps user-facing roadmap text compact, hides internal IDs, and supports Chinese/English display.
 
 ## Installation
@@ -161,6 +161,8 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 
 The human HTML view shows only the concise overview. Details belong in `roadmap-details.html`.
 
+When there is one route, the overview shows the three aligned tracks directly. When there are multiple routes, the overview shows route lines first; selecting a route reveals only that route's bad cases and test chain.
+
 ## Verification
 
 Before changing the skill, run at least:
@@ -177,7 +179,7 @@ Recommended regression checks for roadmap changes:
 - overview hides `NODE-...`, `BC-...`, and `CTX-...` IDs
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
 - major nodes appear in the overview while checkpoints stay in details
-- branch routes render as separate route groups
+- branch routes render as selectable route groups with route-scoped bad cases and test chain
 - Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets
 
 ## Repository Layout

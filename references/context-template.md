@@ -134,6 +134,7 @@ The smallest useful action to resume this task.
 - Use `Level: major` for significant milestones shown as main route cards; use `Level: checkpoint` for minor progress that should live in details.
 - Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
 - In the human overview, visible card numbers should be consecutive per route group after checkpoint filtering, not source node numbers with gaps.
+- If the human overview has multiple route groups, show route lines first and reveal bad cases/test chain only for the selected route.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
@@ -150,8 +151,9 @@ The smallest useful action to resume this task.
 - Do not delete unresolved user intent unless the user explicitly discards it.
 - Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`. Use `export-roadmap --format md` only for agent-readable Markdown at `.codex/context/roadmap/roadmap.md`.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
-- The HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
-- Show the three lane titles once in the left label column for each route group, not inside every node card.
+- With one route group, the HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
+- With multiple route groups, the overview should show route lines and a route selector first; only the selected route should reveal its bad cases and test chain.
+- Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep the overview sparse. Put full Outcome, Decision, Next, and guard details in `roadmap-details.html`.
 
 ## Pruning Rules

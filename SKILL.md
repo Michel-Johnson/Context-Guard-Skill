@@ -98,7 +98,8 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
 - Show only `Level: major` nodes as main route cards; summarize hidden checkpoints compactly and put checkpoint details in `roadmap-details.html`.
 - Number visible overview cards consecutively per route group after checkpoint filtering; keep source node IDs and source-order detail anchors hidden from the overview.
-- Show the three lane titles once in a left-side label column per route group. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
+- When there is one route group, show the three lane titles once in a left-side label column. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
+- When there are multiple route groups, show a route selector and only the selected route line first. Hide bad-case and test-chain lanes from the route overview, then show only the selected route's linked bad cases and test chain in a compact drilldown.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful `#tags` as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
@@ -137,14 +138,15 @@ Use `.codex/context/roadmap/roadmap.md` only as a stable agent-readable export f
 
 ### Roadmap Display Model
 
-The HTML roadmap is a route-grouped three-track board:
+The HTML roadmap is a route-grouped board:
 
 1. A roadmap may contain multiple route groups, using `Branch:` on nodes. Missing `Branch:` means `Main`.
 2. Horizontal movement inside each route group follows that route's nodes over time.
-3. Each node column has three vertical lanes: Main Route, Bad Cases, and Test Chain.
-4. Vertical movement within a node switches from the route context to that node's linked bad cases and verification chain.
+3. If there is only one route group, each node column has three vertical lanes: Main Route, Bad Cases, and Test Chain.
+4. If there are multiple route groups, the overview first shows route lines only and lets the user select one route. The selected route's bad cases and test chain appear below that route.
+5. Vertical movement within a selected route switches from route context to linked bad cases and verification chain.
 
-Treat each route group as three parallel horizontal lines, not a three-column dashboard. Keep the top line as route context; align bad cases and tests directly under the node they belong to. Use `Parent:` when a branch forks from an earlier node.
+Treat a single-route roadmap as three parallel horizontal lines, not a three-column dashboard. Treat multi-route roadmaps as route navigation first, with bad cases and tests scoped to the selected route. Use `Parent:` when a branch forks from an earlier node.
 
 ### Show Roadmap Request
 

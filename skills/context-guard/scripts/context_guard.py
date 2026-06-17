@@ -179,10 +179,6 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
 
 def language_switch() -> str:
     return """<div class="control-strip" aria-label="View controls">
-      <div class="theme-switch" aria-label="Theme">
-        <button type="button" data-theme-toggle data-theme="sketch">Sketch</button>
-        <button type="button" data-theme-toggle data-theme="botanical">Botanical</button>
-      </div>
       <div class="language-switch" aria-label="Language">
         <button type="button" data-lang-toggle data-lang="zh">中</button>
         <button type="button" data-lang-toggle data-lang="en">EN</button>
@@ -206,6 +202,7 @@ const I18N = {{
     badCasesField: "Bad cases:",
     testChain: "Test Chain",
     testChainField: "Test chain:",
+    routeFocus: "Route Focus",
     emptyRoadmap: "No roadmap nodes recorded yet.",
     noLinkedBadCases: "No linked bad cases.",
     noBadCases: "No bad cases recorded.",
@@ -237,6 +234,7 @@ const I18N = {{
     badCasesField: "Bad case：",
     testChain: "测试链路",
     testChainField: "测试链路：",
+    routeFocus: "路线聚焦",
     emptyRoadmap: "还没有路线节点。",
     noLinkedBadCases: "无关联 bad case。",
     noBadCases: "还没有 bad case。",
@@ -285,27 +283,28 @@ function applyLang(lang) {{
   }});
 }}
 
-function resolveTheme() {{
-  const query = new URLSearchParams(window.location.search).get("theme");
-  if (query === "sketch" || query === "botanical") return query;
-  const saved = localStorage.getItem("contextGuardTheme");
-  if (saved === "sketch" || saved === "botanical") return saved;
-  return "sketch";
-}}
-
-function applyTheme(theme) {{
-  const selected = theme === "botanical" ? "botanical" : "sketch";
-  document.documentElement.dataset.theme = selected;
-  localStorage.setItem("contextGuardTheme", selected);
-  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
-    button.setAttribute("aria-pressed", button.dataset.theme === selected ? "true" : "false");
-  }});
-}}
-
 document.addEventListener("DOMContentLoaded", () => {{
   const initial = resolveLang();
   applyLang(initial);
-  applyTheme(resolveTheme());
+  const routeButtons = Array.from(document.querySelectorAll("[data-route-filter]"));
+  const routeExists = (route) => routeButtons.some((button) => button.dataset.routeFilter === route);
+  const applyRoute = (route) => {{
+    if (!routeExists(route)) return;
+    localStorage.setItem("contextGuardRoute", route);
+    document.querySelectorAll("[data-route-group]").forEach((group) => {{
+      group.hidden = group.dataset.routeGroup !== route;
+    }});
+    document.querySelectorAll("[data-route-panel]").forEach((panel) => {{
+      panel.hidden = panel.dataset.routePanel !== route;
+    }});
+    routeButtons.forEach((button) => {{
+      button.setAttribute("aria-pressed", button.dataset.routeFilter === route ? "true" : "false");
+    }});
+  }};
+  const routeQuery = new URLSearchParams(window.location.search).get("route");
+  const savedRoute = localStorage.getItem("contextGuardRoute");
+  const firstRoute = routeButtons[0] && routeButtons[0].dataset.routeFilter;
+  if (routeButtons.length) applyRoute(routeExists(routeQuery) ? routeQuery : (routeExists(savedRoute) ? savedRoute : firstRoute));
   document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
     button.addEventListener("click", () => {{
       const lang = button.dataset.lang;
@@ -315,13 +314,13 @@ document.addEventListener("DOMContentLoaded", () => {{
       applyLang(lang);
     }});
   }});
-  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
+  routeButtons.forEach((button) => {{
     button.addEventListener("click", () => {{
-      const theme = button.dataset.theme;
+      const route = button.dataset.routeFilter;
       const url = new URL(window.location.href);
-      url.searchParams.set("theme", theme);
+      url.searchParams.set("route", route);
       window.history.replaceState(null, "", url);
-      applyTheme(theme);
+      applyRoute(route);
     }});
   }});
 }});
@@ -334,7 +333,22 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     exported = datetime.now().isoformat(timespec="seconds")
     case_anchor_map = build_case_anchor_map(bad_case_cards)
     route_groups = group_nodes_by_branch(nodes)
-    route_items = "\n".join(render_route_group(branch, items, bad_case_cards, case_anchor_map) for branch, items in route_groups)
+    branch_mode = len(route_groups) > 1
+    route_nav = render_route_filter(route_groups) if branch_mode else ""
+    route_items = "\n".join(
+        render_route_group(branch, items, bad_case_cards, case_anchor_map, branch_mode, active=i == 0)
+        for i, (branch, items) in enumerate(route_groups)
+    )
+    route_panels = (
+        '<div class="route-drilldowns">'
+        + "\n".join(
+            render_route_drilldown(branch, items, bad_case_cards, case_anchor_map, active=i == 0)
+            for i, (branch, items) in enumerate(route_groups)
+        )
+        + "</div>"
+        if branch_mode and route_groups
+        else ""
+    )
     if not route_items:
         route_items = '<section class="empty" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     return f"""<!doctype html>
@@ -346,54 +360,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
   <style>
     :root {{
       color-scheme: light;
-      --bg: #fbfaf5;
-      --panel: #fffdf6;
-      --card: #fffefa;
-      --ink: #25211b;
-      --muted: #746f66;
-      --line: #d8d0bf;
-      --accent: #2d5bd1;
-      --accent-soft: #e9efff;
-      --warn: #a85b12;
-      --warn-soft: #fff0d7;
-      --ok: #176f55;
-      --ok-soft: #e0f3eb;
-      --danger: #c2413c;
-      --quiet: #9c9486;
-      --shadow: 0 12px 28px rgba(74, 61, 42, 0.11);
-      --radius: 7px;
-      --font-body: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --font-heading: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --card-border-width: 1.5px;
-      --card-transform: rotate(-0.15deg);
-      --board-texture: radial-gradient(circle at 1px 1px, rgba(45, 35, 21, 0.06) 1px, transparent 0);
-      --board-texture-size: 18px 18px;
-    }}
-    :root[data-theme="sketch"] {{
-      --bg: #fbfaf5;
-      --panel: #fffdf6;
-      --card: #fffefa;
-      --ink: #25211b;
-      --muted: #746f66;
-      --line: #d8d0bf;
-      --accent: #2d5bd1;
-      --accent-soft: #e9efff;
-      --warn: #a85b12;
-      --warn-soft: #fff0d7;
-      --ok: #176f55;
-      --ok-soft: #e0f3eb;
-      --danger: #c2413c;
-      --quiet: #9c9486;
-      --shadow: 0 12px 28px rgba(74, 61, 42, 0.11);
-      --radius: 7px;
-      --font-body: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --font-heading: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --card-border-width: 1.5px;
-      --card-transform: rotate(-0.15deg);
-      --board-texture: radial-gradient(circle at 1px 1px, rgba(45, 35, 21, 0.06) 1px, transparent 0);
-      --board-texture-size: 18px 18px;
-    }}
-    :root[data-theme="botanical"] {{
       --bg: #f4f7ef;
       --panel: #fffff8;
       --card: #fffef7;
@@ -434,8 +400,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
     .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
     .control-strip {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }}
-    .language-switch, .theme-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--panel) 78%, var(--accent-soft)); }}
-    .language-switch button, .theme-switch button {{
+    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--panel) 78%, var(--accent-soft)); }}
+    .language-switch button {{
       border: 0;
       border-radius: 999px;
       background: transparent;
@@ -446,8 +412,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-weight: 700;
       padding: 3px 8px;
     }}
-    .theme-switch button {{ padding: 3px 10px; }}
-    .language-switch button[aria-pressed="true"], .theme-switch button[aria-pressed="true"] {{
+    .language-switch button[aria-pressed="true"] {{
       background: var(--accent);
       color: #fff;
     }}
@@ -455,6 +420,36 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       padding: 16px 32px 30px;
     }}
     h2 {{ margin: 0 0 12px; font-family: var(--font-heading); font-size: 16px; }}
+    .route-filter {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 14px;
+    }}
+    .route-filter-label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+      margin-right: 2px;
+    }}
+    .route-filter button {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--panel) 82%, var(--accent-soft));
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      padding: 5px 11px;
+    }}
+    .route-filter button[aria-pressed="true"] {{
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }}
     .track-board {{
       background: var(--panel);
       border: 1px solid var(--line);
@@ -524,10 +519,18 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       min-height: 430px;
       align-items: stretch;
     }}
+    .track-grid.route-only {{
+      grid-template-columns: none;
+      grid-auto-columns: minmax(230px, 300px);
+      min-height: 190px;
+    }}
     .track-column, .track-label-column {{
       display: grid;
       grid-template-rows: minmax(130px, auto) minmax(120px, auto) minmax(90px, auto);
       gap: 12px;
+    }}
+    .track-column.route-column {{
+      grid-template-rows: minmax(160px, auto);
     }}
     .track-label-column {{
       position: sticky;
@@ -622,6 +625,44 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
     .badcase-head {{ display: flex; align-items: center; gap: 8px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
+    .route-drilldowns {{
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }}
+    .route-drilldown {{
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+      gap: 14px;
+    }}
+    .route-drilldown[hidden] {{ display: none; }}
+    .drill-card {{
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--card) 88%, var(--accent-soft));
+      padding: 13px;
+      min-width: 0;
+    }}
+    .drill-card h3 {{
+      margin: 0 0 10px;
+      font-family: var(--font-heading);
+      font-size: 15px;
+    }}
+    .test-note {{
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }}
+    .test-note:last-child {{
+      border-bottom: 0;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }}
+    .test-note p {{
+      color: var(--muted);
+      margin: 5px 0 0;
+      font-size: 13px;
+    }}
     .tags {{ display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }}
     .tag {{
       border-radius: 999px;
@@ -644,6 +685,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       .shell {{ padding: 16px; }}
       .quick {{ grid-template-columns: 1fr 1fr; }}
       .track-grid {{ grid-auto-columns: minmax(260px, 82vw); }}
+      .route-drilldown {{ grid-template-columns: 1fr; }}
       header {{ padding: 22px 16px 14px; }}
     }}
     @media (max-width: 560px) {{
@@ -667,7 +709,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
   <div class="shell">
     <main class="track-board">
       <h2 data-i18n="roadmap">Roadmap</h2>
+      {route_nav}
       <div class="route-stack">{route_items}</div>
+      {route_panels}
     </main>
   </div>
   {language_script("roadmapTitle")}
@@ -818,6 +862,11 @@ def group_nodes_by_branch(nodes: list[dict[str, str]]) -> list[tuple[str, list[t
             groups.append((branch, []))
         groups[index[key]][1].append((number, node))
     return groups
+
+
+def route_slug(branch: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
+    return slug or "main"
 
 
 def human_title(title: str) -> str:
@@ -1143,19 +1192,45 @@ def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> lis
     return matched
 
 
+def render_route_filter(route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]]) -> str:
+    buttons = []
+    for i, (branch, items) in enumerate(route_groups):
+        major_count = len([node for _, node in items if node_level(node) == "major"]) or len(items)
+        slug = html.escape(route_slug(branch))
+        pressed = "true" if i == 0 else "false"
+        buttons.append(
+            f'<button type="button" data-route-filter="{slug}" aria-pressed="{pressed}">'
+            f'{localized_text(branch)} <span aria-hidden="true">{major_count}</span></button>'
+        )
+    return (
+        '<div class="route-filter" aria-label="Routes">'
+        '<span class="route-filter-label" data-i18n="routeFocus">Route Focus</span>'
+        + "".join(buttons)
+        + "</div>"
+    )
+
+
 def render_route_group(
     branch: str,
     items: list[tuple[int, dict[str, str]]],
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
+    branch_mode: bool = False,
+    active: bool = True,
 ) -> str:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
     display_items = major_items or items
-    columns = "\n".join(
-        render_track_column(node, source_number, display_number, bad_case_cards, case_anchor_map)
-        for display_number, (source_number, node) in enumerate(display_items, 1)
-    )
+    if branch_mode:
+        columns = "\n".join(
+            render_route_column(node, source_number, display_number)
+            for display_number, (source_number, node) in enumerate(display_items, 1)
+        )
+    else:
+        columns = "\n".join(
+            render_track_column(node, source_number, display_number, bad_case_cards, case_anchor_map)
+            for display_number, (source_number, node) in enumerate(display_items, 1)
+        )
     label = localized_text(branch)
     count = len(major_items) if major_items else len(items)
     checkpoint_strip = ""
@@ -1169,7 +1244,10 @@ def render_route_group(
   <div class="track-label-cell"><span class="lane-label" data-i18n="badCases">Bad Cases</span></div>
   <div class="track-label-cell"><span class="lane-label" data-i18n="testChain">Test Chain</span></div>
 </section>"""
-    return f"""<section class="route-group">
+    label_column = "" if branch_mode else label_column
+    grid_class = "track-grid route-only" if branch_mode else "track-grid"
+    hidden_attr = "" if active or not branch_mode else " hidden"
+    return f"""<section class="route-group" data-route-group="{html.escape(route_slug(branch))}"{hidden_attr}>
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
     <span class="route-title">{label}</span>
@@ -1177,8 +1255,70 @@ def render_route_group(
   </div>
   {checkpoint_strip}
   <div class="route-strip">
-    <div class="track-grid">{label_column}{columns}</div>
+    <div class="{grid_class}">{label_column}{columns}</div>
   </div>
+</section>"""
+
+
+def render_route_column(node: dict[str, str], source_number: int, display_number: int) -> str:
+    title = localized_text(human_title(node.get("title", f"Node {source_number}")))
+    status = node.get("status", "unknown")
+    date = html.escape(node.get("date", "undated"))
+    outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
+    return f"""<section class="track-column route-column">
+  <article class="lane lane-main" data-lane="main">
+    <a class="lane-link" href="roadmap-details.html#node-{source_number}">
+      <div class="node-heading">
+        <div class="node-number">{display_number}</div>
+        <h3>{title}</h3>
+      </div>
+      <div class="node-meta">
+        {status_dot(status)}
+        <span class="pill">{date}</span>
+      </div>
+      <p class="summary">{outcome}</p>
+    </a>
+  </article>
+</section>"""
+
+
+def render_route_drilldown(
+    branch: str,
+    items: list[tuple[int, dict[str, str]]],
+    bad_case_cards: list[dict[str, str]],
+    case_anchor_map: dict[str, str],
+    active: bool = False,
+) -> str:
+    seen_cases: set[str] = set()
+    case_items: list[str] = []
+    test_items: list[str] = []
+    for source_number, node in items:
+        for card in bad_cases_for_node(node, bad_case_cards):
+            title = card.get("title", "")
+            if title in seen_cases:
+                continue
+            seen_cases.add(title)
+            case_items.append(render_bad_case_summary(card, case_anchor_map.get(title, "case-1")))
+        test_chain = node.get("test chain", "").strip()
+        if test_chain:
+            node_title = localized_short_text(human_title(node.get("title", f"Node {source_number}")), 56)
+            note = localized_short_text(test_chain, 92)
+            test_items.append(
+                f'<article class="test-note"><a class="detail-link" href="roadmap-details.html#node-{source_number}">'
+                f'{node_title}</a><p>{note}</p></article>'
+            )
+    cases_html = "\n".join(case_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
+    tests_html = "\n".join(test_items) or '<p class="muted" data-i18n="testChainField">Test chain:</p>'
+    hidden = "" if active else " hidden"
+    return f"""<section class="route-drilldown" data-route-panel="{html.escape(route_slug(branch))}"{hidden}>
+  <article class="drill-card">
+    <h3 data-i18n="badCases">Bad Cases</h3>
+    {cases_html}
+  </article>
+  <article class="drill-card">
+    <h3 data-i18n="testChain">Test Chain</h3>
+    {tests_html}
+  </article>
 </section>"""
 
 
