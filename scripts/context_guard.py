@@ -178,9 +178,15 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
 
 
 def language_switch() -> str:
-    return """<div class="language-switch" aria-label="Language">
-      <button type="button" data-lang-toggle data-lang="zh">中</button>
-      <button type="button" data-lang-toggle data-lang="en">EN</button>
+    return """<div class="control-strip" aria-label="View controls">
+      <div class="theme-switch" aria-label="Theme">
+        <button type="button" data-theme-toggle data-theme="sketch">Sketch</button>
+        <button type="button" data-theme-toggle data-theme="botanical">Botanical</button>
+      </div>
+      <div class="language-switch" aria-label="Language">
+        <button type="button" data-lang-toggle data-lang="zh">中</button>
+        <button type="button" data-lang-toggle data-lang="en">EN</button>
+      </div>
     </div>"""
 
 
@@ -279,9 +285,27 @@ function applyLang(lang) {{
   }});
 }}
 
+function resolveTheme() {{
+  const query = new URLSearchParams(window.location.search).get("theme");
+  if (query === "sketch" || query === "botanical") return query;
+  const saved = localStorage.getItem("contextGuardTheme");
+  if (saved === "sketch" || saved === "botanical") return saved;
+  return "sketch";
+}}
+
+function applyTheme(theme) {{
+  const selected = theme === "botanical" ? "botanical" : "sketch";
+  document.documentElement.dataset.theme = selected;
+  localStorage.setItem("contextGuardTheme", selected);
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
+    button.setAttribute("aria-pressed", button.dataset.theme === selected ? "true" : "false");
+  }});
+}}
+
 document.addEventListener("DOMContentLoaded", () => {{
   const initial = resolveLang();
   applyLang(initial);
+  applyTheme(resolveTheme());
   document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
     button.addEventListener("click", () => {{
       const lang = button.dataset.lang;
@@ -289,6 +313,15 @@ document.addEventListener("DOMContentLoaded", () => {{
       url.searchParams.set("lang", lang);
       window.history.replaceState(null, "", url);
       applyLang(lang);
+    }});
+  }});
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
+    button.addEventListener("click", () => {{
+      const theme = button.dataset.theme;
+      const url = new URL(window.location.href);
+      url.searchParams.set("theme", theme);
+      window.history.replaceState(null, "", url);
+      applyTheme(theme);
     }});
   }});
 }});
@@ -313,37 +346,96 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f6f7f9;
-      --panel: #ffffff;
-      --ink: #20242a;
-      --muted: #69707d;
-      --line: #d9dee7;
-      --accent: #2563eb;
-      --accent-soft: #e8f0ff;
-      --warn: #b45309;
-      --warn-soft: #fff5df;
-      --ok: #047857;
-      --danger: #dc2626;
-      --quiet: #94a3b8;
-      --shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
+      --bg: #fbfaf5;
+      --panel: #fffdf6;
+      --card: #fffefa;
+      --ink: #25211b;
+      --muted: #746f66;
+      --line: #d8d0bf;
+      --accent: #2d5bd1;
+      --accent-soft: #e9efff;
+      --warn: #a85b12;
+      --warn-soft: #fff0d7;
+      --ok: #176f55;
+      --ok-soft: #e0f3eb;
+      --danger: #c2413c;
+      --quiet: #9c9486;
+      --shadow: 0 12px 28px rgba(74, 61, 42, 0.11);
+      --radius: 7px;
+      --font-body: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-heading: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --card-border-width: 1.5px;
+      --card-transform: rotate(-0.15deg);
+      --board-texture: radial-gradient(circle at 1px 1px, rgba(45, 35, 21, 0.06) 1px, transparent 0);
+      --board-texture-size: 18px 18px;
+    }}
+    :root[data-theme="sketch"] {{
+      --bg: #fbfaf5;
+      --panel: #fffdf6;
+      --card: #fffefa;
+      --ink: #25211b;
+      --muted: #746f66;
+      --line: #d8d0bf;
+      --accent: #2d5bd1;
+      --accent-soft: #e9efff;
+      --warn: #a85b12;
+      --warn-soft: #fff0d7;
+      --ok: #176f55;
+      --ok-soft: #e0f3eb;
+      --danger: #c2413c;
+      --quiet: #9c9486;
+      --shadow: 0 12px 28px rgba(74, 61, 42, 0.11);
+      --radius: 7px;
+      --font-body: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-heading: "SF Pro Rounded", "Avenir Next", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --card-border-width: 1.5px;
+      --card-transform: rotate(-0.15deg);
+      --board-texture: radial-gradient(circle at 1px 1px, rgba(45, 35, 21, 0.06) 1px, transparent 0);
+      --board-texture-size: 18px 18px;
+    }}
+    :root[data-theme="botanical"] {{
+      --bg: #f4f7ef;
+      --panel: #fffff8;
+      --card: #fffef7;
+      --ink: #243125;
+      --muted: #64705d;
+      --line: #cddcc5;
+      --accent: #37745b;
+      --accent-soft: #e4f2e8;
+      --warn: #b0733f;
+      --warn-soft: #f8ead9;
+      --ok: #2f7d63;
+      --ok-soft: #dff1e7;
+      --danger: #b94c4c;
+      --quiet: #99a78f;
+      --shadow: 0 14px 34px rgba(51, 83, 57, 0.12);
+      --radius: 8px;
+      --font-body: "Avenir Next", "Gill Sans", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-heading: "Iowan Old Style", "Charter", "Songti SC", "STSong", Georgia, serif;
+      --card-border-width: 1px;
+      --card-transform: none;
+      --board-texture: radial-gradient(circle at 20% 15%, rgba(93, 135, 83, 0.12), transparent 24%), radial-gradient(circle at 82% 4%, rgba(183, 143, 92, 0.12), transparent 20%);
+      --board-texture-size: auto;
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       background: var(--bg);
       color: var(--ink);
-      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 14px/1.58 var(--font-body);
+      text-rendering: optimizeLegibility;
     }}
     header {{
       padding: 22px 32px 14px;
       border-bottom: 1px solid var(--line);
       background: var(--panel);
     }}
-    h1 {{ margin: 0 0 4px; font-size: 24px; letter-spacing: 0; }}
+    h1 {{ margin: 0 0 4px; font-family: var(--font-heading); font-size: 24px; letter-spacing: 0; }}
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
     .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
-    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: #f8fafc; }}
-    .language-switch button {{
+    .control-strip {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }}
+    .language-switch, .theme-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--panel) 78%, var(--accent-soft)); }}
+    .language-switch button, .theme-switch button {{
       border: 0;
       border-radius: 999px;
       background: transparent;
@@ -354,20 +446,23 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-weight: 700;
       padding: 3px 8px;
     }}
-    .language-switch button[aria-pressed="true"] {{
+    .theme-switch button {{ padding: 3px 10px; }}
+    .language-switch button[aria-pressed="true"], .theme-switch button[aria-pressed="true"] {{
       background: var(--accent);
       color: #fff;
     }}
     .shell {{
       padding: 16px 32px 30px;
     }}
-    h2 {{ margin: 0 0 12px; font-size: 16px; }}
+    h2 {{ margin: 0 0 12px; font-family: var(--font-heading); font-size: 16px; }}
     .track-board {{
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding: 16px;
+      background-image: var(--board-texture);
+      background-size: var(--board-texture-size);
     }}
     .route-stack {{
       display: grid;
@@ -391,11 +486,12 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-title {{
       font-size: 13px;
+      font-family: var(--font-heading);
       font-weight: 760;
     }}
     .route-pill {{
       border-radius: 999px;
-      background: #f1f5f9;
+      background: color-mix(in srgb, var(--accent-soft) 62%, #fff);
       color: var(--muted);
       font-size: 11px;
       font-weight: 680;
@@ -437,7 +533,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       position: sticky;
       left: 0;
       z-index: 2;
-      background: var(--panel);
+      background: color-mix(in srgb, var(--panel) 88%, transparent);
+      backdrop-filter: blur(6px);
     }}
     .track-label-cell {{
       display: flex;
@@ -447,11 +544,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       min-width: 0;
     }}
     .lane {{
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: var(--card-border-width) solid var(--line);
+      border-radius: var(--radius);
       padding: 12px;
-      background: #fff;
+      background: var(--card);
       min-width: 0;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75), var(--shadow);
+      transform: var(--card-transform);
     }}
     .lane-main {{ border-top: 4px solid var(--accent); }}
     .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
@@ -490,9 +589,10 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       flex: 0 0 auto;
       width: 28px; height: 28px; border-radius: 50%;
       display: grid; place-items: center;
-      background: var(--accent); color: white; font-weight: 700;
+      background: var(--accent); color: white; font-weight: 760;
+      box-shadow: 0 0 0 4px var(--accent-soft);
     }}
-    .lane h3 {{ margin: 0; font-size: 15px; line-height: 1.35; }}
+    .lane h3 {{ margin: 0; font-family: var(--font-heading); font-size: 15px; line-height: 1.35; }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
     .pill {{
       display: inline-flex;
@@ -500,7 +600,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       border-radius: 999px;
       padding: 2px 8px;
       background: var(--accent-soft);
-      color: #1d4ed8;
+      color: var(--accent);
       font-size: 12px;
       font-weight: 600;
     }}
