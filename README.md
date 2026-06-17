@@ -185,7 +185,7 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 
 The human HTML view shows only the concise overview. Details belong in `roadmap-details.html`.
 
-When there is one route, the overview shows the three aligned tracks directly. When there are multiple routes, the overview shows route lines first; selecting a route reveals only that route's bad cases and test chain.
+When there is one route, the overview shows the three aligned tracks directly. When there are multiple routes, the overview shows all route lines as a branch map with fork markers; selecting a route reveals only that route's bad cases and test chain.
 
 ## Verification
 
@@ -206,6 +206,7 @@ Recommended regression checks for roadmap changes:
 - overview does not show a visible language selector; it follows the folder language preference
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
+- multi-route overview shows all route lines together and marks branch parent/fork relationships
 - loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
 - loose bad-case blocks with `ID`, `Title`, `Status`, and `Nodes` render as linked bad cases
 - Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets

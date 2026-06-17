@@ -269,7 +269,7 @@ const I18N = {{
     badCasesField: "Bad cases:",
     testChain: "Test Chain",
     testChainField: "Test chain:",
-    routeFocus: "Route Focus",
+    routeFocus: "Route Details",
     emptyRoadmap: "No roadmap nodes recorded yet.",
     noLinkedBadCases: "No linked bad cases.",
     noBadCases: "No bad cases recorded.",
@@ -301,7 +301,7 @@ const I18N = {{
     badCasesField: "Bad case：",
     testChain: "测试链路",
     testChainField: "测试链路：",
-    routeFocus: "路线聚焦",
+    routeFocus: "路线详情",
     emptyRoadmap: "还没有路线节点。",
     noLinkedBadCases: "无关联 bad case。",
     noBadCases: "还没有 bad case。",
@@ -356,9 +356,6 @@ document.addEventListener("DOMContentLoaded", () => {{
   const applyRoute = (route) => {{
     if (!routeExists(route)) return;
     localStorage.setItem("contextGuardRoute", route);
-    document.querySelectorAll("[data-route-group]").forEach((group) => {{
-      group.hidden = group.dataset.routeGroup !== route;
-    }});
     document.querySelectorAll("[data-route-panel]").forEach((panel) => {{
       panel.hidden = panel.dataset.routePanel !== route;
     }});
@@ -389,10 +386,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     exported = datetime.now().isoformat(timespec="seconds")
     case_anchor_map = build_case_anchor_map(bad_case_cards)
     route_groups = group_nodes_by_branch(nodes)
+    node_lookup = {node_id(node): node for _, items in route_groups for _, node in items}
     branch_mode = len(route_groups) > 1
     route_nav = render_route_filter(route_groups) if branch_mode else ""
     route_items = "\n".join(
-        render_route_group(branch, items, bad_case_cards, case_anchor_map, branch_mode, active=i == 0)
+        render_route_group(branch, items, bad_case_cards, case_anchor_map, branch_mode, node_lookup)
         for i, (branch, items) in enumerate(route_groups)
     )
     route_panels = (
@@ -506,11 +504,28 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-group {{
       min-width: 0;
     }}
+    .route-group.route-branch {{
+      position: relative;
+      padding-left: 24px;
+    }}
+    .route-group.route-branch::before {{
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: -18px;
+      bottom: 14px;
+      width: 14px;
+      border-left: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
+      border-bottom-left-radius: 14px;
+      pointer-events: none;
+    }}
     .route-head {{
       display: flex;
       align-items: center;
       gap: 9px;
       margin-bottom: 10px;
+      flex-wrap: wrap;
     }}
     .route-mark {{
       width: 10px;
@@ -531,6 +546,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-size: 11px;
       font-weight: 680;
       padding: 1px 7px;
+    }}
+    .route-parent {{
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--warn-soft) 68%, #fff);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+      padding: 2px 8px;
+      max-width: min(520px, 100%);
     }}
     .checkpoint-strip {{
       display: flex;
@@ -749,7 +775,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     <main class="track-board">
       <h2 data-i18n="roadmap">Roadmap</h2>
       {route_nav}
-      <div class="route-stack">{route_items}</div>
+      <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{route_items}</div>
       {route_panels}
     </main>
   </div>
@@ -1089,6 +1115,7 @@ ZH_TEXT: dict[str, str] = {
     "Lane label column is not vertical": "轨道标签列没有竖排",
     "Chinese mode leaves record content in English": "中文模式下记录内容仍是英文",
     "Visible roadmap numbering skips hidden checkpoints": "路线图可见编号跳过隐藏检查点",
+    "forked from": "从",
     "Skill may not activate without explicit mention": "未显式提及时 skill 可能不会激活",
     "Roadmap nodes were not recorded during this skill's own development": "开发这个 skill 时没有记录路线节点",
     "Reviewed Superpowers and installed it for stronger engineering workflow discipline.": "已查看 Superpowers 并安装，用于强化工程工作流纪律。",
@@ -1468,7 +1495,7 @@ def render_route_group(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
     branch_mode: bool = False,
-    active: bool = True,
+    node_lookup: dict[str, dict[str, str]] | None = None,
 ) -> str:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
@@ -1485,6 +1512,7 @@ def render_route_group(
         )
     label = localized_text(branch)
     count = len(major_items) if major_items else len(items)
+    parent_note = render_route_parent_note(items, node_lookup or {}) if branch_mode else ""
     checkpoint_strip = ""
     if hidden_count > 0:
         checkpoint_strip = (
@@ -1498,18 +1526,34 @@ def render_route_group(
 </section>"""
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
-    hidden_attr = "" if active or not branch_mode else " hidden"
-    return f"""<section class="route-group" data-route-group="{html.escape(route_slug(branch))}"{hidden_attr}>
+    branch_class = " route-branch" if parent_note else ""
+    return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}">
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
     <span class="route-title">{label}</span>
     <span class="route-pill">{count}</span>
+    {parent_note}
   </div>
   {checkpoint_strip}
   <div class="route-strip">
     <div class="{grid_class}">{label_column}{columns}</div>
   </div>
 </section>"""
+
+
+def render_route_parent_note(items: list[tuple[int, dict[str, str]]], node_lookup: dict[str, dict[str, str]]) -> str:
+    parent_id = ""
+    for _, node in items:
+        raw_parent = node.get("parent", "").strip()
+        if raw_parent and raw_parent.lower() not in {"none", "n/a", "null"}:
+            match = re.search(r"NODE-\d{8}-\d+", raw_parent)
+            parent_id = match.group(0) if match else raw_parent
+            break
+    if not parent_id:
+        return ""
+    parent_node = node_lookup.get(parent_id, {})
+    parent_label = human_title(parent_node.get("title", parent_id))
+    return f'<span class="route-parent" data-route-parent>{localized_text("forked from")} {localized_text(parent_label)}</span>'
 
 
 def render_route_column(node: dict[str, str], source_number: int, display_number: int) -> str:
