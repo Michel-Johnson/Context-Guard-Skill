@@ -1,6 +1,6 @@
 ---
 name: context-guard
-description: "Maintain and enforce a project context folder for bad-case regression memory. Use at the beginning and end of every assistant response, especially for coding, debugging, implementation, refactoring, review, QA, and verification tasks: at the beginning, detect whether the user reports a bad case and load relevant existing context; at the end, decide whether regression guards must run, re-run recorded guards for relevant resolved bad cases, prefer reusable scripts/commands over inventing new tests, analyze recurrences, and immediately fix regressions unless an approved technical route change explains them."
+description: "Maintain and enforce a project context folder for bad-case regression memory. Use at the beginning and end of every assistant response, especially for coding, debugging, implementation, refactoring, review, QA, and verification tasks: at the beginning, detect whether the user reports a bad case and load relevant existing context; at the end, decide whether regression checks are needed, reuse recorded context and guards, avoid inventing duplicate tests, analyze recurrences, and immediately fix regressions unless an approved technical route change explains them."
 ---
 
 # Context Guard
@@ -21,16 +21,15 @@ Maintain a project-local context folder so bad-case memory and reusable guards t
 
 Do not store project bad cases inside the skill directory. Do not create a top-level "bad case folder"; the durable project folder is `context`.
 
-## Reusable Test Assets
+## Context Evidence and Guards
 
-Use project-local reusable guards instead of recreating one-off tests.
+The core artifact is context, not scripts. Record enough context that a future Codex can understand what happened, why it mattered, how it was resolved, and how to check it without rediscovering everything.
 
-1. Prefer the `Guard / verification` command already recorded on the bad case.
-2. If a recorded script exists, run it exactly as recorded before considering any new test.
-3. If a bad case can be checked by a script and no durable guard exists, create one reusable project-local guard under `.codex/context/bad-case-tests/`, for example `.codex/context/bad-case-tests/BC-YYYYMMDD-001.sh` or `.codex/context/bad-case-tests/BC-YYYYMMDD-001.test.ts`.
-4. Record the script path and command in the bad-case register.
-5. Reuse or update an existing guard when behavior changes. Do not create a new script for the same bad case unless the old guard is obsolete and the register explains why.
-6. If the project already has a native test suite, prefer adding a stable regression test there and record that command instead of creating a separate script.
+1. Prefer the existing `Guard / verification` note on the bad case: it may be a command, native test, manual check, screenshot comparison, log invariant, reproduction note, or script.
+2. Reuse recorded commands, tests, and manual checks before inventing new checks.
+3. Do not turn every bad case into a script. Create or update a durable script only when the check is repeatable, valuable, and cheaper than repeatedly reconstructing it.
+4. If a script is justified and does not belong in the native test suite, place it under `.codex/context/bad-case-tests/`, for example `.codex/context/bad-case-tests/BC-YYYYMMDD-001.sh`.
+5. Record why the chosen guard is enough. If the guard is manual-only, record the exact manual steps and why automation is not currently worth it.
 
 ## What Counts
 
@@ -61,7 +60,7 @@ Whenever a bad case appears:
 2. Record the exact phenomenon, reproduction steps or trigger, affected scope, suspected or confirmed cause, current status, and evidence.
 3. If fixed, record the solution and the verification command/manual check that proves the fix.
 4. If not fixed, mark it `open` or `deferred` and explain why it cannot be completed in the current task.
-5. If the bad case can be checked automatically, create or update a reusable guard once and record the command. Avoid repeated ad hoc test-script generation.
+5. Record the best available verification guard. Prefer existing project tests or clear manual checks; add a script only when it materially improves future reuse.
 
 Use stable IDs such as `BC-YYYYMMDD-001` or the next local sequence already used by the register.
 
@@ -70,15 +69,15 @@ Use stable IDs such as `BC-YYYYMMDD-001` or the next local sequence already used
 Run this before every final answer. If no development work happened and no bad-case register is relevant, explicitly treat the gate as not applicable. If development work happened, or a relevant register exists, run the regression gate.
 
 1. Re-read the project context register.
-2. Select every entry whose scope overlaps the changed code, plus any entry with a direct regression test, recorded script, or cheap verification command.
-3. Re-run the recorded guard for selected resolved entries. Use the existing recorded script or command first.
-4. If no recorded guard exists but an automated check is practical, create one durable guard under `.codex/context/bad-case-tests/` or the native test suite, record it, then run it.
-5. If no automated check is practical, perform the recorded manual verification and explain the limitation in the register.
+2. Select every entry whose scope overlaps the changed code, plus any entry with a relevant recorded guard.
+3. Re-run or re-perform the recorded guard for selected resolved entries. Use the existing context, command, native test, script, or manual check first.
+4. If no recorded guard exists, choose the lightest useful verification and record it. Do not create a script unless it will clearly save future work.
+5. If the guard is manual-only, perform the recorded manual verification when feasible and explain any limitation in the register.
 6. If a resolved bad case recurs:
    - Mark it `recurred`.
    - Explain why it recurred: missed guard, incomplete fix, route conflict, test gap, refactor side effect, environment drift, or unknown.
    - Fix it immediately unless the user explicitly pauses the work or the recurrence is due to an approved technical route change.
-   - Add or update an automated guard when practical.
+   - Add or update the context and guard so the recurrence is easier to catch next time.
    - Re-run the verification and update the entry back to `resolved` only when evidence passes.
 7. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
 
@@ -90,7 +89,7 @@ At the end of every response, include a compact bad-case summary when developmen
 - Context folder used.
 - Bad-case intake result from this turn.
 - New or updated bad cases.
-- Previously resolved cases rechecked, including reused script/command names.
+- Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.
 - Any recurrence found and fixed.
 - Any route-change supersession.
 
