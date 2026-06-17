@@ -152,10 +152,12 @@ def show_roadmap(root: Path, open_browser: bool = False) -> Path:
 def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
     return "\n".join(
         [
-            "# Exported Context Roadmap",
+            "# Agent-readable context roadmap",
             "",
             f"- Source folder: `{ctx}`",
             f"- Exported: {datetime.now().isoformat(timespec='seconds')}",
+            "- Source of truth: `index.md`, `roadmap.md`, `bad-cases.md`, and task context files",
+            "- Human-facing view: `roadmap.html`",
             "",
             "## Quick Scan",
             "",
@@ -190,7 +192,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Context Roadmap</title>
+  <title>Context Roadmap Human View</title>
   <style>
     :root {{
       color-scheme: light;
@@ -330,6 +332,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
   <header>
     <h1>Context Roadmap</h1>
     <div class="meta">
+      <span>Human-facing view</span>
+      <span>Codex source: <code>index.md</code>, <code>roadmap.md</code>, <code>bad-cases.md</code></span>
       <span>Source: <code>{html.escape(str(ctx))}</code></span>
       <span>Exported: {html.escape(exported)}</span>
     </div>

@@ -75,6 +75,20 @@ Support displaying the route map with `scripts/context_guard.py show-roadmap`, w
 
 Do not create timestamped HTML roadmap exports for display. The roadmap folder should contain one user-facing HTML file that gets overwritten, plus stable agent-readable formats as needed.
 
+### Source Of Truth
+
+Do not use roadmap.html as a context source. The HTML file is only a human-facing view.
+
+For Codex context intake, checkpointing, bad-case review, and task switching, read the source context files directly:
+
+- `.codex/context/index.md`
+- `.codex/context/roadmap.md`
+- `.codex/context/bad-cases.md`
+- `.codex/context/tasks/<task-id>/context.md`
+- task-local bad-case files when present
+
+Use `.codex/context/roadmap/roadmap.md` only as a stable agent-readable export for quick scanning or handoff. Update source files first; exports are projections.
+
 ### Roadmap Display Model
 
 The HTML roadmap is a three-track board:
@@ -123,12 +137,13 @@ Run this before any substantive answer or action.
 
 1. Ensure the folder-scoped context skeleton exists when this is the first task in a Codex folder.
 2. Decide whether the user's latest message continues the current task, starts a substantially different task, reports a bad case, or changes expected behavior.
-3. Locate and read `.codex/context/index.md`, `.codex/context/roadmap.md`, and the relevant task folder if they exist.
+3. Locate and read `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and the relevant task folder if they exist.
 4. If the request changes direction, park the previous task context before switching.
 5. If the user reports a bad case, add or update the matching bad-case entry before fixing it.
 6. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
 7. Keep relevant context in mind while planning and editing.
-8. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
+8. Do not use the generated HTML roadmap as the context source.
+9. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
 
 ### During Work
 
