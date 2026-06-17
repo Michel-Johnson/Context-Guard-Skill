@@ -318,8 +318,20 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
     .badcase-head {{ display: flex; align-items: center; gap: 8px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
-    .tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
-    .tag {{ background: #eef2f7; color: #334155; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
+    .tags {{ display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }}
+    .tag {{
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }}
+    .tag-blue {{ background: #dbeafe; color: #1e40af; }}
+    .tag-amber {{ background: #fef3c7; color: #92400e; }}
+    .tag-green {{ background: #dcfce7; color: #166534; }}
+    .tag-rose {{ background: #ffe4e6; color: #9f1239; }}
+    .tag-slate {{ background: #eef2f7; color: #334155; }}
+    .tag-more {{ background: #f1f5f9; color: #64748b; }}
     .muted {{ color: var(--muted); }}
     .detail-link {{ color: var(--accent); font-weight: 650; text-decoration: none; font-size: 13px; }}
     .empty {{ color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }}
@@ -388,7 +400,14 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .status-warn {{ background: #b45309; }}
     .status-bad {{ background: #dc2626; }}
     .status-muted {{ background: #94a3b8; }}
-    .tag {{ display: inline-block; background: #eef2f7; border-radius: 999px; padding: 2px 7px; margin-right: 5px; font-size: 12px; }}
+    .tags {{ display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }}
+    .tag {{ display: inline-block; border-radius: 999px; padding: 2px 7px; font-size: 12px; font-weight: 650; }}
+    .tag-blue {{ background: #dbeafe; color: #1e40af; }}
+    .tag-amber {{ background: #fef3c7; color: #92400e; }}
+    .tag-green {{ background: #dcfce7; color: #166534; }}
+    .tag-rose {{ background: #ffe4e6; color: #9f1239; }}
+    .tag-slate {{ background: #eef2f7; color: #334155; }}
+    .tag-more {{ background: #f1f5f9; color: #64748b; }}
     a {{ color: #2563eb; text-decoration: none; font-weight: 650; }}
   </style>
 </head>
@@ -492,6 +511,44 @@ def frequency_dot(frequency: str) -> str:
     if normalized.startswith("repeated") or normalized in {"high-frequency", "hot"}:
         return '<span class="freq-dot" aria-hidden="true"></span>'
     return ""
+
+
+def parse_tags(text: str) -> list[str]:
+    tags = re.findall(r"#[A-Za-z0-9_-]+", text or "")
+    seen: set[str] = set()
+    unique: list[str] = []
+    for tag in tags:
+        key = tag.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(tag)
+    return unique
+
+
+def tag_class(tag: str) -> str:
+    normalized = tag.lower()
+    if any(key in normalized for key in ["ux", "ui", "label", "roadmap", "display"]):
+        return "tag-blue"
+    if any(key in normalized for key in ["risk", "hot", "flaky", "trigger", "missed"]):
+        return "tag-amber"
+    if any(key in normalized for key in ["resolved", "guard", "context", "source"]):
+        return "tag-green"
+    if any(key in normalized for key in ["loss", "bloat", "noise", "data"]):
+        return "tag-rose"
+    return "tag-slate"
+
+
+def render_tags(tags: list[str], limit: int | None = None) -> str:
+    if limit is not None:
+        visible = tags[:limit]
+        hidden = len(tags) - len(visible)
+    else:
+        visible = tags
+        hidden = 0
+    pieces = [f'<span class="tag {tag_class(tag)}">{html.escape(tag)}</span>' for tag in visible]
+    if hidden > 0:
+        pieces.append(f'<span class="tag tag-more">+{hidden}</span>')
+    return "".join(pieces)
 
 
 def build_case_anchor_map(cards: list[dict[str, str]]) -> dict[str, str]:
@@ -608,8 +665,11 @@ def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
     title = html.escape(human_title(card.get("title", "Bad case")))
     status = card.get("status", "unknown")
     frequency = card.get("frequency", "")
+    tags = parse_tags(card.get("tags", ""))
+    tag_html = render_tags(tags, limit=3)
     return f"""<article class="badcase">
   <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="roadmap-details.html#{html.escape(anchor)}">{title}</a></div>
+  {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </article>"""
 
 
@@ -622,8 +682,8 @@ def render_case_detail(card: dict[str, str], anchor: str) -> str:
     cause = html.escape(human_text(card.get("root cause", "")))
     fix = html.escape(human_text(card.get("fix method", "")))
     guard = html.escape(human_text(card.get("guard / verification", "")))
-    tags = re.findall(r"#[\\w-]+", card.get("tags", ""))
-    tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags)
+    tags = parse_tags(card.get("tags", ""))
+    tag_html = render_tags(tags)
     optional = "\n".join(
         line
         for line in [

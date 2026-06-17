@@ -81,6 +81,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
+- Show meaningful `#tags` as compact colored chips when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Link each node, bad case, and test-chain item to `roadmap-details.html`.
 - Put detailed fields in `roadmap-details.html`, not in the overview.
@@ -96,6 +97,7 @@ For `roadmap.html`, show concise natural-language labels:
 - Do not show `CTX-...` task IDs by default.
 - Summarize linked bad cases as short text or counts, then show the linked bad-case titles in the Bad Cases lane.
 - Avoid visible metadata labels such as `Status:`, `Nodes:`, `Frequency:`, or fallback chips such as `untagged` in user-facing HTML; use color or small visual markers when the information is useful.
+- Do not show fake tags. If an item has no tags, omit the tag row.
 - Only expose internal IDs when the user explicitly asks for debug/source details.
 
 ### Source Of Truth
