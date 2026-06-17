@@ -32,6 +32,10 @@ def context_dir(root: Path) -> Path:
     return root / ".codex" / "context"
 
 
+def roadmap_output_dir(root: Path) -> Path:
+    return context_dir(root) / "roadmap"
+
+
 def write_if_missing(path: Path, content: str) -> bool:
     if path.exists():
         return False
@@ -48,6 +52,7 @@ def init_context(root: Path) -> list[Path]:
         ctx,
         ctx / "tasks",
         ctx / "bad-case-tests",
+        ctx / "roadmap",
         ctx / "exports",
         ctx / "archive",
     ]:
@@ -116,39 +121,21 @@ def export_roadmap(root: Path, output_format: str = "html") -> Path:
     ctx = context_dir(root)
     init_context(root)
     source = ctx / "roadmap.md"
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = roadmap_output_dir(root)
+    out_dir.mkdir(parents=True, exist_ok=True)
     suffix = "html" if output_format == "html" else "md"
-    dest = ctx / "exports" / f"roadmap-{stamp}.{suffix}"
+    dest = out_dir / f"roadmap.{suffix}"
     roadmap = source.read_text(encoding="utf-8")
     index = (ctx / "index.md").read_text(encoding="utf-8")
     bad_cases = (ctx / "bad-cases.md").read_text(encoding="utf-8")
     if output_format == "html":
+        for old_html in out_dir.glob("*.html"):
+            if old_html != dest:
+                old_html.unlink()
+        (out_dir / "roadmap.md").write_text(render_roadmap_markdown(ctx, index, roadmap, bad_cases), encoding="utf-8")
         dest.write_text(render_roadmap_html(ctx, index, roadmap, bad_cases), encoding="utf-8")
         return dest
-    dest.write_text(
-        "\n".join(
-            [
-                "# Exported Context Roadmap",
-                "",
-                f"- Source folder: `{ctx}`",
-                f"- Exported: {datetime.now().isoformat(timespec='seconds')}",
-                "",
-                "## Quick Scan",
-                "",
-                extract_section(index, "## Quick Scan"),
-                "",
-                "## Roadmap",
-                "",
-                roadmap,
-                "",
-                "## Bad Case Tags And Links",
-                "",
-                extract_bad_case_scan(bad_cases),
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    dest.write_text(render_roadmap_markdown(ctx, index, roadmap, bad_cases), encoding="utf-8")
     return dest
 
 
@@ -160,6 +147,30 @@ def show_roadmap(root: Path, open_browser: bool = False) -> Path:
     if open_browser:
         webbrowser.open(uri)
     return dest
+
+
+def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
+    return "\n".join(
+        [
+            "# Exported Context Roadmap",
+            "",
+            f"- Source folder: `{ctx}`",
+            f"- Exported: {datetime.now().isoformat(timespec='seconds')}",
+            "",
+            "## Quick Scan",
+            "",
+            extract_section(index, "## Quick Scan"),
+            "",
+            "## Roadmap",
+            "",
+            roadmap,
+            "",
+            "## Bad Case Tags And Links",
+            "",
+            extract_bad_case_scan(bad_cases),
+            "",
+        ]
+    )
 
 
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:

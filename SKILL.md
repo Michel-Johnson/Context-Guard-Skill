@@ -71,7 +71,9 @@ Each node should include:
 - next step
 - links to task folder, linked bad cases, and relevant test-chain notes
 
-Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes a human-friendly HTML roadmap under `.codex/context/exports/`, and prints the generated file path and `file://` URL. Use `export-roadmap --format md` only when an agent-readable Markdown export is needed.
+Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes the human-facing HTML roadmap to the stable file `.codex/context/roadmap/roadmap.html`, updates the stable agent-readable Markdown copy at `.codex/context/roadmap/roadmap.md`, and prints the generated file path and `file://` URL. Use `export-roadmap --format md` only when only the Markdown export is needed.
+
+Do not create timestamped HTML roadmap exports for display. The roadmap folder should contain one user-facing HTML file that gets overwritten, plus stable agent-readable formats as needed.
 
 ### Roadmap Display Model
 
@@ -92,6 +94,7 @@ When the user invokes `$context-guard` and asks to show, open, view, display, ex
 3. If an in-app browser or file-opening capability is available, open the generated `file://` URL.
 4. Return a clickable link to the generated HTML file.
 5. If the roadmap has no nodes yet, still show the generated empty roadmap and say no nodes are recorded yet.
+6. Reuse the stable display file; do not generate a new timestamped HTML file for each view request.
 
 ## Context Evidence and Guards
 
