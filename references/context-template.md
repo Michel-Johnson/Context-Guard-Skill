@@ -129,4 +129,4 @@ The smallest useful action to resume this task.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
-- Use `scripts/context_guard.py export-roadmap` to export a clean route map to `.codex/context/exports/`.
+- Use `scripts/context_guard.py export-roadmap` to export a human-friendly HTML route map to `.codex/context/exports/`. Use `--format md` only for agent-readable Markdown.

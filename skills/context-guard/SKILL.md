@@ -60,7 +60,7 @@ Each node should include:
 - next step
 - links to task folder, linked bad cases, and relevant test-chain notes
 
-Support exporting the route map with `scripts/context_guard.py export-roadmap`, which reads `.codex/context/roadmap.md` and writes a clean Markdown roadmap under `.codex/context/exports/`.
+Support exporting the route map with `scripts/context_guard.py export-roadmap`, which reads `.codex/context/roadmap.md` and writes a human-friendly HTML roadmap under `.codex/context/exports/`. Use `--format md` only when an agent-readable Markdown export is needed.
 
 ## Context Evidence and Guards
 
