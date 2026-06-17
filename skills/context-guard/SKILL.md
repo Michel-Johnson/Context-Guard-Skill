@@ -90,6 +90,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Link each node, bad case, and test-chain item to `roadmap-details.html`.
 - Put detailed fields in `roadmap-details.html`, not in the overview.
+- Support human-facing language switching in the stable HTML files, starting with Chinese and English UI chrome. Do not fork context source files per language or machine-translate source node content.
 
 ### User-Facing Labels
 

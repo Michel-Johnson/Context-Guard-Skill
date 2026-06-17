@@ -177,6 +177,120 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
     )
 
 
+def language_switch() -> str:
+    return """<div class="language-switch" aria-label="Language">
+      <button type="button" data-lang-toggle data-lang="zh">中</button>
+      <button type="button" data-lang-toggle data-lang="en">EN</button>
+    </div>"""
+
+
+def language_script(title_key: str) -> str:
+    return f"""<script>
+const I18N = {{
+  en: {{
+    roadmapTitle: "Context Roadmap",
+    roadmapDetails: "Roadmap Details",
+    humanView: "Human-facing view",
+    humanDetailView: "Human detail view",
+    updatedLabel: "Updated:",
+    roadmap: "Roadmap",
+    backToRoadmap: "Back to roadmap",
+    mainRoute: "Main Route",
+    badCases: "Bad Cases",
+    badCasesField: "Bad cases:",
+    testChain: "Test Chain",
+    testChainField: "Test chain:",
+    emptyRoadmap: "No roadmap nodes recorded yet.",
+    noLinkedBadCases: "No linked bad cases.",
+    noBadCases: "No bad cases recorded.",
+    checkpointsInDetails: "{{count}} checkpoints in details",
+    levelMajor: "Major",
+    levelCheckpoint: "Checkpoint",
+    route: "Route:",
+    parentRoute: "Parent route:",
+    outcome: "Outcome:",
+    decision: "Decision:",
+    avoidGoingBack: "Avoid going back:",
+    next: "Next:",
+    phenomenon: "Phenomenon:",
+    trigger: "Trigger:",
+    rootCause: "Root cause:",
+    fix: "Fix:",
+    guard: "Guard:"
+  }},
+  zh: {{
+    roadmapTitle: "Context 路线图",
+    roadmapDetails: "路线图详情",
+    humanView: "人类视图",
+    humanDetailView: "人类详情视图",
+    updatedLabel: "更新：",
+    roadmap: "路线图",
+    backToRoadmap: "返回路线图",
+    mainRoute: "主要路线",
+    badCases: "Bad Case",
+    badCasesField: "Bad case：",
+    testChain: "测试链路",
+    testChainField: "测试链路：",
+    emptyRoadmap: "还没有路线节点。",
+    noLinkedBadCases: "无关联 bad case。",
+    noBadCases: "还没有 bad case。",
+    checkpointsInDetails: "{{count}} 个检查点在详情页",
+    levelMajor: "主节点",
+    levelCheckpoint: "检查点",
+    route: "路线：",
+    parentRoute: "父路线：",
+    outcome: "结果：",
+    decision: "决策：",
+    avoidGoingBack: "避免回头：",
+    next: "下一步：",
+    phenomenon: "现象：",
+    trigger: "触发：",
+    rootCause: "根因：",
+    fix: "修复：",
+    guard: "防线："
+  }}
+}};
+
+function resolveLang() {{
+  const query = new URLSearchParams(window.location.search).get("lang");
+  if (query === "zh" || query === "en") return query;
+  const saved = localStorage.getItem("contextGuardLang");
+  if (saved === "zh" || saved === "en") return saved;
+  return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+}}
+
+function applyLang(lang) {{
+  const dictionary = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang;
+  document.title = dictionary["{title_key}"] || document.title;
+  localStorage.setItem("contextGuardLang", lang);
+  document.querySelectorAll("[data-i18n]").forEach((element) => {{
+    const key = element.dataset.i18n;
+    let value = dictionary[key] || I18N.en[key] || element.textContent;
+    if (element.dataset.count) value = value.replace("{{count}}", element.dataset.count);
+    element.textContent = value;
+  }});
+  document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
+    button.setAttribute("aria-pressed", button.dataset.lang === lang ? "true" : "false");
+  }});
+}}
+
+document.addEventListener("DOMContentLoaded", () => {{
+  const initial = resolveLang();
+  applyLang(initial);
+  document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
+    button.addEventListener("click", () => {{
+      const lang = button.dataset.lang;
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", lang);
+      window.history.replaceState(null, "", url);
+      applyLang(lang);
+    }});
+  }});
+}});
+</script>"""
+
+
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
     nodes = parse_roadmap_nodes(roadmap)
     bad_case_cards = parse_bad_case_cards(bad_cases)
@@ -185,7 +299,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     route_groups = group_nodes_by_branch(nodes)
     route_items = "\n".join(render_route_group(branch, items, bad_case_cards, case_anchor_map) for branch, items in route_groups)
     if not route_items:
-        route_items = '<section class="empty">No roadmap nodes recorded yet.</section>'
+        route_items = '<section class="empty" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -223,6 +337,23 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     h1 {{ margin: 0 0 4px; font-size: 24px; letter-spacing: 0; }}
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
+    .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
+    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: #f8fafc; }}
+    .language-switch button {{
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 8px;
+    }}
+    .language-switch button[aria-pressed="true"] {{
+      background: var(--accent);
+      color: #fff;
+    }}
     .shell {{
       padding: 16px 32px 30px;
     }}
@@ -399,18 +530,24 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
 </head>
 <body>
   <header>
-    <h1>Context Roadmap</h1>
-    <div class="meta">
-      <span>Human-facing view</span>
-      <span>Updated: {html.escape(exported)}</span>
+    <div class="header-row">
+      <div>
+        <h1 data-i18n="roadmapTitle">Context Roadmap</h1>
+        <div class="meta">
+          <span data-i18n="humanView">Human-facing view</span>
+          <span><span data-i18n="updatedLabel">Updated:</span> {html.escape(exported)}</span>
+        </div>
+      </div>
+      {language_switch()}
     </div>
   </header>
   <div class="shell">
     <main class="track-board">
-      <h2>Roadmap</h2>
+      <h2 data-i18n="roadmap">Roadmap</h2>
       <div class="route-stack">{route_items}</div>
     </main>
   </div>
+  {language_script("roadmapTitle")}
 </body>
 </html>
 """
@@ -423,7 +560,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     exported = datetime.now().isoformat(timespec="seconds")
     node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in enumerate(nodes, 1))
     if not node_sections:
-        node_sections = '<section class="detail-card">No roadmap nodes recorded yet.</section>'
+        node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
     return f"""<!doctype html>
 <html lang="en">
@@ -435,6 +572,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     body {{ margin: 0; background: #f6f7f9; color: #20242a; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
     header {{ background: #fff; border-bottom: 1px solid #d9dee7; padding: 22px 32px; }}
     main {{ max-width: 980px; margin: 0 auto; padding: 22px 18px 40px; }}
+    .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
     h1 {{ margin: 0 0 4px; font-size: 24px; }}
     h2 {{ margin-top: 28px; }}
     h3 {{ margin: 0 0 8px; font-size: 18px; }}
@@ -461,20 +599,29 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .tag-rose {{ background: #ffe4e6; color: #9f1239; }}
     .tag-slate {{ background: #eef2f7; color: #334155; }}
     .tag-more {{ background: #f1f5f9; color: #64748b; }}
+    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #d9dee7; border-radius: 999px; background: #f8fafc; }}
+    .language-switch button {{ border: 0; border-radius: 999px; background: transparent; color: #69707d; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 8px; }}
+    .language-switch button[aria-pressed="true"] {{ background: #2563eb; color: #fff; }}
     a {{ color: #2563eb; text-decoration: none; font-weight: 650; }}
   </style>
 </head>
 <body>
   <header>
-    <h1>Roadmap Details</h1>
-    <div class="meta">Human detail view · Updated: {html.escape(exported)} · <a href="roadmap.html">Back to roadmap</a></div>
+    <div class="header-row">
+      <div>
+        <h1 data-i18n="roadmapDetails">Roadmap Details</h1>
+        <div class="meta"><span data-i18n="humanDetailView">Human detail view</span> · <span data-i18n="updatedLabel">Updated:</span> {html.escape(exported)} · <a href="roadmap.html" data-i18n="backToRoadmap">Back to roadmap</a></div>
+      </div>
+      {language_switch()}
+    </div>
   </header>
   <main>
-    <h2>Main Route</h2>
+    <h2 data-i18n="mainRoute">Main Route</h2>
     {node_sections}
-    <h2>Bad Cases</h2>
-    {case_sections or '<p class="muted">No bad cases recorded.</p>'}
+    <h2 data-i18n="badCases">Bad Cases</h2>
+    {case_sections or '<p class="muted" data-i18n="noBadCases">No bad cases recorded.</p>'}
   </main>
+  {language_script("roadmapDetails")}
 </body>
 </html>
 """
@@ -688,7 +835,7 @@ def render_route_group(
     if hidden_count > 0:
         checkpoint_strip = (
             f'<div class="checkpoint-strip"><span class="checkpoint-dot" aria-hidden="true"></span>'
-            f'<span>{hidden_count} checkpoints in details</span></div>'
+            f'<span data-i18n="checkpointsInDetails" data-count="{hidden_count}">{hidden_count} checkpoints in details</span></div>'
         )
     return f"""<section class="route-group">
   <div class="route-head">
@@ -717,11 +864,11 @@ def render_track_column(
     cases = bad_cases_for_node(node, bad_case_cards)
     case_items = "\n".join(render_bad_case_summary(card, case_anchor_map.get(card.get("title", ""), "case-1")) for card in cases)
     if not case_items:
-        case_items = '<p class="muted">No linked bad cases.</p>'
+        case_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="roadmap-details.html#node-{number}">
-      <div class="lane-label">Main Route</div>
+      <div class="lane-label" data-i18n="mainRoute">Main Route</div>
       <div class="node-heading">
         <div class="node-number">{number}</div>
         <h3>{title}</h3>
@@ -734,11 +881,11 @@ def render_track_column(
     </a>
   </article>
   <article class="lane lane-bad-cases" data-lane="bad-cases">
-    <div class="lane-label">Bad Cases</div>
+    <div class="lane-label" data-i18n="badCases">Bad Cases</div>
     {case_items}
   </article>
   <article class="lane lane-test-chain" data-lane="test-chain">
-    <div class="lane-label">Test Chain</div>
+    <div class="lane-label" data-i18n="testChain">Test Chain</div>
     <a class="detail-link" href="roadmap-details.html#node-{number}">{test_chain}</a>
   </article>
 </section>"""
@@ -759,6 +906,7 @@ def render_node_detail(
     next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
     test_chain = html.escape(human_text(node.get("test chain", "none")))
     branch = html.escape(branch_name(node))
+    level_key = "levelCheckpoint" if node_level(node) == "checkpoint" else "levelMajor"
     level = html.escape(human_level(node))
     parent = html.escape(human_text(node.get("parent", "")))
     cases = bad_cases_for_node(node, bad_case_cards)
@@ -769,15 +917,15 @@ def render_node_detail(
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
   <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
-  <p class="field"><span class="level-chip">{level}</span></p>
-  <p class="field"><b>Route:</b> {branch}</p>
-  {f'<p class="field"><b>Parent route:</b> {parent}</p>' if parent else ''}
-  <p class="field"><b>Outcome:</b> {outcome}</p>
-  <p class="field"><b>Decision:</b> {reason}</p>
-  <p class="field"><b>Avoid going back:</b> {avoid}</p>
-  <p class="field"><b>Next:</b> {next_step}</p>
-  <p class="field"><b>Bad cases:</b> {case_links}</p>
-  <p class="field"><b>Test chain:</b> {test_chain}</p>
+  <p class="field"><span class="level-chip" data-i18n="{level_key}">{level}</span></p>
+  <p class="field"><b data-i18n="route">Route:</b> {branch}</p>
+  {f'<p class="field"><b data-i18n="parentRoute">Parent route:</b> {parent}</p>' if parent else ''}
+  <p class="field"><b data-i18n="outcome">Outcome:</b> {outcome}</p>
+  <p class="field"><b data-i18n="decision">Decision:</b> {reason}</p>
+  <p class="field"><b data-i18n="avoidGoingBack">Avoid going back:</b> {avoid}</p>
+  <p class="field"><b data-i18n="next">Next:</b> {next_step}</p>
+  <p class="field"><b data-i18n="badCasesField">Bad cases:</b> {case_links}</p>
+  <p class="field"><b data-i18n="testChainField">Test chain:</b> {test_chain}</p>
 </section>"""
 
 
@@ -827,11 +975,11 @@ def render_case_detail(card: dict[str, str], anchor: str) -> str:
     optional = "\n".join(
         line
         for line in [
-            f'  <p class="field"><b>Phenomenon:</b> {phenomenon}</p>' if phenomenon else "",
-            f'  <p class="field"><b>Trigger:</b> {trigger}</p>' if trigger else "",
-            f'  <p class="field"><b>Root cause:</b> {cause}</p>' if cause else "",
-            f'  <p class="field"><b>Fix:</b> {fix}</p>' if fix else "",
-            f'  <p class="field"><b>Guard:</b> {guard}</p>' if guard else "",
+            f'  <p class="field"><b data-i18n="phenomenon">Phenomenon:</b> {phenomenon}</p>' if phenomenon else "",
+            f'  <p class="field"><b data-i18n="trigger">Trigger:</b> {trigger}</p>' if trigger else "",
+            f'  <p class="field"><b data-i18n="rootCause">Root cause:</b> {cause}</p>' if cause else "",
+            f'  <p class="field"><b data-i18n="fix">Fix:</b> {fix}</p>' if fix else "",
+            f'  <p class="field"><b data-i18n="guard">Guard:</b> {guard}</p>' if guard else "",
         ]
         if line
     )
