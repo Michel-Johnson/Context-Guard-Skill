@@ -45,7 +45,7 @@ Context records need a folder-scoped language preference so Codex does not mix l
 1. On the first use in a folder, create `.codex/context/preferences.json` with `record_language: "unset"`.
 2. If `record_language` is missing or `unset`, ask the user which language to use for future context records before writing substantive roadmap, task, or bad-case content.
 3. After the user chooses, run or emulate `scripts/context_guard.py set-language --language <language>` and store the normalized value in `.codex/context/preferences.json`.
-4. Write future `index.md`, `roadmap.md`, `bad-cases.md`, task context, bad-case titles, summaries, and test-chain notes in the configured record language.
+4. Write future `index.md`, `roadmap.md`, `bad-cases.md`, task context, bad-case titles, summaries, Guard/verification notes, Trigger/reproduction notes, and test-chain notes in the configured record language.
 5. Preserve code identifiers, file paths, commands, API names, exact errors, logs, and quoted user text in their original form.
 6. If the user asks to change language later, update `.codex/context/preferences.json` and use the new language going forward.
 7. Do not bulk-translate historical records unless the user explicitly asks for migration.
@@ -130,7 +130,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Do not show implementation chrome such as "human-facing view" labels or export/update timestamps in the overview header.
 - Link each node, bad case, and test-chain item to same-file detail anchors in `roadmap.html` by default, so `file://` views do not need to navigate to another local HTML file.
 - Keep detailed fields out of overview cards; place them in the same-file detail section and the stable `roadmap-details.html` sidecar.
-- Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
+- Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, Guard/verification notes, Trigger/reproduction notes, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
 - When the folder language is Chinese, user-facing overview text should not fall back to untranslated English prose except for intentional technical names, commands, paths, APIs, and product names.
 
 ### User-Facing Labels
