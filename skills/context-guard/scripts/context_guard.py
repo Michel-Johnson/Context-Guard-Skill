@@ -525,7 +525,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-group.route-branch::before {{
       content: "";
       position: absolute;
-      left: 6px;
+      left: var(--route-connector-x, 6px);
       top: -18px;
       bottom: 14px;
       width: 14px;
@@ -1633,7 +1633,12 @@ def render_route_group(
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
     branch_class = " route-branch" if parent_note else ""
-    offset_attrs = f' data-route-offset="{route_offset}"' if branch_mode else ""
+    connector_x = route_offset * 314 + 30
+    offset_attrs = (
+        f' data-route-offset="{route_offset}" style="--route-connector-x: {connector_x}px;"'
+        if branch_mode
+        else ""
+    )
     return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>

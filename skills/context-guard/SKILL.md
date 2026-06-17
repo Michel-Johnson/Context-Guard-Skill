@@ -119,6 +119,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Show parent/fork markers only for side routes whose parent node belongs to another route. Never show a fork marker on the Main route merely because a later main node references an earlier node.
 - In branch overview, visually align each side route's starting position to the parent node's visible position on its parent route. Do not render every side route from the first column.
 - Use a shared horizontal route canvas for branch overview. Represent route offsets with spacer columns inside the route grid, not by shifting or clipping the entire route section boundary.
+- Keep branch connector lines aligned with the same offset coordinate used by spacer columns; connector lines should not stay pinned to the route section's left edge.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful tags as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Keep raw `#tag-slug` values only in source context. In user-facing HTML, remove `#`, avoid slug-like text, and localize tag labels to the selected/user language.
