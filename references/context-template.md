@@ -134,6 +134,7 @@ The smallest useful action to resume this task.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.
 - Treat `.codex/context/roadmap/roadmap.md` as a stable agent-readable export for quick scanning or handoff, not as the primary editable source.
 - Keep `NODE-...`, `BC-...`, and `CTX-...` IDs in source files for linking, but hide them in the default human-facing HTML. Show short natural-language node and bad-case labels instead.
+- In human-facing HTML, prefer color, symbols, and compact visual markers over labels like `Status:`, `Nodes:`, `Frequency:`, or fallback text such as `untagged`.
 - A sharp task direction change should park the current task before starting a new one.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.

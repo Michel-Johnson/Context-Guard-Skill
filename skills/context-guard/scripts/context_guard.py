@@ -204,6 +204,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       --warn: #b45309;
       --warn-soft: #fff5df;
       --ok: #047857;
+      --danger: #dc2626;
+      --quiet: #94a3b8;
       --shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
     }}
     * {{ box-sizing: border-box; }}
@@ -287,7 +289,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       background: var(--accent); color: white; font-weight: 700;
     }}
     .lane h3 {{ margin: 0; font-size: 15px; line-height: 1.35; }}
-    .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
+    .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
     .pill {{
       display: inline-flex;
       align-items: center;
@@ -298,8 +300,23 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-size: 12px;
       font-weight: 600;
     }}
+    .status-dot, .freq-dot {{
+      flex: 0 0 auto;
+      width: 11px;
+      height: 11px;
+      border-radius: 999px;
+      display: inline-block;
+      box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16);
+    }}
+    .status-ok {{ background: var(--ok); }}
+    .status-active {{ background: var(--accent); }}
+    .status-warn {{ background: var(--warn); }}
+    .status-bad {{ background: var(--danger); }}
+    .status-muted {{ background: var(--quiet); }}
+    .freq-dot {{ width: 9px; height: 9px; background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }}
     .badcase {{ border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }}
     .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
+    .badcase-head {{ display: flex; align-items: center; gap: 8px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
     .tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
     .tag {{ background: #eef2f7; color: #334155; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
@@ -362,6 +379,15 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .detail-card {{ background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; margin: 14px 0; }}
     .field {{ margin: 8px 0; }}
     .field b {{ color: #69707d; }}
+    .visual-meta {{ display: flex; align-items: center; gap: 9px; min-height: 16px; margin: 4px 0 12px; }}
+    .status-dot, .freq-dot {{ flex: 0 0 auto; border-radius: 999px; display: inline-block; }}
+    .status-dot {{ width: 11px; height: 11px; box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16); }}
+    .freq-dot {{ width: 9px; height: 9px; background: #b45309; box-shadow: 0 0 0 3px #fff5df; }}
+    .status-ok {{ background: #047857; }}
+    .status-active {{ background: #2563eb; }}
+    .status-warn {{ background: #b45309; }}
+    .status-bad {{ background: #dc2626; }}
+    .status-muted {{ background: #94a3b8; }}
     .tag {{ display: inline-block; background: #eef2f7; border-radius: 999px; padding: 2px 7px; margin-right: 5px; font-size: 12px; }}
     a {{ color: #2563eb; text-decoration: none; font-weight: 650; }}
   </style>
@@ -442,6 +468,32 @@ def short_text(text: str, limit: int = 92) -> str:
     return text[: limit - 1].rstrip() + "..."
 
 
+def visual_status_class(status: str) -> str:
+    normalized = status.strip().lower()
+    if normalized in {"done", "resolved", "passed", "complete", "completed"}:
+        return "status-ok"
+    if normalized in {"active", "current", "planned", "open"}:
+        return "status-active"
+    if normalized in {"deferred", "superseded", "superseded-by-route-change"}:
+        return "status-muted"
+    if normalized in {"recurred", "failed", "failing", "blocked"}:
+        return "status-bad"
+    if normalized in {"warning", "warn", "at-risk"}:
+        return "status-warn"
+    return "status-muted"
+
+
+def status_dot(status: str) -> str:
+    return f'<span class="status-dot {visual_status_class(status)}" aria-hidden="true"></span>'
+
+
+def frequency_dot(frequency: str) -> str:
+    normalized = frequency.strip().lower()
+    if normalized.startswith("repeated") or normalized in {"high-frequency", "hot"}:
+        return '<span class="freq-dot" aria-hidden="true"></span>'
+    return ""
+
+
 def build_case_anchor_map(cards: list[dict[str, str]]) -> dict[str, str]:
     return {card.get("title", ""): f"case-{i}" for i, card in enumerate(cards, 1)}
 
@@ -467,7 +519,7 @@ def render_track_column(
     case_anchor_map: dict[str, str],
 ) -> str:
     title = html.escape(human_title(node.get("title", f"Node {number}")))
-    status = html.escape(node.get("status", "unknown"))
+    status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = html.escape(short_text(node.get("outcome", "No outcome recorded.")))
     test_chain = html.escape(short_text(node.get("test chain", "No test chain recorded."), 70))
@@ -484,7 +536,7 @@ def render_track_column(
         <h3>{title}</h3>
       </div>
       <div class="node-meta">
-        <span class="pill">{status}</span>
+        {status_dot(status)}
         <span class="pill">{date}</span>
       </div>
       <p class="summary">{outcome}</p>
@@ -508,7 +560,7 @@ def render_node_detail(
     case_anchor_map: dict[str, str],
 ) -> str:
     title = html.escape(human_title(node.get("title", f"Node {number}")))
-    status = html.escape(node.get("status", "unknown"))
+    status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = html.escape(human_text(node.get("outcome", "No outcome recorded.")))
     reason = html.escape(human_text(node.get("decision / reason", "No decision reason recorded.")))
@@ -522,7 +574,7 @@ def render_node_detail(
     ) or "None"
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
-  <p class="muted">{status} · {date}</p>
+  <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
   <p class="field"><b>Outcome:</b> {outcome}</p>
   <p class="field"><b>Decision:</b> {reason}</p>
   <p class="field"><b>Avoid going back:</b> {avoid}</p>
@@ -554,24 +606,24 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
 
 def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
     title = html.escape(human_title(card.get("title", "Bad case")))
-    status = html.escape(card.get("status", "unknown"))
+    status = card.get("status", "unknown")
+    frequency = card.get("frequency", "")
     return f"""<article class="badcase">
-  <a class="detail-link" href="roadmap-details.html#{html.escape(anchor)}">{title}</a>
-  <p class="muted">{status}</p>
+  <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="roadmap-details.html#{html.escape(anchor)}">{title}</a></div>
 </article>"""
 
 
 def render_case_detail(card: dict[str, str], anchor: str) -> str:
     title = html.escape(human_title(card.get("title", "Bad case")))
-    status = html.escape(card.get("status", "unknown"))
-    frequency = html.escape(card.get("frequency", "unknown"))
+    status = card.get("status", "unknown")
+    frequency = card.get("frequency", "unknown")
     phenomenon = html.escape(human_text(card.get("phenomenon", "")))
     trigger = html.escape(human_text(card.get("trigger / reproduction", "")))
     cause = html.escape(human_text(card.get("root cause", "")))
     fix = html.escape(human_text(card.get("fix method", "")))
     guard = html.escape(human_text(card.get("guard / verification", "")))
     tags = re.findall(r"#[\\w-]+", card.get("tags", ""))
-    tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags) or '<span class="tag">untagged</span>'
+    tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags)
     optional = "\n".join(
         line
         for line in [
@@ -585,9 +637,9 @@ def render_case_detail(card: dict[str, str], anchor: str) -> str:
     )
     return f"""<section class="detail-card" id="{html.escape(anchor)}">
   <h3>{title}</h3>
-  <p class="muted">{status} · {frequency}</p>
+  <div class="visual-meta">{status_dot(status)}{frequency_dot(frequency)}</div>
 {optional}
-  <div class="tags">{tag_html}</div>
+  {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </section>"""
 
 
