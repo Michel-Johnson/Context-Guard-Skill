@@ -126,6 +126,51 @@ def looks_like_goal_mode(text: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def bad_case_blocks(text: str) -> list[dict[str, str]]:
+    blocks: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        heading = line.startswith("### BC-")
+        if heading:
+            if current:
+                blocks.append(current)
+            identifier, _, title = line.removeprefix("### ").partition(":")
+            current = {"id": identifier.strip(), "title": title.strip()}
+            continue
+        if current is None or not line.startswith("- ") or ":" not in line:
+            continue
+        key, _, value = line[2:].partition(":")
+        current[key.strip().lower()] = value.strip()
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def unresolved_bad_cases(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    resolved_statuses = {"resolved", "done", "superseded-by-route-change"}
+    cases = bad_case_blocks(path.read_text(encoding="utf-8"))
+    return [
+        case
+        for case in cases
+        if case.get("status", "").strip().lower() not in resolved_statuses
+    ]
+
+
+def format_unresolved_bad_cases(cases: list[dict[str, str]], limit: int = 5) -> str:
+    if not cases:
+        return "none"
+    parts = []
+    for case in cases[:limit]:
+        status = case.get("status", "unknown") or "unknown"
+        title = case.get("title", "Untitled bad case")
+        parts.append(f"{case.get('id', 'BC-unknown')} ({status}) {title}")
+    if len(cases) > limit:
+        parts.append(f"+{len(cases) - limit} more")
+    return "; ".join(parts)
+
+
 def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
     root = git_root(Path.cwd())
@@ -163,6 +208,9 @@ def main() -> int:
         print("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
         print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] bad-case register: {bad_cases_path}")
+        open_cases = unresolved_bad_cases(bad_cases_path)
+        print("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
+        print(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")
         return 0
 
     print("[context-guard] unknown hook event; use the context-guard skill if context changed.")
