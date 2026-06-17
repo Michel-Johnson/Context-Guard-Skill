@@ -388,6 +388,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     node_lookup = {node_id(node): node for _, items in route_groups for _, node in items}
     branch_mode = len(route_groups) > 1
     route_offsets = build_route_offsets(route_groups, node_lookup) if branch_mode else {}
+    route_depths = build_route_depths(route_groups, node_lookup) if branch_mode else {}
     route_nav = render_route_filter(route_groups) if branch_mode else ""
     route_items = "\n".join(
         render_route_group(
@@ -398,6 +399,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
             branch_mode,
             node_lookup,
             route_offsets.get(branch.lower(), 0),
+            route_depths.get(branch.lower(), 0),
         )
         for i, (branch, items) in enumerate(route_groups)
     )
@@ -529,12 +531,26 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       margin-bottom: 10px;
       flex-wrap: wrap;
     }}
+    .route-head-grid {{
+      min-height: auto;
+      margin-bottom: 9px;
+      align-items: start;
+    }}
+    .route-head-cell {{
+      min-width: 0;
+    }}
+    .route-head-cell .route-head {{
+      margin-bottom: 6px;
+    }}
+    .route-head-cell .checkpoint-strip {{
+      margin: 0;
+    }}
     .route-mark {{
       width: 10px;
       height: 10px;
       border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 4px var(--accent-soft);
+      background: var(--route-accent, var(--accent));
+      box-shadow: 0 0 0 4px var(--route-soft, var(--accent-soft));
     }}
     .route-title {{
       font-size: 13px;
@@ -543,7 +559,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-pill {{
       border-radius: 999px;
-      background: color-mix(in srgb, var(--accent-soft) 62%, #fff);
+      background: color-mix(in srgb, var(--route-soft, var(--accent-soft)) 62%, #fff);
       color: var(--muted);
       font-size: 11px;
       font-weight: 680;
@@ -614,7 +630,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       left: 0;
       top: -62px;
       height: 62px;
-      border-left: 2px solid var(--line);
+      border-left: 2px solid var(--route-line, var(--line));
       pointer-events: none;
     }}
     .route-group.route-branch .track-column.branch-start::after {{
@@ -623,7 +639,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       left: 0;
       top: 0;
       width: 18px;
-      border-top: 2px solid var(--line);
+      border-top: 2px solid var(--route-line, var(--line));
       border-top-left-radius: 14px;
       pointer-events: none;
     }}
@@ -650,7 +666,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75), var(--shadow);
       transform: var(--card-transform);
     }}
-    .lane-main {{ border-top: 4px solid var(--accent); }}
+    .lane-main {{ border-top: 4px solid var(--route-accent, var(--accent)); }}
     .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
     .lane-test-chain {{ border-top: 4px solid var(--ok); }}
     .lane-label {{
@@ -687,8 +703,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       flex: 0 0 auto;
       width: 28px; height: 28px; border-radius: 50%;
       display: grid; place-items: center;
-      background: var(--accent); color: white; font-weight: 760;
-      box-shadow: 0 0 0 4px var(--accent-soft);
+      background: var(--route-accent, var(--accent)); color: white; font-weight: 760;
+      box-shadow: 0 0 0 4px var(--route-soft, var(--accent-soft));
     }}
     .lane h3 {{ margin: 0; font-family: var(--font-heading); font-size: 15px; line-height: 1.35; }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
@@ -697,8 +713,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       align-items: center;
       border-radius: 999px;
       padding: 2px 8px;
-      background: var(--accent-soft);
-      color: var(--accent);
+      background: var(--route-soft, var(--accent-soft));
+      color: var(--route-accent, var(--accent));
       font-size: 12px;
       font-weight: 600;
     }}
@@ -1194,6 +1210,47 @@ def build_route_offsets(
     return offsets
 
 
+def build_route_depths(
+    route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]],
+    node_lookup: dict[str, dict[str, str]],
+) -> dict[str, int]:
+    group_map = {branch.lower(): (branch, items) for branch, items in route_groups}
+    memo: dict[str, int] = {}
+
+    def depth_for(branch_key: str, seen: set[str] | None = None) -> int:
+        if branch_key in memo:
+            return memo[branch_key]
+        seen = set(seen or set())
+        if branch_key in seen or branch_key == "main":
+            memo[branch_key] = 0
+            return 0
+        seen.add(branch_key)
+        branch, items = group_map.get(branch_key, ("", []))
+        parent_id = external_parent_id(branch, items, node_lookup) if branch else ""
+        parent_node = node_lookup.get(parent_id, {})
+        parent_branch_key = branch_name(parent_node).lower() if parent_node else ""
+        if not parent_branch_key or parent_branch_key == branch_key:
+            memo[branch_key] = 0
+        else:
+            memo[branch_key] = depth_for(parent_branch_key, seen) + 1
+        return memo[branch_key]
+
+    for branch, _ in route_groups:
+        depth_for(branch.lower())
+    return memo
+
+
+def route_color_vars(depth: int) -> str:
+    palette = [
+        ("#2f7d63", "#dff1e7", "#c2d8c8"),
+        ("#23664f", "#d8eadf", "#b3ceb9"),
+        ("#184d3c", "#d1e3d8", "#9dbbaa"),
+        ("#10392f", "#cadbd2", "#8aa895"),
+    ]
+    accent, soft, line = palette[min(max(depth, 0), len(palette) - 1)]
+    return f"--route-accent: {accent}; --route-soft: {soft}; --route-line: {line};"
+
+
 def route_slug(branch: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
     return slug or "main"
@@ -1654,6 +1711,7 @@ def render_route_group(
     branch_mode: bool = False,
     node_lookup: dict[str, dict[str, str]] | None = None,
     route_offset: int = 0,
+    route_depth: int = 0,
 ) -> str:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
@@ -1692,15 +1750,28 @@ def render_route_group(
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
     branch_class = " route-branch" if parent_note else ""
-    offset_attrs = f' data-route-offset="{route_offset}"' if branch_mode else ""
-    return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
-  <div class="route-head">
+    route_head = f"""<div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
     <span class="route-title">{label}</span>
     <span class="route-pill">{count}</span>
     {parent_note}
-  </div>
+  </div>"""
+    if branch_mode:
+        route_header = f"""<div class="route-head-grid {grid_class}">{route_spacers}<div class="route-head-cell">
+  {route_head}
   {checkpoint_strip}
+</div></div>"""
+    else:
+        route_header = f"""{route_head}
+  {checkpoint_strip}"""
+    route_vars = route_color_vars(route_depth)
+    offset_attrs = (
+        f' data-route-offset="{route_offset}" data-route-depth="{route_depth}" style="{route_vars}"'
+        if branch_mode
+        else f' data-route-depth="{route_depth}" style="{route_vars}"'
+    )
+    return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
+  {route_header}
   <div class="route-strip">
     <div class="{grid_class}">{label_column}{route_spacers}{columns}</div>
   </div>
