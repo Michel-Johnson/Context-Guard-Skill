@@ -150,6 +150,7 @@ The smallest useful action to resume this task.
 - Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`. Use `export-roadmap --format md` only for agent-readable Markdown at `.codex/context/roadmap/roadmap.md`.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
 - The HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
+- Show the three lane titles once in the left label column for each route group, not inside every node card.
 - Keep the overview sparse. Put full Outcome, Decision, Next, and guard details in `roadmap-details.html`.
 
 ## Pruning Rules

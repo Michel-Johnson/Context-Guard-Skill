@@ -417,16 +417,29 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .track-grid {{
       display: grid;
+      grid-template-columns: 86px;
       grid-auto-flow: column;
       grid-auto-columns: minmax(220px, 280px);
       gap: 14px;
       min-height: 430px;
       align-items: stretch;
     }}
-    .track-column {{
+    .track-column, .track-label-column {{
       display: grid;
       grid-template-rows: minmax(130px, auto) minmax(120px, auto) minmax(90px, auto);
       gap: 12px;
+    }}
+    .track-label-column {{
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: var(--panel);
+    }}
+    .track-label-cell {{
+      display: flex;
+      align-items: flex-start;
+      padding-top: 13px;
+      min-width: 0;
     }}
     .lane {{
       border: 1px solid var(--line);
@@ -837,6 +850,11 @@ def render_route_group(
             f'<div class="checkpoint-strip"><span class="checkpoint-dot" aria-hidden="true"></span>'
             f'<span data-i18n="checkpointsInDetails" data-count="{hidden_count}">{hidden_count} checkpoints in details</span></div>'
         )
+    label_column = """<section class="track-label-column" aria-hidden="true">
+  <div class="track-label-cell"><span class="lane-label" data-i18n="mainRoute">Main Route</span></div>
+  <div class="track-label-cell"><span class="lane-label" data-i18n="badCases">Bad Cases</span></div>
+  <div class="track-label-cell"><span class="lane-label" data-i18n="testChain">Test Chain</span></div>
+</section>"""
     return f"""<section class="route-group">
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
@@ -845,7 +863,7 @@ def render_route_group(
   </div>
   {checkpoint_strip}
   <div class="route-strip">
-    <div class="track-grid">{columns}</div>
+    <div class="track-grid">{label_column}{columns}</div>
   </div>
 </section>"""
 
@@ -868,7 +886,6 @@ def render_track_column(
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="roadmap-details.html#node-{number}">
-      <div class="lane-label" data-i18n="mainRoute">Main Route</div>
       <div class="node-heading">
         <div class="node-number">{number}</div>
         <h3>{title}</h3>
@@ -881,11 +898,9 @@ def render_track_column(
     </a>
   </article>
   <article class="lane lane-bad-cases" data-lane="bad-cases">
-    <div class="lane-label" data-i18n="badCases">Bad Cases</div>
     {case_items}
   </article>
   <article class="lane lane-test-chain" data-lane="test-chain">
-    <div class="lane-label" data-i18n="testChain">Test Chain</div>
     <a class="detail-link" href="roadmap-details.html#node-{number}">{test_chain}</a>
   </article>
 </section>"""
