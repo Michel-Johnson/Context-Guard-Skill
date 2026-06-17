@@ -66,7 +66,7 @@ Keep only concise summaries here. Move detailed stale context to `.codex/context
 ```md
 # Context Roadmap
 
-This is the mainline route through the task. Keep nodes concise. Do not record every tiny action or chat turn.
+This is the route map through the task. It may contain one mainline, forked side routes, or multiple parallel mainlines. Keep nodes concise. Do not record every tiny action or chat turn.
 
 ## Nodes
 
@@ -74,6 +74,8 @@ This is the mainline route through the task. Keep nodes concise. Do not record e
 
 - Date: YYYY-MM-DD
 - Status: planned | active | done | superseded
+- Branch: Main | short branch name
+- Parent: NODE-YYYYMMDD-000 when this branch forks, otherwise none
 - Task: `CTX-YYYYMMDD-short-slug`
 - Outcome: one-line result
 - Decision / reason: why this node exists, one line
@@ -127,7 +129,8 @@ The smallest useful action to resume this task.
 ## Maintenance Rules
 
 - Keep `index.md` small and useful, not exhaustive.
-- Keep `roadmap.md` as the mainline. It should show progress as nodes, not a raw transcript.
+- Keep `roadmap.md` as the route map. It should show progress as nodes, not a raw transcript.
+- Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.

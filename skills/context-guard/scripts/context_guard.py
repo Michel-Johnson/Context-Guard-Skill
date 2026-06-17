@@ -182,9 +182,10 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     bad_case_cards = parse_bad_case_cards(bad_cases)
     exported = datetime.now().isoformat(timespec="seconds")
     case_anchor_map = build_case_anchor_map(bad_case_cards)
-    node_items = "\n".join(render_track_column(node, i, bad_case_cards, case_anchor_map) for i, node in enumerate(nodes, 1))
-    if not node_items:
-        node_items = '<section class="empty">No roadmap nodes recorded yet.</section>'
+    route_groups = group_nodes_by_branch(nodes)
+    route_items = "\n".join(render_route_group(branch, items, bad_case_cards, case_anchor_map) for branch, items in route_groups)
+    if not route_items:
+        route_items = '<section class="empty">No roadmap nodes recorded yet.</section>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -227,12 +228,47 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     h2 {{ margin: 0 0 12px; font-size: 16px; }}
     .track-board {{
-      overflow: auto;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
       padding: 16px;
+    }}
+    .route-stack {{
+      display: grid;
+      gap: 18px;
+    }}
+    .route-group {{
+      min-width: 0;
+    }}
+    .route-head {{
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 10px;
+    }}
+    .route-mark {{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }}
+    .route-title {{
+      font-size: 13px;
+      font-weight: 760;
+    }}
+    .route-pill {{
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+      padding: 1px 7px;
+    }}
+    .route-strip {{
+      overflow: auto;
+      padding-bottom: 2px;
     }}
     .track-grid {{
       display: grid;
@@ -358,7 +394,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
   <div class="shell">
     <main class="track-board">
       <h2>Roadmap</h2>
-      <div class="track-grid">{node_items}</div>
+      <div class="route-stack">{route_items}</div>
     </main>
   </div>
 </body>
@@ -469,6 +505,23 @@ def node_id(node: dict[str, str]) -> str:
     title = node.get("title", "")
     match = re.match(r"(NODE-\d{8}-\d+)", title)
     return match.group(1) if match else title.split(":", 1)[0].strip()
+
+
+def branch_name(node: dict[str, str]) -> str:
+    return human_text(node.get("branch", "Main")).strip() or "Main"
+
+
+def group_nodes_by_branch(nodes: list[dict[str, str]]) -> list[tuple[str, list[tuple[int, dict[str, str]]]]]:
+    groups: list[tuple[str, list[tuple[int, dict[str, str]]]]] = []
+    index: dict[str, int] = {}
+    for number, node in enumerate(nodes, 1):
+        branch = branch_name(node)
+        key = branch.lower()
+        if key not in index:
+            index[key] = len(groups)
+            groups.append((branch, []))
+        groups[index[key]][1].append((number, node))
+    return groups
 
 
 def human_title(title: str) -> str:
@@ -593,6 +646,27 @@ def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> lis
     return matched
 
 
+def render_route_group(
+    branch: str,
+    items: list[tuple[int, dict[str, str]]],
+    bad_case_cards: list[dict[str, str]],
+    case_anchor_map: dict[str, str],
+) -> str:
+    columns = "\n".join(render_track_column(node, number, bad_case_cards, case_anchor_map) for number, node in items)
+    label = html.escape(branch)
+    count = len(items)
+    return f"""<section class="route-group">
+  <div class="route-head">
+    <span class="route-mark" aria-hidden="true"></span>
+    <span class="route-title">{label}</span>
+    <span class="route-pill">{count}</span>
+  </div>
+  <div class="route-strip">
+    <div class="track-grid">{columns}</div>
+  </div>
+</section>"""
+
+
 def render_track_column(
     node: dict[str, str],
     number: int,
@@ -648,6 +722,8 @@ def render_node_detail(
     avoid = html.escape(human_text(node.get("avoid going back", "No avoided path recorded.")))
     next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
     test_chain = html.escape(human_text(node.get("test chain", "none")))
+    branch = html.escape(branch_name(node))
+    parent = html.escape(human_text(node.get("parent", "")))
     cases = bad_cases_for_node(node, bad_case_cards)
     case_links = ", ".join(
         f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{html.escape(human_title(card.get("title", "Bad case")))}</a>'
@@ -656,6 +732,8 @@ def render_node_detail(
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
   <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
+  <p class="field"><b>Route:</b> {branch}</p>
+  {f'<p class="field"><b>Parent route:</b> {parent}</p>' if parent else ''}
   <p class="field"><b>Outcome:</b> {outcome}</p>
   <p class="field"><b>Decision:</b> {reason}</p>
   <p class="field"><b>Avoid going back:</b> {avoid}</p>

@@ -39,7 +39,7 @@ Do not store project context inside the skill directory. Do not create a separat
 
 ## Dynamic Task Index
 
-Use `.codex/context/index.md` as a small, actively maintained queue of work context and `.codex/context/roadmap.md` as the mainline route map.
+Use `.codex/context/index.md` as a small, actively maintained queue of work context and `.codex/context/roadmap.md` as the route map. A route map may have one mainline, forked side routes, or multiple parallel mainlines.
 
 1. At turn start, compare the user's latest request with the current index entry.
 2. If the request continues the same direction, update that task folder.
@@ -53,7 +53,7 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Keep the current task plus a small set of recent parked or resume-candidate tasks.
    - Move done or stale items to an archive section or `.codex/context/archive/` when they no longer need active attention.
    - Do not delete unresolved user intent; compress it into a concise archived summary instead.
-7. Keep roadmap nodes concise. Each node should capture one meaningful step, decision, pivot, or checkpoint, not every action.
+7. Keep roadmap nodes concise. Each node should capture one meaningful step, decision, pivot, fork, or checkpoint, not every action.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
 
@@ -61,11 +61,12 @@ Suggested task states: `current`, `parked`, `resume-candidate`, `done`, `archive
 
 ## Route Map
 
-The route map is the mainline history of the task. It should be fast for Codex to skim.
+The route map is the main route history of the task, plus any explicit forked or parallel routes. It should be fast for Codex to skim.
 
 Each node should include:
 
 - node ID, title, date, and status
+- optional branch name and parent node when the route forks
 - one-line outcome
 - key decision or reason for the step
 - next step
@@ -117,13 +118,14 @@ Use `.codex/context/roadmap/roadmap.md` only as a stable agent-readable export f
 
 ### Roadmap Display Model
 
-The HTML roadmap is a three-track board:
+The HTML roadmap is a route-grouped three-track board:
 
-1. Horizontal movement follows the main route nodes over time.
-2. Each node column has three vertical lanes: Main Route, Bad Cases, and Test Chain.
-3. Vertical movement within a node switches from the mainline context to that node's linked bad cases and verification chain.
+1. A roadmap may contain multiple route groups, using `Branch:` on nodes. Missing `Branch:` means `Main`.
+2. Horizontal movement inside each route group follows that route's nodes over time.
+3. Each node column has three vertical lanes: Main Route, Bad Cases, and Test Chain.
+4. Vertical movement within a node switches from the route context to that node's linked bad cases and verification chain.
 
-Treat this as three parallel horizontal lines, not a three-column dashboard. Keep the top line as the mainline; align bad cases and tests directly under the node they belong to.
+Treat each route group as three parallel horizontal lines, not a three-column dashboard. Keep the top line as route context; align bad cases and tests directly under the node they belong to. Use `Parent:` when a branch forks from an earlier node.
 
 ### Show Roadmap Request
 
