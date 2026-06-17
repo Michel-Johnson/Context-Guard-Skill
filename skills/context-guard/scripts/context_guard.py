@@ -363,8 +363,8 @@ const I18N = {{
     roadmap: "路线图",
     backToRoadmap: "返回路线图",
     mainRoute: "主要路线",
-    badCases: "Bad Case",
-    badCasesField: "Bad case：",
+    badCases: "问题案例",
+    badCasesField: "问题案例：",
     testChain: "测试链路",
     testChainField: "测试链路：",
     routeFocus: "路线详情",
@@ -1459,6 +1459,16 @@ ZH_TEXT: dict[str, str] = {
     "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, and localized detail records.": "竖排标签和中文记录断言检查轨道书写方向、概览记录本地化和详情记录本地化。",
     "Vertical label and Chinese record assertion checks `writing-mode: vertical-rl` in generated overview CSS.": "竖排标签和中文记录断言检查生成的概览 CSS 中保留 `writing-mode: vertical-rl`。",
     "Vertical label and Chinese record assertion passed.": "竖排标签和中文记录断言已通过。",
+    "User said lane labels should be vertical and Chinese mode should show Chinese records, not only Chinese UI chrome.": "用户要求轨道标签竖排，并且中文模式应显示中文记录，而不只是中文 UI 外壳。",
+    "User said 轨道标签 should be vertical and Chinese mode should show Chinese records, not only Chinese UI chrome.": "用户要求轨道标签竖排，并且中文模式应显示中文记录，而不只是中文 UI 外壳。",
+    "Do not treat multilingual roadmap support as only translating static interface labels.": "不要把多语言路线图支持只当成翻译静态界面标签。",
+    "Keep localized record text concise and sourced from the single context projection.": "保持本地化记录文本精简，并来自同一份 context 投影。",
+    "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, localized detail records, and stable roadmap files; pushed commit `18b4209`.": "竖排标签和中文记录断言检查轨道书写方向、本地化概览记录、本地化详情记录和稳定路线图文件；已推送 commit `18b4209`。",
+    "User asked for a README for the current skill so humans can understand and install it from the GitHub repository.": "用户要求为当前 skill 添加 README，让人类可以理解并从 GitHub 仓库安装它。",
+    "Do not leave skill usage knowledge only inside `SKILL.md` or chat history.": "不要把 skill 使用知识只留在 `SKILL.md` 或聊天历史里。",
+    "Keep README updated when install, hook, roadmap, or bad-case behavior changes.": "安装、hook、路线图或 bad-case 行为变化时保持 README 更新。",
+    "README covers purpose, installation, AGENTS/hook setup, usage, context layout, bad-case rules, roadmap model, and verification.": "README 覆盖目标、安装、AGENTS/hook 设置、用法、context 布局、bad-case 规则、路线图模型和验证方法。",
+    "Skill lacked explicit show-roadmap workflow.": "skill 缺少明确的 show-roadmap 工作流。",
     "Inspect context folder and skill instructions.": "检查 context 文件夹和 skill 说明。",
     "Read Context Evidence and Guards section.": "阅读 context 证据和守卫规则章节。",
     "Inspect `.codex/context/index.md` template.": "检查 `.codex/context/index.md` 模板。",
@@ -1489,6 +1499,18 @@ ZH_TEXT: dict[str, str] = {
 
 ZH_REPLACEMENTS: list[tuple[str, str]] = [
     ("Context Evidence and Guards section", "context 证据和守卫规则章节"),
+    ("Chinese mode should show Chinese records", "中文模式应显示中文记录"),
+    ("Chinese UI chrome", "中文 UI 外壳"),
+    ("static interface labels", "静态界面标签"),
+    ("localized record text", "本地化记录文本"),
+    ("single context projection", "同一份 context 投影"),
+    ("lane writing mode", "轨道书写方向"),
+    ("localized overview records", "本地化概览记录"),
+    ("localized detail records", "本地化详情记录"),
+    ("stable roadmap files", "稳定路线图文件"),
+    ("current skill", "当前 skill"),
+    ("GitHub repository", "GitHub 仓库"),
+    ("chat history", "聊天历史"),
     ("Roadmap overview and details", "路线图概览和详情"),
     ("Roadmap overview", "路线图概览"),
     ("Roadmap display", "路线图展示"),
@@ -1546,6 +1568,30 @@ ZH_REPLACEMENTS: list[tuple[str, str]] = [
     ("updated", "更新"),
     ("support", "支持"),
     ("supports", "支持"),
+    ("User said ", "用户要求"),
+    ("User asked for ", "用户要求"),
+    ("should be ", "应"),
+    ("not only ", "不只是"),
+    ("Do not treat ", "不要把"),
+    (" as only translating ", "只当成翻译"),
+    ("Keep ", "保持"),
+    (" concise", "精简"),
+    (" and sourced from ", "，并来自"),
+    (" covers ", " 覆盖"),
+    (" so humans can understand", "，让人类可以理解"),
+    (" and install it from ", "并从"),
+    ("Do not leave ", "不要把"),
+    (" only inside ", "只留在"),
+    (" when ", "当"),
+    (" changes", "变化时"),
+    ("purpose", "目标"),
+    ("installation", "安装"),
+    ("setup", "设置"),
+    ("usage", "用法"),
+    ("layout", "布局"),
+    ("rules", "规则"),
+    ("model", "模型"),
+    ("verification", "验证"),
 ]
 
 
@@ -1553,17 +1599,26 @@ def has_cjk(text: str) -> bool:
     return bool(re.search(r"[\u3400-\u9fff]", text))
 
 
+def apply_zh_replacements(text: str) -> str:
+    parts = re.split(r"(`[^`]*`)", text)
+    translated_parts: list[str] = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`"):
+            translated_parts.append(part)
+            continue
+        translated = part
+        for source, target in ZH_REPLACEMENTS:
+            translated = translated.replace(source, target)
+        translated_parts.append(translated)
+    return "".join(translated_parts)
+
+
 def zh_text(text: str) -> str:
     text = human_text(text)
     normalized = " ".join(text.split())
-    if has_cjk(normalized):
-        return normalized
     if normalized in ZH_TEXT:
         return ZH_TEXT[normalized]
-    translated = normalized
-    for source, target in ZH_REPLACEMENTS:
-        translated = translated.replace(source, target)
-    return translated
+    return apply_zh_replacements(normalized)
 
 
 def localized_text(text: str) -> str:
