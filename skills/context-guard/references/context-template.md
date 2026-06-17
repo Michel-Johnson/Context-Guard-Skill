@@ -98,6 +98,7 @@ This is the route map through the task. It may contain one mainline, forked side
 - Next: next useful node or action
 - Linked bad cases: BC-YYYYMMDD-001, BC-YYYYMMDD-002
 - Test chain: short guard names, commands, screenshots, logs, or manual checks
+- End-of-work self-check: changed behavior checked; for frontend/layout work include browser/plugin/screenshot evidence or the exact blocker
 ```
 
 Use the `### NODE-...` section form as the canonical editable source. If a session accidentally records loose bullet blocks such as `- ID: NODE-...`, `- Title: ...`, `- Level: ...`, the renderer should still project them, but future edits should normalize them back into formal node sections.
@@ -138,6 +139,12 @@ One sentence describing what the user is trying to accomplish.
 
 - Link to `NODE-...` entries in `.codex/context/roadmap.md`.
 
+## Verification / Self-Check
+
+- Behavior checked before final answer.
+- Frontend/layout artifacts opened with a browser/plugin or inspected via screenshot when possible.
+- If visual inspection was blocked, record the blocker and residual risk.
+
 ## Next Step
 
 The smallest useful action to resume this task.
@@ -177,6 +184,7 @@ The smallest useful action to resume this task.
 - Branch connector lines should use the same offset coordinate as the route's spacer columns, not a fixed left-edge position.
 - Branch connector endpoints should be anchored to the first visible branch card/column and visibly meet the card edge; do not draw connector lines from the whole route section through the card interior.
 - Route color should encode branch depth: main route green, first-level branch darker green, deeper branch levels progressively darker.
+- Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.

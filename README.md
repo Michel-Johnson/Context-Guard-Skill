@@ -199,6 +199,8 @@ python3 scripts/context_guard.py show-roadmap --root /tmp/context-guard-check
 
 Recommended regression checks for roadmap changes:
 
+- frontend/layout changes are opened or rendered with an available browser/plugin or screenshot path before claiming completion
+- the visual pass checks for obvious layout bugs such as clipped text, overlap, detached lines, large empty gaps, wrong alignment, broken colors, blank content, or wrong language
 - stable roadmap folder contains only `roadmap.html`, `roadmap-details.html`, and `roadmap.md`
 - overview hides `NODE-...`, `BC-...`, and `CTX-...` IDs
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`

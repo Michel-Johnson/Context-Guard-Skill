@@ -254,6 +254,21 @@ Whenever a bad case appears:
 
 Use stable IDs such as `BC-YYYYMMDD-001` or the next local sequence already used by the register.
 
+### End-of-Work Self-Check
+
+Run this before the final answer whenever Codex changed code, generated artifacts, updated UI, modified a workflow, or claimed that something works.
+
+1. Identify the user-visible behavior or workflow that changed.
+2. Run the smallest real check that proves the changed behavior works, using the product/tool the user would actually use when feasible.
+3. For frontend, HTML, CSS, visual, document, slide, image, or layout work, perform a visual inspection:
+   - Prefer the Codex Browser / browser plugin or the available in-app browser to open the target and inspect the rendered result.
+   - Use screenshots when the visual state matters; compare the screenshot against the user request and known bad cases.
+   - Check for obvious visual errors: clipped text, overlap, detached connector lines, huge empty gaps, wrong alignment, broken colors, missing content, unreadable labels, wrong language, blank canvas, or inaccessible interactions.
+4. If the preferred browser/plugin cannot access the target, use the next safest available evidence: generated screenshot, renderer output, local image inspection, DOM/static checks tied to the visual invariant, or a clear manual-check note.
+5. Do not end with only string/DOM assertions when the risk is visual. If visual inspection is blocked, say exactly what was blocked, record the residual risk, and avoid claiming visual polish was verified.
+6. If the self-check reveals a new or recurring bad case, record it immediately, fix it before the final answer unless the user pauses, and rerun the self-check.
+7. Record the self-check evidence in the relevant roadmap node, bad-case entry, or task context using the folder language preference.
+
 ### Turn End: Context Checkpoint
 
 Run this before every final answer.
@@ -262,19 +277,20 @@ Run this before every final answer.
 2. Re-read the route map and update it with a concise node if this turn changed direction, made a decision, fixed a problem, or created a new checkpoint.
 3. Update the active task summary with key decisions, bad cases, open questions, and next step.
 4. If the task direction changed this turn, ensure the previous task is parked and the new task is current.
-5. Select every bad-case entry whose scope overlaps the changed code, plus any entry with a relevant recorded guard.
-6. Re-run or re-perform the recorded guard for selected resolved entries. Use the existing context, command, native test, script, or manual check first.
-7. If no recorded guard exists, choose the lightest useful verification and record it. Do not create a script unless it will clearly save future work.
-8. If a resolved bad case recurs:
+5. Run the End-of-Work Self-Check for the changed behavior or artifact before claiming success.
+6. Select every bad-case entry whose scope overlaps the changed code, plus any entry with a relevant recorded guard.
+7. Re-run or re-perform the recorded guard for selected resolved entries. Use the existing context, command, native test, script, screenshot/manual check, or visual inspection first.
+8. If no recorded guard exists, choose the lightest useful verification and record it. Do not create a script unless it will clearly save future work.
+9. If a resolved bad case recurs:
    - Mark it `recurred`.
    - Explain why it recurred: missed guard, incomplete fix, route conflict, test gap, refactor side effect, environment drift, or unknown.
    - Fix it immediately unless the user explicitly pauses the work or the recurrence is due to an approved technical route change.
    - Add or update the context and guard so the recurrence is easier to catch next time.
    - Re-run the verification and update the entry back to `resolved` only when evidence passes.
-9. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
-10. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
-11. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
-12. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
+10. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
+11. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
+12. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
+13. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
 
 ## Completion Report
 
@@ -285,6 +301,7 @@ At the end of every response, include a compact context summary when development
 - Roadmap node updated, exported, or displayed.
 - Bad-case intake result from this turn.
 - New or updated context, limited to key nodes and bad cases.
+- End-of-work self-check performed, including visual inspection evidence for frontend/layout artifacts or the exact blocker if visual inspection was not possible.
 - Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.
 - Any parked task that should be offered for resume.
 
