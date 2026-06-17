@@ -86,6 +86,8 @@ This is the route map through the task. It may contain one mainline, forked side
 - Test chain: short guard names, commands, screenshots, logs, or manual checks
 ```
 
+Use the `### NODE-...` section form as the canonical editable source. If a session accidentally records loose bullet blocks such as `- ID: NODE-...`, `- Title: ...`, `- Level: ...`, the renderer should still project them, but future edits should normalize them back into formal node sections.
+
 ## tasks/<task-id>/context.md
 
 ```md

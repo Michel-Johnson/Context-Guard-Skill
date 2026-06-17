@@ -180,6 +180,7 @@ Recommended regression checks for roadmap changes:
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
+- loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
 - Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets
 
 ## Repository Layout

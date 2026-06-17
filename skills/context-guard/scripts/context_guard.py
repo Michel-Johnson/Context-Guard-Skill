@@ -824,9 +824,129 @@ def parse_roadmap_nodes(text: str) -> list[dict[str, str]]:
         stripped = line.strip()
         if stripped.startswith("- ") and ":" in stripped:
             key, value = stripped[2:].split(":", 1)
-            current[key.strip().lower()] = value.strip()
+            normalized_key = key.strip().lower()
+            if normalized_key in {"id", "node id"}:
+                continue
+            if normalized_key == "title" and "title" in current:
+                continue
+            current[normalized_key] = value.strip()
     if current:
         nodes.append(current)
+    if nodes:
+        return nodes
+    return parse_loose_roadmap_nodes(text)
+
+
+def canonical_node_key(key: str) -> str:
+    normalized = key.strip().lower().replace("_", " ")
+    aliases = {
+        "id": "id",
+        "node id": "id",
+        "node": "id",
+        "title": "title",
+        "name": "title",
+        "date": "date",
+        "status": "status",
+        "level": "level",
+        "branch": "branch",
+        "route": "branch",
+        "parent": "parent",
+        "task": "task",
+        "outcome": "outcome",
+        "summary": "outcome",
+        "decision": "decision / reason",
+        "reason": "decision / reason",
+        "decision / reason": "decision / reason",
+        "avoid going back": "avoid going back",
+        "next": "next",
+        "linked bad cases": "linked bad cases",
+        "bad cases": "linked bad cases",
+        "test chain": "test chain",
+        "tests": "test chain",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def split_loose_field(body: str) -> tuple[str, str] | None:
+    if ":" not in body:
+        return None
+    key, value = body.split(":", 1)
+    key = canonical_node_key(key)
+    if key not in {
+        "id",
+        "title",
+        "date",
+        "status",
+        "level",
+        "branch",
+        "parent",
+        "task",
+        "outcome",
+        "decision / reason",
+        "avoid going back",
+        "next",
+        "linked bad cases",
+        "test chain",
+    }:
+        return None
+    return key, value.strip()
+
+
+def loose_node_title(node: dict[str, str]) -> str:
+    title = node.get("title", "").strip()
+    identifier = node.pop("id", "").strip()
+    if not title:
+        title = identifier or "Untitled roadmap node"
+    elif identifier and not title.startswith(identifier):
+        title = f"{identifier}: {title}"
+    return title
+
+
+def commit_loose_node(nodes: list[dict[str, str]], current: dict[str, str] | None) -> None:
+    if not current:
+        return
+    if "title" not in current and "id" not in current:
+        return
+    current["title"] = loose_node_title(current)
+    nodes.append(current)
+
+
+def parse_loose_roadmap_nodes(text: str) -> list[dict[str, str]]:
+    nodes: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        body = ""
+        if stripped.startswith("- "):
+            body = stripped[2:].strip()
+        elif current and re.match(r"^[A-Za-z][A-Za-z _/-]+:\s+", stripped):
+            body = stripped
+        else:
+            continue
+
+        node_line = re.match(r"^(NODE-\d{8}-\d+)\s*:\s*(.+)$", body)
+        if node_line:
+            commit_loose_node(nodes, current)
+            current = {"id": node_line.group(1), "title": node_line.group(2).strip()}
+            continue
+
+        field = split_loose_field(body)
+        if not field:
+            continue
+        key, value = field
+        if key == "id" and re.search(r"NODE-\d{8}-\d+", value):
+            commit_loose_node(nodes, current)
+            current = {"id": re.search(r"NODE-\d{8}-\d+", value).group(0)}
+            trailing = value.replace(current["id"], "", 1).strip(" -:")
+            if trailing:
+                current["title"] = trailing
+            continue
+        if current is None:
+            current = {}
+        current[key] = value
+    commit_loose_node(nodes, current)
     return nodes
 
 
