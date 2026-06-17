@@ -136,6 +136,7 @@ The smallest useful action to resume this task.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language.
+- During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.
 - Treat `.codex/context/roadmap/roadmap.md` as a stable agent-readable export for quick scanning or handoff, not as the primary editable source.
@@ -155,6 +156,7 @@ The smallest useful action to resume this task.
 
 - Do not record normal implementation chatter.
 - Do not record every command; record only commands that prove a checkpoint or guard a bad case.
+- Do not wait until goal completion to record important roadmap progress or bad cases.
 - Merge tiny adjacent updates into one roadmap node.
 - Archive stale parked tasks as a one-sentence summary.
 - If a reader cannot use a detail to resume, decide, verify, or avoid recurrence, remove it.

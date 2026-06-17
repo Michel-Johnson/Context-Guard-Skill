@@ -1,6 +1,6 @@
 ---
 name: context-guard
-description: "Maintain and enforce a folder-scoped project context folder, route-map index, dynamic task queue, and bad-case/test-chain memory. Use at the beginning and end of every assistant response, especially when a Codex folder is first used, the user asks to show/open/export the roadmap, changes task direction, parks a design discussion for an urgent bug, resumes prior work, or performs coding/debugging/review/QA: load folder context, update concise route nodes, link nodes to bad cases and tests, display the roadmap when requested, and ask whether to resume parked work when appropriate."
+description: "Maintain and enforce a folder-scoped project context folder, route-map index, dynamic task queue, and bad-case/test-chain memory. Use at the beginning and end of every assistant response, especially when a Codex folder is first used, the user asks to show/open/export the roadmap, changes task direction, uses goal mode or long-running autonomous work, parks/resumes work, or performs coding/debugging/review/QA."
 ---
 
 # Context Guard
@@ -60,6 +60,18 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
 
 Suggested task states: `current`, `parked`, `resume-candidate`, `done`, `archived`.
+
+## Goal Mode
+
+When the user starts or uses goal mode, treat the active goal as a long-running current task, not as a context exception.
+
+1. If goal tools are available, call `get_goal` at goal-mode turn start or before a long autonomous continuation to learn the objective, status, and remaining budget.
+2. Ensure `.codex/context/index.md` points to the task serving that goal. If no matching task exists, create or select one before implementation work continues.
+3. Add a goal checkpoint whenever the goal changes phase, reaches a meaningful milestone, hits a blocker, changes technical route, finds/fixes a bad case, or consumes enough work that the next continuation would otherwise need to rediscover state.
+4. Use `Level: checkpoint` for ordinary goal progress and `Level: major` only for a user-visible milestone, route change, completed goal phase, or final goal outcome.
+5. Record bad cases as soon as they appear during goal work. Do not wait for the final answer or final `update_goal` call.
+6. Before marking a goal complete or blocked with `update_goal`, run the Turn End context checkpoint: update index, roadmap, active task context, bad cases, and relevant guards first.
+7. If the goal continues across automatic turns, keep checkpoint text short: current phase, decision, bad cases, verification, and next step.
 
 ## Route Map
 
@@ -176,7 +188,8 @@ Run this before any substantive answer or action.
 6. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
 7. Keep relevant context in mind while planning and editing.
 8. Do not use the generated HTML roadmap as the context source.
-9. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
+9. In goal mode, call `get_goal` when available and align the active task with the goal objective before continuing work.
+10. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
 
 ### During Work
 
@@ -190,6 +203,8 @@ Whenever design context appears, update the active task context enough that anot
 - next step
 
 Whenever a task makes meaningful progress, add or update one concise roadmap node. Link the node to bad cases and test-chain context when relevant.
+
+During goal mode, do this during the work as soon as a goal checkpoint is reached. Do not defer roadmap and bad-case updates until the final response.
 
 Whenever a bad case appears:
 
@@ -220,7 +235,8 @@ Run this before every final answer.
    - Re-run the verification and update the entry back to `resolved` only when evidence passes.
 9. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
 10. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
-11. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
+11. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
+12. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
 
 ## Completion Report
 
