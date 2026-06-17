@@ -165,9 +165,13 @@ def format_unresolved_bad_cases(cases: list[dict[str, str]], limit: int = 5) -> 
     for case in cases[:limit]:
         status = case.get("status", "unknown") or "unknown"
         title = case.get("title", "Untitled bad case")
-        parts.append(f"{case.get('id', 'BC-unknown')} ({status}) {title}")
+        phenomenon = case.get("phenomenon", "").strip()
+        summary = f"{title} ({status})"
+        if phenomenon:
+            summary += f" - {phenomenon}"
+        parts.append(summary)
     if len(cases) > limit:
-        parts.append(f"+{len(cases) - limit} more")
+        parts.append(f"{len(cases) - limit} more unresolved bad cases")
     return "; ".join(parts)
 
 

@@ -88,7 +88,7 @@ Hook events covered:
 
 - `SessionStart`: initialize `.codex/context/`.
 - `UserPromptSubmit`: detect possible task switches, bad cases, or goal-mode work.
-- `Stop`: remind Codex to update index, roadmap, bad cases, and test-chain links before finalizing, and to include a final BC summary with archived/updated cases plus currently unresolved cases.
+- `Stop`: remind Codex to update index, roadmap, bad cases, and test-chain links before finalizing, and to include a final BC summary with archived/updated cases plus currently unresolved cases in human-readable titles/symptoms rather than bare IDs.
 
 ## Usage
 

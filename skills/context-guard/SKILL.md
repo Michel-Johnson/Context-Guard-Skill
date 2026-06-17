@@ -314,7 +314,7 @@ At the end of every response, include a compact context summary when development
 - Roadmap node updated, exported, or displayed.
 - Bad-case intake result from this turn.
 - BC archived/updated this turn. If none were changed, say `none`.
-- Current unresolved BC. If none are open/deferred/recurred/unknown, say `none`.
+- Current unresolved BC. Use concise human-readable bad-case titles and, when useful, one symptom phrase plus status; do not report only `BC-...` IDs. If none are open/deferred/recurred/unknown, say `none`.
 - New or updated context, limited to key nodes and bad cases.
 - End-of-work self-check performed, including visual inspection evidence for frontend/layout artifacts or the exact blocker if visual inspection was not possible.
 - Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.
