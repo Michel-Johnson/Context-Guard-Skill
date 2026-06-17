@@ -171,12 +171,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
         f"<li><span>{html.escape(k)}</span><strong>{html.escape(v)}</strong></li>"
         for k, v in quick_scan
     ) or "<li><span>Status</span><strong>No quick scan entries</strong></li>"
-    node_items = "\n".join(render_node(node, i) for i, node in enumerate(nodes, 1))
+    node_items = "\n".join(render_track_column(node, i, bad_case_cards) for i, node in enumerate(nodes, 1))
     if not node_items:
         node_items = '<section class="empty">No roadmap nodes recorded yet.</section>'
-    bad_case_items = "\n".join(render_bad_case(card) for card in bad_case_cards)
-    if not bad_case_items:
-        bad_case_items = '<p class="muted">No bad-case tags recorded yet.</p>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -212,47 +209,75 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     h1 {{ margin: 0 0 6px; font-size: 28px; letter-spacing: 0; }}
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
-    .layout {{
-      display: grid;
-      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(220px, 300px);
-      gap: 20px;
-      padding: 20px 32px 36px;
-      align-items: start;
+    .shell {{
+      padding: 18px 32px 34px;
     }}
-    aside, main {{
+    .quick-panel {{
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
+      padding: 14px 16px;
+      margin-bottom: 16px;
     }}
-    aside {{ padding: 16px; position: sticky; top: 16px; }}
-    main {{ padding: 18px 20px 24px; }}
     h2 {{ margin: 0 0 12px; font-size: 16px; }}
-    .quick {{ list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }}
-    .quick li {{ border-bottom: 1px solid var(--line); padding-bottom: 10px; }}
-    .quick li:last-child {{ border-bottom: 0; padding-bottom: 0; }}
+    .quick {{ list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(150px, 1fr)); }}
+    .quick li {{ border-right: 1px solid var(--line); padding-right: 12px; }}
+    .quick li:last-child {{ border-right: 0; padding-right: 0; }}
     .quick span {{ display: block; color: var(--muted); font-size: 12px; }}
     .quick strong {{ display: block; margin-top: 2px; overflow-wrap: anywhere; }}
-    .timeline {{ position: relative; display: grid; gap: 18px; }}
-    .node {{
-      position: relative;
-      display: grid;
-      grid-template-columns: 44px minmax(0, 1fr);
-      gap: 14px;
-    }}
-    .node-number {{
-      width: 34px; height: 34px; border-radius: 50%;
-      display: grid; place-items: center;
-      background: var(--accent); color: white; font-weight: 700;
-      margin-top: 4px;
-    }}
-    .node-card {{
+    .track-board {{
+      overflow: auto;
+      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 14px;
-      background: #fff;
+      box-shadow: var(--shadow);
+      padding: 16px;
     }}
-    .node-card h3 {{ margin: 0 0 8px; font-size: 18px; }}
+    .track-grid {{
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(280px, 340px);
+      gap: 14px;
+      min-height: 620px;
+      align-items: stretch;
+    }}
+    .track-column {{
+      display: grid;
+      grid-template-rows: minmax(190px, auto) minmax(160px, auto) minmax(130px, auto);
+      gap: 12px;
+    }}
+    .lane {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      min-width: 0;
+    }}
+    .lane-main {{ border-top: 4px solid var(--accent); }}
+    .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
+    .lane-test-chain {{ border-top: 4px solid var(--ok); }}
+    .lane-label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }}
+    .node-heading {{
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }}
+    .node-number {{
+      flex: 0 0 auto;
+      width: 28px; height: 28px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: var(--accent); color: white; font-weight: 700;
+    }}
+    .lane h3 {{ margin: 0; font-size: 16px; line-height: 1.35; }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
     .pill {{
       display: inline-flex;
@@ -270,16 +295,23 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     details {{ margin-top: 10px; color: var(--muted); }}
     summary {{ cursor: pointer; color: var(--ink); font-weight: 650; }}
     details .field {{ margin-left: 2px; }}
-    .badcase {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 10px; }}
+    .badcase {{ border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }}
+    .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
     .tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
     .tag {{ background: #eef2f7; color: #334155; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
     .muted {{ color: var(--muted); }}
     .empty {{ color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }}
     @media (max-width: 980px) {{
-      .layout {{ grid-template-columns: 1fr; padding: 16px; }}
-      aside {{ position: static; }}
+      .shell {{ padding: 16px; }}
+      .quick {{ grid-template-columns: 1fr 1fr; }}
+      .track-grid {{ grid-auto-columns: minmax(260px, 82vw); }}
       header {{ padding: 22px 16px 14px; }}
+    }}
+    @media (max-width: 560px) {{
+      .quick {{ grid-template-columns: 1fr; }}
+      .quick li {{ border-right: 0; border-bottom: 1px solid var(--line); padding-right: 0; padding-bottom: 8px; }}
+      .quick li:last-child {{ border-bottom: 0; padding-bottom: 0; }}
     }}
   </style>
 </head>
@@ -291,19 +323,15 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       <span>Exported: {html.escape(exported)}</span>
     </div>
   </header>
-  <div class="layout">
-    <aside>
+  <div class="shell">
+    <section class="quick-panel">
       <h2>Quick Scan</h2>
       <ul class="quick">{quick_items}</ul>
-    </aside>
-    <main>
-      <h2>Main Route</h2>
-      <div class="timeline">{node_items}</div>
+    </section>
+    <main class="track-board">
+      <h2>Roadmap Tracks</h2>
+      <div class="track-grid">{node_items}</div>
     </main>
-    <aside>
-      <h2>Bad Cases</h2>
-      {bad_case_items}
-    </aside>
   </div>
 </body>
 </html>
@@ -346,7 +374,27 @@ def parse_roadmap_nodes(text: str) -> list[dict[str, str]]:
     return nodes
 
 
-def render_node(node: dict[str, str], number: int) -> str:
+def node_id(node: dict[str, str]) -> str:
+    title = node.get("title", "")
+    match = re.match(r"(NODE-\d{8}-\d+)", title)
+    return match.group(1) if match else title.split(":", 1)[0].strip()
+
+
+def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> list[dict[str, str]]:
+    nid = node_id(node)
+    linked = set(re.findall(r"BC-\d{8}-\d+", node.get("linked bad cases", "")))
+    matched: list[dict[str, str]] = []
+    for card in cards:
+        card_nodes = card.get("roadmap nodes", "")
+        card_id = card.get("title", "").split(":", 1)[0].strip()
+        if nid and nid in card_nodes:
+            matched.append(card)
+        elif card_id in linked:
+            matched.append(card)
+    return matched
+
+
+def render_track_column(node: dict[str, str], number: int, bad_case_cards: list[dict[str, str]]) -> str:
     title = html.escape(node.get("title", f"Node {number}"))
     status = html.escape(node.get("status", "unknown"))
     date = html.escape(node.get("date", "undated"))
@@ -357,10 +405,17 @@ def render_node(node: dict[str, str], number: int) -> str:
     next_step = html.escape(node.get("next", "No next step recorded."))
     linked = html.escape(node.get("linked bad cases", "none"))
     test_chain = html.escape(node.get("test chain", "none"))
-    return f"""<section class="node">
-  <div class="node-number">{number}</div>
-  <article class="node-card">
-    <h3>{title}</h3>
+    cases = bad_cases_for_node(node, bad_case_cards)
+    case_items = "\n".join(render_bad_case(card) for card in cases)
+    if not case_items:
+        case_items = '<p class="muted">No linked bad cases.</p>'
+    return f"""<section class="track-column">
+  <article class="lane lane-main" data-lane="main">
+    <div class="lane-label">Main Route</div>
+    <div class="node-heading">
+      <div class="node-number">{number}</div>
+      <h3>{title}</h3>
+    </div>
     <div class="node-meta">
       <span class="pill">{status}</span>
       <span class="pill">{date}</span>
@@ -375,6 +430,14 @@ def render_node(node: dict[str, str], number: int) -> str:
       <p class="field avoid"><b>Avoid going back:</b> {avoid}</p>
       <p class="field"><b>Test chain:</b> {test_chain}</p>
     </details>
+  </article>
+  <article class="lane lane-bad-cases" data-lane="bad-cases">
+    <div class="lane-label">Bad Cases</div>
+    {case_items}
+  </article>
+  <article class="lane lane-test-chain" data-lane="test-chain">
+    <div class="lane-label">Test Chain</div>
+    <p class="field">{test_chain}</p>
   </article>
 </section>"""
 

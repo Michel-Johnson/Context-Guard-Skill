@@ -73,6 +73,16 @@ Each node should include:
 
 Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes a human-friendly HTML roadmap under `.codex/context/exports/`, and prints the generated file path and `file://` URL. Use `export-roadmap --format md` only when an agent-readable Markdown export is needed.
 
+### Roadmap Display Model
+
+The HTML roadmap is a three-track board:
+
+1. Horizontal movement follows the main route nodes over time.
+2. Each node column has three vertical lanes: Main Route, Bad Cases, and Test Chain.
+3. Vertical movement within a node switches from the mainline context to that node's linked bad cases and verification chain.
+
+Treat this as three parallel horizontal lines, not a three-column dashboard. Keep the top line as the mainline; align bad cases and tests directly under the node they belong to.
+
 ### Show Roadmap Request
 
 When the user invokes `$context-guard` and asks to show, open, view, display, export, or 展示 the roadmap:

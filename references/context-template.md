@@ -132,6 +132,7 @@ The smallest useful action to resume this task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
 - Use `scripts/context_guard.py show-roadmap` to generate and display a human-friendly HTML route map from `.codex/context/exports/`. Use `export-roadmap --format md` only for agent-readable Markdown.
+- The HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
 
 ## Pruning Rules
 
