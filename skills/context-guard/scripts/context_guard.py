@@ -1084,6 +1084,10 @@ ZH_TEXT: dict[str, str] = {
     "Use vertical labels and Chinese record text": "使用竖排标签和中文记录文本",
     "Add repository README": "添加仓库 README",
     "Rebalance roadmap routes and numbering": "重整路线图路线和编号",
+    "Explore roadmap visual theme options": "探索路线图视觉主题选项",
+    "Use Botanical and route-focused drilldown": "使用 Botanical 和路线聚焦详情",
+    "Main base": "主线起点",
+    "Main later checkpoint": "主线后续检查点",
     "Bad cases would only live in chat": "Bad case 只存在聊天里",
     "Scope drift toward scripting every bad case": "范围漂移到为每个 bad case 写脚本",
     "Interrupted design context could be lost": "被中断的设计 context 可能丢失",
@@ -1156,6 +1160,11 @@ ZH_TEXT: dict[str, str] = {
     "Lane header column assertion checks one left label column and no lane labels inside node cards; pushed commit `2169387`.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题；已推送 commit `2169387`。",
     "Roadmap labels use a vertical left column and Chinese mode localizes record titles, summaries, bad cases, and test snippets.": "路线图标签使用左侧竖排列，中文模式会本地化记录标题、摘要、bad case 和测试片段。",
     "Main overview route is coarser, Roadmap UX and Documentation appear as branch routes, and visible overview numbers are consecutive per route group.": "主概览路线更粗粒度，路线图体验和文档以支线显示，并且每个路线组的可见编号连续。",
+    "Roadmap overview briefly supported visual theme comparison in the same stable HTML file.": "路线图概览曾在同一个稳定 HTML 文件中支持视觉主题对比。",
+    "Roadmap overview now uses Botanical as the only style and switches multi-route displays to route-first drilldown.": "路线图概览现在使用 Botanical 作为唯一样式，并将多路线展示切换为路线优先详情。",
+    "Added a root README explaining Context Guard purpose, installation, hooks, usage, context files, bad-case rules, roadmap model, and verification.": "添加仓库 README，说明 Context Guard 目标、安装、hooks、用法、context 文件、bad case 规则、路线图模型和验证方法。",
+    "Main route starts.": "主线开始。",
+    "Main route references prior main node but is not a branch.": "主线引用前序主节点，但不是支线。",
     "Consecutive numbering assertion, branch route assertion, real roadmap export, and stable file assertion.": "连续编号断言、分支路线断言、真实路线图导出和稳定文件断言。",
     "i18n assertion checks language toggles, Chinese/English labels, URL parameter support, and details page labels.": "i18n 断言检查语言切换、中英文标签、URL 参数支持和详情页标签。",
     "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则。",
@@ -1506,7 +1515,7 @@ def render_route_group(
         )
     label = localized_text(branch)
     count = len(major_items) if major_items else len(items)
-    parent_note = render_route_parent_note(items, node_lookup or {}) if branch_mode else ""
+    parent_note = render_route_parent_note(branch, items, node_lookup or {}) if branch_mode else ""
     checkpoint_strip = ""
     if hidden_count > 0:
         checkpoint_strip = (
@@ -1535,14 +1544,23 @@ def render_route_group(
 </section>"""
 
 
-def render_route_parent_note(items: list[tuple[int, dict[str, str]]], node_lookup: dict[str, dict[str, str]]) -> str:
+def render_route_parent_note(
+    branch: str,
+    items: list[tuple[int, dict[str, str]]],
+    node_lookup: dict[str, dict[str, str]],
+) -> str:
+    if branch.strip().lower() == "main":
+        return ""
     parent_id = ""
     for _, node in items:
         raw_parent = node.get("parent", "").strip()
         if raw_parent and raw_parent.lower() not in {"none", "n/a", "null"}:
             match = re.search(r"NODE-\d{8}-\d+", raw_parent)
-            parent_id = match.group(0) if match else raw_parent
-            break
+            candidate = match.group(0) if match else raw_parent
+            parent_node = node_lookup.get(candidate, {})
+            if branch_name(parent_node).strip().lower() != branch.strip().lower():
+                parent_id = candidate
+                break
     if not parent_id:
         return ""
     parent_node = node_lookup.get(parent_id, {})

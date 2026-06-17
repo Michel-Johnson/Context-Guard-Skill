@@ -170,6 +170,8 @@ The smallest useful action to resume this task.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
 - With one route group, the HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
 - With multiple route groups, the overview should show all route lines as a branch map; route selection should affect only the bad-case/test-chain drilldown.
+- Parent/fork markers should appear only on side routes whose parent node is outside that route. Main route should not show a fork marker just because a later main node references an earlier main node.
+- User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep the overview sparse. Put full Outcome, Decision, Next, and guard details in `roadmap-details.html`.
 
