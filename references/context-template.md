@@ -74,6 +74,7 @@ This is the route map through the task. It may contain one mainline, forked side
 
 - Date: YYYY-MM-DD
 - Status: planned | active | done | superseded
+- Level: major | checkpoint
 - Branch: Main | short branch name
 - Parent: NODE-YYYYMMDD-000 when this branch forks, otherwise none
 - Task: `CTX-YYYYMMDD-short-slug`
@@ -130,6 +131,7 @@ The smallest useful action to resume this task.
 
 - Keep `index.md` small and useful, not exhaustive.
 - Keep `roadmap.md` as the route map. It should show progress as nodes, not a raw transcript.
+- Use `Level: major` for significant milestones shown as main route cards; use `Level: checkpoint` for minor progress that should live in details.
 - Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.

@@ -14,7 +14,7 @@ Maintain durable folder-scoped context across threads and interruptions. Preserv
 Context is a navigation aid, not a transcript. Record only information that helps future Codex resume, avoid a wrong route, or prevent a bad case from recurring.
 
 1. Keep `index.md` to four Quick Scan lines plus the current/resume task summary.
-2. Keep each roadmap node to one meaningful checkpoint: outcome, decision, next step, and linked bad cases.
+2. Keep major roadmap nodes for significant changes only; record small implementation updates as `Level: checkpoint`.
 3. Keep task context to key points only: objective, constraints/decisions, open questions, touched areas, and next step.
 4. Record a bad case only when it is user-visible, recurring, risky, fixed, deferred, or needed to explain a guard.
 5. Prefer one-line summaries. If a detail is not needed for resume, route choice, or recurrence prevention, omit it.
@@ -54,6 +54,8 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Move done or stale items to an archive section or `.codex/context/archive/` when they no longer need active attention.
    - Do not delete unresolved user intent; compress it into a concise archived summary instead.
 7. Keep roadmap nodes concise. Each node should capture one meaningful step, decision, pivot, fork, or checkpoint, not every action.
+   - Use `Level: major` only for large user-visible progress, route changes, architecture/product decisions, or completed milestones.
+   - Use `Level: checkpoint` for small UI polish, validation, documentation, or implementation details that should not appear as main route cards.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
 
@@ -66,6 +68,7 @@ The route map is the main route history of the task, plus any explicit forked or
 Each node should include:
 
 - node ID, title, date, and status
+- level: `major` for user-facing milestones, `checkpoint` for minor progress
 - optional branch name and parent node when the route forks
 - one-line outcome
 - key decision or reason for the step
@@ -81,6 +84,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 `roadmap.html` is the user's quick overview. Keep it sparse:
 
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
+- Show only `Level: major` nodes as main route cards; summarize hidden checkpoints compactly and put checkpoint details in `roadmap-details.html`.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful `#tags` as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.

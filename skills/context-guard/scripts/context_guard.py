@@ -266,6 +266,20 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-weight: 680;
       padding: 1px 7px;
     }}
+    .checkpoint-strip {{
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      margin: -4px 0 9px;
+    }}
+    .checkpoint-dot {{
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--quiet);
+    }}
     .route-strip {{
       overflow: auto;
       padding-bottom: 2px;
@@ -428,6 +442,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .detail-card {{ background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; margin: 14px 0; }}
     .field {{ margin: 8px 0; }}
     .field b {{ color: #69707d; }}
+    .level-chip {{ display: inline-block; border-radius: 999px; padding: 1px 7px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 650; }}
     .visual-meta {{ display: flex; align-items: center; gap: 9px; min-height: 16px; margin: 4px 0 12px; }}
     .status-dot, .freq-dot {{ flex: 0 0 auto; border-radius: 999px; display: inline-block; }}
     .status-dot {{ width: 11px; height: 11px; box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16); }}
@@ -509,6 +524,17 @@ def node_id(node: dict[str, str]) -> str:
 
 def branch_name(node: dict[str, str]) -> str:
     return human_text(node.get("branch", "Main")).strip() or "Main"
+
+
+def node_level(node: dict[str, str]) -> str:
+    level = node.get("level", "major").strip().lower()
+    if level in {"checkpoint", "minor", "detail"}:
+        return "checkpoint"
+    return "major"
+
+
+def human_level(node: dict[str, str]) -> str:
+    return "Checkpoint" if node_level(node) == "checkpoint" else "Major"
 
 
 def group_nodes_by_branch(nodes: list[dict[str, str]]) -> list[tuple[str, list[tuple[int, dict[str, str]]]]]:
@@ -652,15 +678,25 @@ def render_route_group(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    columns = "\n".join(render_track_column(node, number, bad_case_cards, case_anchor_map) for number, node in items)
+    major_items = [(number, node) for number, node in items if node_level(node) == "major"]
+    hidden_count = len(items) - len(major_items)
+    display_items = major_items or items
+    columns = "\n".join(render_track_column(node, number, bad_case_cards, case_anchor_map) for number, node in display_items)
     label = html.escape(branch)
-    count = len(items)
+    count = len(major_items) if major_items else len(items)
+    checkpoint_strip = ""
+    if hidden_count > 0:
+        checkpoint_strip = (
+            f'<div class="checkpoint-strip"><span class="checkpoint-dot" aria-hidden="true"></span>'
+            f'<span>{hidden_count} checkpoints in details</span></div>'
+        )
     return f"""<section class="route-group">
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
     <span class="route-title">{label}</span>
     <span class="route-pill">{count}</span>
   </div>
+  {checkpoint_strip}
   <div class="route-strip">
     <div class="track-grid">{columns}</div>
   </div>
@@ -723,6 +759,7 @@ def render_node_detail(
     next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
     test_chain = html.escape(human_text(node.get("test chain", "none")))
     branch = html.escape(branch_name(node))
+    level = html.escape(human_level(node))
     parent = html.escape(human_text(node.get("parent", "")))
     cases = bad_cases_for_node(node, bad_case_cards)
     case_links = ", ".join(
@@ -732,6 +769,7 @@ def render_node_detail(
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
   <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
+  <p class="field"><span class="level-chip">{level}</span></p>
   <p class="field"><b>Route:</b> {branch}</p>
   {f'<p class="field"><b>Parent route:</b> {parent}</p>' if parent else ''}
   <p class="field"><b>Outcome:</b> {outcome}</p>
