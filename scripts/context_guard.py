@@ -443,7 +443,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       --font-heading: "Iowan Old Style", "Charter", "Songti SC", "STSong", Georgia, serif;
       --card-border-width: 1px;
       --card-transform: none;
-      --route-card-step: 314px;
       --board-texture: radial-gradient(circle at 20% 15%, rgba(93, 135, 83, 0.12), transparent 24%), radial-gradient(circle at 82% 4%, rgba(183, 143, 92, 0.12), transparent 20%);
       --board-texture-size: auto;
     }}
@@ -509,12 +508,19 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       display: grid;
       gap: 18px;
     }}
+    .route-stack.branch-map {{
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }}
     .route-group {{
       min-width: 0;
     }}
+    .route-stack.branch-map .route-group {{
+      min-width: max-content;
+    }}
     .route-group.route-branch {{
       position: relative;
-      padding-left: calc(24px + var(--route-offset-space, 0px));
+      padding-left: 24px;
     }}
     .route-group.route-branch::before {{
       content: "";
@@ -584,6 +590,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       overflow: auto;
       padding-bottom: 2px;
     }}
+    .route-stack.branch-map .route-strip {{
+      overflow: visible;
+    }}
     .track-grid {{
       display: grid;
       grid-template-columns: 56px;
@@ -597,6 +606,10 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       grid-template-columns: none;
       grid-auto-columns: minmax(230px, 300px);
       min-height: 190px;
+    }}
+    .route-spacer {{
+      min-height: 1px;
+      pointer-events: none;
     }}
     .track-column, .track-label-column {{
       display: grid;
@@ -1591,6 +1604,8 @@ def render_route_group(
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
     display_items = display_items_for_route(items)
+    route_offset = max(0, route_offset)
+    route_spacers = render_route_spacers(route_offset) if branch_mode else ""
     if branch_mode:
         columns = "\n".join(
             render_route_column(node, source_number, display_number)
@@ -1618,12 +1633,7 @@ def render_route_group(
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
     branch_class = " route-branch" if parent_note else ""
-    route_offset = max(0, route_offset)
-    offset_attrs = (
-        f' data-route-offset="{route_offset}" style="--route-offset-space: {route_offset * 314}px;"'
-        if branch_mode
-        else ""
-    )
+    offset_attrs = f' data-route-offset="{route_offset}"' if branch_mode else ""
     return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
@@ -1633,9 +1643,15 @@ def render_route_group(
   </div>
   {checkpoint_strip}
   <div class="route-strip">
-    <div class="{grid_class}">{label_column}{columns}</div>
+    <div class="{grid_class}">{label_column}{route_spacers}{columns}</div>
   </div>
 </section>"""
+
+
+def render_route_spacers(count: int) -> str:
+    if count <= 0:
+        return ""
+    return "".join('<div class="route-spacer" aria-hidden="true"></div>' for _ in range(count))
 
 
 def render_route_parent_note(
