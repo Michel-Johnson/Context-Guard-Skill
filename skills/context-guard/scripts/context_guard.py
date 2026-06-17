@@ -270,6 +270,10 @@ function applyLang(lang) {{
     if (element.dataset.count) value = value.replace("{{count}}", element.dataset.count);
     element.textContent = value;
   }});
+  document.querySelectorAll("[data-i18n-text]").forEach((element) => {{
+    const value = lang === "zh" ? element.dataset.zh : element.dataset.en;
+    if (value) element.textContent = value;
+  }});
   document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
     button.setAttribute("aria-pressed", button.dataset.lang === lang ? "true" : "false");
   }});
@@ -417,7 +421,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .track-grid {{
       display: grid;
-      grid-template-columns: 86px;
+      grid-template-columns: 56px;
       grid-auto-flow: column;
       grid-auto-columns: minmax(220px, 280px);
       gap: 14px;
@@ -437,8 +441,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .track-label-cell {{
       display: flex;
-      align-items: flex-start;
-      padding-top: 13px;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 0;
       min-width: 0;
     }}
     .lane {{
@@ -456,9 +461,14 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0;
-      margin-bottom: 8px;
-      text-transform: uppercase;
+      line-height: 1.15;
+      margin: 0;
+      text-transform: none;
+      white-space: nowrap;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
     }}
+    html[lang="zh"] .lane-label {{ text-orientation: upright; }}
     .lane-link {{
       color: inherit;
       text-decoration: none;
@@ -721,6 +731,196 @@ def human_text(text: str) -> str:
     return text
 
 
+ZH_TEXT: dict[str, str] = {
+    "Main": "主线",
+    "Identify Superpowers as workflow baseline": "将 Superpowers 作为工作流基线",
+    "Create initial bad-case regression guard": "创建初始 bad case 回归防线",
+    "Rename and widen scope to Context Guard": "重命名并扩展为 Context Guard",
+    "Add dynamic task index and interruption handling": "添加动态任务索引和中断处理",
+    "Add folder-scoped roadmap model": "添加文件夹级路线图模型",
+    "Export roadmap as HTML": "将路线图导出为 HTML",
+    "Add direct show-roadmap behavior and global fallback": "添加直接展示路线图和全局兜底",
+    "Enforce concise context and roadmap display": "强制精简 context 和路线图展示",
+    "Switch roadmap to three horizontal tracks": "切换为三条横向轨道",
+    "Keep roadmap export files stable": "保持路线图导出文件稳定",
+    "Separate human roadmap view from Codex context sources": "区分人类路线图视图和 Codex context 源",
+    "Hide internal IDs in human roadmap": "在人类路线图中隐藏内部 ID",
+    "Split roadmap into compact overview and detail page": "拆分路线图为简洁概览和详情页",
+    "Replace roadmap metadata text with visual cues": "用视觉提示替代路线图元数据文字",
+    "Add tag chips to roadmap display": "为路线图添加标签胶囊",
+    "Add emoji cues to tag chips": "为标签胶囊添加表情提示",
+    "Support branch-aware roadmap routes": "支持分支感知的路线图路线",
+    "Coarsen main route node granularity": "放粗主路线节点粒度",
+    "Add multilingual roadmap display": "添加多语言路线图显示",
+    "Add goal-mode context checkpoints": "添加 goal 模式 context 检查点",
+    "Move lane titles to left label column": "将轨道标题移到左侧标签列",
+    "Use vertical labels and Chinese record text": "使用竖排标签和中文记录文本",
+    "Bad cases would only live in chat": "Bad case 只存在聊天里",
+    "Scope drift toward scripting every bad case": "范围漂移到为每个 bad case 写脚本",
+    "Interrupted design context could be lost": "被中断的设计 context 可能丢失",
+    "Context bound to thread instead of folder": "Context 绑定在线程而不是文件夹",
+    "Markdown roadmap is uncomfortable for humans": "Markdown 路线图不适合人类阅读",
+    "Roadmap request answered with instructions instead of display": "路线图请求被回答成说明而不是直接展示",
+    "Context Guard may not activate without explicit mention": "未显式提及时 Context Guard 可能不会激活",
+    "Roadmap nodes were not recorded during this skill's development": "开发这个 skill 时没有记录路线节点",
+    "Context records could become too verbose": "Context 记录可能变得过于冗长",
+    "Roadmap display could use the wrong mental model": "路线图展示可能使用错误模型",
+    "Roadmap files could accumulate endlessly": "路线图文件可能无限堆积",
+    "HTML roadmap could be mistaken for Codex context source": "HTML 路线图可能被误当成 Codex context 源",
+    "Human roadmap exposes internal IDs": "人类路线图暴露内部 ID",
+    "User roadmap overview could become too verbose": "用户路线图概览可能过于冗长",
+    "Roadmap metadata labels create visual noise": "路线图元数据标签造成视觉噪声",
+    "User roadmap lacks tag semantics and feels stiff": "用户路线图缺少标签语义且显得生硬",
+    "Roadmap tags lack emoji cues": "路线图标签缺少表情提示",
+    "Roadmap assumes a single main route": "路线图假设只有一条主线",
+    "Main route cards are too granular": "主路线卡片粒度过细",
+    "Roadmap chrome only supports English": "路线图界面只支持英文",
+    "Goal-mode work may lag context updates": "Goal 模式工作可能滞后更新 context",
+    "Lane titles repeat inside every node card": "轨道标题在每个节点卡片里重复",
+    "Lane label column is not vertical": "轨道标签列没有竖排",
+    "Chinese mode leaves record content in English": "中文模式下记录内容仍是英文",
+    "Skill may not activate without explicit mention": "未显式提及时 skill 可能不会激活",
+    "Roadmap nodes were not recorded during this skill's own development": "开发这个 skill 时没有记录路线节点",
+    "Reviewed Superpowers and installed it for stronger engineering workflow discipline.": "已查看 Superpowers 并安装，用于强化工程工作流纪律。",
+    "Verified Superpowers symlink and skill discovery paths.": "已验证 Superpowers 符号链接和 skill 发现路径。",
+    "Created a skill to record bad cases, fixes, verification methods, and recurrence analysis.": "创建 skill，用于记录 bad case、修复方法、验证方法和复现分析。",
+    "Ran `quick_validate.py` and passed.": "已运行 `quick_validate.py` 并通过。",
+    "Renamed skill to `context-guard` and changed default storage to `.codex/context/`.": "将 skill 重命名为 `context-guard`，并把默认存储改为 `.codex/context/`。",
+    "Validated skill after rename.": "重命名后已验证 skill。",
+    "Added `.codex/context/index.md`, task folders, parked/resume-candidate states, and resume prompts.": "添加 `.codex/context/index.md`、任务文件夹、停放/候选恢复状态和恢复提示。",
+    "Added hooks for `UserPromptSubmit` and `Stop`; dry run passed.": "添加 `UserPromptSubmit` 和 `Stop` hooks，并通过 dry run。",
+    "Added folder-level `.codex/context/roadmap.md`, route nodes, bad-case links, frequency tags, and test-chain notes.": "添加文件夹级 `.codex/context/roadmap.md`、路线节点、bad case 链接、频率标签和测试链路备注。",
+    "Plugin validation and hook dry runs passed.": "插件验证和 hook dry run 已通过。",
+    "Changed roadmap export from Markdown to a human-friendly single-file HTML view.": "将路线图导出从 Markdown 改为更适合人类阅读的单文件 HTML 视图。",
+    "`context_guard.py export-roadmap` generated valid HTML with Quick Scan, Main Route, and Bad Cases.": "`context_guard.py export-roadmap` 已生成包含 Quick Scan、主要路线和 Bad Case 的有效 HTML。",
+    "Added `show-roadmap`, updated skill instructions so Codex displays HTML directly, and added global AGENTS/hook fallback for cases where the skill is not explicitly invoked.": "添加 `show-roadmap`，更新 skill 说明让 Codex 直接展示 HTML，并加入全局 AGENTS/hook 兜底以处理未显式调用 skill 的情况。",
+    "`show-roadmap` generated file URL; global hook dry run initialized context and detected task switch/bad case prompts.": "`show-roadmap` 已生成文件 URL；全局 hook dry run 能初始化 context 并识别任务切换或 bad case 提示。",
+    "Added a conciseness contract and compact HTML roadmap defaults.": "添加精简契约和紧凑 HTML 路线图默认规则。",
+    "Compact HTML assertion passed; skill/plugin validation passed; pushed commit `5ca87e2`.": "紧凑 HTML 断言通过，skill/plugin 验证通过，并推送 commit `5ca87e2`。",
+    "Roadmap display now uses node columns with Main Route, Bad Cases, and Test Chain lanes.": "路线图现在使用节点列，并包含主要路线、Bad Case、测试链路三条轨道。",
+    "Three-track HTML assertion passed; generated roadmap had 9 main/bad-case/test-chain lane sets and no old layout; pushed commit `4c31abd`.": "三轨 HTML 断言通过；生成的路线图包含 9 组主线/bad case/测试链路线，且不再出现旧布局；已推送 commit `4c31abd`。",
+    "Roadmap display now targets stable HTML files instead of timestamped exports.": "路线图展示现在写入稳定 HTML 文件，而不是时间戳导出文件。",
+    "Stable export assertion passed; current folder has stable HTML files and no timestamped roadmap HTML; pushed commit `13be025`; later route added stable details page.": "稳定导出断言通过；当前文件夹只有稳定 HTML 文件，没有时间戳路线图 HTML；已推送 commit `13be025`；后续路线加入了稳定详情页。",
+    "Clarified that `roadmap.html` is only the user-facing view, while Codex reads source context files.": "明确 `roadmap.html` 只是用户视图，Codex 读取源 context 文件。",
+    "Artifact-role assertion passed; skill/plugin validation passed; generated HTML/Markdown carry role markers; pushed commit `ef9a18f`.": "产物角色断言通过，skill/plugin 验证通过，生成的 HTML/Markdown 都带有角色标记；已推送 commit `ef9a18f`。",
+    "User-facing roadmap now shows concise natural-language node and bad-case labels.": "面向用户的路线图现在显示简洁自然语言节点和 bad case 标签。",
+    "Human-label assertion passed; real HTML contains no internal IDs while Markdown keeps them; pushed commit `4049b32`.": "人类标签断言通过；真实 HTML 不含内部 ID，Markdown 保留内部 ID；已推送 commit `4049b32`。",
+    "Roadmap overview now shows sparse labels and links detailed fields to a stable detail page.": "路线图概览现在只显示精简标签，并把详细字段链接到稳定详情页。",
+    "Compact overview assertion passed; real HTML links to detail page and hides verbose fields; pushed commit `f5fb2b2`.": "精简概览断言通过；真实 HTML 链接到详情页，并隐藏冗长字段；已推送 commit `f5fb2b2`。",
+    "User-facing roadmap now uses color markers for status/frequency and hides empty tag fallback text.": "面向用户的路线图现在用颜色标记表示状态/频率，并隐藏空标签兜底文本。",
+    "Visual cue assertion checks no raw metadata words and confirms status markers exist; pushed commit `bd19ce6`.": "视觉提示断言检查无原始元数据文字，并确认状态标记存在；已推送 commit `bd19ce6`。",
+    "Bad-case tags now render as compact colored chips in overview and detail views.": "Bad case 标签现在在概览和详情中渲染为紧凑彩色胶囊。",
+    "Tag rendering assertion checks overview tags, detail tags, visual tag classes, and no fallback tag text; pushed commit `0d238cb`.": "标签渲染断言检查概览标签、详情标签、视觉标签类，并确认无兜底标签文本；已推送 commit `0d238cb`。",
+    "Tag chips now include small emoji cues mapped from tag semantics.": "标签胶囊现在包含按标签语义映射的小表情提示。",
+    "Emoji tag assertion checks emoji spans, semantic emoji mappings, and no fallback tag text; pushed commit `48e21b1`.": "表情标签断言检查 emoji 片段、语义映射和无兜底标签文本；已推送 commit `48e21b1`。",
+    "Roadmap HTML now groups nodes by route branch, so forked or parallel mainlines do not collapse into one line.": "路线图 HTML 现在按路线分支分组，分叉或并行主线不会被压成一条线。",
+    "Branch rendering assertion checks route groups, branch labels, separate horizontal grids, parent route detail, hidden internal IDs, and real HTML export; pushed commit `61506ca`.": "分支渲染断言检查路线组、分支标签、独立横向网格、父路线详情、隐藏内部 ID 和真实 HTML 导出；已推送 commit `61506ca`。",
+    "Roadmap overview now shows only major milestones as main route cards and folds smaller updates into details.": "路线图概览现在只把重要里程碑显示为主路线卡片，并将较小更新折叠到详情中。",
+    "Major-node granularity assertion checks checkpoint hiding, compact checkpoint summary, detail retention, and level labels; pushed commit `5af24f5`.": "主节点粒度断言检查隐藏 checkpoint、紧凑 checkpoint 摘要、详情保留和等级标签；已推送 commit `5af24f5`。",
+    "Roadmap overview and details now support Chinese/English UI chrome in the same stable HTML files.": "路线图概览和详情现在在同一组稳定 HTML 文件中支持中英文界面。",
+    "i18n assertion checks language toggles, Chinese/English labels, URL parameter support, and details page labels; pushed commit `085479a`.": "i18n 断言检查语言切换、中英文标签、URL 参数支持和详情页标签；已推送 commit `085479a`。",
+    "Context Guard now tells Codex to keep roadmap and bad-case memory updated during goal-mode work.": "Context Guard 现在要求 Codex 在 goal 模式工作中持续更新路线图和 bad case 记忆。",
+    "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules; pushed commit `8d9c064`.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则；已推送 commit `8d9c064`。",
+    "Roadmap overview now renders Main Route, Bad Cases, and Test Chain labels once in a left-side column for each route group.": "路线图概览现在为每个路线组在左侧列中只显示一次主要路线、Bad Case 和测试链路标签。",
+    "Lane header column assertion checks one left label column and no lane labels inside node cards; pushed commit `2169387`.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题；已推送 commit `2169387`。",
+    "Roadmap labels use a vertical left column and Chinese mode localizes record titles, summaries, bad cases, and test snippets.": "路线图标签使用左侧竖排列，中文模式会本地化记录标题、摘要、bad case 和测试片段。",
+    "i18n assertion checks language toggles, Chinese/English labels, URL parameter support, and details page labels.": "i18n 断言检查语言切换、中英文标签、URL 参数支持和详情页标签。",
+    "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则。",
+    "Lane header column assertion checks one left label column and no lane labels inside node cards.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题。",
+    "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, and localized detail records.": "竖排标签和中文记录断言检查轨道书写方向、概览记录本地化和详情记录本地化。",
+    "Vertical label and Chinese record assertion checks `writing-mode: vertical-rl` in generated overview CSS.": "竖排标签和中文记录断言检查生成的概览 CSS 中保留 `writing-mode: vertical-rl`。",
+    "Vertical label and Chinese record assertion passed.": "竖排标签和中文记录断言已通过。",
+    "The left lane label column renders horizontally and can crowd or crop roadmap cards on narrow screens.": "左侧轨道标签列横向渲染，在窄屏上会挤压或裁切路线图卡片。",
+    "Chinese mode changes UI chrome but leaves node titles, summaries, bad-case titles, and test-chain text in English.": "中文模式只切换界面文字，但节点标题、摘要、bad case 标题和测试链路仍是英文。",
+    "Lane labels were styled like normal horizontal text after moving them to the left column.": "轨道标签移到左侧列后仍按普通横排文本样式渲染。",
+    "Record fields were emitted as escaped static text rather than language-aware text spans.": "记录字段被输出为转义后的静态文本，而不是支持语言切换的文本片段。",
+    "Render lane labels with vertical writing mode and narrow sticky label cells.": "用竖排书写模式和窄粘性标签格渲染轨道标签。",
+    "Wrap human-facing record strings in `data-i18n-text` spans with English and Chinese variants.": "将面向用户的记录字符串包进带英文和中文版本的 `data-i18n-text` 片段。",
+}
+
+
+ZH_REPLACEMENTS: list[tuple[str, str]] = [
+    ("Roadmap overview and details", "路线图概览和详情"),
+    ("Roadmap overview", "路线图概览"),
+    ("Roadmap display", "路线图展示"),
+    ("roadmap display", "路线图展示"),
+    ("roadmap overview", "路线图概览"),
+    ("roadmap", "路线图"),
+    ("record titles", "记录标题"),
+    ("record content", "记录内容"),
+    ("record strings", "记录文本"),
+    ("summaries", "摘要"),
+    ("summary", "摘要"),
+    ("test snippets", "测试片段"),
+    ("test-chain text", "测试链路文本"),
+    ("node titles", "节点标题"),
+    ("Main Route", "主要路线"),
+    ("Bad Cases", "Bad Case"),
+    ("Test Chain", "测试链路"),
+    ("bad-case memory", "bad case 记忆"),
+    ("bad cases", "bad case"),
+    ("bad case", "bad case"),
+    ("goal-mode", "goal 模式"),
+    ("goal mode", "goal 模式"),
+    ("Chinese/English", "中英文"),
+    ("HTML files", "HTML 文件"),
+    ("stable", "稳定"),
+    ("assertion checks", "断言检查"),
+    ("language toggles", "语言切换"),
+    ("URL parameter support", "URL 参数支持"),
+    ("details page labels", "详情页标签"),
+    ("node cards", "节点卡片"),
+    ("lane labels", "轨道标签"),
+    ("left lane label column", "左侧轨道标签列"),
+    ("left label column", "左侧标签列"),
+    ("vertical", "竖排"),
+    ("horizontally", "横向"),
+    ("horizontal", "横向"),
+    ("narrow screens", "窄屏"),
+    ("writing mode", "书写方向"),
+    ("left-side column", "左侧列"),
+    ("labels", "标签"),
+    ("updated", "更新"),
+    ("support", "支持"),
+    ("supports", "支持"),
+]
+
+
+def has_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", text))
+
+
+def zh_text(text: str) -> str:
+    text = human_text(text)
+    normalized = " ".join(text.split())
+    if has_cjk(normalized):
+        return normalized
+    if normalized in ZH_TEXT:
+        return ZH_TEXT[normalized]
+    translated = normalized
+    for source, target in ZH_REPLACEMENTS:
+        translated = translated.replace(source, target)
+    return translated
+
+
+def localized_text(text: str) -> str:
+    en = human_text(text)
+    zh = zh_text(en)
+    return (
+        f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
+        f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
+    )
+
+
+def localized_short_text(text: str, limit: int = 92) -> str:
+    en = short_text(text, limit)
+    zh = short_text(zh_text(text), limit)
+    return (
+        f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
+        f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
+    )
+
+
 def short_text(text: str, limit: int = 92) -> str:
     text = " ".join(human_text(text).split())
     if len(text) <= limit:
@@ -842,7 +1042,7 @@ def render_route_group(
     hidden_count = len(items) - len(major_items)
     display_items = major_items or items
     columns = "\n".join(render_track_column(node, number, bad_case_cards, case_anchor_map) for number, node in display_items)
-    label = html.escape(branch)
+    label = localized_text(branch)
     count = len(major_items) if major_items else len(items)
     checkpoint_strip = ""
     if hidden_count > 0:
@@ -874,11 +1074,11 @@ def render_track_column(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    title = html.escape(human_title(node.get("title", f"Node {number}")))
+    title = localized_text(human_title(node.get("title", f"Node {number}")))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
-    outcome = html.escape(short_text(node.get("outcome", "No outcome recorded.")))
-    test_chain = html.escape(short_text(node.get("test chain", "No test chain recorded."), 70))
+    outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
+    test_chain = localized_short_text(node.get("test chain", "No test chain recorded."), 70)
     cases = bad_cases_for_node(node, bad_case_cards)
     case_items = "\n".join(render_bad_case_summary(card, case_anchor_map.get(card.get("title", ""), "case-1")) for card in cases)
     if not case_items:
@@ -912,21 +1112,22 @@ def render_node_detail(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    title = html.escape(human_title(node.get("title", f"Node {number}")))
+    title = localized_text(human_title(node.get("title", f"Node {number}")))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
-    outcome = html.escape(human_text(node.get("outcome", "No outcome recorded.")))
-    reason = html.escape(human_text(node.get("decision / reason", "No decision reason recorded.")))
-    avoid = html.escape(human_text(node.get("avoid going back", "No avoided path recorded.")))
-    next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
-    test_chain = html.escape(human_text(node.get("test chain", "none")))
-    branch = html.escape(branch_name(node))
+    outcome = localized_text(node.get("outcome", "No outcome recorded."))
+    reason = localized_text(node.get("decision / reason", "No decision reason recorded."))
+    avoid = localized_text(node.get("avoid going back", "No avoided path recorded."))
+    next_step = localized_text(node.get("next", "No next step recorded."))
+    test_chain = localized_text(node.get("test chain", "none"))
+    branch = localized_text(branch_name(node))
     level_key = "levelCheckpoint" if node_level(node) == "checkpoint" else "levelMajor"
     level = html.escape(human_level(node))
-    parent = html.escape(human_text(node.get("parent", "")))
+    parent_raw = human_text(node.get("parent", ""))
+    parent = localized_text(parent_raw) if parent_raw else ""
     cases = bad_cases_for_node(node, bad_case_cards)
     case_links = ", ".join(
-        f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{html.escape(human_title(card.get("title", "Bad case")))}</a>'
+        f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{localized_text(human_title(card.get("title", "Bad case")))}</a>'
         for card in cases
     ) or "None"
     return f"""<section class="detail-card" id="node-{number}">
@@ -965,7 +1166,7 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
 
 
 def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
-    title = html.escape(human_title(card.get("title", "Bad case")))
+    title = localized_text(human_title(card.get("title", "Bad case")))
     status = card.get("status", "unknown")
     frequency = card.get("frequency", "")
     tags = parse_tags(card.get("tags", ""))
@@ -977,14 +1178,19 @@ def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
 
 
 def render_case_detail(card: dict[str, str], anchor: str) -> str:
-    title = html.escape(human_title(card.get("title", "Bad case")))
+    title = localized_text(human_title(card.get("title", "Bad case")))
     status = card.get("status", "unknown")
     frequency = card.get("frequency", "unknown")
-    phenomenon = html.escape(human_text(card.get("phenomenon", "")))
-    trigger = html.escape(human_text(card.get("trigger / reproduction", "")))
-    cause = html.escape(human_text(card.get("root cause", "")))
-    fix = html.escape(human_text(card.get("fix method", "")))
-    guard = html.escape(human_text(card.get("guard / verification", "")))
+    phenomenon_raw = human_text(card.get("phenomenon", ""))
+    trigger_raw = human_text(card.get("trigger / reproduction", ""))
+    cause_raw = human_text(card.get("root cause", ""))
+    fix_raw = human_text(card.get("fix method", ""))
+    guard_raw = human_text(card.get("guard / verification", ""))
+    phenomenon = localized_text(phenomenon_raw) if phenomenon_raw else ""
+    trigger = localized_text(trigger_raw) if trigger_raw else ""
+    cause = localized_text(cause_raw) if cause_raw else ""
+    fix = localized_text(fix_raw) if fix_raw else ""
+    guard = localized_text(guard_raw) if guard_raw else ""
     tags = parse_tags(card.get("tags", ""))
     tag_html = render_tags(tags)
     optional = "\n".join(
