@@ -21,7 +21,7 @@ Use this structure for project context:
 ```md
 # Context Index
 
-This is a dynamic queue of active and recently parked folder context. Keep it short and optimized for quick scanning.
+This is a dynamic queue of active and recently parked folder context. Keep it short enough to scan in seconds.
 
 ## Quick Scan
 
@@ -30,6 +30,8 @@ This is a dynamic queue of active and recently parked folder context. Keep it sh
 - Hot bad-case tags: #hot-ui, #flaky-test
 - Resume candidate: CTX-YYYYMMDD-other-slug
 
+Keep Quick Scan to these four lines unless the user explicitly asks for a fuller view.
+
 ## Current
 
 - ID: CTX-YYYYMMDD-short-slug
@@ -37,7 +39,7 @@ This is a dynamic queue of active and recently parked folder context. Keep it sh
 - State: current
 - Folder: `.codex/context/tasks/CTX-YYYYMMDD-short-slug/`
 - Last updated: YYYY-MM-DD
-- Summary: one paragraph of the current direction
+- Summary: one sentence of the current direction
 - Next step: the next useful action
 
 ## Parked / Resume Candidates
@@ -61,7 +63,7 @@ Keep only concise summaries here. Move detailed stale context to `.codex/context
 ```md
 # Context Roadmap
 
-This is the mainline route through the task. Keep nodes concise. Do not record every tiny action.
+This is the mainline route through the task. Keep nodes concise. Do not record every tiny action or chat turn.
 
 ## Nodes
 
@@ -71,11 +73,11 @@ This is the mainline route through the task. Keep nodes concise. Do not record e
 - Status: planned | active | done | superseded
 - Task: `CTX-YYYYMMDD-short-slug`
 - Outcome: one-line result
-- Decision / reason: why this node exists
-- Avoid going back: rejected path or lesson, if any
+- Decision / reason: why this node exists, one line
+- Avoid going back: rejected path or lesson, only if it prevents backtracking
 - Next: next useful node or action
 - Linked bad cases: BC-YYYYMMDD-001, BC-YYYYMMDD-002
-- Test chain: test names, commands, screenshots, logs, or manual checks
+- Test chain: short guard names, commands, screenshots, logs, or manual checks
 ```
 
 ## tasks/<task-id>/context.md
@@ -90,13 +92,13 @@ This is the mainline route through the task. Keep nodes concise. Do not record e
 
 ## Objective
 
-What the user is trying to accomplish.
+One sentence describing what the user is trying to accomplish.
 
 ## Key Points
 
-- Important ideas, constraints, and decisions.
-- Rejected approaches and why.
-- Product, design, architecture, or implementation notes.
+- Important ideas, constraints, and decisions only.
+- Rejected approaches only when they prevent repeating a wrong route.
+- Product, design, architecture, or implementation notes only when needed to resume.
 
 ## Open Questions
 
@@ -123,10 +125,18 @@ The smallest useful action to resume this task.
 
 - Keep `index.md` small and useful, not exhaustive.
 - Keep `roadmap.md` as the mainline. It should show progress as nodes, not a raw transcript.
-- Each node should be concise enough for Codex to scan quickly.
+- Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - A sharp task direction change should park the current task before starting a new one.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
 - Use `scripts/context_guard.py show-roadmap` to generate and display a human-friendly HTML route map from `.codex/context/exports/`. Use `export-roadmap --format md` only for agent-readable Markdown.
+
+## Pruning Rules
+
+- Do not record normal implementation chatter.
+- Do not record every command; record only commands that prove a checkpoint or guard a bad case.
+- Merge tiny adjacent updates into one roadmap node.
+- Archive stale parked tasks as a one-sentence summary.
+- If a reader cannot use a detail to resume, decide, verify, or avoid recurrence, remove it.

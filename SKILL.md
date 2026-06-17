@@ -9,6 +9,17 @@ description: "Maintain and enforce a folder-scoped project context folder, route
 
 Maintain durable folder-scoped context across threads and interruptions. Preserve the task route map, park active design threads when urgent work interrupts, resume them when appropriate, and prevent solved bad cases from silently returning.
 
+## Conciseness Contract
+
+Context is a navigation aid, not a transcript. Record only information that helps future Codex resume, avoid a wrong route, or prevent a bad case from recurring.
+
+1. Keep `index.md` to four Quick Scan lines plus the current/resume task summary.
+2. Keep each roadmap node to one meaningful checkpoint: outcome, decision, next step, and linked bad cases.
+3. Keep task context to key points only: objective, constraints/decisions, open questions, touched areas, and next step.
+4. Record a bad case only when it is user-visible, recurring, risky, fixed, deferred, or needed to explain a guard.
+5. Prefer one-line summaries. If a detail is not needed for resume, route choice, or recurrence prevention, omit it.
+6. When exporting or displaying context, show the shortest useful view first and leave secondary details folded or linked.
+
 ## Context Folder
 
 Maintain a folder-local context folder so task context, route nodes, bad-case memory, and reusable guards travel with the Codex folder. This context belongs to the folder, not to a single thread.
@@ -33,7 +44,7 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
 1. At turn start, compare the user's latest request with the current index entry.
 2. If the request continues the same direction, update that task folder.
 3. If the request is a sharp direction change, urgent bug, or unrelated event, park the current task before switching:
-   - Summarize the current idea, decisions, open questions, files, constraints, and next step.
+   - Summarize only the current idea, key decision/constraint, open blocker, and next step.
    - Mark it `parked` or `resume-candidate`.
    - Create or update its folder under `.codex/context/tasks/<task-id>/`.
 4. Create or select a task folder for the new direction and mark it `current`.
@@ -42,7 +53,7 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Keep the current task plus a small set of recent parked or resume-candidate tasks.
    - Move done or stale items to an archive section or `.codex/context/archive/` when they no longer need active attention.
    - Do not delete unresolved user intent; compress it into a concise archived summary instead.
-7. Keep roadmap nodes concise. Each node should capture one meaningful step, decision, pivot, or checkpoint.
+7. Keep roadmap nodes concise. Each node should capture one meaningful step, decision, pivot, or checkpoint, not every action.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
 
@@ -110,11 +121,11 @@ Run this before any substantive answer or action.
 
 Whenever design context appears, update the active task context enough that another turn can resume it without re-deriving it:
 
-- current idea or objective
-- important constraints
-- decisions made and rejected
-- open questions
-- files or commands touched
+- objective or current idea
+- key constraints and decisions
+- rejected route only when it prevents backtracking
+- open question or blocker
+- touched areas only when useful to resume
 - next step
 
 Whenever a task makes meaningful progress, add or update one concise roadmap node. Link the node to bad cases and test-chain context when relevant.
@@ -122,7 +133,7 @@ Whenever a task makes meaningful progress, add or update one concise roadmap nod
 Whenever a bad case appears:
 
 1. Add a new entry or update the matching existing entry.
-2. Record the exact phenomenon, reproduction steps or trigger, affected scope, suspected or confirmed cause, current status, and evidence.
+2. Record the exact phenomenon, minimal trigger, affected scope, suspected or confirmed cause, current status, and evidence.
 3. If fixed, record the solution and the verification command/manual check that proves the fix.
 4. If not fixed, mark it `open` or `deferred` and explain why it cannot be completed in the current task.
 5. Record the best available verification guard. Prefer existing project tests or clear manual checks; add a script only when it materially improves future reuse.
@@ -158,7 +169,7 @@ At the end of every response, include a compact context summary when development
 - Current task index status.
 - Roadmap node updated, exported, or displayed.
 - Bad-case intake result from this turn.
-- New or updated context.
+- New or updated context, limited to key nodes and bad cases.
 - Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.
 - Any parked task that should be offered for resume.
 

@@ -7,6 +7,8 @@ Use this format for `.codex/context/bad-cases.md`, task-local `.codex/context/ta
 
 This register tracks bad cases found during development and the guards that prevent them from recurring.
 
+Record only bad cases that are user-visible, recurring, risky, fixed, deferred, or needed to explain a guard. Do not turn the register into a defect diary.
+
 ## Active Cases
 
 ### BC-YYYYMMDD-001: Short descriptive title
@@ -19,14 +21,14 @@ This register tracks bad cases found during development and the guards that prev
 - Roadmap nodes: `NODE-...`
 - Tags: #hot | #flaky | #ui | #data-loss | #route-risk | custom tags
 - Frequency: first-seen | repeated-N | high-frequency
-- Phenomenon: what went wrong, including exact user-visible behavior or failing output
-- Trigger / reproduction: commands, steps, inputs, environment, or preconditions
-- Root cause: confirmed cause, suspected cause, or unknown
-- Fix method: code/test/config/documentation change that fixed it
-- Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note
+- Phenomenon: one-line user-visible behavior or failing output
+- Trigger / reproduction: shortest command, step, input, environment, or precondition
+- Root cause: confirmed cause, suspected cause, or unknown, one line
+- Fix method: code/test/config/documentation change that fixed it, one line
+- Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note, one line
 - Reusable guard path: project test file, `.codex/context/bad-case-tests/...`, or none
 - Guard reuse rule: reuse this recorded guard before creating any new test or script for this case
-- Test chain: ordered checks, commands, screenshots, logs, or manual steps that verify the case
+- Test chain: ordered checks only when multiple checks are genuinely needed
 - High-frequency note: warning text to show Codex when this pattern repeats often
 - Recurrence analysis: why it came back, if it ever did
 - Route-change note: only when an approved technical route change intentionally changes expected behavior
@@ -55,3 +57,4 @@ Move old resolved entries here only if the active section becomes noisy. Keep en
 - If a guard is manual-only, list the exact manual check and why that is acceptable for now.
 - Link bad cases to roadmap nodes so Codex can quickly see which mainline decisions created or fixed them.
 - Add tags and frequency notes when a bad case repeats often; high-frequency cases should stand out during quick scanning.
+- Keep entries compact. If the same information appears in a roadmap node, link to it instead of duplicating it.

@@ -163,7 +163,7 @@ def show_roadmap(root: Path, open_browser: bool = False) -> Path:
 
 
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
-    quick_scan = parse_bullets(extract_section(index, "## Quick Scan"))
+    quick_scan = parse_bullets(extract_section(index, "## Quick Scan"))[:4]
     nodes = parse_roadmap_nodes(roadmap)
     bad_case_cards = parse_bad_case_cards(bad_cases)
     exported = datetime.now().isoformat(timespec="seconds")
@@ -267,6 +267,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .field {{ margin: 8px 0; }}
     .field b {{ color: var(--muted); font-weight: 600; }}
     .avoid {{ border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 10px; border-radius: 6px; }}
+    details {{ margin-top: 10px; color: var(--muted); }}
+    summary {{ cursor: pointer; color: var(--ink); font-weight: 650; }}
+    details .field {{ margin-left: 2px; }}
     .badcase {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 10px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
     .tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
@@ -364,11 +367,14 @@ def render_node(node: dict[str, str], number: int) -> str:
       <span class="pill">{task}</span>
     </div>
     <p class="field"><b>Outcome:</b> {outcome}</p>
-    <p class="field"><b>Decision:</b> {reason}</p>
-    <p class="field avoid"><b>Avoid going back:</b> {avoid}</p>
     <p class="field"><b>Next:</b> {next_step}</p>
     <p class="field"><b>Bad cases:</b> {linked}</p>
-    <p class="field"><b>Test chain:</b> {test_chain}</p>
+    <details>
+      <summary>Details</summary>
+      <p class="field"><b>Decision:</b> {reason}</p>
+      <p class="field avoid"><b>Avoid going back:</b> {avoid}</p>
+      <p class="field"><b>Test chain:</b> {test_chain}</p>
+    </details>
   </article>
 </section>"""
 
@@ -395,12 +401,14 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
 
 def render_bad_case(card: dict[str, str]) -> str:
     title = html.escape(card.get("title", "Bad case"))
+    status = html.escape(card.get("status", "unknown"))
     nodes = html.escape(card.get("roadmap nodes", "unlinked"))
     frequency = html.escape(card.get("frequency", "unknown"))
     tags = re.findall(r"#[\\w-]+", card.get("tags", ""))
     tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags) or '<span class="tag">untagged</span>'
     return f"""<article class="badcase">
   <h3>{title}</h3>
+  <p class="muted">Status: {status}</p>
   <p class="muted">Nodes: {nodes}</p>
   <p class="muted">Frequency: {frequency}</p>
   <div class="tags">{tag_html}</div>
