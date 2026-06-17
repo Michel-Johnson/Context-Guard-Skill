@@ -122,7 +122,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Use a shared horizontal route canvas for branch overview. Represent route offsets with spacer columns inside the route grid, not by shifting or clipping the entire route section boundary.
 - Keep branch connector lines aligned with the same offset coordinate used by spacer columns; connector lines should not stay pinned to the route section's left edge.
 - Anchor branch connector endpoints to the first visible card/column of that branch, not to the whole route section. The connector must visually meet the card edge and must not run loosely through the card interior.
-- Use route depth color semantics in branch overview: the main route is green, first-level branches are a darker green, and each deeper branch level becomes darker again.
+- Use route depth color semantics in branch overview: the main route is green, first-level branches move to cool cyan/teal, deeper branch levels move colder toward blue and indigo.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful tags as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Keep raw `#tag-slug` values only in source context. In user-facing HTML, remove `#`, avoid slug-like text, and localize tag labels to the selected/user language.

@@ -184,7 +184,7 @@ The smallest useful action to resume this task.
 - Branch overview should use one shared horizontal route canvas. Route alignment should use grid spacer columns, not padding that shifts or clips the whole route section.
 - Branch connector lines should use the same offset coordinate as the route's spacer columns, not a fixed left-edge position.
 - Branch connector endpoints should be anchored to the first visible branch card/column and visibly meet the card edge; do not draw connector lines from the whole route section through the card interior.
-- Route color should encode branch depth: main route green, first-level branch darker green, deeper branch levels progressively darker.
+- Route color should encode branch depth: main route green, first-level branch cool cyan/teal, deeper branch levels progressively colder toward blue and indigo.
 - Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.

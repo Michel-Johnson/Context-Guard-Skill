@@ -195,6 +195,7 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 - Use `Branch:` when work forks into side routes or parallel mainlines.
 - Use `Parent:` when a branch starts from a specific earlier node.
 - Link roadmap nodes to bad cases and test-chain notes instead of duplicating full details.
+- In branch overview, route depth uses color temperature: main route green, first-level branches cool cyan/teal, deeper branches colder blue/indigo.
 
 The human HTML view shows only the concise overview. Details belong in `roadmap-details.html`.
 

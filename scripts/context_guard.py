@@ -1250,9 +1250,9 @@ def build_route_depths(
 def route_color_vars(depth: int) -> str:
     palette = [
         ("#2f7d63", "#dff1e7", "#c2d8c8"),
-        ("#23664f", "#d8eadf", "#b3ceb9"),
-        ("#184d3c", "#d1e3d8", "#9dbbaa"),
-        ("#10392f", "#cadbd2", "#8aa895"),
+        ("#197a8a", "#d8eef2", "#9fc9d2"),
+        ("#2b55b3", "#dfe8fb", "#adc2eb"),
+        ("#6542b8", "#e9e2fb", "#c4b4ec"),
     ]
     accent, soft, line = palette[min(max(depth, 0), len(palette) - 1)]
     return f"--route-accent: {accent}; --route-soft: {soft}; --route-line: {line};"
