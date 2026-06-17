@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py user-prompt-submit",
+            "timeout": 10,
+            "statusMessage": "Checking context intake"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py stop",
+            "timeout": 10,
+            "statusMessage": "Checking context checkpoint"
+          }
+        ]
+      }
+    ]
+  }
+}
