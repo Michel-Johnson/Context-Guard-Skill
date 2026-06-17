@@ -9,6 +9,7 @@ Use this structure for project context:
 ├── bad-cases.md
 ├── roadmap/
 │   ├── roadmap.html
+│   ├── roadmap-details.html
 │   └── roadmap.md
 ├── tasks/
 │   └── CTX-YYYYMMDD-short-slug/
@@ -137,9 +138,10 @@ The smallest useful action to resume this task.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
-- Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly HTML route map at `.codex/context/roadmap/roadmap.html`. Use `export-roadmap --format md` only for agent-readable Markdown at `.codex/context/roadmap/roadmap.md`.
-- Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same HTML file.
+- Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`. Use `export-roadmap --format md` only for agent-readable Markdown at `.codex/context/roadmap/roadmap.md`.
+- Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
 - The HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
+- Keep the overview sparse. Put full Outcome, Decision, Next, and guard details in `roadmap-details.html`.
 
 ## Pruning Rules
 

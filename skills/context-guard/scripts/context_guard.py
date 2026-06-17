@@ -129,11 +129,13 @@ def export_roadmap(root: Path, output_format: str = "html") -> Path:
     index = (ctx / "index.md").read_text(encoding="utf-8")
     bad_cases = (ctx / "bad-cases.md").read_text(encoding="utf-8")
     if output_format == "html":
+        detail_dest = out_dir / "roadmap-details.html"
         for old_html in out_dir.glob("*.html"):
-            if old_html != dest:
+            if old_html not in {dest, detail_dest}:
                 old_html.unlink()
         (out_dir / "roadmap.md").write_text(render_roadmap_markdown(ctx, index, roadmap, bad_cases), encoding="utf-8")
         dest.write_text(render_roadmap_html(ctx, index, roadmap, bad_cases), encoding="utf-8")
+        detail_dest.write_text(render_roadmap_details_html(ctx, index, roadmap, bad_cases), encoding="utf-8")
         return dest
     dest.write_text(render_roadmap_markdown(ctx, index, roadmap, bad_cases), encoding="utf-8")
     return dest
@@ -176,15 +178,11 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
 
 
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
-    quick_scan = parse_bullets(extract_section(index, "## Quick Scan"))[:4]
     nodes = parse_roadmap_nodes(roadmap)
     bad_case_cards = parse_bad_case_cards(bad_cases)
     exported = datetime.now().isoformat(timespec="seconds")
-    quick_items = "\n".join(
-        f"<li><span>{html.escape(k)}</span><strong>{html.escape(human_text(v))}</strong></li>"
-        for k, v in quick_scan
-    ) or "<li><span>Status</span><strong>No quick scan entries</strong></li>"
-    node_items = "\n".join(render_track_column(node, i, bad_case_cards) for i, node in enumerate(nodes, 1))
+    case_anchor_map = build_case_anchor_map(bad_case_cards)
+    node_items = "\n".join(render_track_column(node, i, bad_case_cards, case_anchor_map) for i, node in enumerate(nodes, 1))
     if not node_items:
         node_items = '<section class="empty">No roadmap nodes recorded yet.</section>'
     return f"""<!doctype html>
@@ -216,29 +214,16 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }}
     header {{
-      padding: 28px 32px 16px;
+      padding: 22px 32px 14px;
       border-bottom: 1px solid var(--line);
       background: var(--panel);
     }}
-    h1 {{ margin: 0 0 6px; font-size: 28px; letter-spacing: 0; }}
+    h1 {{ margin: 0 0 4px; font-size: 24px; letter-spacing: 0; }}
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
     .shell {{
-      padding: 18px 32px 34px;
-    }}
-    .quick-panel {{
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      padding: 14px 16px;
-      margin-bottom: 16px;
+      padding: 16px 32px 30px;
     }}
     h2 {{ margin: 0 0 12px; font-size: 16px; }}
-    .quick {{ list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(150px, 1fr)); }}
-    .quick li {{ border-right: 1px solid var(--line); padding-right: 12px; }}
-    .quick li:last-child {{ border-right: 0; padding-right: 0; }}
-    .quick span {{ display: block; color: var(--muted); font-size: 12px; }}
-    .quick strong {{ display: block; margin-top: 2px; overflow-wrap: anywhere; }}
     .track-board {{
       overflow: auto;
       background: var(--panel);
@@ -250,14 +235,14 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .track-grid {{
       display: grid;
       grid-auto-flow: column;
-      grid-auto-columns: minmax(280px, 340px);
+      grid-auto-columns: minmax(220px, 280px);
       gap: 14px;
-      min-height: 620px;
+      min-height: 430px;
       align-items: stretch;
     }}
     .track-column {{
       display: grid;
-      grid-template-rows: minmax(190px, auto) minmax(160px, auto) minmax(130px, auto);
+      grid-template-rows: minmax(130px, auto) minmax(120px, auto) minmax(90px, auto);
       gap: 12px;
     }}
     .lane {{
@@ -278,6 +263,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       margin-bottom: 8px;
       text-transform: uppercase;
     }}
+    .lane-link {{
+      color: inherit;
+      text-decoration: none;
+      display: block;
+    }}
+    .lane-link:hover h3, .detail-link:hover {{ color: var(--accent); }}
+    .summary {{
+      color: var(--muted);
+      font-size: 13px;
+      margin: 8px 0 0;
+    }}
     .node-heading {{
       display: flex;
       gap: 8px;
@@ -290,7 +286,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       display: grid; place-items: center;
       background: var(--accent); color: white; font-weight: 700;
     }}
-    .lane h3 {{ margin: 0; font-size: 16px; line-height: 1.35; }}
+    .lane h3 {{ margin: 0; font-size: 15px; line-height: 1.35; }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
     .pill {{
       display: inline-flex;
@@ -302,18 +298,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-size: 12px;
       font-weight: 600;
     }}
-    .field {{ margin: 8px 0; }}
-    .field b {{ color: var(--muted); font-weight: 600; }}
-    .avoid {{ border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 10px; border-radius: 6px; }}
-    details {{ margin-top: 10px; color: var(--muted); }}
-    summary {{ cursor: pointer; color: var(--ink); font-weight: 650; }}
-    details .field {{ margin-left: 2px; }}
     .badcase {{ border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }}
     .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
     .tags {{ display: flex; gap: 6px; flex-wrap: wrap; }}
     .tag {{ background: #eef2f7; color: #334155; border-radius: 999px; padding: 2px 7px; font-size: 12px; }}
     .muted {{ color: var(--muted); }}
+    .detail-link {{ color: var(--accent); font-weight: 650; text-decoration: none; font-size: 13px; }}
     .empty {{ color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }}
     @media (max-width: 980px) {{
       .shell {{ padding: 16px; }}
@@ -322,9 +313,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       header {{ padding: 22px 16px 14px; }}
     }}
     @media (max-width: 560px) {{
-      .quick {{ grid-template-columns: 1fr; }}
-      .quick li {{ border-right: 0; border-bottom: 1px solid var(--line); padding-right: 0; padding-bottom: 8px; }}
-      .quick li:last-child {{ border-bottom: 0; padding-bottom: 0; }}
+      h1 {{ font-size: 22px; }}
     }}
   </style>
 </head>
@@ -333,21 +322,61 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     <h1>Context Roadmap</h1>
     <div class="meta">
       <span>Human-facing view</span>
-      <span>Codex source: <code>index.md</code>, <code>roadmap.md</code>, <code>bad-cases.md</code></span>
-      <span>Source: <code>{html.escape(str(ctx))}</code></span>
-      <span>Exported: {html.escape(exported)}</span>
+      <span>Updated: {html.escape(exported)}</span>
     </div>
   </header>
   <div class="shell">
-    <section class="quick-panel">
-      <h2>Quick Scan</h2>
-      <ul class="quick">{quick_items}</ul>
-    </section>
     <main class="track-board">
-      <h2>Roadmap Tracks</h2>
+      <h2>Roadmap</h2>
       <div class="track-grid">{node_items}</div>
     </main>
   </div>
+</body>
+</html>
+"""
+
+
+def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
+    nodes = parse_roadmap_nodes(roadmap)
+    cards = parse_bad_case_cards(bad_cases)
+    case_anchor_map = build_case_anchor_map(cards)
+    exported = datetime.now().isoformat(timespec="seconds")
+    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in enumerate(nodes, 1))
+    if not node_sections:
+        node_sections = '<section class="detail-card">No roadmap nodes recorded yet.</section>'
+    case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Context Roadmap Details</title>
+  <style>
+    body {{ margin: 0; background: #f6f7f9; color: #20242a; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    header {{ background: #fff; border-bottom: 1px solid #d9dee7; padding: 22px 32px; }}
+    main {{ max-width: 980px; margin: 0 auto; padding: 22px 18px 40px; }}
+    h1 {{ margin: 0 0 4px; font-size: 24px; }}
+    h2 {{ margin-top: 28px; }}
+    h3 {{ margin: 0 0 8px; font-size: 18px; }}
+    .meta, .muted {{ color: #69707d; }}
+    .detail-card {{ background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; margin: 14px 0; }}
+    .field {{ margin: 8px 0; }}
+    .field b {{ color: #69707d; }}
+    .tag {{ display: inline-block; background: #eef2f7; border-radius: 999px; padding: 2px 7px; margin-right: 5px; font-size: 12px; }}
+    a {{ color: #2563eb; text-decoration: none; font-weight: 650; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Roadmap Details</h1>
+    <div class="meta">Human detail view · Updated: {html.escape(exported)} · <a href="roadmap.html">Back to roadmap</a></div>
+  </header>
+  <main>
+    <h2>Main Route</h2>
+    {node_sections}
+    <h2>Bad Cases</h2>
+    {case_sections or '<p class="muted">No bad cases recorded.</p>'}
+  </main>
 </body>
 </html>
 """
@@ -406,6 +435,17 @@ def human_text(text: str) -> str:
     return text
 
 
+def short_text(text: str, limit: int = 92) -> str:
+    text = " ".join(human_text(text).split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "..."
+
+
+def build_case_anchor_map(cards: list[dict[str, str]]) -> dict[str, str]:
+    return {card.get("title", ""): f"case-{i}" for i, card in enumerate(cards, 1)}
+
+
 def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> list[dict[str, str]]:
     nid = node_id(node)
     linked = set(re.findall(r"BC-\d{8}-\d+", node.get("linked bad cases", "")))
@@ -420,7 +460,53 @@ def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> lis
     return matched
 
 
-def render_track_column(node: dict[str, str], number: int, bad_case_cards: list[dict[str, str]]) -> str:
+def render_track_column(
+    node: dict[str, str],
+    number: int,
+    bad_case_cards: list[dict[str, str]],
+    case_anchor_map: dict[str, str],
+) -> str:
+    title = html.escape(human_title(node.get("title", f"Node {number}")))
+    status = html.escape(node.get("status", "unknown"))
+    date = html.escape(node.get("date", "undated"))
+    outcome = html.escape(short_text(node.get("outcome", "No outcome recorded.")))
+    test_chain = html.escape(short_text(node.get("test chain", "No test chain recorded."), 70))
+    cases = bad_cases_for_node(node, bad_case_cards)
+    case_items = "\n".join(render_bad_case_summary(card, case_anchor_map.get(card.get("title", ""), "case-1")) for card in cases)
+    if not case_items:
+        case_items = '<p class="muted">No linked bad cases.</p>'
+    return f"""<section class="track-column">
+  <article class="lane lane-main" data-lane="main">
+    <a class="lane-link" href="roadmap-details.html#node-{number}">
+      <div class="lane-label">Main Route</div>
+      <div class="node-heading">
+        <div class="node-number">{number}</div>
+        <h3>{title}</h3>
+      </div>
+      <div class="node-meta">
+        <span class="pill">{status}</span>
+        <span class="pill">{date}</span>
+      </div>
+      <p class="summary">{outcome}</p>
+    </a>
+  </article>
+  <article class="lane lane-bad-cases" data-lane="bad-cases">
+    <div class="lane-label">Bad Cases</div>
+    {case_items}
+  </article>
+  <article class="lane lane-test-chain" data-lane="test-chain">
+    <div class="lane-label">Test Chain</div>
+    <a class="detail-link" href="roadmap-details.html#node-{number}">{test_chain}</a>
+  </article>
+</section>"""
+
+
+def render_node_detail(
+    node: dict[str, str],
+    number: int,
+    bad_case_cards: list[dict[str, str]],
+    case_anchor_map: dict[str, str],
+) -> str:
     title = html.escape(human_title(node.get("title", f"Node {number}")))
     status = html.escape(node.get("status", "unknown"))
     date = html.escape(node.get("date", "undated"))
@@ -430,39 +516,19 @@ def render_track_column(node: dict[str, str], number: int, bad_case_cards: list[
     next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
     test_chain = html.escape(human_text(node.get("test chain", "none")))
     cases = bad_cases_for_node(node, bad_case_cards)
-    case_items = "\n".join(render_bad_case(card) for card in cases)
-    if not case_items:
-        case_items = '<p class="muted">No linked bad cases.</p>'
-    case_summary = "No linked bad cases." if not cases else f"{len(cases)} linked bad case{'s' if len(cases) != 1 else ''}."
-    return f"""<section class="track-column">
-  <article class="lane lane-main" data-lane="main">
-    <div class="lane-label">Main Route</div>
-    <div class="node-heading">
-      <div class="node-number">{number}</div>
-      <h3>{title}</h3>
-    </div>
-    <div class="node-meta">
-      <span class="pill">{status}</span>
-      <span class="pill">{date}</span>
-    </div>
-    <p class="field"><b>Outcome:</b> {outcome}</p>
-    <p class="field"><b>Next:</b> {next_step}</p>
-    <p class="field"><b>Bad cases:</b> {html.escape(case_summary)}</p>
-    <details>
-      <summary>Details</summary>
-      <p class="field"><b>Decision:</b> {reason}</p>
-      <p class="field avoid"><b>Avoid going back:</b> {avoid}</p>
-      <p class="field"><b>Test chain:</b> {test_chain}</p>
-    </details>
-  </article>
-  <article class="lane lane-bad-cases" data-lane="bad-cases">
-    <div class="lane-label">Bad Cases</div>
-    {case_items}
-  </article>
-  <article class="lane lane-test-chain" data-lane="test-chain">
-    <div class="lane-label">Test Chain</div>
-    <p class="field">{test_chain}</p>
-  </article>
+    case_links = ", ".join(
+        f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{html.escape(human_title(card.get("title", "Bad case")))}</a>'
+        for card in cases
+    ) or "None"
+    return f"""<section class="detail-card" id="node-{number}">
+  <h3>{number}. {title}</h3>
+  <p class="muted">{status} · {date}</p>
+  <p class="field"><b>Outcome:</b> {outcome}</p>
+  <p class="field"><b>Decision:</b> {reason}</p>
+  <p class="field"><b>Avoid going back:</b> {avoid}</p>
+  <p class="field"><b>Next:</b> {next_step}</p>
+  <p class="field"><b>Bad cases:</b> {case_links}</p>
+  <p class="field"><b>Test chain:</b> {test_chain}</p>
 </section>"""
 
 
@@ -486,20 +552,43 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
     return cards
 
 
-def render_bad_case(card: dict[str, str]) -> str:
+def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
+    title = html.escape(human_title(card.get("title", "Bad case")))
+    status = html.escape(card.get("status", "unknown"))
+    return f"""<article class="badcase">
+  <a class="detail-link" href="roadmap-details.html#{html.escape(anchor)}">{title}</a>
+  <p class="muted">{status}</p>
+</article>"""
+
+
+def render_case_detail(card: dict[str, str], anchor: str) -> str:
     title = html.escape(human_title(card.get("title", "Bad case")))
     status = html.escape(card.get("status", "unknown"))
     frequency = html.escape(card.get("frequency", "unknown"))
     phenomenon = html.escape(human_text(card.get("phenomenon", "")))
+    trigger = html.escape(human_text(card.get("trigger / reproduction", "")))
+    cause = html.escape(human_text(card.get("root cause", "")))
+    fix = html.escape(human_text(card.get("fix method", "")))
+    guard = html.escape(human_text(card.get("guard / verification", "")))
     tags = re.findall(r"#[\\w-]+", card.get("tags", ""))
     tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags) or '<span class="tag">untagged</span>'
-    phenomenon_html = f'  <p class="field">{phenomenon}</p>\n' if phenomenon else ""
-    return f"""<article class="badcase">
+    optional = "\n".join(
+        line
+        for line in [
+            f'  <p class="field"><b>Phenomenon:</b> {phenomenon}</p>' if phenomenon else "",
+            f'  <p class="field"><b>Trigger:</b> {trigger}</p>' if trigger else "",
+            f'  <p class="field"><b>Root cause:</b> {cause}</p>' if cause else "",
+            f'  <p class="field"><b>Fix:</b> {fix}</p>' if fix else "",
+            f'  <p class="field"><b>Guard:</b> {guard}</p>' if guard else "",
+        ]
+        if line
+    )
+    return f"""<section class="detail-card" id="{html.escape(anchor)}">
   <h3>{title}</h3>
-{phenomenon_html}  <p class="muted">Status: {status}</p>
-  <p class="muted">Frequency: {frequency}</p>
+  <p class="muted">{status} · {frequency}</p>
+{optional}
   <div class="tags">{tag_html}</div>
-</article>"""
+</section>"""
 
 
 def extract_section(text: str, heading: str) -> str:

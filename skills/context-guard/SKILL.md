@@ -71,9 +71,18 @@ Each node should include:
 - next step
 - links to task folder, linked bad cases, and relevant test-chain notes
 
-Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes the human-facing HTML roadmap to the stable file `.codex/context/roadmap/roadmap.html`, updates the stable agent-readable Markdown copy at `.codex/context/roadmap/roadmap.md`, and prints the generated file path and `file://` URL. Use `export-roadmap --format md` only when only the Markdown export is needed.
+Support displaying the route map with `scripts/context_guard.py show-roadmap`, which reads `.codex/context/roadmap.md`, writes the human-facing HTML overview to the stable file `.codex/context/roadmap/roadmap.html`, writes human-facing details to `.codex/context/roadmap/roadmap-details.html`, updates the stable agent-readable Markdown copy at `.codex/context/roadmap/roadmap.md`, and prints the generated overview path and `file://` URL. Use `export-roadmap --format md` only when only the Markdown export is needed.
 
-Do not create timestamped HTML roadmap exports for display. The roadmap folder should contain one user-facing HTML file that gets overwritten, plus stable agent-readable formats as needed.
+Do not create timestamped HTML roadmap exports for display. The roadmap folder should contain stable user-facing HTML files that get overwritten, plus stable agent-readable formats as needed.
+
+### User-Facing Overview
+
+`roadmap.html` is the user's quick overview. Keep it sparse:
+
+- Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
+- Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
+- Link each node, bad case, and test-chain item to `roadmap-details.html`.
+- Put detailed fields in `roadmap-details.html`, not in the overview.
 
 ### User-Facing Labels
 
