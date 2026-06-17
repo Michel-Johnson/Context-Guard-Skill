@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Lightweight lifecycle reminders for the Context Guard plugin.
 
-The hook intentionally avoids mutating project files. It nudges Codex to use
-the context-guard skill at the two moments where omission is most costly:
+The hook initializes folder-scoped context on session start and nudges Codex to
+use the context-guard skill at the two moments where omission is most costly:
 prompt intake and turn stop.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
+
+from context_guard import context_dir, init_context
 
 
 def git_root(cwd: Path) -> Path:
@@ -113,8 +114,18 @@ def main() -> int:
     root = git_root(Path.cwd())
     context_dir = root / ".codex" / "context"
     index_path = context_dir / "index.md"
+    roadmap_path = context_dir / "roadmap.md"
     bad_cases_path = context_dir / "bad-cases.md"
     text = prompt_text(read_stdin())
+
+    if event == "session-start":
+        created = init_context(root)
+        if created:
+            print(f"[context-guard] initialized folder context: {context_dir}")
+        else:
+            print(f"[context-guard] folder context ready: {context_dir}")
+        print("[context-guard] use .codex/context/index.md for quick scan and .codex/context/roadmap.md for route nodes.")
+        return 0
 
     if event == "user-prompt-submit":
         hints: list[str] = []
@@ -126,10 +137,11 @@ def main() -> int:
             hints.append("run Context Guard intake: continue current context or note no active context")
         print("[context-guard] " + "; ".join(hints))
         print(f"[context-guard] context index: {index_path}")
+        print(f"[context-guard] route map: {roadmap_path}")
         return 0
 
     if event == "stop":
-        print("[context-guard] run turn-end checkpoint before finalizing: update .codex/context/index.md, park/resume tasks if needed, and recheck relevant bad-case guards.")
+        print("[context-guard] run turn-end checkpoint before finalizing: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
         print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] bad-case register: {bad_cases_path}")
         return 0

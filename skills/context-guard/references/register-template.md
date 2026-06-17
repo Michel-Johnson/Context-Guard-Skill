@@ -16,6 +16,9 @@ This register tracks bad cases found during development and the guards that prev
 - Last checked: YYYY-MM-DD
 - Scope: feature, files, tests, route, UI flow, API, or subsystem
 - Context task: `CTX-...` folder or shared
+- Roadmap nodes: `NODE-...`
+- Tags: #hot | #flaky | #ui | #data-loss | #route-risk | custom tags
+- Frequency: first-seen | repeated-N | high-frequency
 - Phenomenon: what went wrong, including exact user-visible behavior or failing output
 - Trigger / reproduction: commands, steps, inputs, environment, or preconditions
 - Root cause: confirmed cause, suspected cause, or unknown
@@ -23,6 +26,8 @@ This register tracks bad cases found during development and the guards that prev
 - Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note
 - Reusable guard path: project test file, `.codex/context/bad-case-tests/...`, or none
 - Guard reuse rule: reuse this recorded guard before creating any new test or script for this case
+- Test chain: ordered checks, commands, screenshots, logs, or manual steps that verify the case
+- High-frequency note: warning text to show Codex when this pattern repeats often
 - Recurrence analysis: why it came back, if it ever did
 - Route-change note: only when an approved technical route change intentionally changes expected behavior
 - Evidence: links to tests, commands run, PRs, commits, screenshots, or logs
@@ -48,3 +53,5 @@ Move old resolved entries here only if the active section becomes noisy. Keep en
 - Name any guard script with the bad case ID so it is easy to find and reuse.
 - Update existing context when expected behavior changes; do not create parallel guards for the same case unless the old one is explicitly obsolete.
 - If a guard is manual-only, list the exact manual check and why that is acceptable for now.
+- Link bad cases to roadmap nodes so Codex can quickly see which mainline decisions created or fixed them.
+- Add tags and frequency notes when a bad case repeats often; high-frequency cases should stand out during quick scanning.

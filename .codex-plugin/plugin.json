@@ -1,7 +1,7 @@
 {
   "name": "context-guard",
-  "version": "0.2.0",
-  "description": "Maintain project context, task switching memory, and bad-case regression guards.",
+  "version": "0.3.0",
+  "description": "Maintain folder context, route maps, task switching memory, and bad-case regression guards.",
   "author": {
     "name": "Michel-Johnson",
     "url": "https://github.com/Michel-Johnson"
@@ -11,7 +11,7 @@
   "interface": {
     "displayName": "Context Guard",
     "shortDescription": "Maintain task context and regression memory.",
-    "longDescription": "Context Guard maintains a project context folder, dynamic task index, parked work queue, and bad-case regression memory so Codex can preserve key context across interruptions.",
+    "longDescription": "Context Guard maintains a folder-scoped context directory, quick-scan index, route map, parked work queue, and bad-case/test-chain memory so Codex can preserve context across threads and interruptions.",
     "developerName": "Michel-Johnson",
     "category": "Productivity",
     "capabilities": ["Workflow", "Review"],
