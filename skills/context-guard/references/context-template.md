@@ -133,6 +133,7 @@ The smallest useful action to resume this task.
 - Keep `roadmap.md` as the route map. It should show progress as nodes, not a raw transcript.
 - Use `Level: major` for significant milestones shown as main route cards; use `Level: checkpoint` for minor progress that should live in details.
 - Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
+- In the human overview, visible card numbers should be consecutive per route group after checkpoint filtering, not source node numbers with gaps.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.

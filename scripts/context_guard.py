@@ -733,6 +733,8 @@ def human_text(text: str) -> str:
 
 ZH_TEXT: dict[str, str] = {
     "Main": "主线",
+    "Roadmap UX": "路线图体验",
+    "Documentation": "文档支线",
     "Identify Superpowers as workflow baseline": "将 Superpowers 作为工作流基线",
     "Create initial bad-case regression guard": "创建初始 bad case 回归防线",
     "Rename and widen scope to Context Guard": "重命名并扩展为 Context Guard",
@@ -755,6 +757,8 @@ ZH_TEXT: dict[str, str] = {
     "Add goal-mode context checkpoints": "添加 goal 模式 context 检查点",
     "Move lane titles to left label column": "将轨道标题移到左侧标签列",
     "Use vertical labels and Chinese record text": "使用竖排标签和中文记录文本",
+    "Add repository README": "添加仓库 README",
+    "Rebalance roadmap routes and numbering": "重整路线图路线和编号",
     "Bad cases would only live in chat": "Bad case 只存在聊天里",
     "Scope drift toward scripting every bad case": "范围漂移到为每个 bad case 写脚本",
     "Interrupted design context could be lost": "被中断的设计 context 可能丢失",
@@ -779,6 +783,7 @@ ZH_TEXT: dict[str, str] = {
     "Lane titles repeat inside every node card": "轨道标题在每个节点卡片里重复",
     "Lane label column is not vertical": "轨道标签列没有竖排",
     "Chinese mode leaves record content in English": "中文模式下记录内容仍是英文",
+    "Visible roadmap numbering skips hidden checkpoints": "路线图可见编号跳过隐藏检查点",
     "Skill may not activate without explicit mention": "未显式提及时 skill 可能不会激活",
     "Roadmap nodes were not recorded during this skill's own development": "开发这个 skill 时没有记录路线节点",
     "Reviewed Superpowers and installed it for stronger engineering workflow discipline.": "已查看 Superpowers 并安装，用于强化工程工作流纪律。",
@@ -824,12 +829,18 @@ ZH_TEXT: dict[str, str] = {
     "Roadmap overview now renders Main Route, Bad Cases, and Test Chain labels once in a left-side column for each route group.": "路线图概览现在为每个路线组在左侧列中只显示一次主要路线、Bad Case 和测试链路标签。",
     "Lane header column assertion checks one left label column and no lane labels inside node cards; pushed commit `2169387`.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题；已推送 commit `2169387`。",
     "Roadmap labels use a vertical left column and Chinese mode localizes record titles, summaries, bad cases, and test snippets.": "路线图标签使用左侧竖排列，中文模式会本地化记录标题、摘要、bad case 和测试片段。",
+    "Main overview route is coarser, Roadmap UX and Documentation appear as branch routes, and visible overview numbers are consecutive per route group.": "主概览路线更粗粒度，路线图体验和文档以支线显示，并且每个路线组的可见编号连续。",
+    "Consecutive numbering assertion, branch route assertion, real roadmap export, and stable file assertion.": "连续编号断言、分支路线断言、真实路线图导出和稳定文件断言。",
     "i18n assertion checks language toggles, Chinese/English labels, URL parameter support, and details page labels.": "i18n 断言检查语言切换、中英文标签、URL 参数支持和详情页标签。",
     "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则。",
     "Lane header column assertion checks one left label column and no lane labels inside node cards.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题。",
     "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, and localized detail records.": "竖排标签和中文记录断言检查轨道书写方向、概览记录本地化和详情记录本地化。",
     "Vertical label and Chinese record assertion checks `writing-mode: vertical-rl` in generated overview CSS.": "竖排标签和中文记录断言检查生成的概览 CSS 中保留 `writing-mode: vertical-rl`。",
     "Vertical label and Chinese record assertion passed.": "竖排标签和中文记录断言已通过。",
+    "Overview cards show source node numbers with gaps, such as 3, 5, 7, when checkpoints are hidden.": "隐藏检查点后，概览卡片会显示带跳号的源节点编号，例如 3、5、7。",
+    "The renderer uses the source node index as both the visible overview number and the detail anchor number.": "渲染器同时把源节点序号用作可见概览编号和详情锚点编号。",
+    "Split source detail anchors from visible overview display numbers; overview cards now enumerate display items after checkpoint filtering.": "将源详情锚点和可见概览编号分离；概览卡片现在在过滤检查点后重新编号。",
+    "Red case reproduced visible numbers `1, 3`; green assertion confirms overview shows `1, 2` while links still target source detail anchors.": "红灯用例复现了可见编号 `1, 3`；绿灯断言确认概览显示 `1, 2`，同时链接仍指向源详情锚点。",
     "The left lane label column renders horizontally and can crowd or crop roadmap cards on narrow screens.": "左侧轨道标签列横向渲染，在窄屏上会挤压或裁切路线图卡片。",
     "Chinese mode changes UI chrome but leaves node titles, summaries, bad-case titles, and test-chain text in English.": "中文模式只切换界面文字，但节点标题、摘要、bad case 标题和测试链路仍是英文。",
     "Lane labels were styled like normal horizontal text after moving them to the left column.": "轨道标签移到左侧列后仍按普通横排文本样式渲染。",
@@ -1041,7 +1052,10 @@ def render_route_group(
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
     display_items = major_items or items
-    columns = "\n".join(render_track_column(node, number, bad_case_cards, case_anchor_map) for number, node in display_items)
+    columns = "\n".join(
+        render_track_column(node, source_number, display_number, bad_case_cards, case_anchor_map)
+        for display_number, (source_number, node) in enumerate(display_items, 1)
+    )
     label = localized_text(branch)
     count = len(major_items) if major_items else len(items)
     checkpoint_strip = ""
@@ -1070,11 +1084,12 @@ def render_route_group(
 
 def render_track_column(
     node: dict[str, str],
-    number: int,
+    source_number: int,
+    display_number: int,
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    title = localized_text(human_title(node.get("title", f"Node {number}")))
+    title = localized_text(human_title(node.get("title", f"Node {source_number}")))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
@@ -1085,9 +1100,9 @@ def render_track_column(
         case_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
-    <a class="lane-link" href="roadmap-details.html#node-{number}">
+    <a class="lane-link" href="roadmap-details.html#node-{source_number}">
       <div class="node-heading">
-        <div class="node-number">{number}</div>
+        <div class="node-number">{display_number}</div>
         <h3>{title}</h3>
       </div>
       <div class="node-meta">
@@ -1101,7 +1116,7 @@ def render_track_column(
     {case_items}
   </article>
   <article class="lane lane-test-chain" data-lane="test-chain">
-    <a class="detail-link" href="roadmap-details.html#node-{number}">{test_chain}</a>
+    <a class="detail-link" href="roadmap-details.html#node-{source_number}">{test_chain}</a>
   </article>
 </section>"""
 

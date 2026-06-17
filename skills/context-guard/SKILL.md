@@ -97,6 +97,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
 - Show only `Level: major` nodes as main route cards; summarize hidden checkpoints compactly and put checkpoint details in `roadmap-details.html`.
+- Number visible overview cards consecutively per route group after checkpoint filtering; keep source node IDs and source-order detail anchors hidden from the overview.
 - Show the three lane titles once in a left-side label column per route group. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful `#tags` as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
