@@ -181,7 +181,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     bad_case_cards = parse_bad_case_cards(bad_cases)
     exported = datetime.now().isoformat(timespec="seconds")
     quick_items = "\n".join(
-        f"<li><span>{html.escape(k)}</span><strong>{html.escape(v)}</strong></li>"
+        f"<li><span>{html.escape(k)}</span><strong>{html.escape(human_text(v))}</strong></li>"
         for k, v in quick_scan
     ) or "<li><span>Status</span><strong>No quick scan entries</strong></li>"
     node_items = "\n".join(render_track_column(node, i, bad_case_cards) for i, node in enumerate(nodes, 1))
@@ -395,6 +395,17 @@ def node_id(node: dict[str, str]) -> str:
     return match.group(1) if match else title.split(":", 1)[0].strip()
 
 
+def human_title(title: str) -> str:
+    return re.sub(r"^(?:NODE|BC)-\d{8}-\d+:\s*", "", title).strip() or title
+
+
+def human_text(text: str) -> str:
+    text = re.sub(r"`?CTX-\d{8}-[\w-]+`?", "this task", text)
+    text = re.sub(r"`?NODE-\d{8}-\d+`?", "a roadmap node", text)
+    text = re.sub(r"`?BC-\d{8}-\d+`?", "a linked bad case", text)
+    return text
+
+
 def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> list[dict[str, str]]:
     nid = node_id(node)
     linked = set(re.findall(r"BC-\d{8}-\d+", node.get("linked bad cases", "")))
@@ -410,20 +421,19 @@ def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> lis
 
 
 def render_track_column(node: dict[str, str], number: int, bad_case_cards: list[dict[str, str]]) -> str:
-    title = html.escape(node.get("title", f"Node {number}"))
+    title = html.escape(human_title(node.get("title", f"Node {number}")))
     status = html.escape(node.get("status", "unknown"))
     date = html.escape(node.get("date", "undated"))
-    task = html.escape(node.get("task", "unlinked"))
-    outcome = html.escape(node.get("outcome", "No outcome recorded."))
-    reason = html.escape(node.get("decision / reason", "No decision reason recorded."))
-    avoid = html.escape(node.get("avoid going back", "No avoided path recorded."))
-    next_step = html.escape(node.get("next", "No next step recorded."))
-    linked = html.escape(node.get("linked bad cases", "none"))
-    test_chain = html.escape(node.get("test chain", "none"))
+    outcome = html.escape(human_text(node.get("outcome", "No outcome recorded.")))
+    reason = html.escape(human_text(node.get("decision / reason", "No decision reason recorded.")))
+    avoid = html.escape(human_text(node.get("avoid going back", "No avoided path recorded.")))
+    next_step = html.escape(human_text(node.get("next", "No next step recorded.")))
+    test_chain = html.escape(human_text(node.get("test chain", "none")))
     cases = bad_cases_for_node(node, bad_case_cards)
     case_items = "\n".join(render_bad_case(card) for card in cases)
     if not case_items:
         case_items = '<p class="muted">No linked bad cases.</p>'
+    case_summary = "No linked bad cases." if not cases else f"{len(cases)} linked bad case{'s' if len(cases) != 1 else ''}."
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
     <div class="lane-label">Main Route</div>
@@ -434,11 +444,10 @@ def render_track_column(node: dict[str, str], number: int, bad_case_cards: list[
     <div class="node-meta">
       <span class="pill">{status}</span>
       <span class="pill">{date}</span>
-      <span class="pill">{task}</span>
     </div>
     <p class="field"><b>Outcome:</b> {outcome}</p>
     <p class="field"><b>Next:</b> {next_step}</p>
-    <p class="field"><b>Bad cases:</b> {linked}</p>
+    <p class="field"><b>Bad cases:</b> {html.escape(case_summary)}</p>
     <details>
       <summary>Details</summary>
       <p class="field"><b>Decision:</b> {reason}</p>
@@ -478,16 +487,16 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
 
 
 def render_bad_case(card: dict[str, str]) -> str:
-    title = html.escape(card.get("title", "Bad case"))
+    title = html.escape(human_title(card.get("title", "Bad case")))
     status = html.escape(card.get("status", "unknown"))
-    nodes = html.escape(card.get("roadmap nodes", "unlinked"))
     frequency = html.escape(card.get("frequency", "unknown"))
+    phenomenon = html.escape(human_text(card.get("phenomenon", "")))
     tags = re.findall(r"#[\\w-]+", card.get("tags", ""))
     tag_html = "".join(f'<span class="tag">{html.escape(tag)}</span>' for tag in tags) or '<span class="tag">untagged</span>'
+    phenomenon_html = f'  <p class="field">{phenomenon}</p>\n' if phenomenon else ""
     return f"""<article class="badcase">
   <h3>{title}</h3>
-  <p class="muted">Status: {status}</p>
-  <p class="muted">Nodes: {nodes}</p>
+{phenomenon_html}  <p class="muted">Status: {status}</p>
   <p class="muted">Frequency: {frequency}</p>
   <div class="tags">{tag_html}</div>
 </article>"""

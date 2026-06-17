@@ -75,6 +75,18 @@ Support displaying the route map with `scripts/context_guard.py show-roadmap`, w
 
 Do not create timestamped HTML roadmap exports for display. The roadmap folder should contain one user-facing HTML file that gets overwritten, plus stable agent-readable formats as needed.
 
+### User-Facing Labels
+
+Keep stable IDs in source context files because Codex needs them for linking nodes, bad cases, and tests. Do not expose those IDs in the default user-facing HTML roadmap.
+
+For `roadmap.html`, show concise natural-language labels:
+
+- Show node titles without `NODE-...` prefixes.
+- Show bad-case titles without `BC-...` prefixes.
+- Do not show `CTX-...` task IDs by default.
+- Summarize linked bad cases as short text or counts, then show the linked bad-case titles in the Bad Cases lane.
+- Only expose internal IDs when the user explicitly asks for debug/source details.
+
 ### Source Of Truth
 
 Do not use roadmap.html as a context source. The HTML file is only a human-facing view.
