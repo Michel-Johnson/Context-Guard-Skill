@@ -521,19 +521,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-group.route-branch {{
       position: relative;
-      padding-left: 24px;
-    }}
-    .route-group.route-branch::before {{
-      content: "";
-      position: absolute;
-      left: var(--route-connector-x, 6px);
-      top: -18px;
-      bottom: 14px;
-      width: 14px;
-      border-left: 2px solid var(--line);
-      border-bottom: 2px solid var(--line);
-      border-bottom-left-radius: 14px;
-      pointer-events: none;
     }}
     .route-head {{
       display: flex;
@@ -619,6 +606,26 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .track-column.route-column {{
       grid-template-rows: minmax(160px, auto);
+      position: relative;
+    }}
+    .route-group.route-branch .track-column.branch-start::before {{
+      content: "";
+      position: absolute;
+      left: 0;
+      top: -62px;
+      height: 62px;
+      border-left: 2px solid var(--line);
+      pointer-events: none;
+    }}
+    .route-group.route-branch .track-column.branch-start::after {{
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 18px;
+      border-top: 2px solid var(--line);
+      border-top-left-radius: 14px;
+      pointer-events: none;
     }}
     .track-label-column {{
       position: sticky;
@@ -1655,7 +1662,12 @@ def render_route_group(
     route_spacers = render_route_spacers(route_offset) if branch_mode else ""
     if branch_mode:
         columns = "\n".join(
-            render_route_column(node, source_number, display_number)
+            render_route_column(
+                node,
+                source_number,
+                display_number,
+                branch_start=branch_mode and display_number == 1 and route_offset > 0,
+            )
             for display_number, (source_number, node) in enumerate(display_items, 1)
         )
     else:
@@ -1680,12 +1692,7 @@ def render_route_group(
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
     branch_class = " route-branch" if parent_note else ""
-    connector_x = route_offset * 314 + 30
-    offset_attrs = (
-        f' data-route-offset="{route_offset}" style="--route-connector-x: {connector_x}px;"'
-        if branch_mode
-        else ""
-    )
+    offset_attrs = f' data-route-offset="{route_offset}"' if branch_mode else ""
     return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
@@ -1719,12 +1726,18 @@ def render_route_parent_note(
     return f'<span class="route-parent" data-route-parent>{localized_text("forked from")} {localized_text(parent_label)}</span>'
 
 
-def render_route_column(node: dict[str, str], source_number: int, display_number: int) -> str:
+def render_route_column(
+    node: dict[str, str],
+    source_number: int,
+    display_number: int,
+    branch_start: bool = False,
+) -> str:
     title = localized_text(human_title(node.get("title", f"Node {source_number}")))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
-    return f"""<section class="track-column route-column">
+    branch_class = " branch-start" if branch_start else ""
+    return f"""<section class="track-column route-column{branch_class}">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">

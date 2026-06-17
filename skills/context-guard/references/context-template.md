@@ -174,6 +174,7 @@ The smallest useful action to resume this task.
 - Side routes should visually start near their parent node's visible position on the parent route, not all from the first column.
 - Branch overview should use one shared horizontal route canvas. Route alignment should use grid spacer columns, not padding that shifts or clips the whole route section.
 - Branch connector lines should use the same offset coordinate as the route's spacer columns, not a fixed left-edge position.
+- Branch connector endpoints should be anchored to the first visible branch card/column and visibly meet the card edge; do not draw connector lines from the whole route section through the card interior.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.
