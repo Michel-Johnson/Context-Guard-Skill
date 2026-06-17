@@ -39,6 +39,8 @@ Record only bad cases that are user-visible, recurring, risky, fixed, deferred, 
 Move old resolved entries here only if the active section becomes noisy. Keep enough detail to replay the guard.
 ```
 
+Use the `### BC-...` section form as the canonical editable source. If a session accidentally records loose bullet blocks such as `- ID: BC-...`, `- Title: ...`, `- Status: ...`, or `- Nodes: ...`, the renderer should still project them, but future edits should normalize them back into formal case sections.
+
 ## Status Rules
 
 - `open`: bad case is known and not fixed.
@@ -56,5 +58,6 @@ Move old resolved entries here only if the active section becomes noisy. Keep en
 - Update existing context when expected behavior changes; do not create parallel guards for the same case unless the old one is explicitly obsolete.
 - If a guard is manual-only, list the exact manual check and why that is acceptable for now.
 - Link bad cases to roadmap nodes so Codex can quickly see which mainline decisions created or fixed them.
+- Keep record/display linkage explicit: use `Roadmap nodes:` or `Nodes:` on the bad case, or `Linked bad cases:` on the roadmap node.
 - Add tags and frequency notes when a bad case repeats often; high-frequency cases should stand out during quick scanning.
 - Keep entries compact. If the same information appears in a roadmap node, link to it instead of duplicating it.

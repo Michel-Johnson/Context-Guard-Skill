@@ -149,6 +149,8 @@ Each bad case should stay compact:
 
 Do not turn every bad case into a script. Add scripts under `.codex/context/bad-case-tests/` only when the guard is repeatable, valuable, and cheaper than reconstructing the check.
 
+The renderer tolerates legacy loose bullet records like `ID`, `Title`, `Status`, and `Nodes`, but `### BC-...` sections are the canonical source format. To appear on the roadmap, a case must link to route context through `Roadmap nodes:` or `Nodes:`, or the roadmap node must list it in `Linked bad cases:`.
+
 ## Roadmap Model
 
 The roadmap is not a transcript. It should record meaningful progress, decisions, forks, and checkpoints.
@@ -181,6 +183,7 @@ Recommended regression checks for roadmap changes:
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
 - loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
+- loose bad-case blocks with `ID`, `Title`, `Status`, and `Nodes` render as linked bad cases
 - Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets
 
 ## Repository Layout

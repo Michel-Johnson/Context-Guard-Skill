@@ -1534,9 +1534,147 @@ def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
         stripped = line.strip()
         if stripped.startswith("- ") and ":" in stripped:
             key, value = stripped[2:].split(":", 1)
-            current[key.strip().lower()] = value.strip()
+            normalized_key = canonical_bad_case_key(key)
+            if normalized_key in {"id", "title"}:
+                continue
+            current[normalized_key] = value.strip()
     if current:
         cards.append(current)
+    if cards:
+        return cards
+    return parse_loose_bad_case_cards(text)
+
+
+def canonical_bad_case_key(key: str) -> str:
+    normalized = key.strip().lower().replace("_", " ")
+    aliases = {
+        "id": "id",
+        "case id": "id",
+        "bad case id": "id",
+        "bc": "id",
+        "title": "title",
+        "name": "title",
+        "status": "status",
+        "first observed": "first observed",
+        "last checked": "last checked",
+        "scope": "scope",
+        "context task": "context task",
+        "task": "context task",
+        "roadmap nodes": "roadmap nodes",
+        "nodes": "roadmap nodes",
+        "linked nodes": "roadmap nodes",
+        "node": "roadmap nodes",
+        "tags": "tags",
+        "frequency": "frequency",
+        "phenomenon": "phenomenon",
+        "trigger": "trigger / reproduction",
+        "reproduction": "trigger / reproduction",
+        "trigger / reproduction": "trigger / reproduction",
+        "root cause": "root cause",
+        "cause": "root cause",
+        "fix": "fix method",
+        "fix method": "fix method",
+        "guard": "guard / verification",
+        "guard / verification": "guard / verification",
+        "verification": "guard / verification",
+        "reusable guard path": "reusable guard path",
+        "guard reuse rule": "guard reuse rule",
+        "test chain": "test chain",
+        "tests": "test chain",
+        "high-frequency note": "high-frequency note",
+        "recurrence analysis": "recurrence analysis",
+        "evidence": "evidence",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def split_loose_bad_case_field(body: str) -> tuple[str, str] | None:
+    if ":" not in body:
+        return None
+    key, value = body.split(":", 1)
+    key = canonical_bad_case_key(key)
+    if key not in {
+        "id",
+        "title",
+        "status",
+        "first observed",
+        "last checked",
+        "scope",
+        "context task",
+        "roadmap nodes",
+        "tags",
+        "frequency",
+        "phenomenon",
+        "trigger / reproduction",
+        "root cause",
+        "fix method",
+        "guard / verification",
+        "reusable guard path",
+        "guard reuse rule",
+        "test chain",
+        "high-frequency note",
+        "recurrence analysis",
+        "evidence",
+    }:
+        return None
+    return key, value.strip()
+
+
+def loose_bad_case_title(card: dict[str, str]) -> str:
+    title = card.get("title", "").strip()
+    identifier = card.pop("id", "").strip()
+    if not title:
+        title = identifier or "Untitled bad case"
+    elif identifier and not title.startswith(identifier):
+        title = f"{identifier}: {title}"
+    return title
+
+
+def commit_loose_bad_case(cards: list[dict[str, str]], current: dict[str, str] | None) -> None:
+    if not current:
+        return
+    if "title" not in current and "id" not in current:
+        return
+    current["title"] = loose_bad_case_title(current)
+    cards.append(current)
+
+
+def parse_loose_bad_case_cards(text: str) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        body = ""
+        if stripped.startswith("- "):
+            body = stripped[2:].strip()
+        elif current and re.match(r"^[A-Za-z][A-Za-z _/-]+:\s+", stripped):
+            body = stripped
+        else:
+            continue
+
+        case_line = re.match(r"^(BC-\d{8}-\d+)\s*:\s*(.+)$", body)
+        if case_line:
+            commit_loose_bad_case(cards, current)
+            current = {"id": case_line.group(1), "title": case_line.group(2).strip()}
+            continue
+
+        field = split_loose_bad_case_field(body)
+        if not field:
+            continue
+        key, value = field
+        if key == "id" and re.search(r"BC-\d{8}-\d+", value):
+            commit_loose_bad_case(cards, current)
+            current = {"id": re.search(r"BC-\d{8}-\d+", value).group(0)}
+            trailing = value.replace(current["id"], "", 1).strip(" -:")
+            if trailing:
+                current["title"] = trailing
+            continue
+        if current is None:
+            current = {}
+        current[key] = value
+    commit_loose_bad_case(cards, current)
     return cards
 
 
