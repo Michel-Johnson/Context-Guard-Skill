@@ -202,6 +202,7 @@ Recommended regression checks for roadmap changes:
 - stable roadmap folder contains only `roadmap.html`, `roadmap-details.html`, and `roadmap.md`
 - overview hides `NODE-...`, `BC-...`, and `CTX-...` IDs
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
+- overview tag chips hide raw `#tag-slug` values and show localized human labels
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
 - loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap

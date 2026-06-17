@@ -1357,6 +1357,102 @@ def tag_emoji(tag: str) -> str:
     return "🏷️"
 
 
+TAG_LABELS_ZH: dict[str, str] = {
+    "bad-case-lag": "bad case 延迟",
+    "bad-case-link": "bad case 链接",
+    "branch-support": "分支支持",
+    "context-bloat": "context 膨胀",
+    "context-loss": "context 丢失",
+    "context-source": "context 源",
+    "data-loss": "数据丢失",
+    "display": "展示",
+    "folder-scope": "文件夹范围",
+    "goal-mode": "目标模式",
+    "hot": "高频",
+    "i18n": "多语言",
+    "install-sync": "安装同步",
+    "language-pref": "语言偏好",
+    "layout-model": "布局模型",
+    "label-noise": "标签噪声",
+    "numbering": "编号",
+    "overview-clutter": "概览拥挤",
+    "parser": "解析",
+    "process-drift": "流程漂移",
+    "projection-integrity": "投影完整性",
+    "roadmap-node": "路线节点",
+    "roadmap-ux": "路线图体验",
+    "route-risk": "路线风险",
+    "skill-packaging": "skill 打包",
+    "skill-trigger-risk": "skill 触发风险",
+    "tag-support": "标签支持",
+    "typography": "字体",
+    "visual-design": "视觉设计",
+}
+
+
+TAG_PARTS_ZH: dict[str, str] = {
+    "bad": "bad",
+    "case": "case",
+    "context": "context",
+    "display": "展示",
+    "flaky": "不稳定",
+    "folder": "文件夹",
+    "goal": "目标",
+    "guard": "防线",
+    "hot": "高频",
+    "i18n": "多语言",
+    "label": "标签",
+    "lag": "延迟",
+    "language": "语言",
+    "layout": "布局",
+    "link": "链接",
+    "loss": "丢失",
+    "mode": "模式",
+    "node": "节点",
+    "noise": "噪声",
+    "overview": "概览",
+    "packaging": "打包",
+    "parser": "解析",
+    "pref": "偏好",
+    "projection": "投影",
+    "roadmap": "路线图",
+    "route": "路线",
+    "risk": "风险",
+    "source": "源",
+    "support": "支持",
+    "sync": "同步",
+    "tag": "标签",
+    "test": "测试",
+    "trigger": "触发",
+    "ux": "体验",
+}
+
+
+def tag_slug(tag: str) -> str:
+    return tag.strip().lstrip("#").lower()
+
+
+def tag_label_en(tag: str) -> str:
+    return tag_slug(tag).replace("_", "-").replace("-", " ")
+
+
+def tag_label_zh(tag: str) -> str:
+    slug = tag_slug(tag)
+    if slug in TAG_LABELS_ZH:
+        return TAG_LABELS_ZH[slug]
+    parts = [TAG_PARTS_ZH.get(part, part) for part in re.split(r"[-_]+", slug) if part]
+    return " ".join(parts) if parts else tag_label_en(tag)
+
+
+def localized_tag_label(tag: str) -> str:
+    en = tag_label_en(tag)
+    zh = tag_label_zh(tag)
+    return (
+        f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
+        f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
+    )
+
+
 def render_tags(tags: list[str], limit: int | None = None) -> str:
     if limit is not None:
         visible = tags[:limit]
@@ -1365,7 +1461,7 @@ def render_tags(tags: list[str], limit: int | None = None) -> str:
         visible = tags
         hidden = 0
     pieces = [
-        f'<span class="tag {tag_class(tag)}"><span class="tag-emoji" aria-hidden="true">{html.escape(tag_emoji(tag))}</span>{html.escape(tag)}</span>'
+        f'<span class="tag {tag_class(tag)}"><span class="tag-emoji" aria-hidden="true">{html.escape(tag_emoji(tag))}</span>{localized_tag_label(tag)}</span>'
         for tag in visible
     ]
     if hidden > 0:

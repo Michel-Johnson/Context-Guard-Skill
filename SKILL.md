@@ -117,7 +117,8 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - When there is one route group, show the three lane titles once in a left-side label column. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
 - When there are multiple route groups, show a route selector and only the selected route line first. Hide bad-case and test-chain lanes from the route overview, then show only the selected route's linked bad cases and test chain in a compact drilldown.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
-- Show meaningful `#tags` as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
+- Show meaningful tags as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
+- Keep raw `#tag-slug` values only in source context. In user-facing HTML, remove `#`, avoid slug-like text, and localize tag labels to the selected/user language.
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Link each node, bad case, and test-chain item to `roadmap-details.html`.
 - Put detailed fields in `roadmap-details.html`, not in the overview.
@@ -135,6 +136,7 @@ For `roadmap.html`, show concise natural-language labels:
 - Summarize linked bad cases as short text or counts, then show the linked bad-case titles in the Bad Cases lane.
 - Avoid visible metadata labels such as `Status:`, `Nodes:`, `Frequency:`, or fallback chips such as `untagged` in user-facing HTML; use color or small visual markers when the information is useful.
 - Do not show fake tags. If an item has no tags, omit the tag row.
+- Do not expose raw `#tag-slug` strings in default human-facing HTML; display localized human labels instead.
 - Use emoji only as compact tag cues or explicit user-requested visual markers; do not turn the roadmap into decoration.
 - Only expose internal IDs when the user explicitly asks for debug/source details.
 
