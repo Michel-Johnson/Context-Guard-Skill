@@ -52,6 +52,8 @@ Use the `### BC-...` section form as the canonical editable source. If a session
 ## Context Guard Rules
 
 - Use `.codex/context/` as the project folder for bad-case memory. Do not introduce a separate bad-case folder for new projects.
+- Use the configured `.codex/context/preferences.json` `record_language` for bad-case titles, phenomenon, root cause, fix method, guard summaries, and test-chain notes.
+- Preserve exact commands, paths, code identifiers, logs, API names, and error messages in their original language.
 - Prefer existing recorded context, commands, tests, screenshots, logs, or manual checks over newly invented tests.
 - Do not script every bad case. Store bad-case-specific scripts under `.codex/context/bad-case-tests/` only when they are genuinely reusable and do not belong in the native test suite.
 - Name any guard script with the bad case ID so it is easy to find and reuse.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import re
 import subprocess
 import webbrowser
@@ -34,6 +35,64 @@ def context_dir(root: Path) -> Path:
 
 def roadmap_output_dir(root: Path) -> Path:
     return context_dir(root) / "roadmap"
+
+
+def normalize_record_language(language: str) -> str:
+    value = " ".join((language or "").strip().split())
+    lowered = value.lower().replace("_", "-")
+    aliases = {
+        "zh": "zh",
+        "zh-cn": "zh",
+        "zh-hans": "zh",
+        "cn": "zh",
+        "chinese": "zh",
+        "中文": "zh",
+        "简体中文": "zh",
+        "en": "en",
+        "en-us": "en",
+        "english": "en",
+        "英文": "en",
+    }
+    return aliases.get(lowered, value or "unset")
+
+
+def display_language_code(language: str) -> str:
+    normalized = normalize_record_language(language)
+    return normalized if normalized in {"zh", "en"} else "auto"
+
+
+def default_preferences(today: str | None = None) -> dict[str, str]:
+    return {
+        "record_language": "unset",
+        "display_language": "auto",
+        "last_updated": today or datetime.now().strftime("%Y-%m-%d"),
+        "note": "Set with: context_guard.py set-language --language <language>",
+    }
+
+
+def read_preferences(ctx: Path) -> dict[str, str]:
+    path = ctx / "preferences.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_preferences(ctx: Path, preferences: dict[str, str]) -> None:
+    ctx.mkdir(parents=True, exist_ok=True)
+    (ctx / "preferences.json").write_text(
+        json.dumps(preferences, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def preferred_display_language(ctx: Path) -> str:
+    preferences = read_preferences(ctx)
+    configured = str(preferences.get("display_language") or preferences.get("record_language") or "auto")
+    return display_language_code(configured)
 
 
 def write_if_missing(path: Path, content: str) -> bool:
@@ -110,11 +169,26 @@ None.
 
 Last initialized: {today}
 """,
+        ctx / "preferences.json": json.dumps(default_preferences(today), ensure_ascii=False, indent=2) + "\n",
     }
     for path, content in files.items():
         if write_if_missing(path, content):
             created.append(path)
     return created
+
+
+def set_record_language(root: Path, language: str) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    normalized = normalize_record_language(language)
+    preferences = default_preferences()
+    preferences.update(read_preferences(ctx))
+    preferences["record_language"] = normalized
+    preferences["display_language"] = display_language_code(normalized)
+    preferences["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+    write_preferences(ctx, preferences)
+    print(f"[context-guard] record language set: {normalized}")
+    return ctx / "preferences.json"
 
 
 def export_roadmap(root: Path, output_format: str = "html") -> Path:
@@ -186,8 +260,10 @@ def language_switch() -> str:
     </div>"""
 
 
-def language_script(title_key: str) -> str:
+def language_script(title_key: str, default_lang: str = "auto") -> str:
+    default_lang = default_lang if default_lang in {"zh", "en"} else "auto"
     return f"""<script>
+const DEFAULT_LANG = "{default_lang}";
 const I18N = {{
   en: {{
     roadmapTitle: "Context Roadmap",
@@ -258,6 +334,7 @@ const I18N = {{
 function resolveLang() {{
   const query = new URLSearchParams(window.location.search).get("lang");
   if (query === "zh" || query === "en") return query;
+  if (DEFAULT_LANG === "zh" || DEFAULT_LANG === "en") return DEFAULT_LANG;
   const saved = localStorage.getItem("contextGuardLang");
   if (saved === "zh" || saved === "en") return saved;
   return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -351,6 +428,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     )
     if not route_items:
         route_items = '<section class="empty" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
+    preferred_lang = preferred_display_language(ctx)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -714,7 +792,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       {route_panels}
     </main>
   </div>
-  {language_script("roadmapTitle")}
+  {language_script("roadmapTitle", preferred_lang)}
 </body>
 </html>
 """
@@ -729,6 +807,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     if not node_sections:
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
+    preferred_lang = preferred_display_language(ctx)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -788,7 +867,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     <h2 data-i18n="badCases">Bad Cases</h2>
     {case_sections or '<p class="muted" data-i18n="noBadCases">No bad cases recorded.</p>'}
   </main>
-  {language_script("roadmapDetails")}
+  {language_script("roadmapDetails", preferred_lang)}
 </body>
 </html>
 """
@@ -1750,8 +1829,9 @@ def extract_bad_case_scan(text: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "export-roadmap", "show-roadmap"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
+    parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
     parser.add_argument("--open", action="store_true", help="Open the generated HTML roadmap with the default browser.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
@@ -1768,6 +1848,11 @@ def main() -> int:
         return 0
     if args.command == "export-roadmap":
         print(export_roadmap(root, args.format))
+        return 0
+    if args.command == "set-language":
+        if not args.language:
+            parser.error("set-language requires --language")
+        print(set_record_language(root, args.language))
         return 0
     if args.command == "show-roadmap":
         show_roadmap(root, args.open)

@@ -13,6 +13,7 @@ For each project folder, Context Guard uses:
 |-- index.md
 |-- roadmap.md
 |-- bad-cases.md
+|-- preferences.json
 |-- roadmap/
 |   |-- roadmap.html
 |   |-- roadmap-details.html
@@ -25,6 +26,7 @@ For each project folder, Context Guard uses:
 - `index.md`: quick scan for the current task, latest roadmap node, hot bad-case tags, and resume candidate.
 - `roadmap.md`: agent-readable route map with major nodes, checkpoints, branches, and test-chain notes.
 - `bad-cases.md`: compact register of bad cases, fixes, recurrence analysis, and reusable guards.
+- `preferences.json`: folder-scoped preferences such as the language used for future context records.
 - `tasks/`: task-specific context for current, parked, resume-candidate, or archived work.
 - `roadmap/roadmap.html`: stable human-facing roadmap overview.
 - `roadmap/roadmap-details.html`: stable human-facing details page.
@@ -37,6 +39,7 @@ For each project folder, Context Guard uses:
 - Parks interrupted work and asks whether to resume it later.
 - Records bad cases when they appear, including symptoms, root cause, fix, and guard.
 - Reuses existing bad-case guards before inventing new tests or scripts.
+- Asks for a folder-level record language on first use, then keeps future context records in that language.
 - Supports goal-mode work by recording compact checkpoints during long-running progress.
 - Exports a concise human roadmap with three horizontal tracks: Main Route, Bad Cases, and Test Chain.
 - Supports route branches and multiple parallel mainlines with route-focused drilldown.
@@ -105,6 +108,7 @@ Or run the helper script directly:
 
 ```bash
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py init --root /path/to/project
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language 中文
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
 ```
 
@@ -117,6 +121,24 @@ The roadmap command overwrites the same stable files every time:
 ```
 
 It does not create timestamped roadmap files.
+
+## Language Preference
+
+On first use in a project folder, Context Guard creates:
+
+```text
+.codex/context/preferences.json
+```
+
+If `record_language` is `unset`, Codex should ask which language to use for future context records before writing substantive roadmap, task, or bad-case entries. After the user chooses, update the preference:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language 中文
+```
+
+Future `index.md`, `roadmap.md`, `bad-cases.md`, task context, bad-case summaries, and test-chain notes should use that language. Literal commands, paths, code identifiers, API names, logs, and exact error messages stay unchanged.
+
+The language can be changed later with the same `set-language` command. Existing history is not bulk-translated unless the user explicitly requests migration.
 
 ## How Bad Cases Should Be Recorded
 

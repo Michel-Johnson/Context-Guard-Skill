@@ -7,6 +7,7 @@ Use this structure for project context:
 ├── index.md
 ├── roadmap.md
 ├── bad-cases.md
+├── preferences.json
 ├── roadmap/
 │   ├── roadmap.html
 │   ├── roadmap-details.html
@@ -18,6 +19,19 @@ Use this structure for project context:
 ├── bad-case-tests/
 └── archive/
 ```
+
+## preferences.json
+
+```json
+{
+  "record_language": "unset",
+  "display_language": "auto",
+  "last_updated": "YYYY-MM-DD",
+  "note": "Set with: context_guard.py set-language --language <language>"
+}
+```
+
+Ask the user for a context record language the first time `record_language` is `unset`, then update this file. Use that language for future source context records. Keep literal code identifiers, paths, commands, logs, API names, and exact error text unchanged. If the user changes language later, update this file and use the new language going forward; do not bulk-translate history unless asked.
 
 ## index.md
 
@@ -140,6 +154,7 @@ The smallest useful action to resume this task.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
+- Keep source records in the configured `.codex/context/preferences.json` record language. The HTML language switch is display chrome, not the source-of-truth language.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.

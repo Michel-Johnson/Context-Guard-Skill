@@ -28,14 +28,28 @@ Maintain a folder-local context folder so task context, route nodes, bad-case me
 2. Create the context root the first time Codex works in a folder.
 3. Maintain the quick-browse index at `.codex/context/index.md`.
 4. Maintain the main route map at `.codex/context/roadmap.md`.
-5. Store task-specific context under `.codex/context/tasks/<task-id>/`.
-6. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
-7. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
-8. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
-9. Use `references/context-template.md` for index, roadmap, and task-folder formats.
-10. Use `references/register-template.md` when creating or updating bad-case entries.
+5. Maintain folder preferences at `.codex/context/preferences.json`.
+6. Store task-specific context under `.codex/context/tasks/<task-id>/`.
+7. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
+8. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
+9. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
+10. Use `references/context-template.md` for index, roadmap, and task-folder formats.
+11. Use `references/register-template.md` when creating or updating bad-case entries.
 
 Do not store project context inside the skill directory. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
+
+## Language Preference
+
+Context records need a folder-scoped language preference so Codex does not mix languages across sessions.
+
+1. On the first use in a folder, create `.codex/context/preferences.json` with `record_language: "unset"`.
+2. If `record_language` is missing or `unset`, ask the user which language to use for future context records before writing substantive roadmap, task, or bad-case content.
+3. After the user chooses, run or emulate `scripts/context_guard.py set-language --language <language>` and store the normalized value in `.codex/context/preferences.json`.
+4. Write future `index.md`, `roadmap.md`, `bad-cases.md`, task context, bad-case titles, summaries, and test-chain notes in the configured record language.
+5. Preserve code identifiers, file paths, commands, API names, exact errors, logs, and quoted user text in their original form.
+6. If the user asks to change language later, update `.codex/context/preferences.json` and use the new language going forward.
+7. Do not bulk-translate historical records unless the user explicitly asks for migration.
+8. The HTML roadmap language switch is only display chrome. It does not replace the source record language preference.
 
 ## Dynamic Task Index
 
@@ -191,15 +205,16 @@ Do not count it as a recurrence when an approved technical route change intentio
 Run this before any substantive answer or action.
 
 1. Ensure the folder-scoped context skeleton exists when this is the first task in a Codex folder.
-2. Decide whether the user's latest message continues the current task, starts a substantially different task, reports a bad case, or changes expected behavior.
-3. Locate and read `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and the relevant task folder if they exist.
-4. If the request changes direction, park the previous task context before switching.
-5. If the user reports a bad case, add or update the matching bad-case entry before fixing it.
-6. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
-7. Keep relevant context in mind while planning and editing.
-8. Do not use the generated HTML roadmap as the context source.
-9. In goal mode, call `get_goal` when available and align the active task with the goal objective before continuing work.
-10. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
+2. Read `.codex/context/preferences.json`. If the record language is unset, ask the user to choose the context record language and store it before adding substantive context.
+3. Decide whether the user's latest message continues the current task, starts a substantially different task, reports a bad case, or changes expected behavior.
+4. Locate and read `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and the relevant task folder if they exist.
+5. If the request changes direction, park the previous task context before switching.
+6. If the user reports a bad case, add or update the matching bad-case entry before fixing it.
+7. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
+8. Keep relevant context in mind while planning and editing.
+9. Do not use the generated HTML roadmap as the context source.
+10. In goal mode, call `get_goal` when available and align the active task with the goal objective before continuing work.
+11. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, or `Context intake: no active context`.
 
 ### During Work
 
@@ -211,6 +226,8 @@ Whenever design context appears, update the active task context enough that anot
 - open question or blocker
 - touched areas only when useful to resume
 - next step
+
+Write these context updates in the configured record language from `.codex/context/preferences.json`. Keep literal technical strings unchanged.
 
 Whenever a task makes meaningful progress, add or update one concise roadmap node. Link the node to bad cases and test-chain context when relevant.
 
