@@ -49,7 +49,7 @@ Context records need a folder-scoped language preference so Codex does not mix l
 5. Preserve code identifiers, file paths, commands, API names, exact errors, logs, and quoted user text in their original form.
 6. If the user asks to change language later, update `.codex/context/preferences.json` and use the new language going forward.
 7. Do not bulk-translate historical records unless the user explicitly asks for migration.
-8. The HTML roadmap language switch is only display chrome. It does not replace the source record language preference.
+8. The HTML roadmap follows the folder language preference by default. Do not show a visible language selector in the human-facing roadmap unless the user explicitly asks for one.
 
 ## Dynamic Task Index
 
@@ -122,7 +122,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Link each node, bad case, and test-chain item to `roadmap-details.html`.
 - Put detailed fields in `roadmap-details.html`, not in the overview.
-- Support human-facing language switching in the stable HTML files, starting with Chinese and English. Keep one source context, but localize user-facing record titles, summaries, bad cases, and test-chain snippets in the HTML projection when the UI language changes.
+- Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
 
 ### User-Facing Labels
 

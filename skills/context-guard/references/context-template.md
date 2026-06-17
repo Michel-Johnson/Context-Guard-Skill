@@ -154,7 +154,7 @@ The smallest useful action to resume this task.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
-- Keep source records in the configured `.codex/context/preferences.json` record language. The HTML language switch is display chrome, not the source-of-truth language.
+- Keep source records in the configured `.codex/context/preferences.json` record language. The HTML roadmap should follow that preference and should not show a visible language selector by default.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.

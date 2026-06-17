@@ -251,15 +251,6 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
     )
 
 
-def language_switch() -> str:
-    return """<div class="control-strip" aria-label="View controls">
-      <div class="language-switch" aria-label="Language">
-        <button type="button" data-lang-toggle data-lang="zh">中</button>
-        <button type="button" data-lang-toggle data-lang="en">EN</button>
-      </div>
-    </div>"""
-
-
 def language_script(title_key: str, default_lang: str = "auto") -> str:
     default_lang = default_lang if default_lang in {"zh", "en"} else "auto"
     return f"""<script>
@@ -355,9 +346,6 @@ function applyLang(lang) {{
     const value = lang === "zh" ? element.dataset.zh : element.dataset.en;
     if (value) element.textContent = value;
   }});
-  document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
-    button.setAttribute("aria-pressed", button.dataset.lang === lang ? "true" : "false");
-  }});
 }}
 
 document.addEventListener("DOMContentLoaded", () => {{
@@ -382,15 +370,6 @@ document.addEventListener("DOMContentLoaded", () => {{
   const savedRoute = localStorage.getItem("contextGuardRoute");
   const firstRoute = routeButtons[0] && routeButtons[0].dataset.routeFilter;
   if (routeButtons.length) applyRoute(routeExists(routeQuery) ? routeQuery : (routeExists(savedRoute) ? savedRoute : firstRoute));
-  document.querySelectorAll("[data-lang-toggle]").forEach((button) => {{
-    button.addEventListener("click", () => {{
-      const lang = button.dataset.lang;
-      const url = new URL(window.location.href);
-      url.searchParams.set("lang", lang);
-      window.history.replaceState(null, "", url);
-      applyLang(lang);
-    }});
-  }});
   routeButtons.forEach((button) => {{
     button.addEventListener("click", () => {{
       const route = button.dataset.routeFilter;
@@ -477,23 +456,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     h1 {{ margin: 0 0 4px; font-family: var(--font-heading); font-size: 24px; letter-spacing: 0; }}
     .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
     .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
-    .control-strip {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }}
-    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--panel) 78%, var(--accent-soft)); }}
-    .language-switch button {{
-      border: 0;
-      border-radius: 999px;
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 3px 8px;
-    }}
-    .language-switch button[aria-pressed="true"] {{
-      background: var(--accent);
-      color: #fff;
-    }}
     .shell {{
       padding: 16px 32px 30px;
     }}
@@ -781,7 +743,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
           <span><span data-i18n="updatedLabel">Updated:</span> {html.escape(exported)}</span>
         </div>
       </div>
-      {language_switch()}
     </div>
   </header>
   <div class="shell">
@@ -845,9 +806,6 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .tag-rose {{ background: #ffe4e6; color: #9f1239; }}
     .tag-slate {{ background: #eef2f7; color: #334155; }}
     .tag-more {{ background: #f1f5f9; color: #64748b; }}
-    .language-switch {{ display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #d9dee7; border-radius: 999px; background: #f8fafc; }}
-    .language-switch button {{ border: 0; border-radius: 999px; background: transparent; color: #69707d; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; padding: 3px 8px; }}
-    .language-switch button[aria-pressed="true"] {{ background: #2563eb; color: #fff; }}
     a {{ color: #2563eb; text-decoration: none; font-weight: 650; }}
   </style>
 </head>
@@ -858,7 +816,6 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
         <h1 data-i18n="roadmapDetails">Roadmap Details</h1>
         <div class="meta"><span data-i18n="humanDetailView">Human detail view</span> · <span data-i18n="updatedLabel">Updated:</span> {html.escape(exported)} · <a href="roadmap.html" data-i18n="backToRoadmap">Back to roadmap</a></div>
       </div>
-      {language_switch()}
     </div>
   </header>
   <main>
