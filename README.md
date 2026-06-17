@@ -17,7 +17,8 @@ For each project folder, Context Guard uses:
 |-- roadmap/
 |   |-- roadmap.html
 |   |-- roadmap-details.html
-|   `-- roadmap.md
+|   |-- roadmap.md
+|   `-- roadmap.json
 |-- tasks/
 |-- bad-case-tests/
 `-- archive/
@@ -31,6 +32,7 @@ For each project folder, Context Guard uses:
 - `roadmap/roadmap.html`: stable human-facing roadmap overview.
 - `roadmap/roadmap-details.html`: stable human-facing details page.
 - `roadmap/roadmap.md`: stable agent-readable export.
+- `roadmap/roadmap.json`: stable agent-readable structured projection for route, bad-case, and recurrence-guard lookup.
 
 ## Key Behavior
 
@@ -118,6 +120,7 @@ The roadmap command overwrites the same stable files every time:
 .codex/context/roadmap/roadmap.html
 .codex/context/roadmap/roadmap-details.html
 .codex/context/roadmap/roadmap.md
+.codex/context/roadmap/roadmap.json
 ```
 
 It does not create timestamped roadmap files.
@@ -215,7 +218,7 @@ Recommended regression checks for roadmap changes:
 
 - frontend/layout changes are opened or rendered with an available browser/plugin or screenshot path before claiming completion
 - the visual pass checks for obvious layout bugs such as clipped text, overlap, detached lines, large empty gaps, wrong alignment, broken colors, blank content, or wrong language
-- stable roadmap folder contains only `roadmap.html`, `roadmap-details.html`, and `roadmap.md`
+- stable roadmap folder contains only stable projection files such as `roadmap.html`, `roadmap-details.html`, `roadmap.md`, and `roadmap.json`
 - overview hides `NODE-...`, `BC-...`, and `CTX-...` IDs
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
 - overview tag chips hide raw `#tag-slug` values and show localized human labels

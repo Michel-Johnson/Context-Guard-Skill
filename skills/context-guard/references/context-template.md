@@ -11,7 +11,8 @@ Use this structure for project context:
 ├── roadmap/
 │   ├── roadmap.html
 │   ├── roadmap-details.html
-│   └── roadmap.md
+│   ├── roadmap.md
+│   └── roadmap.json
 ├── tasks/
 │   └── CTX-YYYYMMDD-short-slug/
 │       ├── context.md
@@ -166,7 +167,7 @@ The smallest useful action to resume this task.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.
-- Treat `.codex/context/roadmap/roadmap.md` as a stable agent-readable export for quick scanning or handoff, not as the primary editable source.
+- Treat `.codex/context/roadmap/roadmap.md` and `.codex/context/roadmap/roadmap.json` as stable agent-readable exports for quick scanning, route lookup, bad-case lookup, and recurrence-guard lookup, not as primary editable sources.
 - Keep `NODE-...`, `BC-...`, and `CTX-...` IDs in source files for linking, but hide them in the default human-facing HTML. Show short natural-language node and bad-case labels instead.
 - In human-facing HTML, prefer color, symbols, and compact visual markers over labels like `Status:`, `Nodes:`, `Frequency:`, or fallback text such as `untagged`.
 - Show meaningful `#tags` as compact colored chips with small emoji cues in human-facing HTML. Limit overview tags; show full tags on the detail page; omit the tag row when no tags exist.
@@ -174,7 +175,7 @@ The smallest useful action to resume this task.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
-- Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`. Use `export-roadmap --format md` only for agent-readable Markdown at `.codex/context/roadmap/roadmap.md`.
+- Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`, agent-readable Markdown at `.codex/context/roadmap/roadmap.md`, and structured lookup at `.codex/context/roadmap/roadmap.json`. Use `export-roadmap --format md` only for Markdown-only export.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
 - With one route group, the HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
 - With multiple route groups, the overview should show all route lines as a branch map; route selection should affect only the bad-case/test-chain drilldown.

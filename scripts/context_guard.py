@@ -208,6 +208,10 @@ def export_roadmap(root: Path, output_format: str = "html") -> Path:
             if old_html not in {dest, detail_dest}:
                 old_html.unlink()
         (out_dir / "roadmap.md").write_text(render_roadmap_markdown(ctx, index, roadmap, bad_cases), encoding="utf-8")
+        (out_dir / "roadmap.json").write_text(
+            json.dumps(build_agent_roadmap_index(ctx, index, roadmap, bad_cases), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         dest.write_text(render_roadmap_html(ctx, index, roadmap, bad_cases), encoding="utf-8")
         detail_dest.write_text(render_roadmap_details_html(ctx, index, roadmap, bad_cases), encoding="utf-8")
         return dest
@@ -249,6 +253,68 @@ def render_roadmap_markdown(ctx: Path, index: str, roadmap: str, bad_cases: str)
             "",
         ]
     )
+
+
+def build_agent_roadmap_index(ctx: Path, index: str, roadmap: str, bad_cases: str) -> dict[str, object]:
+    nodes = parse_roadmap_nodes(roadmap)
+    cards = parse_bad_case_cards(bad_cases)
+    route_groups = group_nodes_by_branch(nodes)
+    case_by_id = {bad_case_id(card): card for card in cards if bad_case_id(card)}
+
+    indexed_nodes: list[dict[str, object]] = []
+    for source_number, node in enumerate(nodes, 1):
+        linked_ids = linked_bad_case_ids_for_node(node, cards)
+        indexed_nodes.append(
+            {
+                "id": node_id(node),
+                "source_number": source_number,
+                "title": human_title(node.get("title", f"Node {source_number}")),
+                "status": node.get("status", "unknown"),
+                "level": node_level(node),
+                "branch": branch_name(node),
+                "parent": normalized_parent_id(node.get("parent", "")),
+                "date": node.get("date", ""),
+                "task": strip_wrapping_backticks(node.get("task", "")),
+                "outcome": human_text(node.get("outcome", "")),
+                "linked_bad_cases": linked_ids,
+                "test_chain": human_text(node.get("test chain", "")),
+            }
+        )
+
+    indexed_cases = [
+        {
+            "id": cid,
+            "title": human_title(card.get("title", cid)),
+            "status": card.get("status", "unknown"),
+            "roadmap_nodes": node_ids_from_text(card.get("roadmap nodes", "")),
+            "tags": parse_tags(card.get("tags", "")),
+            "phenomenon": human_text(card.get("phenomenon", "")),
+            "trigger": human_text(card.get("trigger / reproduction", "")),
+            "guard": human_text(card.get("guard / verification", "")),
+            "reusable_guard_path": strip_wrapping_backticks(card.get("reusable guard path", "")),
+        }
+        for cid, card in case_by_id.items()
+    ]
+
+    return {
+        "schema": "context-guard-roadmap-v1",
+        "source_folder": str(ctx),
+        "source_files": {
+            "index": "index.md",
+            "roadmap": "roadmap.md",
+            "bad_cases": "bad-cases.md",
+        },
+        "quick_scan": extract_section(index, "## Quick Scan"),
+        "routes": [
+            {
+                "branch": branch,
+                "nodes": [node_id(node) for _, node in items],
+            }
+            for branch, items in route_groups
+        ],
+        "nodes": indexed_nodes,
+        "bad_cases": indexed_cases,
+    }
 
 
 def language_script(title_key: str, default_lang: str = "auto") -> str:
@@ -610,6 +676,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       grid-template-columns: none;
       grid-auto-columns: minmax(230px, 300px);
       min-height: 190px;
+    }}
+    .route-head-grid.track-grid.route-only {{
+      min-height: 0;
     }}
     .route-spacer {{
       min-height: 1px;
@@ -1676,6 +1745,38 @@ def render_tags(tags: list[str], limit: int | None = None) -> str:
 
 def build_case_anchor_map(cards: list[dict[str, str]]) -> dict[str, str]:
     return {card.get("title", ""): f"case-{i}" for i, card in enumerate(cards, 1)}
+
+
+def node_ids_from_text(text: str) -> list[str]:
+    return re.findall(r"NODE-\d{8}-\d+", text or "")
+
+
+def bad_case_id(card: dict[str, str]) -> str:
+    title = card.get("title", "")
+    match = re.match(r"(BC-\d{8}-\d+)", title)
+    return match.group(1) if match else title.split(":", 1)[0].strip()
+
+
+def normalized_parent_id(value: str) -> str:
+    value = strip_wrapping_backticks((value or "").strip())
+    if not value or value.lower() in {"none", "n/a", "null"}:
+        return ""
+    match = re.search(r"NODE-\d{8}-\d+", value)
+    return match.group(0) if match else value
+
+
+def linked_bad_case_ids_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> list[str]:
+    direct = re.findall(r"BC-\d{8}-\d+", node.get("linked bad cases", ""))
+    linked: list[str] = []
+    for cid in direct:
+        if cid not in linked:
+            linked.append(cid)
+    nid = node_id(node)
+    for card in cards:
+        cid = bad_case_id(card)
+        if cid and nid and nid in card.get("roadmap nodes", "") and cid not in linked:
+            linked.append(cid)
+    return linked
 
 
 def bad_cases_for_node(node: dict[str, str], cards: list[dict[str, str]]) -> list[dict[str, str]]:
