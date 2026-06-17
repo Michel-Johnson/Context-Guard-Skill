@@ -387,9 +387,18 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     route_groups = group_nodes_by_branch(nodes)
     node_lookup = {node_id(node): node for _, items in route_groups for _, node in items}
     branch_mode = len(route_groups) > 1
+    route_offsets = build_route_offsets(route_groups, node_lookup) if branch_mode else {}
     route_nav = render_route_filter(route_groups) if branch_mode else ""
     route_items = "\n".join(
-        render_route_group(branch, items, bad_case_cards, case_anchor_map, branch_mode, node_lookup)
+        render_route_group(
+            branch,
+            items,
+            bad_case_cards,
+            case_anchor_map,
+            branch_mode,
+            node_lookup,
+            route_offsets.get(branch.lower(), 0),
+        )
         for i, (branch, items) in enumerate(route_groups)
     )
     route_panels = (
@@ -434,6 +443,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       --font-heading: "Iowan Old Style", "Charter", "Songti SC", "STSong", Georgia, serif;
       --card-border-width: 1px;
       --card-transform: none;
+      --route-card-step: 314px;
       --board-texture: radial-gradient(circle at 20% 15%, rgba(93, 135, 83, 0.12), transparent 24%), radial-gradient(circle at 82% 4%, rgba(183, 143, 92, 0.12), transparent 20%);
       --board-texture-size: auto;
     }}
@@ -504,7 +514,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-group.route-branch {{
       position: relative;
-      padding-left: 24px;
+      padding-left: calc(24px + var(--route-offset-space, 0px));
     }}
     .route-group.route-branch::before {{
       content: "";
@@ -1040,6 +1050,83 @@ def group_nodes_by_branch(nodes: list[dict[str, str]]) -> list[tuple[str, list[t
     return groups
 
 
+def display_items_for_route(items: list[tuple[int, dict[str, str]]]) -> list[tuple[int, dict[str, str]]]:
+    major_items = [(number, node) for number, node in items if node_level(node) == "major"]
+    return major_items or items
+
+
+def external_parent_id(
+    branch: str,
+    items: list[tuple[int, dict[str, str]]],
+    node_lookup: dict[str, dict[str, str]],
+) -> str:
+    if branch.strip().lower() == "main":
+        return ""
+    for _, node in items:
+        raw_parent = node.get("parent", "").strip()
+        if raw_parent and raw_parent.lower() not in {"none", "n/a", "null"}:
+            match = re.search(r"NODE-\d{8}-\d+", raw_parent)
+            candidate = match.group(0) if match else raw_parent
+            parent_node = node_lookup.get(candidate, {})
+            if branch_name(parent_node).strip().lower() != branch.strip().lower():
+                return candidate
+    return ""
+
+
+def build_visible_route_positions(
+    route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]],
+) -> tuple[dict[str, tuple[str, int]], dict[str, tuple[str, int]], dict[str, list[tuple[int, str, int]]]]:
+    visible_positions: dict[str, tuple[str, int]] = {}
+    source_positions: dict[str, tuple[str, int]] = {}
+    visible_by_branch: dict[str, list[tuple[int, str, int]]] = {}
+    for branch, items in route_groups:
+        branch_key = branch.lower()
+        visible_by_branch[branch_key] = []
+        for source_number, node in items:
+            source_positions[node_id(node)] = (branch_key, source_number)
+        for display_index, (source_number, node) in enumerate(display_items_for_route(items)):
+            nid = node_id(node)
+            visible_positions[nid] = (branch_key, display_index)
+            visible_by_branch[branch_key].append((source_number, nid, display_index))
+    return visible_positions, source_positions, visible_by_branch
+
+
+def parent_visible_offset(
+    parent_id: str,
+    visible_positions: dict[str, tuple[str, int]],
+    source_positions: dict[str, tuple[str, int]],
+    visible_by_branch: dict[str, list[tuple[int, str, int]]],
+) -> int:
+    if parent_id in visible_positions:
+        return visible_positions[parent_id][1]
+    parent_source = source_positions.get(parent_id)
+    if not parent_source:
+        return 0
+    parent_branch, parent_number = parent_source
+    candidates = [
+        display_index
+        for source_number, _, display_index in visible_by_branch.get(parent_branch, [])
+        if source_number <= parent_number
+    ]
+    return max(candidates) if candidates else 0
+
+
+def build_route_offsets(
+    route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]],
+    node_lookup: dict[str, dict[str, str]],
+) -> dict[str, int]:
+    visible_positions, source_positions, visible_by_branch = build_visible_route_positions(route_groups)
+    offsets: dict[str, int] = {}
+    for branch, items in route_groups:
+        parent_id = external_parent_id(branch, items, node_lookup)
+        offsets[branch.lower()] = (
+            parent_visible_offset(parent_id, visible_positions, source_positions, visible_by_branch)
+            if parent_id
+            else 0
+        )
+    return offsets
+
+
 def route_slug(branch: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
     return slug or "main"
@@ -1499,10 +1586,11 @@ def render_route_group(
     case_anchor_map: dict[str, str],
     branch_mode: bool = False,
     node_lookup: dict[str, dict[str, str]] | None = None,
+    route_offset: int = 0,
 ) -> str:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
-    display_items = major_items or items
+    display_items = display_items_for_route(items)
     if branch_mode:
         columns = "\n".join(
             render_route_column(node, source_number, display_number)
@@ -1530,7 +1618,13 @@ def render_route_group(
     label_column = "" if branch_mode else label_column
     grid_class = "track-grid route-only" if branch_mode else "track-grid"
     branch_class = " route-branch" if parent_note else ""
-    return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}">
+    route_offset = max(0, route_offset)
+    offset_attrs = (
+        f' data-route-offset="{route_offset}" style="--route-offset-space: {route_offset * 314}px;"'
+        if branch_mode
+        else ""
+    )
+    return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
   <div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
     <span class="route-title">{label}</span>
@@ -1549,18 +1643,7 @@ def render_route_parent_note(
     items: list[tuple[int, dict[str, str]]],
     node_lookup: dict[str, dict[str, str]],
 ) -> str:
-    if branch.strip().lower() == "main":
-        return ""
-    parent_id = ""
-    for _, node in items:
-        raw_parent = node.get("parent", "").strip()
-        if raw_parent and raw_parent.lower() not in {"none", "n/a", "null"}:
-            match = re.search(r"NODE-\d{8}-\d+", raw_parent)
-            candidate = match.group(0) if match else raw_parent
-            parent_node = node_lookup.get(candidate, {})
-            if branch_name(parent_node).strip().lower() != branch.strip().lower():
-                parent_id = candidate
-                break
+    parent_id = external_parent_id(branch, items, node_lookup)
     if not parent_id:
         return ""
     parent_node = node_lookup.get(parent_id, {})

@@ -117,6 +117,7 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - When there is one route group, show the three lane titles once in a left-side label column. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
 - When there are multiple route groups, show all route lines together as a branch overview so users can see where each side route forked. Use route selection only to switch the compact bad-case/test-chain drilldown.
 - Show parent/fork markers only for side routes whose parent node belongs to another route. Never show a fork marker on the Main route merely because a later main node references an earlier node.
+- In branch overview, visually align each side route's starting position to the parent node's visible position on its parent route. Do not render every side route from the first column.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful tags as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
 - Keep raw `#tag-slug` values only in source context. In user-facing HTML, remove `#`, avoid slug-like text, and localize tag labels to the selected/user language.
