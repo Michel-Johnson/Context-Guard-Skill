@@ -201,6 +201,19 @@ Preferred bad-case source format is one `### BC-YYYYMMDD-001: Title` section per
 
 Recording and display must stay connected. Every bad case that should appear on a roadmap must have either `Roadmap nodes:` / `Nodes:` pointing to one or more `NODE-...` IDs, or the roadmap node must list that case under `Linked bad cases:`. Do not rely on task-level proximity alone.
 
+### Test Chain Semantics
+
+The test chain is a recurrence-detection path for bad cases, not a development verification log.
+
+For each resolved or relevant bad case, record the shortest reusable check that could reveal the same bad case after future changes:
+
+- a command, native test, or script path when the check is cheap and repeatable
+- a prompt or Codex checklist when judgment is needed
+- a manual visual check or screenshot instruction when layout matters
+- an invariant, reproduction prompt, or log check when that is the fastest reliable signal
+
+In roadmap overview, Test Chain lanes must be generated from linked bad cases, especially `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`. Do not fill the user-facing Test Chain lane with roadmap node `Test chain:` history. Roadmap node `Test chain:` may keep compact checkpoint evidence in source/details, but it is not the primary bad-case recurrence chain.
+
 ## What Counts As A Bad Case
 
 A bad case is any observed or credible unwanted behavior from the task lifecycle: failing tests, broken UI states, regressions, race conditions, wrong output, data loss, misleading errors, performance cliffs, build failures, or user-reported defects.

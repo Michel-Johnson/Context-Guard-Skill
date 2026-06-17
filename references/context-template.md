@@ -97,7 +97,7 @@ This is the route map through the task. It may contain one mainline, forked side
 - Avoid going back: rejected path or lesson, only if it prevents backtracking
 - Next: next useful node or action
 - Linked bad cases: BC-YYYYMMDD-001, BC-YYYYMMDD-002
-- Test chain: short guard names, commands, screenshots, logs, or manual checks
+- Test chain: compact checkpoint evidence only; user-facing recurrence checks come from linked bad-case guards
 - End-of-work self-check: changed behavior checked; for frontend/layout work include browser/plugin/screenshot evidence or the exact blocker
 ```
 
@@ -160,6 +160,7 @@ The smallest useful action to resume this task.
 - If the human overview has multiple route groups, show all route lines together with parent/fork markers, then reveal bad cases/test chain only for the selected route below the branch overview.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
+- Treat the human-facing Test Chain lane as bad-case recurrence detection. Generate it from linked bad cases' `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`, not from roadmap node checkpoint logs.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
 - Keep source records in the configured `.codex/context/preferences.json` record language. The HTML roadmap should follow that preference and should not show a visible language selector by default.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
@@ -194,6 +195,7 @@ The smallest useful action to resume this task.
 
 - Do not record normal implementation chatter.
 - Do not record every command; record only commands that prove a checkpoint or guard a bad case.
+- Do not let roadmap node `Test chain:` history replace bad-case recurrence guards in user-facing roadmap output.
 - Do not wait until goal completion to record important roadmap progress or bad cases.
 - Merge tiny adjacent updates into one roadmap node.
 - Archive stale parked tasks as a one-sentence summary.

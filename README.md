@@ -24,7 +24,7 @@ For each project folder, Context Guard uses:
 ```
 
 - `index.md`: quick scan for the current task, latest roadmap node, hot bad-case tags, and resume candidate.
-- `roadmap.md`: agent-readable route map with major nodes, checkpoints, branches, and test-chain notes.
+- `roadmap.md`: agent-readable route map with major nodes, checkpoints, branches, and bad-case links.
 - `bad-cases.md`: compact register of bad cases, fixes, recurrence analysis, and reusable guards.
 - `preferences.json`: folder-scoped preferences such as the language used for future context records.
 - `tasks/`: task-specific context for current, parked, resume-candidate, or archived work.
@@ -172,6 +172,19 @@ Each bad case should stay compact:
 Do not turn every bad case into a script. Add scripts under `.codex/context/bad-case-tests/` only when the guard is repeatable, valuable, and cheaper than reconstructing the check.
 
 The renderer tolerates legacy loose bullet records like `ID`, `Title`, `Status`, and `Nodes`, but `### BC-...` sections are the canonical source format. To appear on the roadmap, a case must link to route context through `Roadmap nodes:` or `Nodes:`, or the roadmap node must list it in `Linked bad cases:`.
+
+## Test Chain Semantics
+
+In Context Guard, a test chain is the quickest reusable way to detect whether a known bad case has returned. It is not the history of commands Codex ran while developing a node.
+
+Good test-chain entries are short and actionable:
+
+- a script or native test command
+- a prompt/checklist for Codex to run
+- a manual screenshot or visual inspection step
+- a reproduction prompt, log invariant, or data check
+
+The human roadmap's Test Chain lane is generated from linked bad cases, especially `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`. Roadmap node `Test chain:` fields may remain as compact checkpoint evidence in source/details, but they should not drive the user-facing recurrence lane.
 
 ## Roadmap Model
 

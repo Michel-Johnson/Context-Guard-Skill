@@ -774,6 +774,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       margin: 5px 0 0;
       font-size: 13px;
     }}
+    .test-note code {{
+      color: var(--route-accent, var(--accent));
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }}
     .tags {{ display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }}
     .tag {{
       border-radius: 999px;
@@ -1842,16 +1849,9 @@ def render_route_drilldown(
                 continue
             seen_cases.add(title)
             case_items.append(render_bad_case_summary(card, case_anchor_map.get(title, "case-1")))
-        test_chain = node.get("test chain", "").strip()
-        if test_chain:
-            node_title = localized_short_text(human_title(node.get("title", f"Node {source_number}")), 56)
-            note = localized_short_text(test_chain, 92)
-            test_items.append(
-                f'<article class="test-note"><a class="detail-link" href="#node-{source_number}">'
-                f'{node_title}</a><p>{note}</p></article>'
-            )
+            test_items.append(render_bad_case_test_note(card, case_anchor_map.get(title, "case-1")))
     cases_html = "\n".join(case_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
-    tests_html = "\n".join(test_items) or '<p class="muted" data-i18n="testChainField">Test chain:</p>'
+    tests_html = "\n".join(test_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
     hidden = "" if active else " hidden"
     return f"""<section class="route-drilldown" data-route-panel="{html.escape(route_slug(branch))}"{hidden}>
   <article class="drill-card">
@@ -1876,11 +1876,16 @@ def render_track_column(
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
-    test_chain = localized_short_text(node.get("test chain", "No test chain recorded."), 70)
     cases = bad_cases_for_node(node, bad_case_cards)
     case_items = "\n".join(render_bad_case_summary(card, case_anchor_map.get(card.get("title", ""), "case-1")) for card in cases)
     if not case_items:
         case_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
+    test_items = "\n".join(
+        render_bad_case_test_note(card, case_anchor_map.get(card.get("title", ""), "case-1"))
+        for card in cases
+    )
+    if not test_items:
+        test_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
@@ -1899,7 +1904,7 @@ def render_track_column(
     {case_items}
   </article>
   <article class="lane lane-test-chain" data-lane="test-chain">
-    <a class="detail-link" href="#node-{source_number}">{test_chain}</a>
+    {test_items}
   </article>
 </section>"""
 
@@ -2111,6 +2116,41 @@ def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
   <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="#{html.escape(anchor)}">{title}</a></div>
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </article>"""
+
+
+def render_bad_case_test_note(card: dict[str, str], anchor: str) -> str:
+    title = localized_short_text(human_title(card.get("title", "Bad case")), 58)
+    guard = first_nonempty(
+        card.get("guard / verification", ""),
+        card.get("guard", ""),
+        card.get("trigger / reproduction", ""),
+        card.get("trigger", ""),
+        card.get("phenomenon", ""),
+    )
+    guard_text = localized_short_text(guard or "No guard recorded.", 110)
+    reusable = card.get("reusable guard path", "").strip()
+    reusable_html = ""
+    if reusable and reusable.lower() not in {"none", "n/a", "null"}:
+        reusable_html = f"<p><code>{html.escape(strip_wrapping_backticks(reusable))}</code></p>"
+    return f"""<article class="test-note">
+  <a class="detail-link" href="#{html.escape(anchor)}">{title}</a>
+  <p>{guard_text}</p>
+  {reusable_html}
+</article>"""
+
+
+def first_nonempty(*values: str) -> str:
+    for value in values:
+        if value and value.strip():
+            return value.strip()
+    return ""
+
+
+def strip_wrapping_backticks(value: str) -> str:
+    value = value.strip()
+    if value.startswith("`") and value.endswith("`") and len(value) >= 2:
+        return value[1:-1]
+    return value
 
 
 def render_case_detail(card: dict[str, str], anchor: str) -> str:
