@@ -204,6 +204,7 @@ Recommended regression checks for roadmap changes:
 - overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
 - overview tag chips hide raw `#tag-slug` values and show localized human labels
 - overview does not show a visible language selector; it follows the folder language preference
+- overview header does not show view-type labels or export/update timestamps
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
 - multi-route overview shows all route lines together and marks branch parent/fork relationships

@@ -383,7 +383,6 @@ document.addEventListener("DOMContentLoaded", () => {{
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
     nodes = parse_roadmap_nodes(roadmap)
     bad_case_cards = parse_bad_case_cards(bad_cases)
-    exported = datetime.now().isoformat(timespec="seconds")
     case_anchor_map = build_case_anchor_map(bad_case_cards)
     route_groups = group_nodes_by_branch(nodes)
     node_lookup = {node_id(node): node for _, items in route_groups for _, node in items}
@@ -452,7 +451,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       background: var(--panel);
     }}
     h1 {{ margin: 0 0 4px; font-family: var(--font-heading); font-size: 24px; letter-spacing: 0; }}
-    .meta {{ color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }}
     .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
     .shell {{
       padding: 16px 32px 30px;
@@ -764,10 +762,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     <div class="header-row">
       <div>
         <h1 data-i18n="roadmapTitle">Context Roadmap</h1>
-        <div class="meta">
-          <span data-i18n="humanView">Human-facing view</span>
-          <span><span data-i18n="updatedLabel">Updated:</span> {html.escape(exported)}</span>
-        </div>
       </div>
     </div>
   </header>
