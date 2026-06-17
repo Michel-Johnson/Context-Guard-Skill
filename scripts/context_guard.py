@@ -411,6 +411,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
         if branch_mode and route_groups
         else ""
     )
+    inline_details = render_inline_details(nodes, bad_case_cards, case_anchor_map)
     if not route_items:
         route_items = '<section class="empty" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     preferred_lang = preferred_display_language(ctx)
@@ -767,6 +768,30 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .tag-more {{ background: #f1f5f9; color: #64748b; }}
     .muted {{ color: var(--muted); }}
     .detail-link {{ color: var(--accent); font-weight: 650; text-decoration: none; font-size: 13px; }}
+    .inline-details {{
+      margin-top: 18px;
+      display: grid;
+      gap: 14px;
+    }}
+    .inline-details h2 {{ margin: 8px 0 2px; }}
+    .detail-card {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      scroll-margin-top: 18px;
+    }}
+    .detail-card:target {{
+      outline: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+      border-color: var(--accent);
+    }}
+    .detail-card h3 {{ margin: 0 0 8px; font-family: var(--font-heading); font-size: 17px; }}
+    .field {{ margin: 7px 0; }}
+    .field b {{ color: var(--muted); }}
+    .level-chip {{ display: inline-block; border-radius: 999px; padding: 1px 7px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 650; }}
+    .visual-meta {{ display: flex; align-items: center; gap: 9px; min-height: 16px; margin: 4px 0 10px; }}
+    .inline-top {{ display: inline-block; margin-top: 8px; color: var(--accent); font-weight: 650; text-decoration: none; }}
     .empty {{ color: var(--muted); padding: 18px; border: 1px dashed var(--line); border-radius: 8px; }}
     @media (max-width: 980px) {{
       .shell {{ padding: 16px; }}
@@ -789,12 +814,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     </div>
   </header>
   <div class="shell">
-    <main class="track-board">
+    <main class="track-board" id="roadmap-overview">
       <h2 data-i18n="roadmap">Roadmap</h2>
       {route_nav}
       <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{route_items}</div>
       {route_panels}
     </main>
+    {inline_details}
   </div>
   {language_script("roadmapTitle", preferred_lang)}
 </body>
@@ -871,6 +897,27 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
 </body>
 </html>
 """
+
+
+def render_inline_details(
+    nodes: list[dict[str, str]],
+    cards: list[dict[str, str]],
+    case_anchor_map: dict[str, str],
+) -> str:
+    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in enumerate(nodes, 1))
+    if not node_sections:
+        node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
+    case_sections = "\n".join(
+        render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}"))
+        for i, card in enumerate(cards, 1)
+    )
+    return f"""<section class="inline-details" aria-label="Roadmap details">
+  <h2 data-i18n="roadmapDetails">Roadmap Details</h2>
+  {node_sections}
+  <h2 data-i18n="badCases">Bad Cases</h2>
+  {case_sections or '<p class="muted" data-i18n="noBadCases">No bad cases recorded.</p>'}
+  <a class="inline-top" href="#roadmap-overview" data-i18n="backToRoadmap">Back to roadmap</a>
+</section>"""
 
 
 def parse_bullets(text: str) -> list[tuple[str, str]]:
@@ -1679,7 +1726,7 @@ def render_route_column(node: dict[str, str], source_number: int, display_number
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
     return f"""<section class="track-column route-column">
   <article class="lane lane-main" data-lane="main">
-    <a class="lane-link" href="roadmap-details.html#node-{source_number}">
+    <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">
         <div class="node-number">{display_number}</div>
         <h3>{title}</h3>
@@ -1716,7 +1763,7 @@ def render_route_drilldown(
             node_title = localized_short_text(human_title(node.get("title", f"Node {source_number}")), 56)
             note = localized_short_text(test_chain, 92)
             test_items.append(
-                f'<article class="test-note"><a class="detail-link" href="roadmap-details.html#node-{source_number}">'
+                f'<article class="test-note"><a class="detail-link" href="#node-{source_number}">'
                 f'{node_title}</a><p>{note}</p></article>'
             )
     cases_html = "\n".join(case_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
@@ -1752,7 +1799,7 @@ def render_track_column(
         case_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
-    <a class="lane-link" href="roadmap-details.html#node-{source_number}">
+    <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">
         <div class="node-number">{display_number}</div>
         <h3>{title}</h3>
@@ -1768,7 +1815,7 @@ def render_track_column(
     {case_items}
   </article>
   <article class="lane lane-test-chain" data-lane="test-chain">
-    <a class="detail-link" href="roadmap-details.html#node-{source_number}">{test_chain}</a>
+    <a class="detail-link" href="#node-{source_number}">{test_chain}</a>
   </article>
 </section>"""
 
@@ -1977,7 +2024,7 @@ def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
     tags = parse_tags(card.get("tags", ""))
     tag_html = render_tags(tags, limit=3)
     return f"""<article class="badcase">
-  <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="roadmap-details.html#{html.escape(anchor)}">{title}</a></div>
+  <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="#{html.escape(anchor)}">{title}</a></div>
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </article>"""
 

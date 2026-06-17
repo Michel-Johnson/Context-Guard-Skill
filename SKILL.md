@@ -125,8 +125,8 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Keep raw `#tag-slug` values only in source context. In user-facing HTML, remove `#`, avoid slug-like text, and localize tag labels to the selected/user language.
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Do not show implementation chrome such as "human-facing view" labels or export/update timestamps in the overview header.
-- Link each node, bad case, and test-chain item to `roadmap-details.html`.
-- Put detailed fields in `roadmap-details.html`, not in the overview.
+- Link each node, bad case, and test-chain item to same-file detail anchors in `roadmap.html` by default, so `file://` views do not need to navigate to another local HTML file.
+- Keep detailed fields out of overview cards; place them in the same-file detail section and the stable `roadmap-details.html` sidecar.
 - Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
 - When the folder language is Chinese, user-facing overview text should not fall back to untranslated English prose except for intentional technical names, commands, paths, APIs, and product names.
 

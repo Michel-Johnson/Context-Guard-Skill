@@ -176,7 +176,8 @@ The smallest useful action to resume this task.
 - Branch connector lines should use the same offset coordinate as the route's spacer columns, not a fixed left-edge position.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
-- Keep the overview sparse. Put full Outcome, Decision, Next, and guard details in `roadmap-details.html`.
+- Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.
+- Default overview links should target same-file `#node-*` and `#case-*` anchors, not `roadmap-details.html#...`, to avoid `file://` access-denied navigation.
 
 ## Pruning Rules
 
