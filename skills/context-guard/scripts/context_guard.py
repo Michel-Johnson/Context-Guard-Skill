@@ -326,6 +326,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       font-weight: 650;
       white-space: nowrap;
     }}
+    .tag-emoji {{ margin-right: 3px; }}
     .tag-blue {{ background: #dbeafe; color: #1e40af; }}
     .tag-amber {{ background: #fef3c7; color: #92400e; }}
     .tag-green {{ background: #dcfce7; color: #166534; }}
@@ -402,6 +403,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     .status-muted {{ background: #94a3b8; }}
     .tags {{ display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }}
     .tag {{ display: inline-block; border-radius: 999px; padding: 2px 7px; font-size: 12px; font-weight: 650; }}
+    .tag-emoji {{ margin-right: 3px; }}
     .tag-blue {{ background: #dbeafe; color: #1e40af; }}
     .tag-amber {{ background: #fef3c7; color: #92400e; }}
     .tag-green {{ background: #dcfce7; color: #166534; }}
@@ -538,6 +540,25 @@ def tag_class(tag: str) -> str:
     return "tag-slate"
 
 
+def tag_emoji(tag: str) -> str:
+    normalized = tag.lower()
+    if any(key in normalized for key in ["risk", "hot", "flaky", "trigger", "missed"]):
+        return "⚠️"
+    if any(key in normalized for key in ["roadmap", "route", "layout"]):
+        return "🧭"
+    if any(key in normalized for key in ["ux", "ui", "display", "label"]):
+        return "✨"
+    if any(key in normalized for key in ["context", "source", "folder"]):
+        return "🧠"
+    if any(key in normalized for key in ["loss", "bloat", "noise", "data", "storage"]):
+        return "🧹"
+    if any(key in normalized for key in ["guard", "resolved", "test"]):
+        return "✅"
+    if "tag" in normalized:
+        return "🏷️"
+    return "🏷️"
+
+
 def render_tags(tags: list[str], limit: int | None = None) -> str:
     if limit is not None:
         visible = tags[:limit]
@@ -545,7 +566,10 @@ def render_tags(tags: list[str], limit: int | None = None) -> str:
     else:
         visible = tags
         hidden = 0
-    pieces = [f'<span class="tag {tag_class(tag)}">{html.escape(tag)}</span>' for tag in visible]
+    pieces = [
+        f'<span class="tag {tag_class(tag)}"><span class="tag-emoji" aria-hidden="true">{html.escape(tag_emoji(tag))}</span>{html.escape(tag)}</span>'
+        for tag in visible
+    ]
     if hidden > 0:
         pieces.append(f'<span class="tag tag-more">+{hidden}</span>')
     return "".join(pieces)
