@@ -696,6 +696,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       overflow-x: auto;
       padding-bottom: 4px;
       position: relative;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }}
+    .route-stack.branch-map::-webkit-scrollbar, .route-strip::-webkit-scrollbar {{
+      width: 0;
+      height: 0;
+      display: none;
     }}
     .branch-connector-layer {{
       position: absolute;
@@ -798,6 +805,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-strip {{
       overflow: auto;
       padding-bottom: 2px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }}
     .route-stack.branch-map .route-strip {{
       overflow: visible;
