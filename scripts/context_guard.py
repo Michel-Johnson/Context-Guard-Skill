@@ -604,6 +604,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-head-cell {{
       min-width: 0;
+      position: relative;
+      z-index: 1;
     }}
     .route-head-cell .route-head {{
       margin-bottom: 6px;
@@ -680,6 +682,29 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-head-grid.track-grid.route-only {{
       min-height: 0;
     }}
+    .route-head-cell.branch-start::before,
+    .route-head-cell.branch-start::after {{
+      content: "";
+      position: absolute;
+      pointer-events: none;
+      z-index: -1;
+      border-color: color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
+    }}
+    .route-head-cell.branch-start::before {{
+      left: 5px;
+      top: 7px;
+      height: 20px;
+      z-index: -1;
+      border-left: 1px solid color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
+    }}
+    .route-head-cell.branch-start::after {{
+      left: 5px;
+      top: 27px;
+      width: 38px;
+      height: 0;
+      z-index: -1;
+      border-bottom: 1px solid color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
+    }}
     .route-spacer {{
       min-height: 1px;
       pointer-events: none;
@@ -692,25 +717,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .track-column.route-column {{
       grid-template-rows: minmax(160px, auto);
       position: relative;
-    }}
-    .route-group.route-branch .track-column.branch-start::before {{
-      content: "";
-      position: absolute;
-      left: 0;
-      top: -62px;
-      height: 62px;
-      border-left: 2px solid var(--route-line, var(--line));
-      pointer-events: none;
-    }}
-    .route-group.route-branch .track-column.branch-start::after {{
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 18px;
-      border-top: 2px solid var(--route-line, var(--line));
-      border-top-left-radius: 14px;
-      pointer-events: none;
     }}
     .track-label-column {{
       position: sticky;
@@ -1950,7 +1956,8 @@ def render_route_group(
     {parent_note}
   </div>"""
     if branch_mode:
-        route_header = f"""<div class="route-head-grid {grid_class}">{route_spacers}<div class="route-head-cell">
+        head_start_class = " branch-start" if route_offset > 0 and parent_note else ""
+        route_header = f"""<div class="route-head-grid {grid_class}">{route_spacers}<div class="route-head-cell{head_start_class}">
   {route_head}
   {checkpoint_strip}
 </div></div>"""
