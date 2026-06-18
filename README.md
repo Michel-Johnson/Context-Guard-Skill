@@ -197,6 +197,7 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 - Use `Level: checkpoint` for smaller implementation, validation, documentation, or UI polish updates.
 - Use `Branch:` when work forks into side routes or parallel mainlines.
 - Use `Parent:` when a branch starts from a specific earlier node.
+- When the user explicitly asks for a branch/支线, create it with `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` so the task folder, current index, and roadmap node stay connected.
 - Link roadmap nodes to bad cases and test-chain notes instead of duplicating full details.
 - In branch overview, route depth uses color temperature: main route green, first-level branches cool cyan/teal, deeper branches colder blue/indigo.
 
@@ -212,6 +213,7 @@ Before changing the skill, run at least:
 python3 -m py_compile scripts/context_guard.py skills/context-guard/scripts/context_guard.py
 python3 scripts/context_guard.py init --root /tmp/context-guard-check
 python3 scripts/context_guard.py show-roadmap --root /tmp/context-guard-check
+tests/BC-20260618-063.sh
 ```
 
 Recommended regression checks for roadmap changes:

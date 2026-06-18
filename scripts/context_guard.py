@@ -356,7 +356,7 @@ const I18N = {{
     guard: "Guard:"
   }},
   zh: {{
-    roadmapTitle: "Context 路线图",
+    roadmapTitle: "项目路线图",
     roadmapDetails: "路线图详情",
     humanView: "人类视图",
     humanDetailView: "人类详情视图",
@@ -569,6 +569,16 @@ document.addEventListener("DOMContentLoaded", () => {{
 </script>"""
 
 
+def initial_html_language(preferred_lang: str) -> str:
+    return preferred_lang if preferred_lang in {"zh", "en"} else "en"
+
+
+def initial_html_title(title_key: str, preferred_lang: str) -> str:
+    if preferred_lang == "zh":
+        return "路线图详情" if title_key == "roadmapDetails" else "项目路线图"
+    return "Context Roadmap Details" if title_key == "roadmapDetails" else "Context Roadmap Human View"
+
+
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
     nodes = parse_roadmap_nodes(roadmap)
     bad_case_cards = parse_bad_case_cards(bad_cases)
@@ -614,12 +624,14 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
         else ""
     )
     preferred_lang = preferred_display_language(ctx)
+    html_lang = initial_html_language(preferred_lang)
+    html_title = initial_html_title("roadmapTitle", preferred_lang)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Context Roadmap Human View</title>
+  <title>{html.escape(html_title)}</title>
   <style>
     :root {{
       color-scheme: light;
@@ -1088,12 +1100,14 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
     preferred_lang = preferred_display_language(ctx)
+    html_lang = initial_html_language(preferred_lang)
+    html_title = initial_html_title("roadmapDetails", preferred_lang)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Context Roadmap Details</title>
+  <title>{html.escape(html_title)}</title>
   <style>
     body {{ margin: 0; background: #f6f7f9; color: #20242a; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
     header {{ background: #fff; border-bottom: 1px solid #d9dee7; padding: 22px 32px; }}
@@ -2641,11 +2655,275 @@ def extract_bad_case_scan(text: str) -> str:
     return "\n".join(interesting).strip() or "No bad-case links recorded."
 
 
+def ascii_slug(value: str, fallback: str = "branch") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or fallback
+
+
+def next_task_id(ctx: Path, title: str, branch: str) -> str:
+    stamp = datetime.now().strftime("%Y%m%d")
+    base = f"CTX-{stamp}-{ascii_slug(branch or title)}"
+    task_root = ctx / "tasks"
+    candidate = base
+    suffix = 2
+    while (task_root / candidate).exists():
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def next_roadmap_node_id(roadmap: str) -> str:
+    stamp = datetime.now().strftime("%Y%m%d")
+    numbers = [int(value) for value in re.findall(rf"NODE-{stamp}-(\d+)", roadmap)]
+    return f"NODE-{stamp}-{(max(numbers) if numbers else 0) + 1:03d}"
+
+
+def parse_current_index_entry(index: str) -> dict[str, str]:
+    entry: dict[str, str] = {}
+    match = re.search(r"(?ms)^## Current\s*\n\n(.*?)(?=\n## |\Z)", index)
+    block = match.group(1).strip() if match else ""
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        entry[key.strip().lower()] = value.strip()
+    quick_current = re.search(r"(?m)^- Current:\s*(.+)$", index)
+    if quick_current and "id" not in entry:
+        entry["id"] = quick_current.group(1).strip()
+    return entry
+
+
+def rewrite_quick_scan(index: str, task_id: str, node_id_value: str, resume_id: str) -> str:
+    replacements = {
+        "Current": task_id,
+        "Latest roadmap node": node_id_value,
+        "Resume candidate": resume_id or "none",
+    }
+    for label, value in replacements.items():
+        pattern = rf"(?m)^- {re.escape(label)}:\s*.*$"
+        line = f"- {label}: {value}"
+        if re.search(pattern, index):
+            index = re.sub(pattern, line, index)
+        else:
+            index = index.replace("## Quick Scan\n\n", f"## Quick Scan\n\n{line}\n", 1)
+    return index
+
+
+def render_current_index_block(task_id: str, title: str, task_folder: str, branch: str, parent_node: str, zh: bool) -> str:
+    today = datetime.now().strftime("%Y-%m-%d")
+    if zh:
+        summary = f"支线任务已创建，路线为“{branch}”，父节点为 {parent_node or 'none'}。"
+        next_step = "在该支线内继续推进，并把相关 bad case 与测试链路链接到后续节点。"
+    else:
+        summary = f"Branch task created for {branch}; parent node is {parent_node or 'none'}."
+        next_step = "Continue inside this branch and link related bad cases and recurrence checks to later nodes."
+    return "\n".join(
+        [
+            f"- ID: {task_id}",
+            f"- Title: {title}",
+            "- State: current",
+            f"- Folder: `{task_folder}`",
+            f"- Last updated: {today}",
+            f"- Summary: {summary}",
+            f"- Next step: {next_step}",
+        ]
+    )
+
+
+def render_parked_index_entry(previous: dict[str, str], zh: bool) -> str:
+    previous_id = previous.get("id", "").strip()
+    if not previous_id or previous_id.lower() in {"none", "none yet."}:
+        return ""
+    today = datetime.now().strftime("%Y-%m-%d")
+    title = previous.get("title", previous_id)
+    folder = previous.get("folder", f"`.codex/context/tasks/{previous_id}/`")
+    if zh:
+        parked = "因为用户显式创建支线任务，原当前任务暂存为可恢复任务。"
+        prompt = f"是否回到“{title}”？"
+    else:
+        parked = "Parked because the user explicitly created a branch task."
+        prompt = f"Resume {title}?"
+    return "\n".join(
+        [
+            f"### {previous_id}",
+            "",
+            f"- Title: {title}",
+            "- State: resume-candidate",
+            f"- Folder: {folder}",
+            f"- Parked because: {parked}",
+            f"- Resume prompt: {prompt}",
+            f"- Last updated: {today}",
+        ]
+    )
+
+
+def update_index_for_branch_task(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+    node_id_value: str,
+) -> tuple[str, str]:
+    index_path = ctx / "index.md"
+    index = index_path.read_text(encoding="utf-8")
+    previous = parse_current_index_entry(index)
+    previous_id = previous.get("id", "").strip()
+    zh = preferred_display_language(ctx) == "zh"
+    task_folder = f".codex/context/tasks/{task_id}/"
+    current_block = render_current_index_block(task_id, title, task_folder, branch, parent_node, zh)
+    index = rewrite_quick_scan(index, task_id, node_id_value, previous_id)
+    index = re.sub(r"(?ms)(^## Current\s*\n\n).*?(?=\n## |\Z)", rf"\1{current_block}\n", index, count=1)
+    parked_entry = render_parked_index_entry(previous, zh)
+    if parked_entry and previous_id not in extract_section(index, "## Parked / Resume Candidates"):
+        parked_match = re.search(r"(?ms)(^## Parked / Resume Candidates\s*\n\n)(.*?)(?=\n## |\Z)", index)
+        if parked_match:
+            body = parked_match.group(2).strip()
+            body = "" if body == "None." else body
+            new_body = f"{parked_entry}\n\n{body}".strip()
+            index = index[: parked_match.start(2)] + new_body + "\n" + index[parked_match.end(2) :]
+    index_path.write_text(index, encoding="utf-8")
+    return previous_id, task_folder
+
+
+def write_branch_task_context(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+    parent_task: str,
+) -> Path:
+    zh = preferred_display_language(ctx) == "zh"
+    today = datetime.now().strftime("%Y-%m-%d")
+    task_dir = ctx / "tasks" / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    if zh:
+        content = f"""# {title}
+
+- State: current
+- Branch: {branch}
+- Parent task: {parent_task or 'none'}
+- Parent roadmap node: {parent_node or 'none'}
+- Last updated: {today}
+
+## Objective
+
+维护这条支线的关键进展、相关 bad case 和复现检查，避免把支线内容混回主线。
+
+## Key Context
+
+- 用户显式要求创建或处理支线任务。
+- 后续路线节点需要继续使用 `Branch: {branch}`。
+- 如果该支线产生 bad case，必须把 bad case 链接到对应路线节点。
+
+## Next Step
+
+继续推进支线，并在完成前运行相关 bad-case guard。
+"""
+    else:
+        content = f"""# {title}
+
+- State: current
+- Branch: {branch}
+- Parent task: {parent_task or 'none'}
+- Parent roadmap node: {parent_node or 'none'}
+- Last updated: {today}
+
+## Objective
+
+Maintain this branch route's key progress, related bad cases, and recurrence checks without mixing it back into the mainline.
+
+## Key Context
+
+- The user explicitly requested a branch or side route.
+- Later roadmap nodes should keep using `Branch: {branch}`.
+- Branch bad cases must link back to their roadmap nodes.
+
+## Next Step
+
+Continue the branch and run relevant bad-case guards before completion.
+"""
+    path = task_dir / "context.md"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def append_branch_roadmap_node(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+) -> str:
+    roadmap_path = ctx / "roadmap.md"
+    roadmap = roadmap_path.read_text(encoding="utf-8")
+    node_id_value = next_roadmap_node_id(roadmap)
+    today = datetime.now().strftime("%Y-%m-%d")
+    zh = preferred_display_language(ctx) == "zh"
+    if zh:
+        outcome = f"创建“{branch}”支线任务，后续进展与风险独立记录。"
+        decision = "用户显式说明这是支线，不能继续混入当前主线。"
+        avoid = "不要只写 hook 提醒而不创建支线任务文件夹和路线节点。"
+        next_step = "在该支线内推进，并把相关 bad case 与测试链路链接到节点。"
+        test_chain = "运行支线任务创建 guard，确认 index、task 文件夹、Branch/Parent 节点和 roadmap 导出打通。"
+    else:
+        outcome = f"Created the {branch} branch task so later progress and risks stay separate."
+        decision = "The user explicitly marked the work as a branch, so it must not continue as mainline-only context."
+        avoid = "Do not only print hook reminders without creating the task folder and route node."
+        next_step = "Continue inside this branch and link related bad cases and recurrence checks."
+        test_chain = "Run the branch task guard to verify index, task folder, Branch/Parent node, and roadmap export."
+    node = f"""
+### {node_id_value}: {title}
+
+- Date: {today}
+- Status: active
+- Level: major
+- Branch: {branch}
+- Parent: {parent_node or 'none'}
+- Task: `{task_id}`
+- Outcome: {outcome}
+- Decision / reason: {decision}
+- Avoid going back: {avoid}
+- Next: {next_step}
+- Linked bad cases: none
+- Test chain: {test_chain}
+"""
+    roadmap = roadmap.replace("\nNo nodes yet.\n", "\n", 1)
+    roadmap = roadmap.rstrip() + "\n" + node
+    roadmap_path.write_text(roadmap, encoding="utf-8")
+    return node_id_value
+
+
+def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "") -> tuple[str, str, Path]:
+    init_context(root)
+    ctx = context_dir(root)
+    if not title.strip():
+        raise ValueError("create-branch-task requires a non-empty title")
+    branch = branch.strip() or title.strip()
+    title = title.strip()
+    index = (ctx / "index.md").read_text(encoding="utf-8")
+    parent_task = parse_current_index_entry(index).get("id", "")
+    task_id = next_task_id(ctx, title, branch)
+    task_path = write_branch_task_context(ctx, task_id, title, branch, parent_node, parent_task)
+    node_id_value = append_branch_roadmap_node(ctx, task_id, title, branch, parent_node)
+    update_index_for_branch_task(ctx, task_id, title, branch, parent_node, node_id_value)
+    export_roadmap(root, "html")
+    print(f"[context-guard] branch task: {task_id}")
+    print(f"[context-guard] branch node: {node_id_value}")
+    print(f"[context-guard] task context: {task_path}")
+    return task_id, node_id_value, task_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
+    parser.add_argument("--title", default=None, help="Title for a branch task.")
+    parser.add_argument("--branch", default=None, help="Branch/route name for a branch task.")
+    parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
     parser.add_argument("--open", action="store_true", help="Open the generated HTML roadmap with the default browser.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
@@ -2670,6 +2948,11 @@ def main() -> int:
         return 0
     if args.command == "show-roadmap":
         show_roadmap(root, args.open)
+        return 0
+    if args.command == "create-branch-task":
+        if not args.title:
+            parser.error("create-branch-task requires --title")
+        create_branch_task(root, args.title, args.branch or args.title, args.parent_node)
         return 0
     return 1
 

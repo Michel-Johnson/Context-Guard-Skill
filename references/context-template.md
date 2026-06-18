@@ -172,7 +172,7 @@ The smallest useful action to resume this task.
 - In human-facing HTML, prefer color, symbols, and compact visual markers over labels like `Status:`, `Nodes:`, `Frequency:`, or fallback text such as `untagged`.
 - Show meaningful `#tags` as compact colored chips with small emoji cues in human-facing HTML. Limit overview tags; show full tags on the detail page; omit the tag row when no tags exist.
 - A sharp task direction change should park the current task before starting a new one.
-- If the user explicitly says a task is a branch/side route/fork/支线/分支, create or select a branch task and write roadmap nodes with `Branch:` and `Parent:`.
+- If the user explicitly says a task is a branch/side route/fork/支线/分支, run or emulate `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation so the task folder, current index entry, and `Branch:`/`Parent:` roadmap node all exist.
 - If work significantly drifts from the mainline architecture without an explicit branch request, ask whether to create a branch before silently continuing.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.

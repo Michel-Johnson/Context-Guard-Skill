@@ -72,7 +72,7 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Use `Level: checkpoint` for small UI polish, validation, documentation, or implementation details that should not appear as main route cards.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
-10. If the user explicitly says the work is a branch, side route, fork, 支线, or 分支, create or select a branch task before implementation. Preserve the parent task and parent roadmap node, then write new roadmap nodes with `Branch:` and `Parent:`.
+10. If the user explicitly says the work is a branch, side route, fork, 支线, or 分支, run or emulate `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation. This must create/select the task folder, park the previous current task when needed, update `index.md`, and write a roadmap node with `Branch:` and `Parent:`.
 11. If the requested implementation direction significantly drifts from the current mainline architecture but the user did not explicitly call it a branch, ask whether to create a branch before treating it as normal continuation.
 
 Suggested task states: `current`, `parked`, `resume-candidate`, `done`, `archived`.

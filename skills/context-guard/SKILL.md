@@ -72,6 +72,8 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Use `Level: checkpoint` for small UI polish, validation, documentation, or implementation details that should not appear as main route cards.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
+10. If the user explicitly says the work is a branch, side route, fork, 支线, or 分支, run or emulate `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation. This must create/select the task folder, park the previous current task when needed, update `index.md`, and write a roadmap node with `Branch:` and `Parent:`.
+11. If the requested implementation direction significantly drifts from the current mainline architecture but the user did not explicitly call it a branch, ask whether to create a branch before treating it as normal continuation.
 
 Suggested task states: `current`, `parked`, `resume-candidate`, `done`, `archived`.
 
@@ -122,8 +124,13 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Use a shared horizontal route canvas for branch overview. Represent route offsets with spacer columns inside the route grid, not by shifting or clipping the entire route section boundary.
 - Keep branch connector lines aligned with the same offset coordinate used by spacer columns; connector lines should not stay pinned to the route section's left edge.
 - Draw branch connector lines from the visible parent node card to the branch route anchor so users can see exactly which node created the branch. If the true parent node is hidden as a checkpoint, connect from the nearest visible parent card on that parent route while still showing the true parent label.
+- Anchor branch connector endpoints to the small status dots inside the source and target node cards when those dots exist; only fall back to card edges for non-node placeholders.
+- Keep route and branch connector semantics distinct: ordinary route progression is card-to-card through the gap between cards, while branch/fork connectors are dot-to-dot and must not pass through node cards or text.
+- Side routes may drift right from the exact parent column to create a clean branch corridor; do not force every route to align perfectly if doing so makes connectors cross nodes.
+- Render connector layers behind route cards; cards should visually mask any connector segment that would otherwise pass over card content.
 - Do not infer branch relationships from vertical row adjacency, and do not use local decorative ticks that fail to show the parent node. A main-route branch must not look connected to a sibling branch just because that sibling route is above it.
 - Use smooth rounded connector curves rather than hard elbow lines. Draw subtle node-to-node connectors within each route so branch connectors can route through the gaps between nodes instead of crossing node cards.
+- Hide heavy native horizontal scrollbar chrome in the roadmap overview while preserving trackpad/mouse horizontal scrolling.
 - Use route depth color semantics in branch overview: the main route is green, first-level branches move to cool cyan/teal, deeper branch levels move colder toward blue and indigo.
 - Prefer color, symbols, and compact visual markers over visible status/frequency/linkage words.
 - Show meaningful tags as compact colored chips with small emoji cues when they help scanning, especially for bad cases; keep overview tags limited and put full tags in the detail page.
@@ -131,8 +138,9 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Do not show implementation chrome such as "human-facing view" labels or export/update timestamps in the overview header.
 - Link each node, bad case, and test-chain item to same-file detail anchors in `roadmap.html` by default, so `file://` views do not need to navigate to another local HTML file.
-- Keep detailed fields out of overview cards; place them in the same-file detail section and the stable `roadmap-details.html` sidecar.
+- Keep detailed fields out of overview cards. In human-facing node details, show only one concise summary sentence, the linked bad cases, and the linked bad-case recurrence test chain; do not show a standalone status dot under the title; keep full source fields in agent-readable context files and exports.
 - Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, Guard/verification notes, Trigger/reproduction notes, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
+- Human-facing bad-case details must follow the folder language preference for phenomenon, trigger, root cause, fix, and guard notes. Preserve code identifiers, commands, paths, and product names, but do not leave ordinary English prose mixed into Chinese detail cards.
 - When the folder language is Chinese, user-facing overview text should not fall back to untranslated English prose except for intentional technical names, commands, paths, APIs, and product names.
 
 ### User-Facing Labels
@@ -283,6 +291,9 @@ Run this before the final answer whenever Codex changed code, generated artifact
 5. Do not end with only string/DOM assertions when the risk is visual. If visual inspection is blocked, say exactly what was blocked, record the residual risk, and avoid claiming visual polish was verified.
 6. If the self-check reveals a new or recurring bad case, record it immediately, fix it before the final answer unless the user pauses, and rerun the self-check.
 7. Record the self-check evidence in the relevant roadmap node, bad-case entry, or task context using the folder language preference.
+8. Treat the Stop hook as a completion reliability gate, not a decorative reminder. If the hook asks for verification evidence, branch-task handling, or BC summary, satisfy it before finalizing.
+9. Do not claim a bug is fixed because a build passed or a helper restarted. Verify the original user-visible symptom with the smallest real check that could falsify the claim.
+10. If the work touched frontend, browser, UI binding, routing, HTML/CSS, or visual state, the self-check must include Browser/plugin/screenshot/DOM evidence tied to the original symptom, or an explicit blocker and residual risk.
 
 ### Turn End: Context Checkpoint
 
@@ -306,6 +317,8 @@ Run this before every final answer.
 11. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
 12. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
 13. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
+14. If the Stop hook detects an explicit branch request, ensure the branch task and `Branch:`/`Parent:` roadmap node exist before finalizing.
+15. If the Stop hook detects possible drift from the mainline architecture and no explicit branch exists, ask the user whether this should become a branch instead of silently continuing the mainline.
 
 ## Completion Report
 

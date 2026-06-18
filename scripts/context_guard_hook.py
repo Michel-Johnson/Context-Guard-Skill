@@ -238,7 +238,7 @@ def main() -> int:
         if looks_like_goal_mode(text):
             hints.append("goal mode: align active goal with current context and record roadmap/bad-case checkpoints during long-running work")
         if looks_like_explicit_branch(text):
-            hints.append("explicit branch task: create/select a branch task before implementation; write roadmap node with Branch: <branch name> and Parent: <parent NODE id>")
+            hints.append("explicit branch task: create/select a branch task by running `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation; verify the roadmap node has Branch: and Parent:")
         elif looks_like_route_drift(text):
             hints.append("possible route drift: ask whether to create a branch before moving away from the current mainline architecture")
         if looks_like_task_switch(text):
@@ -256,7 +256,7 @@ def main() -> int:
         print("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
         print("[context-guard] COMPLETION RELIABILITY GATE: before final answer, identify the changed artifact or workflow, run real verification evidence, re-run relevant bad-case guards, and record the evidence in context.")
         print("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
-        print("[context-guard] Branch task gate: if the user explicitly asked for a branch, create/select a branch task and add a roadmap node with Branch: and Parent:; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
+        print("[context-guard] Branch task gate: if the user explicitly asked for a branch, ensure `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` has created the task folder, index current entry, and Branch/Parent roadmap node; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
         print("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")
         print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] bad-case register: {bad_cases_path}")

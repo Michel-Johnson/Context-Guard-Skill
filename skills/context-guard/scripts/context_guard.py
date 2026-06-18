@@ -342,6 +342,7 @@ const I18N = {{
     checkpointsInDetails: "{{count}} checkpoints in details",
     levelMajor: "Major",
     levelCheckpoint: "Checkpoint",
+    summary: "Summary:",
     route: "Route:",
     parentRoute: "Parent route:",
     outcome: "Outcome:",
@@ -355,7 +356,7 @@ const I18N = {{
     guard: "Guard:"
   }},
   zh: {{
-    roadmapTitle: "Context 路线图",
+    roadmapTitle: "项目路线图",
     roadmapDetails: "路线图详情",
     humanView: "人类视图",
     humanDetailView: "人类详情视图",
@@ -374,6 +375,7 @@ const I18N = {{
     checkpointsInDetails: "{{count}} 个检查点在详情页",
     levelMajor: "主节点",
     levelCheckpoint: "检查点",
+    summary: "概括：",
     route: "路线：",
     parentRoute: "父路线：",
     outcome: "结果：",
@@ -414,7 +416,22 @@ function applyLang(lang) {{
   }});
 }}
 
+function connectorAnchor(element) {{
+  return element.querySelector(".lane-main .status-dot") || element.querySelector(".status-dot") || element;
+}}
+
+function dotConnectorPoint(element, stackRect, stack) {{
+  const anchor = connectorAnchor(element);
+  const rect = anchor.getBoundingClientRect();
+  return {{
+    x: rect.left + rect.width / 2 - stackRect.left + stack.scrollLeft,
+    y: rect.top + rect.height / 2 - stackRect.top + stack.scrollTop,
+  }};
+}}
+
 function connectorPoint(element, stackRect, stack, side = "center") {{
+  const anchor = connectorAnchor(element);
+  if (anchor !== element) return dotConnectorPoint(element, stackRect, stack);
   const rect = element.getBoundingClientRect();
   const y = rect.top + rect.height / 2 - stackRect.top + stack.scrollTop;
   let x = rect.left + rect.width / 2;
@@ -424,6 +441,16 @@ function connectorPoint(element, stackRect, stack, side = "center") {{
     x = rect.left + rect.width / 2;
     return {{ x: x - stackRect.left + stack.scrollLeft, y: rect.bottom - stackRect.top + stack.scrollTop }};
   }}
+  return {{ x: x - stackRect.left + stack.scrollLeft, y }};
+}}
+
+function cardConnectorPoint(element, stackRect, stack, side = "center") {{
+  const cardRect = element.getBoundingClientRect();
+  const anchorRect = connectorAnchor(element).getBoundingClientRect();
+  const y = anchorRect.top + anchorRect.height / 2 - stackRect.top + stack.scrollTop;
+  let x = cardRect.left + cardRect.width / 2;
+  if (side === "left") x = cardRect.left;
+  if (side === "right") x = cardRect.right;
   return {{ x: x - stackRect.left + stack.scrollLeft, y }};
 }}
 
@@ -443,8 +470,8 @@ function drawRouteConnectors(stack, svg, stackRect) {{
     cards.forEach((card, index) => {{
       const next = cards[index + 1];
       if (!next) return;
-      const start = connectorPoint(card, stackRect, stack, "right");
-      const end = connectorPoint(next, stackRect, stack, "left");
+      const start = cardConnectorPoint(card, stackRect, stack, "right");
+      const end = cardConnectorPoint(next, stackRect, stack, "left");
       const handle = Math.max(28, (end.x - start.x) * 0.45);
       const d = `M ${{start.x}} ${{start.y}} C ${{start.x + handle}} ${{start.y}} ${{end.x - handle}} ${{end.y}} ${{end.x}} ${{end.y}}`;
       createConnectorPath(svg, d, "route-connector", {{
@@ -455,17 +482,17 @@ function drawRouteConnectors(stack, svg, stackRect) {{
   }});
 }}
 
-function connectorGapX(source, stackRect, stack) {{
+function branchCorridorX(source, target, stackRect, stack) {{
   const parentRoute = source.closest(".route-group");
   const cards = parentRoute ? Array.from(parentRoute.querySelectorAll(".track-column.route-column[data-overview-node-id]")) : [];
   const index = cards.indexOf(source);
   const sourceRect = source.getBoundingClientRect();
-  const next = index >= 0 ? cards[index + 1] : null;
-  if (next) {{
-    const nextRect = next.getBoundingClientRect();
-    return (sourceRect.right + nextRect.left) / 2 - stackRect.left + stack.scrollLeft;
+  const previous = index > 0 ? cards[index - 1] : null;
+  if (previous) {{
+    const previousRect = previous.getBoundingClientRect();
+    return (previousRect.right + sourceRect.left) / 2 - stackRect.left + stack.scrollLeft;
   }}
-  return sourceRect.right + 36 - stackRect.left + stack.scrollLeft;
+  return sourceRect.left - stackRect.left + stack.scrollLeft - 24;
 }}
 
 function drawBranchConnectors() {{
@@ -486,22 +513,22 @@ function drawBranchConnectors() {{
     const source = parentId ? stack.querySelector(`[data-overview-node-id="${{CSS.escape(parentId)}}"]`) : null;
     const target = section.querySelector(".track-column.route-column[data-overview-node-id]") || section.querySelector("[data-route-anchor]");
     if (!source || !target) return;
-    const start = connectorPoint(source, stackRect, stack, "right");
-    const end = connectorPoint(target, stackRect, stack, "left");
-    const gapX = connectorGapX(source, stackRect, stack);
-    const handle = Math.max(30, Math.abs(gapX - start.x) * 0.55);
+    const start = dotConnectorPoint(source, stackRect, stack);
+    const end = dotConnectorPoint(target, stackRect, stack);
+    const corridorX = branchCorridorX(source, target, stackRect, stack);
+    const handle = Math.max(18, Math.abs(start.x - corridorX) * 0.45);
     const verticalHandle = Math.max(32, Math.abs(end.y - start.y) * 0.22);
     const routeLine = getComputedStyle(section).getPropertyValue("--route-line").trim() || "var(--line)";
     const d = [
       `M ${{start.x}} ${{start.y}}`,
-      `C ${{start.x + handle}} ${{start.y}} ${{gapX}} ${{start.y}} ${{gapX}} ${{start.y + verticalHandle}}`,
-      `C ${{gapX}} ${{end.y - verticalHandle}} ${{gapX}} ${{end.y}} ${{end.x}} ${{end.y}}`,
+      `C ${{start.x - handle}} ${{start.y}} ${{corridorX}} ${{start.y}} ${{corridorX}} ${{start.y + verticalHandle}}`,
+      `C ${{corridorX}} ${{end.y - verticalHandle}} ${{end.x - handle}} ${{end.y}} ${{end.x}} ${{end.y}}`,
     ].join(" ");
     createConnectorPath(svg, d, "branch-connector", {{
       stroke: routeLine,
       "data-parent-anchor-id": parentId,
       "data-child-route": section.dataset.routeGroup || "",
-      "data-connector-gap-x": String(Math.round(gapX)),
+      "data-branch-corridor-x": String(Math.round(corridorX)),
     }});
   }});
 }}
@@ -540,6 +567,16 @@ document.addEventListener("DOMContentLoaded", () => {{
   if (stack) stack.addEventListener("scroll", drawBranchConnectors, {{ passive: true }});
 }});
 </script>"""
+
+
+def initial_html_language(preferred_lang: str) -> str:
+    return preferred_lang if preferred_lang in {"zh", "en"} else "en"
+
+
+def initial_html_title(title_key: str, preferred_lang: str) -> str:
+    if preferred_lang == "zh":
+        return "路线图详情" if title_key == "roadmapDetails" else "项目路线图"
+    return "Context Roadmap Details" if title_key == "roadmapDetails" else "Context Roadmap Human View"
 
 
 def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> str:
@@ -587,12 +624,14 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
         else ""
     )
     preferred_lang = preferred_display_language(ctx)
+    html_lang = initial_html_language(preferred_lang)
+    html_title = initial_html_title("roadmapTitle", preferred_lang)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Context Roadmap Human View</title>
+  <title>{html.escape(html_title)}</title>
   <style>
     :root {{
       color-scheme: light;
@@ -685,6 +724,14 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       overflow-x: auto;
       padding-bottom: 4px;
       position: relative;
+      isolation: isolate;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }}
+    .route-stack.branch-map::-webkit-scrollbar, .route-strip::-webkit-scrollbar {{
+      width: 0;
+      height: 0;
+      display: none;
     }}
     .branch-connector-layer {{
       position: absolute;
@@ -699,11 +746,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       stroke-width: 1.7;
       stroke-linecap: round;
       stroke-linejoin: round;
-      opacity: 0.7;
+      opacity: 0.58;
     }}
     .route-connector {{
       stroke-width: 1.25;
-      opacity: 0.48;
+      opacity: 0.36;
     }}
     .route-group {{
       min-width: 0;
@@ -715,6 +762,10 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-group.route-branch {{
       position: relative;
+      padding-right: var(--branch-drift, 0px);
+    }}
+    .route-branch .route-head-grid, .route-branch .route-strip {{
+      transform: translateX(var(--branch-drift, 0px));
     }}
     .route-head {{
       display: flex;
@@ -787,6 +838,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-strip {{
       overflow: auto;
       padding-bottom: 2px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }}
     .route-stack.branch-map .route-strip {{
       overflow: visible;
@@ -902,6 +955,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       height: 11px;
       border-radius: 999px;
       display: inline-block;
+      position: relative;
       box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16);
     }}
     .status-ok {{ background: var(--ok); }}
@@ -1046,12 +1100,14 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
     case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
     preferred_lang = preferred_display_language(ctx)
+    html_lang = initial_html_language(preferred_lang)
+    html_title = initial_html_title("roadmapDetails", preferred_lang)
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Context Roadmap Details</title>
+  <title>{html.escape(html_title)}</title>
   <style>
     body {{ margin: 0; background: #f6f7f9; color: #20242a; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
     header {{ background: #fff; border-bottom: 1px solid #d9dee7; padding: 22px 32px; }}
@@ -1485,10 +1541,17 @@ def human_title(title: str) -> str:
 
 
 def human_text(text: str) -> str:
-    text = re.sub(r"`?CTX-\d{8}-[\w-]+`?", "this task", text)
-    text = re.sub(r"`?NODE-\d{8}-\d+`?", "a roadmap node", text)
-    text = re.sub(r"`?BC-\d{8}-\d+`?", "a linked bad case", text)
-    return text
+    parts = re.split(r"(`[^`]*`)", text)
+    cleaned: list[str] = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`"):
+            cleaned.append(part)
+            continue
+        part = re.sub(r"CTX-\d{8}-[\w-]+", "this task", part)
+        part = re.sub(r"NODE-\d{8}-\d+", "a roadmap node", part)
+        part = re.sub(r"BC-\d{8}-\d+", "a linked bad case", part)
+        cleaned.append(part)
+    return "".join(cleaned)
 
 
 ZH_TEXT: dict[str, str] = {
@@ -1567,7 +1630,49 @@ ZH_TEXT: dict[str, str] = {
     "`show-roadmap` generated file URL; global hook dry run initialized context and detected task switch/bad case prompts.": "`show-roadmap` 已生成文件 URL；全局 hook dry run 能初始化 context 并识别任务切换或 bad case 提示。",
     "Added a conciseness contract and compact HTML roadmap defaults.": "添加精简契约和紧凑 HTML 路线图默认规则。",
     "Compact HTML assertion passed; skill/plugin validation passed; pushed commit `5ca87e2`.": "紧凑 HTML 断言通过，skill/plugin 验证通过，并推送 commit `5ca87e2`。",
+    "Context could drift into a transcript instead of key nodes and bad cases.": "Context 可能变成流水账，而不是关键节点和 bad case。",
+    "Let templates invite full decisions, commands, and details into every node.": "模板会把完整决策、命令和细节引入每个节点。",
+    "Conciseness was a preference, not a hard contract.": "精简只是偏好，不是强约束。",
+    "Added concise-context rules, compact templates, and folded HTML details.": "添加精简 context 规则、紧凑模板和折叠 HTML 详情。",
+    "Run compact HTML assertion and skill/plugin validation.": "运行紧凑 HTML 断言和 skill/plugin 校验。",
+    "Solved bad cases could be forgotten after the conversation moved on.": "已解决的 bad case 可能在对话推进后被遗忘。",
+    "Continue development without a project-level bad-case register.": "在没有项目级 bad case 登记表的情况下继续开发。",
+    "No durable folder-scoped memory.": "缺少持久的文件夹级记忆。",
+    "Added `.codex/context/bad-cases.md` and task-local bad-case support.": "添加 `.codex/context/bad-cases.md` 和任务内 bad case 支持。",
+    "The skill direction drifted toward wrapping every bad case in scripts.": "skill 方向漂移成把每个 bad case 都封装成脚本。",
+    "Treat verification reuse as script generation by default.": "默认把复用验证等同于生成脚本。",
+    "Overemphasis on automation instead of context maintenance.": "过度强调自动化，而忽略 context 维护。",
+    "Reworded skill so context is primary and scripts are optional durable guards.": "重写 skill 说明，明确 context 是核心，脚本只是可选的持久防线。",
+    "A design discussion could be interrupted by an urgent bug and never resumed.": "设计讨论可能被紧急 bug 打断，并且之后没有恢复。",
+    "User switches to an unrelated urgent issue mid-design.": "用户在设计过程中切换到不相关的紧急问题。",
+    "No parked task queue.": "缺少可停放的任务队列。",
+    "Added dynamic index states: current, parked, resume-candidate, done, archived.": "添加动态索引状态：当前、已停放、候选恢复、完成、归档。",
+    "Context could be tied to a thread even though Codex work is folder-based.": "Context 可能绑定在线程上，但 Codex 工作实际以文件夹为边界。",
+    "Open a different thread in the same folder.": "在同一个文件夹中打开另一个线程。",
+    "No explicit folder-scoped context root.": "缺少明确的文件夹级 context 根目录。",
+    "Defined `.codex/context/` as folder-scoped and added SessionStart initialization.": "定义 `.codex/context/` 为文件夹级目录，并添加 SessionStart 初始化。",
+    "Markdown route map is agent-readable but not pleasant for human roadmap review.": "Markdown 路线图适合 agent 读取，但不适合人类舒服地查看路线。",
+    "User asks to see roadmap and receives Markdown-style output.": "用户要求查看路线图时收到 Markdown 风格输出。",
+    "Export format optimized for agent, not human.": "导出格式偏向 agent，而不是人类阅读。",
+    "Added HTML export with Quick Scan, Main Route, and Bad Cases columns.": "添加包含快速扫描、主要路线和 Bad Case 列的 HTML 导出。",
+    "User expected `$context-guard 展示 roadmap` to display roadmap directly, not explain commands.": "用户期望 `$context-guard 展示 roadmap` 直接展示路线图，而不是解释命令。",
+    "User asks how to view roadmap.": "用户询问如何查看路线图。",
+    "Added `show-roadmap` and skill instructions to open/display generated HTML.": "添加 `show-roadmap` 和 skill 说明，用于打开或展示生成的 HTML。",
+    "Without `$context-guard`, Codex might not load the skill and might skip context intake/checkpoint.": "没有 `$context-guard` 时，Codex 可能不会加载 skill，从而跳过 context 读取和检查点。",
+    "User asks a context-worthy question without explicit skill mention.": "用户提出需要 context 的问题，但没有显式提到 skill。",
+    "Skill body only loads after activation; implicit activation is not guaranteed.": "skill 内容只有激活后才会加载，隐式激活并不可靠。",
+    "Added global AGENTS fallback protocol and user-level hooks.": "添加全局 AGENTS 兜底协议和用户级 hooks。",
+    "The user asked why current skill development had no roadmap nodes; `.codex/context/roadmap.md` was empty.": "用户询问为什么当前 skill 开发没有路线节点；`.codex/context/roadmap.md` 为空。",
+    "Run `show-roadmap` after developing the skill and inspect empty roadmap.": "开发 skill 后运行 `show-roadmap` 并看到空路线图。",
+    "Context Guard was created late and not retroactively applied to the ongoing development process.": "Context Guard 创建得较晚，没有回填到正在进行的开发过程。",
+    "Backfilled roadmap nodes and bad-case register for the current skill development.": "为当前 skill 开发回填路线节点和 bad case 登记。",
+    "Open `roadmap.html`, switch to Chinese, and inspect main route, bad-case, test-chain, and detail text.": "打开 `roadmap.html`，切换到中文，并检查主路线、bad case、测试链路和详情文本。",
+    "Vertical label and Chinese record assertion checks localized overview records and localized detail records.": "竖排标签和中文记录断言检查本地化概览记录和本地化详情记录。",
     "Roadmap display now uses node columns with Main Route, Bad Cases, and Test Chain lanes.": "路线图现在使用节点列，并包含主要路线、Bad Case、测试链路三条轨道。",
+    "Roadmap could appear as a three-column dashboard instead of three horizontal tracks.": "路线图可能显示成三列仪表盘，而不是三条横向轨道。",
+    "Generate HTML with separate Quick Scan/Main Route/Bad Case columns.": "生成带独立 Quick Scan、主要路线和 Bad Case 列的 HTML。",
+    "Display model did not encode horizontal mainline plus vertical node-linked lanes.": "展示模型没有表达横向主线和按节点竖向关联的轨道。",
+    "Render node columns with Main Route, Bad Cases, and Test Chain lanes.": "渲染节点列，并包含主要路线、Bad Case 和测试链路轨道。",
     "Three-track HTML assertion passed; generated roadmap had 9 main/bad-case/test-chain lane sets and no old layout; pushed commit `4c31abd`.": "三轨 HTML 断言通过；生成的路线图包含 9 组主线/bad case/测试链路线，且不再出现旧布局；已推送 commit `4c31abd`。",
     "Roadmap display now targets stable HTML files instead of timestamped exports.": "路线图展示现在写入稳定 HTML 文件，而不是时间戳导出文件。",
     "Stable export assertion passed; current folder has stable HTML files and no timestamped roadmap HTML; pushed commit `13be025`; later route added stable details page.": "稳定导出断言通过；当前文件夹只有稳定 HTML 文件，没有时间戳路线图 HTML；已推送 commit `13be025`；后续路线加入了稳定详情页。",
@@ -1577,6 +1682,7 @@ ZH_TEXT: dict[str, str] = {
     "Human-label assertion passed; real HTML contains no internal IDs while Markdown keeps them; pushed commit `4049b32`.": "人类标签断言通过；真实 HTML 不含内部 ID，Markdown 保留内部 ID；已推送 commit `4049b32`。",
     "Roadmap overview now shows sparse labels and links detailed fields to a stable detail page.": "路线图概览现在只显示精简标签，并把详细字段链接到稳定详情页。",
     "Compact overview assertion passed; real HTML links to detail page and hides verbose fields; pushed commit `f5fb2b2`.": "精简概览断言通过；真实 HTML 链接到详情页，并隐藏冗长字段；已推送 commit `f5fb2b2`。",
+    "Compact overview assertion checks no verbose fields or Quick Scan panel on the overview and confirms detail links exist.": "精简概览断言检查概览页没有冗长字段或 Quick Scan 面板，并确认详情链接存在。",
     "User-facing roadmap now uses color markers for status/frequency and hides empty tag fallback text.": "面向用户的路线图现在用颜色标记表示状态/频率，并隐藏空标签兜底文本。",
     "Visual cue assertion checks no raw metadata words and confirms status markers exist; pushed commit `bd19ce6`.": "视觉提示断言检查无原始元数据文字，并确认状态标记存在；已推送 commit `bd19ce6`。",
     "Bad-case tags now render as compact colored chips in overview and detail views.": "Bad case 标签现在在概览和详情中渲染为紧凑彩色胶囊。",
@@ -1605,6 +1711,7 @@ ZH_TEXT: dict[str, str] = {
     "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则。",
     "Lane header column assertion checks one left label column and no lane labels inside node cards.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题。",
     "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, and localized detail records.": "竖排标签和中文记录断言检查轨道书写方向、概览记录本地化和详情记录本地化。",
+    "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, localized detail records, and stable roadmap files.": "竖排标签和中文记录断言检查轨道书写方向、本地化概览记录、本地化详情记录和稳定路线图文件。",
     "Vertical label and Chinese record assertion checks `writing-mode: vertical-rl` in generated overview CSS.": "竖排标签和中文记录断言检查生成的概览 CSS 中保留 `writing-mode: vertical-rl`。",
     "Vertical label and Chinese record assertion passed.": "竖排标签和中文记录断言已通过。",
     "User said lane labels should be vertical and Chinese mode should show Chinese records, not only Chinese UI chrome.": "用户要求轨道标签竖排，并且中文模式应显示中文记录，而不只是中文 UI 外壳。",
@@ -2110,6 +2217,10 @@ def render_route_group(
         route_header = f"""{route_head}
   {checkpoint_strip}"""
     route_vars = route_color_vars(route_depth)
+    branch_drift = 0
+    if branch_mode and parent_note:
+        branch_drift = 44 + max(route_depth, 1) * 10
+        route_vars = f"{route_vars} --branch-drift: {branch_drift}px;"
     offset_attrs = (
         f' data-route-offset="{route_offset}" data-route-depth="{route_depth}" style="{route_vars}"'
         if branch_mode
@@ -2118,6 +2229,7 @@ def render_route_group(
     if branch_mode and parent_note and parent_node_id and parent_anchor_id:
         offset_attrs = (
             f' data-route-offset="{route_offset}" data-route-depth="{route_depth}"'
+            f' data-branch-drift="{branch_drift}"'
             f' data-parent-node-id="{html.escape(parent_node_id)}"'
             f' data-parent-anchor-id="{html.escape(parent_anchor_id)}"'
             f' style="{route_vars}"'
@@ -2263,34 +2375,21 @@ def render_node_detail(
 ) -> str:
     title = localized_text(human_title(node.get("title", f"Node {number}")))
     status = node.get("status", "unknown")
-    date = html.escape(node.get("date", "undated"))
-    outcome = localized_text(node.get("outcome", "No outcome recorded."))
-    reason = localized_text(node.get("decision / reason", "No decision reason recorded."))
-    avoid = localized_text(node.get("avoid going back", "No avoided path recorded."))
-    next_step = localized_text(node.get("next", "No next step recorded."))
-    test_chain = localized_text(node.get("test chain", "none"))
-    branch = localized_text(branch_name(node))
-    level_key = "levelCheckpoint" if node_level(node) == "checkpoint" else "levelMajor"
-    level = html.escape(human_level(node))
-    parent_raw = human_text(node.get("parent", ""))
-    parent = localized_text(parent_raw) if parent_raw else ""
+    summary = localized_short_text(node.get("outcome", "No summary recorded."), 160)
     cases = bad_cases_for_node(node, bad_case_cards)
     case_links = ", ".join(
         f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{localized_text(human_title(card.get("title", "Bad case")))}</a>'
         for card in cases
-    ) or "None"
+    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
+    test_notes = "\n".join(
+        render_bad_case_test_note(card, case_anchor_map.get(card.get("title", ""), "case-1"))
+        for card in cases
+    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
-  <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
-  <p class="field"><span class="level-chip" data-i18n="{level_key}">{level}</span></p>
-  <p class="field"><b data-i18n="route">Route:</b> {branch}</p>
-  {f'<p class="field"><b data-i18n="parentRoute">Parent route:</b> {parent}</p>' if parent else ''}
-  <p class="field"><b data-i18n="outcome">Outcome:</b> {outcome}</p>
-  <p class="field"><b data-i18n="decision">Decision:</b> {reason}</p>
-  <p class="field"><b data-i18n="avoidGoingBack">Avoid going back:</b> {avoid}</p>
-  <p class="field"><b data-i18n="next">Next:</b> {next_step}</p>
+  <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
   <p class="field"><b data-i18n="badCasesField">Bad cases:</b> {case_links}</p>
-  <p class="field"><b data-i18n="testChainField">Test chain:</b> {test_chain}</p>
+  <div class="field"><b data-i18n="testChainField">Test chain:</b> {test_notes}</div>
 </section>"""
 
 
@@ -2528,7 +2627,6 @@ def render_case_detail(card: dict[str, str], anchor: str) -> str:
     )
     return f"""<section class="detail-card" id="{html.escape(anchor)}">
   <h3>{title}</h3>
-  <div class="visual-meta">{status_dot(status)}{frequency_dot(frequency)}</div>
 {optional}
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </section>"""
@@ -2557,11 +2655,275 @@ def extract_bad_case_scan(text: str) -> str:
     return "\n".join(interesting).strip() or "No bad-case links recorded."
 
 
+def ascii_slug(value: str, fallback: str = "branch") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or fallback
+
+
+def next_task_id(ctx: Path, title: str, branch: str) -> str:
+    stamp = datetime.now().strftime("%Y%m%d")
+    base = f"CTX-{stamp}-{ascii_slug(branch or title)}"
+    task_root = ctx / "tasks"
+    candidate = base
+    suffix = 2
+    while (task_root / candidate).exists():
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def next_roadmap_node_id(roadmap: str) -> str:
+    stamp = datetime.now().strftime("%Y%m%d")
+    numbers = [int(value) for value in re.findall(rf"NODE-{stamp}-(\d+)", roadmap)]
+    return f"NODE-{stamp}-{(max(numbers) if numbers else 0) + 1:03d}"
+
+
+def parse_current_index_entry(index: str) -> dict[str, str]:
+    entry: dict[str, str] = {}
+    match = re.search(r"(?ms)^## Current\s*\n\n(.*?)(?=\n## |\Z)", index)
+    block = match.group(1).strip() if match else ""
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- ") or ":" not in stripped:
+            continue
+        key, value = stripped[2:].split(":", 1)
+        entry[key.strip().lower()] = value.strip()
+    quick_current = re.search(r"(?m)^- Current:\s*(.+)$", index)
+    if quick_current and "id" not in entry:
+        entry["id"] = quick_current.group(1).strip()
+    return entry
+
+
+def rewrite_quick_scan(index: str, task_id: str, node_id_value: str, resume_id: str) -> str:
+    replacements = {
+        "Current": task_id,
+        "Latest roadmap node": node_id_value,
+        "Resume candidate": resume_id or "none",
+    }
+    for label, value in replacements.items():
+        pattern = rf"(?m)^- {re.escape(label)}:\s*.*$"
+        line = f"- {label}: {value}"
+        if re.search(pattern, index):
+            index = re.sub(pattern, line, index)
+        else:
+            index = index.replace("## Quick Scan\n\n", f"## Quick Scan\n\n{line}\n", 1)
+    return index
+
+
+def render_current_index_block(task_id: str, title: str, task_folder: str, branch: str, parent_node: str, zh: bool) -> str:
+    today = datetime.now().strftime("%Y-%m-%d")
+    if zh:
+        summary = f"支线任务已创建，路线为“{branch}”，父节点为 {parent_node or 'none'}。"
+        next_step = "在该支线内继续推进，并把相关 bad case 与测试链路链接到后续节点。"
+    else:
+        summary = f"Branch task created for {branch}; parent node is {parent_node or 'none'}."
+        next_step = "Continue inside this branch and link related bad cases and recurrence checks to later nodes."
+    return "\n".join(
+        [
+            f"- ID: {task_id}",
+            f"- Title: {title}",
+            "- State: current",
+            f"- Folder: `{task_folder}`",
+            f"- Last updated: {today}",
+            f"- Summary: {summary}",
+            f"- Next step: {next_step}",
+        ]
+    )
+
+
+def render_parked_index_entry(previous: dict[str, str], zh: bool) -> str:
+    previous_id = previous.get("id", "").strip()
+    if not previous_id or previous_id.lower() in {"none", "none yet."}:
+        return ""
+    today = datetime.now().strftime("%Y-%m-%d")
+    title = previous.get("title", previous_id)
+    folder = previous.get("folder", f"`.codex/context/tasks/{previous_id}/`")
+    if zh:
+        parked = "因为用户显式创建支线任务，原当前任务暂存为可恢复任务。"
+        prompt = f"是否回到“{title}”？"
+    else:
+        parked = "Parked because the user explicitly created a branch task."
+        prompt = f"Resume {title}?"
+    return "\n".join(
+        [
+            f"### {previous_id}",
+            "",
+            f"- Title: {title}",
+            "- State: resume-candidate",
+            f"- Folder: {folder}",
+            f"- Parked because: {parked}",
+            f"- Resume prompt: {prompt}",
+            f"- Last updated: {today}",
+        ]
+    )
+
+
+def update_index_for_branch_task(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+    node_id_value: str,
+) -> tuple[str, str]:
+    index_path = ctx / "index.md"
+    index = index_path.read_text(encoding="utf-8")
+    previous = parse_current_index_entry(index)
+    previous_id = previous.get("id", "").strip()
+    zh = preferred_display_language(ctx) == "zh"
+    task_folder = f".codex/context/tasks/{task_id}/"
+    current_block = render_current_index_block(task_id, title, task_folder, branch, parent_node, zh)
+    index = rewrite_quick_scan(index, task_id, node_id_value, previous_id)
+    index = re.sub(r"(?ms)(^## Current\s*\n\n).*?(?=\n## |\Z)", rf"\1{current_block}\n", index, count=1)
+    parked_entry = render_parked_index_entry(previous, zh)
+    if parked_entry and previous_id not in extract_section(index, "## Parked / Resume Candidates"):
+        parked_match = re.search(r"(?ms)(^## Parked / Resume Candidates\s*\n\n)(.*?)(?=\n## |\Z)", index)
+        if parked_match:
+            body = parked_match.group(2).strip()
+            body = "" if body == "None." else body
+            new_body = f"{parked_entry}\n\n{body}".strip()
+            index = index[: parked_match.start(2)] + new_body + "\n" + index[parked_match.end(2) :]
+    index_path.write_text(index, encoding="utf-8")
+    return previous_id, task_folder
+
+
+def write_branch_task_context(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+    parent_task: str,
+) -> Path:
+    zh = preferred_display_language(ctx) == "zh"
+    today = datetime.now().strftime("%Y-%m-%d")
+    task_dir = ctx / "tasks" / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    if zh:
+        content = f"""# {title}
+
+- State: current
+- Branch: {branch}
+- Parent task: {parent_task or 'none'}
+- Parent roadmap node: {parent_node or 'none'}
+- Last updated: {today}
+
+## Objective
+
+维护这条支线的关键进展、相关 bad case 和复现检查，避免把支线内容混回主线。
+
+## Key Context
+
+- 用户显式要求创建或处理支线任务。
+- 后续路线节点需要继续使用 `Branch: {branch}`。
+- 如果该支线产生 bad case，必须把 bad case 链接到对应路线节点。
+
+## Next Step
+
+继续推进支线，并在完成前运行相关 bad-case guard。
+"""
+    else:
+        content = f"""# {title}
+
+- State: current
+- Branch: {branch}
+- Parent task: {parent_task or 'none'}
+- Parent roadmap node: {parent_node or 'none'}
+- Last updated: {today}
+
+## Objective
+
+Maintain this branch route's key progress, related bad cases, and recurrence checks without mixing it back into the mainline.
+
+## Key Context
+
+- The user explicitly requested a branch or side route.
+- Later roadmap nodes should keep using `Branch: {branch}`.
+- Branch bad cases must link back to their roadmap nodes.
+
+## Next Step
+
+Continue the branch and run relevant bad-case guards before completion.
+"""
+    path = task_dir / "context.md"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def append_branch_roadmap_node(
+    ctx: Path,
+    task_id: str,
+    title: str,
+    branch: str,
+    parent_node: str,
+) -> str:
+    roadmap_path = ctx / "roadmap.md"
+    roadmap = roadmap_path.read_text(encoding="utf-8")
+    node_id_value = next_roadmap_node_id(roadmap)
+    today = datetime.now().strftime("%Y-%m-%d")
+    zh = preferred_display_language(ctx) == "zh"
+    if zh:
+        outcome = f"创建“{branch}”支线任务，后续进展与风险独立记录。"
+        decision = "用户显式说明这是支线，不能继续混入当前主线。"
+        avoid = "不要只写 hook 提醒而不创建支线任务文件夹和路线节点。"
+        next_step = "在该支线内推进，并把相关 bad case 与测试链路链接到节点。"
+        test_chain = "运行支线任务创建 guard，确认 index、task 文件夹、Branch/Parent 节点和 roadmap 导出打通。"
+    else:
+        outcome = f"Created the {branch} branch task so later progress and risks stay separate."
+        decision = "The user explicitly marked the work as a branch, so it must not continue as mainline-only context."
+        avoid = "Do not only print hook reminders without creating the task folder and route node."
+        next_step = "Continue inside this branch and link related bad cases and recurrence checks."
+        test_chain = "Run the branch task guard to verify index, task folder, Branch/Parent node, and roadmap export."
+    node = f"""
+### {node_id_value}: {title}
+
+- Date: {today}
+- Status: active
+- Level: major
+- Branch: {branch}
+- Parent: {parent_node or 'none'}
+- Task: `{task_id}`
+- Outcome: {outcome}
+- Decision / reason: {decision}
+- Avoid going back: {avoid}
+- Next: {next_step}
+- Linked bad cases: none
+- Test chain: {test_chain}
+"""
+    roadmap = roadmap.replace("\nNo nodes yet.\n", "\n", 1)
+    roadmap = roadmap.rstrip() + "\n" + node
+    roadmap_path.write_text(roadmap, encoding="utf-8")
+    return node_id_value
+
+
+def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "") -> tuple[str, str, Path]:
+    init_context(root)
+    ctx = context_dir(root)
+    if not title.strip():
+        raise ValueError("create-branch-task requires a non-empty title")
+    branch = branch.strip() or title.strip()
+    title = title.strip()
+    index = (ctx / "index.md").read_text(encoding="utf-8")
+    parent_task = parse_current_index_entry(index).get("id", "")
+    task_id = next_task_id(ctx, title, branch)
+    task_path = write_branch_task_context(ctx, task_id, title, branch, parent_node, parent_task)
+    node_id_value = append_branch_roadmap_node(ctx, task_id, title, branch, parent_node)
+    update_index_for_branch_task(ctx, task_id, title, branch, parent_node, node_id_value)
+    export_roadmap(root, "html")
+    print(f"[context-guard] branch task: {task_id}")
+    print(f"[context-guard] branch node: {node_id_value}")
+    print(f"[context-guard] task context: {task_path}")
+    return task_id, node_id_value, task_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
+    parser.add_argument("--title", default=None, help="Title for a branch task.")
+    parser.add_argument("--branch", default=None, help="Branch/route name for a branch task.")
+    parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
     parser.add_argument("--open", action="store_true", help="Open the generated HTML roadmap with the default browser.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
@@ -2586,6 +2948,11 @@ def main() -> int:
         return 0
     if args.command == "show-roadmap":
         show_roadmap(root, args.open)
+        return 0
+    if args.command == "create-branch-task":
+        if not args.title:
+            parser.error("create-branch-task requires --title")
+        create_branch_task(root, args.title, args.branch or args.title, args.parent_node)
         return 0
     return 1
 

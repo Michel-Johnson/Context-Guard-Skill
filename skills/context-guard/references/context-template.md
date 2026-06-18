@@ -172,6 +172,8 @@ The smallest useful action to resume this task.
 - In human-facing HTML, prefer color, symbols, and compact visual markers over labels like `Status:`, `Nodes:`, `Frequency:`, or fallback text such as `untagged`.
 - Show meaningful `#tags` as compact colored chips with small emoji cues in human-facing HTML. Limit overview tags; show full tags on the detail page; omit the tag row when no tags exist.
 - A sharp task direction change should park the current task before starting a new one.
+- If the user explicitly says a task is a branch/side route/fork/支线/分支, run or emulate `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation so the task folder, current index entry, and `Branch:`/`Parent:` roadmap node all exist.
+- If work significantly drifts from the mainline architecture without an explicit branch request, ask whether to create a branch before silently continuing.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
@@ -184,9 +186,17 @@ The smallest useful action to resume this task.
 - Branch route labels, parent chips, and checkpoint text should sit near the branch's first visible card by reusing the same spacer/grid coordinate as the branch cards.
 - Branch overview should use one shared horizontal route canvas. Route alignment should use grid spacer columns, not padding that shifts or clips the whole route section.
 - Branch connector lines should use the same offset coordinate as the route's spacer columns, not a fixed left-edge position.
-- Branch connector endpoints should be anchored to the first visible branch card/column and visibly meet the card edge; do not draw connector lines from the whole route section through the card interior.
+- Branch connector endpoints should be anchored to the status dots inside the source and target node cards; do not draw connector lines from the whole route section or unrelated card edges.
+- Route progression connectors should be card-to-card through card gaps; branch connectors should be dot-to-dot through an empty branch corridor and must not cross node cards or text.
+- Side routes may drift right from exact column alignment when that creates a cleaner non-crossing branch path.
+- Connector layers should render behind route cards so cards mask any line segment that would otherwise pass over content.
+- Hide heavy native horizontal scrollbar chrome in the roadmap overview while preserving horizontal scroll interaction.
+- Human-facing node detail cards should show only one concise summary sentence, linked bad cases, and linked bad-case recurrence tests. Do not show a standalone status dot under the node detail title. Keep route, parent, decision, avoid-going-back, and next-step source fields in agent-readable context, not in the human detail card.
+- Human-facing bad-case details should localize phenomenon, trigger, root cause, fix, and guard prose to the folder language preference while preserving technical identifiers, commands, and paths.
 - Route color should encode branch depth: main route green, first-level branch cool cyan/teal, deeper branch levels progressively colder toward blue and indigo.
 - Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.
+- Treat Stop hook output as a completion reliability gate. Before claiming fixed/done/passing, record real verification evidence for the changed artifact or workflow and rerun relevant bad-case guards.
+- For UI/browser/binding/frontend work, verify the original user-visible symptom, not only build success or process restart.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.
