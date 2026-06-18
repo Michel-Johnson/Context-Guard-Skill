@@ -126,6 +126,46 @@ def looks_like_goal_mode(text: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def looks_like_explicit_branch(text: str) -> bool:
+    lowered = text.lower()
+    markers = [
+        "branch task",
+        "side task",
+        "side route",
+        "fork this",
+        "create a branch",
+        "new branch",
+        "as a branch",
+        "支线",
+        "分支",
+        "开一个分支",
+        "开一条支线",
+        "创建支线",
+        "创建分支",
+        "作为支线",
+    ]
+    return any(marker in lowered for marker in markers)
+
+
+def looks_like_route_drift(text: str) -> bool:
+    lowered = text.lower()
+    drift_markers = [
+        "significantly diverge",
+        "diverge from",
+        "different architecture",
+        "new architecture",
+        "new direction",
+        "refactor direction",
+        "偏离",
+        "显著偏离",
+        "新的架构",
+        "新方向",
+        "重构方向",
+        "主线架构",
+    ]
+    return any(marker in lowered for marker in drift_markers)
+
+
 def bad_case_blocks(text: str) -> list[dict[str, str]]:
     blocks: list[dict[str, str]] = []
     current: dict[str, str] | None = None
@@ -197,6 +237,10 @@ def main() -> int:
         hints: list[str] = []
         if looks_like_goal_mode(text):
             hints.append("goal mode: align active goal with current context and record roadmap/bad-case checkpoints during long-running work")
+        if looks_like_explicit_branch(text):
+            hints.append("explicit branch task: create/select a branch task before implementation; write roadmap node with Branch: <branch name> and Parent: <parent NODE id>")
+        elif looks_like_route_drift(text):
+            hints.append("possible route drift: ask whether to create a branch before moving away from the current mainline architecture")
         if looks_like_task_switch(text):
             hints.append("possible task switch: park current context in .codex/context/index.md before switching")
         if looks_like_bad_case(text):
@@ -210,6 +254,10 @@ def main() -> int:
 
     if event == "stop":
         print("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
+        print("[context-guard] COMPLETION RELIABILITY GATE: before final answer, identify the changed artifact or workflow, run real verification evidence, re-run relevant bad-case guards, and record the evidence in context.")
+        print("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
+        print("[context-guard] Branch task gate: if the user explicitly asked for a branch, create/select a branch task and add a roadmap node with Branch: and Parent:; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
+        print("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")
         print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] bad-case register: {bad_cases_path}")
         open_cases = unresolved_bad_cases(bad_cases_path)

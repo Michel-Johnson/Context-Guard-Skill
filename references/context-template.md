@@ -172,6 +172,8 @@ The smallest useful action to resume this task.
 - In human-facing HTML, prefer color, symbols, and compact visual markers over labels like `Status:`, `Nodes:`, `Frequency:`, or fallback text such as `untagged`.
 - Show meaningful `#tags` as compact colored chips with small emoji cues in human-facing HTML. Limit overview tags; show full tags on the detail page; omit the tag row when no tags exist.
 - A sharp task direction change should park the current task before starting a new one.
+- If the user explicitly says a task is a branch/side route/fork/支线/分支, create or select a branch task and write roadmap nodes with `Branch:` and `Parent:`.
+- If work significantly drifts from the mainline architecture without an explicit branch request, ask whether to create a branch before silently continuing.
 - When an interruption finishes, ask whether to resume the most relevant parked task.
 - Do not let parked items grow endlessly. Mark stale items `archived` and compress them to a short summary.
 - Do not delete unresolved user intent unless the user explicitly discards it.
@@ -193,6 +195,8 @@ The smallest useful action to resume this task.
 - Human-facing bad-case details should localize phenomenon, trigger, root cause, fix, and guard prose to the folder language preference while preserving technical identifiers, commands, and paths.
 - Route color should encode branch depth: main route green, first-level branch cool cyan/teal, deeper branch levels progressively colder toward blue and indigo.
 - Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.
+- Treat Stop hook output as a completion reliability gate. Before claiming fixed/done/passing, record real verification evidence for the changed artifact or workflow and rerun relevant bad-case guards.
+- For UI/browser/binding/frontend work, verify the original user-visible symptom, not only build success or process restart.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.

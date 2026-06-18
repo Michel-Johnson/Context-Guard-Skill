@@ -72,6 +72,8 @@ Use `.codex/context/index.md` as a small, actively maintained queue of work cont
    - Use `Level: checkpoint` for small UI polish, validation, documentation, or implementation details that should not appear as main route cards.
 8. Do not walk the same path twice: when a direction is rejected or superseded, record why so future Codex does not re-propose it without new evidence.
 9. Link each roadmap node to related bad cases and test-chain notes when relevant.
+10. If the user explicitly says the work is a branch, side route, fork, 支线, or 分支, create or select a branch task before implementation. Preserve the parent task and parent roadmap node, then write new roadmap nodes with `Branch:` and `Parent:`.
+11. If the requested implementation direction significantly drifts from the current mainline architecture but the user did not explicitly call it a branch, ask whether to create a branch before treating it as normal continuation.
 
 Suggested task states: `current`, `parked`, `resume-candidate`, `done`, `archived`.
 
@@ -289,6 +291,9 @@ Run this before the final answer whenever Codex changed code, generated artifact
 5. Do not end with only string/DOM assertions when the risk is visual. If visual inspection is blocked, say exactly what was blocked, record the residual risk, and avoid claiming visual polish was verified.
 6. If the self-check reveals a new or recurring bad case, record it immediately, fix it before the final answer unless the user pauses, and rerun the self-check.
 7. Record the self-check evidence in the relevant roadmap node, bad-case entry, or task context using the folder language preference.
+8. Treat the Stop hook as a completion reliability gate, not a decorative reminder. If the hook asks for verification evidence, branch-task handling, or BC summary, satisfy it before finalizing.
+9. Do not claim a bug is fixed because a build passed or a helper restarted. Verify the original user-visible symptom with the smallest real check that could falsify the claim.
+10. If the work touched frontend, browser, UI binding, routing, HTML/CSS, or visual state, the self-check must include Browser/plugin/screenshot/DOM evidence tied to the original symptom, or an explicit blocker and residual risk.
 
 ### Turn End: Context Checkpoint
 
@@ -312,6 +317,8 @@ Run this before every final answer.
 11. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
 12. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
 13. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
+14. If the Stop hook detects an explicit branch request, ensure the branch task and `Branch:`/`Parent:` roadmap node exist before finalizing.
+15. If the Stop hook detects possible drift from the mainline architecture and no explicit branch exists, ask the user whether this should become a branch instead of silently continuing the mainline.
 
 ## Completion Report
 
