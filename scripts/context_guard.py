@@ -342,6 +342,7 @@ const I18N = {{
     checkpointsInDetails: "{{count}} checkpoints in details",
     levelMajor: "Major",
     levelCheckpoint: "Checkpoint",
+    summary: "Summary:",
     route: "Route:",
     parentRoute: "Parent route:",
     outcome: "Outcome:",
@@ -374,6 +375,7 @@ const I18N = {{
     checkpointsInDetails: "{{count}} 个检查点在详情页",
     levelMajor: "主节点",
     levelCheckpoint: "检查点",
+    summary: "概括：",
     route: "路线：",
     parentRoute: "父路线：",
     outcome: "结果：",
@@ -1617,6 +1619,7 @@ ZH_TEXT: dict[str, str] = {
     "Human-label assertion passed; real HTML contains no internal IDs while Markdown keeps them; pushed commit `4049b32`.": "人类标签断言通过；真实 HTML 不含内部 ID，Markdown 保留内部 ID；已推送 commit `4049b32`。",
     "Roadmap overview now shows sparse labels and links detailed fields to a stable detail page.": "路线图概览现在只显示精简标签，并把详细字段链接到稳定详情页。",
     "Compact overview assertion passed; real HTML links to detail page and hides verbose fields; pushed commit `f5fb2b2`.": "精简概览断言通过；真实 HTML 链接到详情页，并隐藏冗长字段；已推送 commit `f5fb2b2`。",
+    "Compact overview assertion checks no verbose fields or Quick Scan panel on the overview and confirms detail links exist.": "精简概览断言检查概览页没有冗长字段或 Quick Scan 面板，并确认详情链接存在。",
     "User-facing roadmap now uses color markers for status/frequency and hides empty tag fallback text.": "面向用户的路线图现在用颜色标记表示状态/频率，并隐藏空标签兜底文本。",
     "Visual cue assertion checks no raw metadata words and confirms status markers exist; pushed commit `bd19ce6`.": "视觉提示断言检查无原始元数据文字，并确认状态标记存在；已推送 commit `bd19ce6`。",
     "Bad-case tags now render as compact colored chips in overview and detail views.": "Bad case 标签现在在概览和详情中渲染为紧凑彩色胶囊。",
@@ -1645,6 +1648,7 @@ ZH_TEXT: dict[str, str] = {
     "Goal-mode assertion checks skill rules, `get_goal`/`update_goal` constraints, hook hints, and template maintenance rules.": "Goal 模式断言检查 skill 规则、`get_goal`/`update_goal` 约束、hook 提示和模板维护规则。",
     "Lane header column assertion checks one left label column and no lane labels inside node cards.": "轨道标题列断言检查左侧只有一列标题，并且节点卡片内没有轨道标题。",
     "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, and localized detail records.": "竖排标签和中文记录断言检查轨道书写方向、概览记录本地化和详情记录本地化。",
+    "Vertical label and Chinese record assertion checks lane writing mode, localized overview records, localized detail records, and stable roadmap files.": "竖排标签和中文记录断言检查轨道书写方向、本地化概览记录、本地化详情记录和稳定路线图文件。",
     "Vertical label and Chinese record assertion checks `writing-mode: vertical-rl` in generated overview CSS.": "竖排标签和中文记录断言检查生成的概览 CSS 中保留 `writing-mode: vertical-rl`。",
     "Vertical label and Chinese record assertion passed.": "竖排标签和中文记录断言已通过。",
     "User said lane labels should be vertical and Chinese mode should show Chinese records, not only Chinese UI chrome.": "用户要求轨道标签竖排，并且中文模式应显示中文记录，而不只是中文 UI 外壳。",
@@ -2308,34 +2312,22 @@ def render_node_detail(
 ) -> str:
     title = localized_text(human_title(node.get("title", f"Node {number}")))
     status = node.get("status", "unknown")
-    date = html.escape(node.get("date", "undated"))
-    outcome = localized_text(node.get("outcome", "No outcome recorded."))
-    reason = localized_text(node.get("decision / reason", "No decision reason recorded."))
-    avoid = localized_text(node.get("avoid going back", "No avoided path recorded."))
-    next_step = localized_text(node.get("next", "No next step recorded."))
-    test_chain = localized_text(node.get("test chain", "none"))
-    branch = localized_text(branch_name(node))
-    level_key = "levelCheckpoint" if node_level(node) == "checkpoint" else "levelMajor"
-    level = html.escape(human_level(node))
-    parent_raw = human_text(node.get("parent", ""))
-    parent = localized_text(parent_raw) if parent_raw else ""
+    summary = localized_short_text(node.get("outcome", "No summary recorded."), 160)
     cases = bad_cases_for_node(node, bad_case_cards)
     case_links = ", ".join(
         f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{localized_text(human_title(card.get("title", "Bad case")))}</a>'
         for card in cases
-    ) or "None"
+    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
+    test_notes = "\n".join(
+        render_bad_case_test_note(card, case_anchor_map.get(card.get("title", ""), "case-1"))
+        for card in cases
+    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
-  <div class="visual-meta">{status_dot(status)}<span class="muted">{date}</span></div>
-  <p class="field"><span class="level-chip" data-i18n="{level_key}">{level}</span></p>
-  <p class="field"><b data-i18n="route">Route:</b> {branch}</p>
-  {f'<p class="field"><b data-i18n="parentRoute">Parent route:</b> {parent}</p>' if parent else ''}
-  <p class="field"><b data-i18n="outcome">Outcome:</b> {outcome}</p>
-  <p class="field"><b data-i18n="decision">Decision:</b> {reason}</p>
-  <p class="field"><b data-i18n="avoidGoingBack">Avoid going back:</b> {avoid}</p>
-  <p class="field"><b data-i18n="next">Next:</b> {next_step}</p>
+  <div class="visual-meta">{status_dot(status)}</div>
+  <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
   <p class="field"><b data-i18n="badCasesField">Bad cases:</b> {case_links}</p>
-  <p class="field"><b data-i18n="testChainField">Test chain:</b> {test_chain}</p>
+  <div class="field"><b data-i18n="testChainField">Test chain:</b> {test_notes}</div>
 </section>"""
 
 
