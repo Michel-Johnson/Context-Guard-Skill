@@ -187,6 +187,7 @@ The smallest useful action to resume this task.
 - Branch connector endpoints should be anchored to the status dots inside the source and target node cards; do not draw connector lines from the whole route section or unrelated card edges.
 - Route progression connectors should be card-to-card through card gaps; branch connectors should be dot-to-dot through an empty branch corridor and must not cross node cards or text.
 - Side routes may drift right from exact column alignment when that creates a cleaner non-crossing branch path.
+- Connector layers should render behind route cards so cards mask any line segment that would otherwise pass over content.
 - Hide heavy native horizontal scrollbar chrome in the roadmap overview while preserving horizontal scroll interaction.
 - Route color should encode branch depth: main route green, first-level branch cool cyan/teal, deeper branch levels progressively colder toward blue and indigo.
 - Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.

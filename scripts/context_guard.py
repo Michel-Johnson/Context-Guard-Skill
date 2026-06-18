@@ -710,6 +710,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       overflow-x: auto;
       padding-bottom: 4px;
       position: relative;
+      isolation: isolate;
       scrollbar-width: none;
       -ms-overflow-style: none;
     }}
@@ -723,7 +724,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       inset: 0;
       pointer-events: none;
       overflow: visible;
-      z-index: 2;
+      z-index: 0;
     }}
     .branch-connector, .route-connector {{
       fill: none;
