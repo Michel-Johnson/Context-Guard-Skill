@@ -414,6 +414,60 @@ function applyLang(lang) {{
   }});
 }}
 
+function connectorPoint(element, stackRect, stack, side = "center") {{
+  const rect = element.getBoundingClientRect();
+  const y = rect.top + rect.height / 2 - stackRect.top + stack.scrollTop;
+  let x = rect.left + rect.width / 2;
+  if (side === "left") x = rect.left;
+  if (side === "right") x = rect.right;
+  if (side === "bottom") {{
+    x = rect.left + rect.width / 2;
+    return {{ x: x - stackRect.left + stack.scrollLeft, y: rect.bottom - stackRect.top + stack.scrollTop }};
+  }}
+  return {{ x: x - stackRect.left + stack.scrollLeft, y }};
+}}
+
+function createConnectorPath(svg, d, className, attrs = {{}}) {{
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  path.setAttribute("class", className);
+  Object.entries(attrs).forEach(([key, value]) => path.setAttribute(key, value));
+  svg.appendChild(path);
+  return path;
+}}
+
+function drawRouteConnectors(stack, svg, stackRect) {{
+  stack.querySelectorAll(".route-group").forEach((section) => {{
+    const cards = Array.from(section.querySelectorAll(".track-column.route-column[data-overview-node-id]"));
+    const routeLine = getComputedStyle(section).getPropertyValue("--route-line").trim() || "var(--line)";
+    cards.forEach((card, index) => {{
+      const next = cards[index + 1];
+      if (!next) return;
+      const start = connectorPoint(card, stackRect, stack, "right");
+      const end = connectorPoint(next, stackRect, stack, "left");
+      const handle = Math.max(28, (end.x - start.x) * 0.45);
+      const d = `M ${{start.x}} ${{start.y}} C ${{start.x + handle}} ${{start.y}} ${{end.x - handle}} ${{end.y}} ${{end.x}} ${{end.y}}`;
+      createConnectorPath(svg, d, "route-connector", {{
+        stroke: routeLine,
+        "data-route-link": `${{card.dataset.overviewNodeId}}:${{next.dataset.overviewNodeId}}`,
+      }});
+    }});
+  }});
+}}
+
+function connectorGapX(source, stackRect, stack) {{
+  const parentRoute = source.closest(".route-group");
+  const cards = parentRoute ? Array.from(parentRoute.querySelectorAll(".track-column.route-column[data-overview-node-id]")) : [];
+  const index = cards.indexOf(source);
+  const sourceRect = source.getBoundingClientRect();
+  const next = index >= 0 ? cards[index + 1] : null;
+  if (next) {{
+    const nextRect = next.getBoundingClientRect();
+    return (sourceRect.right + nextRect.left) / 2 - stackRect.left + stack.scrollLeft;
+  }}
+  return sourceRect.right + 36 - stackRect.left + stack.scrollLeft;
+}}
+
 function drawBranchConnectors() {{
   const stack = document.querySelector("[data-route-map-overview]");
   if (!stack) return;
@@ -426,26 +480,29 @@ function drawBranchConnectors() {{
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
   svg.innerHTML = "";
+  drawRouteConnectors(stack, svg, stackRect);
   stack.querySelectorAll(".route-group.route-branch[data-parent-anchor-id]").forEach((section) => {{
     const parentId = section.dataset.parentAnchorId;
     const source = parentId ? stack.querySelector(`[data-overview-node-id="${{CSS.escape(parentId)}}"]`) : null;
-    const target = section.querySelector("[data-route-anchor]");
+    const target = section.querySelector(".track-column.route-column[data-overview-node-id]") || section.querySelector("[data-route-anchor]");
     if (!source || !target) return;
-    const sourceRect = source.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const sx = sourceRect.left + sourceRect.width / 2 - stackRect.left + stack.scrollLeft;
-    const sy = sourceRect.bottom - stackRect.top + stack.scrollTop;
-    const tx = targetRect.left + targetRect.width / 2 - stackRect.left + stack.scrollLeft;
-    const ty = targetRect.top + targetRect.height / 2 - stackRect.top + stack.scrollTop;
-    const midY = Math.max(sy + 22, ty - 26);
+    const start = connectorPoint(source, stackRect, stack, "right");
+    const end = connectorPoint(target, stackRect, stack, "left");
+    const gapX = connectorGapX(source, stackRect, stack);
+    const handle = Math.max(30, Math.abs(gapX - start.x) * 0.55);
+    const verticalHandle = Math.max(32, Math.abs(end.y - start.y) * 0.22);
     const routeLine = getComputedStyle(section).getPropertyValue("--route-line").trim() || "var(--line)";
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", `M ${{sx}} ${{sy}} V ${{midY}} H ${{tx}} V ${{ty}}`);
-    path.setAttribute("class", "branch-connector");
-    path.setAttribute("stroke", routeLine);
-    path.setAttribute("data-parent-anchor-id", parentId);
-    path.setAttribute("data-child-route", section.dataset.routeGroup || "");
-    svg.appendChild(path);
+    const d = [
+      `M ${{start.x}} ${{start.y}}`,
+      `C ${{start.x + handle}} ${{start.y}} ${{gapX}} ${{start.y}} ${{gapX}} ${{start.y + verticalHandle}}`,
+      `C ${{gapX}} ${{end.y - verticalHandle}} ${{gapX}} ${{end.y}} ${{end.x}} ${{end.y}}`,
+    ].join(" ");
+    createConnectorPath(svg, d, "branch-connector", {{
+      stroke: routeLine,
+      "data-parent-anchor-id": parentId,
+      "data-child-route": section.dataset.routeGroup || "",
+      "data-connector-gap-x": String(Math.round(gapX)),
+    }});
   }});
 }}
 
@@ -636,13 +693,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       overflow: visible;
       z-index: 0;
     }}
-    .branch-connector {{
+    .branch-connector, .route-connector {{
       fill: none;
       stroke: var(--line);
-      stroke-width: 1.5;
+      stroke-width: 1.7;
       stroke-linecap: round;
       stroke-linejoin: round;
-      opacity: 0.72;
+      opacity: 0.7;
+    }}
+    .route-connector {{
+      stroke-width: 1.25;
+      opacity: 0.48;
     }}
     .route-group {{
       min-width: 0;
