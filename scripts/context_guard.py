@@ -966,7 +966,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .freq-dot {{ width: 9px; height: 9px; background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }}
     .badcase {{ border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }}
     .badcase:last-child {{ border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }}
-    .badcase-head {{ display: flex; align-items: center; gap: 8px; }}
+    .badcase-head {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }}
+    .badcase-markers {{ display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
     .route-drilldowns {{
       margin-top: 16px;
@@ -2557,8 +2558,9 @@ def render_bad_case_summary(card: dict[str, str], anchor: str) -> str:
     frequency = card.get("frequency", "")
     tags = parse_tags(card.get("tags", ""))
     tag_html = render_tags(tags, limit=3)
+    markers = f"{status_dot(status)}{frequency_dot(frequency)}"
     return f"""<article class="badcase">
-  <div class="badcase-head">{status_dot(status)}{frequency_dot(frequency)}<a class="detail-link" href="#{html.escape(anchor)}">{title}</a></div>
+  <div class="badcase-head"><a class="detail-link" href="#{html.escape(anchor)}">{title}</a><span class="badcase-markers" aria-hidden="true">{markers}</span></div>
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </article>"""
 
