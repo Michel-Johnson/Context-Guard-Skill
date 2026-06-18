@@ -226,7 +226,7 @@ Recommended regression checks for roadmap changes:
 - overview header does not show view-type labels or export/update timestamps
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
-- multi-route overview shows all route lines together and marks branch parent/fork relationships
+- multi-route overview shows all route lines together and draws branch connectors from the visible parent node card to the branch route anchor
 - loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
 - loose bad-case blocks with `ID`, `Title`, `Status`, and `Nodes` render as linked bad cases
 - Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets

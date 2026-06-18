@@ -414,6 +414,41 @@ function applyLang(lang) {{
   }});
 }}
 
+function drawBranchConnectors() {{
+  const stack = document.querySelector("[data-route-map-overview]");
+  if (!stack) return;
+  const svg = stack.querySelector(":scope > .branch-connector-layer");
+  if (!svg) return;
+  const stackRect = stack.getBoundingClientRect();
+  const width = Math.max(stack.scrollWidth, stackRect.width);
+  const height = Math.max(stack.scrollHeight, stackRect.height);
+  svg.setAttribute("viewBox", `0 0 ${{width}} ${{height}}`);
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.innerHTML = "";
+  stack.querySelectorAll(".route-group.route-branch[data-parent-anchor-id]").forEach((section) => {{
+    const parentId = section.dataset.parentAnchorId;
+    const source = parentId ? stack.querySelector(`[data-overview-node-id="${{CSS.escape(parentId)}}"]`) : null;
+    const target = section.querySelector("[data-route-anchor]");
+    if (!source || !target) return;
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const sx = sourceRect.left + sourceRect.width / 2 - stackRect.left + stack.scrollLeft;
+    const sy = sourceRect.bottom - stackRect.top + stack.scrollTop;
+    const tx = targetRect.left + targetRect.width / 2 - stackRect.left + stack.scrollLeft;
+    const ty = targetRect.top + targetRect.height / 2 - stackRect.top + stack.scrollTop;
+    const midY = Math.max(sy + 22, ty - 26);
+    const routeLine = getComputedStyle(section).getPropertyValue("--route-line").trim() || "var(--line)";
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${{sx}} ${{sy}} V ${{midY}} H ${{tx}} V ${{ty}}`);
+    path.setAttribute("class", "branch-connector");
+    path.setAttribute("stroke", routeLine);
+    path.setAttribute("data-parent-anchor-id", parentId);
+    path.setAttribute("data-child-route", section.dataset.routeGroup || "");
+    svg.appendChild(path);
+  }});
+}}
+
 document.addEventListener("DOMContentLoaded", () => {{
   const initial = resolveLang();
   applyLang(initial);
@@ -442,6 +477,10 @@ document.addEventListener("DOMContentLoaded", () => {{
       applyRoute(route);
     }});
   }});
+  drawBranchConnectors();
+  window.addEventListener("resize", drawBranchConnectors);
+  const stack = document.querySelector("[data-route-map-overview]");
+  if (stack) stack.addEventListener("scroll", drawBranchConnectors, {{ passive: true }});
 }});
 </script>"""
 
@@ -454,6 +493,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     node_lookup = {node_id(node): node for _, items in route_groups for _, node in items}
     branch_mode = len(route_groups) > 1
     route_offsets = build_route_offsets(route_groups, node_lookup) if branch_mode else {}
+    route_parent_anchors = build_route_parent_anchors(route_groups, node_lookup) if branch_mode else {}
     route_depths = build_route_depths(route_groups, node_lookup) if branch_mode else {}
     route_nav = render_route_filter(route_groups) if branch_mode else ""
     route_items = "\n".join(
@@ -466,6 +506,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
             node_lookup,
             route_offsets.get(branch.lower(), 0),
             route_depths.get(branch.lower(), 0),
+            route_parent_anchors.get(branch.lower(), ("", ""))[0],
+            route_parent_anchors.get(branch.lower(), ("", ""))[1],
         )
         for i, (branch, items) in enumerate(route_groups)
     )
@@ -482,6 +524,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     inline_details = render_inline_details(nodes, bad_case_cards, case_anchor_map)
     if not route_items:
         route_items = '<section class="empty" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
+    connector_layer = (
+        '<svg class="branch-connector-layer" aria-hidden="true" focusable="false"></svg>'
+        if branch_mode
+        else ""
+    )
     preferred_lang = preferred_display_language(ctx)
     return f"""<!doctype html>
 <html lang="en">
@@ -580,12 +627,30 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .route-stack.branch-map {{
       overflow-x: auto;
       padding-bottom: 4px;
+      position: relative;
+    }}
+    .branch-connector-layer {{
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 0;
+    }}
+    .branch-connector {{
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.72;
     }}
     .route-group {{
       min-width: 0;
     }}
     .route-stack.branch-map .route-group {{
       min-width: max-content;
+      position: relative;
+      z-index: 1;
     }}
     .route-group.route-branch {{
       position: relative;
@@ -681,29 +746,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-head-grid.track-grid.route-only {{
       min-height: 0;
-    }}
-    .route-head-cell.branch-start::before,
-    .route-head-cell.branch-start::after {{
-      content: "";
-      position: absolute;
-      pointer-events: none;
-      z-index: -1;
-      border-color: color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
-    }}
-    .route-head-cell.branch-start::before {{
-      left: 5px;
-      top: 7px;
-      height: 20px;
-      z-index: -1;
-      border-left: 1px solid color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
-    }}
-    .route-head-cell.branch-start::after {{
-      left: 5px;
-      top: 27px;
-      width: 38px;
-      height: 0;
-      z-index: -1;
-      border-bottom: 1px solid color-mix(in srgb, var(--route-line, var(--line)) 58%, transparent);
     }}
     .route-spacer {{
       min-height: 1px;
@@ -922,7 +964,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     <main class="track-board" id="roadmap-overview">
       <h2 data-i18n="roadmap">Roadmap</h2>
       {route_nav}
-      <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{route_items}</div>
+      <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{connector_layer}{route_items}</div>
       {route_panels}
     </main>
     {inline_details}
@@ -1276,6 +1318,28 @@ def parent_visible_offset(
     return max(candidates) if candidates else 0
 
 
+def parent_visible_anchor_id(
+    parent_id: str,
+    visible_positions: dict[str, tuple[str, int]],
+    source_positions: dict[str, tuple[str, int]],
+    visible_by_branch: dict[str, list[tuple[int, str, int]]],
+) -> str:
+    if parent_id in visible_positions:
+        return parent_id
+    parent_source = source_positions.get(parent_id)
+    if not parent_source:
+        return ""
+    parent_branch, parent_number = parent_source
+    candidates = [
+        (source_number, display_index, nid)
+        for source_number, nid, display_index in visible_by_branch.get(parent_branch, [])
+        if source_number <= parent_number
+    ]
+    if not candidates:
+        return ""
+    return max(candidates, key=lambda item: (item[0], item[1]))[2]
+
+
 def build_route_offsets(
     route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]],
     node_lookup: dict[str, dict[str, str]],
@@ -1290,6 +1354,23 @@ def build_route_offsets(
             else 0
         )
     return offsets
+
+
+def build_route_parent_anchors(
+    route_groups: list[tuple[str, list[tuple[int, dict[str, str]]]]],
+    node_lookup: dict[str, dict[str, str]],
+) -> dict[str, tuple[str, str]]:
+    visible_positions, source_positions, visible_by_branch = build_visible_route_positions(route_groups)
+    anchors: dict[str, tuple[str, str]] = {}
+    for branch, items in route_groups:
+        parent_id = external_parent_id(branch, items, node_lookup)
+        anchor_id = (
+            parent_visible_anchor_id(parent_id, visible_positions, source_positions, visible_by_branch)
+            if parent_id
+            else ""
+        )
+        anchors[branch.lower()] = (parent_id, anchor_id)
+    return anchors
 
 
 def build_route_depths(
@@ -1911,6 +1992,8 @@ def render_route_group(
     node_lookup: dict[str, dict[str, str]] | None = None,
     route_offset: int = 0,
     route_depth: int = 0,
+    parent_node_id: str = "",
+    parent_anchor_id: str = "",
 ) -> str:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     hidden_count = len(items) - len(major_items)
@@ -1957,7 +2040,8 @@ def render_route_group(
   </div>"""
     if branch_mode:
         head_start_class = " branch-start" if route_offset > 0 and parent_note else ""
-        route_header = f"""<div class="route-head-grid {grid_class}">{route_spacers}<div class="route-head-cell{head_start_class}">
+        route_anchor_attr = " data-route-anchor" if head_start_class else ""
+        route_header = f"""<div class="route-head-grid {grid_class}">{route_spacers}<div class="route-head-cell{head_start_class}"{route_anchor_attr}>
   {route_head}
   {checkpoint_strip}
 </div></div>"""
@@ -1970,6 +2054,13 @@ def render_route_group(
         if branch_mode
         else f' data-route-depth="{route_depth}" style="{route_vars}"'
     )
+    if branch_mode and parent_note and parent_node_id and parent_anchor_id:
+        offset_attrs = (
+            f' data-route-offset="{route_offset}" data-route-depth="{route_depth}"'
+            f' data-parent-node-id="{html.escape(parent_node_id)}"'
+            f' data-parent-anchor-id="{html.escape(parent_anchor_id)}"'
+            f' style="{route_vars}"'
+        )
     return f"""<section class="route-group{branch_class}" data-route-group="{html.escape(route_slug(branch))}"{offset_attrs}>
   {route_header}
   <div class="route-strip">
@@ -2008,7 +2099,8 @@ def render_route_column(
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
     branch_class = " branch-start" if branch_start else ""
-    return f"""<section class="track-column route-column{branch_class}">
+    overview_id = html.escape(node_id(node))
+    return f"""<section class="track-column route-column{branch_class}" data-overview-node-id="{overview_id}">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">
