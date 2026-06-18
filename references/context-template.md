@@ -189,7 +189,8 @@ The smallest useful action to resume this task.
 - Side routes may drift right from exact column alignment when that creates a cleaner non-crossing branch path.
 - Connector layers should render behind route cards so cards mask any line segment that would otherwise pass over content.
 - Hide heavy native horizontal scrollbar chrome in the roadmap overview while preserving horizontal scroll interaction.
-- Human-facing node detail cards should show only one concise summary sentence, linked bad cases, and linked bad-case recurrence tests. Keep route, parent, decision, avoid-going-back, and next-step source fields in agent-readable context, not in the human detail card.
+- Human-facing node detail cards should show only one concise summary sentence, linked bad cases, and linked bad-case recurrence tests. Do not show a standalone status dot under the node detail title. Keep route, parent, decision, avoid-going-back, and next-step source fields in agent-readable context, not in the human detail card.
+- Human-facing bad-case details should localize phenomenon, trigger, root cause, fix, and guard prose to the folder language preference while preserving technical identifiers, commands, and paths.
 - Route color should encode branch depth: main route green, first-level branch cool cyan/teal, deeper branch levels progressively colder toward blue and indigo.
 - Before finalizing frontend, roadmap HTML, or visual layout work, open or render the artifact with an available browser/plugin or screenshot path and inspect for obvious visual bugs. Do not rely only on string assertions for layout changes.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.

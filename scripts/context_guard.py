@@ -1527,10 +1527,17 @@ def human_title(title: str) -> str:
 
 
 def human_text(text: str) -> str:
-    text = re.sub(r"`?CTX-\d{8}-[\w-]+`?", "this task", text)
-    text = re.sub(r"`?NODE-\d{8}-\d+`?", "a roadmap node", text)
-    text = re.sub(r"`?BC-\d{8}-\d+`?", "a linked bad case", text)
-    return text
+    parts = re.split(r"(`[^`]*`)", text)
+    cleaned: list[str] = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`"):
+            cleaned.append(part)
+            continue
+        part = re.sub(r"CTX-\d{8}-[\w-]+", "this task", part)
+        part = re.sub(r"NODE-\d{8}-\d+", "a roadmap node", part)
+        part = re.sub(r"BC-\d{8}-\d+", "a linked bad case", part)
+        cleaned.append(part)
+    return "".join(cleaned)
 
 
 ZH_TEXT: dict[str, str] = {
@@ -1609,7 +1616,49 @@ ZH_TEXT: dict[str, str] = {
     "`show-roadmap` generated file URL; global hook dry run initialized context and detected task switch/bad case prompts.": "`show-roadmap` 已生成文件 URL；全局 hook dry run 能初始化 context 并识别任务切换或 bad case 提示。",
     "Added a conciseness contract and compact HTML roadmap defaults.": "添加精简契约和紧凑 HTML 路线图默认规则。",
     "Compact HTML assertion passed; skill/plugin validation passed; pushed commit `5ca87e2`.": "紧凑 HTML 断言通过，skill/plugin 验证通过，并推送 commit `5ca87e2`。",
+    "Context could drift into a transcript instead of key nodes and bad cases.": "Context 可能变成流水账，而不是关键节点和 bad case。",
+    "Let templates invite full decisions, commands, and details into every node.": "模板会把完整决策、命令和细节引入每个节点。",
+    "Conciseness was a preference, not a hard contract.": "精简只是偏好，不是强约束。",
+    "Added concise-context rules, compact templates, and folded HTML details.": "添加精简 context 规则、紧凑模板和折叠 HTML 详情。",
+    "Run compact HTML assertion and skill/plugin validation.": "运行紧凑 HTML 断言和 skill/plugin 校验。",
+    "Solved bad cases could be forgotten after the conversation moved on.": "已解决的 bad case 可能在对话推进后被遗忘。",
+    "Continue development without a project-level bad-case register.": "在没有项目级 bad case 登记表的情况下继续开发。",
+    "No durable folder-scoped memory.": "缺少持久的文件夹级记忆。",
+    "Added `.codex/context/bad-cases.md` and task-local bad-case support.": "添加 `.codex/context/bad-cases.md` 和任务内 bad case 支持。",
+    "The skill direction drifted toward wrapping every bad case in scripts.": "skill 方向漂移成把每个 bad case 都封装成脚本。",
+    "Treat verification reuse as script generation by default.": "默认把复用验证等同于生成脚本。",
+    "Overemphasis on automation instead of context maintenance.": "过度强调自动化，而忽略 context 维护。",
+    "Reworded skill so context is primary and scripts are optional durable guards.": "重写 skill 说明，明确 context 是核心，脚本只是可选的持久防线。",
+    "A design discussion could be interrupted by an urgent bug and never resumed.": "设计讨论可能被紧急 bug 打断，并且之后没有恢复。",
+    "User switches to an unrelated urgent issue mid-design.": "用户在设计过程中切换到不相关的紧急问题。",
+    "No parked task queue.": "缺少可停放的任务队列。",
+    "Added dynamic index states: current, parked, resume-candidate, done, archived.": "添加动态索引状态：当前、已停放、候选恢复、完成、归档。",
+    "Context could be tied to a thread even though Codex work is folder-based.": "Context 可能绑定在线程上，但 Codex 工作实际以文件夹为边界。",
+    "Open a different thread in the same folder.": "在同一个文件夹中打开另一个线程。",
+    "No explicit folder-scoped context root.": "缺少明确的文件夹级 context 根目录。",
+    "Defined `.codex/context/` as folder-scoped and added SessionStart initialization.": "定义 `.codex/context/` 为文件夹级目录，并添加 SessionStart 初始化。",
+    "Markdown route map is agent-readable but not pleasant for human roadmap review.": "Markdown 路线图适合 agent 读取，但不适合人类舒服地查看路线。",
+    "User asks to see roadmap and receives Markdown-style output.": "用户要求查看路线图时收到 Markdown 风格输出。",
+    "Export format optimized for agent, not human.": "导出格式偏向 agent，而不是人类阅读。",
+    "Added HTML export with Quick Scan, Main Route, and Bad Cases columns.": "添加包含快速扫描、主要路线和 Bad Case 列的 HTML 导出。",
+    "User expected `$context-guard 展示 roadmap` to display roadmap directly, not explain commands.": "用户期望 `$context-guard 展示 roadmap` 直接展示路线图，而不是解释命令。",
+    "User asks how to view roadmap.": "用户询问如何查看路线图。",
+    "Added `show-roadmap` and skill instructions to open/display generated HTML.": "添加 `show-roadmap` 和 skill 说明，用于打开或展示生成的 HTML。",
+    "Without `$context-guard`, Codex might not load the skill and might skip context intake/checkpoint.": "没有 `$context-guard` 时，Codex 可能不会加载 skill，从而跳过 context 读取和检查点。",
+    "User asks a context-worthy question without explicit skill mention.": "用户提出需要 context 的问题，但没有显式提到 skill。",
+    "Skill body only loads after activation; implicit activation is not guaranteed.": "skill 内容只有激活后才会加载，隐式激活并不可靠。",
+    "Added global AGENTS fallback protocol and user-level hooks.": "添加全局 AGENTS 兜底协议和用户级 hooks。",
+    "The user asked why current skill development had no roadmap nodes; `.codex/context/roadmap.md` was empty.": "用户询问为什么当前 skill 开发没有路线节点；`.codex/context/roadmap.md` 为空。",
+    "Run `show-roadmap` after developing the skill and inspect empty roadmap.": "开发 skill 后运行 `show-roadmap` 并看到空路线图。",
+    "Context Guard was created late and not retroactively applied to the ongoing development process.": "Context Guard 创建得较晚，没有回填到正在进行的开发过程。",
+    "Backfilled roadmap nodes and bad-case register for the current skill development.": "为当前 skill 开发回填路线节点和 bad case 登记。",
+    "Open `roadmap.html`, switch to Chinese, and inspect main route, bad-case, test-chain, and detail text.": "打开 `roadmap.html`，切换到中文，并检查主路线、bad case、测试链路和详情文本。",
+    "Vertical label and Chinese record assertion checks localized overview records and localized detail records.": "竖排标签和中文记录断言检查本地化概览记录和本地化详情记录。",
     "Roadmap display now uses node columns with Main Route, Bad Cases, and Test Chain lanes.": "路线图现在使用节点列，并包含主要路线、Bad Case、测试链路三条轨道。",
+    "Roadmap could appear as a three-column dashboard instead of three horizontal tracks.": "路线图可能显示成三列仪表盘，而不是三条横向轨道。",
+    "Generate HTML with separate Quick Scan/Main Route/Bad Case columns.": "生成带独立 Quick Scan、主要路线和 Bad Case 列的 HTML。",
+    "Display model did not encode horizontal mainline plus vertical node-linked lanes.": "展示模型没有表达横向主线和按节点竖向关联的轨道。",
+    "Render node columns with Main Route, Bad Cases, and Test Chain lanes.": "渲染节点列，并包含主要路线、Bad Case 和测试链路轨道。",
     "Three-track HTML assertion passed; generated roadmap had 9 main/bad-case/test-chain lane sets and no old layout; pushed commit `4c31abd`.": "三轨 HTML 断言通过；生成的路线图包含 9 组主线/bad case/测试链路线，且不再出现旧布局；已推送 commit `4c31abd`。",
     "Roadmap display now targets stable HTML files instead of timestamped exports.": "路线图展示现在写入稳定 HTML 文件，而不是时间戳导出文件。",
     "Stable export assertion passed; current folder has stable HTML files and no timestamped roadmap HTML; pushed commit `13be025`; later route added stable details page.": "稳定导出断言通过；当前文件夹只有稳定 HTML 文件，没有时间戳路线图 HTML；已推送 commit `13be025`；后续路线加入了稳定详情页。",
@@ -2324,7 +2373,6 @@ def render_node_detail(
     ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
-  <div class="visual-meta">{status_dot(status)}</div>
   <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
   <p class="field"><b data-i18n="badCasesField">Bad cases:</b> {case_links}</p>
   <div class="field"><b data-i18n="testChainField">Test chain:</b> {test_notes}</div>
@@ -2565,7 +2613,6 @@ def render_case_detail(card: dict[str, str], anchor: str) -> str:
     )
     return f"""<section class="detail-card" id="{html.escape(anchor)}">
   <h3>{title}</h3>
-  <div class="visual-meta">{status_dot(status)}{frequency_dot(frequency)}</div>
 {optional}
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </section>"""
