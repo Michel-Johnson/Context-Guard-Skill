@@ -414,8 +414,19 @@ function applyLang(lang) {{
   }});
 }}
 
+function connectorAnchor(element) {{
+  return element.querySelector(".lane-main .status-dot") || element.querySelector(".status-dot") || element;
+}}
+
 function connectorPoint(element, stackRect, stack, side = "center") {{
-  const rect = element.getBoundingClientRect();
+  const anchor = connectorAnchor(element);
+  const rect = anchor.getBoundingClientRect();
+  if (anchor !== element) {{
+    return {{
+      x: rect.left + rect.width / 2 - stackRect.left + stack.scrollLeft,
+      y: rect.top + rect.height / 2 - stackRect.top + stack.scrollTop,
+    }};
+  }}
   const y = rect.top + rect.height / 2 - stackRect.top + stack.scrollTop;
   let x = rect.left + rect.width / 2;
   if (side === "left") x = rect.left;
@@ -691,7 +702,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       inset: 0;
       pointer-events: none;
       overflow: visible;
-      z-index: 0;
+      z-index: 2;
     }}
     .branch-connector, .route-connector {{
       fill: none;
@@ -699,11 +710,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       stroke-width: 1.7;
       stroke-linecap: round;
       stroke-linejoin: round;
-      opacity: 0.7;
+      opacity: 0.58;
     }}
     .route-connector {{
       stroke-width: 1.25;
-      opacity: 0.48;
+      opacity: 0.36;
     }}
     .route-group {{
       min-width: 0;
@@ -902,6 +913,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       height: 11px;
       border-radius: 999px;
       display: inline-block;
+      position: relative;
       box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16);
     }}
     .status-ok {{ background: var(--ok); }}
