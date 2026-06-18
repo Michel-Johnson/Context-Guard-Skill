@@ -123,6 +123,8 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Keep branch connector lines aligned with the same offset coordinate used by spacer columns; connector lines should not stay pinned to the route section's left edge.
 - Draw branch connector lines from the visible parent node card to the branch route anchor so users can see exactly which node created the branch. If the true parent node is hidden as a checkpoint, connect from the nearest visible parent card on that parent route while still showing the true parent label.
 - Anchor branch connector endpoints to the small status dots inside the source and target node cards when those dots exist; only fall back to card edges for non-node placeholders.
+- Keep route and branch connector semantics distinct: ordinary route progression is card-to-card through the gap between cards, while branch/fork connectors are dot-to-dot and must not pass through node cards or text.
+- Side routes may drift right from the exact parent column to create a clean branch corridor; do not force every route to align perfectly if doing so makes connectors cross nodes.
 - Do not infer branch relationships from vertical row adjacency, and do not use local decorative ticks that fail to show the parent node. A main-route branch must not look connected to a sibling branch just because that sibling route is above it.
 - Use smooth rounded connector curves rather than hard elbow lines. Draw subtle node-to-node connectors within each route so branch connectors can route through the gaps between nodes instead of crossing node cards.
 - Hide heavy native horizontal scrollbar chrome in the roadmap overview while preserving trackpad/mouse horizontal scrolling.
