@@ -25,8 +25,14 @@ Record only bad cases that are user-visible, recurring, risky, fixed, deferred, 
 - Trigger / reproduction: shortest command, step, input, environment, or precondition
 - Root cause: confirmed cause, suspected cause, or unknown, one line
 - Fix method: code/test/config/documentation change that fixed it, one line
+- Guard type: script | native-test | manual | browser-screenshot | browser-dom | curl | cli | prompt | log-invariant | fixture | unit | integration | e2e | custom
 - Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note, one line
-- Reusable guard path: project test file, `.codex/context/bad-case-tests/...`, or none
+- Red condition: exact output, visual state, assertion, or symptom that means this bad case has recurred
+- Green condition: exact evidence that means this bad case is absent
+- Expected failure reason: why the guard should fail for the old symptom, not for a broken test or unrelated environment issue
+- Reusable guard path: project test file, `.codex/context/task-cases/...#phase-name`, `.codex/context/bad-case-tests/...`, or none
+- Covered by task case: TC-YYYYMMDD-short-slug phase/checkpoint, or none
+- Test-chain issue: false-positive | false-negative | wrong-granularity | missing-phase | wrong-assertion | unrealistic-setup | missing-cleanup | unclear-localization | none
 - Guard reuse rule: reuse this recorded guard before creating any new test or script for this case
 - Test chain: ordered checks only when multiple checks are genuinely needed
 - High-frequency note: warning text to show Codex when this pattern repeats often
@@ -55,6 +61,10 @@ Use the `### BC-...` section form as the canonical editable source. If a session
 - Use the configured `.codex/context/preferences.json` `record_language` for bad-case titles, phenomenon, root cause, fix method, guard summaries, and test-chain notes.
 - Preserve exact commands, paths, code identifiers, logs, API names, and error messages in their original language.
 - Prefer existing recorded context, commands, tests, screenshots, logs, or manual checks over newly invented tests.
+- For resolved or recurred cases, `Guard / verification`, `Guard type`, `Red condition`, `Green condition`, and `Expected failure reason` are required.
+- The guard must be red-capable: it should fail if the same user-visible symptom returns.
+- When the bad case is part of a longer workflow, attach it to a task-case checkpoint instead of creating a separate isolated script. The bad-case entry should say which task case phase covers it.
+- If the test chain itself is wrong, record that as a bad case and classify the test-chain issue. Fix the test-chain design before trusting its result.
 - Do not script every bad case. Store bad-case-specific scripts under `.codex/context/bad-case-tests/` only when they are genuinely reusable and do not belong in the native test suite.
 - Name any guard script with the bad case ID so it is easy to find and reuse.
 - Update existing context when expected behavior changes; do not create parallel guards for the same case unless the old one is explicitly obsolete.
@@ -62,4 +72,5 @@ Use the `### BC-...` section form as the canonical editable source. If a session
 - Link bad cases to roadmap nodes so Codex can quickly see which mainline decisions created or fixed them.
 - Keep record/display linkage explicit: use `Roadmap nodes:` or `Nodes:` on the bad case, or `Linked bad cases:` on the roadmap node.
 - Add tags and frequency notes when a bad case repeats often; high-frequency cases should stand out during quick scanning.
+- Promote high-frequency cases into fixed pressure checks and rerun them whenever related code, UI, context, or hooks change.
 - Keep entries compact. If the same information appears in a roadmap node, link to it instead of duplicating it.

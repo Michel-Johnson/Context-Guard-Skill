@@ -126,6 +126,24 @@ def looks_like_goal_mode(text: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def looks_like_remote_work(text: str) -> bool:
+    lowered = text.lower()
+    markers = [
+        "ssh",
+        "remote server",
+        "remote host",
+        "dev server",
+        "jump host",
+        "服务器",
+        "远程",
+        "开发机",
+        "跳板机",
+        "通过ssh",
+        "通过 ssh",
+    ]
+    return any(marker in lowered for marker in markers)
+
+
 def looks_like_explicit_branch(text: str) -> bool:
     lowered = text.lower()
     markers = [
@@ -237,6 +255,8 @@ def main() -> int:
         hints: list[str] = []
         if looks_like_goal_mode(text):
             hints.append("goal mode: align active goal with current context and record roadmap/bad-case checkpoints during long-running work")
+        if looks_like_remote_work(text):
+            hints.append("remote/SSH work: keep `.codex/context` in the local Codex workspace; record remote host/path as metadata and do not initialize roadmap context on the server unless explicitly requested")
         if looks_like_explicit_branch(text):
             hints.append("explicit branch task: create/select a branch task by running `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation; verify the roadmap node has Branch: and Parent:")
         elif looks_like_route_drift(text):
@@ -254,7 +274,15 @@ def main() -> int:
 
     if event == "stop":
         print("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
-        print("[context-guard] COMPLETION RELIABILITY GATE: before final answer, identify the changed artifact or workflow, run real verification evidence, re-run relevant bad-case guards, and record the evidence in context.")
+        print("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
+        print("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
+        print("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
+        print("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
+        print("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
+        print("[context-guard] GOAL-MODE TEST GATE: in goal mode, use task cases as phase gates; log current phase progress and run the smallest approved path before claiming goal completion instead of silently creating broad new tests.")
+        print("[context-guard] ROADMAP CHECKPOINT GATE: assess whether this turn deserves a roadmap node. Create one only for meaningful progress, a route decision, a fix, a branch/fork, a user-visible milestone, or stale hidden checkpoints; otherwise say no roadmap node was needed and why.")
+        print("[context-guard] If a node is needed, run `context_guard.py checkpoint-roadmap-node --title <short title> --branch <Main or route> --level <major|checkpoint> --outcome <one-line progress> --next-step <next>` and include linked BC/test-chain notes when relevant.")
+        print("[context-guard] ROADMAP MAINTENANCE GATE: run `context_guard.py validate-roadmap-maintenance` after route updates; do not let mainline/branch overview stay stale while important work is hidden as checkpoints.")
         print("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
         print("[context-guard] Branch task gate: if the user explicitly asked for a branch, ensure `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` has created the task folder, index current entry, and Branch/Parent roadmap node; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
         print("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")

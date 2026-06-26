@@ -17,6 +17,7 @@ Use this structure for project context:
 │   └── CTX-YYYYMMDD-short-slug/
 │       ├── context.md
 │       └── bad-cases.md
+├── task-cases/
 ├── bad-case-tests/
 └── archive/
 ```
@@ -151,6 +152,49 @@ One sentence describing what the user is trying to accomplish.
 The smallest useful action to resume this task.
 ```
 
+## task-cases/<task-case-id>.md
+
+Use task cases for realistic multi-step verification flows. They should catch bugs by simulating a real task, not by testing one isolated bug at a time.
+
+```md
+# Task Case: short realistic workflow title
+
+- ID: TC-YYYYMMDD-short-slug
+- Status: proposed | approved | active | stable | deferred | obsolete
+- Route/task: `CTX-...` or branch name
+- Scope: feature, service, UI flow, agent workflow, or subsystem
+- Last checked: YYYY-MM-DD
+- Design confirmation: pending | user-approved YYYY-MM-DD | not-needed because...
+- Linked roadmap nodes: NODE-...
+- Linked bad cases: BC-..., BC-...
+- Entry command/prompt: command, prompt, manual setup, or fixture
+- Not covered: explicit exclusions to avoid fake confidence
+- Stop condition: what means the workflow is complete
+- Cleanup: required cleanup or none
+
+## Phases
+
+### Phase 1: setup or trigger
+
+- Action: one realistic action
+- Expected checkpoint: invariant, log, UI state, file state, API result, or assertion
+- Covers bad cases: BC-...
+- Failure localization: what this phase failure usually means
+- Log note: what the script/agent should record
+
+### Phase 2: transition or recovery
+
+- Action: one realistic action
+- Expected checkpoint: invariant, log, UI state, file state, API result, or assertion
+- Covers bad cases: BC-...
+- Failure localization: what this phase failure usually means
+- Log note: what the script/agent should record
+
+## Result Log
+
+- YYYY-MM-DD: pass/fail, failed phase/checkpoint if any, evidence path or command output summary
+```
+
 ## Maintenance Rules
 
 - Keep `index.md` small and useful, not exhaustive.
@@ -162,6 +206,10 @@ The smallest useful action to resume this task.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Treat the human-facing Test Chain lane as bad-case recurrence detection. Generate it from linked bad cases' `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`, not from roadmap node checkpoint logs.
+- Prefer a task-oriented case in `.codex/context/task-cases/` when realistic workflow phases matter more than isolated bug checks. Bad-case guards should often point to a task-case checkpoint that covers them.
+- Task-case scripts or agents should log the phase/checkpoint that failed, so Codex can locate the broken workflow step without re-debugging the whole task.
+- Before writing a new durable task-case script for a broad workflow, ask the user to confirm with only the business path: from what state to what state, the main task, and the major risk. Keep technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt. If confirmation is unavailable, keep the case `proposed` and avoid broad new scripts.
+- During goal mode, task cases should act as phase gates: select or propose the relevant case, log phase progress during continuations, and run the smallest approved path before claiming the goal complete.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
 - Keep source records in the configured `.codex/context/preferences.json` record language. The HTML roadmap should follow that preference and should not show a visible language selector by default.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
@@ -207,6 +255,7 @@ The smallest useful action to resume this task.
 - Do not record normal implementation chatter.
 - Do not record every command; record only commands that prove a checkpoint or guard a bad case.
 - Do not let roadmap node `Test chain:` history replace bad-case recurrence guards in user-facing roadmap output.
+- Do not split a real workflow into many unrelated bug-level tests when one task case with checkpoints would reveal the failure location more clearly.
 - Do not wait until goal completion to record important roadmap progress or bad cases.
 - Merge tiny adjacent updates into one roadmap node.
 - Archive stale parked tasks as a one-sentence summary.

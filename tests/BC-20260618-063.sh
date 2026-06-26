@@ -94,8 +94,8 @@ None.
     )
 
     output = result.stdout + result.stderr
-    assert "CTX-20260618-" in output, output
-    assert "NODE-20260618-" in output, output
+    assert "CTX-" in output, output
+    assert "NODE-" in output, output
 
     index = (ctx / "index.md").read_text(encoding="utf-8")
     roadmap = (ctx / "roadmap.md").read_text(encoding="utf-8")
@@ -106,10 +106,10 @@ None.
     assert "主线任务" in index and "resume-candidate" in index, index
     assert "- Branch: 后端状态机" in roadmap, roadmap
     assert "- Parent: NODE-20260618-001" in roadmap, roadmap
-    assert "- Task: `CTX-20260618-" in roadmap, roadmap
+    assert "- Task: `CTX-" in roadmap, roadmap
     assert any(route["branch"] == "后端状态机" for route in exports["routes"]), exports
 
-    task_dirs = list((ctx / "tasks").glob("CTX-20260618-*"))
+    task_dirs = list((ctx / "tasks").glob("CTX-*"))
     assert any((path / "context.md").exists() and "后端状态机设计" in (path / "context.md").read_text(encoding="utf-8") for path in task_dirs), task_dirs
 finally:
     shutil.rmtree(root, ignore_errors=True)

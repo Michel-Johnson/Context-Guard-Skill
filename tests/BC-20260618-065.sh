@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT="${1:-/Users/bytedance/.agents/skills/context-guard/scripts/context_guard.py}"
+SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/context_guard.py}"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/context-guard-marker-test-XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
 

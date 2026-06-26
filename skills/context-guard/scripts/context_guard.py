@@ -110,6 +110,7 @@ def init_context(root: Path) -> list[Path]:
     for directory in [
         ctx,
         ctx / "tasks",
+        ctx / "task-cases",
         ctx / "bad-case-tests",
         ctx / "roadmap",
         ctx / "exports",
@@ -332,9 +333,7 @@ const I18N = {{
     backToRoadmap: "Back to roadmap",
     mainRoute: "Main Route",
     badCases: "Bad Cases",
-    badCasesField: "Bad cases:",
     testChain: "Test Chain",
-    testChainField: "Test chain:",
     routeFocus: "Route Details",
     emptyRoadmap: "No roadmap nodes recorded yet.",
     noLinkedBadCases: "No linked bad cases.",
@@ -353,7 +352,11 @@ const I18N = {{
     trigger: "Trigger:",
     rootCause: "Root cause:",
     fix: "Fix:",
-    guard: "Guard:"
+    guardType: "Guard type:",
+    guard: "Guard:",
+    redCondition: "Red condition:",
+    greenCondition: "Green condition:",
+    expectedFailureReason: "Expected failure reason:"
   }},
   zh: {{
     roadmapTitle: "项目路线图",
@@ -365,9 +368,7 @@ const I18N = {{
     backToRoadmap: "返回路线图",
     mainRoute: "主要路线",
     badCases: "问题案例",
-    badCasesField: "问题案例：",
     testChain: "测试链路",
-    testChainField: "测试链路：",
     routeFocus: "路线详情",
     emptyRoadmap: "还没有路线节点。",
     noLinkedBadCases: "无关联 bad case。",
@@ -386,7 +387,11 @@ const I18N = {{
     trigger: "触发：",
     rootCause: "根因：",
     fix: "修复：",
-    guard: "防线："
+    guardType: "防线类型：",
+    guard: "防线：",
+    redCondition: "红灯条件：",
+    greenCondition: "绿灯条件：",
+    expectedFailureReason: "预期失败原因："
   }}
 }};
 
@@ -541,9 +546,6 @@ document.addEventListener("DOMContentLoaded", () => {{
   const applyRoute = (route) => {{
     if (!routeExists(route)) return;
     localStorage.setItem("contextGuardRoute", route);
-    document.querySelectorAll("[data-route-panel]").forEach((panel) => {{
-      panel.hidden = panel.dataset.routePanel !== route;
-    }});
     routeButtons.forEach((button) => {{
       button.setAttribute("aria-pressed", button.dataset.routeFilter === route ? "true" : "false");
     }});
@@ -604,16 +606,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
             route_parent_anchors.get(branch.lower(), ("", ""))[1],
         )
         for i, (branch, items) in enumerate(route_groups)
-    )
-    route_panels = (
-        '<div class="route-drilldowns">'
-        + "\n".join(
-            render_route_drilldown(branch, items, bad_case_cards, case_anchor_map, active=i == 0)
-            for i, (branch, items) in enumerate(route_groups)
-        )
-        + "</div>"
-        if branch_mode and route_groups
-        else ""
     )
     inline_details = render_inline_details(nodes, bad_case_cards, case_anchor_map)
     if not route_items:
@@ -900,6 +892,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .lane-main {{ border-top: 4px solid var(--route-accent, var(--accent)); }}
     .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
     .lane-test-chain {{ border-top: 4px solid var(--ok); }}
+    .lane-empty {{
+      visibility: hidden;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+      pointer-events: none;
+    }}
     .lane-label {{
       color: var(--muted);
       font-size: 12px;
@@ -969,29 +968,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .badcase-head {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }}
     .badcase-markers {{ display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; }}
     .badcase h3 {{ margin: 0 0 8px; font-size: 14px; }}
-    .route-drilldowns {{
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
-    }}
-    .route-drilldown {{
-      display: grid;
-      grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
-      gap: 14px;
-    }}
-    .route-drilldown[hidden] {{ display: none; }}
-    .drill-card {{
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: color-mix(in srgb, var(--card) 88%, var(--accent-soft));
-      padding: 13px;
-      min-width: 0;
-    }}
-    .drill-card h3 {{
-      margin: 0 0 10px;
-      font-family: var(--font-heading);
-      font-size: 15px;
-    }}
     .test-note {{
       border-bottom: 1px solid var(--line);
       padding-bottom: 10px;
@@ -1060,7 +1036,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       .shell {{ padding: 16px; }}
       .quick {{ grid-template-columns: 1fr 1fr; }}
       .track-grid {{ grid-auto-columns: minmax(260px, 82vw); }}
-      .route-drilldown {{ grid-template-columns: 1fr; }}
       header {{ padding: 22px 16px 14px; }}
     }}
     @media (max-width: 560px) {{
@@ -1081,7 +1056,6 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       <h2 data-i18n="roadmap">Roadmap</h2>
       {route_nav}
       <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{connector_layer}{route_items}</div>
-      {route_panels}
     </main>
     {inline_details}
   </div>
@@ -1096,10 +1070,12 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     cards = parse_bad_case_cards(bad_cases)
     case_anchor_map = build_case_anchor_map(cards)
     exported = datetime.now().isoformat(timespec="seconds")
-    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in enumerate(nodes, 1))
+    detail_items = human_detail_node_items(nodes)
+    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in detail_items)
     if not node_sections:
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
-    case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(cards, 1))
+    detail_cases = linked_cases_for_detail_items(detail_items, cards)
+    case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(detail_cases, 1))
     preferred_lang = preferred_display_language(ctx)
     html_lang = initial_html_language(preferred_lang)
     html_title = initial_html_title("roadmapDetails", preferred_lang)
@@ -1169,12 +1145,14 @@ def render_inline_details(
     cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in enumerate(nodes, 1))
+    detail_items = human_detail_node_items(nodes)
+    node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in detail_items)
     if not node_sections:
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
+    detail_cases = linked_cases_for_detail_items(detail_items, cards)
     case_sections = "\n".join(
         render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}"))
-        for i, card in enumerate(cards, 1)
+        for i, card in enumerate(detail_cases, 1)
     )
     return f"""<section class="inline-details" aria-label="Roadmap details">
   <h2 data-i18n="roadmapDetails">Roadmap Details</h2>
@@ -1378,6 +1356,28 @@ def group_nodes_by_branch(nodes: list[dict[str, str]]) -> list[tuple[str, list[t
 def display_items_for_route(items: list[tuple[int, dict[str, str]]]) -> list[tuple[int, dict[str, str]]]:
     major_items = [(number, node) for number, node in items if node_level(node) == "major"]
     return major_items or items
+
+
+def human_detail_node_items(nodes: list[dict[str, str]]) -> list[tuple[int, dict[str, str]]]:
+    items = list(enumerate(nodes, 1))
+    major_items = [(number, node) for number, node in items if node_level(node) == "major"]
+    return major_items or items
+
+
+def linked_cases_for_detail_items(
+    items: list[tuple[int, dict[str, str]]],
+    cards: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    linked: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for _, node in items:
+        for card in bad_cases_for_node(node, cards):
+            title = card.get("title", "")
+            if title in seen:
+                continue
+            seen.add(title)
+            linked.append(card)
+    return linked
 
 
 def external_parent_id(
@@ -2291,39 +2291,6 @@ def render_route_column(
 </section>"""
 
 
-def render_route_drilldown(
-    branch: str,
-    items: list[tuple[int, dict[str, str]]],
-    bad_case_cards: list[dict[str, str]],
-    case_anchor_map: dict[str, str],
-    active: bool = False,
-) -> str:
-    seen_cases: set[str] = set()
-    case_items: list[str] = []
-    test_items: list[str] = []
-    for source_number, node in items:
-        for card in bad_cases_for_node(node, bad_case_cards):
-            title = card.get("title", "")
-            if title in seen_cases:
-                continue
-            seen_cases.add(title)
-            case_items.append(render_bad_case_summary(card, case_anchor_map.get(title, "case-1")))
-            test_items.append(render_bad_case_test_note(card, case_anchor_map.get(title, "case-1")))
-    cases_html = "\n".join(case_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
-    tests_html = "\n".join(test_items) or '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
-    hidden = "" if active else " hidden"
-    return f"""<section class="route-drilldown" data-route-panel="{html.escape(route_slug(branch))}"{hidden}>
-  <article class="drill-card">
-    <h3 data-i18n="badCases">Bad Cases</h3>
-    {cases_html}
-  </article>
-  <article class="drill-card">
-    <h3 data-i18n="testChain">Test Chain</h3>
-    {tests_html}
-  </article>
-</section>"""
-
-
 def render_track_column(
     node: dict[str, str],
     source_number: int,
@@ -2337,14 +2304,24 @@ def render_track_column(
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
     cases = bad_cases_for_node(node, bad_case_cards)
     case_items = "\n".join(render_bad_case_summary(card, case_anchor_map.get(card.get("title", ""), "case-1")) for card in cases)
-    if not case_items:
-        case_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
+    case_lane = (
+        f"""<article class="lane lane-bad-cases" data-lane="bad-cases">
+    {case_items}
+  </article>"""
+        if case_items
+        else '<article class="lane lane-empty" data-lane="bad-cases" aria-hidden="true"></article>'
+    )
     test_items = "\n".join(
         render_bad_case_test_note(card, case_anchor_map.get(card.get("title", ""), "case-1"))
         for card in cases
     )
-    if not test_items:
-        test_items = '<p class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</p>'
+    test_lane = (
+        f"""<article class="lane lane-test-chain" data-lane="test-chain">
+    {test_items}
+  </article>"""
+        if test_items
+        else '<article class="lane lane-empty" data-lane="test-chain" aria-hidden="true"></article>'
+    )
     return f"""<section class="track-column">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
@@ -2359,12 +2336,8 @@ def render_track_column(
       <p class="summary">{outcome}</p>
     </a>
   </article>
-  <article class="lane lane-bad-cases" data-lane="bad-cases">
-    {case_items}
-  </article>
-  <article class="lane lane-test-chain" data-lane="test-chain">
-    {test_items}
-  </article>
+  {case_lane}
+  {test_lane}
 </section>"""
 
 
@@ -2375,22 +2348,10 @@ def render_node_detail(
     case_anchor_map: dict[str, str],
 ) -> str:
     title = localized_text(human_title(node.get("title", f"Node {number}")))
-    status = node.get("status", "unknown")
     summary = localized_short_text(node.get("outcome", "No summary recorded."), 160)
-    cases = bad_cases_for_node(node, bad_case_cards)
-    case_links = ", ".join(
-        f'<a href="#{case_anchor_map.get(card.get("title", ""), "case-1")}">{localized_text(human_title(card.get("title", "Bad case")))}</a>'
-        for card in cases
-    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
-    test_notes = "\n".join(
-        render_bad_case_test_note(card, case_anchor_map.get(card.get("title", ""), "case-1"))
-        for card in cases
-    ) or '<span class="muted" data-i18n="noLinkedBadCases">No linked bad cases.</span>'
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
   <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
-  <p class="field"><b data-i18n="badCasesField">Bad cases:</b> {case_links}</p>
-  <div class="field"><b data-i18n="testChainField">Test chain:</b> {test_notes}</div>
 </section>"""
 
 
@@ -2448,9 +2409,20 @@ def canonical_bad_case_key(key: str) -> str:
         "cause": "root cause",
         "fix": "fix method",
         "fix method": "fix method",
+        "guard type": "guard type",
+        "guard kind": "guard type",
+        "guard category": "guard type",
         "guard": "guard / verification",
         "guard / verification": "guard / verification",
         "verification": "guard / verification",
+        "red condition": "red condition",
+        "red signal": "red condition",
+        "red-capable signal": "red condition",
+        "green condition": "green condition",
+        "green signal": "green condition",
+        "expected failure reason": "expected failure reason",
+        "failure reason": "expected failure reason",
+        "expected red reason": "expected failure reason",
         "reusable guard path": "reusable guard path",
         "guard reuse rule": "guard reuse rule",
         "test chain": "test chain",
@@ -2482,7 +2454,11 @@ def split_loose_bad_case_field(body: str) -> tuple[str, str] | None:
         "trigger / reproduction",
         "root cause",
         "fix method",
+        "guard type",
         "guard / verification",
+        "red condition",
+        "green condition",
+        "expected failure reason",
         "reusable guard path",
         "guard reuse rule",
         "test chain",
@@ -2570,6 +2546,8 @@ def render_bad_case_test_note(card: dict[str, str], anchor: str) -> str:
     guard = first_nonempty(
         card.get("guard / verification", ""),
         card.get("guard", ""),
+        card.get("green condition", ""),
+        card.get("red condition", ""),
         card.get("trigger / reproduction", ""),
         card.get("trigger", ""),
         card.get("phenomenon", ""),
@@ -2602,36 +2580,146 @@ def strip_wrapping_backticks(value: str) -> str:
 
 def render_case_detail(card: dict[str, str], anchor: str) -> str:
     title = localized_text(human_title(card.get("title", "Bad case")))
-    status = card.get("status", "unknown")
-    frequency = card.get("frequency", "unknown")
-    phenomenon_raw = human_text(card.get("phenomenon", ""))
-    trigger_raw = human_text(card.get("trigger / reproduction", ""))
-    cause_raw = human_text(card.get("root cause", ""))
-    fix_raw = human_text(card.get("fix method", ""))
-    guard_raw = human_text(card.get("guard / verification", ""))
-    phenomenon = localized_text(phenomenon_raw) if phenomenon_raw else ""
-    trigger = localized_text(trigger_raw) if trigger_raw else ""
-    cause = localized_text(cause_raw) if cause_raw else ""
-    fix = localized_text(fix_raw) if fix_raw else ""
-    guard = localized_text(guard_raw) if guard_raw else ""
+    summary_raw = first_nonempty(
+        human_text(card.get("phenomenon", "")),
+        human_text(card.get("root cause", "")),
+        human_text(card.get("fix method", "")),
+        human_text(card.get("title", "")),
+    )
+    summary = localized_short_text(summary_raw or "No summary recorded.", 150)
     tags = parse_tags(card.get("tags", ""))
     tag_html = render_tags(tags)
-    optional = "\n".join(
-        line
-        for line in [
-            f'  <p class="field"><b data-i18n="phenomenon">Phenomenon:</b> {phenomenon}</p>' if phenomenon else "",
-            f'  <p class="field"><b data-i18n="trigger">Trigger:</b> {trigger}</p>' if trigger else "",
-            f'  <p class="field"><b data-i18n="rootCause">Root cause:</b> {cause}</p>' if cause else "",
-            f'  <p class="field"><b data-i18n="fix">Fix:</b> {fix}</p>' if fix else "",
-            f'  <p class="field"><b data-i18n="guard">Guard:</b> {guard}</p>' if guard else "",
-        ]
-        if line
-    )
     return f"""<section class="detail-card" id="{html.escape(anchor)}">
   <h3>{title}</h3>
-{optional}
+  <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
   {f'<div class="tags">{tag_html}</div>' if tag_html else ''}
 </section>"""
+
+
+def meaningful_bad_case_value(value: str | None) -> bool:
+    if value is None:
+        return False
+    normalized = strip_wrapping_backticks(value).strip().lower()
+    if not normalized:
+        return False
+    return normalized not in {"none", "n/a", "na", "null", "unknown", "unset", "tbd", "todo", "待定", "无", "未知"}
+
+
+def bad_case_status(card: dict[str, str]) -> str:
+    return card.get("status", "").strip().lower().replace("_", "-")
+
+
+def is_recently_checked(card: dict[str, str]) -> bool:
+    today = datetime.now().strftime("%Y-%m-%d")
+    return card.get("last checked", "").strip() == today
+
+
+def validate_bad_case_guards(root: Path, strict: bool = False, verbose: bool = False) -> int:
+    ctx = context_dir(root)
+    path = ctx / "bad-cases.md"
+    if not path.exists():
+        print(f"[context-guard] no bad-case register found: {path}")
+        return 0
+
+    cards = parse_bad_case_cards(path.read_text(encoding="utf-8"))
+    if not cards:
+        print("[context-guard] no bad cases recorded.")
+        return 0
+
+    required_for_resolved = [
+        "guard type",
+        "guard / verification",
+        "red condition",
+        "green condition",
+        "expected failure reason",
+    ]
+    errors: list[str] = []
+    warnings: list[str] = []
+    for index, card in enumerate(cards, 1):
+        title = human_title(card.get("title", f"bad case {index}"))
+        status = bad_case_status(card)
+        if status in {"resolved", "recurred"}:
+            missing = [field for field in required_for_resolved if not meaningful_bad_case_value(card.get(field))]
+            if missing:
+                message = f"{title}: missing {', '.join(missing)}"
+                if strict or status == "recurred":
+                    errors.append(message)
+                elif is_recently_checked(card):
+                    warnings.append(f"newly checked resolved case {message}")
+                else:
+                    warnings.append(f"legacy resolved case {message}")
+        elif status in {"open", "deferred"}:
+            for field in ["phenomenon", "trigger / reproduction"]:
+                if not meaningful_bad_case_value(card.get(field)):
+                    warnings.append(f"{title}: {status} case has no {field}")
+        if "high-frequency" in card.get("frequency", "").lower() and not meaningful_bad_case_value(card.get("high-frequency note")):
+            warnings.append(f"{title}: high-frequency case has no high-frequency note")
+
+    shown_warnings = warnings if verbose else warnings[:8]
+    for warning in shown_warnings:
+        print(f"[context-guard] warning: {warning}")
+    if len(warnings) > len(shown_warnings):
+        print(f"[context-guard] warning: {len(warnings) - len(shown_warnings)} more warning(s); rerun with --verbose to show all.")
+    if errors:
+        print("[context-guard] bad-case guard validation failed:")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+    mode = "strict" if strict else "default"
+    print(f"[context-guard] bad-case guard validation passed ({mode}): {len(cards)} case(s) checked.")
+    return 0
+
+
+def trailing_checkpoint_count(items: list[tuple[int, dict[str, str]]]) -> int:
+    count = 0
+    for _, node in reversed(items):
+        if node_level(node) == "major":
+            break
+        count += 1
+    return count
+
+
+def validate_roadmap_maintenance(root: Path, max_hidden_checkpoints: int = 8) -> int:
+    ctx = context_dir(root)
+    roadmap_path = ctx / "roadmap.md"
+    if not roadmap_path.exists():
+        print(f"[context-guard] no roadmap found: {roadmap_path}")
+        return 0
+
+    nodes = parse_roadmap_nodes(roadmap_path.read_text(encoding="utf-8"))
+    if not nodes:
+        print("[context-guard] no roadmap nodes recorded.")
+        return 0
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    for branch, items in group_nodes_by_branch(nodes):
+        major_count = len([node for _, node in items if node_level(node) == "major"])
+        trailing = trailing_checkpoint_count(items)
+        if major_count == 0:
+            errors.append(f"{branch}: no visible major node")
+        if trailing > max_hidden_checkpoints:
+            errors.append(
+                f"{branch}: {trailing} checkpoint(s) after the latest visible node; promote or add a major route node"
+            )
+        elif trailing > 0:
+            warnings.append(f"{branch}: {trailing} checkpoint(s) after latest visible node")
+
+    latest = nodes[-1]
+    if node_level(latest) == "checkpoint":
+        warnings.append(f"latest node is hidden in overview: {human_title(latest.get('title', 'Untitled roadmap node'))}")
+
+    for warning in warnings[:8]:
+        print(f"[context-guard] warning: {warning}")
+    if len(warnings) > 8:
+        print(f"[context-guard] warning: {len(warnings) - 8} more warning(s).")
+    if errors:
+        print("[context-guard] roadmap maintenance validation failed:")
+        for error in errors:
+            print(f"- {error}")
+        return 1
+    print(f"[context-guard] roadmap maintenance validation passed: {len(nodes)} node(s), {len(group_nodes_by_branch(nodes))} route(s).")
+    return 0
 
 
 def extract_section(text: str, heading: str) -> str:
@@ -2898,6 +2986,158 @@ def append_branch_roadmap_node(
     return node_id_value
 
 
+def quick_scan_value(index: str, label: str, fallback: str = "none") -> str:
+    match = re.search(rf"(?m)^- {re.escape(label)}:\s*(.+)$", index)
+    return match.group(1).strip() if match else fallback
+
+
+def strip_markdown_path(value: str) -> str:
+    return value.strip().strip("`")
+
+
+def infer_current_branch(ctx: Path, explicit_branch: str | None) -> str:
+    if explicit_branch and explicit_branch.strip():
+        return explicit_branch.strip()
+    index = (ctx / "index.md").read_text(encoding="utf-8")
+    current = parse_current_index_entry(index)
+    folder = strip_markdown_path(current.get("folder", ""))
+    if folder:
+        task_context = ctx.parent.parent / folder / "context.md" if folder.startswith(".codex/") else Path(folder) / "context.md"
+        if task_context.exists():
+            match = re.search(r"(?m)^- Branch:\s*(.+)$", task_context.read_text(encoding="utf-8"))
+            if match and match.group(1).strip():
+                return match.group(1).strip()
+    return "Main"
+
+
+def update_current_index_checkpoint(ctx: Path, node_id_value: str, outcome: str, next_step: str) -> None:
+    index_path = ctx / "index.md"
+    index = index_path.read_text(encoding="utf-8")
+    current_id = parse_current_index_entry(index).get("id", quick_scan_value(index, "Current"))
+    resume_id = quick_scan_value(index, "Resume candidate")
+    index = rewrite_quick_scan(index, current_id or "none", node_id_value, resume_id)
+    match = re.search(r"(?ms)^## Current\s*\n\n(.*?)(?=\n## |\Z)", index)
+    if match:
+        today = datetime.now().strftime("%Y-%m-%d")
+        block = match.group(1).strip()
+        lines = block.splitlines() if block else []
+        fields = {
+            "Last updated": today,
+            "Summary": outcome,
+            "Next step": next_step,
+        }
+        seen: set[str] = set()
+        rewritten: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            replaced = False
+            for label, value in fields.items():
+                if stripped.startswith(f"- {label}:"):
+                    rewritten.append(f"- {label}: {value}")
+                    seen.add(label)
+                    replaced = True
+                    break
+            if not replaced:
+                rewritten.append(line)
+        for label, value in fields.items():
+            if value and label not in seen:
+                rewritten.append(f"- {label}: {value}")
+        new_block = "\n".join(rewritten).strip()
+        index = index[: match.start(1)] + new_block + "\n" + index[match.end(1) :]
+    index_path.write_text(index, encoding="utf-8")
+
+
+def append_checkpoint_roadmap_node(
+    ctx: Path,
+    title: str,
+    branch: str,
+    level: str,
+    outcome: str,
+    decision: str = "",
+    avoid: str = "",
+    next_step: str = "",
+    linked_bad_cases: str = "",
+    test_chain: str = "",
+    parent_node: str = "",
+) -> str:
+    if not title.strip():
+        raise ValueError("checkpoint-roadmap-node requires a non-empty --title")
+    if level not in {"major", "checkpoint"}:
+        raise ValueError("--level must be major or checkpoint")
+    roadmap_path = ctx / "roadmap.md"
+    roadmap = roadmap_path.read_text(encoding="utf-8")
+    node_id_value = next_roadmap_node_id(roadmap)
+    today = datetime.now().strftime("%Y-%m-%d")
+    index = (ctx / "index.md").read_text(encoding="utf-8")
+    task_id = parse_current_index_entry(index).get("id", quick_scan_value(index, "Current"))
+    zh = preferred_display_language(ctx) == "zh"
+    default_next = "继续维护相关路线、bad case 和测试链路。" if zh else "Keep the route, bad cases, and recurrence checks updated."
+    outcome = outcome.strip() or ("完成一次路线维护 checkpoint。" if zh else "Recorded a route checkpoint.")
+    next_step = next_step.strip() or default_next
+    lines = [
+        f"### {node_id_value}: {title.strip()}",
+        "",
+        f"- Date: {today}",
+        "- Status: done",
+        f"- Level: {level}",
+        f"- Branch: {branch.strip() or 'Main'}",
+    ]
+    if parent_node.strip():
+        lines.append(f"- Parent: {parent_node.strip()}")
+    if task_id and task_id.lower() not in {"none", "none yet."}:
+        lines.append(f"- Task: `{task_id}`")
+    lines.append(f"- Outcome: {outcome}")
+    if decision.strip():
+        lines.append(f"- Decision / reason: {decision.strip()}")
+    if avoid.strip():
+        lines.append(f"- Avoid going back: {avoid.strip()}")
+    lines.append(f"- Next: {next_step}")
+    lines.append(f"- Linked bad cases: {linked_bad_cases.strip() or 'none'}")
+    if test_chain.strip():
+        lines.append(f"- Test chain: {test_chain.strip()}")
+    node = "\n".join(lines) + "\n"
+    roadmap = roadmap.replace("\nNo nodes yet.\n", "\n", 1)
+    roadmap = roadmap.rstrip() + "\n\n" + node
+    roadmap_path.write_text(roadmap, encoding="utf-8")
+    update_current_index_checkpoint(ctx, node_id_value, outcome, next_step)
+    return node_id_value
+
+
+def checkpoint_roadmap_node(
+    root: Path,
+    title: str,
+    branch: str | None,
+    level: str,
+    outcome: str,
+    decision: str = "",
+    avoid: str = "",
+    next_step: str = "",
+    linked_bad_cases: str = "",
+    test_chain: str = "",
+    parent_node: str = "",
+) -> str:
+    init_context(root)
+    ctx = context_dir(root)
+    route = infer_current_branch(ctx, branch)
+    node_id_value = append_checkpoint_roadmap_node(
+        ctx,
+        title=title,
+        branch=route,
+        level=level,
+        outcome=outcome,
+        decision=decision,
+        avoid=avoid,
+        next_step=next_step,
+        linked_bad_cases=linked_bad_cases,
+        test_chain=test_chain,
+        parent_node=parent_node,
+    )
+    export_roadmap(root, "html")
+    print(f"[context-guard] roadmap node: {node_id_value}")
+    print(f"[context-guard] route: {route}")
+    return node_id_value
+
+
 def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "") -> tuple[str, str, Path]:
     init_context(root)
     ctx = context_dir(root)
@@ -2920,13 +3160,23 @@ def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
-    parser.add_argument("--title", default=None, help="Title for a branch task.")
-    parser.add_argument("--branch", default=None, help="Branch/route name for a branch task.")
+    parser.add_argument("--title", default=None, help="Title for a branch task or roadmap checkpoint.")
+    parser.add_argument("--branch", default=None, help="Branch/route name for a branch task or roadmap checkpoint.")
     parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
+    parser.add_argument("--level", choices=["major", "checkpoint"], default="checkpoint", help="Roadmap checkpoint level.")
+    parser.add_argument("--outcome", default="", help="One-line result for a roadmap checkpoint.")
+    parser.add_argument("--decision", default="", help="Decision or reason for a roadmap checkpoint.")
+    parser.add_argument("--avoid", default="", help="Avoid-going-back note for a roadmap checkpoint.")
+    parser.add_argument("--next-step", default="", help="Next step for the active context.")
+    parser.add_argument("--linked-bad-cases", default="", help="Comma-separated bad-case IDs linked to this checkpoint.")
+    parser.add_argument("--test-chain", default="", help="Concise verification or recurrence-check note for this checkpoint.")
     parser.add_argument("--open", action="store_true", help="Open the generated HTML roadmap with the default browser.")
+    parser.add_argument("--strict", action="store_true", help="Fail when any resolved bad case lacks red-capable guard fields.")
+    parser.add_argument("--verbose", action="store_true", help="Show all validation warnings.")
+    parser.add_argument("--max-hidden-checkpoints", type=int, default=8, help="Maximum checkpoints allowed after a route's latest visible node.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
 
@@ -2956,6 +3206,27 @@ def main() -> int:
             parser.error("create-branch-task requires --title")
         create_branch_task(root, args.title, args.branch or args.title, args.parent_node)
         return 0
+    if args.command == "checkpoint-roadmap-node":
+        if not args.title:
+            parser.error("checkpoint-roadmap-node requires --title")
+        checkpoint_roadmap_node(
+            root,
+            title=args.title,
+            branch=args.branch,
+            level=args.level,
+            outcome=args.outcome,
+            decision=args.decision,
+            avoid=args.avoid,
+            next_step=args.next_step,
+            linked_bad_cases=args.linked_bad_cases,
+            test_chain=args.test_chain,
+            parent_node=args.parent_node,
+        )
+        return 0
+    if args.command == "validate-bad-cases":
+        return validate_bad_case_guards(root, strict=args.strict, verbose=args.verbose)
+    if args.command == "validate-roadmap-maintenance":
+        return validate_roadmap_maintenance(root, max_hidden_checkpoints=args.max_hidden_checkpoints)
     return 1
 
 
