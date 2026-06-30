@@ -3,6 +3,7 @@
 Use this structure for project context:
 
 ```text
+<opened Codex project root>/
 .codex/context/
 ├── index.md
 ├── roadmap.md
@@ -21,6 +22,8 @@ Use this structure for project context:
 ├── bad-case-tests/
 └── archive/
 ```
+
+The opened Codex project root is the local folder selected in Codex or the local workspace root for the current thread. Do not place this folder inside a skill installation directory, remote SSH path, chat/thread-specific folder, or temporary execution directory unless the user explicitly asks that location to own its own context.
 
 ## preferences.json
 
@@ -94,6 +97,10 @@ This is the route map through the task. It may contain one mainline, forked side
 - Branch: Main | short branch name
 - Parent: NODE-YYYYMMDD-000 when this branch forks, otherwise none
 - Task: `CTX-YYYYMMDD-short-slug`
+- Display title: short human-facing card title; use clear language close to what the user cares about
+- User request: concise summary of the user's actual request, using the user's wording as much as possible
+- Progress summary: short human-facing current progress; omit if Outcome already reads naturally
+- Method summary: short human-facing method; omit if Decision / reason already reads naturally
 - Outcome: one-line result
 - Decision / reason: why this node exists, one line
 - Avoid going back: rejected path or lesson, only if it prevents backtracking
@@ -228,6 +235,7 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`, agent-readable Markdown at `.codex/context/roadmap/roadmap.md`, and structured lookup at `.codex/context/roadmap/roadmap.json`. Use `export-roadmap --format md` only for Markdown-only export.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
 - With one route group, the HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
+- In one-route HTML, do not let empty bad-case/test-chain lanes reserve large blank space. The route board should size to real content, and main route summaries should remain readable rather than being clipped after a very short fragment.
 - With multiple route groups, the overview should show all route lines as a branch map; route selection should affect only the bad-case/test-chain drilldown.
 - Parent/fork markers should appear only on side routes whose parent node is outside that route. Main route should not show a fork marker just because a later main node references an earlier main node.
 - Side routes should visually start near their parent node's visible position on the parent route, not all from the first column.
@@ -248,6 +256,7 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
 - Show the three lane titles once in the left label column for a single route group, not inside every node card.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.
+- In multi-route branch overview, route cards should read as a compact map skeleton: number, title, date/status cue, and no visible outcome paragraph. Keep route summaries in details and source context.
 - Default overview links should target same-file `#node-*` and `#case-*` anchors, not `roadmap-details.html#...`, to avoid `file://` access-denied navigation.
 
 ## Pruning Rules

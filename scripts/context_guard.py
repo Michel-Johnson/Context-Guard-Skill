@@ -8,9 +8,26 @@ import html
 import json
 import re
 import subprocess
+import sys
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+
+
+def context_guard_skill_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def is_inside(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def is_context_guard_skill_path(path: Path) -> bool:
+    return is_inside(path, context_guard_skill_root())
 
 
 def folder_root(cwd: Path) -> Path:
@@ -27,6 +44,17 @@ def folder_root(cwd: Path) -> Path:
     except Exception:
         pass
     return cwd
+
+
+def guard_implicit_skill_root(root: Path, explicit_root: bool) -> int:
+    if explicit_root or not is_context_guard_skill_path(root):
+        return 0
+    print(
+        "[context-guard] refusing to use the Context Guard skill directory as a project context root. "
+        "Run again from the opened Codex workspace or pass an explicit project `--root`.",
+        file=sys.stderr,
+    )
+    return 2
 
 
 def context_dir(root: Path) -> Path:
@@ -538,6 +566,34 @@ function drawBranchConnectors() {{
   }});
 }}
 
+function setupInlineDetails() {{
+  const panel = document.querySelector("[data-inline-details]");
+  if (!panel) return;
+  const cards = Array.from(panel.querySelectorAll(".detail-card[id]"));
+  const closeLinks = Array.from(panel.querySelectorAll("[data-detail-close]"));
+  const hidePanel = () => {{
+    cards.forEach((card) => card.classList.remove("is-active"));
+    panel.classList.remove("is-open");
+    panel.hidden = true;
+  }};
+  const showFromHash = () => {{
+    const id = decodeURIComponent((window.location.hash || "").replace(/^#/, ""));
+    const target = id ? cards.find((card) => card.id === id) : null;
+    if (!target) {{
+      hidePanel();
+      return;
+    }}
+    cards.forEach((card) => card.classList.toggle("is-active", card === target));
+    panel.hidden = false;
+    panel.classList.add("is-open");
+    target.setAttribute("tabindex", "-1");
+    requestAnimationFrame(() => target.focus({{ preventScroll: false }}));
+  }};
+  closeLinks.forEach((link) => link.addEventListener("click", () => setTimeout(hidePanel, 0)));
+  window.addEventListener("hashchange", showFromHash);
+  showFromHash();
+}}
+
 document.addEventListener("DOMContentLoaded", () => {{
   const initial = resolveLang();
   applyLang(initial);
@@ -567,6 +623,7 @@ document.addEventListener("DOMContentLoaded", () => {{
   window.addEventListener("resize", drawBranchConnectors);
   const stack = document.querySelector("[data-route-map-overview]");
   if (stack) stack.addEventListener("scroll", drawBranchConnectors, {{ passive: true }});
+  setupInlineDetails();
 }});
 </script>"""
 
@@ -710,7 +767,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .route-stack {{
       display: grid;
-      gap: 18px;
+      gap: 14px;
     }}
     .route-stack.branch-map {{
       overflow-x: auto;
@@ -763,7 +820,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       display: flex;
       align-items: center;
       gap: 9px;
-      margin-bottom: 10px;
+      margin-bottom: 7px;
       flex-wrap: wrap;
     }}
     .route-head-grid {{
@@ -842,13 +899,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       grid-auto-flow: column;
       grid-auto-columns: minmax(220px, 280px);
       gap: 14px;
-      min-height: 430px;
+      min-height: auto;
       align-items: stretch;
+    }}
+    .route-stack:not(.branch-map) .track-grid {{
+      grid-auto-columns: minmax(240px, 300px);
+      align-items: start;
     }}
     .track-grid.route-only {{
       grid-template-columns: none;
-      grid-auto-columns: minmax(230px, 300px);
-      min-height: 190px;
+      grid-auto-columns: minmax(180px, 230px);
+      min-height: 104px;
     }}
     .route-head-grid.track-grid.route-only {{
       min-height: 0;
@@ -859,11 +920,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     }}
     .track-column, .track-label-column {{
       display: grid;
-      grid-template-rows: minmax(130px, auto) minmax(120px, auto) minmax(90px, auto);
+      grid-template-rows: auto auto auto;
       gap: 12px;
     }}
     .track-column.route-column {{
-      grid-template-rows: minmax(160px, auto);
+      grid-template-rows: auto;
       position: relative;
     }}
     .track-label-column {{
@@ -889,11 +950,16 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75), var(--shadow);
       transform: var(--card-transform);
     }}
+    .branch-map .lane {{
+      padding: 10px 12px;
+      min-height: 92px;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 20px rgba(51, 83, 57, 0.08);
+    }}
     .lane-main {{ border-top: 4px solid var(--route-accent, var(--accent)); }}
     .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
     .lane-test-chain {{ border-top: 4px solid var(--ok); }}
     .lane-empty {{
-      visibility: hidden;
+      display: none;
       border-color: transparent;
       background: transparent;
       box-shadow: none;
@@ -922,12 +988,29 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       color: var(--muted);
       font-size: 13px;
       margin: 8px 0 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }}
+    .route-stack:not(.branch-map) .lane-main {{
+      min-height: 0;
+    }}
+    .route-stack:not(.branch-map) .lane h3 {{
+      font-size: 14px;
+      line-height: 1.32;
+    }}
+    .branch-map .summary {{
+      display: none;
     }}
     .node-heading {{
       display: flex;
       gap: 8px;
       align-items: flex-start;
       margin-bottom: 8px;
+    }}
+    .branch-map .node-heading {{
+      margin-bottom: 6px;
     }}
     .node-number {{
       flex: 0 0 auto;
@@ -937,7 +1020,9 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       box-shadow: 0 0 0 4px var(--route-soft, var(--accent-soft));
     }}
     .lane h3 {{ margin: 0; font-family: var(--font-heading); font-size: 15px; line-height: 1.35; }}
+    .branch-map .lane h3 {{ font-size: 14px; line-height: 1.28; }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
+    .branch-map .node-meta {{ margin-bottom: 0; }}
     .pill {{
       display: inline-flex;
       align-items: center;
@@ -1009,11 +1094,26 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .detail-link {{ color: var(--accent); font-weight: 650; text-decoration: none; font-size: 13px; }}
     .inline-details {{
       margin-top: 18px;
-      display: grid;
-      gap: 14px;
     }}
-    .inline-details h2 {{ margin: 8px 0 2px; }}
+    .inline-details[hidden] {{
+      display: none !important;
+    }}
+    .inline-details.is-open {{
+      display: block;
+    }}
+    .inline-details h2 {{
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }}
     .detail-card {{
+      display: none;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -1021,13 +1121,16 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       box-shadow: var(--shadow);
       scroll-margin-top: 18px;
     }}
-    .detail-card:target {{
+    .detail-card.is-active {{
+      display: block;
       outline: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
       border-color: var(--accent);
     }}
     .detail-card h3 {{ margin: 0 0 8px; font-family: var(--font-heading); font-size: 17px; }}
     .field {{ margin: 7px 0; }}
     .field b {{ color: var(--muted); }}
+    .detail-list {{ margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }}
+    .detail-list li {{ margin: 0; padding-left: 12px; border-left: 3px solid var(--line); }}
     .level-chip {{ display: inline-block; border-radius: 999px; padding: 1px 7px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 650; }}
     .visual-meta {{ display: flex; align-items: center; gap: 9px; min-height: 16px; margin: 4px 0 10px; }}
     .inline-top {{ display: inline-block; margin-top: 8px; color: var(--accent); font-weight: 650; text-decoration: none; }}
@@ -1074,8 +1177,6 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in detail_items)
     if not node_sections:
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
-    detail_cases = linked_cases_for_detail_items(detail_items, cards)
-    case_sections = "\n".join(render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}")) for i, card in enumerate(detail_cases, 1))
     preferred_lang = preferred_display_language(ctx)
     html_lang = initial_html_language(preferred_lang)
     html_title = initial_html_title("roadmapDetails", preferred_lang)
@@ -1086,17 +1187,27 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(html_title)}</title>
   <style>
-    body {{ margin: 0; background: #f6f7f9; color: #20242a; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-    header {{ background: #fff; border-bottom: 1px solid #d9dee7; padding: 22px 32px; }}
-    main {{ max-width: 980px; margin: 0 auto; padding: 22px 18px 40px; }}
+    body {{ margin: 0; background: #f8faf6; color: #223126; font: 15px/1.68 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    header {{ background: #fbfcf7; border-bottom: 1px solid #c9dcc8; padding: 22px 32px; }}
+    main {{ max-width: 1040px; margin: 0 auto; padding: 22px 18px 44px; }}
     .header-row {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }}
     h1 {{ margin: 0 0 4px; font-size: 24px; }}
-    h2 {{ margin-top: 28px; }}
-    h3 {{ margin: 0 0 8px; font-size: 18px; }}
-    .meta, .muted {{ color: #69707d; }}
-    .detail-card {{ background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; margin: 14px 0; }}
+    h2 {{ margin-top: 0; }}
+    h3 {{ margin: 0 0 14px; font-size: 21px; }}
+    h4 {{ margin: 0 0 8px; font-size: 14px; color: #2f7d60; letter-spacing: .02em; }}
+    .meta, .muted {{ color: #687466; }}
+    .detail-card {{ background: #fffefa; border: 1px solid #c9dcc8; border-left: 4px solid #2f7d60; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 12px 30px rgba(47, 80, 54, .08); }}
+    .detail-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
+    .detail-section {{ border-top: 1px solid #dbe8d7; padding-top: 12px; min-width: 0; }}
+    .detail-section p {{ margin: 0; }}
+    .detail-section.wide {{ grid-column: 1 / -1; }}
+    .detail-list {{ margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }}
+    .detail-list li {{ margin: 0; padding-left: 12px; border-left: 3px solid #dbe8d7; }}
+    .node-case {{ border: 1px solid #dbe8d7; border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: #fbfcf7; }}
+    .node-case-title {{ margin: 0 0 4px; font-weight: 750; color: #2f7d60; }}
+    .node-case p {{ margin: 0; }}
     .field {{ margin: 8px 0; }}
-    .field b {{ color: #69707d; }}
+    .field b {{ color: #687466; }}
     .level-chip {{ display: inline-block; border-radius: 999px; padding: 1px 7px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 650; }}
     .visual-meta {{ display: flex; align-items: center; gap: 9px; min-height: 16px; margin: 4px 0 12px; }}
     .status-dot, .freq-dot {{ flex: 0 0 auto; border-radius: 999px; display: inline-block; }}
@@ -1129,10 +1240,7 @@ def render_roadmap_details_html(ctx: Path, index: str, roadmap: str, bad_cases: 
     </div>
   </header>
   <main>
-    <h2 data-i18n="mainRoute">Main Route</h2>
     {node_sections}
-    <h2 data-i18n="badCases">Bad Cases</h2>
-    {case_sections or '<p class="muted" data-i18n="noBadCases">No bad cases recorded.</p>'}
   </main>
   {language_script("roadmapDetails", preferred_lang)}
 </body>
@@ -1149,17 +1257,10 @@ def render_inline_details(
     node_sections = "\n".join(render_node_detail(node, i, cards, case_anchor_map) for i, node in detail_items)
     if not node_sections:
         node_sections = '<section class="detail-card" data-i18n="emptyRoadmap">No roadmap nodes recorded yet.</section>'
-    detail_cases = linked_cases_for_detail_items(detail_items, cards)
-    case_sections = "\n".join(
-        render_case_detail(card, case_anchor_map.get(card.get("title", ""), f"case-{i}"))
-        for i, card in enumerate(detail_cases, 1)
-    )
-    return f"""<section class="inline-details" aria-label="Roadmap details">
+    return f"""<section class="inline-details" hidden data-inline-details aria-label="Roadmap details">
   <h2 data-i18n="roadmapDetails">Roadmap Details</h2>
   {node_sections}
-  <h2 data-i18n="badCases">Bad Cases</h2>
-  {case_sections or '<p class="muted" data-i18n="noBadCases">No bad cases recorded.</p>'}
-  <a class="inline-top" href="#roadmap-overview" data-i18n="backToRoadmap">Back to roadmap</a>
+  <a class="inline-top" href="#roadmap-overview" data-detail-close data-i18n="backToRoadmap">Back to roadmap</a>
 </section>"""
 
 
@@ -1193,7 +1294,7 @@ def parse_roadmap_nodes(text: str) -> list[dict[str, str]]:
         stripped = line.strip()
         if stripped.startswith("- ") and ":" in stripped:
             key, value = stripped[2:].split(":", 1)
-            normalized_key = key.strip().lower()
+            normalized_key = canonical_node_key(key)
             if normalized_key in {"id", "node id"}:
                 continue
             if normalized_key == "title" and "title" in current:
@@ -1214,6 +1315,10 @@ def canonical_node_key(key: str) -> str:
         "node": "id",
         "title": "title",
         "name": "title",
+        "display title": "display title",
+        "display": "display title",
+        "human title": "display title",
+        "user title": "display title",
         "date": "date",
         "status": "status",
         "level": "level",
@@ -1221,6 +1326,19 @@ def canonical_node_key(key: str) -> str:
         "route": "branch",
         "parent": "parent",
         "task": "task",
+        "user request": "user request",
+        "user prompt": "user request",
+        "user input": "user request",
+        "user question": "user request",
+        "user asked": "user request",
+        "progress": "progress summary",
+        "current progress": "progress summary",
+        "progress summary": "progress summary",
+        "human progress": "progress summary",
+        "method": "method summary",
+        "method summary": "method summary",
+        "human method": "method summary",
+        "approach": "method summary",
         "outcome": "outcome",
         "summary": "outcome",
         "decision": "decision / reason",
@@ -1244,12 +1362,16 @@ def split_loose_field(body: str) -> tuple[str, str] | None:
     if key not in {
         "id",
         "title",
+        "display title",
         "date",
         "status",
         "level",
         "branch",
         "parent",
         "task",
+        "user request",
+        "progress summary",
+        "method summary",
         "outcome",
         "decision / reason",
         "avoid going back",
@@ -1541,6 +1663,11 @@ def human_title(title: str) -> str:
     return re.sub(r"^(?:NODE|BC)-\d{8}-\d+:\s*", "", title).strip() or title
 
 
+def node_display_title(node: dict[str, str], fallback: str) -> str:
+    """Return the short human-facing title, keeping source titles for agent context."""
+    return human_title(node.get("display title", "").strip() or node.get("title", "").strip() or fallback)
+
+
 def human_text(text: str) -> str:
     parts = re.split(r"(`[^`]*`)", text)
     cleaned: list[str] = []
@@ -1587,6 +1714,7 @@ ZH_TEXT: dict[str, str] = {
     "Use Botanical and route-focused drilldown": "使用 Botanical 和路线聚焦详情",
     "Main base": "主线起点",
     "Main later checkpoint": "主线后续检查点",
+    "No source user request recorded for this historical node.": "这个历史节点没有记录用户原始请求。",
     "Bad cases would only live in chat": "Bad case 只存在聊天里",
     "Scope drift toward scripting every bad case": "范围漂移到为每个 bad case 写脚本",
     "Interrupted design context could be lost": "被中断的设计 context 可能丢失",
@@ -1754,6 +1882,11 @@ ZH_TEXT: dict[str, str] = {
 
 
 ZH_REPLACEMENTS: list[tuple[str, str]] = [
+    ("Stop hook", "结束钩子"),
+    ("stop condition", "停止条件"),
+    ("stop hook", "结束钩子"),
+    ("red signal", "红色信号"),
+    ("post-fix", "修复后"),
     ("Context Evidence and Guards section", "context 证据和守卫规则章节"),
     ("Chinese mode should show Chinese records", "中文模式应显示中文记录"),
     ("Chinese UI chrome", "中文 UI 外壳"),
@@ -1851,6 +1984,42 @@ ZH_REPLACEMENTS: list[tuple[str, str]] = [
 ]
 
 
+DETAIL_ZH_REWRITES: list[tuple[str, str]] = [
+    (
+        "用户反馈 skill 又陷入测试循环，说明验证预算还不够，需要明确停止条件",
+        "用户发现 Context Guard 又把时间耗在反复补测试上，因此需要给验证流程设置明确的停止条件",
+    ),
+    (
+        "Context Guard 现在承认用户截图、日志、复现和已定位根因可作为红色信号",
+        "现在只要有截图、日志、复现步骤或明确根因，就可以确认问题已经成立",
+    ),
+    (
+        "证据足够时应停止补测试并进入实现",
+        "证据足够时，先修复问题，再做最小验证",
+    ),
+    (
+        "后续观察 结束钩子 是否能让 Codex 在根因明确后先修复，再做一个最小 修复后 检查",
+        "下一步观察结束钩子能否提醒 Codex：根因明确后先修复，再做一次最小检查",
+    ),
+    (
+        "后续观察结束钩子是否能让 Codex 在根因明确后先修复，再做一个最小修复后检查",
+        "下一步观察结束钩子能否提醒 Codex：根因明确后先修复，再做一次最小检查",
+    ),
+    (
+        "不要把 TDD 惯性套到每个 bugfix",
+        "不要每个修复都强行套用先写红测的流程",
+    ),
+    (
+        "可信证据存在时不要继续制造红测",
+        "已有可靠证据时，不再继续补红测",
+    ),
+    (
+        "可信证据存在时仍制造红测导致测试循环",
+        "已有可信证据时仍继续补红测，导致陷入测试循环",
+    ),
+]
+
+
 def has_cjk(text: str) -> bool:
     return bool(re.search(r"[\u3400-\u9fff]", text))
 
@@ -1869,12 +2038,27 @@ def apply_zh_replacements(text: str) -> str:
     return "".join(translated_parts)
 
 
+def clean_zh_term_spacing(text: str) -> str:
+    text = re.sub(r"([\u3400-\u9fff])\s+(停止条件|结束钩子|红色信号|修复后)", r"\1\2", text)
+    text = re.sub(r"(停止条件|结束钩子|红色信号|修复后)\s+([\u3400-\u9fff])", r"\1\2", text)
+    return text
+
+
 def zh_text(text: str) -> str:
     text = human_text(text)
     normalized = " ".join(text.split())
     if normalized in ZH_TEXT:
         return ZH_TEXT[normalized]
-    return apply_zh_replacements(normalized)
+    return clean_zh_term_spacing(apply_zh_replacements(normalized))
+
+
+def polish_detail_zh(text: str) -> str:
+    polished = zh_text(text)
+    for source, target in DETAIL_ZH_REWRITES:
+        polished = polished.replace(source, target)
+    polished = re.sub(r"\s+", " ", polished).strip()
+    polished = polished.replace(" ，", "，").replace(" 。", "。").replace(" ：", "：")
+    return polished
 
 
 def localized_text(text: str) -> str:
@@ -1889,6 +2073,15 @@ def localized_text(text: str) -> str:
 def localized_short_text(text: str, limit: int = 92) -> str:
     en = short_text(text, limit)
     zh = short_text(zh_text(text), limit)
+    return (
+        f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
+        f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
+    )
+
+
+def localized_detail_text(text: str, limit: int = 132) -> str:
+    en = short_text(text, limit)
+    zh = short_text(polish_detail_zh(text), limit)
     return (
         f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
         f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
@@ -2258,7 +2451,7 @@ def render_route_parent_note(
     if not parent_id:
         return ""
     parent_node = node_lookup.get(parent_id, {})
-    parent_label = human_title(parent_node.get("title", parent_id))
+    parent_label = node_display_title(parent_node, parent_id)
     return f'<span class="route-parent" data-route-parent>{localized_text("forked from")} {localized_text(parent_label)}</span>'
 
 
@@ -2268,7 +2461,7 @@ def render_route_column(
     display_number: int,
     branch_start: bool = False,
 ) -> str:
-    title = localized_text(human_title(node.get("title", f"Node {source_number}")))
+    title = localized_text(node_display_title(node, f"Node {source_number}"))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
@@ -2298,7 +2491,7 @@ def render_track_column(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    title = localized_text(human_title(node.get("title", f"Node {source_number}")))
+    title = localized_text(node_display_title(node, f"Node {source_number}"))
     status = node.get("status", "unknown")
     date = html.escape(node.get("date", "undated"))
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
@@ -2347,12 +2540,122 @@ def render_node_detail(
     bad_case_cards: list[dict[str, str]],
     case_anchor_map: dict[str, str],
 ) -> str:
-    title = localized_text(human_title(node.get("title", f"Node {number}")))
-    summary = localized_short_text(node.get("outcome", "No summary recorded."), 160)
+    title = localized_text(node_display_title(node, f"Node {number}"))
+    cases = bad_cases_for_node(node, bad_case_cards)
+    user_problem = node.get("user request", "").strip()
+    if not user_problem:
+        user_problem = "No source user request recorded for this historical node."
+    method_items = node_method_items(node, cases)
+    progress_items = node_progress_items(node)
+    case_html = render_node_case_list(cases, case_anchor_map)
     return f"""<section class="detail-card" id="node-{number}">
   <h3>{number}. {title}</h3>
-  <p class="field"><b data-i18n="summary">Summary:</b> {summary}</p>
+  <div class="detail-grid">
+    {render_node_detail_section("User question", "用户提出的问题", localized_detail_text(user_problem or "No question recorded.", 240))}
+    {render_node_detail_section("Current progress", "当前进度", render_detail_item_list(progress_items, "No progress recorded.", "没有记录当前进度。"))}
+    {render_node_detail_section("Bad cases to solve", "相关问题案例", case_html, wide=True)}
+    {render_node_detail_section("Method", "采取方法", render_detail_item_list(method_items, "No method recorded.", "没有记录采取方法。"), wide=True)}
+  </div>
 </section>"""
+
+
+def localized_label(en: str, zh: str) -> str:
+    return (
+        f'<span data-i18n-text data-en="{html.escape(en, quote=True)}" '
+        f'data-zh="{html.escape(zh, quote=True)}">{html.escape(en)}</span>'
+    )
+
+
+def render_node_detail_section(label_en: str, label_zh: str, body: str, wide: bool = False) -> str:
+    wide_class = " wide" if wide else ""
+    return f"""<section class="detail-section{wide_class}">
+      <h4>{localized_label(label_en, label_zh)}</h4>
+      <div>{body}</div>
+    </section>"""
+
+
+def render_detail_item_list(items: list[str], empty_en: str, empty_zh: str, limit: int = 132) -> str:
+    cleaned = [item for item in items if meaningful_bad_case_value(item)]
+    if not cleaned:
+        return f'<p class="muted">{localized_label(empty_en, empty_zh)}</p>'
+    lines = "\n".join(f"<li>{localized_detail_text(item, limit)}</li>" for item in cleaned[:4])
+    return f'<ul class="detail-list">\n{lines}\n</ul>'
+
+
+def split_detail_items(text: str) -> list[str]:
+    raw = human_text(text)
+    parts: list[str] = []
+    buf: list[str] = []
+    in_code = False
+    for char in raw:
+        if char == "`":
+            in_code = not in_code
+            buf.append(char)
+            continue
+        if not in_code and char in {"；", ";", "。"}:
+            part = "".join(buf).strip(" ：:，, ")
+            if meaningful_bad_case_value(part):
+                parts.append(part)
+            buf = []
+            continue
+        buf.append(char)
+    tail = "".join(buf).strip(" ：:，, ")
+    if meaningful_bad_case_value(tail):
+        parts.append(tail)
+    return [part.strip(" ：:，, ") for part in parts if meaningful_bad_case_value(part.strip())]
+
+
+def node_method_items(node: dict[str, str], cases: list[dict[str, str]]) -> list[str]:
+    preferred = node.get("method summary", "").strip()
+    if preferred:
+        return split_detail_items(preferred)[:4]
+    methods: list[str] = []
+    for card in cases:
+        fix = first_nonempty(card.get("fix method", ""), card.get("guard / verification", ""))
+        for item in split_detail_items(fix):
+            if item not in methods:
+                methods.append(item)
+    for value in [node.get("avoid going back", ""), node.get("decision / reason", "")]:
+        for item in split_detail_items(value):
+            if item not in methods:
+                methods.append(item)
+    return methods[:4]
+
+
+def node_progress_items(node: dict[str, str]) -> list[str]:
+    preferred = node.get("progress summary", "").strip()
+    if preferred:
+        return split_detail_items(preferred)[:4]
+    parts = []
+    for value in [node.get("outcome", ""), node.get("next", "")]:
+        for item in split_detail_items(value):
+            if item not in parts:
+                parts.append(item)
+    return parts[:4]
+
+
+def render_node_case_list(cases: list[dict[str, str]], case_anchor_map: dict[str, str]) -> str:
+    if not cases:
+        return f'<p class="muted">{localized_label("No linked bad cases.", "没有关联问题案例。")}</p>'
+    items = []
+    for card in cases:
+        title = localized_text(human_title(card.get("title", "Bad case")))
+        summary_raw = first_nonempty(
+            card.get("display summary", ""),
+            card.get("phenomenon", ""),
+            card.get("root cause", ""),
+            card.get("fix method", ""),
+        )
+        summary = localized_short_text(summary_raw or "No summary recorded.", 180)
+        tags = render_tags(parse_tags(card.get("tags", "")), limit=3)
+        items.append(
+            f"""<article class="node-case">
+        <p class="node-case-title">{title}</p>
+        <p>{summary}</p>
+        {f'<div class="tags">{tags}</div>' if tags else ''}
+      </article>"""
+        )
+    return "\n".join(items)
 
 
 def parse_bad_case_cards(text: str) -> list[dict[str, str]]:
@@ -2401,6 +2704,10 @@ def canonical_bad_case_key(key: str) -> str:
         "node": "roadmap nodes",
         "tags": "tags",
         "frequency": "frequency",
+        "display summary": "display summary",
+        "human summary": "display summary",
+        "case summary": "display summary",
+        "summary": "display summary",
         "phenomenon": "phenomenon",
         "trigger": "trigger / reproduction",
         "reproduction": "trigger / reproduction",
@@ -2450,6 +2757,7 @@ def split_loose_bad_case_field(body: str) -> tuple[str, str] | None:
         "roadmap nodes",
         "tags",
         "frequency",
+        "display summary",
         "phenomenon",
         "trigger / reproduction",
         "root cause",
@@ -2973,6 +3281,8 @@ def append_branch_roadmap_node(
 - Branch: {branch}
 - Parent: {parent_node or 'none'}
 - Task: `{task_id}`
+- Display title: {title}
+- User request: {title}
 - Outcome: {outcome}
 - Decision / reason: {decision}
 - Avoid going back: {avoid}
@@ -3053,6 +3363,10 @@ def append_checkpoint_roadmap_node(
     branch: str,
     level: str,
     outcome: str,
+    display_title: str = "",
+    user_request: str = "",
+    progress_summary: str = "",
+    method_summary: str = "",
     decision: str = "",
     avoid: str = "",
     next_step: str = "",
@@ -3086,6 +3400,14 @@ def append_checkpoint_roadmap_node(
         lines.append(f"- Parent: {parent_node.strip()}")
     if task_id and task_id.lower() not in {"none", "none yet."}:
         lines.append(f"- Task: `{task_id}`")
+    if display_title.strip():
+        lines.append(f"- Display title: {display_title.strip()}")
+    if user_request.strip():
+        lines.append(f"- User request: {user_request.strip()}")
+    if progress_summary.strip():
+        lines.append(f"- Progress summary: {progress_summary.strip()}")
+    if method_summary.strip():
+        lines.append(f"- Method summary: {method_summary.strip()}")
     lines.append(f"- Outcome: {outcome}")
     if decision.strip():
         lines.append(f"- Decision / reason: {decision.strip()}")
@@ -3109,6 +3431,10 @@ def checkpoint_roadmap_node(
     branch: str | None,
     level: str,
     outcome: str,
+    display_title: str = "",
+    user_request: str = "",
+    progress_summary: str = "",
+    method_summary: str = "",
     decision: str = "",
     avoid: str = "",
     next_step: str = "",
@@ -3125,6 +3451,10 @@ def checkpoint_roadmap_node(
         branch=route,
         level=level,
         outcome=outcome,
+        display_title=display_title,
+        user_request=user_request,
+        progress_summary=progress_summary,
+        method_summary=method_summary,
         decision=decision,
         avoid=avoid,
         next_step=next_step,
@@ -3168,6 +3498,10 @@ def main() -> int:
     parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
     parser.add_argument("--level", choices=["major", "checkpoint"], default="checkpoint", help="Roadmap checkpoint level.")
     parser.add_argument("--outcome", default="", help="One-line result for a roadmap checkpoint.")
+    parser.add_argument("--display-title", default="", help="Short human-facing title for roadmap overview cards.")
+    parser.add_argument("--user-request", default="", help="Concise summary of the user's actual request for this checkpoint.")
+    parser.add_argument("--progress-summary", default="", help="Readable human-facing current-progress text for node details.")
+    parser.add_argument("--method-summary", default="", help="Readable human-facing method text for node details.")
     parser.add_argument("--decision", default="", help="Decision or reason for a roadmap checkpoint.")
     parser.add_argument("--avoid", default="", help="Avoid-going-back note for a roadmap checkpoint.")
     parser.add_argument("--next-step", default="", help="Next step for the active context.")
@@ -3181,6 +3515,9 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve() if args.root else folder_root(Path.cwd())
+    root_guard = guard_implicit_skill_root(root, explicit_root=args.root is not None)
+    if root_guard:
+        return root_guard
     if args.command == "init":
         created = init_context(root)
         if created:
@@ -3215,6 +3552,10 @@ def main() -> int:
             branch=args.branch,
             level=args.level,
             outcome=args.outcome,
+            display_title=args.display_title,
+            user_request=args.user_request,
+            progress_summary=args.progress_summary,
+            method_summary=args.method_summary,
             decision=args.decision,
             avoid=args.avoid,
             next_step=args.next_step,

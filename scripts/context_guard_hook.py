@@ -9,11 +9,52 @@ prompt intake and turn stop.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 from context_guard import context_dir, init_context
+
+
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_KEYS = {
+    "cwd",
+    "current_working_directory",
+    "working_directory",
+    "workspace",
+    "workspace_root",
+    "workspaceFolder",
+    "workspace_folder",
+    "project",
+    "project_root",
+    "projectRoot",
+    "project_path",
+    "repository",
+    "repo",
+    "repo_path",
+    "root",
+}
+WORKSPACE_ENV_KEYS = [
+    "CODEX_WORKSPACE_ROOT",
+    "CODEX_PROJECT_ROOT",
+    "CODEX_CWD",
+    "WORKSPACE_ROOT",
+    "PROJECT_ROOT",
+    "PWD",
+]
+
+
+def is_inside(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def is_context_guard_skill_path(path: Path) -> bool:
+    return is_inside(path, SKILL_ROOT)
 
 
 def git_root(cwd: Path) -> Path:
@@ -30,6 +71,64 @@ def git_root(cwd: Path) -> Path:
     except Exception:
         pass
     return cwd
+
+
+def possible_workspace_paths(value: object) -> list[Path]:
+    paths: list[Path] = []
+
+    def add_path(candidate: object) -> None:
+        if not isinstance(candidate, str):
+            return
+        text = candidate.strip()
+        if not text or not text.startswith("/"):
+            return
+        path = Path(text).expanduser()
+        if path.exists():
+            paths.append(path)
+
+    def walk(obj: object, key_hint: str = "") -> None:
+        if isinstance(obj, dict):
+            for key, child in obj.items():
+                if key in WORKSPACE_KEYS:
+                    add_path(child)
+                walk(child, key)
+        elif isinstance(obj, list):
+            for child in obj:
+                walk(child, key_hint)
+
+    walk(value)
+    return paths
+
+
+def parse_hook_payload(raw: str) -> object:
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
+def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
+    payload = parse_hook_payload(raw)
+    candidates: list[tuple[Path, str]] = []
+    for path in possible_workspace_paths(payload):
+        candidates.append((path, "hook payload"))
+    for key in WORKSPACE_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value.startswith("/"):
+            path = Path(value).expanduser()
+            if path.exists():
+                candidates.append((path, f"${key}"))
+    candidates.append((cwd, "process cwd"))
+
+    for path, source in candidates:
+        root = git_root(path)
+        if not is_context_guard_skill_path(root):
+            return root, source
+
+    root = git_root(cwd)
+    return root, "process cwd"
 
 
 def read_stdin() -> str:
@@ -235,12 +334,22 @@ def format_unresolved_bad_cases(cases: list[dict[str, str]], limit: int = 5) -> 
 
 def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
-    root = git_root(Path.cwd())
+    raw = read_stdin()
+    root, root_source = event_root(raw, Path.cwd())
     context_dir = root / ".codex" / "context"
     index_path = context_dir / "index.md"
     roadmap_path = context_dir / "roadmap.md"
     bad_cases_path = context_dir / "bad-cases.md"
-    text = prompt_text(read_stdin())
+    text = prompt_text(raw)
+
+    if is_context_guard_skill_path(root):
+        print(
+            "[context-guard] detected Context Guard skill directory as the apparent root; "
+            "skipping project context writes. Open the target Codex folder or pass an explicit local `--root` "
+            "when showing/updating a roadmap."
+        )
+        print(f"[context-guard] apparent root source: {root_source}; apparent root: {root}")
+        return 0
 
     if event == "session-start":
         created = init_context(root)
@@ -248,6 +357,8 @@ def main() -> int:
             print(f"[context-guard] initialized folder context: {context_dir}")
         else:
             print(f"[context-guard] folder context ready: {context_dir}")
+        print(f"[context-guard] project root: {root} ({root_source})")
+        print("[context-guard] context location rule: save project context only under `<opened local Codex project root>/.codex/context/`.")
         print("[context-guard] use .codex/context/index.md for quick scan and .codex/context/roadmap.md for route nodes.")
         return 0
 
@@ -268,6 +379,9 @@ def main() -> int:
         if not hints:
             hints.append("run Context Guard intake: continue current context or note no active context")
         print("[context-guard] " + "; ".join(hints))
+        print(f"[context-guard] root source: {root_source}")
+        print(f"[context-guard] project root: {root}")
+        print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] context index: {index_path}")
         print(f"[context-guard] route map: {roadmap_path}")
         return 0
@@ -286,6 +400,8 @@ def main() -> int:
         print("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
         print("[context-guard] Branch task gate: if the user explicitly asked for a branch, ensure `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` has created the task folder, index current entry, and Branch/Parent roadmap node; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
         print("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")
+        print(f"[context-guard] root source: {root_source}")
+        print(f"[context-guard] project root: {root}")
         print(f"[context-guard] context folder: {context_dir}")
         print(f"[context-guard] bad-case register: {bad_cases_path}")
         open_cases = unresolved_bad_cases(bad_cases_path)

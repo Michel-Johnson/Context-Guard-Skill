@@ -4,6 +4,20 @@ Context Guard is a Codex skill for keeping project context durable, concise, and
 
 The core promise is simple: important context should not disappear, and solved bad cases should not silently come back.
 
+## Where Context Lives
+
+For each project, Context Guard saves context under the local Codex project root:
+
+```text
+<opened Codex project root>/.codex/context/
+```
+
+The project root is the local folder selected in Codex or the local workspace root for the current thread. It is not the chat/thread name, the Context Guard skill install directory, an SSH remote path, or a temporary script folder. When running helper scripts from outside the project, always pass the target project explicitly:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
+```
+
 ## What It Maintains
 
 For each project folder, Context Guard uses:
@@ -40,6 +54,7 @@ For each project folder, Context Guard uses:
 
 - Runs context intake at the start of work and checkpointing at the end.
 - Keeps context folder-scoped, not thread-scoped.
+- Refuses to treat the installed skill directory as the project context root; when running the helper from the skill install path, pass the target project with `--root`.
 - Parks interrupted work and asks whether to resume it later.
 - Records bad cases when they appear, including symptoms, root cause, fix, and guard.
 - Reuses existing bad-case guards before inventing new tests or scripts.
@@ -116,6 +131,8 @@ python3 ~/.agents/skills/context-guard/scripts/context_guard.py init --root /pat
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language 中文
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
 ```
+
+Always point `--root` at the opened Codex project folder. Do not use `~/.agents/skills/context-guard` as the root unless you are explicitly debugging the skill install itself.
 
 The roadmap command overwrites the same stable files every time:
 
@@ -223,6 +240,9 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 - Use `Level: checkpoint` for smaller implementation, validation, documentation, or UI polish updates.
 - Use `Branch:` when work forks into side routes or parallel mainlines.
 - Use `Parent:` when a branch starts from a specific earlier node.
+- Use `Display title:` for the short human-facing roadmap card title. It should read like a clear user-facing milestone, not an implementation log.
+- Use `User request:` for a concise summary of the user's actual input. The human detail page reads this field directly for "what the user asked"; do not let `Outcome` or `Decision / reason` stand in for the user's request.
+- Use `Progress summary:` and `Method summary:` when the human detail page would otherwise read like raw implementation notes. Keep them as short natural sentences.
 - When the user explicitly asks for a branch/支线, create it with `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` so the task folder, current index, and roadmap node stay connected.
 - Link roadmap nodes to bad cases and test-chain notes instead of duplicating full details.
 - In branch overview, route depth uses color temperature: main route green, first-level branches cool cyan/teal, deeper branches colder blue/indigo.
@@ -230,6 +250,8 @@ The roadmap is not a transcript. It should record meaningful progress, decisions
 The human HTML view shows only the concise overview. Details belong in `roadmap-details.html`.
 
 When there is one route, the overview shows the three aligned tracks directly. When there are multiple routes, the overview shows all route lines as a branch map with fork markers; selecting a route reveals only that route's bad cases and test chain.
+
+For one-route roadmaps, empty bad-case/test-chain lanes should not create a large blank canvas. Main cards should stay content-sized, and short summaries should remain readable before users click into details.
 
 ## Verification
 
@@ -253,6 +275,8 @@ Recommended regression checks for roadmap changes:
 - overview header does not show view-type labels or export/update timestamps
 - major nodes appear in the overview while checkpoints stay in details
 - branch routes render as selectable route groups with route-scoped bad cases and test chain
+- multi-route branch overview cards stay compact: number, title, date/status cues, and no visible outcome paragraph
+- default `roadmap.html` shows only the roadmap; inline node/bad-case details stay hidden until a roadmap item is clicked
 - multi-route overview shows all route lines together, draws subtle node-to-node route connectors, and draws smooth branch connectors from the visible parent node card through node gaps to the branch route anchor
 - loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
 - loose bad-case blocks with `ID`, `Title`, `Status`, and `Nodes` render as linked bad cases

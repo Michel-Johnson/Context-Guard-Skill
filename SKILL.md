@@ -24,6 +24,23 @@ Context is a navigation aid, not a transcript. Record only information that help
 
 Maintain a folder-local context folder so task context, route nodes, bad-case memory, and reusable guards travel with the Codex folder. This context belongs to the folder, not to a single thread.
 
+### Project Context Location
+
+The project context folder must be saved at:
+
+```text
+<opened Codex project root>/.codex/context/
+```
+
+The opened Codex project root is the local folder selected in the Codex sidebar or the local workspace root for the current thread. Resolve it in this order:
+
+1. An explicit `--root <local project root>` passed to `context_guard.py`.
+2. A workspace/project path from hook payload or Codex environment.
+3. The local git repository root containing the current workspace.
+4. The local current working directory only when it is the opened project folder.
+
+Do not use the active chat/thread name, the skill installation directory, a remote SSH working directory, or a temporary script directory as the project root. If the correct local project root is ambiguous, stop and ask or pass an explicit `--root`.
+
 1. Prefer the canonical context root: `.codex/context/`.
 2. Create the context root the first time Codex works in a folder.
 3. Maintain the quick-browse index at `.codex/context/index.md`.
@@ -37,7 +54,7 @@ Maintain a folder-local context folder so task context, route nodes, bad-case me
 11. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
 12. Use `references/register-template.md` when creating or updating bad-case entries.
 
-Do not store project context inside the skill directory. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
+Do not store project context inside the skill directory. If a command would use `/Users/.../.agents/skills/context-guard` or another installed skill path as the implicit root, stop and rerun it from the opened Codex workspace or pass the workspace with `--root`. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
 
 ## Remote / SSH Work Boundary
 
@@ -111,6 +128,9 @@ Each node should include:
 - node ID, title, date, and status
 - level: `major` for user-facing milestones, `checkpoint` for minor progress
 - optional branch name and parent node when the route forks
+- one-line `Display title` for the human roadmap card; keep it short, natural, and readable at a glance
+- one-line `User request` summary copied from the user's actual intent; do not invent this from `Outcome` or `Decision / reason`
+- optional `Progress summary` and `Method summary` for the human node detail page; use them when raw outcome/decision fields would read like implementation notes
 - one-line outcome
 - key decision or reason for the step
 - next step
@@ -127,11 +147,13 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 `roadmap.html` is the user's quick overview. Keep it sparse:
 
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
+- Overview node titles must use `Display title:` when present. Keep them close to the user's wording and outcome, not implementation-log language. Use short natural phrases such as "节点详情更容易读" instead of "压缩节点详情长字段".
 - Show only `Level: major` nodes as main route cards; summarize hidden checkpoints compactly and put checkpoint details in `roadmap-details.html`.
 - Number visible overview cards consecutively per route group after checkpoint filtering; keep source node IDs and source-order detail anchors hidden from the overview.
 - When there is one route group, show the three lane titles once in a left-side label column. Do not repeat Main Route, Bad Cases, and Test Chain inside every node card.
-- In single-route three-lane mode, do not render empty Bad Cases or Test Chain cards for nodes with no linked cases/checks. Leave the lane blank so sparse records stay readable.
+- In single-route three-lane mode, keep the board content-height compact: empty Bad Cases or Test Chain lanes must not reserve vertical space, main route cards should size to content, and summaries may use up to three readable lines before truncation.
 - When there are multiple route groups, show all route lines together as a branch overview so users can see where each side route forked. Do not show a separate always-visible bad-case/test-chain drilldown under the route map; keep detailed case/check relationships in source context and agent-readable exports.
+- In multi-route branch overview, treat route cards as a compact map skeleton: show the number, title, and small date/status cues only. Hide outcome summaries from the visible cards and keep them in same-file details/source context.
 - Show parent/fork markers only for side routes whose parent node belongs to another route. Never show a fork marker on the Main route merely because a later main node references an earlier node.
 - In branch overview, visually align each side route's starting position to the parent node's visible position on its parent route. Do not render every side route from the first column.
 - Place branch route titles, parent chips, and checkpoint text near that branch's first visible card by using the same spacer/grid coordinate as the branch cards. Do not leave branch labels pinned to the far-left edge when the branch starts later.
@@ -152,9 +174,11 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Do not show full Outcome, Decision, Next, internal links, source paths, or long bad-case text on the overview.
 - Do not show implementation chrome such as "human-facing view" labels or export/update timestamps in the overview header.
 - Link each node, bad case, and test-chain item to same-file detail anchors in `roadmap.html` by default, so `file://` views do not need to navigate to another local HTML file.
-- Keep detailed fields out of overview cards. In human-facing node details, show only one concise summary sentence; do not add separate `Bad cases:` or `Test chain:` rows when the summary already carries the useful context; do not show a standalone status dot under the title. Keep full links and source fields in agent-readable context files and exports.
+- Keep detailed fields out of overview cards. In human-facing node details, render each clicked node as a clear node-focused page with four plain sections: what the user asked or reported, related bad cases to solve, method taken, and current progress. The "what the user asked" section must come from the node's `User request:` field, which should be a concise summary of the user's actual input; do not freely infer it from `Outcome`, `Decision / reason`, or implementation notes. `当前进度` should prefer `Progress summary:` and `采取方法` should prefer `Method summary:`; these should read as short natural sentences, not fragments copied from schema, CLI, guard, or implementation logs. Keep full links and source fields in agent-readable context files and exports.
+- Do not render a visible detail list below the roadmap by default. The default `roadmap.html` view should show only the roadmap; node or bad-case details may exist in the HTML but must be hidden until the user clicks a roadmap item.
 - In human-facing bad-case details, do not mirror the full register. Show only a one-sentence summary and compact tags by default; keep reusable recurrence checks, phenomenon/trigger/root cause/fix/red/green/failure-reason fields in source context and agent-readable exports.
 - Human-facing detail sections should follow the visible route map: prefer major route nodes and their linked bad cases. Hidden checkpoints and complete bad-case registers belong in `.codex/context/roadmap.md`, `bad-cases.md`, and `roadmap.json`.
+- Do not show node detail pages as a global list of summaries plus a separate bad-case dump. A clicked node should read as one page for that node, with node-scoped bad cases and concise progress; do not mix verification command logs into the progress section unless the user explicitly asks for technical evidence.
 - Support language-aware projection in the stable HTML files, starting with Chinese and English. Keep one source context, localize user-facing record titles, summaries, bad cases, tags, Guard/verification notes, Trigger/reproduction notes, and test-chain snippets to the configured folder language, and avoid visible language selector controls by default.
 - Human-facing bad-case details must follow the folder language preference for phenomenon, trigger, root cause, fix, and guard notes. Preserve code identifiers, commands, paths, and product names, but do not leave ordinary English prose mixed into Chinese detail cards.
 - When the folder language is Chinese, user-facing overview text should not fall back to untranslated English prose except for intentional technical names, commands, paths, APIs, and product names.
@@ -206,7 +230,7 @@ Treat a single-route roadmap as three parallel horizontal lines, not a three-col
 When the user invokes `$context-guard` and asks to show, open, view, display, export, or 展示 the roadmap:
 
 1. Do not merely explain the command.
-2. Run `scripts/context_guard.py show-roadmap` from the current folder or the plugin/skill script path.
+2. Run `scripts/context_guard.py show-roadmap --root <opened Codex workspace>` for the user's current project. The script may live in the skill directory, but the `--root` must be the project/workspace folder, not the skill folder.
 3. If an in-app browser or file-opening capability is available, open the generated `file://` URL.
 4. Return a clickable link to the generated HTML file.
 5. If the roadmap has no nodes yet, still show the generated empty roadmap and say no nodes are recorded yet.
@@ -420,7 +444,7 @@ Run this before every final answer.
 13. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
 14. If the Stop hook detects an explicit branch request, ensure the branch task and `Branch:`/`Parent:` roadmap node exist before finalizing.
 15. If the Stop hook detects possible drift from the mainline architecture and no explicit branch exists, ask the user whether this should become a branch instead of silently continuing the mainline.
-16. When a roadmap node is needed at turn end, prefer `scripts/context_guard.py checkpoint-roadmap-node --title <short title> --branch <Main or route> --level <major|checkpoint> --outcome <one-line progress> --next-step <next>` instead of hand-editing. Use `create-branch-task` first when the user explicitly asks for a new branch.
+16. When a roadmap node is needed at turn end, prefer `scripts/context_guard.py checkpoint-roadmap-node --title <source title> --display-title <short human title> --user-request <short summary of the user's actual request> --progress-summary <readable current progress> --method-summary <readable method> --branch <Main or route> --level <major|checkpoint> --outcome <one-line source progress> --next-step <next>` instead of hand-editing. Use `create-branch-task` first when the user explicitly asks for a new branch.
 17. Run `scripts/context_guard.py validate-bad-cases` only after updating bad-case entries, changing bad-case schema/renderer/hook behavior, or intentionally auditing the register; do not run it on unrelated code turns. Historical resolved cases without the new fields may remain warnings until touched; use `--strict` only when intentionally migrating or auditing all resolved cases.
 18. Run `scripts/context_guard.py validate-roadmap-maintenance` only after adding route nodes, changing roadmap maintenance rules, or before showing the roadmap; if it reports too many hidden checkpoints after a route's latest visible node, promote or add a major node before finalizing.
 
