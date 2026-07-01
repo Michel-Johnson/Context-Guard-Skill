@@ -161,7 +161,7 @@ The smallest useful action to resume this task.
 
 ## task-cases/<task-case-id>.md
 
-Use task cases for realistic multi-step verification flows. They should catch bugs by simulating a real task, not by testing one isolated bug at a time.
+Use task cases for realistic multi-step verification flows. They should catch bugs by simulating a real task, not by testing one isolated bug at a time. Task-case design is human-owned: Codex may draft and structure a proposal, but durable task cases must stay `proposed` until the user confirms them.
 
 ```md
 # Task Case: short realistic workflow title
@@ -171,7 +171,8 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Route/task: `CTX-...` or branch name
 - Scope: feature, service, UI flow, agent workflow, or subsystem
 - Last checked: YYYY-MM-DD
-- Design confirmation: pending | user-approved YYYY-MM-DD | not-needed because...
+- Design confirmation: pending | user-approved YYYY-MM-DD
+- Run policy: every-dev-completion | relevant-only | manual | release-only | goal-final | disabled-with-reason | user-defined cadence
 - Linked roadmap nodes: NODE-...
 - Linked bad cases: BC-..., BC-...
 - Entry command/prompt: command, prompt, manual setup, or fixture
@@ -209,14 +210,18 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Use `Level: major` for significant milestones shown as main route cards; use `Level: checkpoint` for minor progress that should live in details.
 - Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
 - In the human overview, visible card numbers should be consecutive per route group after checkpoint filtering, not source node numbers with gaps.
-- If the human overview has multiple route groups, show all route lines together with parent/fork markers, then reveal bad cases/test chain only for the selected route below the branch overview.
+- If the human overview has multiple route groups, show all route lines together with parent/fork markers and a compact test route aligned under visible roadmap nodes.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
-- Treat the human-facing Test Chain lane as bad-case recurrence detection. Generate it from linked bad cases' `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`, not from roadmap node checkpoint logs.
+- Treat human-facing test coverage as human-designed bad-case recurrence detection. Single-route overview hides the test lane; multi-route compact test routes should be generated only from user-approved tests with explicit `Run policy`, approved task-case checkpoints, or approved test registry entries, not from ordinary linked bad-case guards or roadmap node checkpoint logs.
+- In branch or multi-route views, align each visible test item to the roadmap node whose approved bad-case test or approved task-case checkpoint it covers. If a route has no approved tests, do not show a test route for it. Empty test slots should be subtle timeline placeholders only when the route has at least one approved test elsewhere.
 - Prefer a task-oriented case in `.codex/context/task-cases/` when realistic workflow phases matter more than isolated bug checks. Bad-case guards should often point to a task-case checkpoint that covers them.
 - Task-case scripts or agents should log the phase/checkpoint that failed, so Codex can locate the broken workflow step without re-debugging the whole task.
-- Before writing a new durable task-case script for a broad workflow, ask the user to confirm with only the business path: from what state to what state, the main task, and the major risk. Keep technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt. If confirmation is unavailable, keep the case `proposed` and avoid broad new scripts.
-- During goal mode, task cases should act as phase gates: select or propose the relevant case, log phase progress during continuations, and run the smallest approved path before claiming the goal complete.
+- Before writing any new durable task-case script or active task case, ask the user to confirm with only the business path: from what state to what state, the main task, and the major risk. Keep technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt. If confirmation is unavailable, keep the case `proposed` and avoid broad new scripts.
+- When the user explicitly asks to create, write, generate, design, or add a test/test task/task case, start the user-visible response with `测试创建识别：...` or the folder-language equivalent, then summarize the test target from what state to what state and the main risk it catches.
+- When the user creates or approves a test, register it with `Run policy: every-dev-completion` by default. At the end of every development turn, run all approved tests with that policy or record the exact blocker.
+- Change a test to `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or another cadence only when the user explicitly asks. Record the user's reason beside the policy.
+- During goal mode, task cases should act as phase gates: select an approved case or propose one for confirmation, log phase progress during continuations, and run the smallest human-approved path before claiming the goal complete.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.
 - Keep source records in the configured `.codex/context/preferences.json` record language. The HTML roadmap should follow that preference and should not show a visible language selector by default.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
@@ -234,9 +239,9 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Do not delete unresolved user intent unless the user explicitly discards it.
 - Use `scripts/context_guard.py show-roadmap` to generate and display the stable human-friendly overview at `.codex/context/roadmap/roadmap.html`, with details at `.codex/context/roadmap/roadmap-details.html`, agent-readable Markdown at `.codex/context/roadmap/roadmap.md`, and structured lookup at `.codex/context/roadmap/roadmap.json`. Use `export-roadmap --format md` only for Markdown-only export.
 - Do not accumulate timestamped HTML roadmap files. Showing the roadmap overwrites the same stable HTML files.
-- With one route group, the HTML roadmap should read as three horizontal tracks: Main Route on top, Bad Cases in the middle, Test Chain on the bottom. Each vertical node column aligns those three lanes for the same roadmap node.
-- In one-route HTML, do not let empty bad-case/test-chain lanes reserve large blank space. The route board should size to real content, and main route summaries should remain readable rather than being clipped after a very short fragment.
-- With multiple route groups, the overview should show all route lines as a branch map; route selection should affect only the bad-case/test-chain drilldown.
+- With one route group, the HTML roadmap overview should show only the main route cards. Keep linked bad cases and recurrence checks in clicked node details, source context, and agent-readable exports.
+- In one-route HTML, do not render bad-case/test-chain lanes or a left lane-label column. The route board should size to real content, and main route summaries should remain readable rather than being clipped after a very short fragment.
+- With multiple route groups, the overview should show all route lines as a branch map. If a route has user-approved tests, also show a compact node-aligned test route under that route line. Route selection may affect details, but the default view should not invent tests from ordinary bad-case context.
 - Parent/fork markers should appear only on side routes whose parent node is outside that route. Main route should not show a fork marker just because a later main node references an earlier main node.
 - Side routes should visually start near their parent node's visible position on the parent route, not all from the first column.
 - Branch route labels, parent chips, and checkpoint text should sit near the branch's first visible card by reusing the same spacer/grid coordinate as the branch cards.
@@ -254,7 +259,7 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Treat Stop hook output as a completion reliability gate. Before claiming fixed/done/passing, record real verification evidence for the changed artifact or workflow and rerun relevant bad-case guards.
 - For UI/browser/binding/frontend work, verify the original user-visible symptom, not only build success or process restart.
 - User-facing projected text should follow the folder language preference; avoid untranslated English prose in Chinese overview output except for intentional technical strings.
-- Show the three lane titles once in the left label column for a single route group, not inside every node card.
+- For a single route group, do not show lane titles or a left label column; the overview is only the main route.
 - Keep overview cards sparse. Put full Outcome, Decision, Next, and guard details in same-file detail anchors and the stable `roadmap-details.html` sidecar.
 - In multi-route branch overview, route cards should read as a compact map skeleton: number, title, date/status cue, and no visible outcome paragraph. Keep route summaries in details and source context.
 - Default overview links should target same-file `#node-*` and `#case-*` anchors, not `roadmap-details.html#...`, to avoid `file://` access-denied navigation.
@@ -265,6 +270,7 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Do not record every command; record only commands that prove a checkpoint or guard a bad case.
 - Do not let roadmap node `Test chain:` history replace bad-case recurrence guards in user-facing roadmap output.
 - Do not split a real workflow into many unrelated bug-level tests when one task case with checkpoints would reveal the failure location more clearly.
+- Do not silently enter test creation. If the user explicitly asks to create a test, acknowledge the test-creation intake first so the user can see the skill activated.
 - Do not wait until goal completion to record important roadmap progress or bad cases.
 - Merge tiny adjacent updates into one roadmap node.
 - Archive stale parked tasks as a one-sentence summary.

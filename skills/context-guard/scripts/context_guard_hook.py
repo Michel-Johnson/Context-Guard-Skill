@@ -243,6 +243,41 @@ def looks_like_remote_work(text: str) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def looks_like_test_creation(text: str) -> bool:
+    lowered = text.lower()
+    creation_markers = [
+        "create",
+        "write",
+        "generate",
+        "design",
+        "add",
+        "创建",
+        "建立",
+        "写",
+        "生成",
+        "设计",
+        "新增",
+        "加一个",
+        "做一个",
+    ]
+    test_markers = [
+        "test case",
+        "task case",
+        "test task",
+        "testing task",
+        "测试case",
+        "测试 case",
+        "测试任务",
+        "测试用例",
+        "测评任务",
+        "测评case",
+        "测评 case",
+        "测试链路",
+        "测试",
+    ]
+    return any(marker in lowered for marker in creation_markers) and any(marker in lowered for marker in test_markers)
+
+
 def looks_like_explicit_branch(text: str) -> bool:
     lowered = text.lower()
     markers = [
@@ -368,6 +403,8 @@ def main() -> int:
             hints.append("goal mode: align active goal with current context and record roadmap/bad-case checkpoints during long-running work")
         if looks_like_remote_work(text):
             hints.append("remote/SSH work: keep `.codex/context` in the local Codex workspace; record remote host/path as metadata and do not initialize roadmap context on the server unless explicitly requested")
+        if looks_like_test_creation(text):
+            hints.append("explicit test creation: start the user-visible response with `测试创建识别：...`, summarize the test target from state A to state B, and only create durable tests after the user's design is clear or confirmed")
         if looks_like_explicit_branch(text):
             hints.append("explicit branch task: create/select a branch task by running `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation; verify the roadmap node has Branch: and Parent:")
         elif looks_like_route_drift(text):
@@ -391,6 +428,7 @@ def main() -> int:
         print("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
         print("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
         print("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
+        print("[context-guard] APPROVED TEST REGISTRY GATE: run every human-approved test whose Run policy is `every-dev-completion` before finalizing development work. Only skip or demote tests when the user set `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or another explicit cadence; report blockers instead of implying the always-run suite passed.")
         print("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
         print("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
         print("[context-guard] GOAL-MODE TEST GATE: in goal mode, use task cases as phase gates; log current phase progress and run the smallest approved path before claiming goal completion instead of silently creating broad new tests.")

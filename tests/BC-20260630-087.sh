@@ -65,11 +65,39 @@ if grep -q 'class="route-stack branch-map"' "$HTML"; then
 fi
 grep -q '.route-stack:not(.branch-map) .track-grid' "$HTML"
 grep -q 'min-height: auto;' "$HTML"
-grep -q '.lane-empty {' "$HTML"
-grep -q 'display: none;' "$HTML"
+grep -q 'single-mainline' "$HTML"
+grep -q '.track-column.route-column.no-test-line' "$HTML"
 grep -q -- '-webkit-line-clamp: 3;' "$HTML"
 
 if grep -q 'min-height: 430px;' "$HTML"; then
   echo "single-route roadmap still reserves a large empty canvas" >&2
+  exit 1
+fi
+
+BODY="$(python3 - "$HTML" <<'PY'
+from pathlib import Path
+import sys
+html = Path(sys.argv[1]).read_text()
+print(html.split("</style>", 1)[1])
+PY
+)"
+
+if grep -q 'track-label-column' <<<"$BODY"; then
+  echo "single-route roadmap should not show a left lane label column" >&2
+  exit 1
+fi
+
+if grep -q 'data-lane="bad-cases"' <<<"$BODY"; then
+  echo "single-route roadmap should not render bad-case lanes in the overview" >&2
+  exit 1
+fi
+
+if grep -q 'data-lane="test-chain"' <<<"$BODY"; then
+  echo "single-route roadmap should not render test-chain lanes in the overview" >&2
+  exit 1
+fi
+
+if grep -q 'route-test-line' <<<"$BODY"; then
+  echo "single-route roadmap should not render the compact test route" >&2
   exit 1
 fi

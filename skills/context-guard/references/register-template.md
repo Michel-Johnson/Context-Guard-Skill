@@ -27,6 +27,7 @@ Record only bad cases that are user-visible, recurring, risky, fixed, deferred, 
 - Fix method: code/test/config/documentation change that fixed it, one line
 - Guard type: script | native-test | manual | browser-screenshot | browser-dom | curl | cli | prompt | log-invariant | fixture | unit | integration | e2e | custom
 - Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note, one line
+- Run policy: every-dev-completion | relevant-only | manual | release-only | goal-final | disabled-with-reason | user-defined cadence
 - Red condition: exact output, visual state, assertion, or symptom that means this bad case has recurred
 - Green condition: exact evidence that means this bad case is absent
 - Expected failure reason: why the guard should fail for the old symptom, not for a broken test or unrelated environment issue
@@ -60,12 +61,14 @@ Use the `### BC-...` section form as the canonical editable source. If a session
 - Use `.codex/context/` as the project folder for bad-case memory. Do not introduce a separate bad-case folder for new projects.
 - Use the configured `.codex/context/preferences.json` `record_language` for bad-case titles, phenomenon, root cause, fix method, guard summaries, and test-chain notes.
 - Preserve exact commands, paths, code identifiers, logs, API names, and error messages in their original language.
-- Prefer existing recorded context, commands, tests, screenshots, logs, or manual checks over newly invented tests.
+- Prefer existing recorded context, user-approved commands, native tests, screenshots, logs, or manual checks over newly invented tests.
+- When the user creates or approves a test, default its `Run policy` to `every-dev-completion`; Codex must run it at every development completion unless the user sets another cadence.
+- Only the user can demote an approved test to `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a custom cadence. Record why.
 - For resolved or recurred cases, `Guard / verification`, `Guard type`, `Red condition`, `Green condition`, and `Expected failure reason` are required.
 - The guard must be red-capable: it should fail if the same user-visible symptom returns.
-- When the bad case is part of a longer workflow, attach it to a task-case checkpoint instead of creating a separate isolated script. The bad-case entry should say which task case phase covers it.
+- When the bad case is part of a longer workflow, attach it to a human-approved task-case checkpoint instead of creating a separate isolated script. The bad-case entry should say which task case phase covers it.
 - If the test chain itself is wrong, record that as a bad case and classify the test-chain issue. Fix the test-chain design before trusting its result.
-- Do not script every bad case. Store bad-case-specific scripts under `.codex/context/bad-case-tests/` only when they are genuinely reusable and do not belong in the native test suite.
+- Do not script every bad case. Store bad-case-specific scripts under `.codex/context/bad-case-tests/` only when the user approved the test design, the script is genuinely reusable, and it does not belong in the native test suite.
 - Name any guard script with the bad case ID so it is easy to find and reuse.
 - Update existing context when expected behavior changes; do not create parallel guards for the same case unless the old one is explicitly obsolete.
 - If a guard is manual-only, list the exact manual check and why that is acceptable for now.

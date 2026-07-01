@@ -911,6 +911,10 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       grid-auto-columns: minmax(180px, 230px);
       min-height: 104px;
     }}
+    .track-grid.single-mainline {{
+      grid-auto-columns: minmax(240px, 300px);
+      min-height: 0;
+    }}
     .route-head-grid.track-grid.route-only {{
       min-height: 0;
     }}
@@ -924,8 +928,11 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       gap: 12px;
     }}
     .track-column.route-column {{
-      grid-template-rows: auto;
+      grid-template-rows: auto minmax(18px, auto);
       position: relative;
+    }}
+    .track-column.route-column.no-test-line {{
+      grid-template-rows: auto;
     }}
     .track-label-column {{
       position: sticky;
@@ -954,6 +961,55 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       padding: 10px 12px;
       min-height: 92px;
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 20px rgba(51, 83, 57, 0.08);
+    }}
+    .branch-map .route-test-line {{
+      min-height: 18px;
+      border-top: 2px solid color-mix(in srgb, var(--ok) 56%, transparent);
+      padding-top: 7px;
+      margin: 0 10px;
+    }}
+    .branch-map .route-test-empty {{
+      opacity: 0.3;
+    }}
+    .route-test-note {{
+      display: grid;
+      gap: 2px;
+      border-left: 3px solid var(--ok);
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--ok-soft) 68%, var(--card));
+      color: var(--accent);
+      padding: 6px 8px;
+      text-decoration: none;
+      box-shadow: 0 6px 16px rgba(51, 83, 57, 0.06);
+    }}
+    .route-test-note span {{
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 760;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .route-test-note small {{
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }}
+    .route-test-more {{
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      border-radius: 999px;
+      background: var(--route-soft, var(--accent-soft));
+      color: var(--route-accent, var(--accent));
+      font-size: 11px;
+      font-weight: 760;
+      margin-top: 5px;
+      padding: 1px 7px;
     }}
     .lane-main {{ border-top: 4px solid var(--route-accent, var(--accent)); }}
     .lane-bad-cases {{ border-top: 4px solid var(--warn); }}
@@ -2363,18 +2419,28 @@ def render_route_group(
     route_offset = max(0, route_offset)
     route_spacers = render_route_spacers(route_offset) if branch_mode else ""
     if branch_mode:
+        show_route_tests = route_has_approved_tests(display_items, bad_case_cards)
         columns = "\n".join(
             render_route_column(
                 node,
                 source_number,
                 display_number,
+                bad_case_cards,
+                case_anchor_map,
                 branch_start=branch_mode and display_number == 1 and route_offset > 0,
+                show_test_line=show_route_tests,
             )
             for display_number, (source_number, node) in enumerate(display_items, 1)
         )
     else:
         columns = "\n".join(
-            render_track_column(node, source_number, display_number, bad_case_cards, case_anchor_map)
+            render_route_column(
+                node,
+                source_number,
+                display_number,
+                branch_start=False,
+                show_test_line=False,
+            )
             for display_number, (source_number, node) in enumerate(display_items, 1)
         )
     label = localized_text(branch)
@@ -2391,8 +2457,8 @@ def render_route_group(
   <div class="track-label-cell"><span class="lane-label" data-i18n="badCases">Bad Cases</span></div>
   <div class="track-label-cell"><span class="lane-label" data-i18n="testChain">Test Chain</span></div>
 </section>"""
-    label_column = "" if branch_mode else label_column
-    grid_class = "track-grid route-only" if branch_mode else "track-grid"
+    label_column = ""
+    grid_class = "track-grid route-only" if branch_mode else "track-grid route-only single-mainline"
     branch_class = " route-branch" if parent_note else ""
     route_head = f"""<div class="route-head">
     <span class="route-mark" aria-hidden="true"></span>
@@ -2459,7 +2525,10 @@ def render_route_column(
     node: dict[str, str],
     source_number: int,
     display_number: int,
+    bad_case_cards: list[dict[str, str]] | None = None,
+    case_anchor_map: dict[str, str] | None = None,
     branch_start: bool = False,
+    show_test_line: bool = True,
 ) -> str:
     title = localized_text(node_display_title(node, f"Node {source_number}"))
     status = node.get("status", "unknown")
@@ -2467,7 +2536,26 @@ def render_route_column(
     outcome = localized_short_text(node.get("outcome", "No outcome recorded."))
     branch_class = " branch-start" if branch_start else ""
     overview_id = html.escape(node_id(node))
-    return f"""<section class="track-column route-column{branch_class}" data-overview-node-id="{overview_id}">
+    test_line = ""
+    if show_test_line:
+        cases = approved_test_cases_for_node(node, bad_case_cards or [])
+        visible_cases = cases[:2]
+        hidden_test_count = max(0, len(cases) - len(visible_cases))
+        test_items = "\n".join(
+            render_route_test_note(card, (case_anchor_map or {}).get(card.get("title", ""), "case-1"))
+            for card in visible_cases
+        )
+        if hidden_test_count:
+            test_items += f'\n<span class="route-test-more">+{hidden_test_count}</span>'
+        test_line = (
+            f"""<article class="route-test-line has-tests" data-lane="test-chain">
+    {test_items}
+  </article>"""
+            if test_items
+            else '<div class="route-test-line route-test-empty" data-lane="test-chain" aria-hidden="true"></div>'
+        )
+    mainline_only_class = " no-test-line" if not show_test_line else ""
+    return f"""<section class="track-column route-column{branch_class}{mainline_only_class}" data-overview-node-id="{overview_id}">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">
@@ -2481,7 +2569,31 @@ def render_route_column(
       <p class="summary">{outcome}</p>
     </a>
   </article>
+  {test_line}
 </section>"""
+
+
+def route_has_approved_tests(
+    items: list[tuple[int, dict[str, str]]],
+    bad_case_cards: list[dict[str, str]],
+) -> bool:
+    return any(approved_test_cases_for_node(node, bad_case_cards) for _, node in items)
+
+
+def approved_test_cases_for_node(
+    node: dict[str, str],
+    bad_case_cards: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    return [card for card in bad_cases_for_node(node, bad_case_cards) if has_approved_test_policy(card)]
+
+
+def has_approved_test_policy(card: dict[str, str]) -> bool:
+    policy = strip_wrapping_backticks(card.get("run policy", "")).strip().lower()
+    if not policy:
+        return False
+    if policy in {"proposed", "pending", "disabled", "disabled-with-reason", "none", "n/a", "null"}:
+        return False
+    return True
 
 
 def render_track_column(
@@ -2870,6 +2982,21 @@ def render_bad_case_test_note(card: dict[str, str], anchor: str) -> str:
   <p>{guard_text}</p>
   {reusable_html}
 </article>"""
+
+
+def render_route_test_note(card: dict[str, str], anchor: str) -> str:
+    title = localized_short_text(human_title(card.get("title", "Test")), 38)
+    guard = first_nonempty(
+        card.get("guard / verification", ""),
+        card.get("green condition", ""),
+        card.get("red condition", ""),
+        card.get("trigger / reproduction", ""),
+    )
+    guard_text = localized_short_text(guard or "No guard recorded.", 64)
+    return f"""<a class="route-test-note" href="#{html.escape(anchor)}">
+    <span>{title}</span>
+    <small>{guard_text}</small>
+  </a>"""
 
 
 def first_nonempty(*values: str) -> str:

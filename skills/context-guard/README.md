@@ -1,91 +1,22 @@
 # Context Guard Skill
 
-Context Guard is a Codex skill for keeping project context durable, concise, and regression-aware. It maintains a folder-scoped `.codex/context/` directory so Codex can remember the active task route, parked work, bad cases, and verification chains across threads and interruptions.
+Language: **English** | [中文](README.zh-CN.md)
 
-The core promise is simple: important context should not disappear, and solved bad cases should not silently come back.
+Context Guard is a Codex skill for durable project memory. It keeps the task route, branches, bad cases, and verification paths inside the project's own `.codex/context/` folder, so Codex can understand where the work is, what went wrong before, and how to avoid repeating fixed mistakes across sessions.
 
-## Where Context Lives
+## What It Does
 
-For each project, Context Guard saves context under the local Codex project root:
+- **Maintains project context**: creates and updates `.codex/context/`.
+- **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
+- **Tracks bad cases**: records symptoms, triggers, causes, fixes, and recurrence checks.
+- **Generates Roadmap HTML**: shows a human-readable roadmap with clickable node details.
+- **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
+- **Supports record language preferences**: writes future context in Chinese or English.
+- **Handles task switches**: parks, resumes, and branches interrupted work.
+- **Keeps tests human-designed**: Codex reuses approved checks or proposes drafts, but does not silently create durable tests.
+- **Runs approved tests by default**: user-created or user-approved tests run at every development completion unless the user sets another cadence.
 
-```text
-<opened Codex project root>/.codex/context/
-```
-
-The project root is the local folder selected in Codex or the local workspace root for the current thread. It is not the chat/thread name, the Context Guard skill install directory, an SSH remote path, or a temporary script folder. When running helper scripts from outside the project, always pass the target project explicitly:
-
-```bash
-python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
-```
-
-## What It Maintains
-
-For each project folder, Context Guard uses:
-
-```text
-.codex/context/
-|-- index.md
-|-- roadmap.md
-|-- bad-cases.md
-|-- preferences.json
-|-- roadmap/
-|   |-- roadmap.html
-|   |-- roadmap-details.html
-|   |-- roadmap.md
-|   `-- roadmap.json
-|-- tasks/
-|-- task-cases/
-|-- bad-case-tests/
-`-- archive/
-```
-
-- `index.md`: quick scan for the current task, latest roadmap node, hot bad-case tags, and resume candidate.
-- `roadmap.md`: agent-readable route map with major nodes, checkpoints, branches, and bad-case links.
-- `bad-cases.md`: compact register of bad cases, fixes, recurrence analysis, and reusable guards.
-- `preferences.json`: folder-scoped preferences such as the language used for future context records.
-- `tasks/`: task-specific context for current, parked, resume-candidate, or archived work.
-- `task-cases/`: task-oriented long workflow cases with phases, checkpoints, logs, and linked bad-case coverage.
-- `roadmap/roadmap.html`: stable human-facing roadmap overview.
-- `roadmap/roadmap-details.html`: stable human-facing details page.
-- `roadmap/roadmap.md`: stable agent-readable export.
-- `roadmap/roadmap.json`: stable agent-readable structured projection for route, bad-case, and recurrence-guard lookup.
-
-## Key Behavior
-
-- Runs context intake at the start of work and checkpointing at the end.
-- Keeps context folder-scoped, not thread-scoped.
-- Refuses to treat the installed skill directory as the project context root; when running the helper from the skill install path, pass the target project with `--root`.
-- Parks interrupted work and asks whether to resume it later.
-- Records bad cases when they appear, including symptoms, root cause, fix, and guard.
-- Reuses existing bad-case guards before inventing new tests or scripts.
-- Prefers task-oriented scenario checks when a real workflow has multiple phases and bad cases belong to different checkpoints.
-- Asks for a folder-level record language on first use, then keeps future context records in that language.
-- Supports goal-mode work by recording compact checkpoints during long-running progress.
-- Exports a concise human roadmap with three horizontal tracks: Main Route, Bad Cases, and Test Chain.
-- Supports route branches and multiple parallel mainlines with route-focused drilldown.
-- Keeps user-facing roadmap text compact, hides internal IDs, and supports Chinese/English display.
-
-## Installation
-
-This repository can be used as a Codex plugin or installed manually as a local skill.
-
-### Plugin Layout
-
-The plugin manifest is:
-
-```text
-.codex-plugin/plugin.json
-```
-
-It exposes skills from:
-
-```text
-skills/context-guard/
-```
-
-### Manual Skill Install
-
-Clone the repository and copy the skill folder into the cross-runtime skills directory:
+## Install
 
 ```bash
 git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
@@ -100,19 +31,30 @@ After installation, Codex should discover:
 ~/.agents/skills/context-guard/SKILL.md
 ```
 
-## Optional Hooks
+## Where Context Lives
 
-The repository includes `hooks.json` and `scripts/context_guard_hook.py` as a lightweight fallback. Hooks do not replace the skill; they remind Codex to run context intake and checkpointing at lifecycle moments where forgetting is most costly.
+Context must be saved under the local project currently opened in Codex:
 
-Hook events covered:
+```text
+<Codex project root>/.codex/context/
+```
 
-- `SessionStart`: initialize `.codex/context/`.
-- `UserPromptSubmit`: detect possible task switches, bad cases, or goal-mode work.
-- `Stop`: remind Codex to update index, roadmap, bad cases, and test-chain links before finalizing, and to include a final BC summary with archived/updated cases plus currently unresolved cases in human-readable titles/symptoms rather than bare IDs.
+Do not write project context into:
 
-## Usage
+- the skill install directory
+- a chat/thread directory
+- a temporary directory
+- an SSH remote server path
 
-Invoke the skill directly when you want reliable context handling:
+When running scripts manually, pass the project root explicitly:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
+```
+
+## Common Usage
+
+Ask Codex to maintain context:
 
 ```text
 Use $context-guard to maintain this task context.
@@ -124,184 +66,76 @@ Show the current roadmap:
 Use $context-guard to show the roadmap.
 ```
 
-Or run the helper script directly:
+Initialize project context:
 
 ```bash
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py init --root /path/to/project
-python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language 中文
+```
+
+Set the record language:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language English
+```
+
+Generate the roadmap:
+
+```bash
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
 ```
 
-Always point `--root` at the opened Codex project folder. Do not use `~/.agents/skills/context-guard` as the root unless you are explicitly debugging the skill install itself.
-
-The roadmap command overwrites the same stable files every time:
-
-```text
-.codex/context/roadmap/roadmap.html
-.codex/context/roadmap/roadmap-details.html
-.codex/context/roadmap/roadmap.md
-.codex/context/roadmap/roadmap.json
-```
-
-It does not create timestamped roadmap files.
-
-## Language Preference
-
-On first use in a project folder, Context Guard creates:
-
-```text
-.codex/context/preferences.json
-```
-
-If `record_language` is `unset`, Codex should ask which language to use for future context records before writing substantive roadmap, task, or bad-case entries. After the user chooses, update the preference:
+Create a branch task:
 
 ```bash
-python3 ~/.agents/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language 中文
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py create-branch-task \
+  --root /path/to/project \
+  --title "branch task title" \
+  --branch "branch name" \
+  --parent-node NODE-YYYYMMDD-001
 ```
 
-Future `index.md`, `roadmap.md`, `bad-cases.md`, task context, bad-case summaries, and test-chain notes should use that language. Literal commands, paths, code identifiers, API names, logs, and exact error messages stay unchanged.
-
-The language can be changed later with the same `set-language` command. Existing history is not bulk-translated unless the user explicitly requests migration.
-
-## How Bad Cases Should Be Recorded
-
-Record only bad cases that are useful for future prevention:
-
-- user-visible bugs
-- recurring failures
-- risky regressions
-- fixed problems that need a guard
-- deferred problems that need explicit context
-- route changes that explain why old behavior is no longer expected
-
-Each bad case should stay compact:
-
-```md
-### BC-YYYYMMDD-001: Short descriptive title
-
-- Status: open | resolved | recurred | deferred | superseded-by-route-change
-- First observed: YYYY-MM-DD
-- Last checked: YYYY-MM-DD
-- Scope: affected feature, file, test, route, or workflow
-- Roadmap nodes: NODE-YYYYMMDD-001
-- Tags: #ui #route-risk #flaky
-- Phenomenon: one-line symptom
-- Trigger / reproduction: shortest useful reproduction
-- Root cause: confirmed, suspected, or unknown
-- Fix method: one-line fix summary
-- Guard / verification: command, test, script, manual check, screenshot, or invariant
-```
-
-Do not turn every bad case into a script. Add scripts under `.codex/context/bad-case-tests/` only when the guard is repeatable, valuable, and cheaper than reconstructing the check.
-
-The renderer tolerates legacy loose bullet records like `ID`, `Title`, `Status`, and `Nodes`, but `### BC-...` sections are the canonical source format. To appear on the roadmap, a case must link to route context through `Roadmap nodes:` or `Nodes:`, or the roadmap node must list it in `Linked bad cases:`.
-
-## Test Chain Semantics
-
-In Context Guard, a test chain is the quickest reusable way to detect whether a known bad case has returned. It is not the history of commands Codex ran while developing a node.
-
-Good test-chain entries are short and actionable:
-
-- a task-case checkpoint in `.codex/context/task-cases/`
-- a script or native test command
-- a prompt/checklist for Codex to run
-- a manual screenshot or visual inspection step
-- a reproduction prompt, log invariant, or data check
-
-The human roadmap's Test Chain lane is generated from linked bad cases, especially `Guard / verification`, `Reusable guard path`, and `Trigger / reproduction`. Roadmap node `Test chain:` fields may remain as compact checkpoint evidence in source/details, but they should not drive the user-facing recurrence lane.
-
-## Task-Oriented Test Cases
-
-Use task cases when realistic task flow matters more than one bug in isolation. A task case should model a real user/agent workflow and log phase-level checkpoints so failures identify the broken step.
-
-Example:
-
-```text
-TC: training job lifecycle
-1. create job -> payload/progress checkpoint
-2. schedule worker -> worker selection checkpoint
-3. run/review -> artifact/status checkpoint
-4. cleanup -> terminal/worker/keepalive checkpoint
-```
-
-Bad cases should point to the checkpoint that catches them. Prefer one task case with clear logs over many disconnected scripts when the same workflow is being exercised.
-
-For complex or judgment-heavy workflows, Codex should first ask the user to confirm the task case in business language before writing a durable script. Keep it short: from what state to what state, the main task, and the major risk. Put technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt.
-
-In goal mode, task cases are phase gates: pick an approved case or draft a proposed one, log phase progress during continuations, and run the smallest approved path before claiming the goal complete. Do not create broad new task-case scripts silently while the user is away.
-
-If the task case itself is wrong, record it as a bad case such as false positive, false negative, wrong granularity, missing phase, wrong assertion, unrealistic setup, missing cleanup, or unclear failure localization.
-
-## Roadmap Model
-
-The roadmap is not a transcript. It should record meaningful progress, decisions, forks, and checkpoints.
-
-- Use `Level: major` for large user-visible progress, route changes, architecture/product decisions, or completed milestones.
-- Use `Level: checkpoint` for smaller implementation, validation, documentation, or UI polish updates.
-- Use `Branch:` when work forks into side routes or parallel mainlines.
-- Use `Parent:` when a branch starts from a specific earlier node.
-- Use `Display title:` for the short human-facing roadmap card title. It should read like a clear user-facing milestone, not an implementation log.
-- Use `User request:` for a concise summary of the user's actual input. The human detail page reads this field directly for "what the user asked"; do not let `Outcome` or `Decision / reason` stand in for the user's request.
-- Use `Progress summary:` and `Method summary:` when the human detail page would otherwise read like raw implementation notes. Keep them as short natural sentences.
-- When the user explicitly asks for a branch/支线, create it with `scripts/context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` so the task folder, current index, and roadmap node stay connected.
-- Link roadmap nodes to bad cases and test-chain notes instead of duplicating full details.
-- In branch overview, route depth uses color temperature: main route green, first-level branches cool cyan/teal, deeper branches colder blue/indigo.
-
-The human HTML view shows only the concise overview. Details belong in `roadmap-details.html`.
-
-When there is one route, the overview shows the three aligned tracks directly. When there are multiple routes, the overview shows all route lines as a branch map with fork markers; selecting a route reveals only that route's bad cases and test chain.
-
-For one-route roadmaps, empty bad-case/test-chain lanes should not create a large blank canvas. Main cards should stay content-sized, and short summaries should remain readable before users click into details.
-
-## Verification
-
-Before changing the skill, run at least:
+Record a roadmap checkpoint:
 
 ```bash
-python3 -m py_compile scripts/context_guard.py skills/context-guard/scripts/context_guard.py
-python3 scripts/context_guard.py init --root /tmp/context-guard-check
-python3 scripts/context_guard.py show-roadmap --root /tmp/context-guard-check
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py checkpoint-roadmap-node \
+  --root /path/to/project \
+  --title "source title for Codex" \
+  --display-title "short human title" \
+  --user-request "what the user asked" \
+  --progress-summary "current progress" \
+  --method-summary "method used" \
+  --branch Main \
+  --level major \
+  --outcome "result"
 ```
 
-Recommended regression checks for roadmap changes:
-
-- frontend/layout changes are opened or rendered with an available browser/plugin or screenshot path before claiming completion
-- the visual pass checks for obvious layout bugs such as clipped text, overlap, detached lines, large empty gaps, wrong alignment, broken colors, blank content, or wrong language
-- stable roadmap folder contains only stable projection files such as `roadmap.html`, `roadmap-details.html`, `roadmap.md`, and `roadmap.json`
-- overview hides `NODE-...`, `BC-...`, and `CTX-...` IDs
-- overview avoids visible metadata labels like `Status:`, `Nodes:`, `Frequency:`, or `untagged`
-- overview tag chips hide raw `#tag-slug` values and show localized human labels
-- overview does not show a visible language selector; it follows the folder language preference
-- overview header does not show view-type labels or export/update timestamps
-- major nodes appear in the overview while checkpoints stay in details
-- branch routes render as selectable route groups with route-scoped bad cases and test chain
-- multi-route branch overview cards stay compact: number, title, date/status cues, and no visible outcome paragraph
-- default `roadmap.html` shows only the roadmap; inline node/bad-case details stay hidden until a roadmap item is clicked
-- multi-route overview shows all route lines together, draws subtle node-to-node route connectors, and draws smooth branch connectors from the visible parent node card through node gaps to the branch route anchor
-- loose bullet node blocks with `ID`, `Title`, `Level`, and `Status` do not render as an empty roadmap
-- loose bad-case blocks with `ID`, `Title`, `Status`, and `Nodes` render as linked bad cases
-- Chinese mode localizes record titles, summaries, bad cases, and test-chain snippets
-
-## Repository Layout
+## Main Files
 
 ```text
-.
-|-- .codex-plugin/plugin.json
-|-- SKILL.md
-|-- agents/openai.yaml
-|-- hooks.json
-|-- references/
-|-- scripts/
-`-- skills/context-guard/
+.codex/context/
+|-- index.md              # quick index and active task
+|-- roadmap.md            # agent-readable roadmap
+|-- bad-cases.md          # bad-case register
+|-- preferences.json      # language and project preferences
+|-- roadmap/
+|   |-- roadmap.html      # human-facing roadmap
+|   |-- roadmap.md        # agent-readable export
+|   `-- roadmap.json      # structured index
+|-- tasks/                # task-level context
+|-- task-cases/           # task-oriented test cases
+`-- bad-case-tests/       # reusable bad-case checks
 ```
 
-The root skill files and `skills/context-guard/` mirror are kept in sync so the repository can work both as a simple skill source and as a plugin package.
+## Principles
 
-## Design Principles
+- Record only meaningful progress, not every small action.
+- Human-facing titles should read naturally, not like implementation logs.
+- A bad case should help future Codex prevent recurrence.
+- Test design belongs to humans; Codex can run approved checks or draft a proposal for confirmation.
+- User-approved tests default to `every-dev-completion`; Codex may lower that cadence only when the user asks.
+- Verification should reuse existing commands, scripts, screenshots, or manual checks first.
+- Do not create a new script for every bad case.
+- For frontend or HTML changes, inspect the rendered page or screenshot before claiming success.
+- For any new durable test case, draft a short task-case proposal and confirm with the user before making it active.
 
-- Context is navigation, not a transcript.
-- Bad-case memory is part of context, not a separate top-level system.
-- HTML roadmap is for humans; source Markdown files remain Codex's source of truth.
-- Reuse existing guards before writing new ones.
-- Keep the overview sparse and put detail behind links.
-- Prefer durable folder context over fragile thread memory.
+See [`skills/context-guard/SKILL.md`](skills/context-guard/SKILL.md) for the full behavior rules.
