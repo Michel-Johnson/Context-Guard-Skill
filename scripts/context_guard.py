@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def context_guard_skill_root() -> Path:
@@ -3625,6 +3627,10 @@ def test_registry_path(ctx: Path) -> Path:
     return ctx / "test-hub" / "registry.json"
 
 
+def feature_chains_path(ctx: Path) -> Path:
+    return ctx / "test-hub" / "feature-chains.json"
+
+
 def default_test_registry() -> dict[str, object]:
     return {
         "version": 1,
@@ -3668,6 +3674,206 @@ def next_test_id(ctx: Path, title: str) -> str:
     return f"TC-{today}-{(max(numbers) + 1 if numbers else 1):03d}-{normalize_test_slug(title)[:36]}"
 
 
+def default_feature_chain_registry() -> dict[str, object]:
+    return {
+        "version": 1,
+        "description": "Feature-oriented test chains. One chain should cover a real workflow and multiple linked bad-case recurrence checks.",
+        "chains": [],
+    }
+
+
+def load_feature_chains(ctx: Path) -> dict[str, object]:
+    path = feature_chains_path(ctx)
+    if not path.exists():
+        return default_feature_chain_registry()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print(f"[context-guard] invalid feature-chain JSON: {path}", file=sys.stderr)
+        return default_feature_chain_registry()
+    if not isinstance(data, dict):
+        return default_feature_chain_registry()
+    chains = data.get("chains")
+    if not isinstance(chains, list):
+        data["chains"] = []
+    data.setdefault("version", 1)
+    data.setdefault("description", default_feature_chain_registry()["description"])
+    return data
+
+
+def write_feature_chains(ctx: Path, registry: dict[str, object]) -> Path:
+    path = feature_chains_path(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def next_feature_chain_id(ctx: Path) -> str:
+    today = datetime.now().strftime("%Y%m%d")
+    registry = load_feature_chains(ctx)
+    existing = " ".join(
+        str(chain.get("id", "")) for chain in registry.get("chains", []) if isinstance(chain, dict)
+    )
+    numbers = [int(match.group(1)) for match in re.finditer(rf"FC-{today}-(\d+)", existing)]
+    return f"FC-{today}-{(max(numbers) + 1 if numbers else 1):03d}"
+
+
+def feature_chain_find(
+    ctx: Path, chain_id: str
+) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
+    registry = load_feature_chains(ctx)
+    chains = registry.setdefault("chains", [])
+    if not isinstance(chains, list):
+        chains = []
+        registry["chains"] = chains
+    matches = [item for item in chains if isinstance(item, dict) and str(item.get("id", "")) == chain_id]
+    if not matches:
+        raise ValueError(f"feature chain not found: {chain_id}")
+    return matches[0], chains, registry
+
+
+def feature_chain_add(
+    root: Path,
+    title: str,
+    entry: str,
+    exit_check: str,
+    command_text: str = "",
+    run_policy: str = RUN_ALWAYS_POLICY,
+    status: str = "proposed",
+    timeout_seconds: int = 300,
+    artifact_policy: str = "cleanup-on-pass",
+    resource: str = "local",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    if not title.strip():
+        raise ValueError("feature-chain-add requires --title")
+    if not entry.strip():
+        raise ValueError("feature-chain-add requires --entry")
+    if not exit_check.strip():
+        raise ValueError("feature-chain-add requires --exit-check")
+    registry = load_feature_chains(ctx)
+    chains = registry.setdefault("chains", [])
+    if not isinstance(chains, list):
+        chains = []
+        registry["chains"] = chains
+    chain_id = next_feature_chain_id(ctx)
+    now = datetime.now().isoformat(timespec="seconds")
+    chains.append(
+        {
+            "id": chain_id,
+            "title": title.strip(),
+            "status": status.strip() or "proposed",
+            "run_policy": run_policy.strip() or RUN_ALWAYS_POLICY,
+            "entry": entry.strip(),
+            "exit_check": exit_check.strip(),
+            "type": "command" if command_text.strip() else "manual",
+            "command": command_text.strip(),
+            "cwd": ".",
+            "resource": resource.strip() or "local",
+            "timeout_seconds": int(timeout_seconds),
+            "artifact_policy": artifact_policy.strip() or "cleanup-on-pass",
+            "blocker_keywords": BLOCKER_PATTERNS,
+            "nodes": [],
+            "created_at": now,
+            "updated_at": now,
+            "source": "feature-chain",
+        }
+    )
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain: {chain_id}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def feature_chain_attach_bc(
+    root: Path,
+    chain_id: str,
+    node_title: str,
+    bad_case: str,
+    check: str = "",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    if not chain_id.strip():
+        raise ValueError("feature-chain-attach-bc requires --chain-id")
+    if not node_title.strip():
+        raise ValueError("feature-chain-attach-bc requires --node-title")
+    if not bad_case.strip():
+        raise ValueError("feature-chain-attach-bc requires --bad-case")
+    chain, _chains, registry = feature_chain_find(ctx, chain_id.strip())
+    nodes = chain.setdefault("nodes", [])
+    if not isinstance(nodes, list):
+        nodes = []
+        chain["nodes"] = nodes
+    node_slug = normalize_test_slug(node_title)
+    node: dict[str, object] | None = None
+    for item in nodes:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("title", "")).strip() == node_title.strip() or str(item.get("id", "")) == node_slug:
+            node = item
+            break
+    if node is None:
+        node = {
+            "id": node_slug,
+            "title": node_title.strip(),
+            "checks": [],
+            "bad_cases": [],
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        nodes.append(node)
+    bad_cases = node.setdefault("bad_cases", [])
+    if not isinstance(bad_cases, list):
+        bad_cases = []
+        node["bad_cases"] = bad_cases
+    if bad_case.strip() not in [str(item) for item in bad_cases]:
+        bad_cases.append(bad_case.strip())
+    checks = node.setdefault("checks", [])
+    if not isinstance(checks, list):
+        checks = []
+        node["checks"] = checks
+    if check.strip() and check.strip() not in [str(item) for item in checks]:
+        checks.append(check.strip())
+    now = datetime.now().isoformat(timespec="seconds")
+    node["updated_at"] = now
+    chain["updated_at"] = now
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain updated: {chain_id.strip()}")
+    print(f"[context-guard] node: {node_title.strip()}")
+    print(f"[context-guard] bad case: {bad_case.strip()}")
+    return path
+
+
+def feature_chain_list(root: Path) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    if not chains:
+        print("[context-guard] feature chains: none.")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+    print("[context-guard] feature chains:")
+    for chain in chains:
+        chain_id = str(chain.get("id", "unknown"))
+        title = str(chain.get("title", "untitled"))
+        status = str(chain.get("status", "unknown"))
+        run_policy = str(chain.get("run_policy", "unset"))
+        nodes = [item for item in chain.get("nodes", []) if isinstance(item, dict)]
+        covered = sorted(
+            {
+                str(bc)
+                for node in nodes
+                for bc in (node.get("bad_cases", []) if isinstance(node.get("bad_cases", []), list) else [])
+            }
+        )
+        suffix = f" | covers {', '.join(covered)}" if covered else ""
+        print(f"- {chain_id} | {status} | {run_policy} | {title} | {len(nodes)} node(s){suffix}")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
 def test_hub_add(
     root: Path,
     title: str,
@@ -3709,6 +3915,467 @@ def test_hub_add(
     )
     path = write_test_registry(ctx, registry)
     print(f"[context-guard] registered test: {test_id}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def test_hub_registry_tests(ctx: Path) -> list[dict[str, object]]:
+    registry = load_test_registry(ctx)
+    return [item for item in registry.get("tests", []) if isinstance(item, dict)]
+
+
+def test_hub_find_registry_test(ctx: Path, test_id: str) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
+    registry = load_test_registry(ctx)
+    tests = registry.setdefault("tests", [])
+    if not isinstance(tests, list):
+        tests = []
+        registry["tests"] = tests
+    matches = [item for item in tests if isinstance(item, dict) and str(item.get("id", "")) == test_id]
+    if not matches:
+        raise ValueError(f"test not found in registry: {test_id}")
+    return matches[0], tests, registry
+
+
+def test_hub_list(root: Path) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    registry_tests = test_hub_registry_tests(ctx)
+    task_case_tests = discover_task_case_tests(ctx)
+    feature_chain_tests = approved_feature_chain_tests(ctx)
+    if not registry_tests and not task_case_tests and not feature_chain_tests:
+        print("[context-guard] test hub: no registered tests.")
+        print(f"[context-guard] registry: {test_registry_path(ctx)}")
+        return 0
+    if registry_tests:
+        print("[context-guard] registry tests:")
+        for test in registry_tests:
+            test_id = str(test.get("id", "unknown"))
+            title = str(test.get("title", "untitled"))
+            status = str(test.get("status", "unknown"))
+            run_policy = str(test.get("run_policy", test.get("run policy", "unset")))
+            command = str(test.get("command", "")).strip()
+            command_suffix = f" | {command}" if command else ""
+            print(f"- {test_id} | {status} | {run_policy} | {title}{command_suffix}")
+    if task_case_tests:
+        print("[context-guard] approved task-case tests:")
+        for test in task_case_tests:
+            test_id = str(test.get("id", "unknown"))
+            title = str(test.get("title", "untitled"))
+            source = str(test.get("source", "task-cases"))
+            print(f"- {test_id} | {test.get('status')} | {test.get('run_policy')} | {title} | {source}")
+    if feature_chain_tests:
+        print("[context-guard] approved feature-chain tests:")
+        for test in feature_chain_tests:
+            test_id = str(test.get("id", "unknown"))
+            title = str(test.get("title", "untitled"))
+            source = str(test.get("source", "feature-chain"))
+            covered = test.get("covered_bad_cases", [])
+            covered_suffix = ""
+            if isinstance(covered, list) and covered:
+                covered_suffix = f" | covers {', '.join(str(item) for item in covered)}"
+            print(f"- {test_id} | {test.get('status')} | {test.get('run_policy')} | {title} | {source}{covered_suffix}")
+    print(f"[context-guard] registry: {test_registry_path(ctx)}")
+    return 0
+
+
+def read_test_hub_last_run(root: Path) -> dict[str, object]:
+    path = test_hub_dir(root) / "last-run.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def test_hub_state(root: Path) -> dict[str, object]:
+    init_context(root)
+    ctx = context_dir(root)
+    registry_tests = test_hub_registry_tests(ctx)
+    task_case_tests = discover_task_case_tests(ctx)
+    feature_chain_tests = approved_feature_chain_tests(ctx)
+    tests: list[dict[str, object]] = []
+    for source, items in (("registry", registry_tests), ("task-case", task_case_tests), ("feature-chain", feature_chain_tests)):
+        for item in items:
+            status = str(item.get("status", "unknown")).strip() or "unknown"
+            run_policy = str(item.get("run_policy", item.get("run policy", "unset"))).strip() or "unset"
+            command = str(item.get("command", "")).strip()
+            tests.append(
+                {
+                    "id": str(item.get("id", "")),
+                    "title": str(item.get("title", "untitled")),
+                    "status": status,
+                    "run_policy": run_policy,
+                    "type": str(item.get("type") or ("command" if command else "manual")),
+                    "command": command,
+                    "resource": str(item.get("resource", "local") or "local"),
+                    "source": source,
+                    "eligible": status.lower() in APPROVED_TEST_STATUSES and run_policy == RUN_ALWAYS_POLICY,
+                }
+            )
+    last_run = read_test_hub_last_run(root)
+    results = last_run.get("results", [])
+    if not isinstance(results, list):
+        results = []
+    counts = {
+        "total": len(tests),
+        "eligible": sum(1 for test in tests if test.get("eligible")),
+        "passed": sum(1 for item in results if isinstance(item, dict) and item.get("status") == "passed"),
+        "failed": sum(1 for item in results if isinstance(item, dict) and item.get("status") == "failed"),
+        "blocked": sum(1 for item in results if isinstance(item, dict) and item.get("status") == "blocked"),
+    }
+    return {
+        "root": str(root),
+        "registry": str(test_registry_path(ctx)),
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "tests": tests,
+        "last_run": last_run,
+        "counts": counts,
+    }
+
+
+def test_hub_badge(text: object, class_name: str = "") -> str:
+    return f'<span class="badge {class_name}">{html.escape(str(text))}</span>'
+
+
+def render_test_hub_html(root: Path) -> str:
+    state = test_hub_state(root)
+    tests = [item for item in state["tests"] if isinstance(item, dict)]
+    last_run = state.get("last_run", {})
+    results = last_run.get("results", []) if isinstance(last_run, dict) else []
+    result_by_id = {
+        str(item.get("id", "")): item
+        for item in results
+        if isinstance(item, dict)
+    }
+    rows = []
+    for test in tests:
+        eligible = bool(test.get("eligible"))
+        status = str(test.get("status", "unknown"))
+        run_policy = str(test.get("run_policy", "unset"))
+        result = result_by_id.get(str(test.get("id", "")), {})
+        result_status = str(result.get("status", "未运行")) if result else "未运行"
+        result_class = {
+            "passed": "ok",
+            "failed": "bad",
+            "blocked": "warn",
+            "未运行": "muted",
+        }.get(result_status, "muted")
+        command = str(test.get("command", "")).strip()
+        command_html = f"<code>{html.escape(command)}</code>" if command else '<span class="muted">人工判断 / 未注册脚本</span>'
+        rows.append(
+            f"""
+            <article class="test-card">
+              <div class="card-head">
+                <div>
+                  <h2>{html.escape(str(test.get("title", "未命名测试")))}</h2>
+                  <div class="meta">
+                    {test_hub_badge("每次开发后运行" if eligible else "不自动运行", "ok" if eligible else "muted")}
+                    {test_hub_badge(status)}
+                    {test_hub_badge(str(test.get("source", "")))}
+                  </div>
+                </div>
+                <span class="result {result_class}">{html.escape(result_status)}</span>
+              </div>
+              <p class="command">{command_html}</p>
+              <p class="subtle">策略：{html.escape(run_policy)} · 资源：{html.escape(str(test.get("resource", "local")))}</p>
+            </article>
+            """
+        )
+    if not rows:
+        rows.append(
+            """
+            <article class="empty">
+              <h2>还没有测试</h2>
+              <p>用户确认测试后，会显示在这里。未确认的 bad case guard 不会自动变成测试。</p>
+            </article>
+            """
+        )
+
+    last_run_text = "暂无运行记录"
+    if isinstance(last_run, dict) and last_run.get("created_at"):
+        counts = state.get("counts", {})
+        last_run_text = (
+            f"{last_run.get('created_at')} · "
+            f"{counts.get('passed', 0)} 通过 / {counts.get('failed', 0)} 失败 / {counts.get('blocked', 0)} 阻塞"
+        )
+    state_json = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Context Guard 测试中台</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f4f7ef;
+      --panel: #fffff8;
+      --card: #fffef7;
+      --ink: #243125;
+      --muted: #64705d;
+      --line: #cddcc5;
+      --accent: #37745b;
+      --accent-soft: #e4f2e8;
+      --warn: #b0733f;
+      --warn-soft: #f8ead9;
+      --ok: #2f7d63;
+      --ok-soft: #dff1e7;
+      --danger: #b94c4c;
+      --quiet: #99a78f;
+      --shadow: 0 14px 34px rgba(51, 83, 57, 0.12);
+      --radius: 8px;
+      --font-body: "Avenir Next", "Gill Sans", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-heading: "Iowan Old Style", "Charter", "Songti SC", "STSong", Georgia, serif;
+      --board-texture: radial-gradient(circle at 20% 15%, rgba(93, 135, 83, 0.12), transparent 24%), radial-gradient(circle at 82% 4%, rgba(183, 143, 92, 0.12), transparent 20%);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.58 var(--font-body);
+      text-rendering: optimizeLegibility;
+    }}
+    header {{
+      padding: 22px 32px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }}
+    .header-row {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    .shell {{
+      padding: 16px 32px 30px;
+    }}
+    h1 {{
+      margin: 0 0 4px;
+      font-family: var(--font-heading);
+      font-size: 24px;
+      letter-spacing: 0;
+    }}
+    h2 {{
+      margin: 0;
+      font-family: var(--font-heading);
+      font-size: 15px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }}
+    p {{ margin: 0; }}
+    .subtle, .muted {{ color: var(--muted); }}
+    .actions {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
+    .hub-board {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      background-image: var(--board-texture);
+    }}
+    .board-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+    .summary {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }}
+    .metric, .test-card, .empty {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75), 0 8px 20px rgba(51, 83, 57, 0.08);
+    }}
+    .metric {{ padding: 10px 12px; }}
+    .metric span {{ color: var(--muted); font-size: 11px; }}
+    .metric strong {{
+      display: block;
+      margin-top: 2px;
+      font-family: var(--font-heading);
+      font-size: 20px;
+      line-height: 1.1;
+      color: var(--accent);
+    }}
+    .grid {{ display: grid; gap: 14px; }}
+    .test-card {{
+      border-top: 4px solid var(--accent);
+      padding: 12px;
+    }}
+    .card-head {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }}
+    .meta {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }}
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: color-mix(in srgb, var(--accent-soft) 62%, #fff);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+    }}
+    .badge.ok {{ background: var(--ok-soft); color: var(--ok); }}
+    .badge.muted {{ color: var(--muted); }}
+    .result {{
+      flex: 0 0 auto;
+      min-width: 58px;
+      text-align: center;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 760;
+      background: color-mix(in srgb, var(--accent-soft) 62%, #fff);
+    }}
+    .result.ok {{ background: var(--ok-soft); color: var(--ok); }}
+    .result.bad {{ background: #f8dfe0; color: var(--danger); }}
+    .result.warn {{ background: var(--warn-soft); color: var(--warn); }}
+    .result.muted {{ color: var(--muted); }}
+    .command {{ margin: 12px 0 7px; }}
+    code {{
+      display: inline-block;
+      max-width: 100%;
+      overflow: auto;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 52%, #fff);
+      border-radius: var(--radius);
+      padding: 6px 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }}
+    .empty {{ padding: 22px; text-align: center; }}
+    @media (max-width: 760px) {{
+      header, .shell {{ padding-left: 16px; padding-right: 16px; }}
+      .header-row, .card-head, .board-head {{ flex-direction: column; align-items: flex-start; }}
+      .summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>测试中台</h1>
+        <p class="subtle">查看用户已确认的测试；开发结束时由 Context Guard 自动运行。</p>
+      </div>
+      <div class="actions">
+        <p class="subtle">只读状态页</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hub-board">
+    <div class="board-head">
+      <h2>测试列表</h2>
+      <p class="subtle">上次运行：{html.escape(last_run_text)}</p>
+    </div>
+    <section class="summary" aria-label="测试概览">
+      <div class="metric"><span>总测试</span><strong>{state["counts"]["total"]}</strong></div>
+      <div class="metric"><span>自动运行</span><strong>{state["counts"]["eligible"]}</strong></div>
+      <div class="metric"><span>上次通过</span><strong>{state["counts"]["passed"]}</strong></div>
+      <div class="metric"><span>上次失败/阻塞</span><strong>{state["counts"]["failed"] + state["counts"]["blocked"]}</strong></div>
+    </section>
+
+    <section class="grid" aria-label="测试列表">
+      {''.join(rows)}
+    </section>
+    </section>
+  </main>
+  <script>
+    window.__TEST_HUB_STATE__ = {state_json};
+  </script>
+</body>
+</html>
+"""
+
+
+def show_test_hub(root: Path, open_browser: bool = False) -> Path:
+    init_context(root)
+    hub = test_hub_dir(root)
+    hub.mkdir(parents=True, exist_ok=True)
+    path = hub / "test-hub.html"
+    path.write_text(render_test_hub_html(root), encoding="utf-8")
+    print(path)
+    if open_browser:
+        webbrowser.open(path.resolve().as_uri())
+    return path
+
+
+def serve_test_hub(root: Path, host: str, port: int, jobs: int, open_browser: bool = False) -> int:
+    init_context(root)
+
+    class TestHubHandler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+        def send_json(self, status: int, payload: dict[str, object]) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self) -> None:
+            path = urlparse(self.path).path
+            if path in {"/", "/test-hub.html"}:
+                body = render_test_hub_html(root).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path == "/api/state":
+                self.send_json(200, test_hub_state(root))
+                return
+            self.send_json(404, {"error": "not found"})
+
+        def do_POST(self) -> None:
+            self.send_json(405, {"error": "test hub page is read-only; tests run from the Stop hook or `dev-complete`."})
+
+    server = ThreadingHTTPServer((host, port), TestHubHandler)
+    actual_host, actual_port = server.server_address[:2]
+    url = f"http://{actual_host}:{actual_port}/test-hub.html"
+    print(f"[context-guard] test hub: {url}")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[context-guard] test hub stopped.")
+    finally:
+        server.server_close()
+    return 0
+
+
+def test_hub_update_test(root: Path, test_id: str, **updates: object) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    item, _tests, registry = test_hub_find_registry_test(ctx, test_id)
+    item.update({key: value for key, value in updates.items() if value is not None})
+    item["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    path = write_test_registry(ctx, registry)
+    print(f"[context-guard] updated test: {test_id}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def test_hub_remove(root: Path, test_id: str) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    _item, tests, registry = test_hub_find_registry_test(ctx, test_id)
+    registry["tests"] = [item for item in tests if not (isinstance(item, dict) and str(item.get("id", "")) == test_id)]
+    path = write_test_registry(ctx, registry)
+    print(f"[context-guard] removed test: {test_id}")
     print(f"[context-guard] registry: {path}")
     return path
 
@@ -3767,6 +4434,43 @@ def discover_task_case_tests(ctx: Path) -> list[dict[str, object]]:
     return tests
 
 
+def approved_feature_chain_tests(ctx: Path) -> list[dict[str, object]]:
+    registry = load_feature_chains(ctx)
+    tests: list[dict[str, object]] = []
+    for item in registry.get("chains", []):
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status", "")).strip().lower()
+        run_policy = str(item.get("run_policy", item.get("run policy", ""))).strip()
+        if status not in APPROVED_TEST_STATUSES or run_policy != RUN_ALWAYS_POLICY:
+            continue
+        command = str(item.get("command", "")).strip()
+        nodes = [node for node in item.get("nodes", []) if isinstance(node, dict)]
+        covered_bad_cases = sorted(
+            {
+                str(bc)
+                for node in nodes
+                for bc in (node.get("bad_cases", []) if isinstance(node.get("bad_cases", []), list) else [])
+                if str(bc).strip()
+            }
+        )
+        normalized = dict(item)
+        normalized["id"] = str(item.get("id") or item.get("title") or "feature-chain")
+        normalized["title"] = str(item.get("title") or normalized["id"])
+        normalized["run_policy"] = run_policy
+        normalized["type"] = "command" if command else "manual"
+        normalized["command"] = command
+        normalized.setdefault("cwd", ".")
+        normalized.setdefault("timeout_seconds", 300)
+        normalized.setdefault("artifact_policy", "cleanup-on-pass")
+        normalized.setdefault("resource", "local")
+        normalized.setdefault("blocker_keywords", BLOCKER_PATTERNS)
+        normalized["source"] = "feature-chain"
+        normalized["covered_bad_cases"] = covered_bad_cases
+        tests.append(normalized)
+    return tests
+
+
 def approved_registry_tests(ctx: Path) -> list[dict[str, object]]:
     registry = load_test_registry(ctx)
     tests: list[dict[str, object]] = []
@@ -3789,7 +4493,7 @@ def approved_registry_tests(ctx: Path) -> list[dict[str, object]]:
 
 def approved_dev_completion_tests(ctx: Path) -> list[dict[str, object]]:
     by_id: dict[str, dict[str, object]] = {}
-    for test in approved_registry_tests(ctx) + discover_task_case_tests(ctx):
+    for test in approved_registry_tests(ctx) + discover_task_case_tests(ctx) + approved_feature_chain_tests(ctx):
         test_id = str(test.get("id") or test.get("title") or "unnamed")
         by_id[test_id] = test
     return list(by_id.values())
@@ -3980,17 +4684,27 @@ def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance", "test-hub-add", "dev-complete"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance", "test-hub-add", "test-hub-list", "test-hub-enable", "test-hub-disable", "test-hub-set-policy", "test-hub-remove", "feature-chain-add", "feature-chain-attach-bc", "feature-chain-list", "show-test-hub", "serve-test-hub", "dev-complete"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
     parser.add_argument("--title", default=None, help="Title for a branch task or roadmap checkpoint.")
+    parser.add_argument("--test-id", default="", help="Test ID for test-hub management commands.")
     parser.add_argument("--command-text", default="", help="Shell command for a human-approved test registry entry.")
     parser.add_argument("--run-policy", default=RUN_ALWAYS_POLICY, help="Run policy for a test registry entry.")
     parser.add_argument("--test-status", default="approved", help="Status for a test registry entry.")
+    parser.add_argument("--reason", default="", help="Reason for disabling or changing a test policy.")
     parser.add_argument("--timeout-seconds", type=int, default=300, help="Timeout for a registered test command.")
     parser.add_argument("--artifact-policy", default="cleanup-on-pass", help="Artifact policy for a registered test command.")
     parser.add_argument("--resource", default="local", help="Resource/node label for a registered test command.")
+    parser.add_argument("--entry", default="", help="Human-readable entry point for a feature-chain test.")
+    parser.add_argument("--exit-check", default="", help="Human-readable success condition for a feature-chain test.")
+    parser.add_argument("--chain-id", default="", help="Feature chain ID for feature-chain management commands.")
+    parser.add_argument("--node-title", default="", help="Feature-chain node title for attaching bad-case coverage.")
+    parser.add_argument("--bad-case", default="", help="Bad-case ID or title covered by a feature-chain node.")
+    parser.add_argument("--check", default="", help="Checkpoint text for a feature-chain node.")
     parser.add_argument("--jobs", type=int, default=1, help="Parallel test workers for dev-complete.")
+    parser.add_argument("--host", default="127.0.0.1", help="Host for serve-test-hub.")
+    parser.add_argument("--port", type=int, default=8772, help="Port for serve-test-hub.")
     parser.add_argument("--keep-success-artifacts", action="store_true", help="Keep test-hub run directory after all tests pass.")
     parser.add_argument("--branch", default=None, help="Branch/route name for a branch task or roadmap checkpoint.")
     parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
@@ -4078,6 +4792,87 @@ def main() -> int:
             resource=args.resource,
         )
         return 0
+    if args.command == "feature-chain-add":
+        if not args.title:
+            parser.error("feature-chain-add requires --title")
+        if not args.entry:
+            parser.error("feature-chain-add requires --entry")
+        if not args.exit_check:
+            parser.error("feature-chain-add requires --exit-check")
+        feature_chain_add(
+            root,
+            title=args.title,
+            entry=args.entry,
+            exit_check=args.exit_check,
+            command_text=args.command_text,
+            run_policy=args.run_policy,
+            status=args.test_status,
+            timeout_seconds=args.timeout_seconds,
+            artifact_policy=args.artifact_policy,
+            resource=args.resource,
+        )
+        return 0
+    if args.command == "feature-chain-attach-bc":
+        if not args.chain_id:
+            parser.error("feature-chain-attach-bc requires --chain-id")
+        if not args.node_title:
+            parser.error("feature-chain-attach-bc requires --node-title")
+        if not args.bad_case:
+            parser.error("feature-chain-attach-bc requires --bad-case")
+        feature_chain_attach_bc(
+            root,
+            chain_id=args.chain_id,
+            node_title=args.node_title,
+            bad_case=args.bad_case,
+            check=args.check,
+        )
+        return 0
+    if args.command == "feature-chain-list":
+        return feature_chain_list(root)
+    if args.command == "test-hub-list":
+        return test_hub_list(root)
+    if args.command == "test-hub-enable":
+        if not args.test_id:
+            parser.error("test-hub-enable requires --test-id")
+        test_hub_update_test(
+            root,
+            args.test_id,
+            status=args.test_status if args.test_status != "approved" else "approved",
+            run_policy=args.run_policy or RUN_ALWAYS_POLICY,
+            disabled_reason="",
+        )
+        return 0
+    if args.command == "test-hub-disable":
+        if not args.test_id:
+            parser.error("test-hub-disable requires --test-id")
+        test_hub_update_test(
+            root,
+            args.test_id,
+            status="disabled",
+            run_policy="disabled-with-reason",
+            disabled_reason=args.reason or "disabled by user",
+        )
+        return 0
+    if args.command == "test-hub-set-policy":
+        if not args.test_id:
+            parser.error("test-hub-set-policy requires --test-id")
+        test_hub_update_test(
+            root,
+            args.test_id,
+            run_policy=args.run_policy,
+            policy_reason=args.reason,
+        )
+        return 0
+    if args.command == "test-hub-remove":
+        if not args.test_id:
+            parser.error("test-hub-remove requires --test-id")
+        test_hub_remove(root, args.test_id)
+        return 0
+    if args.command == "show-test-hub":
+        show_test_hub(root, args.open)
+        return 0
+    if args.command == "serve-test-hub":
+        return serve_test_hub(root, host=args.host, port=args.port, jobs=args.jobs, open_browser=args.open)
     if args.command == "dev-complete":
         return test_hub_dev_complete(root, jobs=args.jobs, keep_success_artifacts=args.keep_success_artifacts)
     if args.command == "validate-bad-cases":

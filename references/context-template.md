@@ -227,6 +227,7 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - When the user explicitly asks to create, write, generate, design, or add a test/test task/task case, start the user-visible response with `测试创建识别：...` or the folder-language equivalent, then summarize the test target from what state to what state and the main risk it catches.
 - When the user creates or approves a test, register it with `Run policy: every-dev-completion` by default. At the end of every development turn, run all approved tests with that policy or record the exact blocker.
 - Use `.codex/context/test-hub/registry.json` as the explicit Test Hub registry for user-approved automated tests. Do not populate it from ordinary bad-case guards or roadmap node `Test chain:` notes.
+- Keep Test Hub as a simple control layer: registry, `dev-complete`, `last-run.json`, and lightweight commands to list, enable, disable, change policy, or remove registry tests.
 - At development completion, prefer `context_guard.py dev-complete --root <project>` so the hub runs the approved always-run set, handles parallel workers when safe, cleans success artifacts, and preserves failure evidence under `.codex/context/test-hub/runs/`.
 - After approval, automate a test when it can be safely scripted or run as a native command. Future Codex turns should execute the registered entry with minimal reinterpretation.
 - Automated tests should clean temporary files after full success and preserve concise diagnostic artifacts on failure.

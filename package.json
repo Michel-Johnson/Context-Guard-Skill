@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Install and run the Context Guard Codex skill.",
   "repository": {
     "type": "git",
@@ -22,6 +22,7 @@
     "skills/context-guard/"
   ],
   "scripts": {
+    "postinstall": "node bin/postinstall.js",
     "test": "bash tests/npm-install-smoke.sh && python3 -m py_compile skills/context-guard/scripts/context_guard.py skills/context-guard/scripts/context_guard_hook.py"
   },
   "engines": {

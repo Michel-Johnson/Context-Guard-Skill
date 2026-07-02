@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from context_guard import context_dir, init_context
+from context_guard import approved_dev_completion_tests, context_dir, init_context
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +145,41 @@ def hook_log(message: str) -> None:
 def hook_response(**payload: object) -> int:
     print(json.dumps(payload, ensure_ascii=False))
     return 0
+
+
+def run_test_hub_completion(root: Path) -> tuple[int, str]:
+    ctx = context_dir(root)
+    tests = approved_dev_completion_tests(ctx)
+    if not tests:
+        return 0, "[context-guard] test hub: no approved every-dev-completion tests."
+
+    hook_log(f"[context-guard] test hub: running {len(tests)} approved every-dev-completion test(s).")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SKILL_ROOT / "scripts" / "context_guard.py"),
+            "dev-complete",
+            "--root",
+            str(root),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=900,
+    )
+    output = "\n".join(part for part in [completed.stdout.strip(), completed.stderr.strip()] if part)
+    return completed.returncode, output
+
+
+def completion_test_summary(output: str, code: int) -> str:
+    if "no approved every-dev-completion tests" in output:
+        return "no approved every-dev-completion tests"
+    for line in output.splitlines():
+        if "[context-guard] test hub:" in line and " passed," in line and " failed," in line and " blocked" in line:
+            summary = line.split("test hub:", 1)[1].strip().rstrip(".")
+            if code == 0:
+                return f"all approved tests passed ({summary})"
+            return f"approved tests are not all passing ({summary})"
+    return "test hub status unknown; inspect `.codex/context/test-hub/last-run.json`"
 
 
 def prompt_text(raw: str) -> str:
@@ -437,7 +472,7 @@ def main() -> int:
         hook_log("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
         hook_log("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
         hook_log("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
-        hook_log("[context-guard] TEST HUB GATE: before finalizing development work, prefer `context_guard.py dev-complete --root <project>` so the hub runs every human-approved `every-dev-completion` test, cleans success artifacts, and preserves failed/blocked evidence. Do not treat ordinary bad-case guards or roadmap Test chain notes as registered tests.")
+        hook_log("[context-guard] TEST HUB GATE: Stop hook runs `context_guard.py dev-complete --root <project>` so the hub executes every human-approved `every-dev-completion` test, cleans success artifacts, and preserves failed/blocked evidence. Do not treat ordinary bad-case guards or roadmap Test chain notes as registered tests.")
         hook_log("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
         hook_log("[context-guard] TEST BLOCKER GATE: if approved tests are blocked by credentials, external service outage, permission denial, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, stop and ask/warn the user with the exact blocker and evidence path.")
         hook_log("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
@@ -452,6 +487,28 @@ def main() -> int:
         hook_log(f"[context-guard] project root: {root}")
         hook_log(f"[context-guard] context folder: {context_dir}")
         hook_log(f"[context-guard] bad-case register: {bad_cases_path}")
+        try:
+            test_code, test_output = run_test_hub_completion(root)
+            for line in test_output.splitlines():
+                hook_log(line)
+            hook_log(
+                "[context-guard] final answer must include Test Hub summary: "
+                + completion_test_summary(test_output, test_code)
+            )
+            if test_code != 0:
+                reason = (
+                    "Context Guard Test Hub found failed or blocked approved tests. "
+                    "Read `.codex/context/test-hub/last-run.json` and preserved run evidence, "
+                    "then fix or report the blocker before finalizing."
+                )
+                hook_log(f"[context-guard] TEST HUB BLOCKER: {reason}")
+                return hook_response(decision="block", reason=reason)
+        except subprocess.TimeoutExpired:
+            reason = "Context Guard Test Hub timed out after 900s; report this blocker and evidence before finalizing."
+            hook_log(f"[context-guard] TEST HUB BLOCKER: {reason}")
+            return hook_response(decision="block", reason=reason)
+        except Exception as exc:
+            hook_log(f"[context-guard] test hub hook warning: {exc}")
         open_cases = unresolved_bad_cases(bad_cases_path)
         hook_log("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
         hook_log(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")

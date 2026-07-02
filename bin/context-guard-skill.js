@@ -20,9 +20,9 @@ Usage:
   context-guard <context_guard.py command> [args...]
 
 Examples:
-  npx context-guard install
-  npx context-guard install --with-hooks
-  npx context-guard show-roadmap --root /path/to/project
+  npx @michelj/context-guard install
+  npx @michelj/context-guard install --with-hooks
+  npx @michelj/context-guard show-roadmap --root /path/to/project
 `);
 }
 
@@ -42,8 +42,8 @@ function defaultSkillTarget() {
   if (process.env.CONTEXT_GUARD_SKILL_TARGET) {
     return path.resolve(expandHome(process.env.CONTEXT_GUARD_SKILL_TARGET));
   }
-  const agentsHome = process.env.AGENTS_HOME || path.join(os.homedir(), ".agents");
-  return path.join(agentsHome, "skills", "context-guard");
+  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+  return path.join(codexHome, "skills", "context-guard");
 }
 
 function defaultHooksTarget() {

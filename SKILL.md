@@ -275,6 +275,44 @@ Preferred bad-case source format is one `### BC-YYYYMMDD-001: Title` section per
 
 Recording and display must stay connected. Every bad case that should appear on a roadmap must have either `Roadmap nodes:` / `Nodes:` pointing to one or more `NODE-...` IDs, or the roadmap node must list that case under `Linked bad cases:`. Do not rely on task-level proximity alone.
 
+### Feature-Oriented Test Chains
+
+Use as few durable test chains as possible to cover as many bad-case recurrence checks as possible. The durable testing unit is a feature or workflow chain, not an individual bad case.
+
+A feature chain has:
+
+- a clear input or entry point, such as clicking a button, submitting a task, opening a page, or starting a workflow
+- ordered checkpoints that match the real user/business flow
+- strict red and green conditions for the final result and any critical intermediate step
+- linked bad cases attached to the specific checkpoint where they can recur
+
+When a new bad case appears:
+
+1. First ask whether it belongs to an existing feature chain.
+2. If it does, attach the bad case to the matching chain node and strengthen that node's checkpoint instead of creating a separate long-lived test.
+3. If no existing chain matches the feature or workflow, propose a new feature chain with the same short human-facing confirmation style as task cases.
+4. Only approve or automate the chain after user confirmation, unless the user explicitly provided the exact test to implement.
+
+Store feature chains in `.codex/context/test-hub/feature-chains.json`. Use:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-add \
+  --root <project> \
+  --title "GPU 监控按钮" \
+  --entry "点击 GPU 监控按钮" \
+  --exit-check "打开包含有效 grafana_url 的监控页" \
+  --command-text "<approved command>"
+
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-attach-bc \
+  --root <project> \
+  --chain-id FC-YYYYMMDD-001 \
+  --node-title "后端返回监控 URL" \
+  --bad-case BC-YYYYMMDD-001 \
+  --check "grafana_url 不为空且前端没有卡住"
+```
+
+Approved feature chains with `Run policy: every-dev-completion` are included in `dev-complete` and the Stop hook. Relevant-only or proposed chains remain context until the user approves or asks to run them.
+
 ### Task-Oriented Test Cases
 
 When verification would otherwise become many tiny bug-specific tests, prefer a task-oriented case that simulates a real workflow end to end. A task case is a scenario with phases, checkpoints, logs, and linked bad-case coverage.
@@ -368,10 +406,14 @@ Approved automated tests should be executed with minimal Codex involvement: run 
 Use the Test Hub as the automation control plane for approved tests. The hub collects human-approved tests and lets Codex send one completion signal instead of manually reconstructing every check.
 
 - Store the explicit test registry at `.codex/context/test-hub/registry.json`.
+- Keep the hub simple: one registry, one `dev-complete` runner, `last-run.json`, and lightweight registry management commands. Do not build a heavy scheduling platform unless the user asks.
 - Register only user-created or user-approved tests. Do not auto-promote ordinary bad-case guards, roadmap `Test chain:` notes, or Codex implementation logs into the registry.
 - A registry entry with `status: approved | active | stable` and `run_policy: every-dev-completion` is part of the always-run set.
+- Manage registry tests with `test-hub-list`, `test-hub-enable`, `test-hub-disable`, `test-hub-set-policy`, and `test-hub-remove`.
+- Use `show-test-hub` to write the stable read-only human-facing page at `.codex/context/test-hub/test-hub.html`.
+- The Test Hub HTML is a status page only. Do not make users start tests from HTML buttons; approved tests run from the Stop hook or `dev-complete`.
 - Task cases in `.codex/context/task-cases/` may also join the always-run set only when they are `approved | active | stable`, have `Run policy: every-dev-completion`, and include an automated entry command.
-- At development completion, prefer `scripts/context_guard.py dev-complete --root <project>` over hand-running registered tests one by one. Use `--jobs <n>` only when parallel execution is safe for the registered tests.
+- At development completion, the Stop hook should invoke `scripts/context_guard.py dev-complete --root <project>` so registered tests run automatically. If running manually, use `dev-complete` over hand-running tests one by one. Use `--jobs <n>` only when parallel execution is safe for the registered tests.
 - `dev-complete` must report passed, failed, and blocked tests. On full success it should clean the run artifacts; on failure or blocker it should preserve evidence under `.codex/context/test-hub/runs/`.
 - If the user says a test should not run every time, update the registry or task case run policy instead of silently skipping it.
 - If no approved every-dev-completion tests exist, the hub should report that clearly and exit successfully; Codex should not invent tests to fill the gap.
@@ -507,6 +549,7 @@ At the end of every response, include a compact context summary when development
 - Bad-case intake result from this turn.
 - BC archived/updated this turn. If none were changed, say `none`.
 - Current unresolved BC. Use concise human-readable bad-case titles and, when useful, one symptom phrase plus status; do not report only `BC-...` IDs. If none are open/deferred/recurred/unknown, say `none`.
+- Current Test Hub status. Say whether all currently approved `every-dev-completion` tests passed, failed, blocked, or whether no approved always-run tests exist. Include concise counts such as `3 passed, 0 failed, 0 blocked`.
 - New or updated context, limited to key nodes and bad cases.
 - End-of-work self-check performed, including visual inspection evidence for frontend/layout artifacts or the exact blocker if visual inspection was not possible.
 - Previously resolved cases rechecked, including reused context, tests, commands, scripts, or manual checks.
