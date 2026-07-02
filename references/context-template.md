@@ -19,6 +19,10 @@ Use this structure for project context:
 │       ├── context.md
 │       └── bad-cases.md
 ├── task-cases/
+├── test-hub/
+│   ├── registry.json
+│   ├── last-run.json
+│   └── runs/
 ├── bad-case-tests/
 └── archive/
 ```
@@ -173,6 +177,8 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Last checked: YYYY-MM-DD
 - Design confirmation: pending | user-approved YYYY-MM-DD
 - Run policy: every-dev-completion | relevant-only | manual | release-only | goal-final | disabled-with-reason | user-defined cadence
+- Automation entry: native command | script path | prompt/manual runner | none
+- Artifact policy: cleanup-on-pass | preserve-on-fail | manual-preserve
 - Linked roadmap nodes: NODE-...
 - Linked bad cases: BC-..., BC-...
 - Entry command/prompt: command, prompt, manual setup, or fixture
@@ -220,6 +226,12 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Before writing any new durable task-case script or active task case, ask the user to confirm with only the business path: from what state to what state, the main task, and the major risk. Keep technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt. If confirmation is unavailable, keep the case `proposed` and avoid broad new scripts.
 - When the user explicitly asks to create, write, generate, design, or add a test/test task/task case, start the user-visible response with `测试创建识别：...` or the folder-language equivalent, then summarize the test target from what state to what state and the main risk it catches.
 - When the user creates or approves a test, register it with `Run policy: every-dev-completion` by default. At the end of every development turn, run all approved tests with that policy or record the exact blocker.
+- Use `.codex/context/test-hub/registry.json` as the explicit Test Hub registry for user-approved automated tests. Do not populate it from ordinary bad-case guards or roadmap node `Test chain:` notes.
+- At development completion, prefer `context_guard.py dev-complete --root <project>` so the hub runs the approved always-run set, handles parallel workers when safe, cleans success artifacts, and preserves failure evidence under `.codex/context/test-hub/runs/`.
+- After approval, automate a test when it can be safely scripted or run as a native command. Future Codex turns should execute the registered entry with minimal reinterpretation.
+- Automated tests should clean temporary files after full success and preserve concise diagnostic artifacts on failure.
+- Failed approved tests become a bad-case analysis loop: inspect the preserved evidence, fix the in-scope cause, rerun the same approved test, and stop only after pass or a non-actionable blocker.
+- If blocked by credentials, unavailable external service, permissions, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, ask or warn the user with the exact blocker and evidence path.
 - Change a test to `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or another cadence only when the user explicitly asks. Record the user's reason beside the policy.
 - During goal mode, task cases should act as phase gates: select an approved case or propose one for confirmation, log phase progress during continuations, and run the smallest human-approved path before claiming the goal complete.
 - Keep multilingual display as an HTML projection concern; do not duplicate source context by language. When supported, localize human-facing record titles, summaries, bad-case labels, and test-chain snippets in the projection.

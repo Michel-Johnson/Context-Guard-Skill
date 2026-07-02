@@ -138,6 +138,15 @@ def read_stdin() -> str:
         return ""
 
 
+def hook_log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def hook_response(**payload: object) -> int:
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
 def prompt_text(raw: str) -> str:
     if not raw.strip():
         return ""
@@ -378,24 +387,24 @@ def main() -> int:
     text = prompt_text(raw)
 
     if is_context_guard_skill_path(root):
-        print(
+        hook_log(
             "[context-guard] detected Context Guard skill directory as the apparent root; "
             "skipping project context writes. Open the target Codex folder or pass an explicit local `--root` "
             "when showing/updating a roadmap."
         )
-        print(f"[context-guard] apparent root source: {root_source}; apparent root: {root}")
-        return 0
+        hook_log(f"[context-guard] apparent root source: {root_source}; apparent root: {root}")
+        return hook_response()
 
     if event == "session-start":
         created = init_context(root)
         if created:
-            print(f"[context-guard] initialized folder context: {context_dir}")
+            hook_log(f"[context-guard] initialized folder context: {context_dir}")
         else:
-            print(f"[context-guard] folder context ready: {context_dir}")
-        print(f"[context-guard] project root: {root} ({root_source})")
-        print("[context-guard] context location rule: save project context only under `<opened local Codex project root>/.codex/context/`.")
-        print("[context-guard] use .codex/context/index.md for quick scan and .codex/context/roadmap.md for route nodes.")
-        return 0
+            hook_log(f"[context-guard] folder context ready: {context_dir}")
+        hook_log(f"[context-guard] project root: {root} ({root_source})")
+        hook_log("[context-guard] context location rule: save project context only under `<opened local Codex project root>/.codex/context/`.")
+        hook_log("[context-guard] use .codex/context/index.md for quick scan and .codex/context/roadmap.md for route nodes.")
+        return hook_response()
 
     if event == "user-prompt-submit":
         hints: list[str] = []
@@ -415,40 +424,41 @@ def main() -> int:
             hints.append("possible bad case: record/update .codex/context/bad-cases.md or task-local bad-cases.md")
         if not hints:
             hints.append("run Context Guard intake: continue current context or note no active context")
-        print("[context-guard] " + "; ".join(hints))
-        print(f"[context-guard] root source: {root_source}")
-        print(f"[context-guard] project root: {root}")
-        print(f"[context-guard] context folder: {context_dir}")
-        print(f"[context-guard] context index: {index_path}")
-        print(f"[context-guard] route map: {roadmap_path}")
-        return 0
+        hook_log("[context-guard] " + "; ".join(hints))
+        hook_log(f"[context-guard] root source: {root_source}")
+        hook_log(f"[context-guard] project root: {root}")
+        hook_log(f"[context-guard] context folder: {context_dir}")
+        hook_log(f"[context-guard] context index: {index_path}")
+        hook_log(f"[context-guard] route map: {roadmap_path}")
+        return hook_response()
 
     if event == "stop":
-        print("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
-        print("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
-        print("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
-        print("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
-        print("[context-guard] APPROVED TEST REGISTRY GATE: run every human-approved test whose Run policy is `every-dev-completion` before finalizing development work. Only skip or demote tests when the user set `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or another explicit cadence; report blockers instead of implying the always-run suite passed.")
-        print("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
-        print("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
-        print("[context-guard] GOAL-MODE TEST GATE: in goal mode, use task cases as phase gates; log current phase progress and run the smallest approved path before claiming goal completion instead of silently creating broad new tests.")
-        print("[context-guard] ROADMAP CHECKPOINT GATE: assess whether this turn deserves a roadmap node. Create one only for meaningful progress, a route decision, a fix, a branch/fork, a user-visible milestone, or stale hidden checkpoints; otherwise say no roadmap node was needed and why.")
-        print("[context-guard] If a node is needed, run `context_guard.py checkpoint-roadmap-node --title <short title> --branch <Main or route> --level <major|checkpoint> --outcome <one-line progress> --next-step <next>` and include linked BC/test-chain notes when relevant.")
-        print("[context-guard] ROADMAP MAINTENANCE GATE: run `context_guard.py validate-roadmap-maintenance` after route updates; do not let mainline/branch overview stay stale while important work is hidden as checkpoints.")
-        print("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
-        print("[context-guard] Branch task gate: if the user explicitly asked for a branch, ensure `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` has created the task folder, index current entry, and Branch/Parent roadmap node; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
-        print("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")
-        print(f"[context-guard] root source: {root_source}")
-        print(f"[context-guard] project root: {root}")
-        print(f"[context-guard] context folder: {context_dir}")
-        print(f"[context-guard] bad-case register: {bad_cases_path}")
+        hook_log("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
+        hook_log("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
+        hook_log("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
+        hook_log("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
+        hook_log("[context-guard] TEST HUB GATE: before finalizing development work, prefer `context_guard.py dev-complete --root <project>` so the hub runs every human-approved `every-dev-completion` test, cleans success artifacts, and preserves failed/blocked evidence. Do not treat ordinary bad-case guards or roadmap Test chain notes as registered tests.")
+        hook_log("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
+        hook_log("[context-guard] TEST BLOCKER GATE: if approved tests are blocked by credentials, external service outage, permission denial, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, stop and ask/warn the user with the exact blocker and evidence path.")
+        hook_log("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
+        hook_log("[context-guard] GOAL-MODE TEST GATE: in goal mode, use task cases as phase gates; log current phase progress and run the smallest approved path before claiming goal completion instead of silently creating broad new tests.")
+        hook_log("[context-guard] ROADMAP CHECKPOINT GATE: assess whether this turn deserves a roadmap node. Create one only for meaningful progress, a route decision, a fix, a branch/fork, a user-visible milestone, or stale hidden checkpoints; otherwise say no roadmap node was needed and why.")
+        hook_log("[context-guard] If a node is needed, run `context_guard.py checkpoint-roadmap-node --title <short title> --branch <Main or route> --level <major|checkpoint> --outcome <one-line progress> --next-step <next>` and include linked BC/test-chain notes when relevant.")
+        hook_log("[context-guard] ROADMAP MAINTENANCE GATE: run `context_guard.py validate-roadmap-maintenance` after route updates; do not let mainline/branch overview stay stale while important work is hidden as checkpoints.")
+        hook_log("[context-guard] If frontend/UI/HTML/CSS/layout/browser behavior changed, inspect with browser/screenshot or state the exact blocker; do not claim fixed without this evidence.")
+        hook_log("[context-guard] Branch task gate: if the user explicitly asked for a branch, ensure `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` has created the task folder, index current entry, and Branch/Parent roadmap node; if the work significantly drifts from the mainline architecture, ask whether to create a branch before finalizing.")
+        hook_log("[context-guard] final answer must include verification evidence and must not say done/fixed/passing unless the gate above was satisfied.")
+        hook_log(f"[context-guard] root source: {root_source}")
+        hook_log(f"[context-guard] project root: {root}")
+        hook_log(f"[context-guard] context folder: {context_dir}")
+        hook_log(f"[context-guard] bad-case register: {bad_cases_path}")
         open_cases = unresolved_bad_cases(bad_cases_path)
-        print("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
-        print(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")
-        return 0
+        hook_log("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
+        hook_log(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")
+        return hook_response()
 
-    print("[context-guard] unknown hook event; use the context-guard skill if context changed.")
-    return 0
+    hook_log("[context-guard] unknown hook event; use the context-guard skill if context changed.")
+    return hook_response()
 
 
 if __name__ == "__main__":

@@ -28,6 +28,8 @@ Record only bad cases that are user-visible, recurring, risky, fixed, deferred, 
 - Guard type: script | native-test | manual | browser-screenshot | browser-dom | curl | cli | prompt | log-invariant | fixture | unit | integration | e2e | custom
 - Guard / verification: native test, command, reusable script, manual check, screenshot, log, invariant, or reproduction note, one line
 - Run policy: every-dev-completion | relevant-only | manual | release-only | goal-final | disabled-with-reason | user-defined cadence
+- Artifact policy: cleanup-on-pass | preserve-on-fail | manual-preserve | none
+- Blocker handling: credentials | external-service | permissions | resource-limits | network | destructive-confirmation | user-judgment | none
 - Red condition: exact output, visual state, assertion, or symptom that means this bad case has recurred
 - Green condition: exact evidence that means this bad case is absent
 - Expected failure reason: why the guard should fail for the old symptom, not for a broken test or unrelated environment issue
@@ -64,6 +66,10 @@ Use the `### BC-...` section form as the canonical editable source. If a session
 - Prefer existing recorded context, user-approved commands, native tests, screenshots, logs, or manual checks over newly invented tests.
 - When the user creates or approves a test, default its `Run policy` to `every-dev-completion`; Codex must run it at every development completion unless the user sets another cadence.
 - Only the user can demote an approved test to `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a custom cadence. Record why.
+- After user approval, automate the check when feasible; successful automated checks should clean temporary files, while failed checks should preserve concise diagnostic evidence for Codex to analyze and rerun after fixing.
+- Store reusable user-approved automated tests in `.codex/context/test-hub/registry.json` or approved task-case files; do not auto-register ordinary bad-case guards or roadmap `Test chain:` notes as always-run tests.
+- At development completion, prefer `context_guard.py dev-complete --root <project>` so Test Hub runs the approved always-run set and writes `.codex/context/test-hub/last-run.json`.
+- If an approved automated check is blocked by credentials, external services, permissions, resource limits, network, destructive confirmation, or user-only judgment, record the blocker and ask or warn the user instead of looping.
 - For resolved or recurred cases, `Guard / verification`, `Guard type`, `Red condition`, `Green condition`, and `Expected failure reason` are required.
 - The guard must be red-capable: it should fail if the same user-visible symptom returns.
 - When the bad case is part of a longer workflow, attach it to a human-approved task-case checkpoint instead of creating a separate isolated script. The bad-case entry should say which task case phase covers it.

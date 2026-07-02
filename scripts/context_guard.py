@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import webbrowser
@@ -63,6 +66,10 @@ def context_dir(root: Path) -> Path:
 
 def roadmap_output_dir(root: Path) -> Path:
     return context_dir(root) / "roadmap"
+
+
+def test_hub_dir(root: Path) -> Path:
+    return context_dir(root) / "test-hub"
 
 
 def normalize_record_language(language: str) -> str:
@@ -140,6 +147,7 @@ def init_context(root: Path) -> list[Path]:
         ctx / "tasks",
         ctx / "task-cases",
         ctx / "bad-case-tests",
+        ctx / "test-hub",
         ctx / "roadmap",
         ctx / "exports",
         ctx / "archive",
@@ -3595,6 +3603,361 @@ def checkpoint_roadmap_node(
     return node_id_value
 
 
+APPROVED_TEST_STATUSES = {"approved", "active", "stable"}
+RUN_ALWAYS_POLICY = "every-dev-completion"
+BLOCKER_PATTERNS = [
+    "MISSING_CREDENTIAL",
+    "PERMISSION_DENIED",
+    "SERVICE_UNAVAILABLE",
+    "NETWORK_UNAVAILABLE",
+    "RESOURCE_UNAVAILABLE",
+    "USER_CONFIRMATION_REQUIRED",
+    "DESTRUCTIVE_CONFIRMATION_REQUIRED",
+]
+
+
+def normalize_test_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "test"
+
+
+def test_registry_path(ctx: Path) -> Path:
+    return ctx / "test-hub" / "registry.json"
+
+
+def default_test_registry() -> dict[str, object]:
+    return {
+        "version": 1,
+        "description": "Human-approved Context Guard test registry. Codex runs approved every-dev-completion tests through dev-complete.",
+        "tests": [],
+    }
+
+
+def load_test_registry(ctx: Path) -> dict[str, object]:
+    path = test_registry_path(ctx)
+    if not path.exists():
+        return default_test_registry()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print(f"[context-guard] invalid test registry JSON: {path}", file=sys.stderr)
+        return default_test_registry()
+    if not isinstance(data, dict):
+        return default_test_registry()
+    tests = data.get("tests")
+    if not isinstance(tests, list):
+        data["tests"] = []
+    data.setdefault("version", 1)
+    return data
+
+
+def write_test_registry(ctx: Path, registry: dict[str, object]) -> Path:
+    path = test_registry_path(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def next_test_id(ctx: Path, title: str) -> str:
+    today = datetime.now().strftime("%Y%m%d")
+    registry = load_test_registry(ctx)
+    existing = " ".join(
+        str(test.get("id", "")) for test in registry.get("tests", []) if isinstance(test, dict)
+    )
+    numbers = [int(match.group(1)) for match in re.finditer(rf"TC-{today}-(\d+)", existing)]
+    return f"TC-{today}-{(max(numbers) + 1 if numbers else 1):03d}-{normalize_test_slug(title)[:36]}"
+
+
+def test_hub_add(
+    root: Path,
+    title: str,
+    command_text: str,
+    run_policy: str = RUN_ALWAYS_POLICY,
+    status: str = "approved",
+    timeout_seconds: int = 300,
+    artifact_policy: str = "cleanup-on-pass",
+    resource: str = "local",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    if not title.strip():
+        raise ValueError("test-hub-add requires --title")
+    if not command_text.strip():
+        raise ValueError("test-hub-add requires --command-text")
+    registry = load_test_registry(ctx)
+    tests = registry.setdefault("tests", [])
+    if not isinstance(tests, list):
+        tests = []
+        registry["tests"] = tests
+    test_id = next_test_id(ctx, title)
+    tests.append(
+        {
+            "id": test_id,
+            "title": title.strip(),
+            "status": status.strip() or "approved",
+            "run_policy": run_policy.strip() or RUN_ALWAYS_POLICY,
+            "type": "command",
+            "command": command_text.strip(),
+            "cwd": ".",
+            "resource": resource.strip() or "local",
+            "timeout_seconds": int(timeout_seconds),
+            "artifact_policy": artifact_policy.strip() or "cleanup-on-pass",
+            "blocker_keywords": BLOCKER_PATTERNS,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "source": "human-approved registry entry",
+        }
+    )
+    path = write_test_registry(ctx, registry)
+    print(f"[context-guard] registered test: {test_id}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def parse_markdown_fields(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        match = re.match(r"^\s*-\s*([^:]+):\s*(.*)$", line)
+        if not match:
+            continue
+        key = " ".join(match.group(1).strip().lower().split())
+        fields[key] = match.group(2).strip()
+    return fields
+
+
+def command_from_task_case_fields(fields: dict[str, str]) -> str:
+    automation = fields.get("automation entry", "").strip().lower()
+    entry = first_nonempty(fields.get("entry command/prompt", ""), fields.get("entry command", ""))
+    if not entry or entry.lower() in {"none", "n/a", "manual"}:
+        return ""
+    if "manual" in automation or "prompt" in automation or automation == "none":
+        return ""
+    return strip_wrapping_backticks(entry)
+
+
+def discover_task_case_tests(ctx: Path) -> list[dict[str, object]]:
+    task_case_dir = ctx / "task-cases"
+    if not task_case_dir.exists():
+        return []
+    tests: list[dict[str, object]] = []
+    for path in sorted(task_case_dir.glob("*.md")):
+        fields = parse_markdown_fields(path.read_text(encoding="utf-8"))
+        status = fields.get("status", "").strip().lower()
+        run_policy = fields.get("run policy", "").strip() or RUN_ALWAYS_POLICY
+        if status not in APPROVED_TEST_STATUSES or run_policy != RUN_ALWAYS_POLICY:
+            continue
+        command = command_from_task_case_fields(fields)
+        title = fields.get("title", "") or path.stem
+        test_id = fields.get("id", "") or path.stem
+        tests.append(
+            {
+                "id": test_id,
+                "title": title,
+                "status": status,
+                "run_policy": run_policy,
+                "type": "command" if command else "manual",
+                "command": command,
+                "cwd": ".",
+                "resource": fields.get("resource", "local") or "local",
+                "timeout_seconds": 300,
+                "artifact_policy": fields.get("artifact policy", "cleanup-on-pass") or "cleanup-on-pass",
+                "blocker_keywords": BLOCKER_PATTERNS,
+                "source": str(path.relative_to(ctx.parent.parent)) if len(path.parts) > 2 else str(path),
+            }
+        )
+    return tests
+
+
+def approved_registry_tests(ctx: Path) -> list[dict[str, object]]:
+    registry = load_test_registry(ctx)
+    tests: list[dict[str, object]] = []
+    for item in registry.get("tests", []):
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status", "")).strip().lower()
+        run_policy = str(item.get("run_policy", item.get("run policy", ""))).strip()
+        if status in APPROVED_TEST_STATUSES and run_policy == RUN_ALWAYS_POLICY:
+            normalized = dict(item)
+            normalized["run_policy"] = run_policy
+            normalized.setdefault("type", "command" if normalized.get("command") else "manual")
+            normalized.setdefault("timeout_seconds", 300)
+            normalized.setdefault("artifact_policy", "cleanup-on-pass")
+            normalized.setdefault("resource", "local")
+            normalized.setdefault("blocker_keywords", BLOCKER_PATTERNS)
+            tests.append(normalized)
+    return tests
+
+
+def approved_dev_completion_tests(ctx: Path) -> list[dict[str, object]]:
+    by_id: dict[str, dict[str, object]] = {}
+    for test in approved_registry_tests(ctx) + discover_task_case_tests(ctx):
+        test_id = str(test.get("id") or test.get("title") or "unnamed")
+        by_id[test_id] = test
+    return list(by_id.values())
+
+
+def safe_relative_path(root: Path, value: str) -> Path | None:
+    if not value:
+        return None
+    path = Path(strip_wrapping_backticks(value)).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
+def cleanup_registered_paths(root: Path, cleanup_paths: object) -> list[str]:
+    cleaned: list[str] = []
+    if not isinstance(cleanup_paths, list):
+        return cleaned
+    for value in cleanup_paths:
+        path = safe_relative_path(root, str(value))
+        if not path or not path.exists():
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+        cleaned.append(str(path))
+    return cleaned
+
+
+def classify_test_blocker(output: str, keywords: object) -> str:
+    patterns = list(BLOCKER_PATTERNS)
+    if isinstance(keywords, list):
+        patterns.extend(str(item) for item in keywords)
+    for pattern in patterns:
+        if pattern and pattern.lower() in output.lower():
+            return pattern
+    return ""
+
+
+def run_one_hub_test(root: Path, run_dir: Path, test: dict[str, object]) -> dict[str, object]:
+    test_id = str(test.get("id") or test.get("title") or "unnamed")
+    title = str(test.get("title") or test_id)
+    command = str(test.get("command") or "").strip()
+    test_type = str(test.get("type") or ("command" if command else "manual")).lower()
+    log_path = run_dir / f"{normalize_test_slug(test_id)}.log"
+    if test_type in {"manual", "prompt"} or not command:
+        result = {
+            "id": test_id,
+            "title": title,
+            "status": "blocked",
+            "reason": "user-judgment",
+            "message": "No automated command is registered for this approved test.",
+            "log": str(log_path),
+        }
+        log_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return result
+
+    cwd_value = str(test.get("cwd") or ".")
+    cwd = safe_relative_path(root, cwd_value) or root
+    timeout = int(test.get("timeout_seconds") or 300)
+    env = {
+        **dict(os.environ),
+        "CONTEXT_GUARD_PROJECT_ROOT": str(root),
+        "CONTEXT_GUARD_TEST_ID": test_id,
+        "CONTEXT_GUARD_TEST_RUN_DIR": str(run_dir),
+    }
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd),
+            shell=True,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=env,
+        )
+        output = (completed.stdout or "") + (completed.stderr or "")
+        blocker = classify_test_blocker(output, test.get("blocker_keywords"))
+        status = "passed" if completed.returncode == 0 else ("blocked" if blocker or completed.returncode == 78 else "failed")
+        cleaned = cleanup_registered_paths(root, test.get("cleanup_paths")) if status == "passed" else []
+        log_path.write_text(output or "(no output)\n", encoding="utf-8")
+        return {
+            "id": test_id,
+            "title": title,
+            "status": status,
+            "returncode": completed.returncode,
+            "reason": blocker or ("exit-78" if completed.returncode == 78 else ""),
+            "command": command,
+            "cwd": str(cwd),
+            "resource": str(test.get("resource") or "local"),
+            "log": str(log_path),
+            "cleaned": cleaned,
+        }
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        log_path.write_text(output + f"\nTIMEOUT after {timeout}s\n", encoding="utf-8")
+        return {
+            "id": test_id,
+            "title": title,
+            "status": "failed",
+            "reason": "timeout",
+            "command": command,
+            "cwd": str(cwd),
+            "resource": str(test.get("resource") or "local"),
+            "log": str(log_path),
+        }
+
+
+def test_hub_dev_complete(root: Path, jobs: int = 1, keep_success_artifacts: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    hub = test_hub_dir(root)
+    hub.mkdir(parents=True, exist_ok=True)
+    tests = approved_dev_completion_tests(ctx)
+    if not tests:
+        write_test_registry(ctx, load_test_registry(ctx))
+        print("[context-guard] test hub: no approved every-dev-completion tests.")
+        return 0
+
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = hub / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    max_workers = max(1, int(jobs))
+    results: list[dict[str, object]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run_one_hub_test, root, run_dir, test) for test in tests]
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    results.sort(key=lambda item: str(item.get("id", "")))
+    summary = {
+        "run_id": run_id,
+        "root": str(root),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "jobs": max_workers,
+        "results": results,
+    }
+    summary_path = hub / "last-run.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    failed = [item for item in results if item.get("status") == "failed"]
+    blocked = [item for item in results if item.get("status") == "blocked"]
+    passed = [item for item in results if item.get("status") == "passed"]
+    print(f"[context-guard] test hub: {len(passed)} passed, {len(failed)} failed, {len(blocked)} blocked.")
+    for item in results:
+        detail = f"{item.get('status')}: {item.get('title')}"
+        if item.get("reason"):
+            detail += f" ({item.get('reason')})"
+        print(f"- {detail}")
+    if failed or blocked:
+        print(f"[context-guard] evidence preserved: {run_dir}")
+        print(f"[context-guard] summary: {summary_path}")
+        return 1
+    if keep_success_artifacts:
+        print(f"[context-guard] success artifacts kept: {run_dir}")
+    else:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        print("[context-guard] success artifacts cleaned.")
+    print(f"[context-guard] summary: {summary_path}")
+    return 0
+
+
 def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "") -> tuple[str, str, Path]:
     init_context(root)
     ctx = context_dir(root)
@@ -3617,10 +3980,18 @@ def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance", "test-hub-add", "dev-complete"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
     parser.add_argument("--title", default=None, help="Title for a branch task or roadmap checkpoint.")
+    parser.add_argument("--command-text", default="", help="Shell command for a human-approved test registry entry.")
+    parser.add_argument("--run-policy", default=RUN_ALWAYS_POLICY, help="Run policy for a test registry entry.")
+    parser.add_argument("--test-status", default="approved", help="Status for a test registry entry.")
+    parser.add_argument("--timeout-seconds", type=int, default=300, help="Timeout for a registered test command.")
+    parser.add_argument("--artifact-policy", default="cleanup-on-pass", help="Artifact policy for a registered test command.")
+    parser.add_argument("--resource", default="local", help="Resource/node label for a registered test command.")
+    parser.add_argument("--jobs", type=int, default=1, help="Parallel test workers for dev-complete.")
+    parser.add_argument("--keep-success-artifacts", action="store_true", help="Keep test-hub run directory after all tests pass.")
     parser.add_argument("--branch", default=None, help="Branch/route name for a branch task or roadmap checkpoint.")
     parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
     parser.add_argument("--level", choices=["major", "checkpoint"], default="checkpoint", help="Roadmap checkpoint level.")
@@ -3691,6 +4062,24 @@ def main() -> int:
             parent_node=args.parent_node,
         )
         return 0
+    if args.command == "test-hub-add":
+        if not args.title:
+            parser.error("test-hub-add requires --title")
+        if not args.command_text:
+            parser.error("test-hub-add requires --command-text")
+        test_hub_add(
+            root,
+            title=args.title,
+            command_text=args.command_text,
+            run_policy=args.run_policy,
+            status=args.test_status,
+            timeout_seconds=args.timeout_seconds,
+            artifact_policy=args.artifact_policy,
+            resource=args.resource,
+        )
+        return 0
+    if args.command == "dev-complete":
+        return test_hub_dev_complete(root, jobs=args.jobs, keep_success_artifacts=args.keep_success_artifacts)
     if args.command == "validate-bad-cases":
         return validate_bad_case_guards(root, strict=args.strict, verbose=args.verbose)
     if args.command == "validate-roadmap-maintenance":

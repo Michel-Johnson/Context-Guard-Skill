@@ -12,12 +12,15 @@ Use task cases for realistic multi-step verification. A task case should simulat
 - Last checked: YYYY-MM-DD
 - Design confirmation: pending | user-approved YYYY-MM-DD
 - Run policy: every-dev-completion | relevant-only | manual | release-only | goal-final | disabled-with-reason | user-defined cadence
+- Automation entry: native command | script path | prompt/manual runner | none
+- Artifact policy: cleanup-on-pass | preserve-on-fail | manual-preserve
 - Linked roadmap nodes: NODE-...
 - Linked bad cases: BC-..., BC-...
 - Entry command/prompt: command, prompt, manual setup, or fixture
 - Not covered: explicit exclusions to avoid fake confidence
 - Stop condition: what means the workflow is complete
 - Cleanup: required cleanup or none
+- Blocker handling: credentials | external service | permissions | resource limits | network | destructive confirmation | user judgment | none
 
 ## Phases
 
@@ -48,6 +51,12 @@ Rules:
 - Prefer one task case with clear checkpoints over many disconnected bug-level scripts when the same workflow is being exercised.
 - Link bad cases to the checkpoint that catches them.
 - Keep the task case realistic enough to match actual product or agent usage.
+- Once a test is approved, automate it when it can be safely encapsulated. Future Codex turns should run the registered entry instead of reinterpreting the test design.
+- Automated approved tests should be registered in `.codex/context/test-hub/registry.json` or represented by this approved task-case file with `Run policy: every-dev-completion` and an executable `Entry command/prompt`.
+- At development completion, run the approved always-run set through `context_guard.py dev-complete --root <project>` instead of manually reconstructing each test.
+- Automated task cases should clean temporary files after full success and preserve the smallest useful evidence on failure.
+- If the automated case fails, Codex should analyze the failed phase/checkpoint, record or update the bad case, fix in scope, and rerun the same approved test until it passes or a non-actionable blocker is reached.
+- If blocked by credentials, unavailable services, permissions, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, stop and ask or warn the user with the blocker and evidence path.
 - Keep checkpoint logs concise and useful for localizing failure.
 - Keep the case in `proposed` state until the user confirms the design.
 - Once the user confirms the design, default `Run policy` to `every-dev-completion`; lower the cadence only when the user explicitly asks.
