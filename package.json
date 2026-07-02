@@ -1,6 +1,6 @@
 {
   "name": "@michelj/context-guard",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Install and run the Context Guard Codex skill.",
   "repository": {
     "type": "git",
