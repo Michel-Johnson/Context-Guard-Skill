@@ -6,6 +6,10 @@
     "type": "git",
     "url": "git+ssh://git@github.com/Michel-Johnson/Context-Guard-Skill.git"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "bin": {
     "context-guard-skill": "bin/context-guard-skill.js",
     "context-guard": "bin/context-guard-skill.js"
