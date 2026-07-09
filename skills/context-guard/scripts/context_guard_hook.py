@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Lightweight lifecycle reminders for the Context Guard plugin.
 
-The hook initializes folder-scoped context on session start and nudges Codex to
-use the context-guard skill at the two moments where omission is most costly:
-prompt intake and turn stop.
+The hook initializes folder-scoped context on session/subagent start and nudges
+Codex to use the context-guard skill at the moments where omission is most
+costly: prompt intake, turn stop, and subagent stop.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from context_guard import approved_dev_completion_tests, context_dir, init_context
@@ -147,6 +149,107 @@ def hook_response(**payload: object) -> int:
     return 0
 
 
+SECRET_PATTERNS = [
+    re.compile(r"(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|private[_-]?key)\b\s*[:=]\s*([^\s,;]+)"),
+    re.compile(r"\bnpm_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+]
+EPHEMERAL_SECRET_PATTERN = re.compile(r"(?i)\b(otp|one[- ]?time password|验证码|一次性验证码)\b\s*[:=]?\s*([0-9]{4,8})?")
+
+
+def has_secret(text: str) -> bool:
+    return any(pattern.search(text) for pattern in SECRET_PATTERNS)
+
+
+def has_ephemeral_secret(text: str) -> bool:
+    return bool(EPHEMERAL_SECRET_PATTERN.search(text))
+
+
+def redact_user_message(text: str) -> str:
+    redacted = text
+    for pattern in SECRET_PATTERNS:
+        if pattern.groups >= 2:
+            redacted = pattern.sub(lambda m: f"{m.group(1)}=<redacted>", redacted)
+        else:
+            redacted = pattern.sub("<redacted-secret>", redacted)
+    redacted = EPHEMERAL_SECRET_PATTERN.sub(lambda m: f"{m.group(1)}=<redacted-ephemeral>", redacted)
+    return redacted
+
+
+def write_private_secret(ctx: Path, raw_text: str, redacted_text: str) -> str:
+    private_dir = ctx / "private"
+    private_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        private_dir.chmod(0o700)
+    except OSError:
+        pass
+    path = private_dir / "secrets.local.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    except json.JSONDecodeError:
+        data = []
+    if not isinstance(data, list):
+        data = []
+    secret_id = "USER-SECRET-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+    data.append(
+        {
+            "id": secret_id,
+            "created": datetime.now().isoformat(timespec="seconds"),
+            "redacted": redacted_text,
+            "raw": raw_text,
+            "note": "Local-only Context Guard secret memory. Do not copy into roadmap, HTML, git, logs, or final answers.",
+        }
+    )
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return secret_id
+
+
+def append_user_message(ctx: Path, text: str) -> tuple[str, str]:
+    clean = text.strip()
+    if not clean:
+        return "skipped", "empty prompt"
+    init_context(ctx.parent.parent)
+    path = ctx / "user-messages.md"
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    is_large = len(clean) > 1600 or clean.count("\n") > 30
+    ephemeral = has_ephemeral_secret(clean)
+    secret = has_secret(clean)
+    redacted = redact_user_message(clean)
+    secret_ref = ""
+    if secret and not ephemeral and len(clean) <= 4000:
+        secret_ref = write_private_secret(ctx, clean, redacted)
+    if is_large:
+        first_line = redacted.splitlines()[0][:240]
+        stored = f"Large user message or attachment; first line: {first_line}"
+        mode = "summary"
+    else:
+        stored = redacted
+        mode = "verbatim" if not secret and not ephemeral else "redacted"
+    if ephemeral:
+        secret_ref = "ephemeral-not-stored"
+        mode = "ephemeral"
+    body = path.read_text(encoding="utf-8") if path.exists() else "# User Message Memory\n\n## Recent User Signals\n\n"
+    if stored and stored in body[-4000:]:
+        return "skipped", "duplicate recent message"
+    entry = [
+        f"\n### {now}",
+        f"- Mode: {mode}",
+        f"- User message: {stored}",
+    ]
+    if secret_ref:
+        entry.append(f"- Secret pointer: {secret_ref}")
+    entry.append("- Use: Preserve this wording when deciding task direction, constraints, credentials, preferences, bad-case intake, or roadmap `User request` fields.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(entry) + "\n")
+    return "recorded", mode
+
+
 def run_test_hub_completion(root: Path) -> tuple[int, str]:
     ctx = context_dir(root)
     tests = approved_dev_completion_tests(ctx)
@@ -180,6 +283,43 @@ def completion_test_summary(output: str, code: int) -> str:
                 return f"all approved tests passed ({summary})"
             return f"approved tests are not all passing ({summary})"
     return "test hub status unknown; inspect `.codex/context/test-hub/last-run.json`"
+
+
+def completion_test_failure_details(root: Path, limit: int = 3) -> str:
+    path = context_dir(root) / "test-hub" / "last-run.json"
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        return ""
+    not_passing = [
+        item
+        for item in results
+        if isinstance(item, dict) and str(item.get("status", "")).strip().lower() in {"failed", "blocked"}
+    ]
+    if not not_passing:
+        return ""
+
+    pieces: list[str] = []
+    for item in not_passing[:limit]:
+        title = str(item.get("title") or item.get("id") or "unnamed test").strip()
+        status = str(item.get("status") or "failed").strip()
+        reason = str(item.get("reason") or "no reason recorded").strip()
+        log = str(item.get("log") or "").strip()
+        if log:
+            try:
+                log = str(Path(log).resolve().relative_to(root.resolve()))
+            except Exception:
+                pass
+        suffix = f"; log: {log}" if log else ""
+        pieces.append(f"{status}: {title} — {reason}{suffix}")
+    if len(not_passing) > limit:
+        pieces.append(f"+{len(not_passing) - limit} more; inspect `.codex/context/test-hub/last-run.json`")
+    return "; ".join(pieces)
 
 
 def prompt_text(raw: str) -> str:
@@ -322,6 +462,53 @@ def looks_like_test_creation(text: str) -> bool:
     return any(marker in lowered for marker in creation_markers) and any(marker in lowered for marker in test_markers)
 
 
+def looks_like_test_opportunity(text: str) -> bool:
+    lowered = text.lower()
+    opportunity_markers = [
+        "fix",
+        "bug",
+        "regression",
+        "workflow",
+        "flow",
+        "e2e",
+        "integration",
+        "ui",
+        "html",
+        "browser",
+        "frontend",
+        "backend",
+        "api",
+        "service",
+        "deploy",
+        "release",
+        "refactor",
+        "goal mode",
+        "long-running",
+        "修复",
+        "bug",
+        "问题",
+        "复发",
+        "回归",
+        "流程",
+        "链路",
+        "前端",
+        "后端",
+        "接口",
+        "服务",
+        "部署",
+        "发布",
+        "重构",
+        "页面",
+        "浏览器",
+        "远程",
+        "服务器",
+        "goal 模式",
+        "目标模式",
+        "长期",
+    ]
+    return any(marker in lowered for marker in opportunity_markers)
+
+
 def looks_like_explicit_branch(text: str) -> bool:
     lowered = text.lower()
     markers = [
@@ -430,25 +617,40 @@ def main() -> int:
         hook_log(f"[context-guard] apparent root source: {root_source}; apparent root: {root}")
         return hook_response()
 
-    if event == "session-start":
+    if event in {"session-start", "subagent-start"}:
         created = init_context(root)
+        label = "subagent context" if event == "subagent-start" else "folder context"
         if created:
-            hook_log(f"[context-guard] initialized folder context: {context_dir}")
+            hook_log(f"[context-guard] initialized {label}: {context_dir}")
         else:
-            hook_log(f"[context-guard] folder context ready: {context_dir}")
+            hook_log(f"[context-guard] {label} ready: {context_dir}")
         hook_log(f"[context-guard] project root: {root} ({root_source})")
         hook_log("[context-guard] context location rule: save project context only under `<opened local Codex project root>/.codex/context/`.")
         hook_log("[context-guard] use .codex/context/index.md for quick scan and .codex/context/roadmap.md for route nodes.")
         return hook_response()
 
     if event == "user-prompt-submit":
+        record_status, record_mode = append_user_message(context_dir, text)
         hints: list[str] = []
+        if record_status == "recorded":
+            if record_mode == "redacted":
+                hints.append("user message memory: saved latest prompt with secrets redacted; raw secret, if durable, is local-only under `.codex/context/private/`")
+            elif record_mode == "ephemeral":
+                hints.append("user message memory: saved latest prompt with one-time code redacted; raw ephemeral code was not persisted")
+            elif record_mode == "summary":
+                hints.append("user message memory: saved a concise summary of the latest large prompt instead of copying the full blob")
+            else:
+                hints.append("user message memory: saved latest short user prompt in `.codex/context/user-messages.md`")
+        else:
+            hints.append(f"user message memory: skipped ({record_mode})")
         if looks_like_goal_mode(text):
             hints.append("goal mode: align active goal with current context and record roadmap/bad-case checkpoints during long-running work")
         if looks_like_remote_work(text):
             hints.append("remote/SSH work: keep `.codex/context` in the local Codex workspace; record remote host/path as metadata and do not initialize roadmap context on the server unless explicitly requested")
         if looks_like_test_creation(text):
             hints.append("explicit test creation: start the user-visible response with `测试创建识别：...`, summarize the test target from state A to state B, and only create durable tests after the user's design is clear or confirmed")
+        elif looks_like_test_opportunity(text):
+            hints.append("test opportunity: if this task changes a reusable workflow, fixes a recurring/user-visible bug, or is likely to regress, gently ask whether the user wants to create a test task; keep it optional and do not create durable tests without approval")
         if looks_like_explicit_branch(text):
             hints.append("explicit branch task: create/select a branch task by running `context_guard.py create-branch-task --title <task title> --branch <branch name> --parent-node <parent NODE id>` before implementation; verify the roadmap node has Branch: and Parent:")
         elif looks_like_route_drift(text):
@@ -467,15 +669,17 @@ def main() -> int:
         hook_log(f"[context-guard] route map: {roadmap_path}")
         return hook_response()
 
-    if event == "stop":
-        hook_log("[context-guard] run turn-end checkpoint before finalizing or updating a goal: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links.")
+    if event in {"stop", "subagent-stop"}:
+        lifecycle_label = "SubagentStop" if event == "subagent-stop" else "Stop"
+        hook_log(f"[context-guard] {lifecycle_label} checkpoint: update index, route map nodes, parked/resume tasks, and relevant bad-case/test-chain links before finalizing.")
         hook_log("[context-guard] COMPLETION RELIABILITY GATE: use existing user screenshots/logs/reproductions as red evidence when available; implement once the cause is clear, then run the smallest real post-fix check. Default budget is one primary check plus at most two highly relevant bad-case guards.")
         hook_log("[context-guard] BAD-CASE GUARD GATE: newly checked resolved or recurred BC entries need Guard type, Red condition, Green condition, Expected failure reason, and a red-capable Guard / verification; run `context_guard.py validate-bad-cases` only after register/schema/renderer edits, or `--strict` when intentionally migrating/checking all resolved cases.")
         hook_log("[context-guard] GUARD SELECTION GATE: do not run every historical guard and do not manufacture new red tests when credible evidence already exists. Select guards by changed files, feature area, route branch, tags, and original user-visible symptom; skip unrelated resolved cases.")
-        hook_log("[context-guard] TEST HUB GATE: Stop hook runs `context_guard.py dev-complete --root <project>` so the hub executes every human-approved `every-dev-completion` test, cleans success artifacts, and preserves failed/blocked evidence. Do not treat ordinary bad-case guards or roadmap Test chain notes as registered tests.")
+        hook_log("[context-guard] TEST HUB GATE: Stop/SubagentStop hooks run `context_guard.py dev-complete --root <project>` so the hub executes every human-approved `every-dev-completion` test, cleans success artifacts, and preserves failed/blocked evidence. Do not treat ordinary bad-case guards or roadmap Test chain notes as registered tests.")
         hook_log("[context-guard] TASK-CASE GATE: when a workflow has multiple phases, prefer one relevant task case from `.codex/context/task-cases/` with phase/checkpoint logs over many isolated bug-level tests; report the failed phase/checkpoint if it breaks.")
         hook_log("[context-guard] TEST BLOCKER GATE: if approved tests are blocked by credentials, external service outage, permission denial, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, stop and ask/warn the user with the exact blocker and evidence path.")
         hook_log("[context-guard] TASK-CASE DESIGN GATE: before writing a new durable task-case script for a complex workflow, ask the user to confirm a short business-facing proposal: from what state to what state, main task, and major risk; keep technical details inside the task-case file, or keep it `proposed` if unavailable.")
+        hook_log("[context-guard] TEST OPPORTUNITY GATE: if this turn changed a reusable workflow, fixed a recurring/user-visible bug, or created a phase that is likely to regress, include a brief optional nudge asking whether the user wants to create a test task. Do not create durable tests unless the user confirms.")
         hook_log("[context-guard] GOAL-MODE TEST GATE: in goal mode, use task cases as phase gates; log current phase progress and run the smallest approved path before claiming goal completion instead of silently creating broad new tests.")
         hook_log("[context-guard] ROADMAP CHECKPOINT GATE: assess whether this turn deserves a roadmap node. Create one only for meaningful progress, a route decision, a fix, a branch/fork, a user-visible milestone, or stale hidden checkpoints; otherwise say no roadmap node was needed and why.")
         hook_log("[context-guard] If a node is needed, run `context_guard.py checkpoint-roadmap-node --title <short title> --branch <Main or route> --level <major|checkpoint> --outcome <one-line progress> --next-step <next>` and include linked BC/test-chain notes when relevant.")
@@ -496,11 +700,16 @@ def main() -> int:
                 + completion_test_summary(test_output, test_code)
             )
             if test_code != 0:
+                details = completion_test_failure_details(root)
+                if details:
+                    hook_log("[context-guard] failing approved test details: " + details)
                 reason = (
                     "Context Guard Test Hub found failed or blocked approved tests. "
                     "Read `.codex/context/test-hub/last-run.json` and preserved run evidence, "
                     "then fix or report the blocker before finalizing."
                 )
+                if details:
+                    reason += " Failing tests: " + details
                 hook_log(f"[context-guard] TEST HUB BLOCKER: {reason}")
                 return hook_response(decision="block", reason=reason)
         except subprocess.TimeoutExpired:
@@ -509,6 +718,29 @@ def main() -> int:
             return hook_response(decision="block", reason=reason)
         except Exception as exc:
             hook_log(f"[context-guard] test hub hook warning: {exc}")
+        try:
+            auto_propose = subprocess.run(
+                [
+                    sys.executable,
+                    str(SKILL_ROOT / "scripts" / "context_guard.py"),
+                    "feature-chain-auto-propose",
+                    "--root",
+                    str(root),
+                    "--from-hook",
+                ],
+                cwd=str(root),
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+            output = (auto_propose.stdout + auto_propose.stderr).strip()
+            if output:
+                for line in output.splitlines():
+                    hook_log(line)
+            if auto_propose.returncode != 0:
+                hook_log(f"[context-guard] feature-chain auto-propose warning: exit {auto_propose.returncode}")
+        except Exception as exc:
+            hook_log(f"[context-guard] feature-chain auto-propose warning: {exc}")
         open_cases = unresolved_bad_cases(bad_cases_path)
         hook_log("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
         hook_log(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")

@@ -7,9 +7,18 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const packageRoot = path.resolve(__dirname, "..");
-const sourceSkillDir = path.join(packageRoot, "skills", "context-guard");
+const sourceSkillDir = packageRoot;
 const sourceHooksPath = path.join(packageRoot, "hooks.json");
 const pythonScript = path.join(sourceSkillDir, "scripts", "context_guard.py");
+const skillInstallEntries = [
+  "SKILL.md",
+  "README.md",
+  "README.zh-CN.md",
+  "agents",
+  "references",
+  "scripts",
+  "tests"
+];
 
 function usage() {
   console.log(`Context Guard Skill
@@ -96,7 +105,13 @@ function copySkill(target, dryRun) {
   }
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.cpSync(sourceSkillDir, target, { recursive: true });
+  fs.mkdirSync(target, { recursive: true });
+  for (const entry of skillInstallEntries) {
+    const from = path.join(sourceSkillDir, entry);
+    if (!fs.existsSync(from)) continue;
+    const to = path.join(target, entry);
+    fs.cpSync(from, to, { recursive: true });
+  }
   console.log(`[context-guard-skill] installed skill: ${target}`);
 }
 

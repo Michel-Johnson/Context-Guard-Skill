@@ -17,8 +17,9 @@ Context is a navigation aid, not a transcript. Record only information that help
 2. Keep major roadmap nodes for significant changes only; record small implementation updates as `Level: checkpoint`.
 3. Keep task context to key points only: objective, constraints/decisions, open questions, touched areas, and next step.
 4. Record a bad case only when it is user-visible, recurring, risky, fixed, deferred, or needed to explain a guard.
-5. Prefer one-line summaries. If a detail is not needed for resume, route choice, or recurrence prevention, omit it.
-6. When exporting or displaying context, show the shortest useful view first and leave secondary details folded or linked.
+5. Treat the user's own wording as context when it contains requirements, preferences, constraints, credentials, route changes, or bad-case reports. Preserve short user messages without turning context into a full transcript.
+6. Prefer one-line summaries. If a detail is not needed for resume, route choice, or recurrence prevention, omit it.
+7. When exporting or displaying context, show the shortest useful view first and leave secondary details folded or linked.
 
 ## Context Folder
 
@@ -46,14 +47,16 @@ Do not use the active chat/thread name, the skill installation directory, a remo
 3. Maintain the quick-browse index at `.codex/context/index.md`.
 4. Maintain the main route map at `.codex/context/roadmap.md`.
 5. Maintain folder preferences at `.codex/context/preferences.json`.
-6. Store task-specific context under `.codex/context/tasks/<task-id>/`.
-7. Store task-oriented evaluation scenarios under `.codex/context/task-cases/` when a reusable long workflow is more useful than isolated bug checks.
-8. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`.
-9. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
-10. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
-11. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
-12. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
-13. Use `references/register-template.md` when creating or updating bad-case entries.
+6. Maintain user-message memory at `.codex/context/user-messages.md`.
+7. Store local-only sensitive memory under `.codex/context/private/`; keep it gitignored and never project it into HTML.
+8. Store task-specific context under `.codex/context/tasks/<task-id>/`.
+9. Store task-oriented evaluation scenarios under `.codex/context/task-cases/` when a reusable long workflow is more useful than isolated bug checks.
+10. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`.
+11. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
+12. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
+13. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
+14. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
+15. Use `references/register-template.md` when creating or updating bad-case entries.
 
 Do not store project context inside the skill directory. If a command would use `/Users/.../.agents/skills/context-guard` or another installed skill path as the implicit root, stop and rerun it from the opened Codex workspace or pass the workspace with `--root`. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
 
@@ -79,6 +82,20 @@ Context records need a folder-scoped language preference so Codex does not mix l
 6. If the user asks to change language later, update `.codex/context/preferences.json` and use the new language going forward.
 7. Do not bulk-translate historical records unless the user explicitly asks for migration.
 8. The HTML roadmap follows the folder language preference by default. Do not show a visible language selector in the human-facing roadmap unless the user explicitly asks for one.
+
+## User Message Memory
+
+User messages are not disposable chat noise. Short user instructions, corrections, preferences, constraints, route hints, server connection details, credentials needed for the current task, and bad-case reports must be preserved in project context so a later Codex turn does not ask the user to repeat them.
+
+1. At `UserPromptSubmit` or turn start, record the latest user prompt in `.codex/context/user-messages.md` when it contains durable context. For normal short prompts, keep the user's wording as written or near-verbatim.
+2. Do not store every long pasted file, log, generated artifact, or giant attachment. For large inputs, record the file/source, purpose, first meaningful line or summary, and critical identifiers only.
+3. Keep `.codex/context/user-messages.md` agent-readable and concise: recent user signals plus durable constraints. Promote stable requirements into the active task context or roadmap `User request:` fields, then archive stale chatter.
+4. Preserve exact code identifiers, paths, hosts, ports, commands, API names, and error messages unless they are secrets.
+5. Never put raw secrets in `index.md`, `roadmap.md`, `bad-cases.md`, task context, Roadmap HTML, exported JSON/Markdown, logs, README, git-tracked files, or final answers.
+6. If the user explicitly provides a credential, token, password, or similar secret that future Codex turns need, store the raw value only in `.codex/context/private/secrets.local.json` with local-only permissions or an OS credential store. In public context, record only a redacted pointer such as `USER-SECRET-...`.
+7. Do not persist one-time codes such as OTP or short-lived verification codes. Record only a redacted note that a one-time code was supplied.
+8. If safe private storage is unavailable, record a redacted note and ask the user to re-provide the secret or use a secure store when needed.
+9. When creating a roadmap node, derive `User request:` from the preserved user wording rather than from implementation logs, `Outcome`, or `Decision / reason`.
 
 ## Dynamic Task Index
 
@@ -155,10 +172,9 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - In single-route overview mode, keep the board content-height compact: main route cards should size to content, and summaries may use up to three readable lines before truncation.
 - When there are multiple route groups, show all route lines together as a branch overview so users can see where each side route forked. Do not show a separate always-visible bad-case/test-chain drilldown under the route map; keep detailed case/check relationships in source context and agent-readable exports.
 - In multi-route branch overview, treat route cards as a compact map skeleton: show the number, title, and small date/status cues only. Hide outcome summaries from the visible cards and keep them in same-file details/source context.
-- When user-approved tests exist, show a compact test route directly under the route cards in multi-route overview. Align each visible test slot to the corresponding roadmap node column, so users can see which task phase has approved recurrence coverage.
-- If no user-approved tests exist for a route, do not show a test route for that route at all.
-- Empty test slots should be thin timeline placeholders only when the route has at least one approved test elsewhere; do not create blank cards or "no test" messages.
-- Test route items must come from user-approved tests with an explicit `Run policy`, approved task-case checkpoints, or approved test registry entries. Do not treat ordinary linked bad-case guards as tests unless the user approved them as tests and a run policy is recorded. Do not populate the human-facing test route from roadmap node development logs.
+- Do not show a compact test route, bad-case lane, recurrence-check lane, or node-linked test notes in the default overview. Keep the overview focused on route nodes only.
+- Keep user-approved tests, bad cases, and recurrence checks in clicked node details, the Test Hub page, and agent-readable exports. Do not create a second row of cards under route nodes for this information.
+- Do not show empty test slots, "no test" placeholders, or compact test cards under roadmap nodes.
 - Show parent/fork markers only for side routes whose parent node belongs to another route. Never show a fork marker on the Main route merely because a later main node references an earlier node.
 - In branch overview, visually align each side route's starting position to the parent node's visible position on its parent route. Do not render every side route from the first column.
 - Place branch route titles, parent chips, and checkpoint text near that branch's first visible card by using the same spacer/grid coordinate as the branch cards. Do not leave branch labels pinned to the far-left edge when the branch starts later.
@@ -211,6 +227,7 @@ Do not use roadmap.html as a context source. The HTML file is only a human-facin
 For Codex context intake, checkpointing, bad-case review, and task switching, read the source context files directly:
 
 - `.codex/context/index.md`
+- `.codex/context/user-messages.md`
 - `.codex/context/roadmap.md`
 - `.codex/context/bad-cases.md`
 - `.codex/context/tasks/<task-id>/context.md`
@@ -225,8 +242,8 @@ The HTML roadmap is a route-grouped board:
 1. A roadmap may contain multiple route groups, using `Branch:` on nodes. Missing `Branch:` means `Main`.
 2. Horizontal movement inside each route group follows that route's nodes over time.
 3. If there is only one route group, the default overview shows only the main route cards. Bad cases and test-chain notes stay in clicked node details and agent-readable context.
-4. If there are multiple route groups, the overview first shows all route lines as a branch map with parent/fork markers and a compact test line aligned under the visible route nodes. Selecting a route may change the route focus state, but it must not open a separate always-visible bad-case/test-chain drilldown below the map.
-5. Linked bad cases and verification chain should appear only as compact node-aligned route details, while full details stay in source context and agent-readable exports.
+4. If there are multiple route groups, the overview first shows all route lines as a branch map with parent/fork markers. Selecting a route may change the route focus state, but it must not open a separate always-visible bad-case/test-chain drilldown below the map.
+5. Linked bad cases and verification chain should appear only in clicked node details, the Test Hub page, source context, and agent-readable exports.
 
 Treat a single-route roadmap as the user's mainline summary first, not as a three-lane board. Treat multi-route roadmaps as route navigation first, with compact bad-case/test coverage scoped to the visible route. Use `Parent:` when a branch forks from an earlier node.
 
@@ -247,35 +264,39 @@ The core artifact is context, not scripts. Record enough context that a future C
 
 1. Test design is human-owned. Codex may run existing tests, execute user-provided checks, or draft a short proposed check, but it must not silently design durable tests, task cases, guard scripts, or broad verification plans on the user's behalf.
 2. When the user explicitly asks to create, write, generate, design, or add a test / testing task / task case, the first user-visible sentence must acknowledge that Context Guard recognized a test-creation request. Use the folder language and a compact style such as `测试创建识别：我会先把测试目标确认成一句话：从 <起点> 到 <终点>，主要验证 <风险/行为>。` This visible intake is required so the user knows the test mechanism activated.
-3. Treat a user-approved test case, user-provided reproduction, native project test, or existing recorded guard as the source of truth. Codex can structure it, link it to bad cases, run it, and log results.
-4. When the user creates or approves a test, register it with `Run policy: every-dev-completion` by default. This means every development turn that changes code, behavior, UI, workflow, docs with behavior rules, or project artifacts must run that test before the final answer.
-5. Only change a registered test's run policy when the user says it does not need to run every time. Supported policies: `every-dev-completion`, `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a user-defined cadence. Record the user's reason next to the policy.
-6. Prefer the existing `Guard / verification` note on the bad case: it may be a command, native test, manual check, screenshot comparison, log invariant, reproduction note, or script.
-7. Reuse recorded commands, tests, and manual checks before proposing any new check.
-8. After a test design is user-approved, prefer automation when the check can be safely and repeatably encapsulated as a native project test, command, script, or task-case runner. The goal is to reduce future Codex judgment: already-built tests should run automatically and report structured results.
-9. Do not turn every bad case into a script. Create or update a durable script only when the user explicitly asked for it or confirmed the proposed test design, and the check is repeatable, valuable, and cheaper than repeatedly reconstructing it.
-10. If a user-approved script is justified and does not belong in the native test suite, place it under `.codex/context/bad-case-tests/`, for example `.codex/context/bad-case-tests/BC-YYYYMMDD-001.sh`.
-11. Scripted tests and task-case runners should own their temporary workspace. On full success, they should clean up generated temporary files automatically. On failure, they should preserve the smallest useful artifacts, logs, screenshots, fixtures, or temp directory path needed for Codex to diagnose the bad case.
-12. If an approved automated test fails, Codex must analyze the failed phase/checkpoint or artifact, record/update the bad case, fix the cause when within scope, and rerun the same approved test until it passes or an external blocker is reached.
-13. If a test cannot proceed because of a non-actionable blocker such as missing credentials, unavailable external service, permission denial, hardware/resource limits, network outage, destructive-risk confirmation, or user-only domain judgment, stop the loop and ask or warn the user with the exact blocker and the preserved evidence path.
-14. Record why the chosen guard is enough. If the guard is manual-only, record the exact manual steps and why automation is not currently worth it.
-15. Add tags and frequency notes for recurring bad cases, such as `#hot`, `#flaky`, `#ui`, `#data-loss`, or `#route-risk`, so Codex can quickly spot high-risk patterns.
-16. Treat each resolved bad case guard as a red-capable recurrence signal: it must be able to catch the original symptom if it returns, not merely prove that related code ran.
-17. For resolved or recurred cases, record `Guard type`, `Red condition`, `Green condition`, `Expected failure reason`, and `Run policy` in addition to `Guard / verification`.
-18. When a new guard is needed but no human-approved design exists, write it as `proposed` with a short confirmation prompt instead of creating or running a durable test.
-19. Promote repeated or high-frequency bad cases into fixed pressure checks only after the user approves that pressure check.
-20. Keep verification proportional for agent-selected ad hoc checks, but do not use the verification budget to skip user-approved tests whose policy is `every-dev-completion`.
-21. Default verification budget for ordinary turns is one primary check plus the complete human-approved `every-dev-completion` test set, plus at most two extra relevant bad-case guards. Exceed this only when the user-approved always-run set requires it, or for high-risk, shared, release, security/data-loss, or user-requested exhaustive work.
-22. Select extra guards by overlap: changed files, feature area, route branch, bad-case tags, and the original user-visible symptom. Skip unrelated resolved cases unless their `Run policy` says they must run every development completion.
-23. Prefer existing native project tests or one focused symptom check over adding new `.codex/context/bad-case-tests/` scripts. Add a new script only after explicit user approval.
-24. Do not let guard work become an agent-created testing loop. If the user-approved always-run suite is too broad or expensive, ask the user which tests to demote instead of silently skipping or redesigning it.
-25. Do not import a strict test-first workflow into every task. Context Guard requires credible evidence, not always a newly written failing test. For urgent bugs, remote patches, UI polish, or small documentation/skill edits, existing user evidence plus one targeted verification is enough unless the user asks for TDD or the risk is high.
+3. When a task changes user-visible behavior, fixes a recurring bug, touches a multi-step workflow, changes UI/HTML/browser behavior, updates remote/service operations, or enters goal-mode work, gently remind the user that this may be a good moment to create a reusable test task. Keep the reminder optional and one sentence, for example: `这个流程后续可能会复发，要不要把它沉淀成一个测试任务？`
+4. Do not ask for a test task on every turn. Skip the reminder when the task is purely conversational, already covered by an approved test, very small, or the user has recently declined/demoted similar coverage.
+5. Treat a user-approved test case, user-provided reproduction, native project test, or existing recorded guard as the source of truth. Codex can structure it, link it to bad cases, run it, and log results.
+6. When the user creates or approves a test, register it with `Run policy: every-dev-completion` by default. This means every development turn that changes code, behavior, UI, workflow, docs with behavior rules, or project artifacts must run that test before the final answer.
+7. Only change a registered test's run policy when the user says it does not need to run every time. Supported policies: `every-dev-completion`, `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a user-defined cadence. Record the user's reason next to the policy.
+8. Prefer the existing `Guard / verification` note on the bad case: it may be a command, native test, manual check, screenshot comparison, log invariant, reproduction note, or script.
+9. Reuse recorded commands, tests, and manual checks before proposing any new check.
+10. After a test design is user-approved, prefer automation when the check can be safely and repeatably encapsulated as a native project test, command, script, or task-case runner. The goal is to reduce future Codex judgment: already-built tests should run automatically and report structured results.
+11. Do not turn every bad case into a script. Create or update a durable script only when the user explicitly asked for it or confirmed the proposed test design, and the check is repeatable, valuable, and cheaper than repeatedly reconstructing it.
+12. If a user-approved script is justified and does not belong in the native test suite, place it under `.codex/context/bad-case-tests/`, for example `.codex/context/bad-case-tests/BC-YYYYMMDD-001.sh`.
+13. Scripted tests and task-case runners should own their temporary workspace. On full success, they should clean up generated temporary files automatically. On failure, they should preserve the smallest useful artifacts, logs, screenshots, fixtures, or temp directory path needed for Codex to diagnose the bad case.
+14. If an approved automated test fails, Codex must analyze the failed phase/checkpoint or artifact, record/update the bad case, fix the cause when within scope, and rerun the same approved test until it passes or an external blocker is reached.
+15. If a test cannot proceed because of a non-actionable blocker such as missing credentials, unavailable external service, permission denial, hardware/resource limits, network outage, destructive-risk confirmation, or user-only domain judgment, stop the loop and ask or warn the user with the exact blocker and the preserved evidence path.
+16. Record why the chosen guard is enough. If the guard is manual-only, record the exact manual steps and why automation is not currently worth it.
+17. Add tags and frequency notes for recurring bad cases, such as `#hot`, `#flaky`, `#ui`, `#data-loss`, or `#route-risk`, so Codex can quickly spot high-risk patterns.
+18. Treat each resolved bad case guard as a red-capable recurrence signal: it must be able to catch the original symptom if it returns, not merely prove that related code ran.
+19. For resolved or recurred cases, record `Guard type`, `Red condition`, `Green condition`, `Expected failure reason`, and `Run policy` in addition to `Guard / verification`.
+20. When a new guard is needed but no human-approved design exists, write it as `proposed` with a short confirmation prompt instead of creating or running a durable test.
+21. Promote repeated or high-frequency bad cases into fixed pressure checks only after the user approves that pressure check.
+22. Keep verification proportional for agent-selected ad hoc checks, but do not use the verification budget to skip user-approved tests whose policy is `every-dev-completion`.
+23. Default verification budget for ordinary turns is one primary check plus the complete human-approved `every-dev-completion` test set, plus at most two extra relevant bad-case guards. Exceed this only when the user-approved always-run set requires it, or for high-risk, shared, release, security/data-loss, or user-requested exhaustive work.
+24. Select extra guards by overlap: changed files, feature area, route branch, bad-case tags, and the original user-visible symptom. Skip unrelated resolved cases unless their `Run policy` says they must run every development completion.
+25. Prefer existing native project tests or one focused symptom check over adding new `.codex/context/bad-case-tests/` scripts. Add a new script only after explicit user approval.
+26. Do not let guard work become an agent-created testing loop. If the user-approved always-run suite is too broad or expensive, ask the user which tests to demote instead of silently skipping or redesigning it.
+27. Do not import a strict test-first workflow into every task. Context Guard requires credible evidence, not always a newly written failing test. For urgent bugs, remote patches, UI polish, or small documentation/skill edits, existing user evidence plus one targeted verification is enough unless the user asks for TDD or the risk is high.
 
 Preferred bad-case source format is one `### BC-YYYYMMDD-001: Title` section per case with bullet fields below it. If a legacy or interrupted session wrote loose bullet blocks with fields such as `ID`, `Title`, `Status`, and `Nodes`, the roadmap projector should still recognize those blocks instead of showing "No linked bad cases"; normalize them back to formal sections when editing the source file.
 
 Recording and display must stay connected. Every bad case that should appear on a roadmap must have either `Roadmap nodes:` / `Nodes:` pointing to one or more `NODE-...` IDs, or the roadmap node must list that case under `Linked bad cases:`. Do not rely on task-level proximity alone.
 
 ### Feature-Oriented Test Chains
+
+When designing or updating a feature chain, read `references/feature-chain-methodology.md`.
 
 Use as few durable test chains as possible to cover as many bad-case recurrence checks as possible. The durable testing unit is a feature or workflow chain, not an individual bad case.
 
@@ -289,9 +310,11 @@ A feature chain has:
 When a new bad case appears:
 
 1. First ask whether it belongs to an existing feature chain.
-2. If it does, attach the bad case to the matching chain node and strengthen that node's checkpoint instead of creating a separate long-lived test.
-3. If no existing chain matches the feature or workflow, propose a new feature chain with the same short human-facing confirmation style as task cases.
-4. Only approve or automate the chain after user confirmation, unless the user explicitly provided the exact test to implement.
+2. Use `feature-chain-plan --query <bad-case or feature text>` as the default intake before proposing a new chain. This command is read-only; it says whether to review an existing chain or propose a new chain, shows match evidence for strong candidates, and must not approve or mutate coverage.
+3. Use `feature-chain-suggest --query <bad-case or feature text>` when you only need raw candidate chains/checkpoints.
+4. If a strong existing-chain match is semantically correct, attach the bad case to the matching chain node and strengthen that node's checkpoint instead of creating a separate long-lived test.
+5. If no existing chain matches the feature or workflow, propose a new feature chain with the same short human-facing confirmation style as task cases.
+6. Only approve or automate the chain after user confirmation, unless the user explicitly provided the exact test to implement.
 
 Store feature chains in `.codex/context/test-hub/feature-chains.json`. Use:
 
@@ -300,8 +323,7 @@ python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-ad
   --root <project> \
   --title "GPU 监控按钮" \
   --entry "点击 GPU 监控按钮" \
-  --exit-check "打开包含有效 grafana_url 的监控页" \
-  --command-text "<approved command>"
+  --exit-check "打开包含有效 grafana_url 的监控页"
 
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-attach-bc \
   --root <project> \
@@ -309,9 +331,66 @@ python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-at
   --node-title "后端返回监控 URL" \
   --bad-case BC-YYYYMMDD-001 \
   --check "grafana_url 不为空且前端没有卡住"
+
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-suggest \
+  --root <project> \
+  --query "GPU 监控点击后没有打开 grafana_url"
+
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py feature-chain-plan \
+  --root <project> \
+  --query BC-YYYYMMDD-001
 ```
 
-Approved feature chains with `Run policy: every-dev-completion` are included in `dev-complete` and the Stop hook. Relevant-only or proposed chains remain context until the user approves or asks to run them.
+`feature-chain-plan` is the safest first step for Codex. If it finds a strong existing match, it prints `action: review-existing-chain`, the candidate chain/checkpoint, short `match evidence`, and an after-confirmation attach-command skeleton. If it does not find a strong match, it prints `action: propose-new-chain` plus a compact confirmation prompt and a `feature-chain-propose` command skeleton, not `feature-chain-add`. The skeleton must include one concrete checkpoint (`--node-title` and `--check`) plus either `--bad-cases` when the query came from real bad-case coverage, or `--coverage-pending-reason` when it is only a user-described test target. When the query is a `BC-...` ID, the confirmation prompt must use the bad-case title or display summary instead of the opaque ID so the user can judge the business flow. It must not create feature chains, attach bad cases, or approve automation; the skeleton is only for use after user confirmation.
+
+For natural-language test requests, the confirmation prompt should strip request scaffolding such as "写一个测试", "创建测试任务", "检验", "验证", or "每次开发完成后" and keep the short business behavior/risk phrase. If the user explicitly describes a workflow as "从 A 到 B，主要验证 C", preserve that entry/exit/risk shape in the confirmation prompt instead of replacing it with generic wording, and use the stated entry/exit to prefill the after-confirmation command skeleton. The stated risk may be printed as a suggested checkpoint, but it remains a confirmation aid only. Preserve the original query in debug output if useful, but the user-facing confirmation prompt should read like a compact test goal rather than a copied chat sentence.
+
+`feature-chain-suggest` may receive a natural-language symptom or a `BC-...` ID. When a `BC-...` ID is provided, it should expand the query from `bad-cases.md` using that case's title, summary, phenomenon, trigger, root cause, and tags before scoring candidate chains. The command remains read-only; it suggests where to attach coverage but must not mutate the registry.
+
+`feature-chain-add` defaults to `status: proposed` even when a command is supplied. A proposed chain is non-executable context and must not enter the always-run suite. Do not use `feature-chain-add --test-status approved` for `every-dev-completion` chains; the command must refuse that path because it skips the human confirmation and approval dry-run gates. Create or keep the chain as `proposed`, then use `feature-chain-approve` after the user confirms the flow and automation.
+
+After the user confirms a candidate flow but before approving automation, prefer `feature-chain-propose --title ... --entry ... --exit-check ... --node-title ... --bad-cases ... --check ...`. It creates one proposed chain with seed bad-case coverage and a checkpoint, but writes no executable command and must not run in `dev-complete`.
+
+If the user confirms a feature-oriented test target before any concrete bad case exists, use `feature-chain-propose` with `--coverage-pending-reason <why coverage is pending>` instead of inventing a fake bad case. This records a proposed chain and checkpoint for future attachment, but it is not active coverage, cannot be approved for `every-dev-completion`, and should be revisited when a real bad case or user-provided recurrence risk is available.
+
+When a later bad case matches a `coverage_pending_reason` chain or checkpoint, prefer attaching it to that proposed checkpoint with `feature-chain-attach-bc` instead of creating a new chain. After the first real bad case is attached, the pending-coverage note should be removed from that checkpoint because it now has concrete recurrence coverage.
+
+Before approving an automation command for a proposed chain, use `feature-chain-dry-run --chain-id <id> --command-text "<candidate command>"` when the command or checkpoint markers are not yet proven. Dry run checks the proposed chain's checkpoint markers, cleans success artifacts, preserves failure evidence, and must not mutate the chain, approve it, or add it to `dev-complete`.
+
+After the user confirms the business flow and test design, promote the same chain with `feature-chain-approve --chain-id <id> --command-text "<approved command>"`. This is the only supported path for turning a proposed `every-dev-completion` feature chain into an approved automated test. The approval gate must refuse chains that have no checkpoint node, no checkpoint check text, no linked bad-case coverage, or no automated command. It must also run an approval dry-run before mutating the registry; if required checkpoint markers are missing, unknown, failing, blocked, or timed out, the chain must remain `proposed`. Do not bypass approval by hand-editing `feature-chains.json`, by using `feature-chain-add --test-status approved`, or by creating a duplicate approved chain.
+
+Feature-chain commands may emit checkpoint markers so Test Hub can localize failures without Codex reinterpreting the whole log:
+
+```text
+CG_CHECKPOINT:<checkpoint title or id>:PASS
+CG_CHECKPOINT:<checkpoint title or id>:FAIL:<short reason>
+```
+
+For feature-chain tests, any `FAIL` marker is a failed test even if the command exits 0. Use these markers for important workflow phases so the final report says which checkpoint broke, not only that the chain failed.
+
+Checkpoint marker names must match a registered feature-chain checkpoint title or id. An unknown marker is a test-chain failure because it means the automated script has drifted from the approved feature-chain design. For non-English checkpoint titles, preserve the readable title; do not collapse distinct checkpoints into generic IDs such as `test`.
+
+Approved feature-chain commands must emit a marker for every registered checkpoint unless that checkpoint is explicitly marked optional (`optional: true` or `required: false`). A missing marker is a test-chain failure because the run did not prove that the approved workflow step was exercised.
+
+If a registered checkpoint should not be required on every run, update the existing checkpoint with `feature-chain-set-checkpoint --chain-id <id> --node-title <checkpoint> --required optional --reason <short reason>`. Do not hand-edit `feature-chains.json`, remove the checkpoint, or silently ignore missing markers. Use `--required required` when the user later wants that checkpoint restored to every-run coverage.
+
+Use `feature-chain-list --verbose` to audit each chain's required/optional checkpoint counts and optional reasons without opening `feature-chains.json`.
+
+Use `feature-chain-summary` as the fast coverage view before creating or updating test coverage. It shows the small map of feature chain -> checkpoint -> covered bad-case titles, plus any pending checkpoints waiting for a real bad case. It also prints lightweight reuse signals, such as coverage density and whether one workflow already covers multiple bad cases. Prefer this summary when deciding whether one existing chain can absorb a new bad case instead of creating another test.
+
+Use `feature-chain-overlap` before approving automation or when several proposed chains look similar. It is a read-only duplicate-chain audit: it compares chain entries, exits, checkpoints, and linked bad cases, then prints candidate pairs that may belong to the same workflow. If it reports overlap, review whether one chain should absorb the other before creating or approving another always-run test.
+
+Use `feature-chain-coverage` to see which registered bad cases are already covered by feature-chain checkpoints and which remain unassigned candidates. For each visible unassigned candidate, it may show the most likely existing chain and checkpoint based on the bad-case semantics. Strong suggestions should include short `match evidence` terms so Codex and the user can judge why the candidate was suggested. This is a planning aid, not a mandate to create tests for every unassigned bad case, and it must not automatically attach coverage or approve tests.
+
+Use `feature-chain-candidates` when many bad cases remain unassigned and Codex needs a small set of feature-chain candidates instead of a long case list. It groups unassigned bad cases by shared feature tags, prefers more specific tag combinations over broad single tags, hides cases already covered by existing feature chains, suppresses low-value repeated candidate groups, and prints compact confirmation prompts with `new coverage` counts. Treat the output as planning hints only: ask the user which candidate flow is real before creating a proposed chain or automation.
+
+When an approved feature-chain test fails or is blocked, the completion report must be actionable without rereading the full log: include the feature-chain title, the failed or missing checkpoint, the short reason, and the preserved evidence path. Keep long logs as evidence only.
+
+If the user later says an approved feature chain should not run every time, use `feature-chain-set-policy --chain-id <id> --run-policy <policy> --reason <short reason>` on the existing chain. Do not delete the chain or create a duplicate just to change cadence.
+
+Use `validate-feature-chains` after editing feature-chain records or before relying on a new chain as durable coverage. This validation is a quality gate only: it checks structural readiness, checkpoint coverage, approved automation, and artifact policy, but it does not decide whether the business test should exist.
+
+Approved feature chains with `Run policy: every-dev-completion` are included in `dev-complete` and the Stop/SubagentStop hooks. Relevant-only or proposed chains remain context until the user approves or asks to run them.
 
 ### Task-Oriented Test Cases
 
@@ -411,12 +490,28 @@ Use the Test Hub as the automation control plane for approved tests. The hub col
 - A registry entry with `status: approved | active | stable` and `run_policy: every-dev-completion` is part of the always-run set.
 - Manage registry tests with `test-hub-list`, `test-hub-enable`, `test-hub-disable`, `test-hub-set-policy`, and `test-hub-remove`.
 - Use `show-test-hub` to write the stable read-only human-facing page at `.codex/context/test-hub/test-hub.html`.
-- The Test Hub HTML is a status page only. Do not make users start tests from HTML buttons; approved tests run from the Stop hook or `dev-complete`.
+- The Test Hub HTML is a status page only. Do not make users start tests from HTML buttons; approved tests run from the Stop/SubagentStop hooks or `dev-complete`.
+- In the Test Hub HTML, show required/optional checkpoint policy for approved feature-chain tests inside that test card. Do not show proposed feature chains, empty checkpoint placeholders, or ordinary bad-case guards as tests.
 - Task cases in `.codex/context/task-cases/` may also join the always-run set only when they are `approved | active | stable`, have `Run policy: every-dev-completion`, and include an automated entry command.
-- At development completion, the Stop hook should invoke `scripts/context_guard.py dev-complete --root <project>` so registered tests run automatically. If running manually, use `dev-complete` over hand-running tests one by one. Use `--jobs <n>` only when parallel execution is safe for the registered tests.
+- At development completion, the Stop and SubagentStop hooks should invoke `scripts/context_guard.py dev-complete --root <project>` so registered tests run automatically. If running manually, use `dev-complete` over hand-running tests one by one. Use `--jobs <n>` only when parallel execution is safe for the registered tests.
 - `dev-complete` must report passed, failed, and blocked tests. On full success it should clean the run artifacts; on failure or blocker it should preserve evidence under `.codex/context/test-hub/runs/`.
 - If the user says a test should not run every time, update the registry or task case run policy instead of silently skipping it.
 - If no approved every-dev-completion tests exist, the hub should report that clearly and exit successfully; Codex should not invent tests to fill the gap.
+
+### Subagent Completion Fallback
+
+Some Codex subagent transports may not fire local `SubagentStart` or `SubagentStop` hooks. When the main agent uses `multi_agent_v1.spawn_agent`, `wait_agent`, or receives a subagent completion notification, the main agent must run the same Context Guard completion gate explicitly for that subagent's project root:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py subagent-complete \
+  --root <subagent project root> \
+  --agent-id <agent id> \
+  --summary "<short completion summary>"
+```
+
+Use this fallback whenever a completed subagent edited files, generated artifacts, or made progress in a project folder. The command initializes folder context when needed, records a subagent handoff, creates a concise checkpoint, runs Test Hub `dev-complete`, and attempts feature-chain auto-proposal from recorded bad cases. If it fails or blocks, treat it exactly like a Stop/SubagentStop Test Hub failure: inspect evidence, fix or report the blocker, and do not claim the subagent work is fully complete.
+
+Do not rely on the subagent's final prose as proof that Context Guard ran. Verify the project has `.codex/context/` and, when approved tests exist, a current `.codex/context/test-hub/last-run.json`.
 
 Each reusable check should answer four questions:
 
@@ -426,7 +521,7 @@ Each reusable check should answer four questions:
 - Guard type: script, native-test, manual, browser-screenshot, browser-dom, curl, cli, prompt, log-invariant, fixture, unit, integration, e2e, or another concise type
 - Artifact policy: cleanup-on-pass, preserve-on-fail, or manual-preserve, including the log/temp path convention when relevant
 
-In roadmap overview, single-route pages hide the Test Chain lane by default, while multi-route compact test routes must be generated only from user-approved tests with explicit `Run policy`, approved task-case checkpoints, or approved test registry entries. Ordinary linked bad-case guards are recurrence context, not user-approved tests, unless the user approved that guard as a test and the source record has a run policy. Do not fill user-facing test coverage from roadmap node `Test chain:` history. Roadmap node `Test chain:` may keep compact checkpoint evidence in source/details, but it is not the primary bad-case recurrence chain.
+In roadmap overview, both single-route and multi-route pages hide Test Chain lanes, compact test routes, and bad-case lanes by default. Ordinary linked bad-case guards are recurrence context, not user-approved tests, unless the user approved that guard as a test and the source record has a run policy. Do not fill user-facing overview coverage from roadmap node `Test chain:` history. Roadmap node `Test chain:` may keep compact checkpoint evidence in source/details, but it is not the primary bad-case recurrence chain.
 
 When a task-oriented case exists for the changed workflow, prefer running or following that scenario and its checkpoint logs over running several disconnected bad-case scripts. Stay within the verification budget by selecting the smallest relevant task case and only the checkpoint guards that overlap the current change.
 
@@ -446,15 +541,16 @@ Run this before any substantive answer or action.
 
 1. Ensure the folder-scoped context skeleton exists when this is the first task in a Codex folder.
 2. Read `.codex/context/preferences.json`. If the record language is unset, ask the user to choose the context record language and store it before adding substantive context.
-3. Decide whether the user's latest message continues the current task, starts a substantially different task, reports a bad case, or changes expected behavior.
-4. Locate and read `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and the relevant task folder if they exist.
-5. If the request changes direction, park the previous task context before switching.
-6. If the user reports a bad case, add or update the matching bad-case entry before fixing it.
-7. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
-8. Keep relevant context in mind while planning and editing.
-9. Do not use the generated HTML roadmap as the context source.
-10. In goal mode, call `get_goal` when available and align the active task with the goal objective before continuing work.
-11. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, `测试创建识别：...`, or `Context intake: no active context`.
+3. Preserve the latest user prompt in `.codex/context/user-messages.md` when it contains durable context; if it contains a secret, store only a redacted pointer in public context and keep raw values local-only under `.codex/context/private/`.
+4. Decide whether the user's latest message continues the current task, starts a substantially different task, reports a bad case, or changes expected behavior.
+5. Locate and read `.codex/context/index.md`, `.codex/context/user-messages.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and the relevant task folder if they exist.
+6. If the request changes direction, park the previous task context before switching.
+7. If the user reports a bad case, add or update the matching bad-case entry before fixing it.
+8. Identify context entries relevant to the files, features, tests, or workflows likely to be touched.
+9. Keep relevant context in mind while planning and editing.
+10. Do not use the generated HTML roadmap as the context source.
+11. In goal mode, call `get_goal` when available and align the active task with the goal objective before continuing work.
+12. At the start of the user-visible answer, include a compact intake statement when useful: `Context intake: continuing <task>`, `Context intake: parked <task>, starting <task>`, `Bad-case intake: recorded BC-...`, `测试创建识别：...`, `User-message memory: saved`, or `Context intake: no active context`.
 
 ### During Work
 
@@ -498,7 +594,7 @@ Run this before the final answer whenever Codex changed code, generated artifact
 5. Do not end with only string/DOM assertions when the risk is visual. If visual inspection is blocked, say exactly what was blocked, record the residual risk, and avoid claiming visual polish was verified.
 6. If the self-check reveals a new or recurring bad case, record it immediately, fix it before the final answer unless the user pauses, and rerun the self-check.
 7. Record the self-check evidence in the relevant roadmap node, bad-case entry, or task context using the folder language preference.
-8. Treat the Stop hook as a completion reliability gate, not a decorative reminder. If the hook asks for verification evidence, branch-task handling, or BC summary, satisfy it before finalizing.
+8. Treat the Stop/SubagentStop hook as a completion reliability gate, not a decorative reminder. If the hook asks for verification evidence, branch-task handling, or BC summary, satisfy it before finalizing.
 9. Do not claim a bug is fixed because a build passed or a helper restarted. Verify the original user-visible symptom with the smallest real check that could falsify the claim.
 10. If the work touched frontend, browser, UI binding, routing, HTML/CSS, or visual state, the self-check must include Browser/plugin/screenshot/DOM evidence tied to the original symptom, or an explicit blocker and residual risk.
 11. Keep the self-check inside the verification budget unless risk is high. If the budget would be exceeded, prefer the original symptom check and the highest-risk relevant guard, then record the skipped checks as unrelated or deferred.
@@ -509,40 +605,42 @@ Run this before the final answer whenever Codex changed code, generated artifact
 Run this before every final answer.
 
 1. Re-read the project context index and relevant task folder.
-2. Re-read the route map and make a roadmap checkpoint decision. If this turn changed direction, made a durable decision, fixed a problem, created a branch/fork, reached a user-visible milestone, or refreshed a stale route, create or update one concise node. If none of those apply, do not create a node; mention that no roadmap node was needed.
-3. Update the active task summary with key decisions, bad cases, open questions, and next step.
-4. If the task direction changed this turn, ensure the previous task is parked and the new task is current.
-5. Run the End-of-Work Self-Check for the changed behavior or artifact before claiming success.
-6. Select only the bad-case entries whose scope clearly overlaps the changed code, feature, route, or user-visible symptom. Do not select all resolved cases merely because they have recorded guards.
-7. Run the full human-approved test registry whose `Run policy` is `every-dev-completion`. This includes approved task cases, approved native test commands, approved guard scripts, and approved manual/prompt checks. If any cannot run, record the blocker and residual risk; do not imply the always-run suite passed.
+2. Re-read `.codex/context/user-messages.md` and ensure the latest durable user wording has been promoted into the active task context, bad-case entry, or roadmap `User request:` when relevant.
+3. Re-read the route map and make a roadmap checkpoint decision. If this turn changed direction, made a durable decision, fixed a problem, created a branch/fork, reached a user-visible milestone, or refreshed a stale route, create or update one concise node. If none of those apply, do not create a node; mention that no roadmap node was needed.
+4. Update the active task summary with key decisions, bad cases, open questions, and next step.
+5. If the task direction changed this turn, ensure the previous task is parked and the new task is current.
+6. Run the End-of-Work Self-Check for the changed behavior or artifact before claiming success.
+7. Select only the bad-case entries whose scope clearly overlaps the changed code, feature, route, or user-visible symptom. Do not select all resolved cases merely because they have recorded guards.
+8. Run the full human-approved test registry whose `Run policy` is `every-dev-completion`. This includes approved task cases, approved native test commands, approved guard scripts, and approved manual/prompt checks. If any cannot run, record the blocker and residual risk; do not imply the always-run suite passed.
    - For automated approved tests, run the registered command/script rather than reconstructing the test manually.
    - If all approved automated tests pass, ensure their temp files were cleaned or note the script's cleanup policy.
    - If any approved test fails, preserve evidence, analyze the failed phase/checkpoint as a bad case, fix what is in scope, and rerun until the test passes or a non-actionable blocker is reached.
    - If blocked by credentials, unavailable services, permissions, hardware/resource limits, network, destructive-risk confirmation, or user-only judgment, ask or warn the user instead of looping.
-8. For tests whose policy is `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a user-defined cadence, follow that policy exactly and mention skipped items only when they overlap the current change or affect confidence.
-9. If a relevant task-oriented case exists, use its phase/checkpoint flow as the primary verification and note which checkpoints covered the linked bad cases. Otherwise re-run or re-perform the recorded guard for the highest-risk selected resolved entries, staying within the default budget of one primary check plus the complete always-run test set plus at most two extra relevant bad-case guards unless this is high-risk or the user requested exhaustive verification. Use the existing context, command, native test, script, screenshot/manual check, or visual inspection first.
-10. If no recorded human-approved guard exists, do not invent active coverage. Use the lightest credible evidence for this turn, record any new durable guard as `proposed`, and ask for user confirmation with the short business-facing format before writing durable scripts or marking it approved. Existing user screenshots/logs/reproductions may serve as the red condition; a new failing test is optional, not mandatory.
-11. If a resolved bad case recurs:
+9. For tests whose policy is `relevant-only`, `manual`, `release-only`, `goal-final`, `disabled-with-reason`, or a user-defined cadence, follow that policy exactly and mention skipped items only when they overlap the current change or affect confidence.
+10. If a relevant task-oriented case exists, use its phase/checkpoint flow as the primary verification and note which checkpoints covered the linked bad cases. Otherwise re-run or re-perform the recorded guard for the highest-risk selected resolved entries, staying within the default budget of one primary check plus the complete always-run test set plus at most two extra relevant bad-case guards unless this is high-risk or the user requested exhaustive verification. Use the existing context, command, native test, script, screenshot/manual check, or visual inspection first.
+11. If no recorded human-approved guard exists, do not invent active coverage. Use the lightest credible evidence for this turn, record any new durable guard as `proposed`, and ask for user confirmation with the short business-facing format before writing durable scripts or marking it approved. Existing user screenshots/logs/reproductions may serve as the red condition; a new failing test is optional, not mandatory.
+12. If a resolved bad case recurs:
    - Mark it `recurred`.
    - Explain why it recurred: missed guard, incomplete fix, route conflict, test gap, refactor side effect, environment drift, or unknown.
    - Fix it immediately unless the user explicitly pauses the work or the recurrence is due to an approved technical route change.
    - Add or update the context and guard so the recurrence is easier to catch next time.
    - Re-run the verification and update the entry back to `resolved` only when evidence passes.
-12. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
-13. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
-14. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
-15. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
-16. If the Stop hook detects an explicit branch request, ensure the branch task and `Branch:`/`Parent:` roadmap node exist before finalizing.
-17. If the Stop hook detects possible drift from the mainline architecture and no explicit branch exists, ask the user whether this should become a branch instead of silently continuing the mainline.
-18. When a roadmap node is needed at turn end, prefer `scripts/context_guard.py checkpoint-roadmap-node --title <source title> --display-title <short human title> --user-request <short summary of the user's actual request> --progress-summary <readable current progress> --method-summary <readable method> --branch <Main or route> --level <major|checkpoint> --outcome <one-line source progress> --next-step <next>` instead of hand-editing. Use `create-branch-task` first when the user explicitly asks for a new branch.
-19. Run `scripts/context_guard.py validate-bad-cases` only after updating bad-case entries, changing bad-case schema/renderer/hook behavior, or intentionally auditing the register; do not run it on unrelated code turns. Historical resolved cases without the new fields may remain warnings until touched; use `--strict` only when intentionally migrating or auditing all resolved cases.
-20. Run `scripts/context_guard.py validate-roadmap-maintenance` only after adding route nodes, changing roadmap maintenance rules, or before showing the roadmap; if it reports too many hidden checkpoints after a route's latest visible node, promote or add a major node before finalizing.
+13. If a case is exempt because of a technical route change, mark it `superseded-by-route-change` and document the approved change.
+14. If a bad case becomes frequent, add or update a high-frequency tag and warning note.
+15. In goal mode, finish this checkpoint before calling `update_goal` to mark the goal complete or blocked.
+16. If urgent or unrelated work is complete and a parked task exists, ask the user whether to resume the most relevant parked task.
+17. If the Stop hook detects an explicit branch request, ensure the branch task and `Branch:`/`Parent:` roadmap node exist before finalizing.
+18. If the Stop hook detects possible drift from the mainline architecture and no explicit branch exists, ask the user whether this should become a branch instead of silently continuing the mainline.
+19. When a roadmap node is needed at turn end, prefer `scripts/context_guard.py checkpoint-roadmap-node --title <source title> --display-title <short human title> --user-request <short summary of the user's actual request> --progress-summary <readable current progress> --method-summary <readable method> --branch <Main or route> --level <major|checkpoint> --outcome <one-line source progress> --next-step <next>` instead of hand-editing. Use `create-branch-task` first when the user explicitly asks for a new branch.
+20. Run `scripts/context_guard.py validate-bad-cases` only after updating bad-case entries, changing bad-case schema/renderer/hook behavior, or intentionally auditing the register; do not run it on unrelated code turns. Historical resolved cases without the new fields may remain warnings until touched; use `--strict` only when intentionally migrating or auditing all resolved cases.
+21. Run `scripts/context_guard.py validate-roadmap-maintenance` only after adding route nodes, changing roadmap maintenance rules, or before showing the roadmap; if it reports too many hidden checkpoints after a route's latest visible node, promote or add a major node before finalizing.
 
 ## Completion Report
 
 At the end of every response, include a compact context summary when development work, context intake, task switching, bad-case intake, or a register was involved. Keep it one line for unrelated conversation.
 
 - Context folder used.
+- User-message memory updated or skipped, with secret handling summarized only as redacted/local-only.
 - Current task index status.
 - Roadmap node updated, exported, or displayed.
 - If no roadmap node was created, the brief reason why it was not needed.

@@ -7,6 +7,8 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 ## What It Does
 
 - **Maintains project context**: creates and updates `.codex/context/`.
+- **Preserves user wording**: stores short user instructions, constraints, preferences, route hints, and bad-case reports in `user-messages.md`.
+- **Keeps secrets local-only**: redacts credentials from public context and stores durable secrets only under `.codex/context/private/`.
 - **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
 - **Tracks bad cases**: records symptoms, triggers, causes, fixes, and recurrence checks.
 - **Generates Roadmap HTML**: shows a human-readable roadmap with clickable node details.
@@ -74,6 +76,18 @@ Do not write project context into:
 - a temporary directory
 - an SSH remote server path
 
+Short user prompts that matter for future work are kept in:
+
+```text
+<Codex project root>/.codex/context/user-messages.md
+```
+
+If the user provides a credential that future Codex turns need, Context Guard records only a redacted pointer in public context. Raw durable secrets must stay local-only under:
+
+```text
+<Codex project root>/.codex/context/private/
+```
+
 When running scripts manually, pass the project root explicitly:
 
 ```bash
@@ -89,15 +103,14 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-add \
   --command-text "npm test"
 ```
 
-Register a user-approved feature-chain test:
+Create a proposed feature-chain test:
 
 ```bash
 python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-add \
   --root /path/to/project \
   --title "GPU monitor button" \
   --entry "Click the GPU monitor button" \
-  --exit-check "Open a monitoring page with a valid grafana_url" \
-  --command-text "npm test -- gpu-monitor"
+  --exit-check "Open a monitoring page with a valid grafana_url"
 ```
 
 Attach a bad case to a specific feature-chain checkpoint:
@@ -109,6 +122,53 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-att
   --node-title "Backend returns monitor URL" \
   --bad-case BC-... \
   --check "grafana_url is non-empty and the frontend does not hang"
+```
+
+After the user confirms the flow, approve that same chain:
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-approve \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --command-text "npm test -- gpu-monitor"
+```
+
+Feature-chain commands can emit checkpoint markers so the Test Hub can report the exact failed step:
+
+```text
+CG_CHECKPOINT:Backend returns monitor URL:PASS
+CG_CHECKPOINT:Frontend opens monitor page:FAIL:missing grafana_url
+```
+
+The checkpoint name in each marker must match a registered feature-chain node. Unknown names are treated as test-chain errors. Approved feature-chain commands must report every registered checkpoint unless the checkpoint is explicitly optional.
+
+If a checkpoint should not run every time, mark that checkpoint as optional explicitly:
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-checkpoint \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --node-title "Frontend opens monitor page" \
+  --required optional \
+  --reason "Only runs in browser integration environment"
+```
+
+Audit which checkpoints are required or optional:
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-list \
+  --root /path/to/project \
+  --verbose
+```
+
+If the user says this chain should not run every time, change its cadence:
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-policy \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --run-policy relevant-only \
+  --reason "Only run when GPU monitor flow changes"
 ```
 
 After development, hand completion to the Test Hub:
@@ -220,8 +280,10 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 - Human-facing titles should read naturally, not like implementation logs.
 - A bad case should help future Codex prevent recurrence.
 - Test design belongs to humans; Codex can run approved checks or draft a proposal for confirmation.
+- When a task is likely to recur or fits a reusable workflow check, Codex should gently ask whether the user wants to create a test task, but must not create durable tests silently.
 - Prefer feature chains as the durable testing unit: one clear entry, one real workflow, ordered checkpoints, and multiple covered bad cases.
 - Attach new bad cases to an existing feature-chain checkpoint first; propose a new chain only when no existing workflow matches.
+- Feature chains start as `proposed`; promote them with `feature-chain-approve` only after user confirmation and checkpoint coverage.
 - User-approved tests default to `every-dev-completion`; Codex may lower that cadence only when the user asks.
 - Approved automated tests should go into `.codex/context/test-hub/registry.json` or `.codex/context/test-hub/feature-chains.json` and be scheduled through `dev-complete`.
 - Keep the Test Hub simple: one registry, one `dev-complete` runner, one latest-result file, one read-only HTML status page, and a few management commands.

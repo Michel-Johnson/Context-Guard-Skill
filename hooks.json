@@ -13,6 +13,18 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py subagent-start",
+            "timeout": 10,
+            "statusMessage": "Initializing subagent context"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -25,13 +37,25 @@
         ]
       }
     ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py subagent-stop",
+            "timeout": 900,
+            "statusMessage": "Checking subagent context and Test Hub"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py stop",
-            "timeout": 10,
+            "timeout": 900,
             "statusMessage": "Checking context checkpoint"
           }
         ]

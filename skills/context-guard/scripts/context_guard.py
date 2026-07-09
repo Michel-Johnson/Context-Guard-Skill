@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -72,6 +73,10 @@ def roadmap_output_dir(root: Path) -> Path:
 
 def test_hub_dir(root: Path) -> Path:
     return context_dir(root) / "test-hub"
+
+
+def unique_run_id() -> str:
+    return datetime.now().strftime("%Y%m%d-%H%M%S-%f")
 
 
 def normalize_record_language(language: str) -> str:
@@ -140,6 +145,27 @@ def write_if_missing(path: Path, content: str) -> bool:
     return True
 
 
+def ensure_context_gitignore(root: Path) -> tuple[Path, bool]:
+    codex_dir = root / ".codex"
+    codex_dir.mkdir(parents=True, exist_ok=True)
+    path = codex_dir / ".gitignore"
+    required = [
+        "context/private/",
+        "context/**/*.local.json",
+        "context/**/secrets*.json",
+    ]
+    if path.exists():
+        current = path.read_text(encoding="utf-8")
+        additions = [line for line in required if line not in current.splitlines()]
+        if additions:
+            suffix = "" if current.endswith("\n") or not current else "\n"
+            path.write_text(current + suffix + "\n".join(additions) + "\n", encoding="utf-8")
+            return path, True
+        return path, False
+    path.write_text("\n".join(required) + "\n", encoding="utf-8")
+    return path, True
+
+
 def init_context(root: Path) -> list[Path]:
     today = datetime.now().strftime("%Y-%m-%d")
     ctx = context_dir(root)
@@ -153,10 +179,16 @@ def init_context(root: Path) -> list[Path]:
         ctx / "roadmap",
         ctx / "exports",
         ctx / "archive",
+        ctx / "private",
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
             created.append(directory)
+        if directory == ctx / "private":
+            try:
+                directory.chmod(0o700)
+            except OSError:
+                pass
 
     files = {
         ctx / "index.md": f"""# Context Index
@@ -181,6 +213,24 @@ None.
 ## Archived
 
 Keep only concise summaries here. Move detailed stale context to `.codex/context/archive/`.
+
+Last initialized: {today}
+""",
+        ctx / "user-messages.md": f"""# User Message Memory
+
+This file preserves concise user wording that future Codex turns may need. It is agent-readable context, not a public transcript.
+
+## Recent User Signals
+
+None yet.
+
+## Durable User Constraints
+
+None yet.
+
+## Secret Pointers
+
+Raw secrets must stay only in `.codex/context/private/` or an OS credential store. This file may contain redacted pointers, never plaintext secrets.
 
 Last initialized: {today}
 """,
@@ -213,6 +263,9 @@ Last initialized: {today}
     for path, content in files.items():
         if write_if_missing(path, content):
             created.append(path)
+    gitignore_path, gitignore_changed = ensure_context_gitignore(root)
+    if gitignore_changed and gitignore_path not in created:
+        created.append(gitignore_path)
     return created
 
 
@@ -2429,7 +2482,6 @@ def render_route_group(
     route_offset = max(0, route_offset)
     route_spacers = render_route_spacers(route_offset) if branch_mode else ""
     if branch_mode:
-        show_route_tests = route_has_approved_tests(display_items, bad_case_cards)
         columns = "\n".join(
             render_route_column(
                 node,
@@ -2438,7 +2490,7 @@ def render_route_group(
                 bad_case_cards,
                 case_anchor_map,
                 branch_start=branch_mode and display_number == 1 and route_offset > 0,
-                show_test_line=show_route_tests,
+                show_test_line=False,
             )
             for display_number, (source_number, node) in enumerate(display_items, 1)
         )
@@ -2538,7 +2590,7 @@ def render_route_column(
     bad_case_cards: list[dict[str, str]] | None = None,
     case_anchor_map: dict[str, str] | None = None,
     branch_start: bool = False,
-    show_test_line: bool = True,
+    show_test_line: bool = False,
 ) -> str:
     title = localized_text(node_display_title(node, f"Node {source_number}"))
     status = node.get("status", "unknown")
@@ -2547,24 +2599,7 @@ def render_route_column(
     branch_class = " branch-start" if branch_start else ""
     overview_id = html.escape(node_id(node))
     test_line = ""
-    if show_test_line:
-        cases = approved_test_cases_for_node(node, bad_case_cards or [])
-        visible_cases = cases[:2]
-        hidden_test_count = max(0, len(cases) - len(visible_cases))
-        test_items = "\n".join(
-            render_route_test_note(card, (case_anchor_map or {}).get(card.get("title", ""), "case-1"))
-            for card in visible_cases
-        )
-        if hidden_test_count:
-            test_items += f'\n<span class="route-test-more">+{hidden_test_count}</span>'
-        test_line = (
-            f"""<article class="route-test-line has-tests" data-lane="test-chain">
-    {test_items}
-  </article>"""
-            if test_items
-            else '<div class="route-test-line route-test-empty" data-lane="test-chain" aria-hidden="true"></div>'
-        )
-    mainline_only_class = " no-test-line" if not show_test_line else ""
+    mainline_only_class = " no-test-line"
     return f"""<section class="track-column route-column{branch_class}{mainline_only_class}" data-overview-node-id="{overview_id}">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
@@ -2859,11 +2894,33 @@ def canonical_bad_case_key(key: str) -> str:
         "high-frequency note": "high-frequency note",
         "recurrence analysis": "recurrence analysis",
         "evidence": "evidence",
+        "状态": "status",
+        "标题": "title",
+        "名称": "title",
+        "标签": "tags",
+        "范围": "scope",
+        "作用域": "scope",
+        "现象": "phenomenon",
+        "问题": "phenomenon",
+        "触发": "trigger / reproduction",
+        "复现": "trigger / reproduction",
+        "根因": "root cause",
+        "原因": "root cause",
+        "修复": "fix method",
+        "解决": "fix method",
+        "方法": "fix method",
+        "验证": "guard / verification",
+        "防护": "guard / verification",
+        "测试链路": "test chain",
+        "测试": "test chain",
+        "红线": "red condition",
+        "绿线": "green condition",
     }
     return aliases.get(normalized, normalized)
 
 
 def split_loose_bad_case_field(body: str) -> tuple[str, str] | None:
+    body = body.replace("：", ":", 1)
     if ":" not in body:
         return None
     key, value = body.split(":", 1)
@@ -2900,9 +2957,30 @@ def split_loose_bad_case_field(body: str) -> tuple[str, str] | None:
     return key, value.strip()
 
 
+def parse_loose_bad_case_inline_fields(body: str) -> tuple[str, dict[str, str]]:
+    title_parts: list[str] = []
+    fields: dict[str, str] = {}
+    for segment in [part.strip() for part in body.split("|") if part.strip()]:
+        field = split_loose_bad_case_field(segment)
+        if field:
+            key, value = field
+            fields[key] = value
+            continue
+        if segment:
+            title_parts.append(segment.strip(" -:："))
+    return " ".join(part for part in title_parts if part).strip(), fields
+
+
 def loose_bad_case_title(card: dict[str, str]) -> str:
     title = card.get("title", "").strip()
     identifier = card.pop("id", "").strip()
+    if not title:
+        title = first_nonempty(
+            card.get("display summary", ""),
+            card.get("phenomenon", ""),
+            card.get("root cause", ""),
+            card.get("fix method", ""),
+        )
     if not title:
         title = identifier or "Untitled bad case"
     elif identifier and not title.startswith(identifier):
@@ -2929,15 +3007,18 @@ def parse_loose_bad_case_cards(text: str) -> list[dict[str, str]]:
         body = ""
         if stripped.startswith("- "):
             body = stripped[2:].strip()
-        elif current and re.match(r"^[A-Za-z][A-Za-z _/-]+:\s+", stripped):
+        elif current and re.match(r"^[\w\u4e00-\u9fff][\w\u4e00-\u9fff _/-]+[:：]\s+", stripped):
             body = stripped
         else:
             continue
 
-        case_line = re.match(r"^(BC-\d{8}-\d+)\s*:\s*(.+)$", body)
+        case_line = re.match(r"^(BC-\d{8}-\d+)\s*(?::|：|\|)\s*(.*)$", body)
         if case_line:
             commit_loose_bad_case(cards, current)
-            current = {"id": case_line.group(1), "title": case_line.group(2).strip()}
+            trailing_title, fields = parse_loose_bad_case_inline_fields(case_line.group(2).strip())
+            current = {"id": case_line.group(1), **fields}
+            if trailing_title and "title" not in current:
+                current["title"] = trailing_title
             continue
 
         field = split_loose_bad_case_field(body)
@@ -3607,6 +3688,27 @@ def checkpoint_roadmap_node(
 
 APPROVED_TEST_STATUSES = {"approved", "active", "stable"}
 RUN_ALWAYS_POLICY = "every-dev-completion"
+FEATURE_CHAIN_COVERAGE_SUGGESTION_MIN_SCORE = 12
+FEATURE_CHAIN_MATCH_EVIDENCE_STOP_TERMS = {
+    "bad",
+    "case",
+    "bc",
+    "status",
+    "resolved",
+    "context",
+    "guard",
+    "feature",
+    "feature-chain",
+    "chain",
+    "test",
+    "tests",
+    "local",
+    "manual",
+    "command",
+    "用户",
+    "没有",
+    "为空",
+}
 BLOCKER_PATTERNS = [
     "MISSING_CREDENTIAL",
     "PERMISSION_DENIED",
@@ -3616,10 +3718,11 @@ BLOCKER_PATTERNS = [
     "USER_CONFIRMATION_REQUIRED",
     "DESTRUCTIVE_CONFIRMATION_REQUIRED",
 ]
+CHECKPOINT_MARKER_RE = re.compile(r"^CG_CHECKPOINT:(?P<name>[^:]+):(?P<status>PASS|FAIL)(?::(?P<reason>.*))?$")
 
 
 def normalize_test_slug(value: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip().lower()).strip("-")
+    slug = re.sub(r"[^\w.-]+", "-", value.strip().lower(), flags=re.UNICODE).strip("-_.")
     return slug or "test"
 
 
@@ -3629,6 +3732,10 @@ def test_registry_path(ctx: Path) -> Path:
 
 def feature_chains_path(ctx: Path) -> Path:
     return ctx / "test-hub" / "feature-chains.json"
+
+
+def feature_chain_auto_state_path(ctx: Path) -> Path:
+    return ctx / "test-hub" / "feature-chain-auto-state.json"
 
 
 def default_test_registry() -> dict[str, object]:
@@ -3752,6 +3859,14 @@ def feature_chain_add(
         raise ValueError("feature-chain-add requires --entry")
     if not exit_check.strip():
         raise ValueError("feature-chain-add requires --exit-check")
+    normalized_status = (status.strip() or "proposed").lower()
+    normalized_policy = run_policy.strip() or RUN_ALWAYS_POLICY
+    if normalized_status in APPROVED_TEST_STATUSES and normalized_policy == RUN_ALWAYS_POLICY:
+        raise ValueError(
+            "feature-chain-add cannot create approved every-dev-completion chains; "
+            "create a proposed chain and use feature-chain-approve so the user confirmation "
+            "and approval dry-run gates cannot be skipped"
+        )
     registry = load_feature_chains(ctx)
     chains = registry.setdefault("chains", [])
     if not isinstance(chains, list):
@@ -3764,7 +3879,7 @@ def feature_chain_add(
             "id": chain_id,
             "title": title.strip(),
             "status": status.strip() or "proposed",
-            "run_policy": run_policy.strip() or RUN_ALWAYS_POLICY,
+            "run_policy": normalized_policy,
             "entry": entry.strip(),
             "exit_check": exit_check.strip(),
             "type": "command" if command_text.strip() else "manual",
@@ -3835,6 +3950,8 @@ def feature_chain_attach_bc(
         node["checks"] = checks
     if check.strip() and check.strip() not in [str(item) for item in checks]:
         checks.append(check.strip())
+    if [str(item).strip() for item in bad_cases if str(item).strip()]:
+        node.pop("coverage_pending_reason", None)
     now = datetime.now().isoformat(timespec="seconds")
     node["updated_at"] = now
     chain["updated_at"] = now
@@ -3845,7 +3962,297 @@ def feature_chain_attach_bc(
     return path
 
 
-def feature_chain_list(root: Path) -> int:
+def parse_bad_case_list(value: str) -> list[str]:
+    items = []
+    for part in re.split(r"[,;\n]+", value or ""):
+        clean = part.strip()
+        if clean:
+            items.append(clean)
+    return items
+
+
+def feature_chain_propose(
+    root: Path,
+    title: str,
+    entry: str,
+    exit_check: str,
+    node_title: str,
+    bad_cases: list[str],
+    check: str,
+    coverage_pending_reason: str = "",
+    run_policy: str = RUN_ALWAYS_POLICY,
+    artifact_policy: str = "cleanup-on-pass",
+    resource: str = "local",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    if not title.strip():
+        raise ValueError("feature-chain-propose requires --title")
+    if not entry.strip():
+        raise ValueError("feature-chain-propose requires --entry")
+    if not exit_check.strip():
+        raise ValueError("feature-chain-propose requires --exit-check")
+    if not node_title.strip():
+        raise ValueError("feature-chain-propose requires --node-title")
+    clean_bad_cases = [item.strip() for item in bad_cases if item.strip()]
+    if not clean_bad_cases and not coverage_pending_reason.strip():
+        raise ValueError("feature-chain-propose requires --bad-cases or --coverage-pending-reason")
+    if not check.strip():
+        raise ValueError("feature-chain-propose requires --check")
+
+    registry = load_feature_chains(ctx)
+    chains = registry.setdefault("chains", [])
+    if not isinstance(chains, list):
+        chains = []
+        registry["chains"] = chains
+    chain_id = next_feature_chain_id(ctx)
+    now = datetime.now().isoformat(timespec="seconds")
+    node_slug = normalize_test_slug(node_title)
+    node: dict[str, object] = {
+        "id": node_slug,
+        "title": node_title.strip(),
+        "checks": [check.strip()],
+        "bad_cases": clean_bad_cases,
+        "created_at": now,
+        "updated_at": now,
+    }
+    if coverage_pending_reason.strip() and not clean_bad_cases:
+        node["coverage_pending_reason"] = coverage_pending_reason.strip()
+    chains.append(
+        {
+            "id": chain_id,
+            "title": title.strip(),
+            "status": "proposed",
+            "run_policy": run_policy.strip() or RUN_ALWAYS_POLICY,
+            "entry": entry.strip(),
+            "exit_check": exit_check.strip(),
+            "type": "manual",
+            "command": "",
+            "cwd": ".",
+            "resource": resource.strip() or "local",
+            "timeout_seconds": 300,
+            "artifact_policy": artifact_policy.strip() or "cleanup-on-pass",
+            "blocker_keywords": BLOCKER_PATTERNS,
+            "nodes": [node],
+            "created_at": now,
+            "updated_at": now,
+            "source": "feature-chain",
+            "proposal_note": "Human-confirmed draft only; approve with an explicit command before it can run.",
+        }
+    )
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain proposed: {chain_id}")
+    print("[context-guard] status: proposed; this chain is not executable and will not run in dev-complete.")
+    if clean_bad_cases:
+        print(f"[context-guard] checkpoint: {node_title.strip()} | covers {', '.join(clean_bad_cases)}")
+    else:
+        print(f"[context-guard] checkpoint: {node_title.strip()} | coverage pending")
+        print(f"[context-guard] coverage pending reason: {coverage_pending_reason.strip()}")
+    print("[context-guard] next: after the user confirms the automation, run feature-chain-approve with the approved command.")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def feature_chain_approve(
+    root: Path,
+    chain_id: str,
+    command_text: str = "",
+    run_policy: str = RUN_ALWAYS_POLICY,
+    timeout_seconds: int = 300,
+    artifact_policy: str = "cleanup-on-pass",
+    resource: str = "local",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    chain_id = chain_id.strip()
+    if not chain_id:
+        raise ValueError("feature-chain-approve requires --chain-id")
+    chain, _chains, registry = feature_chain_find(ctx, chain_id)
+    nodes = [node for node in chain.get("nodes", []) if isinstance(node, dict)]
+    if not nodes:
+        raise ValueError("feature-chain-approve requires at least one checkpoint node")
+
+    covered_nodes = []
+    for node in nodes:
+        checks = node.get("checks", [])
+        bad_cases = node.get("bad_cases", [])
+        has_check = bool(
+            isinstance(checks, list)
+            and [str(item).strip() for item in checks if str(item).strip()]
+        )
+        has_bad_case = bool(
+            isinstance(bad_cases, list)
+            and [str(item).strip() for item in bad_cases if str(item).strip()]
+        )
+        if has_check and has_bad_case:
+            covered_nodes.append(node)
+    if not covered_nodes:
+        raise ValueError("feature-chain-approve requires a checkpoint with check text and linked bad-case coverage")
+
+    existing_command = str(chain.get("command", "")).strip()
+    command = command_text.strip() or existing_command
+    run_policy = run_policy.strip() or RUN_ALWAYS_POLICY
+    if run_policy == RUN_ALWAYS_POLICY and not command:
+        raise ValueError("feature-chain-approve requires --command-text for every-dev-completion")
+
+    if run_policy == RUN_ALWAYS_POLICY and command:
+        hub = test_hub_dir(root)
+        hub.mkdir(parents=True, exist_ok=True)
+        run_id = unique_run_id()
+        run_dir = hub / "dry-runs" / f"{run_id}-{normalize_test_slug(chain_id)}-approval"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        preflight = dict(chain)
+        preflight["id"] = chain_id
+        preflight["title"] = str(chain.get("title") or chain_id)
+        preflight["source"] = "feature-chain"
+        preflight["type"] = "command"
+        preflight["command"] = command
+        preflight["timeout_seconds"] = int(timeout_seconds)
+        preflight.setdefault("cwd", ".")
+        preflight["artifact_policy"] = artifact_policy.strip() or "cleanup-on-pass"
+        preflight["resource"] = resource.strip() or "local"
+        preflight.setdefault("blocker_keywords", BLOCKER_PATTERNS)
+        result = run_one_hub_test(root, run_dir, preflight)
+        summary_path = hub / "last-approval-dry-run.json"
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "root": str(root),
+                    "created_at": datetime.now().isoformat(timespec="seconds"),
+                    "chain_id": chain_id,
+                    "result": result,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        if result.get("status") != "passed":
+            print(f"[context-guard] feature chain approval dry-run failed: {chain_id}", file=sys.stderr)
+            if result.get("reason"):
+                print(f"[context-guard] reason: {result.get('reason')}", file=sys.stderr)
+            print(f"[context-guard] evidence preserved: {run_dir}", file=sys.stderr)
+            print(f"[context-guard] summary: {summary_path}", file=sys.stderr)
+            raise RuntimeError("feature-chain-approve requires a passing dry run before approval")
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+    now = datetime.now().isoformat(timespec="seconds")
+    chain["status"] = "approved"
+    chain["run_policy"] = run_policy
+    chain["command"] = command
+    chain["type"] = "command" if command else "manual"
+    chain["timeout_seconds"] = int(timeout_seconds)
+    chain["artifact_policy"] = artifact_policy.strip() or "cleanup-on-pass"
+    chain["resource"] = resource.strip() or "local"
+    chain["updated_at"] = now
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain approved: {chain_id}")
+    print(f"[context-guard] run policy: {run_policy}")
+    if run_policy == RUN_ALWAYS_POLICY and command:
+        print("[context-guard] approval dry-run: passed")
+    print(f"[context-guard] checkpoint coverage: {len(covered_nodes)} node(s)")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def feature_chain_set_policy(root: Path, chain_id: str, run_policy: str, reason: str = "") -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    chain_id = chain_id.strip()
+    run_policy = run_policy.strip()
+    if not chain_id:
+        raise ValueError("feature-chain-set-policy requires --chain-id")
+    if not run_policy:
+        raise ValueError("feature-chain-set-policy requires --run-policy")
+    chain, _chains, registry = feature_chain_find(ctx, chain_id)
+    chain["run_policy"] = run_policy
+    if reason.strip():
+        chain["policy_reason"] = reason.strip()
+    if run_policy == "disabled-with-reason":
+        chain["status"] = "disabled"
+        chain["disabled_reason"] = reason.strip() or "disabled by user"
+    chain["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain policy updated: {chain_id}")
+    print(f"[context-guard] run policy: {run_policy}")
+    if reason.strip():
+        print(f"[context-guard] reason: {reason.strip()}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def parse_required_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "required", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "optional", "off"}:
+        return False
+    raise ValueError("--required must be true/false, required/optional, yes/no, or 1/0")
+
+
+def feature_chain_set_checkpoint(
+    root: Path,
+    chain_id: str,
+    node_title: str,
+    required_value: str,
+    reason: str = "",
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    chain_id = chain_id.strip()
+    node_title = node_title.strip()
+    if not chain_id:
+        raise ValueError("feature-chain-set-checkpoint requires --chain-id")
+    if not node_title:
+        raise ValueError("feature-chain-set-checkpoint requires --node-title")
+    required = parse_required_value(required_value)
+    chain, _chains, registry = feature_chain_find(ctx, chain_id)
+    nodes = chain.get("nodes", [])
+    if not isinstance(nodes, list):
+        raise ValueError(f"feature chain has no checkpoint nodes: {chain_id}")
+
+    target_slug = normalize_test_slug(node_title)
+    node: dict[str, object] | None = None
+    for item in nodes:
+        if not isinstance(item, dict):
+            continue
+        item_title = str(item.get("title", "")).strip()
+        item_id = str(item.get("id", "")).strip()
+        if node_title in {item_title, item_id} or target_slug in {
+            normalize_test_slug(item_title),
+            normalize_test_slug(item_id),
+        }:
+            node = item
+            break
+    if node is None:
+        raise ValueError(f"checkpoint node not found in {chain_id}: {node_title}")
+
+    now = datetime.now().isoformat(timespec="seconds")
+    node["required"] = required
+    if required:
+        node.pop("optional", None)
+        if reason.strip():
+            node["required_reason"] = reason.strip()
+        node.pop("optional_reason", None)
+    else:
+        node["optional"] = True
+        node["optional_reason"] = reason.strip() or "marked optional by user"
+        node.pop("required_reason", None)
+    node["updated_at"] = now
+    chain["updated_at"] = now
+    path = write_feature_chains(ctx, registry)
+    print(f"[context-guard] feature chain checkpoint updated: {chain_id}")
+    print(f"[context-guard] checkpoint: {str(node.get('title') or node.get('id') or node_title)}")
+    print(f"[context-guard] required: {str(required).lower()}")
+    if reason.strip():
+        print(f"[context-guard] reason: {reason.strip()}")
+    print(f"[context-guard] registry: {path}")
+    return path
+
+
+def feature_chain_list(root: Path, verbose: bool = False) -> int:
     init_context(root)
     ctx = context_dir(root)
     registry = load_feature_chains(ctx)
@@ -3861,6 +4268,8 @@ def feature_chain_list(root: Path) -> int:
         status = str(chain.get("status", "unknown"))
         run_policy = str(chain.get("run_policy", "unset"))
         nodes = [item for item in chain.get("nodes", []) if isinstance(item, dict)]
+        optional_count = sum(1 for node in nodes if is_optional_feature_checkpoint(node))
+        required_count = len(nodes) - optional_count
         covered = sorted(
             {
                 str(bc)
@@ -3869,7 +4278,1425 @@ def feature_chain_list(root: Path) -> int:
             }
         )
         suffix = f" | covers {', '.join(covered)}" if covered else ""
-        print(f"- {chain_id} | {status} | {run_policy} | {title} | {len(nodes)} node(s){suffix}")
+        print(
+            f"- {chain_id} | {status} | {run_policy} | {title} | "
+            f"{len(nodes)} node(s), {required_count} required, {optional_count} optional{suffix}"
+        )
+        if verbose:
+            for node in nodes:
+                label = str(node.get("title") or node.get("id") or "untitled").strip()
+                policy = "optional" if is_optional_feature_checkpoint(node) else "required"
+                reason = str(node.get("optional_reason") or node.get("required_reason") or "").strip()
+                detail = f"  checkpoint: {label} | {policy}"
+                if reason:
+                    detail += f" | reason: {reason}"
+                print(detail)
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def bad_case_card_id(card: dict[str, str]) -> str:
+    for value in (card.get("id", ""), card.get("title", "")):
+        match = re.search(r"BC-\d{8}-\d+", value)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def bad_case_card_label(card: dict[str, str]) -> str:
+    title = human_title(card.get("title", "bad case")).strip()
+    return title or bad_case_card_id(card) or "bad case"
+
+
+def feature_chain_bad_case_label(
+    ref: str,
+    cards_by_id: dict[str, dict[str, str]],
+    cards_by_title: dict[str, dict[str, str]],
+) -> str:
+    clean = ref.strip()
+    match = re.search(r"BC-\d{8}-\d+", clean)
+    if match:
+        card = cards_by_id.get(match.group(0))
+        if card:
+            return bad_case_card_label(card)
+    card = cards_by_title.get(clean.lower())
+    if card:
+        return bad_case_card_label(card)
+    return clean
+
+
+def feature_chain_node_bad_case_refs(node: dict[str, object]) -> list[str]:
+    bad_cases = node.get("bad_cases", [])
+    if not isinstance(bad_cases, list):
+        return []
+    return [str(item).strip() for item in bad_cases if str(item).strip()]
+
+
+def feature_chain_summary(root: Path, verbose: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    bad_case_path = ctx / "bad-cases.md"
+    cards = parse_bad_case_cards(bad_case_path.read_text(encoding="utf-8") if bad_case_path.exists() else "")
+    cards_by_id = {bad_case_card_id(card): card for card in cards if bad_case_card_id(card)}
+    cards_by_title = {bad_case_card_label(card).lower(): card for card in cards}
+
+    approved_always = [
+        chain
+        for chain in chains
+        if str(chain.get("status", "")).strip().lower() in APPROVED_TEST_STATUSES
+        and str(chain.get("run_policy", "")).strip() == RUN_ALWAYS_POLICY
+    ]
+    proposed_count = sum(1 for chain in chains if str(chain.get("status", "")).strip().lower() == "proposed")
+    covered_refs: set[str] = set()
+    pending_count = 0
+    covered_chain_count = 0
+    max_chain_coverage = 0
+    for chain in chains:
+        chain_refs: set[str] = set()
+        for node in chain.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            refs = feature_chain_node_bad_case_refs(node)
+            covered_refs.update(refs)
+            chain_refs.update(refs)
+            if str(node.get("coverage_pending_reason", "")).strip() and not refs:
+                pending_count += 1
+        if chain_refs:
+            covered_chain_count += 1
+            max_chain_coverage = max(max_chain_coverage, len(chain_refs))
+
+    print("[context-guard] feature-chain summary:")
+    print(f"- chains: {len(chains)}")
+    print(f"- approved every-dev-completion: {len(approved_always)}")
+    print(f"- proposed: {proposed_count}")
+    print(f"- covered bad cases: {len(covered_refs)}")
+    print(f"- pending checkpoints: {pending_count}")
+    if covered_chain_count:
+        density = len(covered_refs) / covered_chain_count
+        print(f"- coverage density: {density:.1f} bad case(s) per covered chain")
+    if max_chain_coverage > 1:
+        print(f"- reuse signal: one workflow covers up to {max_chain_coverage} bad case(s)")
+    if not chains:
+        print("[context-guard] next: no feature chains yet; use feature-chain-plan when a concrete bad case or user-confirmed test target appears.")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+
+    visible_chains = chains if verbose else chains[:6]
+    for chain in visible_chains:
+        chain_id = str(chain.get("id") or "unknown")
+        title = str(chain.get("title") or "untitled")
+        status = str(chain.get("status") or "unknown")
+        run_policy = str(chain.get("run_policy") or "unset")
+        nodes = [node for node in chain.get("nodes", []) if isinstance(node, dict)]
+        chain_refs = [
+            ref
+            for node in nodes
+            for ref in feature_chain_node_bad_case_refs(node)
+        ]
+        chain_pending = sum(
+            1
+            for node in nodes
+            if str(node.get("coverage_pending_reason", "")).strip()
+            and not feature_chain_node_bad_case_refs(node)
+        )
+        print(f"- chain: {chain_id} | {status} | {run_policy} | {title}")
+        entry = str(chain.get("entry") or "").strip()
+        exit_check = str(chain.get("exit_check") or "").strip()
+        if entry:
+            print(f"  entry: {entry}")
+        if exit_check:
+            print(f"  exit: {exit_check}")
+        print(f"  coverage: {len(set(chain_refs))} bad case(s), {chain_pending} pending checkpoint(s)")
+        if len(set(chain_refs)) > 1:
+            print("  next: prefer extending this workflow before creating another test for similar symptoms")
+        elif chain_pending:
+            print("  next: attach the first matching real bad case here before approval")
+        visible_nodes = nodes if verbose else nodes[:4]
+        for node in visible_nodes:
+            node_title = str(node.get("title") or node.get("id") or "checkpoint").strip()
+            refs = feature_chain_node_bad_case_refs(node)
+            print(f"  checkpoint: {node_title}")
+            if refs:
+                labels = [
+                    feature_chain_bad_case_label(ref, cards_by_id, cards_by_title)
+                    for ref in refs[:4]
+                ]
+                suffix = f"; +{len(refs) - 4} more" if len(refs) > 4 else ""
+                print(f"    covers: {'; '.join(labels)}{suffix}")
+            pending_reason = str(node.get("coverage_pending_reason", "")).strip()
+            if pending_reason and not refs:
+                print(f"    coverage pending: {pending_reason}")
+            if verbose:
+                checks = node.get("checks", [])
+                check_items = [str(item).strip() for item in checks if str(item).strip()] if isinstance(checks, list) else []
+                if check_items:
+                    print(f"    check: {'; '.join(check_items[:3])}")
+        if len(nodes) > len(visible_nodes):
+            print(f"  ... {len(nodes) - len(visible_nodes)} more checkpoint(s); rerun with --verbose to show all.")
+    if len(chains) > len(visible_chains):
+        print(f"... {len(chains) - len(visible_chains)} more chain(s); rerun with --verbose to show all.")
+    if pending_count:
+        print("[context-guard] next: review pending checkpoints before proposing new chains.")
+    elif covered_refs:
+        print("[context-guard] next: run feature-chain-plan for new bad cases and prefer existing matching chains.")
+    else:
+        print("[context-guard] next: keep chains proposed until a real bad case or user-approved recurrence risk is attached.")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def feature_chain_overlap_bad_case_refs(chain: dict[str, object]) -> set[str]:
+    refs: set[str] = set()
+    for node in chain.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        for ref in feature_chain_node_bad_case_refs(node):
+            match = re.search(r"BC-\d{8}-\d+", ref)
+            refs.add(match.group(0) if match else ref.lower())
+    return refs
+
+
+def feature_chain_overlap(root: Path, min_score: int = 6, verbose: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    pairs: list[tuple[int, dict[str, object], dict[str, object], list[str], set[str]]] = []
+
+    for index, left in enumerate(chains):
+        left_text = feature_chain_candidate_text(left)
+        left_refs = feature_chain_overlap_bad_case_refs(left)
+        for right in chains[index + 1 :]:
+            right_text = feature_chain_candidate_text(right)
+            right_refs = feature_chain_overlap_bad_case_refs(right)
+            evidence = feature_chain_match_evidence(left_text, right_text, max_terms=8)
+            shared_refs = left_refs & right_refs
+            score = len(evidence) * 2 + len(shared_refs) * 8
+            left_entry = str(left.get("entry", "")).strip().lower()
+            right_entry = str(right.get("entry", "")).strip().lower()
+            left_exit = str(left.get("exit_check", "")).strip().lower()
+            right_exit = str(right.get("exit_check", "")).strip().lower()
+            if left_entry and left_entry == right_entry:
+                score += 4
+            if left_exit and left_exit == right_exit:
+                score += 4
+            if score >= max(1, min_score) or shared_refs:
+                pairs.append((score, left, right, evidence, shared_refs))
+
+    pairs.sort(key=lambda item: item[0], reverse=True)
+    print("[context-guard] feature-chain overlap audit:")
+    print(f"- chains: {len(chains)}")
+    print(f"- overlapping candidates: {len(pairs)}")
+    if not chains:
+        print("[context-guard] next: no feature chains yet; use feature-chain-plan when a real workflow appears.")
+    elif not pairs:
+        print("[context-guard] next: no duplicate-chain signal; still use feature-chain-plan before creating new coverage.")
+    else:
+        visible_pairs = pairs if verbose else pairs[:6]
+        for score, left, right, evidence, shared_refs in visible_pairs:
+            left_id = str(left.get("id") or "unknown")
+            right_id = str(right.get("id") or "unknown")
+            left_title = str(left.get("title") or "untitled")
+            right_title = str(right.get("title") or "untitled")
+            print(f"- review: {left_id} | {left_title}")
+            print(f"  with: {right_id} | {right_title}")
+            print(f"  overlap score: {score}")
+            if evidence:
+                print(f"  match evidence: {', '.join(evidence)}")
+            if shared_refs:
+                print(f"  shared bad cases: {', '.join(sorted(shared_refs))}")
+            print("  next: review whether one workflow should absorb the other before approving automation.")
+        if len(pairs) > len(visible_pairs):
+            print(f"[context-guard] ... {len(pairs) - len(visible_pairs)} more pair(s); rerun with --verbose to show all.")
+        print("[context-guard] next: merge or extend an existing feature chain when the business workflow is the same.")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def feature_chain_coverage(root: Path, verbose: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    bad_case_path = ctx / "bad-cases.md"
+    cards = parse_bad_case_cards(bad_case_path.read_text(encoding="utf-8") if bad_case_path.exists() else "")
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    cards_by_id = {bad_case_card_id(card): card for card in cards if bad_case_card_id(card)}
+    cards_by_title = {bad_case_card_label(card).lower(): card for card in cards}
+    covered_ids: set[str] = set()
+    unknown_refs: set[str] = set()
+
+    print("[context-guard] feature-chain coverage:")
+    print(f"- feature chains: {len(chains)}")
+    print(f"- bad cases in register: {len(cards)}")
+
+    for chain in chains:
+        chain_id = str(chain.get("id") or "unknown")
+        title = str(chain.get("title") or "untitled")
+        status = str(chain.get("status") or "unknown")
+        nodes = [node for node in chain.get("nodes", []) if isinstance(node, dict)]
+        chain_refs: list[str] = []
+        for node in nodes:
+            bad_cases = node.get("bad_cases", [])
+            if isinstance(bad_cases, list):
+                chain_refs.extend(str(item).strip() for item in bad_cases if str(item).strip())
+        for ref in chain_refs:
+            match = re.search(r"BC-\d{8}-\d+", ref)
+            if match and match.group(0) in cards_by_id:
+                covered_ids.add(match.group(0))
+                continue
+            matched_card = cards_by_title.get(ref.lower())
+            if matched_card:
+                matched_id = bad_case_card_id(matched_card)
+                if matched_id:
+                    covered_ids.add(matched_id)
+                continue
+            unknown_refs.add(ref)
+
+        if verbose:
+            print(f"- {chain_id} | {status} | {title}")
+            for node in nodes:
+                node_title = str(node.get("title") or node.get("id") or "checkpoint").strip()
+                node_bad_cases = node.get("bad_cases", [])
+                refs = (
+                    [str(item).strip() for item in node_bad_cases if str(item).strip()]
+                    if isinstance(node_bad_cases, list)
+                    else []
+                )
+                suffix = ", ".join(refs) if refs else "no linked bad case"
+                print(f"  checkpoint: {node_title} | covers: {suffix}")
+
+    uncovered_cards = [card for card in cards if bad_case_card_id(card) not in covered_ids]
+    print(f"- covered by feature chains: {len(covered_ids)}")
+    print(f"- unassigned candidates: {len(uncovered_cards)}")
+    if unknown_refs:
+        print(f"- unknown linked refs: {len(unknown_refs)}")
+        if verbose:
+            for ref in sorted(unknown_refs):
+                print(f"  unknown ref: {ref}")
+
+    if uncovered_cards:
+        print("[context-guard] unassigned candidates are not mandatory tests; use them only when a workflow-level chain would reduce recurrence risk.")
+        limit = len(uncovered_cards) if verbose else min(8, len(uncovered_cards))
+        for card in uncovered_cards[:limit]:
+            case_id = bad_case_card_id(card)
+            label = bad_case_card_label(card)
+            tags = card.get("tags", "").strip()
+            suffix = f" | {tags}" if tags else ""
+            print(f"  candidate: {case_id or '-'} | {label}{suffix}")
+            match = feature_chain_best_match_for_text(bad_case_search_text(card), chains)
+            if match and match[0] >= FEATURE_CHAIN_COVERAGE_SUGGESTION_MIN_SCORE:
+                score, chain, node_score, node = match
+                chain_id = str(chain.get("id") or "unknown")
+                chain_title = str(chain.get("title") or "untitled")
+                print(f"    possible chain: {chain_id} | score={score} | {chain_title}")
+                if node:
+                    node_title = str(node.get("title") or node.get("id") or "checkpoint")
+                    print(f"    possible checkpoint: {node_title} (score={node_score})")
+                evidence = feature_chain_match_evidence(
+                    bad_case_search_text(card),
+                    feature_chain_candidate_text(chain, node),
+                )
+                if evidence:
+                    print(f"    match evidence: {', '.join(evidence)}")
+        if len(uncovered_cards) > limit:
+            print(f"  ... {len(uncovered_cards) - limit} more; rerun with --verbose to show all.")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def bad_case_tags(card: dict[str, str]) -> list[str]:
+    tags = re.findall(r"#[\w./:-]+", str(card.get("tags", "")), flags=re.UNICODE)
+    if tags:
+        return [tag for tag in tags if tag.strip()]
+    plain = str(card.get("tags", "")).strip()
+    if not plain:
+        return []
+    parts = re.split(r"[,，、;；\n]+", plain)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        raw = part.strip().strip("` ")
+        if not raw:
+            continue
+        tag = raw if raw.startswith("#") else f"#{raw}"
+        key = tag.lower()
+        if key not in seen:
+            seen.add(key)
+            normalized.append(tag)
+    return normalized
+
+
+def readable_feature_tag(tag: str) -> str:
+    raw = tag.strip().lstrip("#")
+    if not raw:
+        return "未命名功能区"
+    known_labels = {
+        "branch-map": "支线分叉图",
+        "visual-regression": "前端视觉回归",
+        "test-design": "测试设计",
+        "coverage-audit": "覆盖审计",
+        "context-bloat": "Context 精简",
+        "skill-trigger-risk": "Skill 触发可靠性",
+        "language-projection": "语言投影",
+        "route-alignment": "路线对齐",
+        "layout-model": "布局模型",
+        "i18n": "多语言展示",
+        "readability": "可读性",
+        "remote": "远程开发",
+        "state": "状态流程",
+        "validation": "输入校验",
+        "game-state": "游戏状态",
+        "date-reset": "日期重置",
+        "habit-streak": "连续天数",
+    }
+    if raw in known_labels:
+        return known_labels[raw]
+    label = raw.replace("-", " ").replace("_", " ").strip()
+    if label == "roadmap ux":
+        return "路线图展示体验"
+    if label == "context loss":
+        return "Context 持久化"
+    if label == "feature chain":
+        return "功能链测试入口"
+    if label == "test hub":
+        return "测试中台"
+    return label
+
+
+def semantic_feature_tags(card: dict[str, str]) -> list[str]:
+    """Add stable feature buckets so loose human tags can still form one workflow."""
+    text_parts = [
+        bad_case_card_label(card),
+        str(card.get("scope", "")),
+        str(card.get("phenomenon", "")),
+        str(card.get("trigger / reproduction", "")),
+        str(card.get("guard / verification", "")),
+        " ".join(bad_case_tags(card)),
+    ]
+    text = " ".join(part for part in text_parts if part).lower()
+    buckets: list[tuple[str, tuple[str, ...]]] = [
+        ("#复制反馈", ("复制", "剪贴板", "clipboard", "copy")),
+        ("#空输入保护", ("空输入", "空白", "短线索", "输入", "empty", "blank", "input")),
+        ("#历史恢复", ("历史", "恢复", "记录", "history", "restore")),
+        ("#导出", ("导出", "markdown", "export")),
+        ("#本地存储", ("本地存储", "持久化", "localstorage", "local storage", "persist")),
+        ("#模板", ("模板", "template")),
+        ("#重置", ("重置", "reset")),
+        ("#进度", ("进度", "完成", "progress", "complete")),
+        ("#回放", ("回放", "灯序", "sequence", "replay")),
+        ("#得分", ("分数", "最高分", "score")),
+    ]
+    matched: list[str] = []
+    for bucket, keywords in buckets:
+        if any(keyword in text for keyword in keywords):
+            matched.append(bucket)
+    return matched
+
+
+def feature_chain_group_tags(card: dict[str, str]) -> list[str]:
+    ignored = {"feature-chain", "test-hub", "methodology"}
+    tags = []
+    for tag in [*bad_case_tags(card), *semantic_feature_tags(card)]:
+        raw = tag.strip().lstrip("#")
+        if not raw or raw in ignored:
+            continue
+        normalized = tag if tag.startswith("#") else f"#{tag}"
+        if normalized not in tags:
+            tags.append(normalized)
+    return sorted(tags, key=feature_chain_tag_sort_key)
+
+
+def readable_feature_tag_group(tags: tuple[str, ...]) -> str:
+    labels = [readable_feature_tag(tag) for tag in tags]
+    return " / ".join(label for label in labels if label.strip()) or "未命名功能区"
+
+
+def auto_feature_chain_title(tags: tuple[str, ...], cards: list[dict[str, str]]) -> str:
+    scope_counts: dict[str, int] = {}
+    for card in cards:
+        scope = human_title(str(card.get("scope", "")).strip())
+        if scope:
+            scope_counts[scope] = scope_counts.get(scope, 0) + 1
+    if scope_counts:
+        best_scope, best_count = sorted(scope_counts.items(), key=lambda item: (-item[1], len(item[0]), item[0]))[0]
+        if best_count >= 2 or len(scope_counts) == 1:
+            return best_scope
+    return readable_feature_tag_group(tags)
+
+
+def feature_chain_tag_sort_key(tag: str) -> tuple[int, str]:
+    raw = tag.strip().lstrip("#")
+    priority = {
+        "roadmap-ux": 0,
+        "context-loss": 0,
+        "feature-chain": 0,
+        "test-hub": 0,
+        "branch-map": 0,
+        "visual-regression": 0,
+        "skill-trigger-risk": 0,
+        "readability": 2,
+        "remote": 2,
+        "test-design": 2,
+        "coverage-audit": 2,
+    }.get(raw, 1)
+    return (priority, readable_feature_tag(tag))
+
+
+def feature_chain_candidate_group_sort_key(item: tuple[tuple[str, ...], list[dict[str, str]]]) -> tuple[int, int, str]:
+    tags, group_cards = item
+    return (-len(tags), -len(group_cards), readable_feature_tag_group(tags))
+
+
+def covered_bad_case_ids_from_feature_chains(cards: list[dict[str, str]], chains: list[dict[str, object]]) -> set[str]:
+    cards_by_id = {bad_case_card_id(card): card for card in cards if bad_case_card_id(card)}
+    cards_by_title = {bad_case_card_label(card).lower(): card for card in cards}
+    covered_ids: set[str] = set()
+    for chain in chains:
+        for node in chain.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            bad_cases = node.get("bad_cases", [])
+            refs = [str(item).strip() for item in bad_cases if str(item).strip()] if isinstance(bad_cases, list) else []
+            for ref in refs:
+                match = re.search(r"BC-\d{8}-\d+", ref)
+                if match and match.group(0) in cards_by_id:
+                    covered_ids.add(match.group(0))
+                    continue
+                matched_card = cards_by_title.get(ref.lower())
+                if matched_card:
+                    matched_id = bad_case_card_id(matched_card)
+                    if matched_id:
+                        covered_ids.add(matched_id)
+    return covered_ids
+
+
+def auto_feature_chain_node(chain_id: str, index: int, card: dict[str, str]) -> dict[str, Any]:
+    case_id = bad_case_card_id(card)
+    label = bad_case_card_label(card)
+    check = first_nonempty(
+        card.get("guard / verification", ""),
+        card.get("green condition", ""),
+        card.get("red condition", ""),
+        card.get("trigger / reproduction", ""),
+        card.get("phenomenon", ""),
+        label,
+    )
+    return {
+        "id": f"{chain_id}-N{index}",
+        "title": label,
+        "bad_cases": [case_id] if case_id else [],
+        "checks": [check] if check else [],
+        "source": "auto-proposed-from-uncovered-bad-cases",
+        "requires_user_review": True,
+    }
+
+
+def expand_auto_feature_chain_nodes(chains: list[dict[str, Any]], cards: list[dict[str, str]]) -> bool:
+    cards_by_id = {bad_case_card_id(card): card for card in cards if bad_case_card_id(card)}
+    any_changed = False
+    for chain in chains:
+        status = str(chain.get("status") or "").strip().lower()
+        if chain.get("auto_proposed") is not True or status != "proposed":
+            continue
+        nodes = chain.get("nodes")
+        if not isinstance(nodes, list):
+            continue
+        chain_id = str(chain.get("id") or "CHAIN").strip() or "CHAIN"
+        next_index = 1
+        expanded_nodes: list[dict[str, Any]] = []
+        chain_changed = False
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            refs = [str(ref).strip() for ref in node.get("bad_cases", []) if str(ref).strip()]
+            if len(refs) <= 1:
+                node["id"] = f"{chain_id}-N{next_index}"
+                expanded_nodes.append(node)
+                next_index += 1
+                continue
+            for ref in refs:
+                card = cards_by_id.get(ref)
+                if card:
+                    expanded_nodes.append(auto_feature_chain_node(chain_id, next_index, card))
+                else:
+                    expanded_nodes.append(
+                        {
+                            "id": f"{chain_id}-N{next_index}",
+                            "title": ref,
+                            "bad_cases": [ref],
+                            "checks": [str(item) for item in node.get("checks", []) if str(item).strip()],
+                            "source": "auto-proposed-from-uncovered-bad-cases",
+                            "requires_user_review": True,
+                        }
+                    )
+                next_index += 1
+            chain_changed = True
+        if chain_changed and expanded_nodes:
+            chain["nodes"] = expanded_nodes
+            any_changed = True
+    return any_changed
+
+
+def feature_chain_candidates(root: Path, min_cases: int = 2, max_groups: int = 6) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    bad_case_path = ctx / "bad-cases.md"
+    cards = parse_bad_case_cards(bad_case_path.read_text(encoding="utf-8") if bad_case_path.exists() else "")
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    existing_group_chains = {
+        str(chain.get("auto_group_key") or "").strip(): chain
+        for chain in chains
+        if str(chain.get("auto_group_key") or "").strip()
+    }
+    existing_group_keys = set(existing_group_chains)
+    covered_ids = covered_bad_case_ids_from_feature_chains(cards, chains)
+    unassigned_cards = [card for card in cards if bad_case_card_id(card) not in covered_ids]
+    groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    for card in unassigned_cards:
+        tags = feature_chain_group_tags(card)
+        if len(tags) >= 2:
+            for index, first_tag in enumerate(tags):
+                for second_tag in tags[index + 1 :]:
+                    groups.setdefault((first_tag, second_tag), []).append(card)
+        for tag in tags:
+            groups.setdefault((tag,), []).append(card)
+
+    candidates = [
+        (tags, group_cards)
+        for tags, group_cards in groups.items()
+        if len(group_cards) >= max(1, min_cases) or "|".join(tags) in existing_group_keys
+    ]
+    specific_tags = {
+        tag
+        for tags, _group_cards in candidates
+        if len(tags) > 1
+        for tag in tags
+    }
+    candidates = [
+        (tags, group_cards)
+        for tags, group_cards in candidates
+        if len(tags) > 1 or tags[0] not in specific_tags or "|".join(tags) in existing_group_keys
+    ]
+    candidates.sort(
+        key=lambda item: (
+            0 if "|".join(item[0]) in existing_group_keys else 1,
+            feature_chain_candidate_group_sort_key(item),
+        )
+    )
+    selected_candidates: list[tuple[tuple[str, ...], list[dict[str, str]], list[str]]] = []
+    selected_case_ids: set[str] = set()
+    for tags, group_cards in candidates:
+        case_ids = [bad_case_card_id(card) for card in group_cards if bad_case_card_id(card)]
+        new_case_ids = [case_id for case_id in case_ids if case_id not in selected_case_ids]
+        if selected_case_ids and len(new_case_ids) < max(1, min_cases):
+            continue
+        selected_candidates.append((tags, group_cards, new_case_ids))
+        selected_case_ids.update(new_case_ids)
+    candidates = selected_candidates
+
+    print("[context-guard] feature-chain candidates:")
+    print(f"- bad cases in register: {len(cards)}")
+    print(f"- already covered by feature chains: {len(covered_ids)}")
+    print(f"- unassigned bad cases: {len(unassigned_cards)}")
+    if not candidates:
+        print("[context-guard] candidates: none")
+        print("[context-guard] next: use feature-chain-plan for an individual bad case or ask the user for a concrete feature entry.")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+
+    print("[context-guard] candidates are planning hints only; ask the user before creating or approving a chain.")
+    for tags, group_cards, new_case_ids in candidates[: max(1, max_groups)]:
+        title = readable_feature_tag_group(tags)
+        tag_label = ", ".join(tags)
+        print(f"- candidate chain: {title} | {len(group_cards)} unassigned bad cases | new coverage: {len(new_case_ids)} | tags: {tag_label}")
+        print(f"  confirmation prompt: 测试创建识别：建议先确认一条功能链：从「{title}」的真实入口到用户可见的正确结果，覆盖这一组复发风险。")
+        print("  seed bad cases:")
+        for card in group_cards[:3]:
+            case_id = bad_case_card_id(card)
+            label = bad_case_card_label(card)
+            print(f"    - {case_id or '-'} | {label}")
+        if len(group_cards) > 3:
+            print(f"    ... {len(group_cards) - 3} more")
+    if len(candidates) > max_groups:
+        print(f"[context-guard] ... {len(candidates) - max_groups} more candidate group(s); rerun with --max-groups to show more.")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def feature_chain_auto_propose(root: Path, min_cases: int = 2, max_groups: int = 3, hook_mode: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    bad_case_path = ctx / "bad-cases.md"
+    cards = parse_bad_case_cards(bad_case_path.read_text(encoding="utf-8") if bad_case_path.exists() else "")
+    all_case_ids = [bad_case_card_id(card) for card in cards if bad_case_card_id(card)]
+    state_path = feature_chain_auto_state_path(ctx)
+    seen_case_ids: set[str] = set()
+    if hook_mode:
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+        except json.JSONDecodeError:
+            state = {}
+        if isinstance(state, dict):
+            seen_case_ids = {str(item).strip() for item in state.get("seen_bad_cases", []) if str(item).strip()}
+        if not state_path.exists() and len(all_case_ids) > 12:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "seen_bad_cases": sorted(all_case_ids),
+                        "note": "Baseline established by hook mode to avoid auto-proposing chains from a large historical register.",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            print("[context-guard] auto feature-chain proposal: none")
+            print(f"- historical baseline established: {len(all_case_ids)} bad cases")
+            print("[context-guard] reason: large existing register; future new bad cases will be considered for proposed chains.")
+            print(f"[context-guard] state: {state_path}")
+            return 0
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    if expand_auto_feature_chain_nodes(chains, cards):
+        registry["chains"] = chains
+        write_feature_chains(ctx, registry)
+    existing_group_chains = {
+        str(chain.get("auto_group_key") or "").strip(): chain
+        for chain in chains
+        if str(chain.get("auto_group_key") or "").strip()
+    }
+    existing_group_keys = set(existing_group_chains)
+    covered_ids = covered_bad_case_ids_from_feature_chains(cards, chains)
+    unassigned_cards = [card for card in cards if bad_case_card_id(card) not in covered_ids]
+    can_attach_existing_group = False
+    for card in unassigned_cards:
+        meaningful_tags = feature_chain_group_tags(card)
+        for tag in meaningful_tags:
+            if tag in existing_group_keys:
+                can_attach_existing_group = True
+                break
+        if can_attach_existing_group:
+            break
+        for index, first_tag in enumerate(meaningful_tags):
+            for second_tag in meaningful_tags[index + 1 :]:
+                if f"{first_tag}|{second_tag}" in existing_group_keys:
+                    can_attach_existing_group = True
+                    break
+            if can_attach_existing_group:
+                break
+    if len(unassigned_cards) < max(1, min_cases) and not can_attach_existing_group:
+        print("[context-guard] auto feature-chain proposal: none")
+        print(f"- unassigned bad cases: {len(unassigned_cards)}")
+        print("[context-guard] reason: not enough uncovered bad cases to form a reusable workflow candidate.")
+        if hook_mode:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps({"version": 1, "seen_bad_cases": sorted(all_case_ids)}, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(f"[context-guard] state: {state_path}")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+
+    groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    for card in unassigned_cards:
+        meaningful_tags = feature_chain_group_tags(card)
+        if len(meaningful_tags) >= 2:
+            for index, first_tag in enumerate(meaningful_tags):
+                for second_tag in meaningful_tags[index + 1 :]:
+                    groups.setdefault((first_tag, second_tag), []).append(card)
+        for tag in meaningful_tags:
+            groups.setdefault((tag,), []).append(card)
+
+    candidates = [
+        (tags, group_cards)
+        for tags, group_cards in groups.items()
+        if len(group_cards) >= max(1, min_cases) or "|".join(tags) in existing_group_keys
+    ]
+    specific_tags = {
+        tag
+        for tags, _group_cards in candidates
+        if len(tags) > 1
+        for tag in tags
+    }
+    candidates = [
+        (tags, group_cards)
+        for tags, group_cards in candidates
+        if len(tags) > 1 or tags[0] not in specific_tags or "|".join(tags) in existing_group_keys
+    ]
+    candidates.sort(key=feature_chain_candidate_group_sort_key)
+    if not candidates:
+        print("[context-guard] auto feature-chain proposal: none")
+        print(f"- unassigned bad cases: {len(unassigned_cards)}")
+        print("[context-guard] reason: uncovered cases do not share enough feature tags.")
+        if hook_mode:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps({"version": 1, "seen_bad_cases": sorted(all_case_ids)}, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(f"[context-guard] state: {state_path}")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+
+    created: list[str] = []
+    attached: list[str] = []
+    skipped: list[str] = []
+    run_covered_ids = set(covered_ids)
+    today = datetime.now().strftime("%Y-%m-%d")
+    for tags, group_cards in candidates[: max(1, max_groups)]:
+        group_key = "|".join(tags)
+        title = auto_feature_chain_title(tags, group_cards)
+        case_ids = [bad_case_card_id(card) for card in group_cards if bad_case_card_id(card)]
+        if not case_ids:
+            skipped.append(f"{title}: no stable bad-case IDs")
+            continue
+        if group_key in existing_group_keys:
+            existing_chain = existing_group_chains.get(group_key) or {}
+            status = str(existing_chain.get("status") or "").strip().lower()
+            if existing_chain.get("auto_proposed") is True and status == "proposed":
+                nodes = existing_chain.setdefault("nodes", [])
+                if not isinstance(nodes, list):
+                    nodes = []
+                    existing_chain["nodes"] = nodes
+                existing_refs: set[str] = set()
+                for node in nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    refs = node.get("bad_cases", [])
+                    if isinstance(refs, list):
+                        existing_refs.update(str(item).strip() for item in refs if str(item).strip())
+                new_case_ids = [case_id for case_id in case_ids if case_id not in existing_refs]
+                if not new_case_ids:
+                    skipped.append(f"{title}: already proposed")
+                    continue
+                chain_id_for_node = str(existing_chain.get("id") or "CHAIN").strip() or "CHAIN"
+                next_index = len([node for node in nodes if isinstance(node, dict)]) + 1
+                new_case_id_set = set(new_case_ids)
+                for card in group_cards:
+                    if bad_case_card_id(card) not in new_case_id_set:
+                        continue
+                    nodes.append(auto_feature_chain_node(chain_id_for_node, next_index, card))
+                    next_index += 1
+                registry["chains"] = chains
+                write_feature_chains(ctx, registry)
+                run_covered_ids.update(new_case_ids)
+                attached.append(f"{existing_chain.get('id', 'unknown')}: {title} (+{len(new_case_ids)} bad cases)")
+            else:
+                skipped.append(f"{title}: existing chain requires explicit review")
+            continue
+        case_ids = [case_id for case_id in case_ids if case_id not in run_covered_ids]
+        if len(case_ids) < max(1, min_cases):
+            skipped.append(f"{title}: already covered by expanded proposed chains")
+            continue
+        group_cards = [card for card in group_cards if bad_case_card_id(card) in set(case_ids)]
+        chain_id = next_feature_chain_id(ctx)
+        chain = {
+            "id": chain_id,
+            "title": title,
+            "status": "proposed",
+            "run_policy": RUN_ALWAYS_POLICY,
+            "entry": f"触发「{title}」相关用户流程",
+            "exit_check": f"「{title}」相关结果保持用户可见的正确状态",
+            "command": "",
+            "timeout_seconds": 300,
+            "artifact_policy": "cleanup-on-pass",
+            "resource": "local",
+            "created": today,
+            "source": "feature-chain-auto-propose",
+            "auto_proposed": True,
+            "auto_group_key": group_key,
+            "confirmation_required": True,
+            "nodes": [
+                auto_feature_chain_node(chain_id, index, card)
+                for index, card in enumerate(group_cards, 1)
+                if bad_case_card_id(card)
+            ],
+        }
+        chains.append(chain)
+        registry["chains"] = chains
+        write_feature_chains(ctx, registry)
+        existing_group_keys.add(group_key)
+        run_covered_ids.update(case_ids)
+        created.append(f"{chain_id}: {title} ({len(case_ids)} bad cases)")
+
+    print("[context-guard] auto feature-chain proposal:")
+    if created:
+        print(f"- created proposed chains: {len(created)}")
+        for item in created:
+            print(f"  - {item}")
+        print("[context-guard] next: ask the user to confirm the business flow before adding automation or approving these chains.")
+    else:
+        print("- created proposed chains: 0")
+    if attached:
+        print(f"- attached to proposed chains: {len(attached)}")
+        for item in attached:
+            print(f"  - {item}")
+    if skipped:
+        print(f"- skipped: {len(skipped)}")
+        for item in skipped:
+            print(f"  - {item}")
+    if hook_mode:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps({"version": 1, "seen_bad_cases": sorted(all_case_ids)}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[context-guard] state: {state_path}")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def validate_feature_chains(root: Path, strict: bool = False, verbose: bool = False) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    for chain in chains:
+        chain_id = str(chain.get("id") or chain.get("title") or "unknown").strip()
+        label = f"{chain_id}: {str(chain.get('title') or 'untitled').strip()}"
+        status = str(chain.get("status", "")).strip().lower()
+        run_policy = str(chain.get("run_policy", chain.get("run policy", ""))).strip()
+        command = str(chain.get("command", "")).strip()
+        chain_type = str(chain.get("type", "")).strip().lower()
+        artifact_policy = str(chain.get("artifact_policy", "")).strip()
+        nodes = [node for node in chain.get("nodes", []) if isinstance(node, dict)]
+
+        def warn(message: str) -> None:
+            warnings.append(f"{label}: {message}")
+
+        def error(message: str) -> None:
+            errors.append(f"{label}: {message}")
+
+        if not chain_id:
+            error("missing id")
+        if not str(chain.get("title", "")).strip():
+            error("missing title")
+        if not str(chain.get("entry", "")).strip():
+            error("missing entry")
+        if not str(chain.get("exit_check", "")).strip():
+            error("missing exit_check")
+        if not run_policy:
+            warn("missing run_policy")
+        if artifact_policy not in {"cleanup-on-pass", "preserve-on-fail", "manual-preserve"}:
+            warn("artifact_policy should be cleanup-on-pass, preserve-on-fail, or manual-preserve")
+        if status in APPROVED_TEST_STATUSES and run_policy == RUN_ALWAYS_POLICY:
+            if not command:
+                error("approved every-dev-completion chain must have an automated command")
+            if not nodes:
+                error("approved every-dev-completion chain must have at least one checkpoint node")
+            if chain_type == "manual":
+                warn("approved every-dev-completion chain is marked manual")
+
+        for node in nodes:
+            node_label = str(node.get("title") or node.get("id") or "unknown-node").strip()
+            checks = node.get("checks", [])
+            bad_cases = node.get("bad_cases", [])
+            checks_list = checks if isinstance(checks, list) else []
+            bad_case_list = bad_cases if isinstance(bad_cases, list) else []
+            optional_reason = str(node.get("optional_reason") or node.get("required_reason") or "").strip()
+            if not node_label:
+                error("checkpoint node missing title/id")
+            if not [str(item).strip() for item in checks_list if str(item).strip()]:
+                warn(f"checkpoint `{node_label}` has no check text")
+            if not [str(item).strip() for item in bad_case_list if str(item).strip()]:
+                pending_reason = str(node.get("coverage_pending_reason") or "").strip()
+                if status == "proposed" and pending_reason:
+                    warn(f"checkpoint `{node_label}` is pending bad-case coverage: {pending_reason}")
+                else:
+                    warn(f"checkpoint `{node_label}` has no linked bad case coverage")
+            if is_optional_feature_checkpoint(node) and not optional_reason:
+                warn(f"optional checkpoint `{node_label}` should record why it is not required every run")
+
+    visible_warnings = warnings if verbose else warnings[:8]
+    for item in visible_warnings:
+        print(f"[context-guard] warning: feature chain {item}")
+    if len(warnings) > len(visible_warnings):
+        print(f"[context-guard] warning: {len(warnings) - len(visible_warnings)} more feature-chain warning(s); rerun with --verbose to show all.")
+    for item in errors:
+        print(f"[context-guard] error: feature chain {item}", file=sys.stderr)
+    if errors or (strict and warnings):
+        print(
+            f"[context-guard] feature-chain validation failed: {len(errors)} error(s), {len(warnings)} warning(s).",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"[context-guard] feature-chain validation passed: {len(chains)} chain(s), {len(warnings)} warning(s).")
+    return 0
+
+
+def feature_chain_terms(text: str) -> set[str]:
+    lowered = text.lower()
+    terms = set(re.findall(r"[a-z0-9_./:-]{2,}", lowered))
+    for chunk in re.findall(r"[\u4e00-\u9fff]+", lowered):
+        if len(chunk) < 2:
+            continue
+        terms.add(chunk)
+        terms.update(chunk[index : index + 2] for index in range(len(chunk) - 1))
+    return {term for term in terms if term.strip()}
+
+
+def score_feature_chain_text(query_terms: set[str], text: str, weight: int = 1) -> int:
+    if not query_terms or not text:
+        return 0
+    lowered = text.lower()
+    text_terms = feature_chain_terms(text)
+    score = 0
+    for term in query_terms:
+        if term in text_terms:
+            score += 2 * weight
+        elif term in lowered:
+            score += weight
+    return score
+
+
+def feature_chain_match_evidence(query_text: str, target_text: str, max_terms: int = 5) -> list[str]:
+    shared = feature_chain_terms(query_text) & feature_chain_terms(target_text)
+    evidence: list[str] = []
+    for term in sorted(shared, key=lambda item: (-len(item), item)):
+        if len(evidence) >= max_terms:
+            break
+        if not term or term in FEATURE_CHAIN_MATCH_EVIDENCE_STOP_TERMS:
+            continue
+        if term.startswith("bc-") or re.fullmatch(r"\d+", term):
+            continue
+        if re.search(r"[\u4e00-\u9fff]", term) and len(term) > 4:
+            continue
+        if re.fullmatch(r"[a-z0-9_./:-]+", term) and len(term) < 3:
+            continue
+        evidence.append(term)
+    return evidence
+
+
+def feature_chain_candidate_text(chain: dict[str, object], node: dict[str, object] | None = None) -> str:
+    parts = [
+        str(chain.get(key, ""))
+        for key in ("title", "entry", "exit_check", "resource", "source")
+    ]
+    if node:
+        parts.extend(
+            [
+                str(node.get("title", "")),
+                str(node.get("id", "")),
+                str(node.get("coverage_pending_reason", "")),
+            ]
+        )
+        checks = node.get("checks", [])
+        bad_cases = node.get("bad_cases", [])
+        if isinstance(checks, list):
+            parts.extend(str(item) for item in checks)
+        if isinstance(bad_cases, list):
+            parts.extend(str(item) for item in bad_cases)
+    return " ".join(part for part in parts if part.strip())
+
+
+def feature_chain_scored_candidates(
+    query_terms: set[str], chains: list[dict[str, object]]
+) -> list[tuple[int, dict[str, object], list[tuple[int, dict[str, object]]]]]:
+    candidates: list[tuple[int, dict[str, object], list[tuple[int, dict[str, object]]]]] = []
+    for chain in chains:
+        chain_text = " ".join(
+            str(chain.get(key, ""))
+            for key in ("title", "entry", "exit_check", "resource", "source")
+        )
+        chain_score = score_feature_chain_text(query_terms, chain_text, weight=2)
+        node_scores: list[tuple[int, dict[str, object]]] = []
+        for node in chain.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            node_text_parts = [
+                str(node.get("title", "")),
+                str(node.get("id", "")),
+                str(node.get("coverage_pending_reason", "")),
+            ]
+            checks = node.get("checks", [])
+            bad_cases = node.get("bad_cases", [])
+            if isinstance(checks, list):
+                node_text_parts.extend(str(item) for item in checks)
+            if isinstance(bad_cases, list):
+                node_text_parts.extend(str(item) for item in bad_cases)
+            node_score = score_feature_chain_text(query_terms, " ".join(node_text_parts), weight=3)
+            if node_score:
+                node_scores.append((node_score, node))
+        node_scores.sort(key=lambda item: item[0], reverse=True)
+        total_score = chain_score + sum(score for score, _node in node_scores[:3])
+        if total_score:
+            candidates.append((total_score, chain, node_scores[:3]))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates
+
+
+def feature_chain_best_match_for_text(
+    text: str, chains: list[dict[str, object]]
+) -> tuple[int, dict[str, object], int, dict[str, object] | None] | None:
+    candidates = feature_chain_scored_candidates(feature_chain_terms(text), chains)
+    if not candidates:
+        return None
+    score, chain, node_scores = candidates[0]
+    if node_scores:
+        node_score, node = node_scores[0]
+        return score, chain, node_score, node
+    return score, chain, 0, None
+
+
+def bad_case_search_text(card: dict[str, str]) -> str:
+    fields = [
+        bad_case_card_id(card),
+        bad_case_card_label(card),
+        card.get("tags", ""),
+        card.get("display summary", ""),
+        card.get("phenomenon", ""),
+        card.get("trigger / reproduction", ""),
+        card.get("root cause", ""),
+        card.get("fix method", ""),
+        card.get("guard / verification", ""),
+        card.get("red condition", ""),
+        card.get("expected failure reason", ""),
+    ]
+    return " ".join(str(item) for item in fields if str(item).strip())
+
+
+def cleaned_feature_chain_subject(text: str) -> str:
+    compact = " ".join(str(text).split())
+    compact = re.sub(
+        r"^(请|帮我|麻烦)?\s*(写|创建|生成|设计|新增|添加|建立|做)\s*(一个|一条|一套)?\s*(测试任务|测试用例|测试|test case|task case)\s*[,，:：]?\s*",
+        "",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    compact = re.sub(
+        r"^(用来|用于|检验|验证|检查|确认|确保|覆盖)\s*(每次开发完成后|开发完成后|每次改完后|每次修改后)?\s*",
+        "",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    compact = re.sub(
+        r"^(write|create|add|design|generate)\s+(a|an)?\s*(test|test case|task case)\s*(to|that|for)?\s*",
+        "",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    compact = re.sub(r"^(verify|validate|check|ensure)\s+(that\s+)?", "", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"^(是否|能否)", "", compact)
+    return compact.replace("都能", "能").strip(" ，,:：;；")
+
+
+def compact_feature_chain_subject(text: str, max_chars: int = 64) -> str:
+    compact = cleaned_feature_chain_subject(text)
+    if not compact:
+        compact = "用户描述的功能流程"
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 1].rstrip() + "…"
+
+
+def feature_chain_plan_subject(query: str, expanded_cards: list[dict[str, str]]) -> str:
+    if not expanded_cards:
+        return compact_feature_chain_subject(query)
+    card = expanded_cards[0]
+    label = human_title(card.get("title", "")).strip()
+    summary = str(card.get("display summary", "")).strip()
+    return compact_feature_chain_subject(label or summary or bad_case_card_label(card))
+
+
+def clean_goal_part(text: str, max_chars: int = 44) -> str:
+    cleaned = str(text).strip()
+    cleaned = re.sub(r"^(这个|该|这个流程|该流程)\s*", "", cleaned)
+    cleaned = cleaned.strip(" 「」\"'`，,:：;；。")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 1].rstrip() + "…"
+
+
+def parse_feature_chain_goal(query: str, expanded_cards: list[dict[str, str]]) -> dict[str, str] | None:
+    if expanded_cards:
+        return None
+    compact = cleaned_feature_chain_subject(query)
+    if not compact:
+        return None
+
+    match = re.search(r"从\s*(?P<entry>.+?)\s*到\s*(?P<rest>.+)$", compact, flags=re.IGNORECASE)
+    if match:
+        entry = clean_goal_part(match.group("entry"))
+        rest = match.group("rest").strip()
+        risk = ""
+        risk_match = re.search(
+            r"(?P<exit>.+?)[,，;；。]?\s*(?:主要)?(?:验证|检验|检查|确认|确保|覆盖|防止|避免)\s*(?P<risk>.+)$",
+            rest,
+            flags=re.IGNORECASE,
+        )
+        if risk_match:
+            exit_check = clean_goal_part(risk_match.group("exit"))
+            risk = clean_goal_part(risk_match.group("risk"))
+        else:
+            exit_check = clean_goal_part(rest)
+        if entry and exit_check:
+            return {
+                "entry": entry,
+                "exit": exit_check,
+                "risk": risk or "这个流程里的复发风险",
+            }
+
+    english_match = re.search(
+        r"from\s+(?P<entry>.+?)\s+to\s+(?P<rest>.+)$",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    if english_match:
+        entry = clean_goal_part(english_match.group("entry"))
+        rest = english_match.group("rest").strip()
+        risk = ""
+        risk_match = re.search(
+            r"(?P<exit>.+?)[,;.]?\s*(?:mainly\s+)?(?:verify|validate|check|ensure|cover|prevent)\s+(?P<risk>.+)$",
+            rest,
+            flags=re.IGNORECASE,
+        )
+        if risk_match:
+            exit_check = clean_goal_part(risk_match.group("exit"))
+            risk = clean_goal_part(risk_match.group("risk"))
+        else:
+            exit_check = clean_goal_part(rest)
+        if entry and exit_check:
+            return {
+                "entry": entry,
+                "exit": exit_check,
+                "risk": risk or "recurrence risk in this workflow",
+            }
+    return None
+
+
+def feature_chain_confirmation_prompt(query: str, expanded_cards: list[dict[str, str]]) -> str:
+    goal = parse_feature_chain_goal(query, expanded_cards)
+    if goal:
+        return (
+            "测试创建识别：我会先把测试目标确认成一句话："
+            f"从「{goal['entry']}」到「{goal['exit']}」，主要验证「{goal['risk']}」。"
+        )
+    plan_subject = feature_chain_plan_subject(query, expanded_cards)
+    return (
+        "测试创建识别：我会先把测试目标确认成一句话："
+        f"从「{plan_subject}」相关入口到用户可见的正确结果，主要验证这个流程里的复发风险。"
+    )
+
+
+def feature_chain_plan_command_parts(query: str, expanded_cards: list[dict[str, str]]) -> dict[str, str]:
+    goal = parse_feature_chain_goal(query, expanded_cards)
+    if goal:
+        return {
+            "title": "<confirmed feature title>",
+            "entry": goal["entry"],
+            "exit": goal["exit"],
+            "checkpoint": goal["risk"],
+        }
+    if expanded_cards:
+        subject = feature_chain_plan_subject(query, expanded_cards)
+        return {
+            "title": "<confirmed feature title>",
+            "entry": "<confirmed user-visible entry>",
+            "exit": "<confirmed strict final green condition>",
+            "checkpoint": subject,
+        }
+    return {
+        "title": "<confirmed feature title>",
+        "entry": "<confirmed user-visible entry>",
+        "exit": "<confirmed strict final green condition>",
+        "checkpoint": "<confirmed recurrence checkpoint>",
+    }
+
+
+def expand_feature_chain_query_from_bad_cases(ctx: Path, query: str) -> tuple[str, list[dict[str, str]]]:
+    path = ctx / "bad-cases.md"
+    if not path.exists():
+        return query, []
+    cards = parse_bad_case_cards(path.read_text(encoding="utf-8"))
+    if not cards:
+        return query, []
+
+    query_lower = query.lower()
+    query_ids = set(re.findall(r"BC-\d{8}-\d+", query))
+    matched: list[dict[str, str]] = []
+    for card in cards:
+        case_id = bad_case_card_id(card)
+        label = bad_case_card_label(card).lower()
+        if case_id and case_id in query_ids:
+            matched.append(card)
+            continue
+        if label and (query_lower == label or label in query_lower):
+            matched.append(card)
+
+    if not matched:
+        return query, []
+    expanded = " ".join([query] + [bad_case_search_text(card) for card in matched])
+    return expanded, matched
+
+
+def feature_chain_suggest(root: Path, query: str, max_results: int = 5) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    query = query.strip()
+    if not query:
+        raise ValueError("feature-chain-suggest requires --query")
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    expanded_query, expanded_cards = expand_feature_chain_query_from_bad_cases(ctx, query)
+    query_terms = feature_chain_terms(expanded_query)
+    candidates = feature_chain_scored_candidates(query_terms, chains)
+    print(f"[context-guard] feature-chain query: {query}")
+    if expanded_cards:
+        labels = ", ".join(
+            f"{bad_case_card_id(card) or '-'} {bad_case_card_label(card)}".strip()
+            for card in expanded_cards
+        )
+        print(f"[context-guard] query expanded from bad-case register: {labels}")
+    if not candidates:
+        print("[context-guard] feature-chain candidates: none")
+        print("[context-guard] proposal-needed: no matching feature chain; draft a proposed chain and ask the user before creating durable coverage.")
+        print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+        return 0
+
+    print("[context-guard] feature-chain candidates:")
+    for score, chain, node_scores in candidates[: max(1, max_results)]:
+        chain_id = str(chain.get("id", "unknown"))
+        title = str(chain.get("title", "untitled"))
+        status = str(chain.get("status", "unknown"))
+        entry = str(chain.get("entry", ""))
+        print(f"- {chain_id} | score={score} | {status} | {title}")
+        if entry:
+            print(f"  entry: {entry}")
+        if node_scores:
+            for node_score, node in node_scores:
+                node_title = str(node.get("title") or node.get("id") or "checkpoint")
+                print(f"  checkpoint candidate: {node_title} (score={node_score})")
+        else:
+            print("  checkpoint candidate: create a proposed checkpoint under this chain after user confirmation")
+    print("[context-guard] next: attach the bad case to a candidate checkpoint only when the match is semantically correct; otherwise propose a new chain.")
+    print(f"[context-guard] registry: {feature_chains_path(ctx)}")
+    return 0
+
+
+def feature_chain_plan(root: Path, query: str, max_results: int = 3) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    query = query.strip()
+    if not query:
+        raise ValueError("feature-chain-plan requires --query")
+    registry = load_feature_chains(ctx)
+    chains = [item for item in registry.get("chains", []) if isinstance(item, dict)]
+    expanded_query, expanded_cards = expand_feature_chain_query_from_bad_cases(ctx, query)
+    candidates = feature_chain_scored_candidates(feature_chain_terms(expanded_query), chains)
+    script_path = str(context_guard_skill_root() / "scripts" / "context_guard.py")
+    print(f"[context-guard] feature-chain plan: {query}")
+    if expanded_cards:
+        labels = ", ".join(
+            f"{bad_case_card_id(card) or '-'} {bad_case_card_label(card)}".strip()
+            for card in expanded_cards
+        )
+        print(f"[context-guard] query expanded from bad-case register: {labels}")
+
+    strong_candidates = [
+        (score, chain, node_scores)
+        for score, chain, node_scores in candidates
+        if score >= FEATURE_CHAIN_COVERAGE_SUGGESTION_MIN_SCORE
+    ]
+    if strong_candidates:
+        print("[context-guard] action: review-existing-chain")
+        print("[context-guard] meaning: a durable test may already exist; do not create a new chain unless the match is semantically wrong.")
+        for score, chain, node_scores in strong_candidates[: max(1, max_results)]:
+            chain_id = str(chain.get("id") or "unknown")
+            title = str(chain.get("title") or "untitled")
+            status = str(chain.get("status") or "unknown")
+            run_policy = str(chain.get("run_policy") or "unset")
+            print(f"- chain: {chain_id} | score={score} | {status} | {run_policy} | {title}")
+            node: dict[str, object] | None = None
+            if node_scores:
+                node_score, node = node_scores[0]
+                node_title = str(node.get("title") or node.get("id") or "checkpoint")
+                print(f"  checkpoint: {node_title} (score={node_score})")
+            evidence = feature_chain_match_evidence(
+                expanded_query,
+                feature_chain_candidate_text(chain, node),
+            )
+            if evidence:
+                print(f"  match evidence: {', '.join(evidence)}")
+            node_title_for_command = str((node or {}).get("title") or (node or {}).get("id") or "<confirmed checkpoint>").strip()
+            expanded_ids = [bad_case_card_id(card) for card in expanded_cards if bad_case_card_id(card)]
+            if expanded_ids:
+                for case_id in expanded_ids:
+                    command = " ".join(
+                        shlex.quote(part)
+                        for part in [
+                            "python3",
+                            script_path,
+                            "feature-chain-attach-bc",
+                            "--root",
+                            str(root),
+                            "--chain-id",
+                            chain_id,
+                            "--node-title",
+                            node_title_for_command,
+                            "--bad-case",
+                            case_id,
+                            "--check",
+                            "<tighten checkpoint based on confirmed symptom>",
+                        ]
+                    )
+                    print(f"  after-confirmation command: {command}")
+            else:
+                print("  after-confirmation command: record the bad case first, then attach it to this chain/checkpoint.")
+        print("[context-guard] next: if the user confirms the match, attach the bad case to the listed checkpoint and strengthen that checkpoint; otherwise keep it unassigned and propose a new chain.")
+    else:
+        print("[context-guard] action: propose-new-chain")
+        print("[context-guard] meaning: no strong existing feature chain matched this bad case or workflow.")
+        print(
+            "[context-guard] confirmation prompt: "
+            f"{feature_chain_confirmation_prompt(query, expanded_cards)}"
+        )
+        command_parts = feature_chain_plan_command_parts(query, expanded_cards)
+        if command_parts["checkpoint"] != "<confirmed recurrence checkpoint>":
+            print(f"[context-guard] suggested checkpoint after confirmation: {command_parts['checkpoint']}")
+        command_tokens = [
+            "python3",
+            script_path,
+            "feature-chain-propose",
+            "--root",
+            str(root),
+            "--title",
+            command_parts["title"],
+            "--entry",
+            command_parts["entry"],
+            "--exit-check",
+            command_parts["exit"],
+            "--node-title",
+            command_parts["checkpoint"],
+            "--check",
+            "<confirmed checkpoint check>",
+        ]
+        expanded_ids = [bad_case_card_id(card) for card in expanded_cards if bad_case_card_id(card)]
+        if expanded_ids:
+            command_tokens.extend(["--bad-cases", ",".join(expanded_ids)])
+        else:
+            command_tokens.extend(
+                [
+                    "--coverage-pending-reason",
+                    "<confirmed reason this chain has no linked bad case yet>",
+                ]
+            )
+        command = " ".join(
+            shlex.quote(part)
+            for part in command_tokens
+        )
+        print(f"[context-guard] after-confirmation command: {command}")
+        print("[context-guard] next: ask the user to confirm the business flow before running feature-chain-propose or writing durable automation.")
     print(f"[context-guard] registry: {feature_chains_path(ctx)}")
     return 0
 
@@ -3989,6 +5816,29 @@ def read_test_hub_last_run(root: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
+def feature_chain_checkpoint_policy(test: dict[str, object]) -> dict[str, object]:
+    nodes = [node for node in test.get("nodes", []) if isinstance(node, dict)]
+    checkpoints: list[dict[str, object]] = []
+    optional_count = 0
+    for node in nodes:
+        optional = is_optional_feature_checkpoint(node)
+        if optional:
+            optional_count += 1
+        checkpoints.append(
+            {
+                "title": str(node.get("title") or node.get("id") or "checkpoint").strip(),
+                "policy": "optional" if optional else "required",
+                "reason": str(node.get("optional_reason") or node.get("required_reason") or "").strip(),
+            }
+        )
+    return {
+        "total": len(nodes),
+        "required": len(nodes) - optional_count,
+        "optional": optional_count,
+        "checkpoints": checkpoints,
+    }
+
+
 def test_hub_state(root: Path) -> dict[str, object]:
     init_context(root)
     ctx = context_dir(root)
@@ -4001,19 +5851,20 @@ def test_hub_state(root: Path) -> dict[str, object]:
             status = str(item.get("status", "unknown")).strip() or "unknown"
             run_policy = str(item.get("run_policy", item.get("run policy", "unset"))).strip() or "unset"
             command = str(item.get("command", "")).strip()
-            tests.append(
-                {
-                    "id": str(item.get("id", "")),
-                    "title": str(item.get("title", "untitled")),
-                    "status": status,
-                    "run_policy": run_policy,
-                    "type": str(item.get("type") or ("command" if command else "manual")),
-                    "command": command,
-                    "resource": str(item.get("resource", "local") or "local"),
-                    "source": source,
-                    "eligible": status.lower() in APPROVED_TEST_STATUSES and run_policy == RUN_ALWAYS_POLICY,
-                }
-            )
+            normalized = {
+                "id": str(item.get("id", "")),
+                "title": str(item.get("title", "untitled")),
+                "status": status,
+                "run_policy": run_policy,
+                "type": str(item.get("type") or ("command" if command else "manual")),
+                "command": command,
+                "resource": str(item.get("resource", "local") or "local"),
+                "source": source,
+                "eligible": status.lower() in APPROVED_TEST_STATUSES and run_policy == RUN_ALWAYS_POLICY,
+            }
+            if source == "feature-chain":
+                normalized["checkpoint_policy"] = feature_chain_checkpoint_policy(item)
+            tests.append(normalized)
     last_run = read_test_hub_last_run(root)
     results = last_run.get("results", [])
     if not isinstance(results, list):
@@ -4064,6 +5915,31 @@ def render_test_hub_html(root: Path) -> str:
         }.get(result_status, "muted")
         command = str(test.get("command", "")).strip()
         command_html = f"<code>{html.escape(command)}</code>" if command else '<span class="muted">人工判断 / 未注册脚本</span>'
+        checkpoint_policy = test.get("checkpoint_policy")
+        checkpoint_html = ""
+        if isinstance(checkpoint_policy, dict) and int(checkpoint_policy.get("total") or 0) > 0:
+            checkpoints = checkpoint_policy.get("checkpoints", [])
+            checkpoint_rows: list[str] = []
+            if isinstance(checkpoints, list):
+                for checkpoint in checkpoints:
+                    if not isinstance(checkpoint, dict):
+                        continue
+                    title = html.escape(str(checkpoint.get("title") or "checkpoint"))
+                    policy = str(checkpoint.get("policy") or "required")
+                    policy_text = "可选" if policy == "optional" else "必跑"
+                    policy_class = "muted" if policy == "optional" else "ok"
+                    reason = str(checkpoint.get("reason") or "").strip()
+                    reason_html = f'<span class="checkpoint-reason">{html.escape(reason)}</span>' if reason else ""
+                    checkpoint_rows.append(
+                        f'<li><span>{title}</span>{test_hub_badge(policy_text, policy_class)}{reason_html}</li>'
+                    )
+            if checkpoint_rows:
+                checkpoint_html = f"""
+              <div class="checkpoint-policy">
+                <p>检查点策略：{html.escape(str(checkpoint_policy.get("required", 0)))} 必跑 / {html.escape(str(checkpoint_policy.get("optional", 0)))} 可选</p>
+                <ul>{''.join(checkpoint_rows)}</ul>
+              </div>
+                """
         rows.append(
             f"""
             <article class="test-card">
@@ -4079,6 +5955,7 @@ def render_test_hub_html(root: Path) -> str:
                 <span class="result {result_class}">{html.escape(result_status)}</span>
               </div>
               <p class="command">{command_html}</p>
+              {checkpoint_html}
               <p class="subtle">策略：{html.escape(run_policy)} · 资源：{html.escape(str(test.get("resource", "local")))}</p>
             </article>
             """
@@ -4239,6 +6116,33 @@ def render_test_hub_html(root: Path) -> str:
     .result.warn {{ background: var(--warn-soft); color: var(--warn); }}
     .result.muted {{ color: var(--muted); }}
     .command {{ margin: 12px 0 7px; }}
+    .checkpoint-policy {{
+      margin: 10px 0 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 9px;
+    }}
+    .checkpoint-policy p {{
+      margin-bottom: 5px;
+      color: var(--accent);
+      font-weight: 760;
+      font-size: 12px;
+    }}
+    .checkpoint-policy ul {{
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 5px;
+    }}
+    .checkpoint-policy li {{
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      color: var(--ink);
+      font-size: 12px;
+    }}
+    .checkpoint-reason {{ color: var(--muted); }}
     code {{
       display: inline-block;
       max-width: 100%;
@@ -4539,6 +6443,89 @@ def classify_test_blocker(output: str, keywords: object) -> str:
     return ""
 
 
+def parse_feature_chain_checkpoints(test: dict[str, object], output: str) -> list[dict[str, object]]:
+    if str(test.get("source", "")) != "feature-chain":
+        return []
+    nodes = [node for node in test.get("nodes", []) if isinstance(node, dict)]
+    labels: dict[str, str] = {}
+    for node in nodes:
+        title = str(node.get("title", "")).strip()
+        node_id = str(node.get("id", "")).strip()
+        if title:
+            labels[title.lower()] = title
+            labels[normalize_test_slug(title)] = title
+        if node_id:
+            labels[node_id.lower()] = title or node_id
+            labels[normalize_test_slug(node_id)] = title or node_id
+
+    checkpoints: list[dict[str, object]] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        match = CHECKPOINT_MARKER_RE.match(line)
+        if not match:
+            continue
+        name = match.group("name").strip()
+        status = match.group("status").strip().lower()
+        reason = (match.group("reason") or "").strip()
+        label = labels.get(name.lower()) or labels.get(normalize_test_slug(name)) or name
+        known = name.lower() in labels or normalize_test_slug(name) in labels
+        checkpoints.append(
+            {
+                "name": name,
+                "label": label,
+                "status": status,
+                "reason": reason,
+                "known": known,
+            }
+        )
+    return checkpoints
+
+
+def is_optional_feature_checkpoint(node: dict[str, object]) -> bool:
+    optional = str(node.get("optional", "")).strip().lower()
+    required = str(node.get("required", "")).strip().lower()
+    return optional in {"1", "true", "yes"} or required in {"0", "false", "no"}
+
+
+def feature_chain_required_checkpoints(test: dict[str, object]) -> list[dict[str, object]]:
+    if str(test.get("source", "")) != "feature-chain":
+        return []
+    required: list[dict[str, object]] = []
+    for node in test.get("nodes", []):
+        if not isinstance(node, dict) or is_optional_feature_checkpoint(node):
+            continue
+        title = str(node.get("title", "")).strip()
+        node_id = str(node.get("id", "")).strip()
+        label = title or node_id
+        if not label:
+            continue
+        aliases = {label.lower(), normalize_test_slug(label)}
+        if title:
+            aliases.update({title.lower(), normalize_test_slug(title)})
+        if node_id:
+            aliases.update({node_id.lower(), normalize_test_slug(node_id)})
+        required.append({"label": label, "aliases": sorted(aliases)})
+    return required
+
+
+def missing_feature_chain_checkpoints(
+    test: dict[str, object], checkpoints: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    required = feature_chain_required_checkpoints(test)
+    if not required:
+        return []
+    seen: set[str] = set()
+    for checkpoint in checkpoints:
+        if not checkpoint.get("known"):
+            continue
+        for key in ("name", "label"):
+            value = str(checkpoint.get(key, "")).strip()
+            if value:
+                seen.add(value.lower())
+                seen.add(normalize_test_slug(value))
+    return [item for item in required if not set(item.get("aliases", [])) & seen]
+
+
 def run_one_hub_test(root: Path, run_dir: Path, test: dict[str, object]) -> dict[str, object]:
     test_id = str(test.get("id") or test.get("title") or "unnamed")
     title = str(test.get("title") or test_id)
@@ -4578,7 +6565,24 @@ def run_one_hub_test(root: Path, run_dir: Path, test: dict[str, object]) -> dict
         )
         output = (completed.stdout or "") + (completed.stderr or "")
         blocker = classify_test_blocker(output, test.get("blocker_keywords"))
+        checkpoints = parse_feature_chain_checkpoints(test, output)
+        unknown_checkpoints = [item for item in checkpoints if not item.get("known")]
+        failed_checkpoints = [item for item in checkpoints if item.get("status") == "fail"]
+        missing_checkpoints = missing_feature_chain_checkpoints(test, checkpoints)
         status = "passed" if completed.returncode == 0 else ("blocked" if blocker or completed.returncode == 78 else "failed")
+        checkpoint_reason = ""
+        if unknown_checkpoints:
+            status = "failed"
+            checkpoint_reason = f"unknown checkpoint marker: {unknown_checkpoints[0].get('name')}"
+        elif failed_checkpoints:
+            status = "failed"
+            first_failure = failed_checkpoints[0]
+            checkpoint_reason = f"checkpoint failed: {first_failure.get('label')}"
+            if first_failure.get("reason"):
+                checkpoint_reason += f" - {first_failure.get('reason')}"
+        elif missing_checkpoints:
+            status = "failed"
+            checkpoint_reason = f"missing checkpoint marker: {missing_checkpoints[0].get('label')}"
         cleaned = cleanup_registered_paths(root, test.get("cleanup_paths")) if status == "passed" else []
         log_path.write_text(output or "(no output)\n", encoding="utf-8")
         return {
@@ -4586,12 +6590,14 @@ def run_one_hub_test(root: Path, run_dir: Path, test: dict[str, object]) -> dict
             "title": title,
             "status": status,
             "returncode": completed.returncode,
-            "reason": blocker or ("exit-78" if completed.returncode == 78 else ""),
+            "reason": checkpoint_reason or blocker or ("exit-78" if completed.returncode == 78 else ""),
             "command": command,
             "cwd": str(cwd),
             "resource": str(test.get("resource") or "local"),
             "log": str(log_path),
             "cleaned": cleaned,
+            "checkpoints": checkpoints,
+            "missing_checkpoints": missing_checkpoints,
         }
     except subprocess.TimeoutExpired as exc:
         output = (exc.stdout or "") + (exc.stderr or "")
@@ -4619,7 +6625,7 @@ def test_hub_dev_complete(root: Path, jobs: int = 1, keep_success_artifacts: boo
         print("[context-guard] test hub: no approved every-dev-completion tests.")
         return 0
 
-    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_id = unique_run_id()
     run_dir = hub / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     max_workers = max(1, int(jobs))
@@ -4648,6 +6654,8 @@ def test_hub_dev_complete(root: Path, jobs: int = 1, keep_success_artifacts: boo
         detail = f"{item.get('status')}: {item.get('title')}"
         if item.get("reason"):
             detail += f" ({item.get('reason')})"
+        if item.get("status") in {"failed", "blocked"} and item.get("log"):
+            detail += f" [log: {item.get('log')}]"
         print(f"- {detail}")
     if failed or blocked:
         print(f"[context-guard] evidence preserved: {run_dir}")
@@ -4660,6 +6668,146 @@ def test_hub_dev_complete(root: Path, jobs: int = 1, keep_success_artifacts: boo
         print("[context-guard] success artifacts cleaned.")
     print(f"[context-guard] summary: {summary_path}")
     return 0
+
+
+def append_subagent_handoff(ctx: Path, agent_id: str, summary: str) -> Path:
+    path = ctx / "subagents.md"
+    now = datetime.now().isoformat(timespec="seconds")
+    safe_agent = agent_id.strip() or "unknown"
+    safe_summary = " ".join((summary or "").strip().split())
+    if len(safe_summary) > 800:
+        safe_summary = safe_summary[:797].rstrip() + "..."
+    if not path.exists():
+        path.write_text(
+            "# Subagent Handoff Log\n\n"
+            "This file records completed subagent work that the main agent pulled back through Context Guard.\n",
+            encoding="utf-8",
+        )
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            "\n"
+            f"## {now}\n"
+            f"- Agent: {safe_agent}\n"
+            f"- Summary: {safe_summary or 'no summary provided'}\n"
+            "- Required follow-up: Context Guard `subagent-complete` ran project context intake and Test Hub completion checks.\n"
+        )
+    return path
+
+
+def subagent_complete(
+    root: Path,
+    agent_id: str = "",
+    summary: str = "",
+    jobs: int = 1,
+    keep_success_artifacts: bool = False,
+) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    handoff_path = append_subagent_handoff(ctx, agent_id, summary)
+    short_agent = agent_id.strip() or "subagent"
+    short_summary = " ".join((summary or "").strip().split())
+    if len(short_summary) > 220:
+        short_summary = short_summary[:217].rstrip() + "..."
+    checkpoint_roadmap_node(
+        root,
+        title=f"Subagent completion handoff: {short_agent}",
+        branch=None,
+        level="checkpoint",
+        outcome="Subagent 完成后由主 agent 接管 Context Guard 收尾。",
+        display_title="Subagent 完成接管",
+        user_request="主 agent 在 subagent 完成后自动接管 Context Guard 和 Test Hub 收尾。",
+        progress_summary=short_summary or "Subagent 已完成一次开发任务，Context Guard 已记录 handoff。",
+        method_summary="写入 subagent handoff 记录，随后运行 Test Hub 的 dev-complete，并尝试自动聚合功能链候选。",
+        decision="底层 multi_agent_v1 当前没有触发本地 SubagentStart/SubagentStop hook，因此用主 agent completion handoff 兜底。",
+        avoid="不要把 wait_agent 返回视为已经完成 Context Guard；必须跑 subagent-complete 或等价收尾。",
+        next_step="如果 Test Hub 失败，先修复失败项；如果出现新 bad case，挂载到已有功能链或生成 proposed 链。",
+        test_chain="subagent-complete runs Test Hub dev-complete and feature-chain-auto-propose.",
+    )
+    print(f"[context-guard] subagent handoff: {handoff_path}")
+    test_code = test_hub_dev_complete(root, jobs=jobs, keep_success_artifacts=keep_success_artifacts)
+    try:
+        feature_chain_auto_propose(root, min_cases=2, max_groups=6, hook_mode=True)
+    except Exception as exc:
+        print(f"[context-guard] feature-chain auto-propose warning: {exc}", file=sys.stderr)
+    return test_code
+
+
+def feature_chain_dry_run(
+    root: Path,
+    chain_id: str,
+    command_text: str = "",
+    timeout_seconds: int = 300,
+    keep_success_artifacts: bool = False,
+) -> int:
+    init_context(root)
+    ctx = context_dir(root)
+    hub = test_hub_dir(root)
+    hub.mkdir(parents=True, exist_ok=True)
+    chain_id = chain_id.strip()
+    if not chain_id:
+        raise ValueError("feature-chain-dry-run requires --chain-id")
+    chain, _chains, _registry = feature_chain_find(ctx, chain_id)
+    command = command_text.strip() or str(chain.get("command", "")).strip()
+    if not command:
+        raise ValueError("feature-chain-dry-run requires --command-text or an existing chain command")
+
+    run_id = unique_run_id()
+    run_dir = hub / "dry-runs" / f"{run_id}-{normalize_test_slug(chain_id)}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    test = dict(chain)
+    test["id"] = chain_id
+    test["title"] = str(chain.get("title") or chain_id)
+    test["source"] = "feature-chain"
+    test["type"] = "command"
+    test["command"] = command
+    test["timeout_seconds"] = int(timeout_seconds or chain.get("timeout_seconds") or 300)
+    test.setdefault("cwd", ".")
+    test.setdefault("artifact_policy", "cleanup-on-pass")
+    test.setdefault("resource", "local")
+    test.setdefault("blocker_keywords", BLOCKER_PATTERNS)
+
+    result = run_one_hub_test(root, run_dir, test)
+    summary = {
+        "run_id": run_id,
+        "root": str(root),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "chain_id": chain_id,
+        "result": result,
+    }
+    summary_path = hub / "last-dry-run.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    status = str(result.get("status", "unknown"))
+    print(f"[context-guard] feature-chain dry run: {status}: {test['title']}")
+    if result.get("reason"):
+        print(f"[context-guard] reason: {result.get('reason')}")
+    checkpoints = result.get("checkpoints", [])
+    if isinstance(checkpoints, list) and checkpoints:
+        for checkpoint in checkpoints:
+            if not isinstance(checkpoint, dict):
+                continue
+            label = checkpoint.get("label") or checkpoint.get("name")
+            mark_status = checkpoint.get("status")
+            reason = checkpoint.get("reason")
+            line = f"- checkpoint {mark_status}: {label}"
+            if reason:
+                line += f" ({reason})"
+            print(line)
+    missing = result.get("missing_checkpoints", [])
+    if isinstance(missing, list) and missing:
+        for checkpoint in missing:
+            if isinstance(checkpoint, dict):
+                print(f"- missing checkpoint: {checkpoint.get('label')}")
+    if status == "passed":
+        if keep_success_artifacts:
+            print(f"[context-guard] dry-run artifacts kept: {run_dir}")
+        else:
+            shutil.rmtree(run_dir, ignore_errors=True)
+            print("[context-guard] dry-run success artifacts cleaned.")
+    else:
+        print(f"[context-guard] dry-run evidence preserved: {run_dir}")
+    print(f"[context-guard] summary: {summary_path}")
+    return 0 if status == "passed" else 1
 
 
 def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "") -> tuple[str, str, Path]:
@@ -4684,15 +6832,16 @@ def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "validate-bad-cases", "validate-roadmap-maintenance", "test-hub-add", "test-hub-list", "test-hub-enable", "test-hub-disable", "test-hub-set-policy", "test-hub-remove", "feature-chain-add", "feature-chain-attach-bc", "feature-chain-list", "show-test-hub", "serve-test-hub", "dev-complete"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "subagent-complete", "validate-bad-cases", "validate-roadmap-maintenance", "validate-feature-chains", "test-hub-add", "test-hub-list", "test-hub-enable", "test-hub-disable", "test-hub-set-policy", "test-hub-remove", "feature-chain-add", "feature-chain-propose", "feature-chain-auto-propose", "feature-chain-attach-bc", "feature-chain-approve", "feature-chain-dry-run", "feature-chain-set-policy", "feature-chain-set-checkpoint", "feature-chain-suggest", "feature-chain-plan", "feature-chain-list", "feature-chain-summary", "feature-chain-overlap", "feature-chain-coverage", "feature-chain-candidates", "show-test-hub", "serve-test-hub", "dev-complete"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
     parser.add_argument("--title", default=None, help="Title for a branch task or roadmap checkpoint.")
     parser.add_argument("--test-id", default="", help="Test ID for test-hub management commands.")
     parser.add_argument("--command-text", default="", help="Shell command for a human-approved test registry entry.")
     parser.add_argument("--run-policy", default=RUN_ALWAYS_POLICY, help="Run policy for a test registry entry.")
-    parser.add_argument("--test-status", default="approved", help="Status for a test registry entry.")
+    parser.add_argument("--test-status", default=None, help="Status for a test registry or feature-chain entry.")
     parser.add_argument("--reason", default="", help="Reason for disabling or changing a test policy.")
+    parser.add_argument("--required", default="", help="Whether a feature-chain checkpoint is required every run: true/false or required/optional.")
     parser.add_argument("--timeout-seconds", type=int, default=300, help="Timeout for a registered test command.")
     parser.add_argument("--artifact-policy", default="cleanup-on-pass", help="Artifact policy for a registered test command.")
     parser.add_argument("--resource", default="local", help="Resource/node label for a registered test command.")
@@ -4701,11 +6850,17 @@ def main() -> int:
     parser.add_argument("--chain-id", default="", help="Feature chain ID for feature-chain management commands.")
     parser.add_argument("--node-title", default="", help="Feature-chain node title for attaching bad-case coverage.")
     parser.add_argument("--bad-case", default="", help="Bad-case ID or title covered by a feature-chain node.")
+    parser.add_argument("--bad-cases", default="", help="Comma-separated bad-case IDs or titles covered by a proposed feature-chain checkpoint.")
+    parser.add_argument("--coverage-pending-reason", default="", help="Reason a proposed feature-chain checkpoint has no linked bad case yet.")
     parser.add_argument("--check", default="", help="Checkpoint text for a feature-chain node.")
+    parser.add_argument("--query", default="", help="Natural-language feature or bad-case text for feature-chain-suggest.")
+    parser.add_argument("--agent-id", default="", help="Subagent identifier for subagent-complete handoff records.")
+    parser.add_argument("--summary", default="", help="Subagent completion summary for subagent-complete handoff records.")
     parser.add_argument("--jobs", type=int, default=1, help="Parallel test workers for dev-complete.")
     parser.add_argument("--host", default="127.0.0.1", help="Host for serve-test-hub.")
     parser.add_argument("--port", type=int, default=8772, help="Port for serve-test-hub.")
     parser.add_argument("--keep-success-artifacts", action="store_true", help="Keep test-hub run directory after all tests pass.")
+    parser.add_argument("--from-hook", action="store_true", help="Run in hook-safe mode for automatic feature-chain proposals.")
     parser.add_argument("--branch", default=None, help="Branch/route name for a branch task or roadmap checkpoint.")
     parser.add_argument("--parent-node", default="", help="Roadmap node where the branch forks.")
     parser.add_argument("--level", choices=["major", "checkpoint"], default="checkpoint", help="Roadmap checkpoint level.")
@@ -4723,6 +6878,9 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true", help="Fail when any resolved bad case lacks red-capable guard fields.")
     parser.add_argument("--verbose", action="store_true", help="Show all validation warnings.")
     parser.add_argument("--max-hidden-checkpoints", type=int, default=8, help="Maximum checkpoints allowed after a route's latest visible node.")
+    parser.add_argument("--min-cases", type=int, default=2, help="Minimum unassigned bad cases required for a feature-chain candidate group.")
+    parser.add_argument("--max-groups", type=int, default=6, help="Maximum feature-chain candidate groups to show.")
+    parser.add_argument("--min-score", type=int, default=6, help="Minimum overlap score for feature-chain overlap audit.")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
 
@@ -4776,6 +6934,14 @@ def main() -> int:
             parent_node=args.parent_node,
         )
         return 0
+    if args.command == "subagent-complete":
+        return subagent_complete(
+            root,
+            agent_id=args.agent_id,
+            summary=args.summary,
+            jobs=args.jobs,
+            keep_success_artifacts=args.keep_success_artifacts,
+        )
     if args.command == "test-hub-add":
         if not args.title:
             parser.error("test-hub-add requires --title")
@@ -4786,7 +6952,7 @@ def main() -> int:
             title=args.title,
             command_text=args.command_text,
             run_policy=args.run_policy,
-            status=args.test_status,
+            status=args.test_status or "approved",
             timeout_seconds=args.timeout_seconds,
             artifact_policy=args.artifact_policy,
             resource=args.resource,
@@ -4806,12 +6972,41 @@ def main() -> int:
             exit_check=args.exit_check,
             command_text=args.command_text,
             run_policy=args.run_policy,
-            status=args.test_status,
+            status=args.test_status or "proposed",
             timeout_seconds=args.timeout_seconds,
             artifact_policy=args.artifact_policy,
             resource=args.resource,
         )
         return 0
+    if args.command == "feature-chain-propose":
+        if not args.title:
+            parser.error("feature-chain-propose requires --title")
+        if not args.entry:
+            parser.error("feature-chain-propose requires --entry")
+        if not args.exit_check:
+            parser.error("feature-chain-propose requires --exit-check")
+        if not args.node_title:
+            parser.error("feature-chain-propose requires --node-title")
+        if not args.bad_cases and not args.coverage_pending_reason:
+            parser.error("feature-chain-propose requires --bad-cases or --coverage-pending-reason")
+        if not args.check:
+            parser.error("feature-chain-propose requires --check")
+        feature_chain_propose(
+            root,
+            title=args.title,
+            entry=args.entry,
+            exit_check=args.exit_check,
+            node_title=args.node_title,
+            bad_cases=parse_bad_case_list(args.bad_cases),
+            check=args.check,
+            coverage_pending_reason=args.coverage_pending_reason,
+            run_policy=args.run_policy,
+            artifact_policy=args.artifact_policy,
+            resource=args.resource,
+        )
+        return 0
+    if args.command == "feature-chain-auto-propose":
+        return feature_chain_auto_propose(root, min_cases=args.min_cases, max_groups=args.max_groups, hook_mode=args.from_hook)
     if args.command == "feature-chain-attach-bc":
         if not args.chain_id:
             parser.error("feature-chain-attach-bc requires --chain-id")
@@ -4827,8 +7022,67 @@ def main() -> int:
             check=args.check,
         )
         return 0
+    if args.command == "feature-chain-approve":
+        if not args.chain_id:
+            parser.error("feature-chain-approve requires --chain-id")
+        feature_chain_approve(
+            root,
+            chain_id=args.chain_id,
+            command_text=args.command_text,
+            run_policy=args.run_policy,
+            timeout_seconds=args.timeout_seconds,
+            artifact_policy=args.artifact_policy,
+            resource=args.resource,
+        )
+        return 0
+    if args.command == "feature-chain-dry-run":
+        if not args.chain_id:
+            parser.error("feature-chain-dry-run requires --chain-id")
+        return feature_chain_dry_run(
+            root,
+            chain_id=args.chain_id,
+            command_text=args.command_text,
+            timeout_seconds=args.timeout_seconds,
+            keep_success_artifacts=args.keep_success_artifacts,
+        )
+    if args.command == "feature-chain-set-policy":
+        if not args.chain_id:
+            parser.error("feature-chain-set-policy requires --chain-id")
+        feature_chain_set_policy(root, args.chain_id, args.run_policy, reason=args.reason)
+        return 0
+    if args.command == "feature-chain-set-checkpoint":
+        if not args.chain_id:
+            parser.error("feature-chain-set-checkpoint requires --chain-id")
+        if not args.node_title:
+            parser.error("feature-chain-set-checkpoint requires --node-title")
+        if not args.required:
+            parser.error("feature-chain-set-checkpoint requires --required")
+        feature_chain_set_checkpoint(
+            root,
+            chain_id=args.chain_id,
+            node_title=args.node_title,
+            required_value=args.required,
+            reason=args.reason,
+        )
+        return 0
+    if args.command == "feature-chain-suggest":
+        if not args.query:
+            parser.error("feature-chain-suggest requires --query")
+        return feature_chain_suggest(root, query=args.query)
+    if args.command == "feature-chain-plan":
+        if not args.query:
+            parser.error("feature-chain-plan requires --query")
+        return feature_chain_plan(root, query=args.query)
     if args.command == "feature-chain-list":
-        return feature_chain_list(root)
+        return feature_chain_list(root, verbose=args.verbose)
+    if args.command == "feature-chain-summary":
+        return feature_chain_summary(root, verbose=args.verbose)
+    if args.command == "feature-chain-overlap":
+        return feature_chain_overlap(root, min_score=args.min_score, verbose=args.verbose)
+    if args.command == "feature-chain-coverage":
+        return feature_chain_coverage(root, verbose=args.verbose)
+    if args.command == "feature-chain-candidates":
+        return feature_chain_candidates(root, min_cases=args.min_cases, max_groups=args.max_groups)
     if args.command == "test-hub-list":
         return test_hub_list(root)
     if args.command == "test-hub-enable":
@@ -4837,7 +7091,7 @@ def main() -> int:
         test_hub_update_test(
             root,
             args.test_id,
-            status=args.test_status if args.test_status != "approved" else "approved",
+            status=args.test_status or "approved",
             run_policy=args.run_policy or RUN_ALWAYS_POLICY,
             disabled_reason="",
         )
@@ -4879,8 +7133,14 @@ def main() -> int:
         return validate_bad_case_guards(root, strict=args.strict, verbose=args.verbose)
     if args.command == "validate-roadmap-maintenance":
         return validate_roadmap_maintenance(root, max_hidden_checkpoints=args.max_hidden_checkpoints)
+    if args.command == "validate-feature-chains":
+        return validate_feature_chains(root, strict=args.strict, verbose=args.verbose)
     return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (ValueError, RuntimeError) as exc:
+        print(f"[context-guard] error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

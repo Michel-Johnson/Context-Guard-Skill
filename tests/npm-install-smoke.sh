@@ -6,12 +6,17 @@ ROOT="$(cd "$ROOT" && pwd)"
 trap 'rm -rf "$ROOT"' EXIT
 NODE_BIN="${NODE:-node}"
 
+SKILL_COUNT="$(find . -path './.git' -prune -o -name SKILL.md -print | wc -l | tr -d '[:space:]')"
+test "$SKILL_COUNT" = "1"
+
 "$NODE_BIN" bin/context-guard-skill.js --help >/dev/null
 "$NODE_BIN" bin/context-guard-skill.js install --target "$ROOT/skill" >/dev/null
 
 test -f "$ROOT/skill/SKILL.md"
 test -f "$ROOT/skill/scripts/context_guard.py"
 test -f "$ROOT/skill/README.zh-CN.md"
+INSTALLED_SKILL_COUNT="$(find "$ROOT/skill" -name SKILL.md -print | wc -l | tr -d '[:space:]')"
+test "$INSTALLED_SKILL_COUNT" = "1"
 
 CODEX_HOME="$ROOT/codex-home" "$NODE_BIN" bin/context-guard-skill.js install >/dev/null
 test -f "$ROOT/codex-home/skills/context-guard/SKILL.md"
@@ -26,3 +31,5 @@ test -f "$PROJECT/.codex/context/index.md"
 HOOKS="$ROOT/hooks.json"
 "$NODE_BIN" bin/context-guard-skill.js install --target "$ROOT/skill-with-hooks" --with-hooks --hooks-target "$HOOKS" >/dev/null
 grep -Fq "$ROOT/skill-with-hooks/scripts/context_guard_hook.py" "$HOOKS"
+grep -Fq '"SubagentStart"' "$HOOKS"
+grep -Fq '"SubagentStop"' "$HOOKS"

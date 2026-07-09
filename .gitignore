@@ -1,0 +1,3 @@
+.codex/context/private/
+.codex/context/**/*.local.json
+.codex/context/**/secrets*.json

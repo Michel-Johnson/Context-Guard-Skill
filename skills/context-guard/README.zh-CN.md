@@ -7,6 +7,8 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 ## 能做什么
 
 - **维护项目 context**：自动创建并更新 `.codex/context/`。
+- **保留用户原话**：把短用户指令、约束、偏好、路线提示和 bad case 反馈写入 `user-messages.md`。
+- **敏感信息只留本地**：公开 context 里只保留脱敏指针，真正需要复用的凭据只放在 `.codex/context/private/`。
 - **记录路线图**：维护主线、支线、分叉节点和当前进度。
 - **记录 bad case**：保存问题现象、触发条件、原因、修复方式和防复发检查。
 - **生成 Roadmap HTML**：给用户查看清晰的路线图，点击节点看详情。
@@ -74,6 +76,18 @@ Context 必须保存在当前打开的本地项目里：
 - 临时目录
 - SSH 远程服务器路径
 
+对后续工作有价值的短用户消息会保存在：
+
+```text
+<Codex 打开的项目根目录>/.codex/context/user-messages.md
+```
+
+如果用户提供了后续需要复用的凭据，Context Guard 只会在公开 context 中记录脱敏指针。原始凭据必须只保存在本地私有目录：
+
+```text
+<Codex 打开的项目根目录>/.codex/context/private/
+```
+
 如果手动运行脚本，建议显式传入项目根目录：
 
 ```bash
@@ -89,15 +103,14 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-add \
   --command-text "npm test"
 ```
 
-注册一条用户已确认的功能链测试：
+创建一条待确认的功能链测试草案：
 
 ```bash
 python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-add \
   --root /path/to/project \
   --title "GPU 监控按钮" \
   --entry "点击 GPU 监控按钮" \
-  --exit-check "打开包含有效 grafana_url 的监控页" \
-  --command-text "npm test -- gpu-monitor"
+  --exit-check "打开包含有效 grafana_url 的监控页"
 ```
 
 把 bad case 挂到功能链的具体环节：
@@ -109,6 +122,53 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-att
   --node-title "后端返回监控 URL" \
   --bad-case BC-... \
   --check "grafana_url 不为空，前端不会卡住"
+```
+
+用户确认流程后，再批准同一条功能链：
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-approve \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --command-text "npm test -- gpu-monitor"
+```
+
+功能链命令可以输出 checkpoint 标记，让测试中台知道具体哪一步失败：
+
+```text
+CG_CHECKPOINT:后端返回监控 URL:PASS
+CG_CHECKPOINT:前端打开监控页:FAIL:缺少 grafana_url
+```
+
+标记里的 checkpoint 名称必须匹配已登记的功能链节点；未知名称会被当成测试链路错误。已批准的功能链默认必须报告每个已登记 checkpoint，除非该 checkpoint 被明确标为 optional。
+
+如果某个 checkpoint 不适合每次都跑，显式标为 optional：
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-checkpoint \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --node-title "前端打开监控页" \
+  --required optional \
+  --reason "只在浏览器集成环境运行"
+```
+
+查看每条功能链哪些 checkpoint 必跑、哪些可选：
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-list \
+  --root /path/to/project \
+  --verbose
+```
+
+如果用户说这条链不需要每次都跑，修改运行频率：
+
+```bash
+python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-policy \
+  --root /path/to/project \
+  --chain-id FC-... \
+  --run-policy relevant-only \
+  --reason "只在修改 GPU 监控流程时运行"
 ```
 
 开发完成后交给测试中台：
@@ -220,8 +280,10 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 - 用户看的标题要像人话，不要像实现日志。
 - bad case 要能帮助未来避免复发。
 - 测试设计权属于人类；Codex 可以执行已确认检查，或提出待确认草案。
+- 当任务容易复发或适合沉淀为流程检查时，Codex 应温和提醒用户是否创建测试任务，但不能擅自创建长期测试。
 - 测试的长期单位优先是功能链：一个明确入口、一段真实流程、多个检查点、覆盖多个 bad case。
 - 新 bad case 优先挂到已有功能链节点；没有匹配功能链时，再提出新的功能链草案。
+- 功能链默认是 `proposed` 草案；用户确认后，用 `feature-chain-approve` 在检查覆盖完整时再批准。
 - 用户确认的测试默认是 `every-dev-completion`；只有用户要求时，Codex 才能改成其他运行频率。
 - 已确认的自动化测试应进入 `.codex/context/test-hub/registry.json` 或 `.codex/context/test-hub/feature-chains.json`，由 `dev-complete` 统一调度。
 - 测试中台保持简单：一个注册表、一个 `dev-complete` runner、一个最近结果、一个只读 HTML 状态页和几个管理命令。

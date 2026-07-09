@@ -6,9 +6,12 @@ Use this structure for project context:
 <opened Codex project root>/
 .codex/context/
 ├── index.md
+├── user-messages.md
 ├── roadmap.md
 ├── bad-cases.md
 ├── preferences.json
+├── private/
+│   └── secrets.local.json
 ├── roadmap/
 │   ├── roadmap.html
 │   ├── roadmap-details.html
@@ -21,6 +24,7 @@ Use this structure for project context:
 ├── task-cases/
 ├── test-hub/
 │   ├── registry.json
+│   ├── feature-chains.json
 │   ├── last-run.json
 │   └── runs/
 ├── bad-case-tests/
@@ -28,6 +32,8 @@ Use this structure for project context:
 ```
 
 The opened Codex project root is the local folder selected in Codex or the local workspace root for the current thread. Do not place this folder inside a skill installation directory, remote SSH path, chat/thread-specific folder, or temporary execution directory unless the user explicitly asks that location to own its own context.
+
+The `private/` folder is local-only sensitive memory. It must be covered by `.codex/.gitignore`, use restrictive local permissions where possible, and never be projected into Roadmap HTML, agent-readable exports, README files, logs, or final answers.
 
 ## preferences.json
 
@@ -83,6 +89,39 @@ Keep Quick Scan to these four lines unless the user explicitly asks for a fuller
 
 Keep only concise summaries here. Move detailed stale context to `.codex/context/archive/`.
 ```
+
+## user-messages.md
+
+```md
+# User Message Memory
+
+This file preserves concise user wording that future Codex turns may need. It is agent-readable context, not a public transcript.
+
+## Recent User Signals
+
+### YYYY-MM-DD HH:MM:SS
+
+- Mode: verbatim | summary | redacted | ephemeral
+- User message: short original user wording, concise summary for large inputs, or redacted message when secrets are present
+- Secret pointer: USER-SECRET-YYYYMMDD-HHMMSS | ephemeral-not-stored | omitted when not relevant
+- Use: Preserve this wording when deciding task direction, constraints, credentials, preferences, bad-case intake, or roadmap `User request` fields.
+
+## Durable User Constraints
+
+- User preference or rule that should affect future turns.
+
+## Secret Pointers
+
+- USER-SECRET-YYYYMMDD-HHMMSS: redacted purpose only; raw value lives in `.codex/context/private/secrets.local.json`.
+```
+
+Rules:
+
+- Record short user prompts near-verbatim when they contain requirements, preferences, constraints, route changes, bad-case reports, server details, or credentials needed for the task.
+- Summarize large pasted files, logs, attachments, or generated blobs instead of copying them wholesale.
+- Never store raw secrets outside `.codex/context/private/` or a secure OS credential store.
+- Do not persist OTP or short-lived one-time verification codes; record only `ephemeral-not-stored`.
+- Promote durable user requirements into task context or roadmap `User request:` fields, then keep this file as a concise source of recent user wording.
 
 ## roadmap.md
 
@@ -216,12 +255,19 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Use `Level: major` for significant milestones shown as main route cards; use `Level: checkpoint` for minor progress that should live in details.
 - Use `Branch:` for forked or parallel routes. Missing `Branch:` means `Main`; use `Parent:` to point to the node where a branch forked.
 - In the human overview, visible card numbers should be consecutive per route group after checkpoint filtering, not source node numbers with gaps.
-- If the human overview has multiple route groups, show all route lines together with parent/fork markers and a compact test route aligned under visible roadmap nodes.
+- If the human overview has multiple route groups, show all route lines together with parent/fork markers; keep tests and bad cases in clicked node details, Test Hub, and agent-readable exports by default.
 - Each node should be concise enough for Codex to scan quickly: outcome, decision, next step, linked bad cases.
 - Link nodes to bad cases and test-chain notes instead of duplicating full details.
 - Treat human-facing test coverage as human-designed bad-case recurrence detection. Single-route overview hides the test lane; multi-route compact test routes should be generated only from user-approved tests with explicit `Run policy`, approved task-case checkpoints, or approved test registry entries, not from ordinary linked bad-case guards or roadmap node checkpoint logs.
 - In branch or multi-route views, align each visible test item to the roadmap node whose approved bad-case test or approved task-case checkpoint it covers. If a route has no approved tests, do not show a test route for it. Empty test slots should be subtle timeline placeholders only when the route has at least one approved test elsewhere.
 - Prefer a task-oriented case in `.codex/context/task-cases/` when realistic workflow phases matter more than isolated bug checks. Bad-case guards should often point to a task-case checkpoint that covers them.
+- Prefer a feature chain in `.codex/context/test-hub/feature-chains.json` when one user-visible feature or workflow can cover several bad cases through checkpoint coverage. Attach new bad cases to existing chain checkpoints before proposing a new chain.
+- Before proposing a new feature chain for a bad case, run `context_guard.py feature-chain-plan --root <project> --query "<bad case or feature text>"`; this is a read-only intake to either review an existing chain or propose a `feature-chain-propose` skeleton with checkpoint coverage state. Do not use `feature-chain-add` as the planner skeleton.
+- Before approving automation, or when proposed feature chains sound similar, run `context_guard.py feature-chain-overlap --root <project>`; this is a read-only duplicate-chain audit to help merge or extend an existing workflow instead of creating another always-run test.
+- `feature-chain-add` creates proposed chains by default. After the user confirms the business flow and test design, use `feature-chain-approve --chain-id <id> --command-text "<approved command>"` to promote the same chain. Do not hand-edit `feature-chains.json` or create a duplicate approved chain to bypass the approval gate.
+- If the user says an approved feature chain should not run every time, use `feature-chain-set-policy --chain-id <id> --run-policy <policy> --reason <reason>` to update the same chain. Do not delete or duplicate feature chains just to change cadence.
+- After editing feature chains, run `context_guard.py validate-feature-chains --root <project>` to catch missing entries, exits, approved automation, checkpoint checks, linked bad-case coverage, and artifact policy issues. This validates structure only; it does not approve business test design.
+- Feature-chain commands may emit `CG_CHECKPOINT:<checkpoint title or id>:PASS` or `CG_CHECKPOINT:<checkpoint title or id>:FAIL:<short reason>`; Test Hub treats any `FAIL` marker as a failed chain and reports that checkpoint. Marker names must match registered checkpoint titles or ids; unknown markers are test-chain failures.
 - Task-case scripts or agents should log the phase/checkpoint that failed, so Codex can locate the broken workflow step without re-debugging the whole task.
 - Before writing any new durable task-case script or active task case, ask the user to confirm with only the business path: from what state to what state, the main task, and the major risk. Keep technical phases/checkpoints/logs inside the task-case file, not in the confirmation prompt. If confirmation is unavailable, keep the case `proposed` and avoid broad new scripts.
 - When the user explicitly asks to create, write, generate, design, or add a test/test task/task case, start the user-visible response with `测试创建识别：...` or the folder-language equivalent, then summarize the test target from what state to what state and the main risk it catches.
@@ -239,6 +285,8 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 - Keep source records in the configured `.codex/context/preferences.json` record language. The HTML roadmap should follow that preference and should not show a visible language selector by default.
 - During goal mode or long-running autonomous work, keep the active goal aligned to the current task, add compact goal checkpoints during meaningful phase changes, and record bad cases as soon as they appear.
 - Treat `.codex/context/index.md`, `.codex/context/roadmap.md`, `.codex/context/bad-cases.md`, and task context files as the source of truth.
+- Treat `.codex/context/user-messages.md` as the source for recent user wording and durable user signals. Use it to populate roadmap `User request:` fields and avoid asking the user to repeat short instructions.
+- Treat `.codex/context/private/` as local-only sensitive memory. Never expose raw secrets in human-facing HTML or git-tracked context.
 - Treat `.codex/context/roadmap/roadmap.html` as a human-facing view only. Codex should not use it for context intake or bad-case management.
 - Treat `.codex/context/roadmap/roadmap.md` and `.codex/context/roadmap/roadmap.json` as stable agent-readable exports for quick scanning, route lookup, bad-case lookup, and recurrence-guard lookup, not as primary editable sources.
 - Keep `NODE-...`, `BC-...`, and `CTX-...` IDs in source files for linking, but hide them in the default human-facing HTML. Show short natural-language node and bad-case labels instead.
@@ -280,6 +328,9 @@ Use task cases for realistic multi-step verification flows. They should catch bu
 ## Pruning Rules
 
 - Do not record normal implementation chatter.
+- Do not drop short user messages that contain requirements, constraints, preferences, credentials, route changes, or bad-case reports.
+- Do not paste huge files or logs into user-message memory; summarize them.
+- Do not store raw secrets in public context files, roadmap HTML, exports, logs, or final answers.
 - Do not record every command; record only commands that prove a checkpoint or guard a bad case.
 - Do not let roadmap node `Test chain:` history replace bad-case recurrence guards in user-facing roadmap output.
 - Do not split a real workflow into many unrelated bug-level tests when one task case with checkpoints would reveal the failure location more clearly.

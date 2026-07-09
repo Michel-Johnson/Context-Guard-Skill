@@ -11,9 +11,7 @@ ADD_OUTPUT="$(python3 "$SCRIPT" feature-chain-add \
   --root "$ROOT" \
   --title "GPU 监控按钮" \
   --entry "点击 GPU 监控按钮" \
-  --exit-check "打开包含有效 grafana_url 的监控页" \
-  --command-text "printf 'feature-chain-ok\n'" \
-  --test-status approved)"
+  --exit-check "打开包含有效 grafana_url 的监控页")"
 
 CHAIN_ID="$(printf '%s\n' "$ADD_OUTPUT" | awk '/feature chain:/ {print $NF}')"
 test -n "$CHAIN_ID"
@@ -24,6 +22,11 @@ python3 "$SCRIPT" feature-chain-attach-bc \
   --node-title "后端返回监控 URL" \
   --bad-case "BC-20260702-000" \
   --check "grafana_url 不为空，前端不会卡住" >/dev/null
+
+python3 "$SCRIPT" feature-chain-approve \
+  --root "$ROOT" \
+  --chain-id "$CHAIN_ID" \
+  --command-text "printf 'CG_CHECKPOINT:后端返回监控 URL:PASS\n'" >/dev/null
 
 python3 "$SCRIPT" feature-chain-list --root "$ROOT" | grep -q "BC-20260702-000"
 
