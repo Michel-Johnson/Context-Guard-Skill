@@ -6741,16 +6741,22 @@ def append_risk_audit_bad_case(ctx: Path, summary: str, buckets: list[tuple[str,
     path = ctx / "bad-cases.md"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     cards = parse_bad_case_cards(text)
-    if cards:
-        return None
     domain = completion_risk_domain(summary, buckets)
-    today_dash = datetime.now().strftime("%Y-%m-%d")
-    case_id = next_bad_case_id(ctx)
     tags = []
     for _label, tag in buckets:
         if tag not in tags:
             tags.append(tag)
     tags.extend(tag for tag in ("#risk-audit", "#subagent") if tag not in tags)
+    risk_tags = {tag.lower() for tag in tags if tag not in {"#risk-audit", "#subagent"}}
+    for card in cards:
+        card_tags = {tag.lower() for tag in bad_case_tags(card)}
+        if "#risk-audit" not in card_tags:
+            continue
+        card_risk_tags = card_tags - {"#risk-audit", "#subagent"}
+        if risk_tags and (risk_tags <= card_risk_tags or len(risk_tags & card_risk_tags) >= 2):
+            return None
+    today_dash = datetime.now().strftime("%Y-%m-%d")
+    case_id = next_bad_case_id(ctx)
     title = f"{case_id}: {domain}存在未验证的状态风险"
     bucket_text = "、".join(label for label, _tag in buckets[:4])
     short_summary = " ".join((summary or "").strip().split())

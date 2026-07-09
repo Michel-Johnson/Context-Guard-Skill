@@ -18,6 +18,30 @@ grep -q "risk audit: created bad-case candidate" "$ROOT/out-risk.txt"
 grep -q "risk-audit" "$ROOT/.codex/context/bad-cases.md"
 grep -q "游戏流程存在未验证的状态风险" "$ROOT/.codex/context/bad-cases.md"
 
+python3 "$SCRIPT" subagent-complete \
+  --root "$ROOT" \
+  --agent-id "risk-audit-duplicate" \
+  --summary "继续调整练习模式和重置确认，失败后重置当前序列；smoke 通过。" \
+  >"$ROOT/out-duplicate.txt"
+
+grep -q "risk audit: no new bad-case candidate" "$ROOT/out-duplicate.txt"
+if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "1" ]]; then
+  echo "duplicate risk-audit summary should not create a second similar bad case" >&2
+  exit 1
+fi
+
+python3 "$SCRIPT" subagent-complete \
+  --root "$ROOT" \
+  --agent-id "risk-audit-distinct" \
+  --summary "加入复制结果和导出 Markdown，空输入时显示校验提示；smoke 通过。" \
+  >"$ROOT/out-distinct.txt"
+
+grep -q "risk audit: created bad-case candidate" "$ROOT/out-distinct.txt"
+if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "2" ]]; then
+  echo "distinct risk-audit summary should create a second bad case candidate" >&2
+  exit 1
+fi
+
 ROOT_LOW="$(mktemp -d "${TMPDIR:-/tmp}/cg-risk-audit-low.XXXXXX")"
 trap 'rm -rf "$ROOT" "$ROOT_LOW"' EXIT
 python3 "$SCRIPT" init --root "$ROOT_LOW" >/dev/null
