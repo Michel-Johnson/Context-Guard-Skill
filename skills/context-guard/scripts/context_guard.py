@@ -4687,7 +4687,7 @@ def semantic_feature_tags(card: dict[str, str]) -> list[str]:
     buckets: list[tuple[str, tuple[str, ...]]] = [
         ("#复制反馈", ("复制", "剪贴板", "clipboard", "copy")),
         ("#空输入保护", ("空输入", "空白", "短线索", "输入", "empty", "blank", "input")),
-        ("#历史恢复", ("历史", "恢复", "记录", "history", "restore")),
+        ("#历史恢复", ("历史", "恢复", "history", "restore")),
         ("#导出", ("导出", "markdown", "export")),
         ("#本地存储", ("本地存储", "持久化", "localstorage", "local storage", "persist")),
         ("#模板", ("模板", "template")),
@@ -4704,7 +4704,7 @@ def semantic_feature_tags(card: dict[str, str]) -> list[str]:
 
 
 def feature_chain_group_tags(card: dict[str, str]) -> list[str]:
-    ignored = {"feature-chain", "test-hub", "methodology"}
+    ignored = {"feature-chain", "test-hub", "methodology", "risk-audit", "subagent"}
     tags = []
     for tag in [*bad_case_tags(card), *semantic_feature_tags(card)]:
         raw = tag.strip().lstrip("#")
@@ -4732,6 +4732,55 @@ def auto_feature_chain_title(tags: tuple[str, ...], cards: list[dict[str, str]])
         if best_count >= 2 or len(scope_counts) == 1:
             return best_scope
     return readable_feature_tag_group(tags)
+
+
+def internal_auto_feature_chain_label(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    lowered = text.lower()
+    internal_terms = ("context guard", "subagent", "risk audit")
+    if any(term in lowered for term in internal_terms):
+        return True
+    return text in {"未命名功能区", "本轮功能流程"}
+
+
+def internal_auto_feature_chain_tags(tags: tuple[str, ...]) -> bool:
+    normalized = {tag.strip().lstrip("#").lower() for tag in tags if tag.strip()}
+    return bool(normalized & {"risk-audit", "subagent", "feature-chain", "test-hub", "methodology"})
+
+
+def best_auto_feature_group_tags(cards: list[dict[str, str]]) -> tuple[str, ...]:
+    groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    for card in cards:
+        tags = feature_chain_group_tags(card)
+        if len(tags) >= 2:
+            for index, first_tag in enumerate(tags):
+                for second_tag in tags[index + 1 :]:
+                    groups.setdefault((first_tag, second_tag), []).append(card)
+        for tag in tags:
+            groups.setdefault((tag,), []).append(card)
+    if not groups:
+        return tuple()
+    best_coverage = max(len(group_cards) for group_cards in groups.values())
+    candidates = [
+        (tags, group_cards)
+        for tags, group_cards in groups.items()
+        if len(group_cards) == best_coverage
+    ]
+    candidates.sort(key=feature_chain_candidate_group_sort_key)
+    return candidates[0][0]
+
+
+def feature_group_coverage_count(tags: tuple[str, ...], cards: list[dict[str, str]]) -> int:
+    if not tags:
+        return 0
+    required = set(tags)
+    count = 0
+    for card in cards:
+        if required.issubset(set(feature_chain_group_tags(card))):
+            count += 1
+    return count
 
 
 def feature_chain_tag_sort_key(tag: str) -> tuple[int, str]:
@@ -4801,6 +4850,45 @@ def auto_feature_chain_node(chain_id: str, index: int, card: dict[str, str]) -> 
     }
 
 
+def refresh_auto_feature_chain_metadata(chain: dict[str, Any], cards_by_id: dict[str, dict[str, str]]) -> bool:
+    refs: list[str] = []
+    nodes = chain.get("nodes")
+    if not isinstance(nodes, list):
+        return False
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_refs = node.get("bad_cases", [])
+        if isinstance(node_refs, list):
+            refs.extend(str(ref).strip() for ref in node_refs if str(ref).strip())
+    source_cards = [cards_by_id[ref] for ref in refs if ref in cards_by_id]
+    if not source_cards:
+        return False
+
+    changed = False
+    current_key = str(chain.get("auto_group_key") or "").strip()
+    current_tags = tuple(tag for tag in current_key.split("|") if tag)
+    better_tags = best_auto_feature_group_tags(source_cards)
+    should_refresh_key = not current_tags or internal_auto_feature_chain_tags(current_tags)
+    if better_tags and current_tags and not should_refresh_key:
+        should_refresh_key = feature_group_coverage_count(better_tags, source_cards) > feature_group_coverage_count(
+            current_tags, source_cards
+        )
+    if better_tags and should_refresh_key:
+        better_key = "|".join(better_tags)
+        if current_key != better_key:
+            chain["auto_group_key"] = better_key
+            changed = True
+    tags_for_title = better_tags or current_tags
+    better_title = auto_feature_chain_title(tags_for_title, source_cards)
+    if better_title and internal_auto_feature_chain_label(str(chain.get("title") or "")):
+        chain["title"] = better_title
+        chain["entry"] = f"触发「{better_title}」相关用户流程"
+        chain["exit_check"] = f"「{better_title}」相关结果保持用户可见的正确状态"
+        changed = True
+    return changed
+
+
 def expand_auto_feature_chain_nodes(chains: list[dict[str, Any]], cards: list[dict[str, str]]) -> bool:
     cards_by_id = {bad_case_card_id(card): card for card in cards if bad_case_card_id(card)}
     any_changed = False
@@ -4843,6 +4931,8 @@ def expand_auto_feature_chain_nodes(chains: list[dict[str, Any]], cards: list[di
             chain_changed = True
         if chain_changed and expanded_nodes:
             chain["nodes"] = expanded_nodes
+            any_changed = True
+        if refresh_auto_feature_chain_metadata(chain, cards_by_id):
             any_changed = True
     return any_changed
 

@@ -81,3 +81,88 @@ if grep -q "risk-audit" "$ROOT_LOW/.codex/context/bad-cases.md"; then
   echo "low-risk summary should not create risk-audit bad case" >&2
   exit 1
 fi
+
+ROOT_LEGACY="$(mktemp -d "${TMPDIR:-/tmp}/cg-risk-audit-legacy-chain.XXXXXX")"
+trap 'rm -rf "$ROOT" "$ROOT_LOW" "$ROOT_LEGACY"' EXIT
+python3 "$SCRIPT" init --root "$ROOT_LEGACY" >/dev/null
+mkdir -p "$ROOT_LEGACY/.codex/context/test-hub"
+cat >"$ROOT_LEGACY/.codex/context/bad-cases.md" <<'MD'
+# Bad Case Register
+
+## Active Cases
+
+### BC-20260709-101: 状态切换风险未验证
+
+- Status: open
+- Scope: 状态切换
+- Tags: #状态流程 #回放 #risk-audit #subagent
+- Display summary: Subagent 本轮开发涉及状态切换和回放，但没有对应功能链节点。
+- Phenomenon: 练习模式和普通模式来回切换后状态可能串线。
+- Trigger / reproduction: 切换练习模式后退出，再继续普通模式。
+- Guard / verification: 运行游戏入口，检查练习模式和普通模式状态互不污染。
+
+### BC-20260709-102: 重置撤销风险未验证
+
+- Status: open
+- Scope: 状态切换
+- Tags: #状态流程 #重置 #risk-audit #subagent
+- Display summary: Subagent 本轮开发涉及重置撤销，但没有对应功能链节点。
+- Phenomenon: 重置确认取消后仍可能清空游戏进度。
+- Trigger / reproduction: 点击重置全部进度，再取消确认。
+- Guard / verification: 运行游戏入口，检查取消重置后进度仍保留。
+MD
+cat >"$ROOT_LEGACY/.codex/context/test-hub/feature-chains.json" <<'JSON'
+{
+  "version": 1,
+  "chains": [
+    {
+      "id": "FC-20260709-001",
+      "title": "Context Guard subagent completion risk audit",
+      "status": "proposed",
+      "run_policy": "every-dev-completion",
+      "entry": "触发内部审计",
+      "exit_check": "内部审计通过",
+      "command": "",
+      "timeout_seconds": 300,
+      "artifact_policy": "cleanup-on-pass",
+      "resource": "local",
+      "created": "2026-07-09",
+      "source": "feature-chain-auto-propose",
+      "auto_proposed": true,
+      "auto_group_key": "#risk-audit|#subagent",
+      "confirmation_required": true,
+      "nodes": [
+        {
+          "id": "FC-20260709-001-N1",
+          "title": "状态切换风险未验证",
+          "bad_cases": ["BC-20260709-101"],
+          "checks": ["检查练习模式和普通模式状态互不污染"]
+        },
+        {
+          "id": "FC-20260709-001-N2",
+          "title": "重置撤销风险未验证",
+          "bad_cases": ["BC-20260709-102"],
+          "checks": ["检查取消重置后进度仍保留"]
+        }
+      ]
+    }
+  ]
+}
+JSON
+
+python3 "$SCRIPT" feature-chain-auto-propose --root "$ROOT_LEGACY" >/tmp/risk-audit-legacy-refresh.out
+
+python3 - "$ROOT_LEGACY/.codex/context/test-hub/feature-chains.json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+chain = data["chains"][0]
+assert chain["title"] == "状态切换", chain
+assert "risk-audit" not in chain.get("auto_group_key", ""), chain
+assert "subagent" not in chain.get("auto_group_key", ""), chain
+assert "#状态流程" in chain.get("auto_group_key", ""), chain
+assert chain["entry"] == "触发「状态切换」相关用户流程", chain
+assert chain["exit_check"] == "「状态切换」相关结果保持用户可见的正确状态", chain
+PY
