@@ -509,7 +509,14 @@ python3 ~/.agents/skills/context-guard/scripts/context_guard.py subagent-complet
   --summary "<short completion summary>"
 ```
 
-Use this fallback whenever a completed subagent edited files, generated artifacts, or made progress in a project folder. The command initializes folder context when needed, records a subagent handoff, creates a concise checkpoint, runs Test Hub `dev-complete`, and attempts feature-chain auto-proposal from recorded bad cases. If it fails or blocks, treat it exactly like a Stop/SubagentStop Test Hub failure: inspect evidence, fix or report the blocker, and do not claim the subagent work is fully complete.
+Use this fallback whenever a completed subagent edited files, generated artifacts, or made progress in a project folder. The command initializes folder context when needed, records a subagent handoff, creates a concise checkpoint, runs Test Hub `dev-complete`, performs a lightweight completion-risk audit, and attempts feature-chain auto-proposal from recorded bad cases. If it fails or blocks, treat it exactly like a Stop/SubagentStop Test Hub failure: inspect evidence, fix or report the blocker, and do not claim the subagent work is fully complete.
+
+The completion-risk audit is not a license to invent a test suite. It exists to catch the failure mode where a subagent only reports "done / smoke passed" while a stateful, persistent, reset, replay, copy/export, or input-validation workflow has no bad-case input at all. When a completed subagent summary contains multiple high-risk workflow cues and the project has no parsable bad cases, `subagent-complete` may write one `risk-audit` bad-case candidate. Keep it conservative:
+
+- Do not create a bad case for every small concern.
+- Prefer real user-reported, observed, or reproducible bad cases when they exist.
+- Treat risk-audit entries as open candidates until a later run confirms, merges, or closes them.
+- Let `feature-chain-auto-propose` group those candidates into proposed feature chains; do not approve or execute them without user confirmation.
 
 Do not rely on the subagent's final prose as proof that Context Guard ran. Verify the project has `.codex/context/` and, when approved tests exist, a current `.codex/context/test-hub/last-run.json`.
 

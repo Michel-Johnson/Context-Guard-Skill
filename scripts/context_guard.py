@@ -3825,6 +3825,14 @@ def next_feature_chain_id(ctx: Path) -> str:
     return f"FC-{today}-{(max(numbers) + 1 if numbers else 1):03d}"
 
 
+def next_bad_case_id(ctx: Path) -> str:
+    today = datetime.now().strftime("%Y%m%d")
+    path = ctx / "bad-cases.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    numbers = [int(match.group(1)) for match in re.finditer(rf"BC-{today}-(\d+)", text)]
+    return f"BC-{today}-{(max(numbers) + 1 if numbers else 1):03d}"
+
+
 def feature_chain_find(
     ctx: Path, chain_id: str
 ) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
@@ -6694,6 +6702,110 @@ def append_subagent_handoff(ctx: Path, agent_id: str, summary: str) -> Path:
     return path
 
 
+RISK_AUDIT_BUCKETS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("状态切换", "#状态流程", ("状态", "模式", "练习模式", "暂停", "恢复", "失败", "成功", "state", "mode")),
+    ("持久化", "#本地存储", ("持久化", "localstorage", "local storage", "刷新", "重启", "历史", "最高分", "streak", "score")),
+    ("重置撤销", "#重置", ("重置", "撤销", "删除", "清空", "确认", "reset", "undo", "delete", "clear")),
+    ("输入保护", "#空输入保护", ("空输入", "输入", "短线索", "表单", "校验", "input", "validation", "empty")),
+    ("复制导出", "#复制反馈", ("复制", "剪贴板", "导出", "markdown", "copy", "clipboard", "export")),
+    ("回放复盘", "#回放", ("回放", "复盘", "倒计时", "序列", "sequence", "replay", "countdown")),
+    ("移动交互", "#ui", ("移动端", "按钮", "点击", "触摸", "布局", "mobile", "button", "click", "tap")),
+]
+
+
+def completion_risk_buckets(summary: str) -> list[tuple[str, str]]:
+    text = (summary or "").lower()
+    matched: list[tuple[str, str]] = []
+    for label, tag, keywords in RISK_AUDIT_BUCKETS:
+        if any(keyword.lower() in text for keyword in keywords):
+            matched.append((label, tag))
+    return matched
+
+
+def completion_risk_domain(summary: str, buckets: list[tuple[str, str]]) -> str:
+    text = (summary or "").lower()
+    if any(word in text for word in ("灯", "游戏", "回放", "倒计时", "最高分", "sequence", "replay", "score")):
+        return "游戏流程"
+    if any(word in text for word in ("角色", "线索", "复制", "剪贴板", "markdown", "story", "card", "clipboard")):
+        return "内容生成流程"
+    if any(word in text for word in ("清单", "模板", "勾选", "收纳", "streak", "template")):
+        return "清单模板流程"
+    if buckets:
+        return buckets[0][0]
+    return "本轮功能流程"
+
+
+def append_risk_audit_bad_case(ctx: Path, summary: str, buckets: list[tuple[str, str]]) -> Path | None:
+    if len(buckets) < 2:
+        return None
+    path = ctx / "bad-cases.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    cards = parse_bad_case_cards(text)
+    if cards:
+        return None
+    domain = completion_risk_domain(summary, buckets)
+    today_dash = datetime.now().strftime("%Y-%m-%d")
+    case_id = next_bad_case_id(ctx)
+    tags = []
+    for _label, tag in buckets:
+        if tag not in tags:
+            tags.append(tag)
+    tags.extend(tag for tag in ("#risk-audit", "#subagent") if tag not in tags)
+    title = f"{case_id}: {domain}存在未验证的状态风险"
+    bucket_text = "、".join(label for label, _tag in buckets[:4])
+    short_summary = " ".join((summary or "").strip().split())
+    if len(short_summary) > 240:
+        short_summary = short_summary[:237].rstrip() + "..."
+    block = f"""
+### {title}
+
+- Status: open
+- First observed: {today_dash}
+- Last checked: {today_dash}
+- Scope: Context Guard subagent completion risk audit
+- Context task: current
+- Roadmap nodes: none
+- Tags: {" ".join(tags)}
+- Frequency: first-seen
+- Display summary: Subagent 本轮开发涉及{bucket_text}，但没有记录任何可聚合 bad case。
+- Phenomenon: Subagent 完成开发并通过 smoke 后，项目 context 中仍没有 bad case 输入；如果本轮状态、重置或持久化风险未被记录，后续功能链无法覆盖这些复发风险。
+- Trigger / reproduction: {short_summary or "Subagent 完成一次开发任务，但没有留下 bad-case register。"}
+- Root cause: 仅依赖 subagent 自主发现风险时，普通开发总结可能只报告完成事项和 smoke 通过，不会主动写入潜在用户风险。
+- Fix method: 尚未修复；需要在下一轮开发或人工审查中确认该风险是否真实存在，并将其合并进对应功能链或关闭。
+- Guard type: risk-audit
+- Guard / verification: 运行真实用户入口，覆盖{bucket_text}相关路径；若风险不成立，将本条关闭并记录原因。
+- Run policy: relevant-only
+- Red condition: 相关入口在空状态、重复点击、失败路径、刷新/重启或重置/撤销后表现不一致。
+- Green condition: 相关入口在这些边界路径下状态一致、反馈清晰，并且必要时有功能链覆盖。
+- Expected failure reason: 如果没有这条风险审计记录，Context Guard 会因为没有 bad case 输入而无法建立或扩展功能链。
+- Reusable guard path: pending
+- Test-chain issue: missing bad-case input after subagent completion
+"""
+    clean_block = block.lstrip()
+    placeholder = "## Active Cases\n\nNone.\n"
+    if placeholder in text:
+        path.write_text(text.replace(placeholder, "## Active Cases\n\n" + clean_block + "\n", 1), encoding="utf-8")
+    else:
+        with path.open("a", encoding="utf-8") as handle:
+            if text and not text.endswith("\n"):
+                handle.write("\n")
+            handle.write(clean_block)
+    return path
+
+
+def subagent_completion_risk_audit(root: Path, summary: str) -> Path | None:
+    ctx = context_dir(root)
+    buckets = completion_risk_buckets(summary)
+    created = append_risk_audit_bad_case(ctx, summary, buckets)
+    if created:
+        labels = "、".join(label for label, _tag in buckets)
+        print(f"[context-guard] risk audit: created bad-case candidate for {labels}.")
+        print(f"[context-guard] risk audit file: {created}")
+    else:
+        print("[context-guard] risk audit: no new bad-case candidate.")
+    return created
+
+
 def subagent_complete(
     root: Path,
     agent_id: str = "",
@@ -6725,6 +6837,7 @@ def subagent_complete(
     )
     print(f"[context-guard] subagent handoff: {handoff_path}")
     test_code = test_hub_dev_complete(root, jobs=jobs, keep_success_artifacts=keep_success_artifacts)
+    subagent_completion_risk_audit(root, summary)
     try:
         feature_chain_auto_propose(root, min_cases=2, max_groups=6, hook_mode=True)
     except Exception as exc:
