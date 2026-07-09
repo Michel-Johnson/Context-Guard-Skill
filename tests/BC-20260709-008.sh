@@ -16,12 +16,12 @@ python3 "$SCRIPT" subagent-complete \
 
 grep -q "risk audit: created bad-case candidate" "$ROOT/out-risk.txt"
 grep -q "risk-audit" "$ROOT/.codex/context/bad-cases.md"
-grep -q "游戏流程存在未验证的状态风险" "$ROOT/.codex/context/bad-cases.md"
+grep -q "游戏流程.*未验证" "$ROOT/.codex/context/bad-cases.md"
 
 python3 "$SCRIPT" subagent-complete \
   --root "$ROOT" \
   --agent-id "risk-audit-duplicate" \
-  --summary "继续调整练习模式和重置确认，失败后重置当前序列；smoke 通过。" \
+  --summary "加入练习模式、关闭倒计时选项、失败复盘里的逐步回放，以及最高分重置确认；smoke 通过。" \
   >"$ROOT/out-duplicate.txt"
 
 grep -q "risk audit: no new bad-case candidate" "$ROOT/out-duplicate.txt"
@@ -32,13 +32,38 @@ fi
 
 python3 "$SCRIPT" subagent-complete \
   --root "$ROOT" \
+  --agent-id "risk-audit-same-tags-new-step" \
+  --summary "继续加入关卡包切换和暂停恢复，失败后展示本轮序列复盘；smoke 通过。" \
+  >"$ROOT/out-same-tags-new-step.txt"
+
+grep -q "risk audit: created bad-case candidate" "$ROOT/out-same-tags-new-step.txt"
+if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "2" ]]; then
+  echo "same-tag but different long-flow step should create another bad case candidate" >&2
+  exit 1
+fi
+
+python3 "$SCRIPT" subagent-complete \
+  --root "$ROOT" \
   --agent-id "risk-audit-distinct" \
   --summary "加入复制结果和导出 Markdown，空输入时显示校验提示；smoke 通过。" \
   >"$ROOT/out-distinct.txt"
 
 grep -q "risk audit: created bad-case candidate" "$ROOT/out-distinct.txt"
-if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "2" ]]; then
+if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "3" ]]; then
   echo "distinct risk-audit summary should create a second bad case candidate" >&2
+  exit 1
+fi
+
+python3 "$SCRIPT" subagent-complete \
+  --root "$ROOT" \
+  --agent-id "risk-audit-edit-isolation" \
+  --summary "新增角色小队的章节计划，重生成单章时不影响其他章节，导出 Markdown 包含章节计划；smoke 通过。" \
+  >"$ROOT/out-edit-isolation.txt"
+
+grep -q "risk audit: created bad-case candidate" "$ROOT/out-edit-isolation.txt"
+grep -q "局部隔离" "$ROOT/.codex/context/bad-cases.md"
+if [[ "$(grep -c '^### BC-' "$ROOT/.codex/context/bad-cases.md")" != "4" ]]; then
+  echo "long-flow edit isolation should create a risk-audit bad case candidate" >&2
   exit 1
 fi
 

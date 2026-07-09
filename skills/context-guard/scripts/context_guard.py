@@ -5080,7 +5080,11 @@ def feature_chain_auto_propose(root: Path, min_cases: int = 2, max_groups: int =
                     refs = node.get("bad_cases", [])
                     if isinstance(refs, list):
                         existing_refs.update(str(item).strip() for item in refs if str(item).strip())
-                new_case_ids = [case_id for case_id in case_ids if case_id not in existing_refs]
+                new_case_ids = [
+                    case_id
+                    for case_id in case_ids
+                    if case_id not in existing_refs and case_id not in run_covered_ids
+                ]
                 if not new_case_ids:
                     skipped.append(f"{title}: already proposed")
                     continue
@@ -6710,6 +6714,28 @@ RISK_AUDIT_BUCKETS: list[tuple[str, str, tuple[str, ...]]] = [
     ("复制导出", "#复制反馈", ("复制", "剪贴板", "导出", "markdown", "copy", "clipboard", "export")),
     ("回放复盘", "#回放", ("回放", "复盘", "倒计时", "序列", "sequence", "replay", "countdown")),
     ("移动交互", "#ui", ("移动端", "按钮", "点击", "触摸", "布局", "mobile", "button", "click", "tap")),
+    (
+        "局部隔离",
+        "#编辑隔离",
+        (
+            "不影响",
+            "不会提前污染",
+            "污染",
+            "隔离",
+            "独立",
+            "局部",
+            "单章",
+            "这一章",
+            "其他章节",
+            "其他成员",
+            "小队",
+            "章节",
+            "成员",
+            "草稿",
+            "isolation",
+            "isolated",
+        ),
+    ),
 ]
 
 
@@ -6747,34 +6773,42 @@ def append_risk_audit_bad_case(ctx: Path, summary: str, buckets: list[tuple[str,
         if tag not in tags:
             tags.append(tag)
     tags.extend(tag for tag in ("#risk-audit", "#subagent") if tag not in tags)
-    risk_tags = {tag.lower() for tag in tags if tag not in {"#risk-audit", "#subagent"}}
+    short_summary = " ".join((summary or "").strip().split())
+    if len(short_summary) > 240:
+        short_summary = short_summary[:237].rstrip() + "..."
+    summary_signature = normalize_test_slug(short_summary)[:96]
     for card in cards:
         card_tags = {tag.lower() for tag in bad_case_tags(card)}
         if "#risk-audit" not in card_tags:
             continue
-        card_risk_tags = card_tags - {"#risk-audit", "#subagent"}
-        if risk_tags and (risk_tags <= card_risk_tags or len(risk_tags & card_risk_tags) >= 2):
+        card_trigger = normalize_test_slug(
+            " ".join(
+                [
+                    str(card.get("trigger / reproduction", "")),
+                    str(card.get("trigger", "")),
+                    str(card.get("display summary", "")),
+                ]
+            )
+        )
+        if summary_signature and summary_signature in card_trigger:
             return None
     today_dash = datetime.now().strftime("%Y-%m-%d")
     case_id = next_bad_case_id(ctx)
-    title = f"{case_id}: {domain}存在未验证的状态风险"
     bucket_text = "、".join(label for label, _tag in buckets[:4])
-    short_summary = " ".join((summary or "").strip().split())
-    if len(short_summary) > 240:
-        short_summary = short_summary[:237].rstrip() + "..."
+    title = f"{case_id}: {domain}{bucket_text}未验证"
     block = f"""
 ### {title}
 
 - Status: open
 - First observed: {today_dash}
 - Last checked: {today_dash}
-- Scope: Context Guard subagent completion risk audit
+- Scope: {domain}
 - Context task: current
 - Roadmap nodes: none
 - Tags: {" ".join(tags)}
 - Frequency: first-seen
-- Display summary: Subagent 本轮开发涉及{bucket_text}，但没有记录任何可聚合 bad case。
-- Phenomenon: Subagent 完成开发并通过 smoke 后，项目 context 中仍没有 bad case 输入；如果本轮状态、重置或持久化风险未被记录，后续功能链无法覆盖这些复发风险。
+- Display summary: Subagent 本轮开发涉及{bucket_text}，但没有对应 bad case 或功能链节点。
+- Phenomenon: Subagent 完成开发并通过 smoke 后，本轮新增流程没有留下可聚合 bad case；如果这些状态、重置、持久化或复盘风险未被记录，后续功能链无法覆盖这些复发风险。
 - Trigger / reproduction: {short_summary or "Subagent 完成一次开发任务，但没有留下 bad-case register。"}
 - Root cause: 仅依赖 subagent 自主发现风险时，普通开发总结可能只报告完成事项和 smoke 通过，不会主动写入潜在用户风险。
 - Fix method: 尚未修复；需要在下一轮开发或人工审查中确认该风险是否真实存在，并将其合并进对应功能链或关闭。

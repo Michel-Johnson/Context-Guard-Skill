@@ -159,3 +159,81 @@ checks = [check for node in nodes for check in node.get("checks", [])]
 assert any("完成提示刷新后消失" in item for item in titles), titles
 assert any("已有晚间收纳功能链" in item for item in checks), checks
 PY
+
+python3 - "$ROOT/.codex/context/test-hub/feature-chains.json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+chains = data.get("chains", [])
+base = chains[0]
+base_key = str(base.get("auto_group_key") or "persistence")
+parts = [part for part in base_key.split("|") if part]
+secondary_key = parts[0] if parts else "evening-reset"
+chains.append(
+    {
+        "id": "FC-20260709-999",
+        "title": "secondary overlapping chain",
+        "status": "proposed",
+        "run_policy": "every-dev-completion",
+        "entry": "overlap test",
+        "exit_check": "overlap test",
+        "command": "",
+        "timeout_seconds": 300,
+        "artifact_policy": "cleanup-on-pass",
+        "resource": "local",
+        "created": "2026-07-09",
+        "source": "feature-chain-auto-propose",
+        "auto_proposed": True,
+        "auto_group_key": secondary_key,
+        "confirmation_required": True,
+        "nodes": [],
+    }
+)
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+
+cat >>"$ROOT/.codex/context/bad-cases.md" <<'MD'
+
+### BC-20260709-813: 下周模板提前污染今天清单
+
+- Status: resolved
+- First observed: 2026-07-09
+- Last checked: 2026-07-09
+- Scope: 晚间收纳重置清单
+- Tags: #evening-reset #persistence
+- Display summary: 下周计划确认后，今天的清单也被提前替换。
+- Phenomenon: 用户在周复盘里确认下周模板，回到今天清单后发现今天的任务顺序或内容已经变了。
+- Trigger / reproduction: 从周复盘生成下周模板，再回到今天清单。
+- Root cause: 下周计划和今天模板共用同一份持久化状态。
+- Fix method: 下周模板单独存储，到下周才应用。
+- Guard / verification: 应只挂到一个最匹配的已有功能链，避免同一个 bad case 被多个 proposed 链重复覆盖。
+- Guard type: feature-chain
+- Red condition: 下周模板提前污染今天清单。
+- Green condition: 下周模板确认后，今天清单保持原样。
+- Expected failure reason: 如果自动挂载没有排除本轮已覆盖 BC，同一条 BC 会被多个 proposed 链重复挂载。
+MD
+
+python3 "$SCRIPT" subagent-complete \
+  --root "$ROOT" \
+  --agent-id "agent-auto-chain-overlap" \
+  --summary "Fixed next-week template persistence without changing today's checklist." >/tmp/subagent-auto-chain-overlap.out
+
+grep -Fq "[context-guard] test hub: 1 passed, 0 failed, 0 blocked." /tmp/subagent-auto-chain-overlap.out
+
+python3 - "$ROOT/.codex/context/test-hub/feature-chains.json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+refs = [
+    ref
+    for chain in data.get("chains", [])
+    for node in chain.get("nodes", [])
+    for ref in node.get("bad_cases", [])
+]
+assert refs.count("BC-20260709-813") == 1, refs
+PY
