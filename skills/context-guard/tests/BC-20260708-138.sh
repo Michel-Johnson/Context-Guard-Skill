@@ -94,15 +94,15 @@ assert {chain["title"] for chain in chains} == {"晚间重置流程", "角色卡
 
 hub = root / ".codex/context/test-hub"
 for chain in chains:
-    node_title = chain["nodes"][0]["title"]
+    node_titles = [node["title"] for node in chain["nodes"]]
     script_path = hub / f"run-{chain['id']}.sh"
-    script_path.write_text(
+    body = (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f"echo 'running {chain['title']}'\n"
-        f"echo 'CG_CHECKPOINT:{node_title}:PASS'\n",
-        encoding="utf-8",
     )
+    body += "".join(f"echo 'CG_CHECKPOINT:{node_title}:PASS'\n" for node_title in node_titles)
+    script_path.write_text(body, encoding="utf-8")
     script_path.chmod(0o755)
     subprocess.run(
         [

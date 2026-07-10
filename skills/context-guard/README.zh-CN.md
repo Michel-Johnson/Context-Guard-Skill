@@ -15,6 +15,8 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 - **区分人类视图和 agent 视图**：HTML 给人看，Markdown/JSON 给 Codex 读取。
 - **支持多语言记录**：按项目偏好用中文或英文写 context。
 - **处理任务切换**：遇到新方向、支线任务或中断任务时，帮助 Codex park/resume。
+- **绑定 Subagent 项目**：把 agent ID 绑定到实际本地项目根目录，避免 context 写回父工作区或 SSH 服务器。
+- **沉淀真实修复**：优先保存 Subagent 实际发现的问题、根因、修复和验证；重复完成事件不会重复建节点。
 - **测试由人类设计**：Codex 只复用已确认检查，或提出草案等待用户确认，不静默创建长期测试。
 - **用功能链覆盖 bad case**：优先把多个 bad case 挂到同一条真实功能/工作流测试链上，而不是为每个 bad case 单独造测试。
 - **默认运行已确认测试**：用户创建或确认的测试，默认每次开发结束都要运行；只有用户说明不必每次运行时才降频。
@@ -52,7 +54,9 @@ npx github:Michel-Johnson/Context-Guard-Skill install
 git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
-rsync -a --delete skills/context-guard/ ~/.codex/skills/context-guard/
+rsync -a --delete \
+  SKILL.md README.md README.zh-CN.md agents references scripts tests \
+  ~/.codex/skills/context-guard/
 ```
 
 安装后 Codex 应该能发现：
@@ -293,4 +297,4 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 - 前端或 HTML 改动结束前，应实际查看页面或截图，确认没有明显视觉错误。
 - 任何新的长期测试 case 都先写简短草案，让用户确认后再变成 active 测试。
 
-详细行为规则见 [`skills/context-guard/SKILL.md`](skills/context-guard/SKILL.md)。
+详细行为规则见 [`SKILL.md`](SKILL.md)。

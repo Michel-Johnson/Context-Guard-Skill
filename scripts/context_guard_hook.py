@@ -16,7 +16,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from context_guard import approved_dev_completion_tests, context_dir, init_context
+from context_guard import approved_dev_completion_tests, context_dir, init_context, resolve_registered_subagent_root
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -111,7 +111,47 @@ def parse_hook_payload(raw: str) -> object:
         return {}
 
 
-def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
+def hook_agent_id(payload: object) -> str:
+    keys = {"agent_id", "agentId", "subagent_id", "subagentId"}
+    found: list[str] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in keys and isinstance(child, str) and child.strip():
+                    found.append(child.strip())
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(payload)
+    return found[0] if found else ""
+
+
+def hook_text_field(payload: object, key: str) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    value = payload.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def registered_subagent_control_root(payload: object, cwd: Path, agent_id: str) -> Path | None:
+    if not agent_id:
+        return None
+    candidates = [*possible_workspace_paths(payload), cwd]
+    seen: set[Path] = set()
+    for path in candidates:
+        control_root = git_root(path).resolve()
+        if control_root in seen:
+            continue
+        seen.add(control_root)
+        if resolve_registered_subagent_root(control_root, agent_id):
+            return control_root
+    return None
+
+
+def event_root(raw: str, cwd: Path, event: str = "") -> tuple[Path, str]:
     payload = parse_hook_payload(raw)
     candidates: list[tuple[Path, str]] = []
     for path in possible_workspace_paths(payload):
@@ -123,6 +163,13 @@ def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
             if path.exists():
                 candidates.append((path, f"${key}"))
     candidates.append((cwd, "process cwd"))
+
+    agent_id = hook_agent_id(payload) if event in {"subagent-start", "subagent-stop"} else ""
+    control_root = registered_subagent_control_root(payload, cwd, agent_id)
+    if control_root:
+        assigned = resolve_registered_subagent_root(control_root, agent_id)
+        if assigned and not is_context_guard_skill_path(assigned):
+            return assigned, f"registered subagent assignment ({agent_id})"
 
     for path, source in candidates:
         root = git_root(path)
@@ -601,7 +648,7 @@ def format_unresolved_bad_cases(cases: list[dict[str, str]], limit: int = 5) -> 
 def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
     raw = read_stdin()
-    root, root_source = event_root(raw, Path.cwd())
+    root, root_source = event_root(raw, Path.cwd(), event)
     context_dir = root / ".codex" / "context"
     index_path = context_dir / "index.md"
     roadmap_path = context_dir / "roadmap.md"
@@ -691,6 +738,59 @@ def main() -> int:
         hook_log(f"[context-guard] project root: {root}")
         hook_log(f"[context-guard] context folder: {context_dir}")
         hook_log(f"[context-guard] bad-case register: {bad_cases_path}")
+        if event == "subagent-stop":
+            payload = parse_hook_payload(raw)
+            agent_id = hook_agent_id(payload)
+            last_message = hook_text_field(payload, "last_assistant_message")
+            control_root = registered_subagent_control_root(payload, Path.cwd(), agent_id)
+            command_root = control_root or root
+            command = [
+                sys.executable,
+                str(SKILL_ROOT / "scripts" / "context_guard.py"),
+                "subagent-complete",
+                "--root",
+                str(command_root),
+                "--agent-id",
+                agent_id,
+                "--summary",
+                last_message,
+            ]
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=str(root),
+                    text=True,
+                    capture_output=True,
+                    timeout=900,
+                )
+            except subprocess.TimeoutExpired:
+                reason = "Context Guard subagent completion timed out after 900s."
+                hook_log(f"[context-guard] TEST HUB BLOCKER: {reason}")
+                return hook_response(decision="block", reason=reason)
+            except Exception as exc:
+                reason = f"Context Guard could not run subagent completion: {exc}"
+                hook_log(f"[context-guard] COMPLETION BLOCKER: {reason}")
+                return hook_response(decision="block", reason=reason)
+            completion_output = "\n".join(
+                part for part in [completed.stdout.strip(), completed.stderr.strip()] if part
+            )
+            for line in completion_output.splitlines():
+                hook_log(line)
+            hook_log(
+                "[context-guard] final answer must include Test Hub summary: "
+                + completion_test_summary(completion_output, completed.returncode)
+            )
+            if completed.returncode != 0:
+                details = completion_test_failure_details(root)
+                reason = "Context Guard subagent completion found failed or blocked approved tests."
+                if details:
+                    reason += " Failing tests: " + details
+                hook_log(f"[context-guard] TEST HUB BLOCKER: {reason}")
+                return hook_response(decision="block", reason=reason)
+            open_cases = unresolved_bad_cases(bad_cases_path)
+            hook_log("[context-guard] final answer must include BC summary: archived/updated BC this turn, and current unresolved BC.")
+            hook_log(f"[context-guard] current unresolved BC: {format_unresolved_bad_cases(open_cases)}")
+            return hook_response()
         try:
             test_code, test_output = run_test_hub_completion(root)
             for line in test_output.splitlines():

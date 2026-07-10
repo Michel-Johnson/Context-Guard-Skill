@@ -500,16 +500,47 @@ Use the Test Hub as the automation control plane for approved tests. The hub col
 
 ### Subagent Completion Fallback
 
-Some Codex subagent transports may not fire local `SubagentStart` or `SubagentStop` hooks. When the main agent uses `multi_agent_v1.spawn_agent`, `wait_agent`, or receives a subagent completion notification, the main agent must run the same Context Guard completion gate explicitly for that subagent's project root:
+Some Codex subagent transports may not fire project-local `SubagentStart` or `SubagentStop` hooks, and a subagent launched from a parent workspace may inherit the parent's working directory even when its product files live in a child folder. Treat hooks as supplemental and bind every spawned subagent to its real local project root immediately after `spawn_agent` returns:
+
+```bash
+python3 ~/.agents/skills/context-guard/scripts/context_guard.py subagent-register \
+  --root <main/control workspace root> \
+  --agent-id <agent id> \
+  --project-root <subagent project root> \
+  --task "<ordinary product task>"
+```
+
+Do not initialize or update Context Guard on an SSH server merely because the subagent edits remote files. `--project-root` is always the opened local Codex project folder; remote host/path belongs in task metadata.
+
+If a completed agent is reused with `send_input` for another development round, run `subagent-register` again with the same agent ID and project root before sending or immediately after sending the new request. This marks the assignment active again without losing prior completion history.
+
+When the main agent uses `wait_agent`, receives a completion notification, or closes a completed agent, pass the exact completion output back through the registered assignment:
 
 ```bash
 python3 ~/.agents/skills/context-guard/scripts/context_guard.py subagent-complete \
-  --root <subagent project root> \
+  --root <main/control workspace root> \
   --agent-id <agent id> \
-  --summary "<short completion summary>"
+  --summary "<short completion summary>" \
+  --evidence-file <file containing the exact subagent final output>
 ```
 
-Use this fallback whenever a completed subagent edited files, generated artifacts, or made progress in a project folder. The command initializes folder context when needed, records a subagent handoff, creates a concise checkpoint, runs Test Hub `dev-complete`, performs a lightweight completion-risk audit, and attempts feature-chain auto-proposal from recorded bad cases. If it fails or blocks, treat it exactly like a Stop/SubagentStop Test Hub failure: inspect evidence, fix or report the blocker, and do not claim the subagent work is fully complete.
+For simple integrations that cannot write an evidence file, `--summary` remains valid, but it loses detail and should not be preferred. The completion command resolves the registered child root, initializes folder context there, records one idempotent handoff/checkpoint, runs Test Hub `dev-complete`, archives concrete repair evidence, and attempts feature-chain auto-proposal from recorded bad cases. Replaying the same successful completion evidence must not duplicate roadmap nodes or bad cases. If Test Hub fails or blocks, the same completion may be retried after the fix.
+
+When a subagent actually found or fixed a problem, its final output should include this compact evidence block in the folder language. Include it only for observed or reproducible problems, not speculative risks:
+
+```text
+CG_BAD_CASE: <short user-visible problem>
+CG_PHENOMENON: <what actually happened>
+CG_TRIGGER: <minimal reproduction>
+CG_CAUSE: <known cause, if confirmed>
+CG_FIX: <what changed>
+CG_VERIFICATION: <real post-fix evidence>
+CG_SCOPE: <feature/workflow>
+```
+
+The main agent must pass this exact output to `subagent-complete`; do not rewrite it into a generic "implemented X and smoke passed" summary. Context Guard records verified evidence as a concrete resolved bad case, or as open when verification is absent. It never turns that evidence into approved automation without user confirmation.
+
+On Codex clients that emit the documented `SubagentStop` payload, the hook reads `agent_id` and `last_assistant_message` and invokes this same completion command automatically. The explicit main-agent call remains mandatory when the transport omits the hook, the completion notification arrives without a local hook record, or a resumed agent disappears before its final message is delivered. Native and fallback paths share the same completion fingerprint, so a successful event is archived once.
 
 The completion-risk audit is not a license to invent a test suite. It exists to catch the failure mode where a subagent only reports "done / smoke passed" while a stateful, persistent, reset, replay, copy/export, or input-validation workflow has no bad-case input at all. When a completed subagent summary contains multiple high-risk workflow cues and the project has no parsable bad cases, `subagent-complete` may write one `risk-audit` bad-case candidate. Keep it conservative:
 

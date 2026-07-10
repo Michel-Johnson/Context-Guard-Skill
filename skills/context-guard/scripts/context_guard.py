@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import hashlib
 import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -73,6 +74,86 @@ def roadmap_output_dir(root: Path) -> Path:
 
 def test_hub_dir(root: Path) -> Path:
     return context_dir(root) / "test-hub"
+
+
+def subagent_assignments_path(root: Path) -> Path:
+    return context_dir(root) / "subagents" / "assignments.json"
+
+
+def load_subagent_assignments(root: Path) -> dict[str, object]:
+    path = subagent_assignments_path(root)
+    if not path.exists():
+        return {"version": 1, "assignments": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, "assignments": {}}
+    if not isinstance(data, dict):
+        return {"version": 1, "assignments": {}}
+    assignments = data.get("assignments")
+    if not isinstance(assignments, dict):
+        data["assignments"] = {}
+    data.setdefault("version", 1)
+    return data
+
+
+def write_subagent_assignments(root: Path, data: dict[str, object]) -> Path:
+    path = subagent_assignments_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def resolve_registered_subagent_root(control_root: Path, agent_id: str) -> Path | None:
+    safe_agent = agent_id.strip()
+    if not safe_agent:
+        return None
+    assignments = load_subagent_assignments(control_root).get("assignments", {})
+    if not isinstance(assignments, dict):
+        return None
+    item = assignments.get(safe_agent)
+    if not isinstance(item, dict):
+        return None
+    value = str(item.get("project_root", "")).strip()
+    if not value:
+        return None
+    path = Path(value).expanduser().resolve()
+    return path if path.exists() else None
+
+
+def register_subagent_assignment(control_root: Path, agent_id: str, project_root: Path, task: str = "") -> Path:
+    safe_agent = agent_id.strip()
+    if not safe_agent:
+        raise ValueError("subagent-register requires --agent-id")
+    project_root = project_root.expanduser().resolve()
+    if not project_root.exists():
+        raise ValueError(f"subagent project root does not exist: {project_root}")
+    if is_context_guard_skill_path(project_root):
+        raise ValueError("subagent project root cannot be the Context Guard skill directory")
+    init_context(control_root)
+    init_context(project_root)
+    data = load_subagent_assignments(control_root)
+    assignments = data.setdefault("assignments", {})
+    assert isinstance(assignments, dict)
+    previous = assignments.get(safe_agent)
+    registered_at = datetime.now().isoformat(timespec="seconds")
+    if isinstance(previous, dict):
+        registered_at = str(previous.get("registered_at") or registered_at)
+    record = dict(previous) if isinstance(previous, dict) else {}
+    record.update({
+        "agent_id": safe_agent,
+        "project_root": str(project_root),
+        "task": " ".join(task.strip().split())[:500],
+        "status": "running",
+        "registered_at": registered_at,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    })
+    assignments[safe_agent] = record
+    path = write_subagent_assignments(control_root, data)
+    print(f"[context-guard] subagent registered: {safe_agent}")
+    print(f"[context-guard] subagent project root: {project_root}")
+    print(f"[context-guard] assignment registry: {path}")
+    return path
 
 
 def unique_run_id() -> str:
@@ -6796,6 +6877,193 @@ def append_subagent_handoff(ctx: Path, agent_id: str, summary: str) -> Path:
     return path
 
 
+COMPLETION_EVIDENCE_KEYS = {
+    "cg_bad_case": "title",
+    "cg_phenomenon": "phenomenon",
+    "cg_trigger": "trigger",
+    "cg_cause": "cause",
+    "cg_fix": "fix",
+    "cg_verification": "verification",
+    "cg_scope": "scope",
+}
+
+
+def completion_evidence_text(summary: str, evidence_file: Path | None = None) -> str:
+    parts = [summary.strip()]
+    if evidence_file:
+        try:
+            parts.append(evidence_file.expanduser().read_text(encoding="utf-8").strip())
+        except OSError as exc:
+            raise ValueError(f"cannot read subagent evidence file: {evidence_file}: {exc}") from exc
+    return "\n".join(part for part in parts if part).strip()
+
+
+def parse_structured_completion_evidence(text: str) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        match = re.match(r"^(CG_[A-Z_]+)\s*:\s*(.+)$", line, re.IGNORECASE)
+        if not match:
+            continue
+        raw_key = match.group(1).strip().lower()
+        key = COMPLETION_EVIDENCE_KEYS.get(raw_key)
+        if not key:
+            continue
+        if key == "title" and current.get("title"):
+            records.append(current)
+            current = {}
+        current[key] = " ".join(match.group(2).strip().split())
+    if current.get("title"):
+        records.append(current)
+    return records
+
+
+def natural_completion_fix_evidence(text: str) -> list[dict[str, str]]:
+    compact = " ".join(text.strip().split())
+    if not compact:
+        return []
+    sentences = [part.strip(" -•") for part in re.split(r"[。！？!?\n]+", text) if part.strip(" -•")]
+    problem_cues = ("问题", "错误", "bug", "误删", "丢失", "失败", "污染", "回归", "不正确", "串线", "泄漏", "重复")
+    fix_cues = ("修复", "修正", "改为", "改成", "避免", "解决", "不再")
+    verify_cues = ("验证", "测试", "通过", "check", "pytest", "smoke")
+    records: list[dict[str, str]] = []
+    for index, sentence in enumerate(sentences):
+        lowered = sentence.lower()
+        if not any(cue in lowered for cue in fix_cues) or not any(cue in lowered for cue in problem_cues):
+            continue
+        title = sentence
+        title = re.sub(r"^(?:同时|另外|并且|已|已经|本轮|这次)?\s*(?:修复|修正|解决)(?:了)?\s*", "", title)
+        title = re.split(r"(?:，|,|；|;)(?:改为|改成|现在|并|同时)", title, maxsplit=1)[0]
+        title = re.sub(r"(?:的)?问题$", "", title).strip(" ：:,，；;")
+        if len(title) < 4 or title in {"问题", "相关问题", "发现的问题", "若干问题"}:
+            continue
+        verification = ""
+        for candidate in sentences[index : index + 3]:
+            if any(cue in candidate.lower() for cue in verify_cues):
+                verification = candidate
+                break
+        records.append(
+            {
+                "title": title[:120],
+                "phenomenon": sentence,
+                "fix": sentence,
+                "verification": verification,
+            }
+        )
+    return records[:3]
+
+
+def completion_fix_evidence(text: str) -> list[dict[str, str]]:
+    structured = parse_structured_completion_evidence(text)
+    return structured if structured else natural_completion_fix_evidence(text)
+
+
+def completion_evidence_fingerprint(root: Path, agent_id: str, text: str) -> str:
+    payload = "\0".join((str(root.resolve()), agent_id.strip(), text.strip())).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def completion_ledger_path(ctx: Path) -> Path:
+    return ctx / "subagents" / "completions.json"
+
+
+def load_completion_ledger(ctx: Path) -> dict[str, object]:
+    path = completion_ledger_path(ctx)
+    if not path.exists():
+        return {"version": 1, "completions": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, "completions": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("completions"), dict):
+        return {"version": 1, "completions": {}}
+    return data
+
+
+def write_completion_ledger(ctx: Path, data: dict[str, object]) -> Path:
+    path = completion_ledger_path(ctx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def append_completion_bad_cases(ctx: Path, evidence: list[dict[str, str]]) -> list[str]:
+    if not evidence:
+        return []
+    path = ctx / "bad-cases.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    cards = parse_bad_case_cards(text)
+    existing_signatures = {
+        normalize_test_slug(" ".join((bad_case_card_label(card), str(card.get("phenomenon", "")))))
+        for card in cards
+    }
+    created: list[str] = []
+    blocks: list[str] = []
+    today_dash = datetime.now().strftime("%Y-%m-%d")
+    today_compact = datetime.now().strftime("%Y%m%d")
+    existing_numbers = [int(match.group(1)) for match in re.finditer(rf"BC-{today_compact}-(\d+)", text)]
+    next_number = max(existing_numbers) + 1 if existing_numbers else 1
+    for item in evidence:
+        title = human_title(item.get("title", "")).strip()
+        phenomenon = item.get("phenomenon", "").strip() or title
+        signature = normalize_test_slug(f"{title} {phenomenon}")
+        if not title or any(signature and (signature in old or old in signature) for old in existing_signatures if old):
+            continue
+        case_id = f"BC-{today_compact}-{next_number:03d}"
+        next_number += 1
+        scope = item.get("scope", "").strip() or completion_risk_domain(
+            " ".join(item.values()), completion_risk_buckets(" ".join(item.values()))
+        )
+        trigger = item.get("trigger", "").strip() or phenomenon
+        cause = item.get("cause", "").strip() or "完成证据没有单独说明根因；保留真实修复现象与方法供后续追溯。"
+        fix = item.get("fix", "").strip() or "Subagent 已在本轮修复该问题。"
+        verification = item.get("verification", "").strip()
+        status = "resolved" if verification else "open"
+        guard = verification or "重新执行原始用户流程，确认该现象没有复发；形成用户批准的功能链后再复用自动化。"
+        block = f"""
+### {case_id}: {title}
+
+- Status: {status}
+- First observed: {today_dash}
+- Last checked: {today_dash}
+- Scope: {scope}
+- Context task: current
+- Roadmap nodes: none
+- Tags: #subagent #observed-fix #feature-chain
+- Frequency: first-seen
+- Display summary: {phenomenon}
+- Phenomenon: {phenomenon}
+- Trigger / reproduction: {trigger}
+- Root cause: {cause}
+- Fix method: {fix}
+- Guard type: completion-evidence
+- Guard / verification: {guard}
+- Run policy: relevant-only
+- Red condition: 原始现象再次出现。
+- Green condition: {guard}
+- Expected failure reason: 如果本轮真实修复没有进入 bad-case register，后续功能链只能覆盖泛化风险，无法防止同一问题复发。
+- Reusable guard path: pending-user-approved-feature-chain
+"""
+        blocks.append(block.lstrip())
+        created.append(case_id)
+        existing_signatures.add(signature)
+        text += "\n" + block
+    if not blocks:
+        return []
+    placeholder = "## Active Cases\n\nNone.\n"
+    original = path.read_text(encoding="utf-8") if path.exists() else ""
+    joined = "\n".join(blocks) + "\n"
+    if placeholder in original:
+        path.write_text(original.replace(placeholder, "## Active Cases\n\n" + joined, 1), encoding="utf-8")
+    else:
+        with path.open("a", encoding="utf-8") as handle:
+            if original and not original.endswith("\n"):
+                handle.write("\n")
+            handle.write(joined)
+    return created
+
+
 RISK_AUDIT_BUCKETS: list[tuple[str, str, tuple[str, ...]]] = [
     ("状态切换", "#状态流程", ("状态", "模式", "练习模式", "暂停", "恢复", "失败", "成功", "state", "mode")),
     ("持久化", "#本地存储", ("持久化", "localstorage", "local storage", "刷新", "重启", "历史", "最高分", "streak", "score")),
@@ -6940,18 +7208,36 @@ def subagent_complete(
     root: Path,
     agent_id: str = "",
     summary: str = "",
+    project_root: Path | None = None,
+    evidence_file: Path | None = None,
     jobs: int = 1,
     keep_success_artifacts: bool = False,
 ) -> int:
-    init_context(root)
-    ctx = context_dir(root)
-    handoff_path = append_subagent_handoff(ctx, agent_id, summary)
+    control_root = root.resolve()
+    assigned_root = resolve_registered_subagent_root(control_root, agent_id)
+    target_root = (project_root.expanduser().resolve() if project_root else assigned_root) or control_root
+    if is_context_guard_skill_path(target_root):
+        raise ValueError("subagent completion target cannot be the Context Guard skill directory")
+    evidence_text = completion_evidence_text(summary, evidence_file)
+    init_context(target_root)
+    ctx = context_dir(target_root)
+    fingerprint = completion_evidence_fingerprint(target_root, agent_id, evidence_text)
+    ledger = load_completion_ledger(ctx)
+    completions = ledger.setdefault("completions", {})
+    assert isinstance(completions, dict)
+    previous = completions.get(fingerprint)
+    if isinstance(previous, dict) and int(previous.get("test_code", 1)) == 0:
+        print(f"[context-guard] subagent completion already processed: {agent_id.strip() or 'subagent'}")
+        print(f"[context-guard] subagent project root: {target_root}")
+        return 0
+
+    handoff_path = append_subagent_handoff(ctx, agent_id, evidence_text)
     short_agent = agent_id.strip() or "subagent"
-    short_summary = " ".join((summary or "").strip().split())
+    short_summary = " ".join((summary or evidence_text or "").strip().split())
     if len(short_summary) > 220:
         short_summary = short_summary[:217].rstrip() + "..."
     checkpoint_roadmap_node(
-        root,
+        target_root,
         title=f"Subagent completion handoff: {short_agent}",
         branch=None,
         level="checkpoint",
@@ -6960,18 +7246,40 @@ def subagent_complete(
         user_request="主 agent 在 subagent 完成后自动接管 Context Guard 和 Test Hub 收尾。",
         progress_summary=short_summary or "Subagent 已完成一次开发任务，Context Guard 已记录 handoff。",
         method_summary="写入 subagent handoff 记录，随后运行 Test Hub 的 dev-complete，并尝试自动聚合功能链候选。",
-        decision="底层 multi_agent_v1 当前没有触发本地 SubagentStart/SubagentStop hook，因此用主 agent completion handoff 兜底。",
+        decision="Subagent 传输不保证触发项目本地 hook，因此以已注册的项目根目录和主 agent completion handoff 作为可靠兜底。",
         avoid="不要把 wait_agent 返回视为已经完成 Context Guard；必须跑 subagent-complete 或等价收尾。",
         next_step="如果 Test Hub 失败，先修复失败项；如果出现新 bad case，挂载到已有功能链或生成 proposed 链。",
         test_chain="subagent-complete runs Test Hub dev-complete and feature-chain-auto-propose.",
     )
     print(f"[context-guard] subagent handoff: {handoff_path}")
-    test_code = test_hub_dev_complete(root, jobs=jobs, keep_success_artifacts=keep_success_artifacts)
-    subagent_completion_risk_audit(root, summary)
+    print(f"[context-guard] subagent project root: {target_root}")
+    test_code = test_hub_dev_complete(target_root, jobs=jobs, keep_success_artifacts=keep_success_artifacts)
+    concrete_cases = append_completion_bad_cases(ctx, completion_fix_evidence(evidence_text))
+    if concrete_cases:
+        print(f"[context-guard] completion evidence: archived concrete bad case(s): {', '.join(concrete_cases)}")
+    else:
+        subagent_completion_risk_audit(target_root, evidence_text)
     try:
-        feature_chain_auto_propose(root, min_cases=2, max_groups=6, hook_mode=True)
+        feature_chain_auto_propose(target_root, min_cases=2, max_groups=6, hook_mode=True)
     except Exception as exc:
         print(f"[context-guard] feature-chain auto-propose warning: {exc}", file=sys.stderr)
+    completions[fingerprint] = {
+        "agent_id": short_agent,
+        "project_root": str(target_root),
+        "completed_at": datetime.now().isoformat(timespec="seconds"),
+        "test_code": test_code,
+        "concrete_bad_cases": concrete_cases,
+    }
+    write_completion_ledger(ctx, ledger)
+    assignments = load_subagent_assignments(control_root)
+    assignment_map = assignments.get("assignments", {})
+    if isinstance(assignment_map, dict) and isinstance(assignment_map.get(short_agent), dict):
+        assignment = assignment_map[short_agent]
+        assignment["status"] = "completed" if test_code == 0 else "completion-blocked"
+        assignment["last_completion_at"] = datetime.now().isoformat(timespec="seconds")
+        assignment["last_completion_fingerprint"] = fingerprint
+        assignment["last_test_code"] = test_code
+        write_subagent_assignments(control_root, assignments)
     return test_code
 
 
@@ -7075,7 +7383,7 @@ def create_branch_task(root: Path, title: str, branch: str, parent_node: str = "
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard utilities")
-    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "subagent-complete", "validate-bad-cases", "validate-roadmap-maintenance", "validate-feature-chains", "test-hub-add", "test-hub-list", "test-hub-enable", "test-hub-disable", "test-hub-set-policy", "test-hub-remove", "feature-chain-add", "feature-chain-propose", "feature-chain-auto-propose", "feature-chain-attach-bc", "feature-chain-approve", "feature-chain-dry-run", "feature-chain-set-policy", "feature-chain-set-checkpoint", "feature-chain-suggest", "feature-chain-plan", "feature-chain-list", "feature-chain-summary", "feature-chain-overlap", "feature-chain-coverage", "feature-chain-candidates", "show-test-hub", "serve-test-hub", "dev-complete"])
+    parser.add_argument("command", choices=["init", "set-language", "export-roadmap", "show-roadmap", "create-branch-task", "checkpoint-roadmap-node", "subagent-register", "subagent-complete", "validate-bad-cases", "validate-roadmap-maintenance", "validate-feature-chains", "test-hub-add", "test-hub-list", "test-hub-enable", "test-hub-disable", "test-hub-set-policy", "test-hub-remove", "feature-chain-add", "feature-chain-propose", "feature-chain-auto-propose", "feature-chain-attach-bc", "feature-chain-approve", "feature-chain-dry-run", "feature-chain-set-policy", "feature-chain-set-checkpoint", "feature-chain-suggest", "feature-chain-plan", "feature-chain-list", "feature-chain-summary", "feature-chain-overlap", "feature-chain-coverage", "feature-chain-candidates", "show-test-hub", "serve-test-hub", "dev-complete"])
     parser.add_argument("--format", choices=["html", "md"], default="html")
     parser.add_argument("--language", default=None, help="Folder-scoped language for future context records.")
     parser.add_argument("--title", default=None, help="Title for a branch task or roadmap checkpoint.")
@@ -7099,6 +7407,9 @@ def main() -> int:
     parser.add_argument("--query", default="", help="Natural-language feature or bad-case text for feature-chain-suggest.")
     parser.add_argument("--agent-id", default="", help="Subagent identifier for subagent-complete handoff records.")
     parser.add_argument("--summary", default="", help="Subagent completion summary for subagent-complete handoff records.")
+    parser.add_argument("--project-root", type=Path, default=None, help="Explicit project root assigned to a subagent.")
+    parser.add_argument("--task", default="", help="Short ordinary product task recorded by subagent-register.")
+    parser.add_argument("--evidence-file", type=Path, default=None, help="Exact subagent completion output containing optional CG_BAD_CASE evidence fields.")
     parser.add_argument("--jobs", type=int, default=1, help="Parallel test workers for dev-complete.")
     parser.add_argument("--host", default="127.0.0.1", help="Host for serve-test-hub.")
     parser.add_argument("--port", type=int, default=8772, help="Port for serve-test-hub.")
@@ -7177,11 +7488,21 @@ def main() -> int:
             parent_node=args.parent_node,
         )
         return 0
+    if args.command == "subagent-register":
+        if not args.project_root:
+            parser.error("subagent-register requires --project-root")
+        try:
+            register_subagent_assignment(root, args.agent_id, args.project_root, args.task)
+        except ValueError as exc:
+            parser.error(str(exc))
+        return 0
     if args.command == "subagent-complete":
         return subagent_complete(
             root,
             agent_id=args.agent_id,
             summary=args.summary,
+            project_root=args.project_root,
+            evidence_file=args.evidence_file,
             jobs=args.jobs,
             keep_success_artifacts=args.keep_success_artifacts,
         )

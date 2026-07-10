@@ -15,6 +15,8 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
 - **Supports record language preferences**: writes future context in Chinese or English.
 - **Handles task switches**: parks, resumes, and branches interrupted work.
+- **Binds subagent projects**: maps each agent ID to its real local project root so context does not leak into a parent workspace or SSH server.
+- **Archives concrete repairs**: keeps observed symptoms, causes, fixes, and verification while deduplicating repeated completion events.
 - **Keeps tests human-designed**: Codex reuses approved checks or proposes drafts, but does not silently create durable tests.
 - **Covers bad cases with feature chains**: prefer one real feature/workflow chain covering multiple bad cases over one separate test per bad case.
 - **Runs approved tests by default**: user-created or user-approved tests run at every development completion unless the user sets another cadence.
@@ -52,7 +54,9 @@ Manual install is also supported:
 git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
-rsync -a --delete skills/context-guard/ ~/.codex/skills/context-guard/
+rsync -a --delete \
+  SKILL.md README.md README.zh-CN.md agents references scripts tests \
+  ~/.codex/skills/context-guard/
 ```
 
 After installation, Codex should discover:
@@ -293,4 +297,4 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 - For frontend or HTML changes, inspect the rendered page or screenshot before claiming success.
 - For any new durable test case, draft a short task-case proposal and confirm with the user before making it active.
 
-See [`skills/context-guard/SKILL.md`](skills/context-guard/SKILL.md) for the full behavior rules.
+See [`SKILL.md`](SKILL.md) for the full behavior rules.

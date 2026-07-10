@@ -15,6 +15,8 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
 - **Supports record language preferences**: writes future context in Chinese or English.
 - **Handles task switches**: parks, resumes, and branches interrupted work.
+- **Binds subagent projects**: maps each agent ID to its real local project root so context does not leak into a parent workspace or SSH server.
+- **Archives concrete repairs**: keeps observed symptoms, causes, fixes, and verification while deduplicating repeated completion events.
 - **Keeps tests human-designed**: Codex reuses approved checks or proposes drafts, but does not silently create durable tests.
 - **Covers bad cases with feature chains**: prefer one real feature/workflow chain covering multiple bad cases over one separate test per bad case.
 - **Runs approved tests by default**: user-created or user-approved tests run at every development completion unless the user sets another cadence.
