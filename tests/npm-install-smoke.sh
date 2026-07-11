@@ -29,7 +29,25 @@ PROJECT="$ROOT/project"
 test -f "$PROJECT/.codex/context/index.md"
 
 HOOKS="$ROOT/hooks.json"
+CONFIG="$ROOT/config.toml"
+cat >"$CONFIG" <<'EOF'
+[features]
+codex_hooks = true
+multi_agent = true
+
+[model]
+name = "test"
+EOF
 "$NODE_BIN" bin/context-guard-skill.js install --target "$ROOT/skill-with-hooks" --with-hooks --hooks-target "$HOOKS" >/dev/null
 grep -Fq "$ROOT/skill-with-hooks/scripts/context_guard_hook.py" "$HOOKS"
 grep -Fq '"SubagentStart"' "$HOOKS"
 grep -Fq '"SubagentStop"' "$HOOKS"
+grep -Fq 'hooks = true' "$CONFIG"
+grep -Fq 'multi_agent = true' "$CONFIG"
+grep -Fq 'name = "test"' "$CONFIG"
+! grep -Fq 'codex_hooks' "$CONFIG"
+
+EMPTY_HOME="$ROOT/empty-codex-home"
+CODEX_HOME="$EMPTY_HOME" "$NODE_BIN" bin/context-guard-skill.js install --with-hooks >/dev/null
+grep -Fq '[features]' "$EMPTY_HOME/config.toml"
+grep -Fq 'hooks = true' "$EMPTY_HOME/config.toml"

@@ -502,6 +502,9 @@ const I18N = {{
     humanDetailView: "Human detail view",
     updatedLabel: "Updated:",
     roadmap: "Roadmap",
+    viewMode: "Roadmap view",
+    cardView: "Card view",
+    compactView: "Compact overview",
     backToRoadmap: "Back to roadmap",
     mainRoute: "Main Route",
     badCases: "Bad Cases",
@@ -537,6 +540,9 @@ const I18N = {{
     humanDetailView: "人类详情视图",
     updatedLabel: "更新：",
     roadmap: "路线图",
+    viewMode: "路线图视图",
+    cardView: "卡片视图",
+    compactView: "紧凑总览",
     backToRoadmap: "返回路线图",
     mainRoute: "主要路线",
     badCases: "问题案例",
@@ -590,6 +596,13 @@ function applyLang(lang) {{
   document.querySelectorAll("[data-i18n-text]").forEach((element) => {{
     const value = lang === "zh" ? element.dataset.zh : element.dataset.en;
     if (value) element.textContent = value;
+  }});
+  document.querySelectorAll("[data-i18n-aria]").forEach((element) => {{
+    const value = dictionary[element.dataset.i18nAria] || element.getAttribute("aria-label") || "";
+    if (value) {{
+      element.setAttribute("aria-label", value);
+      element.setAttribute("title", value);
+    }}
   }});
 }}
 
@@ -647,8 +660,9 @@ function drawRouteConnectors(stack, svg, stackRect) {{
     cards.forEach((card, index) => {{
       const next = cards[index + 1];
       if (!next) return;
-      const start = cardConnectorPoint(card, stackRect, stack, "right");
-      const end = cardConnectorPoint(next, stackRect, stack, "left");
+      const compact = document.querySelector("[data-roadmap-board]")?.dataset.roadmapView === "compact";
+      const start = compact ? dotConnectorPoint(card, stackRect, stack) : cardConnectorPoint(card, stackRect, stack, "right");
+      const end = compact ? dotConnectorPoint(next, stackRect, stack) : cardConnectorPoint(next, stackRect, stack, "left");
       const handle = Math.max(28, (end.x - start.x) * 0.45);
       const d = `M ${{start.x}} ${{start.y}} C ${{start.x + handle}} ${{start.y}} ${{end.x - handle}} ${{end.y}} ${{end.x}} ${{end.y}}`;
       createConnectorPath(svg, d, "route-connector", {{
@@ -738,9 +752,40 @@ function setupInlineDetails() {{
   showFromHash();
 }}
 
+function setupRoadmapViews() {{
+  const board = document.querySelector("[data-roadmap-board]");
+  if (!board) return;
+  const buttons = Array.from(board.querySelectorAll("[data-roadmap-view-button]"));
+  if (!buttons.length) return;
+  const valid = (mode) => mode === "cards" || mode === "compact";
+  const applyView = (mode, persist = true) => {{
+    const next = valid(mode) ? mode : "cards";
+    board.dataset.roadmapView = next;
+    document.body.dataset.roadmapView = next;
+    buttons.forEach((button) => {{
+      button.setAttribute("aria-pressed", button.dataset.roadmapViewButton === next ? "true" : "false");
+    }});
+    if (persist) localStorage.setItem("contextGuardRoadmapView", next);
+    requestAnimationFrame(drawBranchConnectors);
+  }};
+  const query = new URLSearchParams(window.location.search).get("view");
+  const saved = localStorage.getItem("contextGuardRoadmapView");
+  const visibleCount = Number(board.dataset.visibleNodeCount || "0");
+  const initial = valid(query) ? query : (valid(saved) ? saved : (visibleCount > 16 ? "compact" : "cards"));
+  applyView(initial, false);
+  buttons.forEach((button) => button.addEventListener("click", () => {{
+    const mode = button.dataset.roadmapViewButton;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", mode);
+    window.history.replaceState(null, "", url);
+    applyView(mode);
+  }}));
+}}
+
 document.addEventListener("DOMContentLoaded", () => {{
   const initial = resolveLang();
   applyLang(initial);
+  setupRoadmapViews();
   const routeButtons = Array.from(document.querySelectorAll("[data-route-filter]"));
   const routeExists = (route) => routeButtons.some((button) => button.dataset.routeFilter === route);
   const applyRoute = (route) => {{
@@ -870,6 +915,45 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       padding: 16px 32px 30px;
     }}
     h2 {{ margin: 0 0 12px; font-family: var(--font-heading); font-size: 16px; }}
+    .roadmap-title-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }}
+    .roadmap-title-row h2 {{ margin: 0; }}
+    .view-switch {{
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--panel) 86%, var(--accent-soft));
+    }}
+    .view-switch button {{
+      width: 30px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0;
+    }}
+    .view-switch button:hover {{ color: var(--accent); }}
+    .view-switch button[aria-pressed="true"] {{
+      background: var(--panel);
+      color: var(--accent);
+      box-shadow: 0 1px 4px rgba(51, 83, 57, 0.14);
+    }}
+    .view-icon {{ width: 15px; height: 15px; display: grid; gap: 2px; }}
+    .view-icon i {{ display: block; border-radius: 1px; background: currentColor; }}
+    .view-icon-cards {{ grid-template-rows: repeat(2, 1fr); }}
+    .view-icon-compact {{ grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }}
     .route-filter {{
       display: flex;
       align-items: center;
@@ -953,6 +1037,22 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       position: relative;
       z-index: 1;
     }}
+    .track-board[data-roadmap-view="compact"] .route-stack.branch-map .route-group {{
+      min-width: max-content;
+    }}
+    body[data-roadmap-view="compact"] header {{ padding: 12px 32px 8px; }}
+    body[data-roadmap-view="compact"] h1 {{ font-size: 20px; }}
+    .track-board[data-roadmap-view="compact"] {{ padding: 11px 14px 13px; }}
+    .track-board[data-roadmap-view="compact"] .roadmap-title-row {{
+      justify-content: flex-end;
+      margin-bottom: 3px;
+    }}
+    .track-board[data-roadmap-view="compact"] .roadmap-title-row h2,
+    .track-board[data-roadmap-view="compact"] .route-filter {{ display: none; }}
+    .track-board[data-roadmap-view="compact"] .route-stack {{ gap: 7px; }}
+    .track-board[data-roadmap-view="compact"] .route-head {{ margin-bottom: 3px; }}
+    .track-board[data-roadmap-view="compact"] .route-head-grid {{ margin-bottom: 3px; }}
+    .track-board[data-roadmap-view="compact"] .checkpoint-strip {{ margin: -1px 0 3px; }}
     .route-group.route-branch {{
       position: relative;
       padding-right: var(--branch-drift, 0px);
@@ -1059,6 +1159,13 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       grid-auto-columns: minmax(240px, 300px);
       min-height: 0;
     }}
+    .track-board[data-roadmap-view="compact"] .track-grid.route-only {{
+      grid-template-columns: none;
+      grid-auto-flow: column;
+      grid-auto-columns: 132px;
+      gap: 10px;
+      min-height: 0;
+    }}
     .route-head-grid.track-grid.route-only {{
       min-height: 0;
     }}
@@ -1106,6 +1213,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       min-height: 92px;
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 20px rgba(51, 83, 57, 0.08);
     }}
+    .track-board[data-roadmap-view="compact"] .lane {{
+      height: 96px;
+      min-height: 96px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      position: relative;
+    }}
+    .track-board[data-roadmap-view="compact"] .lane-link {{ height: 100%; position: relative; }}
+    .track-board[data-roadmap-view="compact"] .lane-link:hover h3 {{ color: var(--route-accent, var(--accent)); }}
     .branch-map .route-test-line {{
       min-height: 18px;
       border-top: 2px solid color-mix(in srgb, var(--ok) 56%, transparent);
@@ -1203,6 +1321,7 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .branch-map .summary {{
       display: none;
     }}
+    .track-board[data-roadmap-view="compact"] .summary {{ display: none; }}
     .node-heading {{
       display: flex;
       gap: 8px;
@@ -1212,6 +1331,17 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     .branch-map .node-heading {{
       margin-bottom: 6px;
     }}
+    .track-board[data-roadmap-view="compact"] .node-heading {{
+      position: absolute;
+      left: 0;
+      right: 0;
+      align-items: flex-start;
+      gap: 5px;
+      margin: 0;
+      padding: 0 4px;
+    }}
+    .track-board[data-roadmap-view="compact"] .step-up .node-heading {{ bottom: 57px; align-items: flex-end; }}
+    .track-board[data-roadmap-view="compact"] .step-down .node-heading {{ top: 57px; }}
     .node-number {{
       flex: 0 0 auto;
       width: 28px; height: 28px; border-radius: 50%;
@@ -1219,10 +1349,41 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       background: var(--route-accent, var(--accent)); color: white; font-weight: 760;
       box-shadow: 0 0 0 4px var(--route-soft, var(--accent-soft));
     }}
+    .track-board[data-roadmap-view="compact"] .node-number {{
+      width: auto;
+      height: auto;
+      display: inline;
+      color: var(--route-accent, var(--accent));
+      background: transparent;
+      box-shadow: none;
+      font-size: 10px;
+      line-height: 1.3;
+    }}
     .lane h3 {{ margin: 0; font-family: var(--font-heading); font-size: 15px; line-height: 1.35; }}
     .branch-map .lane h3 {{ font-size: 14px; line-height: 1.28; }}
+    .track-board[data-roadmap-view="compact"] .lane h3 {{
+      font-family: var(--font-body);
+      font-size: 11px;
+      line-height: 1.28;
+      font-weight: 680;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }}
     .node-meta {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }}
     .branch-map .node-meta {{ margin-bottom: 0; }}
+    .track-board[data-roadmap-view="compact"] .node-meta {{
+      position: absolute;
+      top: 43px;
+      left: 50%;
+      right: auto;
+      transform: translate(-50%, -50%);
+      margin: 0;
+      z-index: 2;
+    }}
+    .track-board[data-roadmap-view="compact"] .node-meta .pill {{ display: none; }}
+    .track-board[data-roadmap-view="compact"] .node-meta .status-dot {{ width: 8px; height: 8px; }}
     .pill {{
       display: inline-flex;
       align-items: center;
@@ -1340,6 +1501,8 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
       .quick {{ grid-template-columns: 1fr 1fr; }}
       .track-grid {{ grid-auto-columns: minmax(260px, 82vw); }}
       header {{ padding: 22px 16px 14px; }}
+      body[data-roadmap-view="compact"] header {{ padding: 11px 16px 7px; }}
+      .track-board[data-roadmap-view="compact"] .track-grid.route-only {{ grid-auto-columns: 118px; }}
     }}
     @media (max-width: 560px) {{
       h1 {{ font-size: 22px; }}
@@ -1355,8 +1518,18 @@ def render_roadmap_html(ctx: Path, index: str, roadmap: str, bad_cases: str) -> 
     </div>
   </header>
   <div class="shell">
-    <main class="track-board" id="roadmap-overview">
-      <h2 data-i18n="roadmap">Roadmap</h2>
+    <main class="track-board" id="roadmap-overview" data-roadmap-board data-visible-node-count="{sum(len(display_items_for_route(items)) for _, items in route_groups)}">
+      <div class="roadmap-title-row">
+        <h2 data-i18n="roadmap">Roadmap</h2>
+        <div class="view-switch" role="group" data-i18n-aria="viewMode" aria-label="Roadmap view">
+          <button type="button" data-roadmap-view-button="cards" data-i18n-aria="cardView" aria-label="Card view" aria-pressed="false">
+            <span class="view-icon view-icon-cards" aria-hidden="true"><i></i><i></i></span>
+          </button>
+          <button type="button" data-roadmap-view-button="compact" data-i18n-aria="compactView" aria-label="Compact overview" aria-pressed="false">
+            <span class="view-icon view-icon-compact" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
+        </div>
+      </div>
       {route_nav}
       <div class="route-stack{' branch-map' if branch_mode else ''}"{' data-route-map-overview' if branch_mode else ''}>{connector_layer}{route_items}</div>
     </main>
@@ -2681,7 +2854,8 @@ def render_route_column(
     overview_id = html.escape(node_id(node))
     test_line = ""
     mainline_only_class = " no-test-line"
-    return f"""<section class="track-column route-column{branch_class}{mainline_only_class}" data-overview-node-id="{overview_id}">
+    step_class = " step-up" if display_number % 2 else " step-down"
+    return f"""<section class="track-column route-column{branch_class}{mainline_only_class}{step_class}" data-overview-node-id="{overview_id}">
   <article class="lane lane-main" data-lane="main">
     <a class="lane-link" href="#node-{source_number}">
       <div class="node-heading">

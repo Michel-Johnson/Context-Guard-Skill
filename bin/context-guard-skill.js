@@ -24,7 +24,7 @@ function usage() {
   console.log(`Context Guard Skill
 
 Usage:
-  context-guard install [--target <dir>] [--with-hooks] [--hooks-target <file>]
+  context-guard install [--target <dir>] [--with-hooks] [--hooks-target <file>] [--config-target <file>]
   context-guard path
   context-guard <context_guard.py command> [args...]
 
@@ -63,11 +63,18 @@ function defaultHooksTarget() {
   return path.join(codexHome, "hooks.json");
 }
 
+function defaultConfigTarget() {
+  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+  return path.join(codexHome, "config.toml");
+}
+
 function parseInstallArgs(args) {
   const options = {
     target: defaultSkillTarget(),
     withHooks: false,
     hooksTarget: defaultHooksTarget(),
+    configTarget: defaultConfigTarget(),
+    configTargetExplicit: false,
     dryRun: false
   };
 
@@ -83,6 +90,14 @@ function parseInstallArgs(args) {
       const value = args[++i];
       if (!value) fail("--hooks-target requires a file path");
       options.hooksTarget = path.resolve(expandHome(value));
+      if (!options.configTargetExplicit) {
+        options.configTarget = path.join(path.dirname(options.hooksTarget), "config.toml");
+      }
+    } else if (arg === "--config-target") {
+      const value = args[++i];
+      if (!value) fail("--config-target requires a file path");
+      options.configTarget = path.resolve(expandHome(value));
+      options.configTargetExplicit = true;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
     } else if (arg === "-h" || arg === "--help") {
@@ -93,6 +108,60 @@ function parseInstallArgs(args) {
     }
   }
   return options;
+}
+
+function migrateHooksFeatureConfig(configTarget, dryRun) {
+  const original = fs.existsSync(configTarget) ? fs.readFileSync(configTarget, "utf8") : "";
+  const lines = original ? original.replace(/\r\n/g, "\n").split("\n") : [];
+  const sectionStart = lines.findIndex((line) => /^\s*\[features\]\s*(?:#.*)?$/.test(line));
+  let nextLines = lines.slice();
+
+  if (sectionStart === -1) {
+    while (nextLines.length && nextLines[nextLines.length - 1] === "") nextLines.pop();
+    if (nextLines.length) nextLines.push("");
+    nextLines.push("[features]", "hooks = true", "");
+  } else {
+    let sectionEnd = nextLines.length;
+    for (let i = sectionStart + 1; i < nextLines.length; i += 1) {
+      if (/^\s*\[[^\]]+\]/.test(nextLines[i])) {
+        sectionEnd = i;
+        break;
+      }
+    }
+    const hooksIndex = nextLines.findIndex(
+      (line, index) => index > sectionStart && index < sectionEnd && /^\s*hooks\s*=/.test(line)
+    );
+    const legacyIndexes = [];
+    nextLines.forEach((line, index) => {
+      if (index > sectionStart && index < sectionEnd && /^\s*codex_hooks\s*=/.test(line)) legacyIndexes.push(index);
+    });
+
+    if (hooksIndex >= 0) {
+      nextLines[hooksIndex] = nextLines[hooksIndex].replace(/^\s*hooks\s*=.*$/, "hooks = true");
+      for (const index of legacyIndexes.reverse()) nextLines.splice(index, 1);
+    } else if (legacyIndexes.length) {
+      const first = legacyIndexes.shift();
+      nextLines[first] = nextLines[first].replace(/^\s*codex_hooks\s*=.*$/, "hooks = true");
+      for (const index of legacyIndexes.reverse()) nextLines.splice(index, 1);
+    } else {
+      nextLines.splice(sectionStart + 1, 0, "hooks = true");
+    }
+  }
+
+  const next = `${nextLines.join("\n").replace(/\n*$/, "")}\n`;
+  if (next === original.replace(/\r\n/g, "\n")) return;
+  if (dryRun) {
+    console.log(`[context-guard-skill] would enable hooks in ${configTarget}`);
+    return;
+  }
+  fs.mkdirSync(path.dirname(configTarget), { recursive: true });
+  if (fs.existsSync(configTarget)) {
+    const backupPath = `${configTarget}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    fs.copyFileSync(configTarget, backupPath);
+    console.log(`[context-guard-skill] backed up config: ${backupPath}`);
+  }
+  fs.writeFileSync(configTarget, next);
+  console.log(`[context-guard-skill] enabled hooks: ${configTarget}`);
 }
 
 function copySkill(target, dryRun) {
@@ -174,6 +243,7 @@ function install(args) {
   const options = parseInstallArgs(args);
   copySkill(options.target, options.dryRun);
   if (options.withHooks) {
+    migrateHooksFeatureConfig(options.configTarget, options.dryRun);
     installHooks(options.target, options.hooksTarget, options.dryRun);
   }
 }

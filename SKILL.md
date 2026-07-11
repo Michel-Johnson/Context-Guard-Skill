@@ -167,6 +167,9 @@ Do not create timestamped HTML roadmap exports for display. The roadmap folder s
 - Show the roadmap tracks, concise node titles, status/date chips, and at most one short summary line.
 - Overview node titles must use `Display title:` when present. Keep them close to the user's wording and outcome, not implementation-log language. Use short natural phrases such as "节点详情更容易读" instead of "压缩节点详情长字段".
 - Show only `Level: major` nodes as main route cards; summarize hidden checkpoints compactly and put checkpoint details in `roadmap-details.html`.
+- Keep two presentations in the same stable `roadmap.html`: a card view for reading a small route and a compact overview for scanning many nodes. Use icon-only controls with accessible labels, preserve the user's selected mode locally, and default to compact overview when more than sixteen major nodes are visible.
+- In compact overview, wrap concise node tiles into the available viewport width, show only the visible number, short title, and status cue, and keep every tile linked to the same node detail. Do not duplicate or discard source context to create the compact view.
+- Compact overview may replace connector curves with route grouping and parent labels to avoid lines crossing wrapped tiles; the card view remains the detailed branch-connector view.
 - Number visible overview cards consecutively per route group after checkpoint filtering; keep source node IDs and source-order detail anchors hidden from the overview.
 - When there is only one route group, show only the main route cards in the default overview. Do not show the Bad Cases lane, Test Chain lane, or the left lane-label column. Keep linked bad cases and recurrence checks inside clicked node details, source context, and agent-readable exports.
 - In single-route overview mode, keep the board content-height compact: main route cards should size to content, and summaries may use up to three readable lines before truncation.

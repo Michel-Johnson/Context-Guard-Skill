@@ -11,7 +11,7 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Keeps secrets local-only**: redacts credentials from public context and stores durable secrets only under `.codex/context/private/`.
 - **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
 - **Tracks bad cases**: records symptoms, triggers, causes, fixes, and recurrence checks.
-- **Generates Roadmap HTML**: shows a human-readable roadmap with clickable node details.
+- **Generates Roadmap HTML**: shows clickable node details with card and compact high-density views.
 - **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
 - **Supports record language preferences**: writes future context in Chinese or English.
 - **Handles task switches**: parks, resumes, and branches interrupted work.
@@ -41,6 +41,8 @@ Install hooks only when you explicitly want Context Guard reminders at Codex lif
 ```bash
 npx @michelj/context-guard install --with-hooks
 ```
+
+This also enables the current `[features] hooks = true` setting in `~/.codex/config.toml` and migrates the deprecated `codex_hooks` alias without changing other settings.
 
 Use from GitHub before the npm package is published:
 

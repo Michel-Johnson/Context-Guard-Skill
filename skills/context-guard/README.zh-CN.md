@@ -11,7 +11,7 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 - **敏感信息只留本地**：公开 context 里只保留脱敏指针，真正需要复用的凭据只放在 `.codex/context/private/`。
 - **记录路线图**：维护主线、支线、分叉节点和当前进度。
 - **记录 bad case**：保存问题现象、触发条件、原因、修复方式和防复发检查。
-- **生成 Roadmap HTML**：给用户查看清晰的路线图，点击节点看详情。
+- **生成 Roadmap HTML**：支持卡片和高密度紧凑总览，点击节点看详情。
 - **区分人类视图和 agent 视图**：HTML 给人看，Markdown/JSON 给 Codex 读取。
 - **支持多语言记录**：按项目偏好用中文或英文写 context。
 - **处理任务切换**：遇到新方向、支线任务或中断任务时，帮助 Codex park/resume。
@@ -41,6 +41,8 @@ npm install -g @michelj/context-guard --registry=https://registry.npmjs.org
 ```bash
 npx @michelj/context-guard install --with-hooks
 ```
+
+该命令也会在 `~/.codex/config.toml` 中启用当前的 `[features] hooks = true`，并把已弃用的 `codex_hooks` 别名安全迁移，同时保留其他配置。
 
 npm 包正式发布前，也可以直接从 GitHub 使用：
 
