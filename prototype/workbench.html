@@ -68,8 +68,12 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
 .first-use.open{display:flex}
-.first-use .card{width:min(520px,92%);background:var(--paper);border:2px solid var(--line-ink);
+.first-use .card{width:min(560px,92%);background:var(--paper);border:2px solid var(--line-ink);
   border-radius:14px;padding:26px 26px 20px;box-shadow:var(--shadow)}
+.arch-md{margin:12px 0 0;max-height:220px;overflow:auto;padding:10px 12px;border:1px solid var(--line);
+  border-radius:8px;background:#fff;font-size:11.5px;line-height:1.45;white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
+.arch-md[hidden]{display:none}
 .first-use .kicker{color:var(--red);font-weight:800;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .first-use h2{margin:8px 0 8px;font-size:18px}
 .first-use p{margin:0 0 10px;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -276,8 +280,8 @@ details.fold .mem-list{margin-top:6px}
   <div class="card" id="first-use-ask">
     <div class="kicker">第一次使用 CONTEXT GUARD</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
-    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 要先读 README、包边界和现有文档，理解系统怎么分层，再只提出第一层模块。</p>
-    <p>建图不是瞬间完成的，也不是把目录树倒进来。分析需要时间。有了地图之后，以后打开直接进入，不会再拆一遍。</p>
+    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 要先把整仓读成一份架构笔记（markdown），粒度必须对得上真实开工单元，而不是七个空壳名字。</p>
+    <p>地图上先只确认第一层；下层已经写在笔记和 inbox 里，点进模块才展开。这不是瞬间出图，也不是目录树。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">开始分析仓库</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -285,10 +289,11 @@ details.fold .mem-list{margin-top:6px}
   </div>
   <div class="card" id="first-use-work" hidden>
     <div class="kicker">Agent 正在理解架构</div>
-    <h2>建图需要先分析，不是瞬间出图</h2>
-    <p>Agent 在读边界和文档，形成对系统分层的判断。读完才提出第一层模块；不会把文件树整仓铺上地图。</p>
+    <h2>先写架构笔记，再投影成地图</h2>
+    <p>Agent 在读边界、入口和实现，写成 markdown。第一层只是确认门；CLI / TUI / Control UI 这种空壳三节点不够，必须拆到可开工的命令、面板、主循环。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
-    <p>真实会话里这一步由 Agent 读仓库完成，耗时取决于项目复杂度。</p>
+    <pre class="arch-md" id="analyze-md" hidden></pre>
+    <p>真实会话里这一步由 Agent 读仓库完成，耗时随项目复杂度增加，不能为了快而停在口号层。</p>
   </div>
 </div>
 
@@ -471,18 +476,98 @@ const OPENCLAW_MAP = {
       ]
     },
 
-    { id:"M7", title:"控制面 UI", kind:"module", purpose:"人怎么操作 Gateway：CLI、TUI、Control UI，都是 WS 客户端", state:"dirty", memories:[
-        {text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"}
+    { id:"M7", title:"控制面 UI", kind:"module", purpose:"人操作 Gateway 的三条面：CLI 命令、TUI 会话、Control UI 浏览器；共用 Gateway 协议，不是三个空壳", state:"dirty", memories:[
+        {text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"},
+        {text:"CLI / TUI / Control UI 各自有独立入口和开发面，分析必须拆到可开工的命令、面板、后端，而不是停在三个名字", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N71", title:"CLI", state:"success", memories:[
-            {text:"src/cli + src/commands；doctor --fix 负责配置迁移", state:"success"}
+        { id:"N7a", title:"CLI · onboard / daemon", kind:"module", purpose:"第一次把 Gateway 装上：模型、工作区、launchd/systemd", state:"dirty", memories:[
+            {text:"openclaw onboard --install-daemon；失败要能 doctor 回去", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7a1", title:"onboard 向导", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7a2", title:"install-daemon", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7a3", title:"工作区初始化", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7b", title:"CLI · gateway 生命周期", kind:"module", purpose:"start / stop / status / restart，本机守护进程合同", state:"dirty", memories:[
+            {text:"src/cli + src/commands 里的 gateway 命令族", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7b1", title:"gateway start/stop", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7b2", title:"gateway status / health", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7c", title:"CLI · agent / message", kind:"module", purpose:"从命令行发一轮 agent、看 run、补发消息", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N7c1", title:"agent 调用与 runId", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7c2", title:"message send / 历史", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7d", title:"CLI · models / doctor", kind:"module", purpose:"模型列表、默认模型、配置迁移与修复", state:"success", memories:[
+            {text:"doctor --fix 是配置迁移的主路径，不是可选项", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7d1", title:"models 列表与切换", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7d2", title:"doctor --fix 迁移", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7e", title:"CLI · channels / pairing / plugins", kind:"module", purpose:"渠道连接、未知发送者配对、插件与技能安装", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N7e1", title:"channels 连接向导", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7e2", title:"pairing approve", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7e3", title:"plugins / skills 安装", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7f", title:"CLI · config / logs / cron / nodes", kind:"module", purpose:"配置读写、日志、定时任务、设备节点", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N7f1", title:"config get/set", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7f2", title:"logs / 健康", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7f3", title:"cron 任务", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7f4", title:"nodes 设备", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7g", title:"TUI · 主循环 tui.ts", kind:"module", purpose:"终端里的会话面：布局、输入、渲染循环", state:"dirty", memories:[
+            {text:"入口 src/tui/tui.ts；组件树 header / chat log / status / editor", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7g1", title:"pi-tui 组件树", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7g2", title:"openclaw tui / chat 入口", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7h", title:"TUI · Gateway vs Embedded 后端", kind:"module", purpose:"连上已有 Gateway，或 --local 嵌入式跑 agent", state:"dirty", memories:[
+            {text:"TuiBackend：GatewayChatClient（WS）与 EmbeddedBackend（无 Gateway）", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7h1", title:"GatewayChatClient", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7h2", title:"EmbeddedBackend --local", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7i", title:"TUI · 聊天日志与流式组装", kind:"module", purpose:"transcript 渲染、流式 token、工具调用可视化", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N7i1", title:"chat log 组件", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7i2", title:"stream assembler", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7j", title:"TUI · 编辑器与 slash", kind:"module", purpose:"输入框、自动完成、斜杠命令、Ctrl-C 语义", state:"dirty", memories:[
+            {text:"src/tui/commands.ts 定义 slash；动态命令随当前 agent 变", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7j1", title:"slash 命令表", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7j2", title:"自动完成", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7k", title:"TUI · 会话与 agent 切换", kind:"module", purpose:"session scope、mainKey、多 agent 选择", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N7l", title:"TUI · 本地 PTY / shell", kind:"module", purpose:"终端里跑交互工具，不是把输出当普通文本贴进去", state:"dirty", memories:[
+            {text:"createLocalShellRunner；!command 走本地 shell", state:"success"}
           ], bugs:[], dormant:[], children:[] },
-        { id:"N72", title:"TUI", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"N73", title:"Control UI", state:"dirty", memories:[
-            {text:"ui/ 是 Vite 应用，走 Gateway WS 做聊天记录和发送", state:"dirty"}
+        { id:"N7m", title:"Control UI · 会话与聊天", kind:"module", purpose:"浏览器里的会话列表、transcript、发送与流式", state:"dirty", memories:[
+            {text:"ui/ 是 Vite 应用，走 Gateway WS", state:"dirty"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7m1", title:"会话侧栏", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7m2", title:"transcript / 发送", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7n", title:"Control UI · 渠道接入向导", kind:"module", purpose:"在浏览器里完成渠道连接，而不是只丢 CLI", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N7o", title:"Control UI · Nodes 设备", kind:"module", purpose:"摄像头/屏幕等 node 的配对与 caps", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N7p", title:"Control UI · Skills / 模型 / 配置", kind:"module", purpose:"技能、供应商、配置编辑，和 CLI 改同一份 schema", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N7p1", title:"skills 面板", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7p2", title:"模型与供应商", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7p3", title:"配置编辑器", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7q", title:"Control UI · 日志、Cron、终端坞", kind:"module", purpose:"事件日志、定时任务、浏览器里的 PTY 坞", state:"dirty", memories:[
+            {text:"OpenClawTerminalPanel 接到 Gateway PTY，不是另起一套 shell", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N7q1", title:"日志 / 事件", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7q2", title:"Cron UI", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7q3", title:"终端坞 PTY", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N7r", title:"远程 UI 鉴权与隧道", kind:"module", purpose:"token、fingerprint、SSH/Tailscale 必须和 Gateway 同隧道", state:"dirty", memories:[
+            {text:"远程 Control UI 漏配隧道就会连错端口", state:"success"}
           ], bugs:[
             {id:"B70", title:"远程 Control UI 必须与 Gateway 同隧道", desc:"WebChat 在远程环境下要走同一条 SSH/Tailscale，漏配就会连错端口", status:"open"}
-          ], dormant:[], children:[] }
+          ], dormant:[], children:[
+            { id:"N7r1", title:"token / password", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7r2", title:"TLS fingerprint", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] }
       ]
     },
 
@@ -521,7 +606,7 @@ const CONTEXT_GUARD_MAP = {
           ], bugs:[], dormant:[], children:[] },
         { id:"N12", title:"首次建图", state:"dirty", memories:[
             {text:"只在还没有地图时分析架构；已有提议或已确认的图，之后会话直接打开，不重拆", state:"success"},
-            {text:"分析不是瞬间出图：Agent 要理解分层，再只提出第一层", state:"success"}
+            {text:"分析要写成 architecture.md，粒度对齐真实开工单元；第一层只是确认门，不是全部分析", state:"success"}
           ], bugs:[], dormant:[], children:[] },
         { id:"N13", title:"简洁合同", state:"success", memories:[
             {text:"context 是导航，不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", state:"success"}
@@ -544,6 +629,12 @@ const CONTEXT_GUARD_MAP = {
           ], bugs:[], dormant:[], children:[] },
         { id:"N24", title:"仓库切换", state:"dirty", memories:[
             {text:"点标题切换已加载仓库；每个仓库自己的首次建图状态分开记", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N25", title:"首次分析叠层", state:"dirty", memories:[
+            {text:"分析过程要露出正在写的 architecture.md，不能用三秒动画冒充读仓", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N26", title:"地图持久化", state:"success", memories:[
+            {text:"已建图的仓库再次打开直接进图；重新分析必须是人点的", state:"success"}
           ], bugs:[], dormant:[], children:[] }
       ]
     },
@@ -584,6 +675,12 @@ const CONTEXT_GUARD_MAP = {
           ], bugs:[], dormant:[], children:[] },
         { id:"N52", title:"一层提议", state:"dirty", memories:[
             {text:"未确认的提议后续 Agent 读不到；确认后才展开下一层", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N53", title:"architecture.md 产出", state:"dirty", memories:[
+            {text:"首次分析必须先写下整仓笔记，地图是从笔记投影出来的，不是反过来用三张卡冒充分析", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N54", title:"开发粒度", state:"dirty", memories:[
+            {text:"点进模块后应看到可开工节点（命令、主循环、面板），而不是 CLI / TUI / UI 三个空壳", state:"success"}
           ], bugs:[], dormant:[], children:[] }
       ]
     },
@@ -601,6 +698,72 @@ const CONTEXT_GUARD_MAP = {
   ]
 };
 
+const OPENCLAW_NOTES = `# OpenClaw 架构笔记（首次分析稿）
+
+分析对象：openclaw/openclaw。这不是目录树，也不是七句口号。粒度要对齐「接下来能改哪一块」。
+
+## 第一层（等人确认）
+
+- Gateway 控制面
+- Agent Runtime
+- Channels 消息渠道
+- Models 与供应商
+- Plugins · Skills · MCP
+- 伴侣应用与 Nodes
+- 控制面 UI
+- 安全、配对、部署
+
+确认第一层只是门。下面这些在分析时已经写进各模块 inbox，进入后再展开。
+
+## 控制面 UI（开发粒度）
+
+三条面共用 Gateway 协议，但入口、状态、失败模式都不同，不能收成 CLI / TUI / Control UI 三个空壳。
+
+### CLI
+- onboard / install-daemon：模型、工作区、守护进程
+- gateway 生命周期：start stop status
+- agent / message：命令行一轮调用与 runId
+- models / doctor --fix：配置迁移主路径
+- channels / pairing / plugins
+- config / logs / cron / nodes
+
+### TUI（src/tui/tui.ts）
+- 组件树：header、chat log、status、editor（pi-tui）
+- TuiBackend：GatewayChatClient vs EmbeddedBackend --local
+- 流式组装、slash 命令、会话与 agent 切换
+- 本地 PTY / !shell
+
+### Control UI（ui/ Vite）
+- 会话列表与聊天、渠道接入向导、Nodes
+- Skills / 模型 / 配置编辑器（同一份 schema）
+- 日志、Cron、终端坞（Gateway PTY）
+- 远程 token、TLS fingerprint、必须与 Gateway 同隧道
+
+## 其它层（摘要）
+
+Gateway：WS 协议、会话队列、HTTP 托管面、幂等与 drain。
+Runtime：loop、context 裁剪、memory 单槽、tools/sandbox。
+Channels：Baileys 单会话不变量、grammY、pairing。
+Models：catalog/picker + extensions，改名走 doctor。
+Plugins：plugin-sdk、ClawHub、MCP，新技能不进 core。
+Nodes：macOS/iOS/Android caps，按设备配对。
+安全：loopback 可自动配对；Tailnet/LAN 必须人批。
+`;
+
+const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（首次分析稿）
+
+分析对象：本仓库。第一层是确认门；开发粒度在下层。
+
+## 第一层
+Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆图 · 会话授权与提议 · 遗留测试中台
+
+## 仓库拆图（分析怎么做）
+- 信号：README、包边界、已有 docs、运行时入口；不是每个文件一张卡
+- 产出：architecture.md（整仓笔记）+ 地图（L1 确认，L2+ 进 inbox）
+- 粒度：必须能对上真实开工单元。空壳三节点没有意义
+- 以后会话打开已有图，除非人要求重新分析
+`;
+
 const clone = o => JSON.parse(JSON.stringify(o));
 const catalog = {
   "context-guard": {
@@ -610,12 +773,13 @@ const catalog = {
     source:"Michel-Johnson/Context-Guard-Skill",
     blueprint: CONTEXT_GUARD_MAP,
     live:null, auth:null, bootstrap:"proposed", firstUseOpen:false,
+    notes: CONTEXT_GUARD_NOTES,
     analyze:[
-      {do:"打开 README 与 SKILL.md，弄清这个 skill 是干什么的", find:"定位是人与 Agent 共用的项目记忆，不是一次聊天摘要"},
-      {do:"看 scripts/、prototype/、.codex/context/ 的职责边界", find:"合同、工作台、context 目录、CLI 是不同层，不是按文件切"},
-      {do:"读已有 architecture.md 和工作台交互", find:"模块卡、提议、会话授权已经是产品形状"},
-      {do:"丢掉目录树，判断第一层怎么切", find:"压成七个第一层模块；下一层先收进 inbox"},
-      {do:"写成未确认提议，等人确认后再往下拆", find:"虚线模块后续 Agent 读不到；下次打开仍是这张图"}
+      {do:"打开 README 与 SKILL.md，弄清 skill 合同", find:"人与 Agent 共用项目记忆，不是聊天摘要"},
+      {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、CLI 是不同开工面"},
+      {do:"读已有 architecture.md 和工作台交互", find:"模块卡、提议、授权已经是产品形状"},
+      {do:"把开发粒度写进 architecture.md，而不是七句口号", find:"工作台下有布局、检查器、持久化、首次分析；拆图下有笔记稿和 inbox"},
+      {do:"第一层只作为确认门，下层收进 inbox", find:"人先确认 L1；点进去展开已分析好的节点"}
     ]
   },
   openclaw: {
@@ -625,11 +789,15 @@ const catalog = {
     source:"openclaw/openclaw",
     blueprint: OPENCLAW_MAP,
     live:null, auth:null, bootstrap:"pending", firstUseOpen:true,
+    notes: OPENCLAW_NOTES,
     analyze:[
-      {do:"读 README 与 pnpm workspace，找出真正的运行时入口", find:"一台主机一个 Gateway，不是一堆并列服务"},
-      {do:"分辨 Gateway、渠道、伴侣应用、插件的边界", find:"控制面和消息渠道、插件槽不是同一层"},
-      {do:"对照协议文档，而不是每个源文件一张卡", find:"目录树不能当架构图"},
-      {do:"只提出第一层控制面模块，等人确认", find:"未确认的提议后续 Agent 读不到"}
+      {do:"读 README 与 workspace，找运行时入口", find:"一台主机一个 Gateway，不是并列微服务"},
+      {do:"顺着 Gateway 把协议、会话、渠道接线拆开", find:"控制面和消息渠道不是同一层"},
+      {do:"读 Agent loop、context、tools、memory 槽", find:"一次 run 的上下文和工具面要单独成节点"},
+      {do:"按渠道实现拆（Baileys、grammY、pairing），不要只列渠道名", find:"WhatsApp 单会话不变量是开发约束，不是标签"},
+      {do:"拆 CLI / TUI / Control UI 各自的真实工作面", find:"TUI 有 tui.ts、双后端、slash、PTY；Control UI 有会话、向导、终端坞"},
+      {do:"把开发粒度写入 architecture.md", find:"控制面 UI 下不是三个空壳，而是 onboard、doctor、tui 主循环、会话列表等可开工节点"},
+      {do:"第一层只作为确认门，下层进 inbox", find:"人先确认 L1；进入模块才展开已经写好的下一层"}
     ]
   }
 };
@@ -659,6 +827,17 @@ function asProposal(n){
   parkChildren(n);
   return n;
 }
+function workCount(n){
+  let c = 0;
+  function w(x){
+    (x.children||[]).concat(x._inbox||[]).forEach(ch=>{ c++; w(ch); });
+  }
+  w(n);
+  return c;
+}
+function esc(s){
+  return String(s).replace(/[&<>]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch]));
+}
 function unpackInbox(n){
   if(!n._inbox || !n._inbox.length) return;
   const next = n._inbox.map(asProposal);
@@ -666,7 +845,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v2";
+const STORE_KEY = "cg-workbench-maps-v3";
 function hasMap(r){
   return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
 }
@@ -801,7 +980,7 @@ function renderFirstUseCopy(){
   const r = currentRepo();
   document.getElementById("first-use-heading").textContent = "从 "+r.name+" 建立架构图";
   document.getElementById("first-use-copy").textContent =
-    "这是 "+r.name+" 第一次启用 skill。Agent 要先读 README、包边界和文档，理解架构之后才提出第一层模块——不是瞬间出图，也不是把目录树倒进来。";
+    "这是 "+r.name+" 第一次启用 skill。Agent 要先写出整仓架构笔记，粒度对齐真实开发单元，再把第一层投影到地图上等人确认——不是瞬间出图，也不是三个空壳。";
 }
 function applyRepoChrome(){
   const r = currentRepo();
@@ -903,8 +1082,8 @@ function proposedTree(r){
     bugs: next.bugs||[],
     dormant: next.dormant||[],
     memories: [
-      {text:"来源：Agent 理解架构后的第一层，不是目录树，也不是瞬间出图", state:"success"},
-      {text:"未确认的模块后续 Agent 读不到。确认一层，再往下拆。下次打开仍是这张图。", state:"success"}
+      {text:"来源：Agent 把整仓写成 architecture.md 后投影的第一层，不是目录树，也不是空壳口号", state:"success"},
+      {text:"第一层是确认门。下层已按开发粒度放进 inbox，进入模块再展开。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c)))
   };
@@ -926,23 +1105,34 @@ function applyProposedMap(){
   fitView();
   persist();
 }
+function revealNotes(frac){
+  const pre = document.getElementById("analyze-md");
+  if(!pre) return;
+  const notes = currentRepo().notes || "";
+  if(!notes){ pre.hidden = true; return; }
+  pre.hidden = false;
+  const n = Math.max(120, Math.floor(notes.length * frac));
+  pre.textContent = notes.slice(0, n) + (n<notes.length ? "\n…" : "");
+}
 function startRepoSplit(){
   if(analyzing) return;
   analyzing = true;
   const steps = currentRepo().analyze || ["理解仓库分层","提出第一层模块"];
   currentRepo().bootstrap = "analyzing";
   setOverlay(true, true);
+  revealNotes(0.12);
   let i = 0;
   const advance = ()=>{
     renderAnalyzeLog(steps, i);
+    revealNotes((i+1)/(steps.length+0.4));
     persist();
     if(i>=steps.length){
-      analyzing = false;
-      applyProposedMap();
+      revealNotes(1);
+      setTimeout(()=>{ analyzing = false; applyProposedMap(); }, 2600);
       return;
     }
     i += 1;
-    setTimeout(advance, 2100);
+    setTimeout(advance, 2400);
   };
   advance();
 }
@@ -1371,10 +1561,11 @@ function renderDetail(){
     : "";
 
   const pendingKids = node.children.filter(isProposed).length;
+  const buried = workCount(node);
   const note = proposed? `<p class="note">尚未加入地图，后续 Agent 读不到。</p>`
     : cancelled? `<p class="note">已隐藏。可从「已取消」恢复。</p>`
     : noauth? `<p class="note">Agent 读不到此项。</p>`
-    : pendingKids? `<p class="note">Agent 拆出 ${pendingKids} 项，等你确认后再往下。</p>`
+    : (pendingKids||buried)? `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开发节点，进入后展开，不是空壳。":""}</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
 
   const last = path.length-1;
@@ -1392,6 +1583,7 @@ function renderDetail(){
     </h2>
     ${isModule? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
     ${note}
+    ${path.length===1 && currentRepo().notes ? `<details class="fold" open><summary>架构笔记</summary><pre class="arch-md">${esc(currentRepo().notes)}</pre></details>`:""}
     <div class="actions">
       ${proposed? `<button data-act="accept" class="primary">加入</button>
                    <button data-act="cancel" class="warn">隐藏</button>`:""}
