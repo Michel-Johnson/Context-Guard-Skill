@@ -188,6 +188,7 @@ def default_preferences(today: str | None = None) -> dict[str, str]:
     return {
         "record_language": "unset",
         "display_language": "auto",
+        "map_bootstrap": "pending",
         "last_updated": today or datetime.now().strftime("%Y-%m-%d"),
         "note": "Set with: context_guard.py set-language --language <language>",
     }

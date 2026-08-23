@@ -31,20 +31,22 @@ header.top h1{margin:0;font-size:16px}
 .session-chip{display:flex;align-items:center;gap:7px;background:var(--auth-soft);border:1px solid #d8cceb;
   border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth);margin-left:auto}
 .session-chip b{font-weight:700}
-.tray-btn,.auth-btn,.import-btn{font-size:12.5px;padding:5px 11px}
+.tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
 .dir-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:0 0 auto}
 .dir-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:#fff;color:var(--muted);cursor:pointer}
 .dir-toggle button + button{border-left:1px solid var(--line)}
 .dir-toggle button:hover{color:var(--ink)}
 .dir-toggle button.on{background:var(--module-soft);color:var(--module);font-weight:700}
 body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
-.import-bar{display:none;position:fixed;left:0;right:0;top:52px;z-index:28;
-  align-items:center;gap:10px;flex-wrap:wrap;padding:8px 18px;
-  background:#fff;border-bottom:1px solid var(--line);cursor:default}
-.import-bar.open{display:flex}
-.import-bar .label{font-size:12.5px;color:var(--muted)}
-.import-bar .repo{min-width:16em;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:var(--bg)}
-.import-bar .hint{font-size:12px;color:var(--muted)}
+.first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
+  align-items:center;justify-content:center;background:rgba(250,250,247,.82);cursor:default}
+.first-use.open{display:flex}
+.first-use .card{width:min(460px,92%);background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;padding:26px 26px 20px;box-shadow:0 12px 40px rgba(42,47,43,.12)}
+.first-use .kicker{color:var(--green);font-weight:750;font-size:11px;letter-spacing:.08em}
+.first-use h2{margin:8px 0 8px;font-size:18px}
+.first-use p{margin:0 0 10px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.first-use .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
@@ -224,17 +226,21 @@ details.fold .mem-list{margin-top:6px}
     <button type="button" data-dir="lr" class="on">左右</button>
     <button type="button" data-dir="tb">上下</button>
   </div>
-  <div class="session-chip">当前会话：<b id="session-name">S-0823 Gateway 协议</b> · 可读 <b id="auth-count">0</b> 节点</div>
-  <button class="import-btn" id="btn-import">从仓库拆图</button>
+  <div class="session-chip">当前会话：<b id="session-name">S-0823 首次使用</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
-<div class="import-bar" id="import-bar">
-  <span class="label">仓库</span>
-  <span class="ed repo" id="import-repo">openclaw/openclaw</span>
-  <button class="primary" id="import-go">拆第一层</button>
-  <button class="quiet" id="import-cancel">取消</button>
-  <span class="hint">Agent 只提议模块，目录树不会整仓灌进地图。</span>
+<div class="first-use open" id="first-use">
+  <div class="card">
+    <div class="kicker">第一次使用 CONTEXT GUARD</div>
+    <h2>从当前仓库建立架构图</h2>
+    <p>这是此项目第一次启用 skill。Agent 会读 README、包边界和现有文档，只提出第一层模块，由你确认后才写入地图。</p>
+    <p>目录树不会整仓灌进来。之后的会话直接打开这张图，不会再拆一遍仓库。</p>
+    <div class="actions">
+      <button class="primary" id="first-use-go">根据当前仓库建立</button>
+      <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
+    </div>
+  </div>
 </div>
 
 <div id="viewport">
@@ -484,6 +490,33 @@ function unpackInbox(n){
   n._inbox = [];
   n.children = (n.children||[]).concat(next);
 }
+function hideFirstUse(){
+  document.getElementById("first-use").classList.remove("open");
+}
+function emptyFirstUse(){
+  const next = clone(REPO_SPLIT);
+  data.title = next.title;
+  data.state = next.state;
+  data.bugs = [];
+  data.dormant = [];
+  data.memories = [];
+  data.children = [];
+  sessionAuth.clear();
+  sessionAuth.add("T0");
+  selectedId = "T0";
+  viewRootId = "T0";
+  focusId = null;
+  composingId = null;
+  document.getElementById("session-name").textContent = "S-0823 首次使用";
+  document.getElementById("first-use").classList.add("open");
+}
+function startEmptyRoot(){
+  hideFirstUse();
+  data.memories = [{text:"绿场项目：只留下根节点。有了真实模块再往下长。", state:"success"}];
+  document.getElementById("session-name").textContent = "S-0823 空白项目";
+  renderAll();
+  fitView();
+}
 function startRepoSplit(repo){
   const src = (repo||"openclaw/openclaw").trim() || "openclaw/openclaw";
   const next = clone(REPO_SPLIT);
@@ -492,8 +525,8 @@ function startRepoSplit(repo){
   data.bugs = next.bugs;
   data.dormant = next.dormant;
   data.memories = [
-    {text:"来源：github.com/"+src, state:"success"},
-    {text:"Agent 只提交第一层模块。确认后才往下拆；仓库目录 ≠ 导图。", state:"success"}
+    {text:"来源：当前仓库 "+src, state:"success"},
+    {text:"第一次使用：Agent 只提交第一层模块。确认后才往下拆；仓库目录 ≠ 导图。", state:"success"}
   ].concat(next.memories);
   data.children = next.children.map(asProposal);
   sessionAuth.clear();
@@ -502,8 +535,8 @@ function startRepoSplit(repo){
   viewRootId = "T0";
   focusId = null;
   composingId = null;
-  document.getElementById("session-name").textContent = "S-0823 拆仓库";
-  document.getElementById("import-bar").classList.remove("open");
+  document.getElementById("session-name").textContent = "S-0823 首次建图";
+  hideFirstUse();
   renderAll();
   fitView();
 }
@@ -603,18 +636,8 @@ document.getElementById("btn-auth").onclick = ()=>{
 document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("tray").classList.toggle("open");
 };
-const importBar = document.getElementById("import-bar");
-document.getElementById("btn-import").onclick = ()=>{
-  importBar.classList.toggle("open");
-  if(importBar.classList.contains("open")){
-    const ed = document.getElementById("import-repo");
-    ed.focus();
-  }
-};
-document.getElementById("import-cancel").onclick = ()=>importBar.classList.remove("open");
-document.getElementById("import-go").onclick = ()=>{
-  startRepoSplit(textOf(document.getElementById("import-repo")));
-};
+document.getElementById("first-use-go").onclick = ()=>startRepoSplit("openclaw/openclaw");
+document.getElementById("first-use-empty").onclick = startEmptyRoot;
 function setLayoutDir(dir){
   layoutDir = dir;
   document.body.classList.toggle("layout-tb", dir==="tb");
@@ -1159,6 +1182,7 @@ vp.addEventListener("wheel", e=>{
 },{passive:false});
 
 function renderAll(){ renderNav(); renderTray(); renderMap(); renderDetail(); }
+emptyFirstUse();
 renderAll(); fitView();
 </script>
 </body>

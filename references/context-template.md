@@ -41,12 +41,13 @@ The `private/` folder is local-only sensitive memory. It must be covered by `.co
 {
   "record_language": "unset",
   "display_language": "auto",
+  "map_bootstrap": "pending",
   "last_updated": "YYYY-MM-DD",
   "note": "Set with: context_guard.py set-language --language <language>"
 }
 ```
 
-Ask the user for a context record language the first time `record_language` is `unset`, then update this file. Use that language for future source context records. Keep literal code identifiers, paths, commands, logs, API names, and exact error text unchanged. If the user changes language later, update this file and use the new language going forward; do not bulk-translate history unless asked.
+Ask the user for a context record language the first time `record_language` is `unset`, then update this file. `map_bootstrap` is `pending` until the first-use architecture map is human-confirmed (or the user starts from an empty root); then set it to `ready`. Do not re-split the repository on later sessions unless the user asks to rebuild. Use that language for future source context records. Keep literal code identifiers, paths, commands, logs, API names, and exact error text unchanged. If the user changes language later, update this file and use the new language going forward; do not bulk-translate history unless asked.
 
 ## index.md
 

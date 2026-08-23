@@ -7,6 +7,7 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 ## What It Does
 
 - **Maintains project context**: creates and updates `.codex/context/`.
+- **Builds the architecture map on first use**: the first time the skill runs in a folder, it proposes the first layer of modules from the opened repo for human confirmation. This is not a later import action and not a directory dump.
 - **Preserves user wording**: stores short user instructions, constraints, preferences, route hints, and bad-case reports in `user-messages.md`.
 - **Keeps secrets local-only**: redacts credentials from public context and stores durable secrets only under `.codex/context/private/`.
 - **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
