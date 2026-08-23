@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Context Guard · 工作台原型（模块钻取）</title>
+<style>
+:root{
+  --ink:#2a2f2b; --muted:#75807a; --paper:#ffffff; --bg:#fafaf7; --line:#d9ded7;
+  --green:#2f7d63; --green-soft:#e2efe7; --red:#b34a3f; --red-soft:#f6e5e2;
+  --blue:#3d6ea5; --blue-soft:#e3ecf5; --gray:#9aa59c;
+  --focus:#8a6d1f; --focus-soft:#f5eeda; --module:#5c6f8a; --module-soft:#eef2f7;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+
+header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:16px;
+  padding:10px 18px;background:rgba(250,250,247,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(4px)}
+header.top .eyebrow{color:var(--green);font-weight:750;font-size:11px;letter-spacing:.08em}
+header.top h1{margin:0;font-size:16px}
+.nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap}
+.nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;padding:3px 9px;
+  border:1px solid transparent;border-radius:6px}
+.nav-crumbs a:hover{border-color:var(--line);background:#fff}
+.nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
+.nav-crumbs .sep{color:var(--line)}
+.legend{margin-left:auto;display:flex;gap:12px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
+.dot.failed{background:var(--red)} .dot.dormant{background:var(--gray)}
+.dot.module{background:var(--module);border-radius:2px}
+.hint-bar{position:fixed;left:16px;bottom:12px;z-index:30;color:var(--muted);font-size:12px;
+  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+
+/* ---------- 画布 ---------- */
+#viewport{position:absolute;inset:0;cursor:grab}
+#viewport.grabbing{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#links path.link{fill:none;stroke:#c3cdc0;stroke-width:1.5;transition:opacity .2s}
+#links path.link.dimmed{opacity:.12}
+#links path.link.focus-link{stroke:var(--green);stroke-width:2}
+
+/* 普通节点：小文字标签 */
+.node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  background:var(--paper);border:1px solid var(--line);border-radius:7px;
+  padding:4px 11px 4px 9px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
+  box-shadow:0 1px 2px rgba(42,47,43,.05);transition:opacity .2s, box-shadow .12s, border-color .12s}
+.node:hover{box-shadow:0 2px 8px rgba(42,47,43,.13);border-color:#b9c4b6}
+.node.selected{border-color:var(--green);box-shadow:0 0 0 2.5px var(--green-soft)}
+.node.dimmed{opacity:.18}
+.node.root{font-size:14.5px;font-weight:700;padding:7px 15px 7px 12px;border-width:1.5px;border-color:#aab8a8}
+
+/* 模块胶囊：点击钻入 */
+.node.module{border:1.5px solid #b7c2d2;background:var(--module-soft);font-weight:650;
+  padding:7px 13px;border-radius:9px}
+.node.module:hover{border-color:var(--module);box-shadow:0 3px 10px rgba(92,111,138,.22)}
+.node.module .stats{color:var(--muted);font-weight:400;font-size:11.5px}
+.node.module .enter{color:var(--module);font-weight:700;margin-left:2px}
+.node .bug-badge{background:var(--red);color:#fff;border-radius:8px;min-width:16px;height:16px;
+  line-height:16px;text-align:center;font-size:10.5px;padding:0 4px}
+.node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
+.node .add-child{position:absolute;right:-11px;top:50%;transform:translateY(-50%);width:20px;height:20px;
+  border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px;
+  line-height:17px;text-align:center;opacity:0;transition:opacity .12s}
+.node:hover .add-child{opacity:1}
+.node .add-child:hover{border-color:var(--green);color:var(--green)}
+
+/* ---------- 右侧抽屉 ---------- */
+.drawer{position:fixed;top:49px;right:0;bottom:0;width:400px;z-index:20;background:var(--paper);
+  border-left:1px solid var(--line);overflow:auto;padding:18px 22px 30px}
+.crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:4px}
+.crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
+.crumbs .sep{color:var(--line)}
+.drawer h2{margin:2px 0 2px;font-size:20px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.state-chip{font-size:12px;padding:2px 9px;border-radius:10px;font-weight:600;flex:0 0 auto}
+.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
+.state-chip.success{background:var(--green-soft);color:var(--green)}
+.state-chip.failed{background:var(--red-soft);color:var(--red)}
+.state-chip.module{background:var(--module-soft);color:var(--module)}
+.actions{display:flex;gap:8px;margin:13px 0 4px;flex-wrap:wrap}
+button{font:inherit;font-size:13px;padding:6px 13px;border:1px solid var(--line);background:#fff;
+  border-radius:7px;cursor:pointer;color:var(--ink)}
+button:hover{border-color:var(--green);color:var(--green)}
+button.primary{background:var(--green);border-color:var(--green);color:#fff}
+button.primary:hover{opacity:.9;color:#fff}
+.focus-banner{margin:12px 0 0;padding:9px 13px;background:var(--focus-soft);border:1px solid #e3d5a8;
+  border-radius:8px;font-size:12.5px;color:var(--focus)}
+section.block{margin-top:20px}
+section.block>h3{margin:0 0 4px;font-size:12.5px;color:var(--muted);letter-spacing:.04em}
+section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
+.mem-list{list-style:none;margin:0;padding:0}
+.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:8px 2px;border-top:1px solid var(--line);font-size:13px}
+.mem-list li:first-child{border-top:0}
+.mem-list .dot{margin-top:5px}
+.mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
+.mem-list li.dirty-item{color:var(--muted)}
+.mem-list li.dirty-item .txt{border-bottom:1px dashed var(--line)}
+.empty{color:var(--muted);font-size:13px;padding:6px 0}
+
+.bug-list{list-style:none;margin:0;padding:0}
+.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-top:1px solid var(--line)}
+.bug-list li:first-child{border-top:0}
+.bug-check{width:19px;height:19px;border:2px solid var(--red);border-radius:5px;cursor:pointer;
+  flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#fff;background:#fff;transition:background .15s}
+.bug-check:hover{background:var(--red-soft)}
+.bug-check.done{background:var(--green);border-color:var(--green)}
+.bug-title{font-weight:600;font-size:13.5px}
+.bug-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
+.summarizing{color:var(--green);font-size:12px;margin-top:3px}
+
+.dormant-box{border:1px dashed var(--line);border-radius:8px;padding:11px 13px;background:#f7f8f2}
+.dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:6px;background:#fff;margin-bottom:8px}
+.dormant-list{list-style:none;margin:0;padding:0}
+.dormant-list li{padding:8px 2px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.dormant-list li:first-child{border-top:0}
+.dormant-list b{color:var(--ink)}
+.dormant-list .exp{display:block;margin-top:3px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <div class="eyebrow">CONTEXT GUARD · 工作台原型</div>
+    <h1>任务导图</h1>
+  </div>
+  <nav class="nav-crumbs" id="nav-crumbs"></nav>
+  <div class="legend">
+    <span><i class="dot module"></i>模块（点击进入）</span>
+    <span><i class="dot dirty"></i>探索中</span>
+    <span><i class="dot success"></i>成功</span>
+    <span><i class="dot failed"></i>失败</span>
+    <span><i class="dot dormant"></i>休眠经验</span>
+  </div>
+</header>
+
+<div id="viewport">
+  <div id="world">
+    <svg id="links"></svg>
+    <div id="nodes"></div>
+  </div>
+</div>
+
+<aside class="drawer" id="detail"></aside>
+
+<div class="hint-bar">点击模块进入其全局视图 · 顶部面包屑返回上层 · 拖拽平移 / 滚轮缩放 · 悬停节点点「＋」延伸 · 原型数据不落盘</div>
+
+<script>
+/* ================= 假数据 ================= */
+const PINNED = [
+  "回复和记忆一律使用中文",
+  "记忆文件随 git 提交；密钥只留本地，永不入库"
+];
+
+let NODE_SEQ = 100;
+const data = {
+  id:"T0", title:"Context Guard 重构", state:"dirty", memories:[
+    {text:"目标：Context Guard 变成人机协作维护记忆的范式", state:"success"},
+    {text:"存储定了：记忆放项目目录，随 git 走", state:"success"}
+  ], bugs:[], dormant:[], children:[
+
+    { id:"M1", title:"记忆内核", kind:"module", state:"success", memories:[
+        {text:"模块结论：0822 分支为底，SKILL 只保留 58 行核心", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"M1a", title:"用户消息记录", state:"success", memories:[
+            {text:"分钟前缀 + 四种记录模式，OTP 永不落盘", state:"success"}
+          ], bugs:[], dormant:[
+            {title:"消息重复记录", exp:"UserPromptSubmit 与归档重复写同一句话；修复：归档前按分钟前缀去重。"}
+          ], children:[] },
+        { id:"M1b", title:"会话隔离", kind:"module", state:"dirty", memories:[
+            {text:"子模块结论：sessions/<id>/ 私有草稿，loader 只注入允许集合", state:"dirty"}
+          ], bugs:[], dormant:[], children:[
+            { id:"M1b1", title:"outbox 候选共享", state:"dirty", memories:[
+                {text:"探索：会话把值得共享的记忆放 outbox 等人合并", state:"dirty"}
+              ], bugs:[], dormant:[], children:[] },
+            { id:"M1b2", title:"transfers 定向传递", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"M1c", title:"归档流程", state:"dirty", memories:[], bugs:[
+            {id:"B0", title:"会话结束无干净信号导致归档丢失", desc:"人不再回消息时，草稿未被提议合并", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"M1x", title:"测试中台（已废弃）", state:"failed", memories:[
+            {text:"教训：测试门禁不属于记忆 skill，每轮强制跑测试让人放弃使用", state:"failed"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M2", title:"人类工作台", kind:"module", state:"dirty", memories:[
+        {text:"想法：导图式任务树，子节点继承父节点的已完成记忆", state:"dirty"},
+        {text:"想法：人只感知 Bug 和「Bug 修好了」两件事", state:"dirty"}
+      ], bugs:[], dormant:[], children:[
+        { id:"M2a", title:"任务导图视图", state:"dirty", memories:[
+            {text:"探索：导图主画布 + 右侧抽屉，先不做拖拽排序", state:"dirty"}
+          ], bugs:[
+            {id:"B1", title:"焦点模式下新建的子节点没有继承焦点", desc:"在焦点链路外新建节点时导图没有变灰", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"M2b", title:"Bug 叉掉流程", state:"dirty", memories:[], bugs:[
+            {id:"B2", title:"叉掉 Bug 后经验没有进入休眠区", desc:"人确认修复后，Agent 未触发总结", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"M2c", title:"焦点链路加载", state:"dirty", memories:[
+            {text:"探索：新会话只注入焦点链路上的记忆，兄弟分支不可见", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M3", title:"底层文件系统", kind:"module", state:"dirty", memories:[
+        {text:"待办：工作台定型后再设计 sessions/ 与 memory/ 结构", state:"dirty"}
+      ], bugs:[], dormant:[], children:[
+        { id:"M3a", title:"memory/ 共享层", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"M3b", title:"sessions/ 会话层", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"M3c", title:"transfers/ 定向传递", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+      ]
+    }
+  ]
+};
+
+let selectedId = "T0";
+let focusId = null;
+let viewRootId = "T0";          /* 当前钻取到的模块（T0 = 项目全局） */
+
+/* ================= 树工具 ================= */
+function walk(node, fn, parents=[]){
+  fn(node, parents);
+  node.children.forEach(c=>walk(c, fn, [...parents, node]));
+}
+function findPath(id){
+  let result=null;
+  walk(data,(n,ps)=>{ if(n.id===id) result=[...ps,n]; });
+  return result;
+}
+function getNode(id){ const p=findPath(id); return p? p[p.length-1] : null; }
+/* 当前视图内：子模块显示为胶囊（不展开内部） */
+function visibleChildren(n){
+  if(n.kind==="module" && n.id!==viewRootId) return [];
+  return n.children;
+}
+function vwalk(node, fn, parents=[]){
+  fn(node, parents);
+  visibleChildren(node).forEach(c=>vwalk(c, fn, [...parents, node]));
+}
+function onFocusPath(id){
+  if(!focusId) return true;
+  const fp = findPath(focusId).map(n=>n.id);
+  const p  = findPath(id).map(n=>n.id);
+  return fp.includes(id) || p.includes(focusId);
+}
+function aggregate(n){
+  let nodes=0, bugs=0, dormant=0;
+  walk(n,(x)=>{ nodes++; bugs += x.bugs.filter(b=>b.status!=="dormant").length; dormant += x.dormant.length; });
+  return {nodes:nodes-1, bugs, dormant};
+}
+/* 进入某个视图（模块或项目根） */
+function enterView(id){
+  viewRootId = id;
+  selectedId = id;
+  view = {x:60, y:120, k:1};
+  renderAll(); applyView();
+}
+
+/* ================= 顶部导航面包屑 ================= */
+function renderNav(){
+  const path = findPath(viewRootId);
+  const el = document.getElementById("nav-crumbs");
+  el.innerHTML = path.map((n,i)=> i===path.length-1
+    ? `<span class="here">${n.kind==="module"?"▣ ":""}${n.title}</span>`
+    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${n.title}</a><span class="sep">›</span>`
+  ).join("");
+  el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+}
+
+/* ================= 导图渲染 ================= */
+const GAP_X = 46, GAP_Y = 9;
+const worldEl = document.getElementById("world");
+const nodesEl = document.getElementById("nodes");
+const linksEl = document.getElementById("links");
+
+function nodeHtml(n, isViewRoot){
+  const openBugs = n.bugs.filter(b=>b.status!=="dormant").length;
+  if(n.kind==="module" && !isViewRoot){
+    const agg = aggregate(n);
+    return `<i class="dot module"></i><span>${n.title}</span>`+
+      `<span class="stats">${agg.nodes} 节点${agg.dormant?` · 休眠 ${agg.dormant}`:""}</span>`+
+      (agg.bugs?`<span class="bug-badge">${agg.bugs}</span>`:"")+
+      (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
+      `<span class="enter">›</span>`;
+  }
+  return `<i class="dot ${n.state}"></i><span>${n.title}</span>`+
+    (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
+    (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
+    `<span class="add-child" title="延伸子任务">＋</span>`;
+}
+
+function renderMap(){
+  const root = getNode(viewRootId);
+
+  /* 第一遍：建可见节点 DOM 并测量 */
+  nodesEl.innerHTML = "";
+  const els = new Map();
+  vwalk(root,(n,ps)=>{
+    const isViewRoot = n.id===viewRootId;
+    const div = document.createElement("div");
+    div.className = "node" + (isViewRoot?" root":"") +
+      (n.kind==="module" && !isViewRoot?" module":"") +
+      (n.id===selectedId?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
+    div.innerHTML = nodeHtml(n, isViewRoot);
+    div.style.visibility = "hidden";
+    nodesEl.appendChild(div);
+    els.set(n.id, div);
+  });
+  const size = new Map();
+  els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
+
+  /* 第二遍：可变尺寸布局 */
+  const pos = new Map();
+  function subtree(n, x, top){
+    const s = size.get(n.id);
+    const kids = visibleChildren(n);
+    const childX = x + s.w + GAP_X;
+    if(!kids.length){ pos.set(n.id,{x, y:top}); return s.h; }
+    let y = top;
+    kids.forEach(c=>{ y += subtree(c, childX, y) + GAP_Y; });
+    let total = y - GAP_Y - top;
+    const first = kids[0], last = kids[kids.length-1];
+    const fc = pos.get(first.id), lc = pos.get(last.id);
+    const cy = (fc.y + size.get(first.id).h/2 + lc.y + size.get(last.id).h/2)/2;
+    let ny = cy - s.h/2;
+    if(s.h > total){
+      const shift = (s.h-total)/2;
+      kids.forEach(c=>shiftSubtree(c, shift));
+      ny = top; total = s.h;
+    }
+    pos.set(n.id,{x, y:Math.max(ny, top)});
+    return total;
+  }
+  function shiftSubtree(n, dy){
+    const p = pos.get(n.id); if(p) p.y += dy;
+    visibleChildren(n).forEach(c=>shiftSubtree(c, dy));
+  }
+  subtree(root, 0, 0);
+
+  let maxX=0, maxY=0;
+  els.forEach((el,id)=>{
+    const p = pos.get(id), s = size.get(id);
+    el.style.left = p.x+"px"; el.style.top = p.y+"px";
+    el.style.visibility = "";
+    maxX = Math.max(maxX, p.x+s.w); maxY = Math.max(maxY, p.y+s.h);
+  });
+  linksEl.setAttribute("width", maxX+140);
+  linksEl.setAttribute("height", maxY+140);
+
+  /* 细曲线连接 */
+  let paths="";
+  vwalk(root,(n)=>{
+    const p = pos.get(n.id), psz = size.get(n.id);
+    visibleChildren(n).forEach(c=>{
+      const q = pos.get(c.id), qs = size.get(c.id);
+      const x1=p.x+psz.w, y1=p.y+psz.h/2, x2=q.x, y2=q.y+qs.h/2;
+      const mx=x1+(x2-x1)*.5;
+      const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
+      const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
+      paths += `<path class="link ${dim?'dimmed':''} ${onF?'focus-link':''}"
+        d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+    });
+  });
+  linksEl.innerHTML = paths;
+
+  /* 事件：模块胶囊点击 = 钻入；普通节点点击 = 选中 */
+  els.forEach((el,id)=>{
+    el.onclick = (e)=>{
+      const n = getNode(id);
+      if(e.target.classList.contains("add-child")){ addChild(n); return; }
+      if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+      selectedId = id; renderAll();
+    };
+  });
+}
+
+function addChild(node){
+  const t = prompt("子节点名称（新任务从这里延伸）：");
+  if(!t) return;
+  node.children.push({id:"N"+(NODE_SEQ++), title:t, state:"dirty", memories:[], bugs:[], dormant:[], children:[]});
+  if(node.kind==="module" && node.id!==viewRootId){ enterView(node.id); return; }
+  selectedId = node.children[node.children.length-1].id;
+  renderAll();
+}
+
+/* ================= 抽屉 ================= */
+const STATE_LABEL = {dirty:"探索中", success:"成功", failed:"失败"};
+function renderDetail(){
+  const path = findPath(selectedId);
+  const el = document.getElementById("detail");
+  const node = path[path.length-1];
+  const isModule = node.kind==="module";
+
+  const crumbs = path.map((n,i)=> i===path.length-1
+    ? `<span>${n.title}</span>`
+    : `<a data-id="${n.id}">${n.title}</a><span class="sep">›</span>`).join("");
+
+  const inherited = [];
+  path.slice(0,-1).forEach(anc=>{
+    anc.memories.filter(m=>m.state!=="dirty").forEach(m=>inherited.push({...m, from:anc.title}));
+  });
+
+  const memHtml = node.memories.length
+    ? `<ul class="mem-list">`+node.memories.map(m=>
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><span class="txt">${m.text}</span></li>`
+      ).join("")+`</ul>`
+    : `<div class="empty">本节点还没有记忆。</div>`;
+
+  const inhHtml = `<ul class="mem-list">`+
+      PINNED.map(t=>`<li><i class="dot success"></i><span class="txt">${t}</span><span class="src">全局规则</span></li>`).join("")+
+      inherited.map(m=>`<li><i class="dot ${m.state}"></i><span class="txt">${m.text}</span><span class="src">来自 ${m.from}</span></li>`).join("")+
+      `</ul>`;
+
+  const openBugs = node.bugs.filter(b=>b.status!=="dormant");
+  const bugHtml = openBugs.length
+    ? `<ul class="bug-list">`+openBugs.map(b=>`
+        <li class="${b.status==='pending'?'bug-pending':''}">
+          <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
+          <div>
+            <div class="bug-title">${b.title}</div>
+            <div class="bug-sub">${b.desc}</div>
+            ${b.status==='pending'? `<div class="summarizing">已确认修复 · Agent 正在总结做了什么，沉淀为经验…</div>`:""}
+          </div>
+        </li>`).join("")+`</ul>`
+    : `<div class="empty">没有待修复的 Bug。</div>`;
+
+  const agg = isModule? aggregate(node): null;
+  const moduleStats = isModule
+    ? `<section class="block"><h3>模块概览</h3>
+        <ul class="mem-list">
+          <li><i class="dot module"></i><span class="txt">内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条</span></li>
+        </ul></section>`
+    : "";
+
+  const dormHtml = `
+    <div class="dormant-box">
+      <input placeholder="检索休眠经验（只有再次遇到同类问题时才查询）" data-dorm-search>
+      <ul class="dormant-list" data-dorm-list>
+        ${node.dormant.length? node.dormant.map(d=>
+          `<li><b>${d.title}</b><span class="exp">${d.exp}</span></li>`).join("")
+          : `<li>暂无休眠经验。</li>`}
+      </ul>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="crumbs">${crumbs}</div>
+    <h2>${node.title}
+      ${isModule? `<span class="state-chip module">模块</span>`:""}
+      <span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span></h2>
+    <div class="actions">
+      ${isModule && node.id!==viewRootId? `<button data-act="enter" class="primary">进入模块 ›</button>`:""}
+      <button data-act="child">＋ 子节点</button>
+      <button data-act="focus" class="${focusId===node.id?'':'primary'}">
+        ${focusId===node.id? "解除焦点":"◎ 只看这条线"}</button>
+      ${node.state==="dirty" && !isModule? `<button data-act="done">完成·成功</button>
+      <button data-act="fail">完成·失败</button>`:""}
+    </div>
+    ${focusId? `<div class="focus-banner">焦点链路：${findPath(focusId).map(n=>n.title).join(" → ")}
+      —— 其余分支已对 Agent 隐藏，新会话只加载这条线的记忆。</div>`:""}
+    ${moduleStats}
+    <section class="block">
+      <h3>继承的记忆</h3>
+      <p class="hint">全局规则 + 祖先节点的已完成结论。探索中的脏记忆不会下传。</p>
+      ${inhHtml}
+    </section>
+    <section class="block">
+      <h3>本节点记忆</h3>
+      ${memHtml}
+    </section>
+    <section class="block">
+      <h3>Bug</h3>
+      <p class="hint">你测试认为修好了，就把它叉掉。Agent 会总结做了什么，沉淀为休眠经验。</p>
+      ${bugHtml}
+    </section>
+    <section class="block">
+      <h3>休眠经验（${node.dormant.length}）</h3>
+      <p class="hint">默认不加载进任何会话；只有再次遇到同类问题时按需检索。</p>
+      ${dormHtml}
+    </section>`;
+
+  el.querySelectorAll(".crumbs a").forEach(a=>a.onclick=()=>{
+    const target = getNode(a.dataset.id);
+    const tp = findPath(target.id);
+    /* 跳转到能看见目标的视图：目标本身是模块则进入它，否则进入最近的模块祖先 */
+    const anchor = target.kind==="module" ? target
+      : [...tp].reverse().find(n=>n.kind==="module" && n.id!==target.id) || data;
+    viewRootId = anchor.id;
+    selectedId = target.id;
+    renderAll();
+  });
+  el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
+  const enterBtn = el.querySelector('[data-act="enter"]');
+  if(enterBtn) enterBtn.onclick = ()=>enterView(node.id);
+  el.querySelector('[data-act="child"]').onclick = ()=>addChild(node);
+  el.querySelector('[data-act="focus"]').onclick = ()=>{
+    focusId = (focusId===node.id? null : node.id); renderAll();
+  };
+  const doneBtn = el.querySelector('[data-act="done"]');
+  if(doneBtn) doneBtn.onclick = ()=>{ node.state="success";
+    node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success"}); renderAll(); };
+  const failBtn = el.querySelector('[data-act="fail"]');
+  if(failBtn) failBtn.onclick = ()=>{ node.state="failed";
+    node.memories.push({text:"（演示）任务失败收场，Agent 记录教训供后续避坑", state:"failed"}); renderAll(); };
+
+  const search = el.querySelector("[data-dorm-search]");
+  if(search) search.oninput = ()=>{
+    const q = search.value.trim();
+    const listEl = el.querySelector("[data-dorm-list]");
+    const hits = node.dormant.filter(d=>!q || (d.title+d.exp).includes(q));
+    listEl.innerHTML = hits.length
+      ? hits.map(d=>`<li><b>${d.title}</b><span class="exp">${d.exp}</span></li>`).join("")
+      : `<li>没有匹配的经验。</li>`;
+  };
+}
+
+/* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
+function crossBug(node, bugId){
+  const bug = node.bugs.find(b=>b.id===bugId);
+  if(!bug || bug.status!=="open") return;
+  bug.status = "pending";
+  renderAll();
+  setTimeout(()=>{
+    bug.status = "dormant";
+    node.dormant.push({
+      title: bug.title,
+      exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。"
+    });
+    renderAll();
+  }, 1600);
+}
+
+/* ================= 平移 / 缩放 ================= */
+let view = {x:60, y:120, k:1};
+function applyView(){
+  worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
+}
+const vp = document.getElementById("viewport");
+let dragging=false, sx=0, sy=0;
+vp.addEventListener("mousedown", e=>{
+  if(e.target.closest(".node")) return;
+  dragging=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  vp.classList.add("grabbing");
+});
+window.addEventListener("mousemove", e=>{
+  if(!dragging) return;
+  view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
+});
+window.addEventListener("mouseup", ()=>{ dragging=false; vp.classList.remove("grabbing"); });
+vp.addEventListener("wheel", e=>{
+  e.preventDefault();
+  const factor = e.deltaY<0 ? 1.08 : 1/1.08;
+  const nk = Math.min(2.2, Math.max(.35, view.k*factor));
+  const rect = vp.getBoundingClientRect();
+  const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
+  view.x = cx - (cx-view.x)*(nk/view.k);
+  view.y = cy - (cy-view.y)*(nk/view.k);
+  view.k = nk;
+  applyView();
+},{passive:false});
+
+function renderAll(){ renderNav(); renderMap(); renderDetail(); }
+renderAll(); applyView();
+</script>
+</body>
+</html>
