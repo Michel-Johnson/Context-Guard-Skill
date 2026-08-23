@@ -204,10 +204,10 @@ details.fold .mem-list{margin-top:6px}
 <header class="top">
   <div>
     <div class="eyebrow">CONTEXT GUARD · 工作台原型</div>
-    <h1>任务导图</h1>
+    <h1>OpenClaw 架构导图</h1>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
-  <div class="session-chip">当前会话：<b>S-0823 工作台开发</b> · 可读 <b id="auth-count">0</b> 节点</div>
+  <div class="session-chip">当前会话：<b>S-0823 Gateway 协议</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
@@ -234,73 +234,194 @@ const PINNED = [
   "记忆文件随 git 提交；密钥只留本地，永不入库"
 ];
 
-let NODE_SEQ = 100;
-let BUG_SEQ = 10;
+let NODE_SEQ = 400;
+let BUG_SEQ = 40;
+/* 导图数据来自 github.com/openclaw/openclaw */
 const data = {
-  id:"T0", title:"Context Guard 重构", state:"dirty", memories:[
-    {text:"目标：Context Guard 变成人机协作维护记忆的范式", state:"success"},
-    {text:"存储定了：记忆放项目目录，随 git 走", state:"success"}
+  id:"T0", title:"OpenClaw", state:"dirty", memories:[
+    {text:"定位：跑在自己设备上的个人助手，在已有聊天渠道里见面", state:"success"},
+    {text:"形态：一个 Gateway 管会话、工具、事件和渠道连接", state:"success"},
+    {text:"仓库：pnpm workspace；核心 TypeScript，附带 macOS/iOS/Android 伴侣应用", state:"success"}
   ], bugs:[], dormant:[], children:[
 
-    { id:"M1", title:"记忆内核", kind:"module", purpose:"Agent 如何捕获、隔离、归档项目记忆", state:"success", memories:[
-        {text:"模块结论：0822 分支为底，SKILL 只保留 58 行核心", state:"success"}
-      ], bugs:[], dormant:[], children:[
-        { id:"M1a", title:"用户消息记录", state:"success", memories:[
-            {text:"分钟前缀 + 四种记录模式，OTP 永不落盘", state:"success"}
-          ], bugs:[], dormant:[
-            {title:"消息重复记录", exp:"UserPromptSubmit 与归档重复写同一句话；修复：归档前按分钟前缀去重。"}
-          ], children:[] },
-        { id:"M1b", title:"会话隔离", kind:"module", purpose:"各会话的私有草稿，以及什么可以进共享层", state:"dirty", memories:[
-            {text:"子模块结论：sessions/<id>/ 私有草稿，loader 只注入允许集合", state:"dirty"}
+    { id:"M1", title:"Gateway 控制面", kind:"module", purpose:"本机长驻进程：WebSocket 协议、会话、工具、事件、渠道连接的唯一入口", state:"dirty", memories:[
+        {text:"默认绑 127.0.0.1:18789；macOS / CLI / Web / Node 都连同一条 WS", state:"success"},
+        {text:"每台主机一个 Gateway；WhatsApp 的 Baileys 会话只能由它打开", state:"success"}
+      ], bugs:[
+        {id:"B10", title:"非 loopback 误开 auth.mode=none", desc:"私有入口的 none 模式若暴露到公网，共享密钥校验被整段关掉", status:"open"}
+      ], dormant:[], children:[
+        { id:"M1a", title:"WebSocket 协议", kind:"module", purpose:"connect 握手、req/res/event 帧、JSON Schema 校验", state:"dirty", memories:[
+            {text:"首帧必须是 connect；非 JSON 或非 connect 直接断开", state:"success"},
+            {text:"副作用方法（send、agent）要求幂等键，服务端短时去重", state:"success"}
           ], bugs:[], dormant:[], children:[
-            { id:"M1b1", title:"outbox 候选共享", state:"dirty", memories:[
-                {text:"探索：会话把值得共享的记忆放 outbox 等人合并", state:"dirty"}
+            { id:"N11", title:"connect 握手与 hello-ok", state:"success", memories:[
+                {text:"hello-ok 带回 presence、health，以及可发现的 methods/events", state:"success"}
               ], bugs:[], dormant:[], children:[] },
-            { id:"M1b2", title:"transfers 定向传递", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            { id:"N12", title:"req / res / event 帧", state:"dirty", memories:[
+                {text:"探索：event 不重放，客户端发现序号缺口必须自己刷新", state:"dirty"}
+              ], bugs:[], dormant:[], children:[] },
+            { id:"N13", title:"TypeBox → JSON Schema → Swift", state:"success", memories:[
+                {text:"协议用 TypeBox 建模，生成 JSON Schema 和 Swift 模型", state:"success"}
+              ], bugs:[], dormant:[], children:[] }
           ] },
-        { id:"M1c", title:"归档流程", state:"dirty", memories:[], bugs:[
-            {id:"B0", title:"会话结束无干净信号导致归档丢失", desc:"人不再回消息时，草稿未被提议合并", status:"open"}
-          ], dormant:[], children:[] },
-        { id:"P2", title:"记忆过期清理", origin:"agent", proposal:"proposed", isNew:false, state:"dirty",
-          memories:[
-            {text:"Agent 提议理由：sessions/ 会无限增长，需要按时间或数量清理旧会话草稿", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] }
-      ]
-    },
-
-    { id:"M2", title:"人类工作台", kind:"module", purpose:"人在导图上梳理记忆、授权会话、确认修复", state:"dirty", memories:[
-        {text:"想法：导图式任务树，子节点继承父节点的已完成记忆", state:"dirty"},
-        {text:"想法：人只感知 Bug 和「Bug 修好了」两件事", state:"dirty"}
-      ], bugs:[], dormant:[], children:[
-        { id:"M2a", title:"任务导图视图", state:"dirty", memories:[
-            {text:"探索：导图主画布 + 右侧抽屉，先不做拖拽排序", state:"dirty"}
+        { id:"M1b", title:"会话、队列、Agent 调度", kind:"module", purpose:"agent 请求的受理、流式 event、运行队列与并发", state:"dirty", memories:[
+            {text:"req:agent 先 ack accepted（带 runId），再推流式 event:agent，最后 final", state:"success"}
           ], bugs:[
-            {id:"B1", title:"焦点模式下新建的子节点没有继承焦点", desc:"在焦点链路外新建节点时导图没有变灰", status:"open"}
-          ], dormant:[], children:[] },
-        { id:"M2b", title:"Bug 叉掉流程", state:"dirty", memories:[], bugs:[
-            {id:"B2", title:"叉掉 Bug 后经验没有进入休眠区", desc:"人确认修复后，Agent 未触发总结", status:"open"}
-          ], dormant:[], children:[] },
-        { id:"M2c", title:"焦点链路加载", state:"dirty", memories:[
-            {text:"探索：新会话只注入焦点链路上的记忆，兄弟分支不可见", state:"dirty"}
+            {id:"B11", title:"关闭时 active session 排空竞态", desc:"shutdown drain 与新 agent 请求交错，偶发丢 final 事件", status:"open"}
+          ], dormant:[], children:[
+            { id:"N14", title:"agent-turn 执行线", state:"dirty", memories:[
+                {text:"探索：把 runtime execution lineage 从 gateway 调度里拆清", state:"dirty"}
+              ], bugs:[], dormant:[], children:[] },
+            { id:"N15", title:"命令队列与并发", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"M1c", title:"HTTP 托管表面", state:"success", memories:[
+            {text:"同一端口提供 /__openclaw__/canvas/ 与 /__openclaw__/a2ui/", state:"success"}
           ], bugs:[], dormant:[], children:[] },
-        { id:"P1", title:"模块钻取导航", origin:"agent", proposal:"proposed", isNew:true, state:"dirty",
+        { id:"P1", title:"Computer-use harness 加强", origin:"agent", proposal:"proposed", isNew:true, state:"dirty",
           memories:[
-            {text:"Agent 提议理由：本次任务实现了模块钻取，建议沉淀为正式节点，记录钻取交互的设计决定", state:"dirty"},
-            {text:"完成情况：点模块进入其全局视图，面包屑返回上层", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"P3", title:"自动跑回归测试", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
-          memories:[
-            {text:"Agent 提议理由：每次改完工作台自动跑测试。已被人取消：测试门禁不属于本 skill", state:"dirty"}
+            {text:"Agent 提议理由：下一优先是 computer-use 与 agent harness，建议在 Gateway 侧留稳定的 node caps 合同", state:"dirty"}
           ], bugs:[], dormant:[], children:[] }
       ]
     },
 
-    { id:"M3", title:"底层文件系统", kind:"module", purpose:"共享层 / 会话层如何落盘（待设计）", state:"dirty", memories:[
-        {text:"待办：工作台定型后再设计 sessions/ 与 memory/ 结构", state:"dirty"}
+    { id:"M2", title:"Agent Runtime", kind:"module", purpose:"一次 agent 调用如何取上下文、选模型、跑工具、写记忆", state:"dirty", memories:[
+        {text:"编排层：提示词、工具、协议、集成；TypeScript 是为了可改", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"M3a", title:"memory/ 共享层", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"M3b", title:"sessions/ 会话层", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"M3c", title:"transfers/ 定向传递", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+        { id:"M2a", title:"Agent Loop", state:"dirty", memories:[
+            {text:"探索：admitted-run-context 决定一次 run 能看见哪些工具和记忆", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"M2b", title:"Context Engine", state:"dirty", memories:[
+            {text:"探索：会话卡片、轨迹、转录如何拼进 prompt，而不把全部历史塞进去", state:"dirty"}
+          ], bugs:[
+            {id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"M2c", title:"Memory 插件槽", kind:"module", purpose:"同时只能激活一个 memory 插件，走插件合同而不是写死存储", state:"dirty", memories:[
+            {text:"VISION：多种 memory 实现会收敛到一条推荐默认路径", state:"dirty"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N21", title:"memory-host-sdk", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N22", title:"active-memory 扩展", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"M2d", title:"Tools 与沙箱", state:"dirty", memories:[
+            {text:"主会话工具默认在宿主机跑，除非显式开 sandbox", state:"success"}
+          ], bugs:[
+            {id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}
+          ], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M3", title:"Channels 消息渠道", kind:"module", purpose:"把助手接到 WhatsApp / Telegram / Slack / Discord / Signal / iMessage 等已有聊天里", state:"dirty", memories:[
+        {text:"渠道把入站消息当不可信输入；能私聊的渠道默认要配对未知发送者", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N31", title:"WhatsApp · Baileys", state:"success", memories:[
+            {text:"不变量：每台主机只有一个 Baileys 会话，且只由 Gateway 打开", state:"success"}
+          ], bugs:[], dormant:[
+            {title:"多实例抢同一 WhatsApp session", exp:"第二台 Gateway 再开 Baileys 会互踢；修复：单主机单 Gateway 不变量写进协议文档。"}
+          ], children:[] },
+        { id:"N32", title:"Telegram · grammY", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N33", title:"Slack / Discord / Google Chat", state:"dirty", memories:[
+            {text:"VISION：继续补齐主渠道，并加几个高需求渠道", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N34", title:"Signal / iMessage", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N35", title:"allowlist 与 pairing", state:"dirty", memories:[
+            {text:"未知发送者走 pairing；openclaw pairing approve 才能放行", state:"success"}
+          ], bugs:[
+            {id:"B30", title:"DM 渠道默认配对提示易被忽略", desc:"操作者以为渠道一连上就能聊，实际消息卡在 pairing 队列", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"P3", title:"再包一层已有渠道的 wrapper", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
+          memories:[
+            {text:"Agent 提议给已支持渠道再做包装通道。已取消：不收无能力/安全缺口的 wrapper channel", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M4", title:"Models 与供应商", kind:"module", purpose:"模型目录、选择器、托管/本地供应商，核心只认当前配置 schema", state:"dirty", memories:[
+        {text:"配置改名必须带 doctor 迁移：检测旧形态、备份、改写成规范格式", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N41", title:"model-catalog", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N42", title:"model-picker", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"M4a", title:"供应商扩展", kind:"module", purpose:"Anthropic / Bedrock / Azure / 本地等走 extensions，不堆进 core", state:"dirty", memories:[
+            {text:"extensions/ 下已有 anthropic、amazon-bedrock、deepseek、cerebras 等", state:"success"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N44", title:"anthropic / vertex", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N45", title:"本地与网关型供应商", state:"dirty", memories:[
+                {text:"探索：cloudflare-ai-gateway、copilot-proxy 与主 picker 的优先级", state:"dirty"}
+              ], bugs:[], dormant:[], children:[] }
+          ] }
+      ]
+    },
+
+    { id:"M5", title:"Plugins · Skills · MCP", kind:"module", purpose:"core 保持瘦；能力默认做插件。代码插件改运行时，bundle 插件装技能/MCP", state:"dirty", memories:[
+        {text:"新技能先上 ClawHub，不默认合进 core", state:"success"},
+        {text:"同一种能力出现多次，就在 core/SDK 落合同，再把捆绑实现迁到合同上", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N51", title:"plugin-sdk", state:"dirty", memories:[
+            {text:"packages/plugin-sdk 是扩展面，不是业务堆头", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N52", title:"ClawHub 分发", state:"dirty", memories:[
+            {text:"官方插件走受审的 org publisher；core 文档只写扩展点", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N53", title:"MCP 服务器与运行时", state:"dirty", memories:[
+            {text:"既当 MCP server，也当运行时集成面；避免再复制一套 agent/tool 路径", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N54", title:"bundled skills", state:"success", memories:[
+            {text:"只留基线 UX 技能；新技能不进 core", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"P2", title:"向 core 合入新 skill", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
+          memories:[
+            {text:"Agent 提议把常用 skill 放进 core。已取消：VISION 写明新 skill 走 ClawHub", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M6", title:"伴侣应用与 Nodes", kind:"module", purpose:"macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", state:"dirty", memories:[
+        {text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N61", title:"macOS app", state:"dirty", memories:[
+            {text:"Swift 模型从协议 JSON Schema 生成；另有 canvas.* widget 命令", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N62", title:"iOS / Android", state:"dirty", memories:[
+            {text:"apps/ios、apps/android；camera.* / screen.record / location.get", state:"dirty"}
+          ], bugs:[
+            {id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}
+          ], dormant:[], children:[] },
+        { id:"N63", title:"Linux / headless node", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N64", title:"Canvas 与 A2UI", state:"dirty", memories:[
+            {text:"托管 widget 文档由 Gateway HTTP 提供，和 WS 同端口", state:"success"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M7", title:"控制面 UI", kind:"module", purpose:"人怎么操作 Gateway：CLI、TUI、Control UI，都是 WS 客户端", state:"dirty", memories:[
+        {text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N71", title:"CLI", state:"success", memories:[
+            {text:"src/cli + src/commands；doctor --fix 负责配置迁移", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N72", title:"TUI", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N73", title:"Control UI", state:"dirty", memories:[
+            {text:"ui/ 是 Vite 应用，走 Gateway WS 做聊天记录和发送", state:"dirty"}
+          ], bugs:[
+            {id:"B70", title:"远程 Control UI 必须与 Gateway 同隧道", desc:"WebChat 在远程环境下要走同一条 SSH/Tailscale，漏配就会连错端口", status:"open"}
+          ], dormant:[], children:[] }
+      ]
+    },
+
+    { id:"M8", title:"安全、配对、部署", kind:"module", purpose:"默认安全但不阉割能力；危险路径必须显式、由操作者打开", state:"dirty", memories:[
+        {text:"无使用分析、无跟踪，除非操作者自己打开", state:"success"},
+        {text:"loopback 可自动配对；Tailnet/LAN 必须人工批准", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N81", title:"设备配对与签名", state:"dirty", memories:[
+            {text:"connect.challenge 必须签名；v3 还绑定 platform 与 deviceFamily", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N82", title:"Sandbox 与暴露 runbook", state:"dirty", memories:[
+            {text:"把 Gateway 暴露给他人之前先读 security + exposure-runbook + sandboxing", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N83", title:"Daemon · Docker · Fly", state:"success", memories:[
+            {text:"launchd/systemd 守护；另有 Dockerfile、fly.toml、docker-compose", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N84", title:"doctor 配置迁移", state:"dirty", memories:[
+            {text:"core 配置由 core doctor 修；插件配置由该插件的 doctor 合同修", state:"success"}
+          ], bugs:[], dormant:[], children:[] }
       ]
     }
   ]
@@ -315,7 +436,7 @@ let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
 const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
-const sessionAuth = new Set(["T0","M2","M2a","M2b","M2c"]);
+const sessionAuth = new Set(["T0","M1","M1a","N11","N12","N13","M1b","N14","N15","M1c"]);
 
 /* ================= 树工具 ================= */
 function walk(node, fn, parents=[]){
