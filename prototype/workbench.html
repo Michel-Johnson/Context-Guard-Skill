@@ -112,7 +112,7 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node:hover .add-child{opacity:1}
 .node .add-child:hover{border-color:var(--green);color:var(--green)}
 body.auth-mode .node .add-child{display:none}
-.node.module .add-child{top:auto;bottom:-11px;right:14px;transform:none}
+.node.module .add-child{display:none}
 
 /* ---------- 已取消托盘 ---------- */
 .tray{position:fixed;left:16px;top:60px;z-index:29;width:330px;background:var(--paper);
@@ -208,7 +208,7 @@ section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
   <div class="legend">
-    <span><i class="dot module"></i>模块（方形，点击进入）</span>
+    <span><i class="dot module"></i>模块</span>
     <span><i class="dot dirty"></i>节点（圆角）</span>
     <span><i class="dot proposed"></i>Agent 提议</span>
     <span><i class="dot noauth"></i>🔒 无权限</span>
@@ -344,18 +344,6 @@ function onFocusPath(id){
   const p  = findPath(id).map(n=>n.id);
   return fp.includes(id) || p.includes(focusId);
 }
-function aggregate(n){
-  let nodes=0, bugs=0, dormant=0, proposals=0, modules=0;
-  walk(n,(x)=>{
-    if(isCancelled(x)) return;
-    if(isProposed(x)){ proposals++; return; }
-    if(x.kind==="module" && x.id!==n.id) modules++;
-    nodes++;
-    bugs += x.bugs.filter(b=>b.status!=="dormant").length;
-    dormant += x.dormant.length;
-  });
-  return {nodes:nodes-1, bugs, dormant, proposals, modules};
-}
 function subtreeIds(n){
   const ids=[];
   walk(n,(x)=>{ if(!isCancelled(x) && !isProposed(x)) ids.push(x.id); });
@@ -416,7 +404,7 @@ function renderNav(){
     hint.textContent = "授权模式：点击节点/模块勾选进入当前会话记忆（模块 = 整棵子树；授权自动补全祖先链）。再点 🔑 退出。";
   }else{
     hint.className = "hint-bar";
-    hint.textContent = "方形大卡 = 模块（点击进入）· 圆角小胶囊 = 节点 · 灰色带锁 = 本会话无权限 · 灰虚线 = Agent 提议 · 原型数据不落盘";
+    hint.textContent = "方形卡片 = 模块（标题 + 用途）· 圆角胶囊 = 节点 · 灰色带锁 = 本会话无权限 · 灰虚线 = Agent 提议 · 原型数据不落盘";
   }
 }
 
@@ -471,15 +459,12 @@ function nodeHtml(n, isViewRoot){
   const authMark = authMode && !isProposed(n)
     ? `<span class="auth-mark ${isAuth(n)?"on":""}">${isAuth(n)?"✓":""}</span>` : "";
   if(n.kind==="module" && !isViewRoot){
-    const agg = aggregate(n);
     const st = moduleAuthState(n);
-    return `${(agg.bugs?`<span class="bug-badge">${agg.bugs}</span>`:"")}
-      <div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
+    return `<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
         ${st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:""}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>
-      <div class="m-blurb">${n.purpose||""}</div>
-      <span class="add-child" title="延伸子任务">＋</span>`;
+      <div class="m-blurb">${n.purpose||""}</div>`;
   }
   if(isProposed(n)){
     return (n.isNew?`<span class="new-dot" title="Agent 新提议"></span>`:"")+
