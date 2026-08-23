@@ -40,8 +40,9 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 记忆 / Bug / 节点 / 休眠经验可附文件或图片：只存仓库相对路径，不存二进制，不弹原生对话框
 - 仓库切换与每仓 `map_bootstrap`
 - 首次分析叠层（标明未调用 Agent）
-- `localStorage`（`cg-workbench-maps-v11`）
+- `localStorage`（`cg-workbench-maps-v12`）
 - L1 确认门数量 4–8，按仓库体量定，不强制恰好 4 张
+- 伴侣/Linux node 这类模块要多层子模块（连接 / 远程命令 / 常驻），不能只有一级两个胶囊
 - `asProposal` 递归子模块卡，只把开工单元内部收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 

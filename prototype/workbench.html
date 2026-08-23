@@ -425,6 +425,9 @@ const OPENCLAW_MAP = {
     {from:"N52", to:"N29", label:"插件工具进派发"},
     {from:"N58", to:"N29", label:"MCP 合流"},
     {from:"N62", to:"N14", label:"Swift 模型从 schema 生成"},
+    {from:"N68a", to:"N12", label:"Linux node 走 connect"},
+    {from:"N69", to:"N29", label:"远程命令经 host 派发"},
+    {from:"N6g", to:"N7f", label:"nodes 列表看 caps"},
     {from:"N7j", to:"N12", label:"TUI 走 connect"},
     {from:"N7p", to:"N12", label:"Control UI 走 connect"}
   ],
@@ -522,27 +525,71 @@ const OPENCLAW_MAP = {
       ]),
     ], {bugs:[{id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"},{id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}]}),
 
-    U("M6", "伴侣应用与 Nodes", "macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", [
-        U("M61", "macOS 伴侣", "菜单栏客户端、Swift 模型、canvas widget", [
-        U("N61", "apps/macos Gateway 客户端", "菜单栏伴侣，连本机 WS", []),
-        U("N62", "Swift 模型生成", "从协议 JSON Schema 生成，不手写", []),
-        U("N63", "canvas.* widget 命令", "macOS 画布控件", []),
+    U("M6", "伴侣应用与 Nodes", "macOS / iOS / Android / Linux 以 role:node 连上 Gateway；有界面的报 camera/screen，Linux 只报 headless caps 并跑远程命令", [
+        U("M61", "macOS 伴侣", "菜单栏客户端、Swift 协议模型、canvas widget，分面开工不要摊成三个文件胶囊", [
+          U("M611", "菜单栏客户端", "apps/macos 连本机 Gateway WS，显示会话状态", [
+            U("N61", "apps/macos Gateway 客户端", "菜单栏伴侣进程，不是另一个 Gateway", [
+              U("N61a", "本机 WS 连接", "默认 127.0.0.1，走同一套 connect 握手", []),
+              U("N61b", "菜单栏会话状态", "当前 session / 未读，不自己存一份记忆", [])
+            ])
+          ]),
+          U("M612", "Swift 协议模型", "从 gateway-protocol JSON Schema 生成，禁止手写对等类型", [
+            U("N62", "Swift 模型生成", "macOS/iOS 共用生成物", [
+              U("N62a", "Schema → Swift", "协议字段只改 TypeBox 源", [])
+            ])
+          ]),
+          U("M613", "Canvas widget", "macOS 画布控件命令，文档由 Gateway 同端口托管", [
+            U("N63", "canvas.* widget 命令", "在 node 上画，不在 Gateway 进程里渲染", [])
+          ])
         ]),
-        U("M62", "iOS / Android node", "camera/screen/location caps；Android 策略源不能分叉", [
-        U("N64", "apps/ios node", "camera.* / screen.record / location.get", []),
-        U("N65", "apps/android node", "同一套 caps，策略源必须一致", []),
-        U("N66", "camera / screen / location caps", "connect 里声明，按设备配对", []),
-        U("N67", "Android policy-config vs policy-source", "required-commands 判断不能分叉", []),
+        U("M62", "iOS / Android node", "移动端以 role:node 报 camera/screen/location；Android 策略源不能分叉", [
+          U("M621", "iOS node", "apps/ios：摄像头、屏幕、定位 caps", [
+            U("N64", "apps/ios node", "camera.* / screen.record / location.get", [
+              U("N64a", "connect 报 mobile caps", "按设备配对，不按 Apple ID", [])
+            ])
+          ]),
+          U("M622", "Android node", "同一套 caps；policy-config 与 policy-source 必须同判", [
+            U("N65", "apps/android node", "caps 合同与 iOS 对齐", []),
+            U("N67", "Android policy-config vs policy-source", "required-commands 判断不能分叉", [
+              U("N67a", "required-commands 单一来源", "两份策略文件禁止各算各的", [])
+            ])
+          ]),
+          U("M623", "设备 caps 合同", "connect 里声明能力，Gateway 只按声明派发", [
+            U("N66", "camera / screen / location caps", "connect 声明，按设备批准", [])
+          ])
         ]),
-        U("M63", "Linux node", "headless caps 与远程命令", [
-        U("N68", "headless Linux node", "无界面：只报 caps、跑命令", []),
-        U("N69", "远程命令执行", "node 上的 shell/文件，不是 Gateway 本机", []),
-        ]),
-        U("M64", "Canvas / A2UI", "Gateway 同端口托管 widget 文档", [
-        U("N6a", "canvas 文档路由", "Gateway HTTP 与 WS 同端口", []),
-        U("N6b", "A2UI 渲染", "托管 widget 文档", [])
+        U("M63", "Linux node", "无桌面：headless 进程以 role:node 连上，只报 shell/fs caps，命令跑在这台 Linux 上", [
+          U("M631", "headless 进程与连接", "无窗口 node host：握手、报 caps、断线重连", [
+            U("N68", "apps/linux 或 src/nodes/headless 入口", "无 GUI 进程，只连 Gateway", [
+              U("N68a", "role:node connect", "设备身份与 challenge 签名，和 macOS node 同一协议", []),
+              U("N68b", "headless caps 清单", "声明 shell / fs；不报 camera 或菜单栏 UI", [])
+            ]),
+            U("N68c", "设备配对", "Gateway 按设备批准这台 Linux，不是按用户会话", []),
+            U("N68d", "断线重连", "Gateway 重启后 node 自己回来，不丢 device id", [])
+          ]),
+          U("M632", "远程命令执行", "exec 发生在 Linux node 上，stdout 回流当前 turn；不是 Gateway 本机 shell", [
+            U("N69", "node shell runner", "cwd、env、超时都在 node 侧", [
+              U("N69a", "stdout/stderr 回流", "流式贴回 Gateway 当前 agent turn", []),
+              U("N69b", "取消时杀子进程", "Gateway abort 必须落到 node 上的 exec", [])
+            ]),
+            U("N69c", "文件读写工具", "只动声明过的工作区根，不默认整盘", []),
+            U("N69d", "cwd 与 sandbox 边界", "caps 里写允许的根目录，越界拒绝", [])
+          ]),
+          U("M633", "安装与常驻", "无显示器也要挂着：user systemd + Gateway 侧能看见这台 node", [
+            U("N6e", "openclaw node install", "写出 systemd --user 单元并 enable", []),
+            U("N6f", "systemd --user 常驻", "登录后自动 connect，不依赖桌面会话", []),
+            U("N6g", "Gateway nodes 列表", "src/commands/nodes.ts / Control UI Nodes 看到 caps", [])
+          ])
+        ], {memories:[{text:"Linux node 没有菜单栏。第一层先拆连接 / 远程命令 / 常驻，再挂入口文件，不要两个胶囊了事", state:"success"}]}),
+        U("M64", "Canvas / A2UI", "widget 文档由 Gateway 同端口托管；绘制发生在 node 上", [
+          U("M641", "同端口文档路由", "HTTP 与 WS 共用 Gateway 端口", [
+            U("N6a", "canvas 文档路由", "Gateway HTTP 与 WS 同端口", [])
+          ]),
+          U("M642", "A2UI 渲染", "托管 widget 文档，不另起静态站点", [
+            U("N6b", "A2UI 渲染", "托管 widget 文档", [])
+          ])
         ])
-      ], {memories:[{text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"}], bugs:[{id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}]}),
+      ], {memories:[{text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"},{text:"点进 Linux node 应先看到连接、远程命令、常驻三张子模块卡，再进到入口文件", state:"success"}], bugs:[{id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}]}),
 
     U("M3", "Channels 消息渠道", "把助手接到 WhatsApp / Telegram / Slack / Discord / Signal / iMessage 等已有聊天里", [
       U("M31", "已接聊天渠道", "whatsapp/baileys、telegram/grammy，以及 slack/discord/signal/imessage 各自实现目录", [
@@ -815,7 +862,8 @@ Gateway 控制面 · Agent Runtime · Channels · Models 与供应商 · Plugins
 
 - catalog schema、picker 默认/覆盖/回退；extensions/anthropic、vertex、ollama、网关代理
 - packages/plugin-sdk hook、工具注册表、ClawHub、MCP server/client 合流、skills 加载序
-- apps/macos、ios、android；Swift 由协议生成；Android policy-config 与 policy-source 不能分叉
+- apps/macos、ios、android、linux；Swift 由协议生成；Android policy-config 与 policy-source 不能分叉
+- Linux node 不是两个胶囊：先拆 headless 连接 / 远程命令 / systemd 常驻，再挂入口文件
 - connect.challenge 签名、pairing v3、launchd/systemd、Dockerfile、fly.toml、core vs 插件 doctor
 `;
 
@@ -1053,7 +1101,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v11";
+const STORE_KEY = "cg-workbench-maps-v12";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
