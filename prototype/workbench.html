@@ -237,6 +237,8 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:16px;color:var(
 .mem-list .dot{margin-top:5px}
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
 .mem-list li.dirty-item{color:var(--muted)}
+.mem-body,.bug-main{flex:1;min-width:0}
+.mem-body .txt{display:block}
 .empty{color:var(--muted);font-size:13px;padding:4px 0}
 .ed{cursor:text;border-radius:3px;outline:none;-webkit-user-modify:read-write-plaintext-only}
 .ed:hover{background:rgba(47,125,99,.07)}
@@ -271,6 +273,18 @@ details.fold .mem-list{margin-top:6px}
 .dormant-list li:first-child{border-top:0}
 .dormant-list b{color:var(--ink)}
 .dormant-list .exp{display:block;margin-top:3px}
+
+.files{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.files.is-drop{outline:2px dashed var(--module);outline-offset:3px;background:var(--module-soft);border-radius:8px}
+.file-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;
+  border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px 8px 3px 4px;font-size:11.5px}
+.file-thumb{width:36px;height:36px;object-fit:cover;border-radius:4px;background:#f4f1ea}
+.file-name{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;font-family:var(--font-note)}
+.file-x{border:0;background:transparent;box-shadow:none;padding:0 2px;color:var(--muted);font-size:14px;line-height:1}
+.file-x:hover{color:var(--red);background:transparent;transform:none;box-shadow:none}
+.clip-btn{width:24px;height:24px;padding:0;font-size:11px;font-weight:800;border-radius:6px;box-shadow:none;flex:0 0 auto}
+.file-add{display:flex;flex-wrap:wrap;gap:4px;align-items:center;width:100%}
+.file-path{flex:1;min-width:140px;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:6px}
 </style>
 </head>
 <body>
@@ -343,7 +357,8 @@ function U(id, title, purpose, children, extra){
     memories: extra.memories || [],
     bugs: extra.bugs || [],
     dormant: extra.dormant || [],
-    children: children || []
+    children: children || [],
+    files: extra.files || []
   };
   if(extra.origin) node.origin = extra.origin;
   if(extra.proposal) node.proposal = extra.proposal;
@@ -352,7 +367,7 @@ function U(id, title, purpose, children, extra){
 }
 /* 导图数据来自 github.com/openclaw/openclaw。点进 L1 先看到子模块卡；用途必须点名文件。文件挂在子模块下，不要在一张卡下摊开十几份，也不要 CLI/TUI/UI 空壳。 */
 const OPENCLAW_MAP = {
-  id:"T0", title:"OpenClaw", state:"dirty", memories:[
+  id:"T0", title:"OpenClaw", state:"dirty", files:[], memories:[
     {text:"定位：跑在自己设备上的个人助手，在已有聊天渠道里见面", state:"success"},
     {text:"形态：一个 Gateway 管会话、工具、事件和渠道连接", state:"success"},
     {text:"仓库：pnpm workspace；核心 TypeScript，附带 macOS/iOS/Android 伴侣应用", state:"success"}
@@ -647,7 +662,7 @@ const OPENCLAW_MAP = {
 };
 
 const CONTEXT_GUARD_MAP = {
-  id:"T0", title:"Context Guard", state:"dirty", memories:[
+  id:"T0", title:"Context Guard", state:"dirty", files:[], memories:[
     {text:"定位：人与 Agent 共用的项目记忆，活在仓库里，而不是某一次聊天里", state:"success"},
     {text:"形态：Agent 记录，人在 HTML 工作台确认、改写、授权", state:"success"},
     {text:"第一次使用时从当前仓库拆第一层模块；之后会话打开这张图，不再重拆", state:"success"}
@@ -693,9 +708,10 @@ const CONTEXT_GUARD_MAP = {
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
       ]),
-      U("M22", "检查器", "标题、用途、记忆可点进编辑；Bug 用 + 号", [
+      U("M22", "检查器", "标题、用途、记忆和 Bug 可点进编辑；附件只存仓库相对路径", [
         U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
-        U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", [])
+        U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", []),
+        U("N2f", "附件路径", "记忆、Bug、节点、休眠经验都可以附文件或图片；只记路径，不存二进制", [])
       ]),
       U("M23", "仓库与首次分析", "切仓、演示叠层、localStorage；标明未调用 Agent", [
         U("N27", "架构笔记演示稿", "根检查器里的预置 markdown，标明未调用 Agent", []),
@@ -707,7 +723,7 @@ const CONTEXT_GUARD_MAP = {
         U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
         U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
       ])
-    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success"}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open"}]}),
+    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}]}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，随项目走", [
       U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
       U("N32", "preferences.json", "record_language 与 map_bootstrap；未确认前保持 pending", []),
@@ -857,6 +873,7 @@ let focusId = null;
 let viewRootId = "T0";
 let authMode = false;
 let composingId = null;
+let attaching = null;
 let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
@@ -897,6 +914,120 @@ function workCount(n){
 function esc(s){
   return String(s).replace(/[&<>]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch]));
 }
+function escAttr(s){
+  return esc(s).replace(/"/g,"&quot;");
+}
+function filePathOf(f){
+  if(!f) return "";
+  return typeof f==="string" ? f.trim() : String(f.path||"").trim();
+}
+function fileList(owner){
+  if(!owner) return [];
+  if(!Array.isArray(owner.files)) owner.files = [];
+  owner.files = owner.files.map(filePathOf).filter(Boolean).map(path=>({path}));
+  return owner.files;
+}
+function isImagePath(p){
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(p||"");
+}
+function fileBase(p){
+  const s = String(p||"").replace(/\\/g,"/").replace(/\/+$/,"");
+  const i = s.lastIndexOf("/");
+  return (i>=0 ? s.slice(i+1) : s) || p;
+}
+function ownerOf(node, kind, key){
+  if(kind==="node") return node;
+  if(kind==="mem") return node.memories[+key];
+  if(kind==="bug") return (node.bugs||[]).find(b=>b.id===key);
+  if(kind==="dorm") return node.dormant[+key];
+  return null;
+}
+function isAttaching(kind, key){
+  return !!(attaching && attaching.kind===kind && String(attaching.key)===String(key));
+}
+function addFilePath(node, kind, key, path){
+  const p = String(path||"").replace(/^\s+|\s+$/g,"").split(/[\r\n]/)[0];
+  if(!p) return false;
+  const owner = ownerOf(node, kind, key);
+  if(!owner) return false;
+  const files = fileList(owner);
+  if(files.some(f=>f.path===p)) return true;
+  files.push({path:p});
+  return true;
+}
+function attachHtml(kind, key, owner, readonly){
+  const files = fileList(owner);
+  const fk = escAttr(kind), fi = escAttr(String(key));
+  const chips = files.map((f,i)=>{
+    const p = escAttr(f.path);
+    const name = esc(fileBase(f.path));
+    const img = isImagePath(f.path)
+      ? `<img class="file-thumb" src="${p}" alt="${name}" title="${p}" onerror="this.remove()">`
+      : "";
+    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="移除">×</button>`;
+    return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
+  }).join("");
+  if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
+  const add = isAttaching(kind, key)
+    ? `<span class="file-add">
+         <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" placeholder="仓库相对路径，如 docs/shot.png" autocomplete="off">
+         <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">添加</button>
+         <button type="button" class="quiet" data-act="cancel-file">取消</button>
+       </span>`
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="附带文件或图片">附</button>`;
+  return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
+}
+function bindFileUi(el, node){
+  const saveFrom = host=>{
+    const kind = host.dataset.fk, key = host.dataset.fi;
+    const box = el.querySelector("[data-file-input]");
+    const path = box ? box.value : "";
+    if(addFilePath(node, kind, key, path)){ attaching = null; renderAll(); }
+  };
+  el.querySelectorAll('[data-act="ask-file"]').forEach(b=>{
+    b.onclick = ()=>{ attaching = {kind:b.dataset.fk, key:b.dataset.fi}; renderAll(); };
+  });
+  el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
+    b.onclick = ()=>saveFrom(b);
+  });
+  el.querySelectorAll('[data-act="cancel-file"]').forEach(b=>{
+    b.onclick = ()=>{ attaching = null; renderAll(); };
+  });
+  el.querySelectorAll('[data-act="rm-file"]').forEach(b=>{
+    b.onclick = e=>{
+      e.preventDefault();
+      const owner = ownerOf(node, b.dataset.fk, b.dataset.fi);
+      if(!owner) return;
+      fileList(owner).splice(+b.dataset.i, 1);
+      renderAll();
+    };
+  });
+  const inp = el.querySelector("[data-file-input]");
+  if(inp){
+    inp.focus();
+    inp.addEventListener("keydown", e=>{
+      if(e.key==="Enter"){ e.preventDefault(); saveFrom(inp); }
+      if(e.key==="Escape"){ e.preventDefault(); attaching = null; renderAll(); }
+    });
+  }
+  el.querySelectorAll("[data-drop-files]").forEach(box=>{
+    box.addEventListener("dragover", e=>{
+      if(!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      box.classList.add("is-drop");
+    });
+    box.addEventListener("dragleave", ()=>box.classList.remove("is-drop"));
+    box.addEventListener("drop", e=>{
+      e.preventDefault();
+      box.classList.remove("is-drop");
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      const text = (e.dataTransfer.getData("text/plain")||"").trim();
+      const path = f ? (f.name||"") : text.split(/\s/)[0];
+      if(addFilePath(node, box.dataset.fk, box.dataset.fi, path)){ attaching = null; renderAll(); }
+    });
+  });
+}
 function unpackInbox(n){
   if(!n._inbox || !n._inbox.length) return;
   const next = n._inbox.map(c=>{
@@ -909,7 +1040,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v9";
+const STORE_KEY = "cg-workbench-maps-v10";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
@@ -1029,6 +1160,7 @@ function adoptTree(tree){
   data.memories = src.memories||[];
   data.bugs = src.bugs||[];
   data.dormant = src.dormant||[];
+  data.files = src.files||[];
   data.children = src.children||[];
   data.flows = src.flows||[];
 }
@@ -1103,7 +1235,7 @@ function closeOverlay(){
 }
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
-  adoptTree({...next, memories:[], bugs:[], dormant:[], children:[]});
+  adoptTree({...next, memories:[], bugs:[], dormant:[], files:[], children:[]});
   sessionAuth.clear();
   sessionAuth.add("T0");
   selectedId = "T0";
@@ -1148,6 +1280,7 @@ function proposedTree(r){
     kind: next.kind,
     bugs: next.bugs||[],
     dormant: next.dormant||[],
+    files: next.files||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
       {text:"第一页只确认 4–8 个主干模块。连线只表示从属，同级不相连。点进模块才看到下一截分支。", state:"success"}
@@ -1676,7 +1809,7 @@ function commitChild(node, title){
   if(!t) return;
   composingId = null;
   const child = {id:"N"+(NODE_SEQ++), title:t, origin:"human", state:"dirty",
-    memories:[], bugs:[], dormant:[], children:[]};
+    memories:[], bugs:[], dormant:[], files:[], children:[]};
   node.children.push(child);
   sessionAuth.add(child.id);
   findPath(child.id).forEach(a=>sessionAuth.add(a.id));
@@ -1726,7 +1859,7 @@ function renderDetail(){
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${attachHtml("mem", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
 
@@ -1734,9 +1867,10 @@ function renderDetail(){
     ? `<ul class="bug-list">`+openBugs.map(b=>`
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
-          <div>
+          <div class="bug-main">
             <div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>
             ${b.status==='pending'? `<div class="summarizing">正在沉淀为经验…</div>`:`<div class="bug-sub ed" data-ed="bug-desc" data-bug="${b.id}">${b.desc||""}</div>`}
+            ${attachHtml("bug", b.id, b)}
           </div>
         </li>`).join("")+`</ul>`
     : "";
@@ -1795,6 +1929,12 @@ function renderDetail(){
       </div>`:""}
     <section class="block">
       <div class="block-head">
+        <h3>附件</h3>
+      </div>
+      ${attachHtml("node", node.id, node)}
+    </section>
+    <section class="block">
+      <div class="block-head">
         <h3><span class="ed" data-ed="label-memory">${uiLabels.memory}</span></h3>
         <button type="button" class="plus-btn" data-act="add-mem" title="添加记忆">+</button>
       </div>
@@ -1811,14 +1951,14 @@ function renderDetail(){
       <summary><span class="ed" data-ed="label-inherited">${uiLabels.inherited}</span> ${inhCount} 条</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
-        ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span><span class="src">${m.from}</span></li>`).join("")}
+        ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span><span class="src">${m.from}</span>${attachHtml("inh", i, m.mem, true)}</div></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
       <summary><span class="ed" data-ed="label-dormant">${uiLabels.dormant}</span> ${node.dormant.length}</summary>
       <div class="dormant-box">
         <ul class="dormant-list" data-dorm-list>
-          ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b><span class="exp ed" data-ed="dorm-exp" data-i="${i}">${d.exp}</span></li>`).join("")}
+          ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b><span class="exp ed" data-ed="dorm-exp" data-i="${i}">${d.exp}</span>${attachHtml("dorm", i, d)}</li>`).join("")}
         </ul>
       </div>
     </details>`:""}`;
@@ -1844,12 +1984,12 @@ function renderDetail(){
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = ()=>{
-    node.memories.push({text:"", state:"dirty"}); renderAll();
+    node.memories.push({text:"", state:"dirty", files:[]}); renderAll();
     const last = document.querySelector(".mem-list li:last-child .ed");
     if(last) last.focus();
   };
   if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = ()=>{
-    node.bugs.push({id:"B"+(BUG_SEQ++), title:"", desc:"", status:"open"});
+    node.bugs.push({id:"B"+(BUG_SEQ++), title:"", desc:"", status:"open", files:[]});
     renderAll();
     const last = document.querySelector(".bug-list .bug-title.ed:last-of-type, .bug-list li:last-child .bug-title");
     if(last) last.focus();
@@ -1857,7 +1997,7 @@ function renderDetail(){
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
-    node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success"}); renderAll(); };
+    node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success", files:[]}); renderAll(); };
 
   el.querySelectorAll("details.fold").forEach(d=>{
     d.addEventListener("toggle", ()=>{
@@ -1935,6 +2075,7 @@ function renderDetail(){
   if(q('[data-act="compose-ok"]')) q('[data-act="compose-ok"]').onclick = doCommit;
   if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ composingId=null; renderAll(); };
   if(composeEl) composeEl.focus();
+  bindFileUi(el, node);
 }
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
@@ -1947,7 +2088,8 @@ function crossBug(node, bugId){
     bug.status = "dormant";
     node.dormant.push({
       title: bug.title,
-      exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。"
+      exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
+      files: fileList(bug).map(f=>({path:f.path}))
     });
     renderAll();
   }, 1600);

@@ -36,9 +36,10 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - `visibleChildren`：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。父子用曲线相连，同级不相连
 - 根和「孩子全是子模块」的视图用网格目录；左右/上下只排模块内部的开工树
 - 检查器 contenteditable、Bug 区块、`+` 号
+- 记忆 / Bug / 节点 / 休眠经验可附文件或图片：只存仓库相对路径，不存二进制，不弹原生对话框
 - 仓库切换与每仓 `map_bootstrap`
 - 首次分析叠层（标明未调用 Agent）
-- `localStorage`（`cg-workbench-maps-v9`）
+- `localStorage`（`cg-workbench-maps-v10`）
 - `asProposal` 递归子模块卡，只把开工单元内部收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 
