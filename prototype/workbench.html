@@ -100,15 +100,12 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
-#links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;transition:opacity .2s}
+#links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
 #links path.link.dimmed{opacity:.18}
 #links path.link.focus-link{stroke:var(--green);stroke-width:2.4}
 #links path.link.proposed-link{stroke-dasharray:6 5;stroke:#7a8078}
 #links path.link.noauth-link{stroke:#8a8478}
 #links path.link.stem{stroke:#5c564c;stroke-width:2}
-#links path.link.flow{stroke:#3d6ea8;stroke-width:1.8;stroke-linecap:square;stroke-linejoin:miter}
-#links path.link.flow.dimmed{opacity:.2}
-#links text.flow-label{fill:#3d6ea8;font-size:10px;font-family:var(--font-ui);pointer-events:none}
 
 /* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
@@ -297,7 +294,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一页只确认 4–8 个主干模块（分支链的第一截）。灰线是从属，蓝线是 A 的输出进 B。点进模块才看到下一截子模块；文件不出现在根上。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一页只确认 4–8 个主干模块（分支链的第一截）。连线只表示从属，同级卡片不相连。点进模块才看到下一截；文件不出现在根上。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -802,7 +799,7 @@ Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆�
 
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
-- visibleChildren：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。孩子若全是子模块，仍用网格目录
+- visibleChildren：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。父子用曲线相连，同级不相连。孩子若全是子模块，仍用网格目录
 - 检查器 contenteditable、Bug 区块、+ 号
 - 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
@@ -1153,7 +1150,7 @@ function proposedTree(r){
     dormant: next.dormant||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一页只确认 4–8 个主干模块。灰线是从属，蓝线是 A→B 的输入/输出。点进模块才看到下一截分支。", state:"success"}
+      {text:"第一页只确认 4–8 个主干模块。连线只表示从属，同级不相连。点进模块才看到下一截分支。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
@@ -1599,118 +1596,30 @@ function renderMap(){
     const na = c.kind!=="module" && !isProposed(c) && !isAuth(c);
     return `link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
   }
-  function drawStackLinks(parent){
-    const nested = nestedMods(parent);
-    if(!nested.length) return;
-    const p = pos.get(parent.id), ps = size.get(parent.id);
-    if(!p) return;
-    const x = p.x + ps.w/2;
-    let yFrom = p.y + ps.h;
-    nested.forEach(ch=>{
-      const cp = pos.get(ch.id), cs = size.get(ch.id);
-      if(!cp) return;
-      const x2 = cp.x + cs.w/2, yTo = cp.y;
-      if(Math.abs(x-x2)<1){
-        paths += `<path class="${linkClass(parent,ch)}" d="M${x},${yFrom} L${x2},${yTo}"/>`;
-      }else{
-        const mid = (yFrom+yTo)/2;
-        paths += `<path class="link stem" d="M${x},${yFrom} L${x},${mid} L${x2},${mid}"/>`;
-        paths += `<path class="${linkClass(parent,ch)}" d="M${x2},${mid} L${x2},${yTo}"/>`;
-      }
-      yFrom = cp.y + cs.h;
-    });
+  function curveTB(n,c){
+    const p = pos.get(n.id), ps = size.get(n.id);
+    const q = pos.get(c.id), qs = size.get(c.id);
+    if(!p || !q) return "";
+    const x1 = p.x+ps.w/2, y1 = p.y+ps.h;
+    const x2 = q.x+qs.w/2, y2 = q.y;
+    const mid = (y1+y2)/2;
+    return `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`;
   }
-  if(isCatalogView()){
-    const kids = visibleChildren(root);
-    if(kids.length){
-      const p = pos.get(root.id), ps = size.get(root.id);
-      const xRoot = p.x + ps.w/2, yRoot = p.y + ps.h;
-      const rows = [];
-      kids.forEach(c=>{
-        const y = pos.get(c.id).y;
-        let row = rows.find(r=>Math.abs(r.y-y)<1);
-        if(!row){ row = {y, nodes:[]}; rows.push(row); }
-        row.nodes.push(c);
-      });
-      rows.sort((a,b)=>a.y-b.y);
-      let prevY = yRoot;
-      rows.forEach((row)=>{
-        const cxs = row.nodes.map(c=>pos.get(c.id).x + size.get(c.id).w/2);
-        const railY = prevY + (row.y-prevY)*0.45;
-        paths += `<path class="link stem" d="M${xRoot},${prevY} L${xRoot},${railY}"/>`;
-        const railMin = Math.min(xRoot, ...cxs), railMax = Math.max(xRoot, ...cxs);
-        if(railMax-railMin > 1){
-          paths += `<path class="link stem" d="M${railMin},${railY} L${railMax},${railY}"/>`;
-        }
-        row.nodes.forEach((c,i)=>{
-          paths += `<path class="${linkClass(root,c)}" d="M${cxs[i]},${railY} L${cxs[i]},${row.y}"/>`;
-          drawStackLinks(c);
-        });
-        prevY = Math.max(...row.nodes.map(nestBottom));
-      });
-    }
-  }else{
-    vwalk(root,(n)=>{
-      const kids = visibleChildren(n);
-      if(!kids.length) return;
-      const p = pos.get(n.id), ps = size.get(n.id);
-      if(tb){
-        const x1 = p.x+ps.w/2, y1 = p.y+ps.h;
-        const cxs = kids.map(c=>pos.get(c.id).x + size.get(c.id).w/2);
-        const tops = kids.map(c=>pos.get(c.id).y);
-        const railY = y1 + (Math.min(...tops)-y1)*0.45;
-        paths += `<path class="link stem" d="M${x1},${y1} L${x1},${railY}"/>`;
-        if(kids.length>1){
-          paths += `<path class="link stem" d="M${Math.min(...cxs)},${railY} L${Math.max(...cxs)},${railY}"/>`;
-        }
-        kids.forEach((c,i)=>{
-          paths += `<path class="${linkClass(n,c)}" d="M${cxs[i]},${railY} L${cxs[i]},${tops[i]}"/>`;
-        });
-      }else{
-        const x1 = p.x+ps.w, y1 = p.y+ps.h/2;
-        const lefts = kids.map(c=>pos.get(c.id).x);
-        const cys = kids.map(c=>pos.get(c.id).y + size.get(c.id).h/2);
-        const railX = x1 + (Math.min(...lefts)-x1)*0.45;
-        paths += `<path class="link stem" d="M${x1},${y1} L${railX},${y1}"/>`;
-        if(kids.length>1){
-          paths += `<path class="link stem" d="M${railX},${Math.min(...cys)} L${railX},${Math.max(...cys)}"/>`;
-        }
-        kids.forEach((c,i)=>{
-          paths += `<path class="${linkClass(n,c)}" d="M${railX},${cys[i]} L${lefts[i]},${cys[i]}"/>`;
-        });
-      }
-    });
+  function curveLR(n,c){
+    const p = pos.get(n.id), ps = size.get(n.id);
+    const q = pos.get(c.id), qs = size.get(c.id);
+    if(!p || !q) return "";
+    const x1 = p.x+ps.w, y1 = p.y+ps.h/2;
+    const x2 = q.x, y2 = q.y+qs.h/2;
+    const mid = (x1+x2)/2;
+    return `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`;
   }
-  const flows = data.flows||[];
-  if(flows.length){
-    paths = `<defs><marker id="flow-arrow" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#3d6ea8"/></marker></defs>` + paths;
-    flows.forEach(e=>{
-      const a = pos.get(e.from), b = pos.get(e.to);
-      const sa = size.get(e.from), sb = size.get(e.to);
-      if(!a || !b || !sa || !sb) return;
-      const dim = focusId && !(onFocusPath(e.from) && onFocusPath(e.to));
-      const ax = a.x+sa.w/2, ay = a.y+sa.h/2;
-      const bx = b.x+sb.w/2, by = b.y+sb.h/2;
-      let x1,y1,x2,y2,d,lx,ly;
-      if(Math.abs(bx-ax) >= Math.abs(by-ay)){
-        if(bx>=ax){ x1=a.x+sa.w; y1=ay; x2=b.x; y2=by; }
-        else { x1=a.x; y1=ay; x2=b.x+sb.w; y2=by; }
-        const mx = (x1+x2)/2;
-        d = `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`;
-        lx = mx; ly = (y1+y2)/2;
-      }else{
-        if(by>=ay){ x1=ax; y1=a.y+sa.h; x2=bx; y2=b.y; }
-        else { x1=ax; y1=a.y; x2=bx; y2=b.y+sb.h; }
-        const my = (y1+y2)/2;
-        d = `M${x1},${y1} L${x1},${my} L${x2},${my} L${x2},${y2}`;
-        lx = (x1+x2)/2; ly = my;
-      }
-      paths += `<path class="link flow ${dim?'dimmed':''}" marker-end="url(#flow-arrow)" d="${d}"/>`;
-      if(e.label){
-        paths += `<text class="flow-label" text-anchor="middle" x="${lx}" y="${ly-5}">${esc(e.label)}</text>`;
-      }
+  vwalk(root,(n)=>{
+    visibleChildren(n).forEach(c=>{
+      const d = (isCatalogView() || tb) ? curveTB(n,c) : curveLR(n,c);
+      if(d) paths += `<path class="${linkClass(n,c)}" d="${d}"/>`;
     });
-  }
+  });
   linksEl.innerHTML = paths;
 
   els.forEach((el,id)=>{
@@ -1841,7 +1750,7 @@ function renderDetail(){
     : noauth? `<p class="note">Agent 读不到此项。</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
   if(path.length===1){
-    note += `<p class="note">第一页是分支链的主干，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。灰线是从属，蓝线是输入/输出。点卡片进入下一截。文件不出现在根上。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
+    note += `<p class="note">第一页是分支链的主干，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。连线只表示从属，同级卡片不相连。点卡片进入下一截。文件不出现在根上。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
