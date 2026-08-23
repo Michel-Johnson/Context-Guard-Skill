@@ -127,24 +127,28 @@ body.auth-mode .node .add-child{display:none}
 .tray .t-actions{display:flex;gap:6px;margin-top:6px}
 .tray .t-actions button{font-size:12px;padding:3px 9px}
 .tray .t-actions .danger:hover{border-color:var(--red);color:var(--red)}
+.tray .confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
 .tray .empty{color:var(--muted);font-size:12.5px;padding:6px 0}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:49px;right:0;bottom:0;width:400px;z-index:20;background:var(--paper);
-  border-left:1px solid var(--line);overflow:auto;padding:18px 22px 30px}
-.crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:4px}
+.drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
+  border-left:1px solid var(--line);overflow:auto;padding:16px 18px 28px}
+.crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
-.drawer h2{margin:2px 0 2px;font-size:20px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.state-chip{font-size:12px;padding:2px 9px;border-radius:10px;font-weight:600;flex:0 0 auto}
-.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
+.drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.state-chip{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;flex:0 0 auto}
+.state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
 .state-chip.failed{background:var(--red-soft);color:var(--red)}
 .state-chip.module{background:var(--module-soft);color:var(--module)}
 .state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
-.actions{display:flex;gap:8px;margin:13px 0 4px;flex-wrap:wrap}
-button{font:inherit;font-size:13px;padding:6px 13px;border:1px solid var(--line);background:#fff;
+.lead{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+.note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
+.note.alert{color:var(--red)}
+.actions{display:flex;gap:6px;margin:12px 0 0;flex-wrap:wrap}
+button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--line);background:#fff;
   border-radius:7px;cursor:pointer;color:var(--ink)}
 button:hover{border-color:var(--green);color:var(--green)}
 button.primary{background:var(--green);border-color:var(--green);color:#fff}
@@ -152,45 +156,44 @@ button.primary:hover{opacity:.9;color:#fff}
 button.auth-primary{background:var(--auth);border-color:var(--auth);color:#fff}
 button.auth-primary:hover{opacity:.9;color:#fff}
 button.warn:hover{border-color:var(--red);color:var(--red)}
-.proposal-banner{margin:12px 0 0;padding:10px 13px;background:#f3f4f0;border:1.5px dashed #bcc4bb;
-  border-radius:8px;font-size:12.5px;color:var(--muted)}
-.proposal-banner b{color:var(--green)}
-.cancel-banner{margin:12px 0 0;padding:10px 13px;background:var(--red-soft);border:1px solid #e0c4bf;
-  border-radius:8px;font-size:12.5px;color:var(--red)}
-.noauth-banner{margin:12px 0 0;padding:10px 13px;background:#f1f1ef;border:1px solid #dcdcd8;
-  border-radius:8px;font-size:12.5px;color:#8d908b}
-.focus-banner{margin:12px 0 0;padding:9px 13px;background:var(--focus-soft);border:1px solid #e3d5a8;
-  border-radius:8px;font-size:12.5px;color:var(--focus)}
-section.block{margin-top:20px}
-section.block>h3{margin:0 0 4px;font-size:12.5px;color:var(--muted);letter-spacing:.04em}
-section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
+button.quiet{border-color:transparent;color:var(--muted);padding:6px 8px}
+button.quiet:hover{border-color:var(--line);color:var(--ink)}
+.compose{display:flex;gap:6px;margin-top:10px;align-items:center}
+.compose input{flex:1;min-width:0;font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--green);
+  border-radius:7px;background:#fff;outline:none}
+.confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
+section.block{margin-top:16px}
+section.block>h3{margin:0 0 6px;font-size:12px;color:var(--muted);letter-spacing:.04em}
 .mem-list{list-style:none;margin:0;padding:0}
-.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:8px 2px;border-top:1px solid var(--line);font-size:13px}
+.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line);font-size:13px}
 .mem-list li:first-child{border-top:0}
 .mem-list .dot{margin-top:5px}
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
 .mem-list li.dirty-item{color:var(--muted)}
-.mem-list li.dirty-item .txt{border-bottom:1px dashed var(--line)}
-.empty{color:var(--muted);font-size:13px;padding:6px 0}
+.empty{color:var(--muted);font-size:13px;padding:4px 0}
+details.fold{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
+details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary:hover{color:var(--ink)}
+details.fold .mem-list{margin-top:6px}
 
 .bug-list{list-style:none;margin:0;padding:0}
-.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-top:1px solid var(--line)}
+.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
 .bug-list li:first-child{border-top:0}
-.bug-check{width:19px;height:19px;border:2px solid var(--red);border-radius:5px;cursor:pointer;
+.bug-check{width:18px;height:18px;border:2px solid var(--red);border-radius:5px;cursor:pointer;
   flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;
-  font-size:13px;color:#fff;background:#fff;transition:background .15s}
+  font-size:12px;color:#fff;background:#fff}
 .bug-check:hover{background:var(--red-soft)}
 .bug-check.done{background:var(--green);border-color:var(--green)}
-.bug-title{font-weight:600;font-size:13.5px}
+.bug-title{font-weight:600;font-size:13px}
 .bug-sub{color:var(--muted);font-size:12px;margin-top:2px}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
 .summarizing{color:var(--green);font-size:12px;margin-top:3px}
 
-.dormant-box{border:1px dashed var(--line);border-radius:8px;padding:11px 13px;background:#f7f8f2}
-.dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:7px 10px;border:1px solid var(--line);
-  border-radius:6px;background:#fff;margin-bottom:8px}
+.dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);
+  border-radius:6px;background:#fff;margin:8px 0}
 .dormant-list{list-style:none;margin:0;padding:0}
-.dormant-list li{padding:8px 2px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.dormant-list li{padding:7px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .dormant-list li:first-child{border-top:0}
 .dormant-list b{color:var(--ink)}
 .dormant-list .exp{display:block;margin-top:3px}
@@ -313,6 +316,8 @@ let selectedId = "T0";
 let focusId = null;
 let viewRootId = "T0";
 let authMode = false;
+let composingId = null;
+let pendingDeleteId = null;
 const sessionAuth = new Set(["T0","M2","M2a","M2b","M2c"]);
 
 /* ================= 树工具 ================= */
@@ -427,8 +432,12 @@ function renderTray(){
       <div class="t-title">${node.title}<span style="font-size:11px"> · 原属：${parent?parent.title:"根"}</span></div>
       <div class="t-actions">
         <button data-restore="${node.id}">↩ 重新加入 Map</button>
-        <button data-delete="${node.id}" class="danger">永久删除</button>
+        ${pendingDeleteId===node.id?"":`<button data-delete="${node.id}" class="danger">永久删除</button>`}
       </div>
+      ${pendingDeleteId===node.id? `<div class="confirm-row">确定删掉？
+        <button data-delete-yes="${node.id}" class="danger">删除</button>
+        <button data-delete-no>取消</button>
+      </div>`:""}
     </li>`).join("") : `<li class="empty">没有已取消的提议。</li>`;
   ul.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
     const n = getNode(b.dataset.restore);
@@ -436,12 +445,18 @@ function renderTray(){
     renderAll();
   });
   ul.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{
-    const path = findPath(b.dataset.delete);
+    pendingDeleteId = b.dataset.delete; renderTray();
+  });
+  ul.querySelectorAll("[data-delete-no]").forEach(b=>b.onclick=()=>{
+    pendingDeleteId = null; renderTray();
+  });
+  ul.querySelectorAll("[data-delete-yes]").forEach(b=>b.onclick=()=>{
+    const path = findPath(b.dataset.deleteYes);
     const n = path[path.length-1], parent = path[path.length-2];
     if(!parent) return;
-    if(!confirm(`永久删除「${n.title}」？此操作不可恢复。`)) return;
     parent.children = parent.children.filter(c=>c.id!==n.id);
     if(selectedId===n.id) selectedId = parent.id;
+    pendingDeleteId = null;
     renderAll();
   });
 }
@@ -585,8 +600,16 @@ function cancelProposal(n){
 }
 
 function addChild(node){
-  const t = prompt("子节点名称（人工创建，直接进入 Context Map）：");
+  selectedId = node.id;
+  composingId = node.id;
+  renderAll();
+  const input = document.querySelector("[data-compose]");
+  if(input) input.focus();
+}
+function commitChild(node, title){
+  const t = (title||"").trim();
   if(!t) return;
+  composingId = null;
   const child = {id:"N"+(NODE_SEQ++), title:t, origin:"human", state:"dirty",
     memories:[], bugs:[], dormant:[], children:[]};
   node.children.push(child);
@@ -607,6 +630,7 @@ function renderDetail(){
   const proposed = isProposed(node), cancelled = isCancelled(node);
   const noauth = !proposed && !cancelled && !isAuth(node) &&
     !(isModule && moduleAuthState(node)!=="none");
+  const composing = composingId===node.id;
 
   const crumbs = path.map((n,i)=> i===path.length-1
     ? `<span>${n.title}</span>`
@@ -616,100 +640,78 @@ function renderDetail(){
   path.slice(0,-1).filter(a=>!isProposed(a)&&!isCancelled(a)).forEach(anc=>{
     anc.memories.filter(m=>m.state!=="dirty").forEach(m=>inherited.push({...m, from:anc.title}));
   });
+  const inhCount = PINNED.length + inherited.length;
+  const openBugs = node.bugs.filter(b=>b.status!=="dormant");
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map(m=>
         `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><span class="txt">${m.text}</span></li>`
       ).join("")+`</ul>`
-    : `<div class="empty">本节点还没有记忆。</div>`;
+    : `<div class="empty">还没有记忆。</div>`;
 
-  const inhHtml = `<ul class="mem-list">`+
-      PINNED.map(t=>`<li><i class="dot success"></i><span class="txt">${t}</span><span class="src">全局规则</span></li>`).join("")+
-      inherited.map(m=>`<li><i class="dot ${m.state}"></i><span class="txt">${m.text}</span><span class="src">来自 ${m.from}</span></li>`).join("")+
-      `</ul>`;
-
-  const openBugs = node.bugs.filter(b=>b.status!=="dormant");
   const bugHtml = openBugs.length
     ? `<ul class="bug-list">`+openBugs.map(b=>`
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
           <div>
             <div class="bug-title">${b.title}</div>
-            <div class="bug-sub">${b.desc}</div>
-            ${b.status==='pending'? `<div class="summarizing">已确认修复 · Agent 正在总结做了什么，沉淀为经验…</div>`:""}
+            ${b.status==='pending'? `<div class="summarizing">正在沉淀为经验…</div>`:`<div class="bug-sub">${b.desc}</div>`}
           </div>
         </li>`).join("")+`</ul>`
-    : `<div class="empty">没有待修复的 Bug。</div>`;
-
-  const authSt = isModule? moduleAuthState(node): null;
-  const moduleStats = isModule
-    ? `<section class="block"><h3>这个模块做什么</h3>
-        <p class="hint">${node.purpose||"尚未填写用途。"}</p>
-        <ul class="mem-list">
-          <li><i class="dot ${authSt==="all"?"success":authSt==="partial"?"dirty":"noauth"}"></i>
-            <span class="txt">本会话权限：${authSt==="all"?"整棵可读":authSt==="partial"?"部分可读":"不可读 🔒"}</span></li>
-        </ul></section>`
     : "";
 
-  const dormHtml = `
-    <div class="dormant-box">
-      <input placeholder="检索休眠经验（只有再次遇到同类问题时才查询）" data-dorm-search>
-      <ul class="dormant-list" data-dorm-list>
-        ${node.dormant.length? node.dormant.map(d=>
-          `<li><b>${d.title}</b><span class="exp">${d.exp}</span></li>`).join("")
-          : `<li>暂无休眠经验。</li>`}
-      </ul>
-    </div>`;
+  const note = proposed? `<p class="note">尚未加入地图，后续 Agent 读不到。</p>`
+    : cancelled? `<p class="note">已隐藏。可从「已取消」恢复。</p>`
+    : noauth? `<p class="note">Agent 读不到此项。</p>`
+    : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
 
   el.innerHTML = `
     <div class="crumbs">${crumbs}</div>
     <h2>${node.title}
       ${isModule? `<span class="state-chip module">模块</span>`:""}
-      ${proposed? `<span class="state-chip proposed-chip">Agent 提议</span>`
+      ${proposed? `<span class="state-chip proposed-chip">提议</span>`
         : cancelled? `<span class="state-chip failed">已取消</span>`
         : `<span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span>`}
-      ${noauth? `<span class="state-chip noauth-chip">🔒 本会话不可读</span>`:""}
     </h2>
-    ${proposed? `<div class="proposal-banner">这是 <b>Agent 提议</b>的节点，尚未加入 Context Map，后续 Agent 不会读到它。
-      查看下方细节后决定：加入，或取消（隐藏）。</div>`:""}
-    ${cancelled? `<div class="cancel-banner">已取消：此节点被隐藏，后续 Agent 不会读到。可从「已取消」托盘恢复或永久删除。</div>`:""}
-    ${noauth? `<div class="noauth-banner">人可以查看此${isModule?"模块":"节点"}的全部内容，但<b>当前会话的 Agent 无权读取</b>。
-      可在下方直接授权，或进入授权模式批量勾选。</div>`:""}
+    ${isModule? `<p class="lead">${node.purpose||""}</p>`:""}
+    ${note}
     <div class="actions">
-      ${proposed? `<button data-act="accept" class="primary">✓ 加入 Context Map</button>
-                   <button data-act="cancel" class="warn">Cancel（隐藏）</button>`:""}
-      ${cancelled? `<button data-act="restore" class="primary">↩ 重新加入 Map</button>`:""}
+      ${proposed? `<button data-act="accept" class="primary">加入</button>
+                   <button data-act="cancel" class="warn">隐藏</button>`:""}
+      ${cancelled? `<button data-act="restore" class="primary">恢复</button>`:""}
       ${!proposed && !cancelled? `
-        ${noauth? `<button data-act="grant" class="auth-primary">🔑 授权给本会话</button>`
-                : `<button data-act="revoke">🔒 从本会话移除</button>`}
-        <button data-act="child">＋ 子节点</button>
-        <button data-act="focus" class="${focusId===node.id?'':'primary'}">
-          ${focusId===node.id? "解除焦点":"◎ 只看这条线"}</button>
-        ${node.state==="dirty" && !isModule? `<button data-act="done">完成·成功</button>
-        <button data-act="fail">完成·失败</button>`:""}`:""}
+        ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
+        ${composing?"":`<button data-act="child">＋ 子节点</button>`}
+        <button data-act="focus" class="quiet">${focusId===node.id? "显示全部":"只看这条"}</button>
+        ${node.state==="dirty" && !isModule? `<button data-act="done" class="quiet">完成</button>`:""}
+        ${!noauth? `<button data-act="revoke" class="quiet">移出会话</button>`:""}`:""}
     </div>
-    ${focusId? `<div class="focus-banner">焦点链路：${findPath(focusId).map(n=>n.title).join(" → ")}
-      —— 其余分支已对 Agent 隐藏，新会话只加载这条线的记忆。</div>`:""}
-    ${moduleStats}
+    ${composing? `<div class="compose">
+        <input data-compose placeholder="子节点名称" maxlength="40">
+        <button data-act="compose-ok" class="primary">添加</button>
+        <button data-act="compose-cancel" class="quiet">取消</button>
+      </div>`:""}
     <section class="block">
-      <h3>继承的记忆</h3>
-      <p class="hint">全局规则 + 祖先节点的已完成结论。探索中的脏记忆不会下传。</p>
-      ${inhHtml}
-    </section>
-    <section class="block">
-      <h3>本节点记忆${proposed?"（提议内容）":""}</h3>
+      <h3>记忆</h3>
       ${memHtml}
     </section>
-    <section class="block">
-      <h3>Bug</h3>
-      <p class="hint">你测试认为修好了，就把它叉掉。Agent 会总结做了什么，沉淀为休眠经验。</p>
-      ${bugHtml}
-    </section>
-    <section class="block">
-      <h3>休眠经验（${node.dormant.length}）</h3>
-      <p class="hint">默认不加载进任何会话；只有再次遇到同类问题时按需检索。</p>
-      ${dormHtml}
-    </section>`;
+    ${openBugs.length? `<section class="block"><h3>Bug</h3>${bugHtml}</section>`:""}
+    <details class="fold">
+      <summary>继承的 ${inhCount} 条</summary>
+      <ul class="mem-list">
+        ${PINNED.map(t=>`<li><i class="dot success"></i><span class="txt">${t}</span></li>`).join("")}
+        ${inherited.map(m=>`<li><i class="dot ${m.state}"></i><span class="txt">${m.text}</span><span class="src">${m.from}</span></li>`).join("")}
+      </ul>
+    </details>
+    ${node.dormant.length? `<details class="fold">
+      <summary>休眠经验 ${node.dormant.length}</summary>
+      <div class="dormant-box">
+        <input placeholder="检索" data-dorm-search>
+        <ul class="dormant-list" data-dorm-list>
+          ${node.dormant.map(d=>`<li><b>${d.title}</b><span class="exp">${d.exp}</span></li>`).join("")}
+        </ul>
+      </div>
+    </details>`:""}`;
 
   el.querySelectorAll(".crumbs a").forEach(a=>a.onclick=()=>{
     const target = getNode(a.dataset.id);
@@ -718,6 +720,7 @@ function renderDetail(){
       : [...tp].reverse().find(n=>n.kind==="module" && n.id!==target.id) || data;
     viewRootId = anchor.id;
     selectedId = target.id;
+    composingId = null;
     renderAll();
     fitView();
   });
@@ -733,8 +736,17 @@ function renderDetail(){
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
     node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success"}); renderAll(); };
-  if(q('[data-act="fail"]'))    q('[data-act="fail"]').onclick    = ()=>{ node.state="failed";
-    node.memories.push({text:"（演示）任务失败收场，Agent 记录教训供后续避坑", state:"failed"}); renderAll(); };
+  const composeInput = q("[data-compose]");
+  const doCommit = ()=>{ if(composeInput) commitChild(node, composeInput.value); };
+  if(q('[data-act="compose-ok"]')) q('[data-act="compose-ok"]').onclick = doCommit;
+  if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ composingId=null; renderAll(); };
+  if(composeInput){
+    composeInput.addEventListener("keydown", e=>{
+      if(e.key==="Enter"){ e.preventDefault(); doCommit(); }
+      if(e.key==="Escape"){ composingId=null; renderAll(); }
+    });
+    composeInput.focus();
+  }
 
   const search = q("[data-dorm-search]");
   if(search) search.oninput = ()=>{
@@ -770,7 +782,7 @@ function applyView(){
 }
 /* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
 function fitView(){
-  const availW = window.innerWidth - 400 - 90;
+  const availW = window.innerWidth - 340 - 90;
   const availH = window.innerHeight - 150;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
