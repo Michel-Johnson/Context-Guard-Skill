@@ -263,7 +263,8 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
 .mem-list li.dirty-item{color:var(--muted)}
 .mem-body,.bug-main{flex:1;min-width:0}
-.mem-body .txt{display:block}
+.mem-body .txt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mem-body .txt:focus{display:block;-webkit-line-clamp:unset;overflow:visible}
 .empty{color:var(--muted);font-size:13px;padding:4px 0}
 .ed{cursor:text;border-radius:3px;outline:none;-webkit-user-modify:read-write-plaintext-only}
 .ed:hover{background:rgba(47,125,99,.07)}
@@ -272,7 +273,9 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em}
 details.fold{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
-details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none}
+details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none;
+  display:flex;align-items:center;gap:8px}
+details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
 details.fold .mem-list{margin-top:6px}
@@ -952,6 +955,7 @@ let attaching = null;
 let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
+let foldMem = false;
 const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
 const sessionAuth = new Set(["T0"]);
 
@@ -1375,10 +1379,7 @@ function proposedTree(r){
     bugs: next.bugs||[],
     dormant: next.dormant||[],
     files: next.files||[],
-    memories: [
-      {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一页只确认 4–8 个主干模块。连线只表示从属。画布一次只展示一层模块；开工节点若后面还有节点则默认展开。", state:"success"}
-    ].concat(next.memories||[]),
+    memories: next.memories||[],
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
   };
@@ -2016,13 +2017,12 @@ function renderDetail(){
         <button data-act="compose-cancel" class="quiet">取消</button>
       </div>`:""}
     ${filesHtml}
-    <section class="block">
-      <div class="block-head">
-        <h3><span class="ed" data-ed="label-memory">${uiLabels.memory}</span></h3>
+    <details class="fold" data-fold="mem" ${foldMem?"open":""}>
+      <summary><span class="ed" data-ed="label-memory">${uiLabels.memory}</span> ${node.memories.length||""}
         <button type="button" class="plus-btn" data-act="add-mem" title="添加记忆">+</button>
-      </div>
+      </summary>
       ${memHtml}
-    </section>
+    </details>
     <section class="block">
       <div class="block-head">
         <h3><span class="ed" data-ed="label-bugs">${uiLabels.bugs}</span></h3>
@@ -2053,7 +2053,9 @@ function renderDetail(){
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
-  if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = ()=>{
+  if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    foldMem = true;
     node.memories.push({text:"", state:"dirty", files:[]}); renderAll();
     const last = document.querySelector(".mem-list li:last-child .ed");
     if(last) last.focus();
@@ -2073,6 +2075,7 @@ function renderDetail(){
     d.addEventListener("toggle", ()=>{
       if(d.dataset.fold==="inherited") foldInherited = d.open;
       if(d.dataset.fold==="dormant") foldDormant = d.open;
+      if(d.dataset.fold==="mem") foldMem = d.open;
     });
   });
 
