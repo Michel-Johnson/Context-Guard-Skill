@@ -68,15 +68,13 @@ header.top h1{margin:0;font-size:16px}
   border-color:#aab8a8;border-radius:14px}
 
 /* ===== 模块：大块方形卡片 ===== */
-.node.module{display:block;white-space:normal;width:250px;min-height:104px;
+.node.module{display:block;white-space:normal;width:248px;
   border:1.5px solid #b7c2d2;background:var(--module-soft);border-radius:4px;
-  padding:16px 18px 13px;box-shadow:0 2px 6px rgba(92,111,138,.12)}
+  padding:15px 17px 14px;box-shadow:0 2px 6px rgba(92,111,138,.12)}
 .node.module:hover{border-color:var(--module);box-shadow:0 5px 16px rgba(92,111,138,.26)}
 .node.module .m-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
 .node.module .m-head .dot{width:11px;height:11px}
-.node.module .m-stats{margin-top:8px;color:var(--muted);font-size:12px;font-weight:400;line-height:1.5}
-.node.module .m-enter{margin-top:9px;color:var(--module);font-size:12.5px;font-weight:650}
-.node.module .m-enter:hover{color:var(--green)}
+.node.module .m-blurb{margin-top:8px;color:var(--muted);font-size:12.5px;font-weight:400;line-height:1.55}
 .node.module .bug-badge{position:absolute;top:-9px;right:-9px}
 .node.module.selected{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
 
@@ -93,7 +91,7 @@ header.top h1{margin:0;font-size:16px}
 .node.noauth{background:#f1f1ef;border-color:#dcdcd8;color:#a9aca7}
 .node.noauth .dot{background:#cfcfcf !important}
 .node.noauth.module{background:#f0f0ee;border-color:#d8d8d4}
-.node.noauth .m-stats,.node.noauth .m-enter{color:#b5b8b3}
+.node.noauth .m-blurb{color:#b5b8b3}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
@@ -248,7 +246,7 @@ const data = {
     {text:"存储定了：记忆放项目目录，随 git 走", state:"success"}
   ], bugs:[], dormant:[], children:[
 
-    { id:"M1", title:"记忆内核", kind:"module", state:"success", memories:[
+    { id:"M1", title:"记忆内核", kind:"module", purpose:"Agent 如何捕获、隔离、归档项目记忆", state:"success", memories:[
         {text:"模块结论：0822 分支为底，SKILL 只保留 58 行核心", state:"success"}
       ], bugs:[], dormant:[], children:[
         { id:"M1a", title:"用户消息记录", state:"success", memories:[
@@ -256,7 +254,7 @@ const data = {
           ], bugs:[], dormant:[
             {title:"消息重复记录", exp:"UserPromptSubmit 与归档重复写同一句话；修复：归档前按分钟前缀去重。"}
           ], children:[] },
-        { id:"M1b", title:"会话隔离", kind:"module", state:"dirty", memories:[
+        { id:"M1b", title:"会话隔离", kind:"module", purpose:"各会话的私有草稿，以及什么可以进共享层", state:"dirty", memories:[
             {text:"子模块结论：sessions/<id>/ 私有草稿，loader 只注入允许集合", state:"dirty"}
           ], bugs:[], dormant:[], children:[
             { id:"M1b1", title:"outbox 候选共享", state:"dirty", memories:[
@@ -274,7 +272,7 @@ const data = {
       ]
     },
 
-    { id:"M2", title:"人类工作台", kind:"module", state:"dirty", memories:[
+    { id:"M2", title:"人类工作台", kind:"module", purpose:"人在导图上梳理记忆、授权会话、确认修复", state:"dirty", memories:[
         {text:"想法：导图式任务树，子节点继承父节点的已完成记忆", state:"dirty"},
         {text:"想法：人只感知 Bug 和「Bug 修好了」两件事", state:"dirty"}
       ], bugs:[], dormant:[], children:[
@@ -301,7 +299,7 @@ const data = {
       ]
     },
 
-    { id:"M3", title:"底层文件系统", kind:"module", state:"dirty", memories:[
+    { id:"M3", title:"底层文件系统", kind:"module", purpose:"共享层 / 会话层如何落盘（待设计）", state:"dirty", memories:[
         {text:"待办：工作台定型后再设计 sessions/ 与 memory/ 结构", state:"dirty"}
       ], bugs:[], dormant:[], children:[
         { id:"M3a", title:"memory/ 共享层", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
@@ -480,8 +478,7 @@ function nodeHtml(n, isViewRoot){
         ${st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:""}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>
-      <div class="m-stats">${agg.modules?`子模块 ${agg.modules} · `:""}节点 ${agg.nodes}${agg.proposals?` · 提议 ${agg.proposals}`:""}${agg.dormant?` · 休眠 ${agg.dormant}`:""}</div>
-      <div class="m-enter" data-enter>进入模块 ›</div>
+      <div class="m-blurb">${n.purpose||""}</div>
       <span class="add-child" title="延伸子任务">＋</span>`;
   }
   if(isProposed(n)){
@@ -578,7 +575,6 @@ function renderMap(){
     el.onclick = (e)=>{
       const n = getNode(id);
       if(authMode){
-        if(e.target.hasAttribute("data-enter")){ enterView(n.id); return; }
         toggleAuth(n); return;
       }
       if(e.target.classList.contains("add-child")){ addChild(n); return; }
@@ -661,12 +657,11 @@ function renderDetail(){
         </li>`).join("")+`</ul>`
     : `<div class="empty">没有待修复的 Bug。</div>`;
 
-  const agg = isModule? aggregate(node): null;
   const authSt = isModule? moduleAuthState(node): null;
   const moduleStats = isModule
-    ? `<section class="block"><h3>模块概览</h3>
+    ? `<section class="block"><h3>这个模块做什么</h3>
+        <p class="hint">${node.purpose||"尚未填写用途。"}</p>
         <ul class="mem-list">
-          <li><i class="dot module"></i><span class="txt">${agg.modules?`子模块 ${agg.modules} 个 · `:""}内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条${agg.proposals?` · Agent 提议 ${agg.proposals} 条`:""}</span></li>
           <li><i class="dot ${authSt==="all"?"success":authSt==="partial"?"dirty":"noauth"}"></i>
             <span class="txt">本会话权限：${authSt==="all"?"整棵可读":authSt==="partial"?"部分可读":"不可读 🔒"}</span></li>
         </ul></section>`
@@ -703,7 +698,6 @@ function renderDetail(){
       ${!proposed && !cancelled? `
         ${noauth? `<button data-act="grant" class="auth-primary">🔑 授权给本会话</button>`
                 : `<button data-act="revoke">🔒 从本会话移除</button>`}
-        ${isModule && node.id!==viewRootId? `<button data-act="enter" class="primary">进入模块 ›</button>`:""}
         <button data-act="child">＋ 子节点</button>
         <button data-act="focus" class="${focusId===node.id?'':'primary'}">
           ${focusId===node.id? "解除焦点":"◎ 只看这条线"}</button>
@@ -750,7 +744,6 @@ function renderDetail(){
   if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>{ node.proposal="accepted"; renderAll(); };
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
-  if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
