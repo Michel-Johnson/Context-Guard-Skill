@@ -90,11 +90,28 @@ The architecture map is created once: the first time Context Guard is used in a 
 1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If a proposed or confirmed map already exists, later sessions open that map. Do not re-analyze.
 2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change). This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
 3. First use itself is the trigger. Do not wait for a GitHub URL or an import button. Do not pretend the map can appear in one click.
-4. The HTML map uses L1 as a confirmation gate, not as the analysis. After first use, each L1 module already has development-grain children hanging off it (commands, main loops, files you would open). Do not park that layer in an inbox. Only internals of those work units go to a module inbox. Later agents must not read unconfirmed proposals.
-5. The human confirms, rewrites, or hides L1 modules. L2 work units are already visible on the canvas so the analysis does not look like three slogan cards. Unpack inbox layers when they enter a work unit. Do not wait until they enter to *start* thinking; the depth should already be in the notes and on the map.
+4. The HTML map uses L1 as a confirmation gate, not as the analysis. Propose **4–8 L1 modules** (cluster if more; greenfield = root only). Each module already has **work units** as children: a command, main loop, or file you would open. Title that unit with the identifier (`src/tui/tui.ts`, `onboard`). Do not park work units in an inbox. Only internals of a work unit go to inbox. Later agents must not read unconfirmed proposals.
+5. The human confirms, rewrites, or hides L1. The root canvas shows **L1 only**; selecting a module peeks its work units. Do not paint every L2 on the root at once. Unpack inbox layers when they enter a work unit. Depth must already exist in `architecture.md`.
 6. If the folder is greenfield (almost no code or docs), create a root node only. Do not invent a fake architecture.
 7. After proposing L1, set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set `map_bootstrap` to `ready`. Later sessions load the existing map and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
+
+## Map grammar
+
+Every node is one of two kinds. Mixing them on the same layer is what makes first-use maps unreadable.
+
+| Kind | Where | Canvas | Title | Not this |
+|------|--------|--------|--------|----------|
+| **module** | L1 only (rare true subsystem) | Large card: name + one-line purpose | Short architecture bucket | Slogan umbrellas (`CLI` / `TUI` / `UI`) |
+| **work** | L2 under a module | Small capsule | File, command, or loop you would change | Rules, status, memories, bugs |
+
+Hard rules for the proposing agent:
+
+1. L1 count is 4–8. If analysis finds more concerns, cluster them. Do not emit 12 sibling modules.
+2. L2 is work units, not another round of slogans. Prefer `src/commands/onboard.ts` over `CLI 入口`.
+3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
+4. Do not emit one node per file. Group what you would change together; title with the primary path.
+5. Root layout: L1 confirmation. Work units appear when the human selects or enters a module. Analysis depth lives in `architecture.md` either way.
 
 ## User Message Memory
 

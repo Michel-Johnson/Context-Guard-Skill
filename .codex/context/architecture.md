@@ -32,12 +32,12 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 ### 工作台
 - `prototype/workbench.html` 单文件原型
 - `renderNode` 模块卡（标题 + 一句用途）
-- `visibleChildren`：根上露出 L1 和 L2 开工节点
-- `layout` 左右 / 上下 + `fitView`
+- `visibleChildren`：根上只铺 L1；点选模块才预览开工单元
+- `layout` 左右 / 上下；根上 L1 过多时上下换行
 - 检查器 contenteditable、Bug 区块、`+` 号
 - 仓库切换与每仓 `map_bootstrap`
 - 首次分析叠层（标明未调用 Agent）
-- `localStorage`（`cg-workbench-maps-v5`）
+- `localStorage`（`cg-workbench-maps-v6`）
 - `asProposal` 只把 L3+ 收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 
@@ -62,4 +62,4 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 先不扩；人设计测试、Agent 只提草案
 
 Do not treat L1 as confirmed until the human accepts it in the workbench.
-L2 is part of the analysis and should already be visible on the canvas.
+L2 is part of the analysis. The root canvas peeks it on the selected module; it is not all expanded at once.

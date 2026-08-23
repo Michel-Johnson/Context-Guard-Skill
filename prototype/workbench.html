@@ -129,6 +129,10 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.module.selected{background:#fff3bf}
 
 /* Agent 提议节点（圆角虚线胶囊） */
+.node.work{max-width:240px;white-space:normal;font-size:12px;line-height:1.3;
+  padding:4px 11px 4px 9px;border-radius:12px}
+.drawer .work-list{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12px;line-height:1.45}
+.drawer .work-list li{margin:0 0 2px}
 .node.proposed{border:2px dashed var(--line-ink);background:#f7f1e4;color:var(--muted);box-shadow:none}
 .node.proposed:hover{background:var(--yellow);color:var(--ink);transform:none}
 .node .new-dot{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
@@ -281,7 +285,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。演示稿按开发粒度写：命令、主循环、文件，不收成 CLI / TUI / UI 三个空壳。第一层只是确认门。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块；命令和文件是开工单元，点选模块才预览，不整页铺开。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -293,7 +297,7 @@ details.fold .mem-list{margin-top:6px}
     <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿：按命令、主循环、源文件写，而不是 CLI / TUI / UI 三个空壳。第一层只是确认门。这不是这次点击实时读仓得到的。</p>
+    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；命令和文件点选后才预览。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -323,8 +327,9 @@ let NODE_SEQ = 400;
 let BUG_SEQ = 40;
 function U(id, title, purpose, children, extra){
   extra = extra || {};
+  const kind = extra.kind || (String(id).charAt(0)==="M" ? "module" : "work");
   const node = {
-    id, title, kind: extra.kind || "module", purpose: purpose || "",
+    id, title, kind, purpose: purpose || "",
     state: extra.state || "dirty",
     memories: extra.memories || [],
     bugs: extra.bugs || [],
@@ -541,7 +546,7 @@ const CONTEXT_GUARD_MAP = {
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
       U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", []),
       U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途", []),
-      U("N23", "visibleChildren", "根上露出 L1+L2 开工节点；进模块再看文件内部", []),
+      U("N23", "visibleChildren", "根上只铺 L1；点选模块才预览开工单元", []),
       U("N24", "layout 左右 / 上下 + fitView", "同一棵树可左右读模块栈，或上下读兄弟并排", []),
       U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
       U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", []),
@@ -549,7 +554,7 @@ const CONTEXT_GUARD_MAP = {
       U("N28", "点标题切换仓库", "每个仓库自己的首次建图状态分开记", []),
       U("N29", "首次分析叠层", "步骤日志 + 预置稿；不能用三秒动画冒充读仓", []),
       U("N2a", "localStorage 持久化", "已建图的仓库再次打开直接进图；重新分析必须是人点的", []),
-      U("N2b", "asProposal 只收更深层", "L2 开工节点分析完就挂在模块下，不进 inbox 藏起来", []),
+      U("N2b", "asProposal 只收更深层", "L2 开工单元挂在模块下；根画布点选才预览，不一次铺开", []),
       U("N2c", "unpackInbox", "确认模块后展开文件内部，不把孙子再藏一层", [])
     ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success"}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open"}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，随项目走", [
@@ -590,7 +595,7 @@ const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent�
 
 Gateway 控制面 · Agent Runtime · Channels · Models 与供应商 · Plugins/Skills/MCP · 伴侣应用与 Nodes · 控制面 UI · 安全/配对/部署
 
-第一层只等人点头。下面这些在分析时已经作为各模块的直接子节点写好，画布上就应该看见，不要再收成三个空壳。
+第一层只确认 4–8 个模块。命令和文件是开工单元：点选模块才预览，不要在根上一次铺开整棵树。规则、记忆、Bug 不是节点。
 
 ## Gateway 控制面（可改文件）
 
@@ -681,7 +686,7 @@ const catalog = {
       {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、CLI 是不同开工面"},
       {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
       {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"L2 直接挂命令/源文件；inbox 只收文件内部"},
-      {do:"第一层只作为确认门，开工节点已经挂在模块下", find:"人先确认 L1；画布上已经能看见 L2"}
+      {do:"第一层只作为确认门，开工单元挂在模块下、点选才预览", find:"人先确认 4–8 个 L1；根上不一次铺开所有文件"}
     ]
   },
   openclaw: {
@@ -758,7 +763,9 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v5";
+const STORE_KEY = "cg-workbench-maps-v6";
+const L1_SOFT_MAX = 8;
+const L1_SOFT_MIN = 4;
 function hasMap(r){
   return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
 }
@@ -996,7 +1003,7 @@ function proposedTree(r){
     dormant: next.dormant||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一层是确认门。命令和源文件已经挂在各模块下面，画布上就能看见，不是三个空壳。", state:"success"}
+      {text:"第一层只确认 4–8 个模块。开工单元（命令/文件）点选模块后才预览，不在根上一次铺开。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c)))
   };
@@ -1081,15 +1088,19 @@ function depthFromView(n){
   if(i<0) return 99;
   return p.length-1-i;
 }
+function peekModuleId(){
+  if(viewRootId!==data.id) return null;
+  const p = findPath(selectedId);
+  if(!p || p.length<2) return null;
+  return p[1].id;
+}
 function visibleChildren(n){
   const kids = n.children.filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
-  const drilled = viewRootId!==data.id;
-  const d = depthFromView(n);
-  if(drilled && d<=5) return kids;
-  if(!drilled && d<=1) return kids;
-  if(n.kind==="module") return [];
-  return kids;
+  if(viewRootId===data.id) return peekModuleId()===n.id ? kids : [];
+  const p = findPath(selectedId)||[];
+  if(p.some(x=>x.id===n.id)) return kids;
+  return [];
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -1274,6 +1285,7 @@ function renderMap(){
     const div = document.createElement("div");
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module" && !isViewRoot?" module":"") +
+      (n.kind==="work"?" work":"") +
       (isProposed(n)?" proposed":"") +
       (noauth?" noauth":"") +
       (n.id===selectedId?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
@@ -1333,7 +1345,35 @@ function renderMap(){
     pos.set(n.id,{x:Math.max(nx, left), y});
     return total;
   }
-  if(tb) subtreeTB(root, 0, 0);
+  function subtreeH(n){
+    let max = pos.get(n.id).y + size.get(n.id).h;
+    (function walk(x){
+      visibleChildren(x).forEach(c=>{
+        const p = pos.get(c.id); if(!p) return;
+        max = Math.max(max, p.y + size.get(c.id).h);
+        walk(c);
+      });
+    })(n);
+    return max - pos.get(n.id).y;
+  }
+  function layoutRootTB(){
+    const l1 = visibleChildren(root);
+    const rs = size.get(root.id);
+    const cols = l1.length<=4 ? Math.max(1, l1.length) : 4;
+    let col=0, x=0, y=rs.h+GAP_TB, rowH=0, maxW=rs.w;
+    pos.set(root.id,{x:0, y:0});
+    l1.forEach(c=>{
+      if(col>=cols){ col=0; x=0; y+=rowH+GAP_TB; rowH=0; }
+      const w = subtreeTB(c, x, y);
+      rowH = Math.max(rowH, subtreeH(c));
+      maxW = Math.max(maxW, x+w);
+      x += w + gapX(c);
+      col++;
+    });
+    pos.set(root.id, {x:Math.max(0, (maxW-rs.w)/2), y:0});
+  }
+  if(tb && viewRootId===data.id) layoutRootTB();
+  else if(tb) subtreeTB(root, 0, 0);
   else subtreeLR(root, 0, 0);
 
   let maxX=0, maxY=0;
@@ -1395,7 +1435,7 @@ function acceptProposal(n, silent){
   unpackInbox(n);
   if(silent) return;
   selectedId = n.id;
-  if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+  if(n.kind==="module" && n.id!==viewRootId && viewRootId!==data.id){ enterView(n.id); return; }
   renderAll();
 }
 function acceptLayer(node){
@@ -1488,11 +1528,21 @@ function renderDetail(){
 
   const pendingKids = node.children.filter(isProposed).length;
   const buried = workCount(node);
-  const note = proposed? `<p class="note">尚未加入地图，后续 Agent 读不到。</p>`
+  const l1n = path.length===1 ? (node.children||[]).filter(c=>!isCancelled(c)).length : 0;
+  const works = (isModule ? (node.children||[]).filter(c=>!isCancelled(c)) : []);
+  let note = proposed? `<p class="note">尚未加入地图，后续 Agent 读不到。</p>`
     : cancelled? `<p class="note">已隐藏。可从「已取消」恢复。</p>`
     : noauth? `<p class="note">Agent 读不到此项。</p>`
-    : (pendingKids||buried)? `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开发节点；画布上挂的是命令和源文件，不是空壳。":""}</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
+  if(path.length===1){
+    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。点一张模块卡只预览它的开工单元，避免整页铺开。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
+  }else if(isModule && viewRootId===data.id && works.length){
+    note += `<p class="note">这张卡下有 ${works.length} 个开工单元（命令/文件）。再点一次加入；加入后点进去改细节。</p><ul class="work-list">`+
+      works.slice(0,10).map(c=>`<li>${esc(c.title)}</li>`).join("")+
+      (works.length>10?`<li>…共 ${works.length} 个</li>`:"")+`</ul>`;
+  }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
+    note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
+  }
 
   const last = path.length-1;
   const crumbs = path.map((n,i)=> i===last
@@ -1502,12 +1552,12 @@ function renderDetail(){
   el.innerHTML = `
     <div class="crumbs">${crumbs}</div>
     <h2><span class="ed" data-ed="title">${node.title}</span>
-      ${isModule? `<span class="state-chip module">模块</span>`:""}
+      ${isModule? `<span class="state-chip module">模块</span>`: node.kind==="work"? `<span class="state-chip">开工</span>`:""}
       ${proposed? `<span class="state-chip proposed-chip">提议</span>`
         : cancelled? `<span class="state-chip failed">已取消</span>`
         : `<span class="state-chip ${node.state} ed" data-ed="badge">${node.badge||STATE_LABEL[node.state]}</span>`}
     </h2>
-    ${isModule? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
+    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
     ${note}
     ${path.length===1 && currentRepo().notes ? `<details class="fold" open><summary>架构笔记（演示稿，未调用 Agent）</summary><pre class="arch-md">${esc(currentRepo().notes)}</pre></details>`:""}
     <div class="actions">
