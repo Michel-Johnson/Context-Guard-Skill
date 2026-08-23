@@ -319,7 +319,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一页只确认 4–8 个主干模块（分支链的第一截）。连线只表示从属，同级卡片不相连。点进模块才看到下一截；文件不出现在根上。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一页只确认 4–8 个主干模块。连线只表示从属，同级卡片不相连。点进模块后画布展开多级节点；文件不出现在根上。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -331,7 +331,7 @@ details.fold .mem-list{margin-top:6px}
     <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块才看到下一截分支。这不是这次点击实时读仓得到的。</p>
+    <p>下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -762,7 +762,7 @@ const CONTEXT_GUARD_MAP = {
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
         U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
           U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
-          U("N23", "visibleChildren", "第一页只铺 L1；点卡片进入才看到下一截子模块。文件不出现在根上", []),
+          U("N23", "visibleChildren", "根目录只铺 L1；点进模块后画布展开下面几级子模块和开工单元，不是每次只露一层", []),
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
       ]),
@@ -876,7 +876,7 @@ Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆�
 
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
-- visibleChildren：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。父子用曲线相连，同级不相连。孩子若全是子模块，仍用网格目录
+- visibleChildren：根目录只铺 L1。点进模块后展开下面最多 3 级子模块和开工单元。父子用曲线相连，同级不相连
 - 检查器 contenteditable、Bug 区块、+ 号
 - 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
@@ -1104,6 +1104,7 @@ function currentRepo(){ return catalog[repoId]; }
 const STORE_KEY = "cg-workbench-maps-v12";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
+const VIEW_DEPTH = 3;
 function hasMap(r){
   return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
 }
@@ -1344,7 +1345,7 @@ function proposedTree(r){
     files: next.files||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一页只确认 4–8 个主干模块。连线只表示从属，同级不相连。点进模块才看到下一截分支。", state:"success"}
+      {text:"第一页只确认 4–8 个主干模块。连线只表示从属，同级不相连。点进模块后画布展开多级分支。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
@@ -1431,22 +1432,15 @@ function depthFromView(n){
   return p.length-1-i;
 }
 function isCatalogView(){
-  if(viewRootId===data.id) return true;
-  const n = getNode(viewRootId);
-  if(!n) return true;
-  const kids = (n.children||[]).filter(c=>!isCancelled(c));
-  return kids.length>0 && kids.every(c=>c.kind==="module");
+  return viewRootId===data.id;
 }
 function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
-  // Branch chain: only the current view's children sit on the canvas.
-  // Nested modules are the next link — click to enter, do not dump them
-  // on the first page. Work units stay hidden until that module is open.
-  if(n.kind==="module") return [];
-  const p = findPath(selectedId)||[];
-  if(p.some(x=>x.id===n.id)) return kids;
-  return [];
+  if(isCatalogView()) return [];
+  const d = depthFromView(n);
+  if(d<0 || d>=VIEW_DEPTH) return [];
+  return kids;
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -1949,8 +1943,8 @@ function renderDetail(){
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
-    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。点卡片进入；在检查器里点加入。</p>`;
-    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元（命令/文件）。左右/上下只排这一层。</p>`;
+    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级；点卡片可聚焦那一枝。</p>`;
+    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元（命令/文件）。左右/上下排整枝，不只一层。</p>`;
   }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
     note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
   }

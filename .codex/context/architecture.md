@@ -33,7 +33,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 ### 工作台
 - `prototype/workbench.html` 单文件原型
 - `renderNode` 模块卡（标题 + 一句用途，不印文件清单）
-- `visibleChildren`：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。父子用曲线相连，同级不相连
+- `visibleChildren`：根目录只铺 L1。点进模块后展开下面最多 3 级子模块/开工单元，父子用曲线相连，同级不相连
 - 根和「孩子全是子模块」的视图用网格目录；左右/上下只排模块内部的开工树
 - 检查器 contenteditable、Bug 区块、`+` 号
 - 当前会话读不到的节点整卡灰色（带锁）；选中仍用黄底
