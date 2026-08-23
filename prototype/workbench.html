@@ -297,7 +297,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块。根上用连线挂出子模块关系；文件仍要点进模块才看到，不在根上摊开。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一页只确认 4–8 个主干模块（分支链的第一截）。灰线是从属，蓝线是 A 的输出进 B。点进模块才看到下一截子模块；文件不出现在根上。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -309,7 +309,7 @@ details.fold .mem-list{margin-top:6px}
     <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；根上用连线挂出子模块，文件仍要点进去才看到。这不是这次点击实时读仓得到的。</p>
+    <p>下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块才看到下一截分支。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -362,20 +362,48 @@ const OPENCLAW_MAP = {
   ], bugs:[], dormant:[],
   flows:[
     {from:"M3", to:"M1", label:"入站消息"},
+    {from:"M32", to:"M13", label:"配对放行"},
     {from:"M1", to:"M2", label:"调度 agent"},
     {from:"M2", to:"M1", label:"stream / final"},
     {from:"M1", to:"M3", label:"出站 send"},
     {from:"M4", to:"M2", label:"模型与供应商"},
-    {from:"M5", to:"M2", label:"工具 / 技能"},
+    {from:"M5", to:"M23", label:"工具注册进 runtime"},
     {from:"M6", to:"M1", label:"node caps"},
     {from:"M7", to:"M1", label:"人操作 Gateway"},
     {from:"M8", to:"M1", label:"握手与暴露"},
     {from:"M8", to:"M7", label:"远程同隧道"},
+    {from:"M12", to:"M13", label:"协议帧 → 调度"},
+    {from:"M13", to:"M21", label:"runner 进 loop"},
+    {from:"M21", to:"M22", label:"loop 读写 memory"},
+    {from:"M21", to:"M23", label:"loop 调工具"},
+    {from:"M14", to:"M73", label:"同端口静态资源"},
+    {from:"M41", to:"M21", label:"解析后的模型"},
+    {from:"M52", to:"M23", label:"MCP 并入 tool 路径"},
     {from:"M71", to:"M1", label:"CLI 改状态"},
     {from:"M72", to:"M1", label:"TUI 连 WS"},
     {from:"M73", to:"M1", label:"Control UI WS"},
-    {from:"M12", to:"M13", label:"协议帧 → 调度"},
-    {from:"M13", to:"M2", label:"runner 进 loop"}
+    {from:"N12", to:"N13", label:"握手后才有帧"},
+    {from:"N14", to:"N12", label:"schema 约束 connect"},
+    {from:"N14", to:"N13", label:"schema 约束帧"},
+    {from:"N13", to:"N15", label:"agent 帧进 runner"},
+    {from:"N16", to:"N17", label:"sessionKey 进队列"},
+    {from:"N17", to:"N15", label:"队列喂 runner"},
+    {from:"N31b", to:"N16", label:"入站映射会话"},
+    {from:"N38", to:"N39", label:"未匹配进配对"},
+    {from:"N39", to:"N3a", label:"人批准后放行"},
+    {from:"N25", to:"N23", label:"转录进压缩"},
+    {from:"N23", to:"N22", label:"压缩卡进 admitted"},
+    {from:"N24", to:"N22", label:"截断结果进 admitted"},
+    {from:"N22", to:"N26", label:"admitted 进 prompt"},
+    {from:"N26", to:"N21", label:"prompt 进 loop"},
+    {from:"N21", to:"N29", label:"loop 调 host 工具"},
+    {from:"N21", to:"N27", label:"loop 读写 memory"},
+    {from:"N43", to:"N21", label:"默认模型"},
+    {from:"N52", to:"N29", label:"插件工具进派发"},
+    {from:"N58", to:"N29", label:"MCP 合流"},
+    {from:"N62", to:"N14", label:"Swift 模型从 schema 生成"},
+    {from:"N7j", to:"N12", label:"TUI 走 connect"},
+    {from:"N7p", to:"N12", label:"Control UI 走 connect"}
   ],
   children:[
 
@@ -631,17 +659,27 @@ const CONTEXT_GUARD_MAP = {
     {from:"M1", to:"M2", label:"合同约束工作台"},
     {from:"M1", to:"M4", label:"启动 CLI / Hook"},
     {from:"M1", to:"M5", label:"拆图粒度"},
-    {from:"M5", to:"M2", label:"投影地图"},
     {from:"M5", to:"M3", label:"写 architecture.md"},
-    {from:"M2", to:"M3", label:"读写记忆"},
-    {from:"M3", to:"M2", label:"打开已有图"},
+    {from:"M5", to:"M2", label:"投影地图"},
     {from:"M4", to:"M3", label:"init 骨架"},
+    {from:"M3", to:"M2", label:"打开已有图"},
+    {from:"M2", to:"M3", label:"确认后写回记忆"},
     {from:"M6", to:"M2", label:"会话切片"},
     {from:"M21", to:"M22", label:"选中节点"},
     {from:"M23", to:"M21", label:"切仓重绘"},
     {from:"M24", to:"M21", label:"提议卡片"},
+    {from:"N13", to:"N12", label:"先写笔记再投影"},
+    {from:"N12", to:"N52", label:"无图才拆仓"},
+    {from:"N11", to:"N43", label:"启动时机绑 hook"},
+    {from:"N41", to:"N31", label:"init 写出 index"},
+    {from:"N41", to:"N33", label:"init 写出 architecture"},
+    {from:"N51", to:"N53", label:"信号写成笔记"},
+    {from:"N53", to:"N52", label:"笔记投影 L1"},
+    {from:"N52", to:"N54", label:"确认后再拆子模块"},
+    {from:"N33", to:"N22", label:"卡片对齐笔记"},
     {from:"N22", to:"N23", label:"谁可见"},
-    {from:"N23", to:"N24", label:"怎么排"}
+    {from:"N23", to:"N24", label:"怎么排"},
+    {from:"N61", to:"N22", label:"未授权节点变灰"}
   ],
   children:[
     U("M1", "Skill 合同", "何时启动、记什么、什么必须等人确认", [
@@ -654,7 +692,7 @@ const CONTEXT_GUARD_MAP = {
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
         U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
           U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
-          U("N23", "visibleChildren", "根上铺 L1，并用连线挂出下一层子模块；文件仍要点进去才看到", []),
+          U("N23", "visibleChildren", "第一页只铺 L1；点卡片进入才看到下一截子模块。文件不出现在根上", []),
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
       ]),
@@ -764,7 +802,7 @@ Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆�
 
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
-- visibleChildren：根上铺 L1，并用正交连线挂出下一层子模块；文件仍要点进去才看到。孩子若全是子模块，仍用网格目录
+- visibleChildren：第一页只铺 L1（分支链第一截）；点进模块才看到下一截。孩子若全是子模块，仍用网格目录
 - 检查器 contenteditable、Bug 区块、+ 号
 - 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
@@ -1115,7 +1153,7 @@ function proposedTree(r){
     dormant: next.dormant||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一层只确认 4–8 个模块。灰线是从属；蓝线是模块之间的输入/输出。文件仍要点进模块才看到。", state:"success"}
+      {text:"第一页只确认 4–8 个主干模块。灰线是从属，蓝线是 A→B 的输入/输出。点进模块才看到下一截分支。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
@@ -1211,13 +1249,10 @@ function isCatalogView(){
 function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
-  // On an ancestor canvas, hang one extra layer of nested MODULES so
-  // parent→child module relations are visible. Work units stay hidden
-  // until you enter that module (root still does not dump files).
-  if(n.kind==="module"){
-    if(depthFromView(n)===1) return kids.filter(c=>c.kind==="module");
-    return [];
-  }
+  // Branch chain: only the current view's children sit on the canvas.
+  // Nested modules are the next link — click to enter, do not dump them
+  // on the first page. Work units stay hidden until that module is open.
+  if(n.kind==="module") return [];
   const p = findPath(selectedId)||[];
   if(p.some(x=>x.id===n.id)) return kids;
   return [];
@@ -1806,7 +1841,7 @@ function renderDetail(){
     : noauth? `<p class="note">Agent 读不到此项。</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
   if(path.length===1){
-    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。灰线是从属，蓝线是模块之间的输入/输出。点卡片进入。文件不出现在根上。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
+    note += `<p class="note">第一页是分支链的主干，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。灰线是从属，蓝线是输入/输出。点卡片进入下一截。文件不出现在根上。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
