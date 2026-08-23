@@ -14,7 +14,7 @@
 - State: current
 - Last updated: 2026-08-23
 - Summary: 把 Context Guard 做成「人编辑、Agent 记录」的项目地图；首次建图要写出开发粒度的架构笔记，之后打开已有图，不重拆。
-- Next step: 人在工作台确认第一层；点进「控制面 UI」应看到 CLI/TUI/Control UI 下的可开工节点，而不是三个空壳。
+- Next step: 人在工作台确认第一层；根画布上就应看到各模块下的命令/源文件，而不是 CLI/TUI/UI 三个空壳。
 
 ## Parked / Resume Candidates
 
