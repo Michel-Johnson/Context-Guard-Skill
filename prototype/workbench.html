@@ -1490,7 +1490,34 @@ function renderMap(){
     return `link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
   }
   if(isCatalogView()){
-    /* 目录页不拉扇形线：标题在上，卡片网格在下 */
+    const kids = visibleChildren(root);
+    if(kids.length){
+      const p = pos.get(root.id), ps = size.get(root.id);
+      const xRoot = p.x + ps.w/2, yRoot = p.y + ps.h;
+      const rows = [];
+      kids.forEach(c=>{
+        const y = pos.get(c.id).y;
+        let row = rows.find(r=>Math.abs(r.y-y)<1);
+        if(!row){ row = {y, nodes:[]}; rows.push(row); }
+        row.nodes.push(c);
+      });
+      rows.sort((a,b)=>a.y-b.y);
+      let prevY = yRoot;
+      rows.forEach((row, ri)=>{
+        const cxs = row.nodes.map(c=>pos.get(c.id).x + size.get(c.id).w/2);
+        const railY = prevY + (row.y-prevY)*0.45;
+        paths += `<path class="link stem" d="M${xRoot},${prevY} L${xRoot},${railY}"/>`;
+        const railMin = Math.min(xRoot, ...cxs), railMax = Math.max(xRoot, ...cxs);
+        if(railMax-railMin > 1){
+          paths += `<path class="link stem" d="M${railMin},${railY} L${railMax},${railY}"/>`;
+        }
+        row.nodes.forEach((c,i)=>{
+          paths += `<path class="${linkClass(root,c)}" d="M${cxs[i]},${railY} L${cxs[i]},${row.y}"/>`;
+        });
+        const bottoms = row.nodes.map(c=>pos.get(c.id).y + size.get(c.id).h);
+        prevY = Math.max(...bottoms);
+      });
+    }
   }else{
     vwalk(root,(n)=>{
       const kids = visibleChildren(n);
