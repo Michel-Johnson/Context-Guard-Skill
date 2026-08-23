@@ -473,7 +473,9 @@ const OPENCLAW_MAP = {
         U("N1a", "Control UI 静态资源", "Vite 产物由 Gateway 同端口端出", []),
         U("N1b", "/healthz", "守护进程和 doctor 探活", [])
       ]),
-      U("M5", "Plugins · Skills · MCP", "core 保持瘦；能力默认做插件。代码插件改运行时，bundle 插件装技能/MCP", [
+    ]),
+
+    U("M5", "Plugins · Skills · MCP", "core 保持瘦；能力默认做插件。代码插件改运行时，bundle 插件装技能/MCP", [
         U("M51", "插件运行时", "plugin-sdk hook、工具表、配置合同、ClawHub、安装签名", [
         U("N51", "packages/plugin-sdk 生命周期", "hook：load / register / dispose，不是业务堆头", []),
         U("N52", "工具注册表", "插件往这里挂 tool，loop 只看表", []),
@@ -491,9 +493,7 @@ const OPENCLAW_MAP = {
         U("N5a", "workspace → 个人 → managed → bundled 加载序", "高优先级覆盖，不合并冲突技能", []),
         U("P2", "向 core 合入新 skill", "已取消：VISION 写明新 skill 走 ClawHub", [], {origin:"agent", proposal:"cancelled", isNew:false, memories:[{text:"Agent 提议把常用 skill 放进 core。已取消：VISION 写明新 skill 走 ClawHub", state:"dirty"}]})
         ])
-      ], {memories:[{text:"新技能先上 ClawHub，不默认合进 core", state:"success"},{text:"同一种能力出现多次，就在 core/SDK 落合同，再把捆绑实现迁到合同上", state:"success"}]}),
-
-    ]),
+    ], {memories:[{text:"新技能先上 ClawHub，不默认合进 core", state:"success"},{text:"同一种能力出现多次，就在 core/SDK 落合同，再把捆绑实现迁到合同上", state:"success"}]}),
 
     U("M2", "Agent Runtime", "一次 agent 调用如何取上下文、选模型、跑工具、写记忆", [
       U("M21", "循环与上下文裁剪", "packages/agent-core loop 和进 prompt 前的压缩/截断", [
@@ -520,7 +520,9 @@ const OPENCLAW_MAP = {
       U("N2b", "文件系统 / shell 工具", "和工作区绑定，不是抽象 REPL", []),
       U("N2c", "browser / computer-use 工具", "走 node caps，不在 loop 里写死浏览器", [])
       ]),
-      U("M6", "伴侣应用与 Nodes", "macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", [
+    ], {bugs:[{id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"},{id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}]}),
+
+    U("M6", "伴侣应用与 Nodes", "macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", [
         U("M61", "macOS 伴侣", "菜单栏客户端、Swift 模型、canvas widget", [
         U("N61", "apps/macos Gateway 客户端", "菜单栏伴侣，连本机 WS", []),
         U("N62", "Swift 模型生成", "从协议 JSON Schema 生成，不手写", []),
@@ -541,8 +543,6 @@ const OPENCLAW_MAP = {
         U("N6b", "A2UI 渲染", "托管 widget 文档", [])
         ])
       ], {memories:[{text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"}], bugs:[{id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}]}),
-
-    ], {bugs:[{id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"},{id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}]}),
 
     U("M3", "Channels 消息渠道", "把助手接到 WhatsApp / Telegram / Slack / Discord / Signal / iMessage 等已有聊天里", [
       U("M31", "已接聊天渠道", "whatsapp/baileys、telegram/grammy，以及 slack/discord/signal/imessage 各自实现目录", [
@@ -567,7 +567,9 @@ const OPENCLAW_MAP = {
       U("N3a", "openclaw pairing approve", "CLI 和 Control UI 改同一份队列", []),
       U("P3", "再包一层已有渠道的 wrapper", "已取消：不收无能力/安全缺口的 wrapper channel", [], {origin:"agent", proposal:"cancelled", isNew:false, memories:[{text:"Agent 提议给已支持渠道再做包装通道。已取消：不收无能力/安全缺口的 wrapper channel", state:"dirty"}]})
       ]),
-      U("M7", "控制面 UI", "人操作 Gateway：命令、终端会话、浏览器面板、远程隧道分面开工，不是把所有文件摊在一张卡下", [
+    ], {memories:[{text:"渠道把入站消息当不可信输入；能私聊的渠道默认要配对未知发送者", state:"success"}], bugs:[{id:"B30", title:"DM 渠道默认配对提示易被忽略", desc:"操作者以为渠道一连上就能聊，实际消息卡在 pairing 队列", status:"open"}]}),
+
+    U("M7", "控制面 UI", "人操作 Gateway：命令、终端会话、浏览器面板、远程隧道分面开工，不是把所有文件摊在一张卡下", [
         U("M71", "CLI 命令", "src/entry.ts → run-main.ts → src/commands/*：终端里改 Gateway 的那一组命令", [
           U("M711", "进程入口", "entry 设环境，run-main 按复数名词注册子命令", [
             U("N70", "src/entry.ts", "CLI 进程入口，设环境后交给 run-main", []),
@@ -629,8 +631,6 @@ const OPENCLAW_MAP = {
         ])
       ], {memories:[{text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"},{text:"点进控制面 UI 应先看到 CLI / TUI / Control UI / 远程 四张子模块卡，再进到具体 ts。既不要三张空壳，也不要一张卡下摊开全部文件", state:"success"}], bugs:[{id:"B70", title:"远程 Control UI 必须与 Gateway 同隧道", desc:"WebChat 在远程环境下要走同一条 SSH/Tailscale，漏配就会连错端口", status:"open"}]}),
 
-    ], {memories:[{text:"渠道把入站消息当不可信输入；能私聊的渠道默认要配对未知发送者", state:"success"}], bugs:[{id:"B30", title:"DM 渠道默认配对提示易被忽略", desc:"操作者以为渠道一连上就能聊，实际消息卡在 pairing 队列", status:"open"}]}),
-
     U("M4", "Models 与供应商", "模型目录、选择器、托管/本地供应商，核心只认当前配置 schema", [
       U("M41", "目录与选择器", "catalog schema、别名、默认/覆盖/回退", [
       U("N41", "model-catalog JSON schema", "当前 schema 下的目录；改名必须走 doctor", []),
@@ -646,7 +646,9 @@ const OPENCLAW_MAP = {
       U("N49", "cloudflare-ai-gateway", "网关型供应商与主 picker 的优先级", []),
       U("N4a", "copilot-proxy", "代理供应商，优先级写进 picker 而不是 if-else", [])
       ]),
-      U("M8", "安全、配对、部署", "默认安全但不阉割能力；危险路径必须显式、由操作者打开", [
+    ], {memories:[{text:"配置改名必须带 doctor 迁移：检测旧形态、备份、改写成规范格式", state:"success"}]}),
+
+    U("M8", "安全、配对、部署", "默认安全但不阉割能力；危险路径必须显式、由操作者打开", [
         U("M81", "握手与配对", "connect.challenge、pairing v3、loopback vs Tailnet", [
         U("N81", "connect.challenge 签名", "设备握手必须签名", []),
         U("N82", "pairing v3 platform / deviceFamily", "按设备族绑，不按用户会话", []),
@@ -667,8 +669,6 @@ const OPENCLAW_MAP = {
         U("N8d", "插件 doctor 合同", "插件配置由该插件自己的 doctor 修", [])
         ])
       ], {memories:[{text:"无使用分析、无跟踪，除非操作者自己打开", state:"success"},{text:"loopback 可自动配对；Tailnet/LAN 必须人工批准", state:"success"}]}),
-
-    ], {memories:[{text:"配置改名必须带 doctor 迁移：检测旧形态、备份、改写成规范格式", state:"success"}]}),
   ]
 };
 
@@ -771,9 +771,11 @@ const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent�
 
 ## 第一层（确认门，不是分析深度）
 
-四条主干：Gateway 控制面 · Agent Runtime · Channels · Models 与供应商
+L1 数量视仓库而定，建议 4–8，不写死成 4。OpenClaw 体量大，这一页确认 8 张卡：
 
-Plugins/Skills/MCP 挂在 Gateway 下一截；伴侣 Nodes 挂在 Runtime 下一截；控制面 UI 挂在 Channels 下一截；安全/配对/部署 挂在 Models 下一截。第一页只确认这 4 张主干卡。命令和文件是开工单元：点进分支才看到下一截。规则、记忆、Bug 不是节点。
+Gateway 控制面 · Agent Runtime · Channels · Models 与供应商 · Plugins/Skills/MCP · 伴侣 Nodes · 控制面 UI · 安全/配对/部署
+
+小仓库可以只留 4 张主干；大仓库把真正独立的开工面提到第一层，而不是为了“看起来整齐”强行塞进 4 张伞卡。命令和文件是开工单元：点进分支才看到下一截。规则、记忆、Bug 不是节点。
 
 ## Gateway 控制面（可改文件）
 
@@ -873,7 +875,7 @@ const catalog = {
       {do:"按渠道实现文件拆（baileys.ts、grammy.ts、pairing），不要只列渠道名", find:"WhatsApp 单会话不变量写在 baileys.ts 旁边"},
       {do:"控制面先拆成 CLI / TUI / Control UI / 远程 四张子模块卡，命令文件挂在卡下", find:"点进控制面 UI 先看到子模块，不是二十几个文件平铺"},
       {do:"TUI 与 Control UI 的主循环、双后端、transcript 写进对应子模块，不要空壳也不要平铺", find:"tui.ts、GatewayChatClient、ui/src/chat 都在子模块里"},
-      {do:"写进 architecture.md；L1 只当确认门。OpenClaw 第一页是 4 条主干，不是 8 张平铺卡", find:"根上 Gateway / Runtime / Channels / Models；Plugins、Nodes、UI、安全在下一截"}
+      {do:"写进 architecture.md；L1 只当确认门，数量 4–8 视仓库而定，不写死成 4", find:"OpenClaw 体量大：根上 8 张卡；小仓库可以只有 4 张主干"}
     ]
   }
 };
@@ -1051,7 +1053,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v10";
+const STORE_KEY = "cg-workbench-maps-v11";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
