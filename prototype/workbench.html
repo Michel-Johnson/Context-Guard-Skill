@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Context Guard · 工作台原型（钻取 + 提议 + 会话授权）</title>
+<title>Context Guard · 工作台原型</title>
 <style>
 :root{
   --ink:#2a2f2b; --muted:#75807a; --paper:#ffffff; --bg:#fafaf7; --line:#d9ded7;
@@ -40,7 +40,7 @@ header.top h1{margin:0;font-size:16px}
 .dot.failed{background:var(--red)} .dot.module{background:var(--module);border-radius:2px}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 .hint-bar{position:fixed;left:16px;bottom:12px;z-index:30;color:var(--muted);font-size:12px;
-  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px;max-width:62%}
+  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px;max-width:58%}
 .hint-bar.auth{border-color:#d8cceb;color:var(--auth);background:rgba(246,243,250,.95)}
 
 /* ---------- 画布 ---------- */
@@ -54,25 +54,33 @@ header.top h1{margin:0;font-size:16px}
 #links path.link.proposed-link{stroke-dasharray:5 4;stroke:#c7ccc6}
 #links path.link.noauth-link{stroke:#d7d7d4}
 
-/* 普通节点 */
+/* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
-  background:var(--paper);border:1px solid var(--line);border-radius:7px;
-  padding:4px 11px 4px 9px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
+  background:var(--paper);border:1px solid var(--line);border-radius:17px;
+  padding:5px 13px 5px 11px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
   box-shadow:0 1px 2px rgba(42,47,43,.05);transition:opacity .2s, box-shadow .12s, border-color .12s}
 .node:hover{box-shadow:0 2px 8px rgba(42,47,43,.13);border-color:#b9c4b6}
 .node.selected{border-color:var(--green);box-shadow:0 0 0 2.5px var(--green-soft)}
 .node.dimmed{opacity:.18}
-.node.root{font-size:14.5px;font-weight:700;padding:7px 15px 7px 12px;border-width:1.5px;border-color:#aab8a8}
 
-/* 模块胶囊 */
-.node.module{border:1.5px solid #b7c2d2;background:var(--module-soft);font-weight:650;
-  padding:7px 13px;border-radius:9px}
-.node.module:hover{border-color:var(--module);box-shadow:0 3px 10px rgba(92,111,138,.22)}
-.node.module .stats{color:var(--muted);font-weight:400;font-size:11.5px}
-.node.module .enter{color:var(--module);font-weight:700;margin-left:2px;padding:0 3px}
-.node.module .enter:hover{color:var(--green)}
+/* 项目根：大号圆角 */
+.node.root{font-size:16px;font-weight:750;padding:16px 24px;border-width:1.5px;
+  border-color:#aab8a8;border-radius:14px}
 
-/* Agent 提议节点 */
+/* ===== 模块：大块方形卡片 ===== */
+.node.module{display:block;white-space:normal;width:250px;min-height:104px;
+  border:1.5px solid #b7c2d2;background:var(--module-soft);border-radius:4px;
+  padding:16px 18px 13px;box-shadow:0 2px 6px rgba(92,111,138,.12)}
+.node.module:hover{border-color:var(--module);box-shadow:0 5px 16px rgba(92,111,138,.26)}
+.node.module .m-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+.node.module .m-head .dot{width:11px;height:11px}
+.node.module .m-stats{margin-top:8px;color:var(--muted);font-size:12px;font-weight:400;line-height:1.5}
+.node.module .m-enter{margin-top:9px;color:var(--module);font-size:12.5px;font-weight:650}
+.node.module .m-enter:hover{color:var(--green)}
+.node.module .bug-badge{position:absolute;top:-9px;right:-9px}
+.node.module.selected{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+
+/* Agent 提议节点（圆角虚线胶囊） */
 .node.proposed{border:1.5px dashed #bcc4bb;background:#f3f4f0;color:var(--muted)}
 .node.proposed:hover{border-color:var(--green);color:var(--ink)}
 .node .new-dot{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
@@ -81,25 +89,24 @@ header.top h1{margin:0;font-size:16px}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.7}}
 .node .accept-hint{font-size:10.5px;color:var(--green);font-weight:600;margin-left:2px}
 
-/* 无权限节点：灰色带锁（本会话不可读） */
+/* 无权限：灰色带锁 */
 .node.noauth{background:#f1f1ef;border-color:#dcdcd8;color:#a9aca7}
 .node.noauth .dot{background:#cfcfcf !important}
 .node.noauth.module{background:#f0f0ee;border-color:#d8d8d4}
-.node.noauth .stats,.node.noauth .enter{color:#b5b8b3}
+.node.noauth .m-stats,.node.noauth .m-enter{color:#b5b8b3}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
-/* 授权模式下的可点选外观 */
+/* 授权模式 */
 body.auth-mode .node{cursor:cell}
-body.auth-mode .node .auth-mark{width:15px;height:15px;border-radius:50%;border:2px solid #c9bfdd;
-  display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex:0 0 auto}
-body.auth-mode .node .auth-mark.on{background:var(--auth);border-color:var(--auth)}
-.node .auth-mark{display:none}
+.node .auth-mark{display:none;width:15px;height:15px;border-radius:50%;border:2px solid #c9bfdd;
+  align-items:center;justify-content:center;font-size:10px;color:#fff;flex:0 0 auto}
 body.auth-mode .node .auth-mark{display:flex}
+body.auth-mode .node .auth-mark.on{background:var(--auth);border-color:var(--auth)}
 body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(122,92,168,.25)}
 
-.node .bug-badge{background:var(--red);color:#fff;border-radius:8px;min-width:16px;height:16px;
-  line-height:16px;text-align:center;font-size:10.5px;padding:0 4px}
+.node .bug-badge{background:var(--red);color:#fff;border-radius:9px;min-width:17px;height:17px;
+  line-height:17px;text-align:center;font-size:11px;padding:0 5px}
 .node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
 .node .add-child{position:absolute;right:-11px;top:50%;transform:translateY(-50%);width:20px;height:20px;
   border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px;
@@ -107,6 +114,7 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node:hover .add-child{opacity:1}
 .node .add-child:hover{border-color:var(--green);color:var(--green)}
 body.auth-mode .node .add-child{display:none}
+.node.module .add-child{top:auto;bottom:-11px;right:14px;transform:none}
 
 /* ---------- 已取消托盘 ---------- */
 .tray{position:fixed;left:16px;top:60px;z-index:29;width:330px;background:var(--paper);
@@ -202,12 +210,10 @@ section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
   <div class="legend">
-    <span><i class="dot module"></i>模块</span>
-    <span><i class="dot dirty"></i>探索中</span>
-    <span><i class="dot success"></i>成功</span>
-    <span><i class="dot failed"></i>失败</span>
+    <span><i class="dot module"></i>模块（方形，点击进入）</span>
+    <span><i class="dot dirty"></i>节点（圆角）</span>
     <span><i class="dot proposed"></i>Agent 提议</span>
-    <span><i class="dot noauth"></i>🔒 本会话无权限</span>
+    <span><i class="dot noauth"></i>🔒 无权限</span>
   </div>
 </header>
 
@@ -310,7 +316,6 @@ let selectedId = "T0";
 let focusId = null;
 let viewRootId = "T0";
 let authMode = false;
-/* 本会话可读集合：默认 = 根 + 人类工作台模块整棵（演示：记忆内核、底层文件系统未授权 → 灰色带锁） */
 const sessionAuth = new Set(["T0","M2","M2a","M2b","M2c"]);
 
 /* ================= 树工具 ================= */
@@ -342,22 +347,22 @@ function onFocusPath(id){
   return fp.includes(id) || p.includes(focusId);
 }
 function aggregate(n){
-  let nodes=0, bugs=0, dormant=0, proposals=0;
+  let nodes=0, bugs=0, dormant=0, proposals=0, modules=0;
   walk(n,(x)=>{
     if(isCancelled(x)) return;
     if(isProposed(x)){ proposals++; return; }
+    if(x.kind==="module" && x.id!==n.id) modules++;
     nodes++;
     bugs += x.bugs.filter(b=>b.status!=="dormant").length;
     dormant += x.dormant.length;
   });
-  return {nodes:nodes-1, bugs, dormant, proposals};
+  return {nodes:nodes-1, bugs, dormant, proposals, modules};
 }
 function subtreeIds(n){
   const ids=[];
   walk(n,(x)=>{ if(!isCancelled(x) && !isProposed(x)) ids.push(x.id); });
   return ids;
 }
-/* 模块授权状态：all / none / partial */
 function moduleAuthState(n){
   const ids = subtreeIds(n);
   const inCount = ids.filter(id=>sessionAuth.has(id)).length;
@@ -366,14 +371,14 @@ function moduleAuthState(n){
   return "partial";
 }
 function toggleAuth(n){
-  if(isProposed(n)||isCancelled(n)) return;   /* 提议/取消的本来就不进 Agent 记忆 */
+  if(isProposed(n)||isCancelled(n)) return;
   if(n.kind==="module"){
     const ids = subtreeIds(n);
     const st = moduleAuthState(n);
     if(st==="all"){ ids.forEach(id=>sessionAuth.delete(id)); }
     else{
       ids.forEach(id=>sessionAuth.add(id));
-      findPath(n.id).forEach(a=>sessionAuth.add(a.id));   /* 祖先链一并授权，保证继承链完整 */
+      findPath(n.id).forEach(a=>sessionAuth.add(a.id));
     }
   }else{
     if(sessionAuth.has(n.id)) sessionAuth.delete(n.id);
@@ -391,8 +396,8 @@ function cancelledList(){
 }
 function enterView(id){
   viewRootId = id; selectedId = id;
-  view = {x:60, y:120, k:1};
-  renderAll(); applyView();
+  renderAll();
+  fitView();
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
@@ -413,7 +418,7 @@ function renderNav(){
     hint.textContent = "授权模式：点击节点/模块勾选进入当前会话记忆（模块 = 整棵子树；授权自动补全祖先链）。再点 🔑 退出。";
   }else{
     hint.className = "hint-bar";
-    hint.textContent = "灰色带锁 = 本会话无权限（人可看，Agent 不可读）· 灰色虚线 = Agent 提议 · 点模块进入 · 原型数据不落盘";
+    hint.textContent = "方形大卡 = 模块（点击进入）· 圆角小胶囊 = 节点 · 灰色带锁 = 本会话无权限 · 灰虚线 = Agent 提议 · 原型数据不落盘";
   }
 }
 
@@ -457,10 +462,11 @@ function renderTray(){
 }
 
 /* ================= 导图渲染 ================= */
-const GAP_X = 46, GAP_Y = 9;
+const GAP_X = 70, GAP_Y = 14, MOD_GAP_Y = 30;
 const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
+let extents = {w:800, h:500};
 
 function nodeHtml(n, isViewRoot){
   const openBugs = n.bugs.filter(b=>b.status!=="dormant").length;
@@ -469,12 +475,14 @@ function nodeHtml(n, isViewRoot){
   if(n.kind==="module" && !isViewRoot){
     const agg = aggregate(n);
     const st = moduleAuthState(n);
-    return authMark+`<i class="dot module"></i><span>${n.title}</span>`+
-      (st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:"")+
-      `<span class="stats">${agg.nodes} 节点${agg.proposals?` · 提议 ${agg.proposals}`:""}${agg.dormant?` · 休眠 ${agg.dormant}`:""}</span>`+
-      (agg.bugs?`<span class="bug-badge">${agg.bugs}</span>`:"")+
-      (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
-      `<span class="enter" data-enter title="进入模块">›</span>`;
+    return `${(agg.bugs?`<span class="bug-badge">${agg.bugs}</span>`:"")}
+      <div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
+        ${st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:""}
+        ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
+      </div>
+      <div class="m-stats">${agg.modules?`子模块 ${agg.modules} · `:""}节点 ${agg.nodes}${agg.proposals?` · 提议 ${agg.proposals}`:""}${agg.dormant?` · 休眠 ${agg.dormant}`:""}</div>
+      <div class="m-enter" data-enter>进入模块 ›</div>
+      <span class="add-child" title="延伸子任务">＋</span>`;
   }
   if(isProposed(n)){
     return (n.isNew?`<span class="new-dot" title="Agent 新提议"></span>`:"")+
@@ -496,7 +504,7 @@ function renderMap(){
   vwalk(root,(n,ps)=>{
     const isViewRoot = n.id===viewRootId;
     const noauth = !isProposed(n) && !isAuth(n) &&
-      !(n.kind==="module" && moduleAuthState(n)!=="none");   /* 部分授权的模块不整体置灰 */
+      !(n.kind==="module" && moduleAuthState(n)!=="none");
     const div = document.createElement("div");
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module" && !isViewRoot?" module":"") +
@@ -512,14 +520,15 @@ function renderMap(){
   els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
 
   const pos = new Map();
+  function gapFor(c){ return c.kind==="module" ? MOD_GAP_Y : GAP_Y; }
   function subtree(n, x, top){
     const s = size.get(n.id);
     const kids = visibleChildren(n);
     const childX = x + s.w + GAP_X;
     if(!kids.length){ pos.set(n.id,{x, y:top}); return s.h; }
     let y = top;
-    kids.forEach(c=>{ y += subtree(c, childX, y) + GAP_Y; });
-    let total = y - GAP_Y - top;
+    kids.forEach((c,i)=>{ y += subtree(c, childX, y) + gapFor(c); });
+    let total = y - gapFor(kids[kids.length-1]) - top;
     const first = kids[0], last = kids[kids.length-1];
     const fc = pos.get(first.id), lc = pos.get(last.id);
     const cy = (fc.y + size.get(first.id).h/2 + lc.y + size.get(last.id).h/2)/2;
@@ -545,6 +554,7 @@ function renderMap(){
     el.style.visibility = "";
     maxX = Math.max(maxX, p.x+s.w); maxY = Math.max(maxY, p.y+s.h);
   });
+  extents = {w:maxX, h:maxY};
   linksEl.setAttribute("width", maxX+140);
   linksEl.setAttribute("height", maxY+140);
 
@@ -564,7 +574,6 @@ function renderMap(){
   });
   linksEl.innerHTML = paths;
 
-  /* 点击行为：授权模式 = 勾选；否则提议两段式 / 模块钻入 / 普通选中 */
   els.forEach((el,id)=>{
     el.onclick = (e)=>{
       const n = getNode(id);
@@ -601,7 +610,7 @@ function addChild(node){
   const child = {id:"N"+(NODE_SEQ++), title:t, origin:"human", state:"dirty",
     memories:[], bugs:[], dormant:[], children:[]};
   node.children.push(child);
-  sessionAuth.add(child.id);            /* 本会话创建的节点默认对本会话可读 */
+  sessionAuth.add(child.id);
   findPath(child.id).forEach(a=>sessionAuth.add(a.id));
   if(node.kind==="module" && node.id!==viewRootId){ enterView(node.id); return; }
   selectedId = child.id;
@@ -657,7 +666,7 @@ function renderDetail(){
   const moduleStats = isModule
     ? `<section class="block"><h3>模块概览</h3>
         <ul class="mem-list">
-          <li><i class="dot module"></i><span class="txt">内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条${agg.proposals?` · Agent 提议 ${agg.proposals} 条`:""}</span></li>
+          <li><i class="dot module"></i><span class="txt">${agg.modules?`子模块 ${agg.modules} 个 · `:""}内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条${agg.proposals?` · Agent 提议 ${agg.proposals} 条`:""}</span></li>
           <li><i class="dot ${authSt==="all"?"success":authSt==="partial"?"dirty":"noauth"}"></i>
             <span class="txt">本会话权限：${authSt==="all"?"整棵可读":authSt==="partial"?"部分可读":"不可读 🔒"}</span></li>
         </ul></section>`
@@ -732,6 +741,7 @@ function renderDetail(){
     viewRootId = anchor.id;
     selectedId = target.id;
     renderAll();
+    fitView();
   });
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
   const q = s=>el.querySelector(s);
@@ -776,11 +786,22 @@ function crossBug(node, bugId){
   }, 1600);
 }
 
-/* ================= 平移 / 缩放 ================= */
+/* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:60, y:120, k:1};
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
 }
+/* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
+function fitView(){
+  const availW = window.innerWidth - 400 - 90;
+  const availH = window.innerHeight - 150;
+  const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
+  view.k = Math.max(k, .35);
+  view.x = 50 + Math.max(0,(availW - extents.w*view.k)/2);
+  view.y = 115 + Math.max(0,(availH - extents.h*view.k)/2);
+  applyView();
+}
+window.addEventListener("resize", fitView);
 const vp = document.getElementById("viewport");
 let dragging=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
@@ -806,7 +827,7 @@ vp.addEventListener("wheel", e=>{
 },{passive:false});
 
 function renderAll(){ renderNav(); renderTray(); renderMap(); renderDetail(); }
-renderAll(); applyView();
+renderAll(); fitView();
 </script>
 </body>
 </html>
