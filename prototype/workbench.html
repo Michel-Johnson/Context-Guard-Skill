@@ -47,7 +47,8 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-menu button:hover,.repo-menu button.on{background:var(--module-soft)}
 .repo-menu .src{font-size:11px;color:var(--muted)}
 .repo-menu .tag{font-size:10.5px;color:var(--green)}
-.repo-menu .tag{font-size:10.5px;color:var(--green)}
+.repo-menu .tag.wait{color:var(--red)}
+.repo-menu .reanalyze{margin-top:4px;font-size:11px;color:var(--red);text-decoration:underline;cursor:pointer}
 .nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap}
 .nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;padding:3px 9px;
   border:1px solid transparent;border-radius:6px}
@@ -67,7 +68,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
 .first-use.open{display:flex}
-.first-use .card{width:min(460px,92%);background:var(--paper);border:2px solid var(--line-ink);
+.first-use .card{width:min(520px,92%);background:var(--paper);border:2px solid var(--line-ink);
   border-radius:14px;padding:26px 26px 20px;box-shadow:var(--shadow)}
 .first-use .kicker{color:var(--red);font-weight:800;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .first-use h2{margin:8px 0 8px;font-size:18px}
@@ -80,6 +81,9 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .analyze-log li.on{color:var(--ink);font-weight:800}
 .analyze-log li.done{color:var(--green)}
 .analyze-log li.done:before{content:"✓ ";font-weight:800}
+.analyze-log .find{display:block;margin-top:4px;font-size:12px;font-weight:400;color:var(--muted)}
+.analyze-log li.on .find{color:var(--ink)}
+.analyze-log li.done .find{color:var(--green)}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
@@ -264,26 +268,27 @@ details.fold .mem-list{margin-top:6px}
     <button type="button" data-dir="lr" class="on">左右</button>
     <button type="button" data-dir="tb">上下</button>
   </div>
-  <div class="session-chip">当前会话：<b id="session-name">S-0823 首次使用</b> · 可读 <b id="auth-count">0</b> 节点</div>
+  <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
-<div class="first-use open" id="first-use">
+<div class="first-use" id="first-use">
   <div class="card" id="first-use-ask">
     <div class="kicker">第一次使用 CONTEXT GUARD</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
-    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 会读 README、包边界和现有文档，理解架构之后只提出第一层模块，由你确认后才写入地图。</p>
-    <p>这不是瞬间完成的，也不是把目录树倒进来。分析结束后才出现提议。之后的会话直接打开这张图，不会再拆一遍。</p>
+    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 要先读 README、包边界和现有文档，理解系统怎么分层，再只提出第一层模块。</p>
+    <p>建图不是瞬间完成的，也不是把目录树倒进来。分析需要时间。有了地图之后，以后打开直接进入，不会再拆一遍。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">开始分析仓库</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
     </div>
   </div>
   <div class="card" id="first-use-work" hidden>
-    <div class="kicker">Agent 正在理解仓库</div>
-    <h2>建图需要先分析架构</h2>
-    <p>Agent 在读结构、边界和文档。读完才会提出第一层模块，不会把文件树整仓铺上地图。</p>
+    <div class="kicker">Agent 正在理解架构</div>
+    <h2>建图需要先分析，不是瞬间出图</h2>
+    <p>Agent 在读边界和文档，形成对系统分层的判断。读完才提出第一层模块；不会把文件树整仓铺上地图。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
+    <p>真实会话里这一步由 Agent 读仓库完成，耗时取决于项目复杂度。</p>
   </div>
 </div>
 
@@ -515,7 +520,8 @@ const CONTEXT_GUARD_MAP = {
             {text:"首次使用、看导图、改方向、park/resume、编码/调试/评审时启用", state:"success"}
           ], bugs:[], dormant:[], children:[] },
         { id:"N12", title:"首次建图", state:"dirty", memories:[
-            {text:"map_bootstrap=pending 时拆当前仓库第一层，不等待人贴 GitHub 地址", state:"success"}
+            {text:"只在还没有地图时分析架构；已有提议或已确认的图，之后会话直接打开，不重拆", state:"success"},
+            {text:"分析不是瞬间出图：Agent 要理解分层，再只提出第一层", state:"success"}
           ], bugs:[], dormant:[], children:[] },
         { id:"N13", title:"简洁合同", state:"success", memories:[
             {text:"context 是导航，不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", state:"success"}
@@ -603,12 +609,13 @@ const catalog = {
     heading:"Context Guard 架构导图",
     source:"Michel-Johnson/Context-Guard-Skill",
     blueprint: CONTEXT_GUARD_MAP,
-    live:null, auth:null, bootstrap:"pending", firstUseOpen:true,
+    live:null, auth:null, bootstrap:"proposed", firstUseOpen:false,
     analyze:[
-      "打开 README 与 SKILL.md，弄清这个 skill 是干什么的",
-      "看 scripts/、prototype/、.codex/context/ 的职责边界",
-      "读工作台交互：模块、提议、会话授权",
-      "丢掉目录树，压成第一层模块提议"
+      {do:"打开 README 与 SKILL.md，弄清这个 skill 是干什么的", find:"定位是人与 Agent 共用的项目记忆，不是一次聊天摘要"},
+      {do:"看 scripts/、prototype/、.codex/context/ 的职责边界", find:"合同、工作台、context 目录、CLI 是不同层，不是按文件切"},
+      {do:"读已有 architecture.md 和工作台交互", find:"模块卡、提议、会话授权已经是产品形状"},
+      {do:"丢掉目录树，判断第一层怎么切", find:"压成七个第一层模块；下一层先收进 inbox"},
+      {do:"写成未确认提议，等人确认后再往下拆", find:"虚线模块后续 Agent 读不到；下次打开仍是这张图"}
     ]
   },
   openclaw: {
@@ -619,10 +626,10 @@ const catalog = {
     blueprint: OPENCLAW_MAP,
     live:null, auth:null, bootstrap:"pending", firstUseOpen:true,
     analyze:[
-      "读 README 与 pnpm workspace，找出真正的运行时入口",
-      "分辨 Gateway、渠道、伴侣应用、插件的边界",
-      "对照协议文档，而不是每个源文件一张卡",
-      "只提出第一层控制面模块，等人确认"
+      {do:"读 README 与 pnpm workspace，找出真正的运行时入口", find:"一台主机一个 Gateway，不是一堆并列服务"},
+      {do:"分辨 Gateway、渠道、伴侣应用、插件的边界", find:"控制面和消息渠道、插件槽不是同一层"},
+      {do:"对照协议文档，而不是每个源文件一张卡", find:"目录树不能当架构图"},
+      {do:"只提出第一层控制面模块，等人确认", find:"未确认的提议后续 Agent 读不到"}
     ]
   }
 };
@@ -659,7 +666,32 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v1";
+const STORE_KEY = "cg-workbench-maps-v2";
+function hasMap(r){
+  return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
+}
+function overlayOpenFor(r){
+  return r.bootstrap==="pending" || r.bootstrap==="analyzing";
+}
+function bootstrapLabel(st){
+  if(st==="ready") return "已建图";
+  if(st==="proposed") return "待确认";
+  if(st==="analyzing") return "分析中";
+  return "首次使用";
+}
+function firstLayerConfirmed(){
+  const kids = (data.children||[]).filter(c=>!isCancelled(c));
+  return kids.length>0 && kids.every(c=>!isProposed(c));
+}
+function syncBootstrapFromTree(){
+  const r = currentRepo();
+  if(r.bootstrap==="pending" || r.bootstrap==="analyzing") return;
+  if(firstLayerConfirmed() || ((data.children||[]).length===0 && (data.memories||[]).length)){
+    r.bootstrap = "ready";
+  }else if((data.children||[]).length){
+    r.bootstrap = "proposed";
+  }
+}
 function persist(){
   snapshotRepo();
   const dump = {repoId, repos:{}};
@@ -676,39 +708,67 @@ function persist(){
     };
   });
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(dump)); }catch(e){}
+  try{
+    const light = {v:2, repoId, st:{}};
+    Object.values(catalog).forEach(r=>{ light.st[r.id] = r.bootstrap; });
+    const next = "#cg2="+encodeURIComponent(JSON.stringify(light));
+    if(location.hash!==next) history.replaceState(null, "", next);
+  }catch(e){}
 }
 function applySaved(r, saved){
   if(!saved) return;
   r.bootstrap = saved.bootstrap || r.bootstrap;
   r.firstUseOpen = !!saved.firstUseOpen;
-  r.live = saved.live || null;
-  r.auth = saved.auth || null;
+  r.live = saved.live || r.live;
+  r.auth = saved.auth || r.auth;
   r.selectedId = saved.selectedId;
   r.viewRootId = saved.viewRootId;
   r.focusId = saved.focusId;
   r.sessionName = saved.sessionName;
 }
+function readHashState(){
+  try{
+    const raw = (location.hash||"").replace(/^#cg2=/, "");
+    if(!raw || raw===(location.hash||"").replace(/^#/, "")) return null;
+    return JSON.parse(decodeURIComponent(raw));
+  }catch(e){ return null; }
+}
 function loadLive(r){
-  adoptTree(r.live);
+  const tree = r.live || proposedTree(r);
+  adoptTree(tree);
+  r.live = clone(data);
   sessionAuth.clear();
   (r.auth||["T0"]).forEach(x=>sessionAuth.add(x));
   selectedId = r.selectedId || "T0";
   viewRootId = r.viewRootId || "T0";
   focusId = r.focusId || null;
   composingId = null;
-  document.getElementById("session-name").textContent = r.sessionName || "当前会话";
-  document.getElementById("first-use").classList.toggle("open", r.bootstrap!=="ready");
-  document.getElementById("first-use-ask").hidden = r.bootstrap==="analyzing";
-  document.getElementById("first-use-work").hidden = r.bootstrap!=="analyzing";
+  document.getElementById("session-name").textContent = r.sessionName || (r.bootstrap==="proposed"?"S-0823 待确认":"当前会话");
+  setOverlay(overlayOpenFor(r), r.bootstrap==="analyzing");
 }
 function restore(){
   let dump;
-  try{ dump = JSON.parse(localStorage.getItem(STORE_KEY)||""); }catch(e){ return false; }
-  if(!dump || !dump.repos) return false;
-  Object.keys(dump.repos).forEach(id=>{ if(catalog[id]) applySaved(catalog[id], dump.repos[id]); });
-  if(dump.repoId && catalog[dump.repoId]) repoId = dump.repoId;
+  try{ dump = JSON.parse(localStorage.getItem(STORE_KEY)||""); }catch(e){ dump = null; }
+  if(dump && dump.repos){
+    Object.keys(dump.repos).forEach(id=>{ if(catalog[id]) applySaved(catalog[id], dump.repos[id]); });
+    if(dump.repoId && catalog[dump.repoId]) repoId = dump.repoId;
+  }
+  const hashed = readHashState();
+  if(hashed && hashed.st){
+    Object.keys(hashed.st).forEach(id=>{
+      if(!catalog[id]) return;
+      if(!dump || !dump.repos || !dump.repos[id]) catalog[id].bootstrap = hashed.st[id];
+    });
+    if(!dump && hashed.repoId && catalog[hashed.repoId]) repoId = hashed.repoId;
+  }
+  Object.values(catalog).forEach(r=>{
+    if(r.bootstrap==="analyzing"){
+      r.bootstrap = "pending";
+      if(!(r.live && (r.live.children||[]).length)) r.live = null;
+    }
+  });
   const r = currentRepo();
-  if(r.bootstrap==="ready" && r.live){
+  if(hasMap(r) || r.live){
     loadLive(r);
     applyRepoChrome();
     return true;
@@ -735,7 +795,7 @@ function snapshotRepo(){
   r.focusId = focusId;
   r.sessionName = document.getElementById("session-name").textContent;
   r.firstUseOpen = document.getElementById("first-use").classList.contains("open");
-  if(!r.firstUseOpen) r.bootstrap = "ready";
+  syncBootstrapFromTree();
 }
 function renderFirstUseCopy(){
   const r = currentRepo();
@@ -755,11 +815,16 @@ function renderRepoMenu(){
     <button type="button" data-repo="${r.id}" class="${r.id===repoId?"on":""}">
       <b>${r.name}</b>
       <span class="src">${r.source}</span>
-      <span class="tag">${r.bootstrap==="ready"?"已建图":"首次使用"}</span>
+      <span class="tag${r.bootstrap==="pending"||r.bootstrap==="analyzing"?" wait":""}">${bootstrapLabel(r.bootstrap)}</span>
+      ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">重新分析此仓库</span>`:""}
     </button>`).join("");
   el.querySelectorAll("[data-repo]").forEach(b=>b.onclick=e=>{
     e.stopPropagation();
     switchRepo(b.dataset.repo);
+  });
+  el.querySelectorAll("[data-reanalyze]").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    reanalyzeRepo(b.dataset.reanalyze);
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
@@ -770,7 +835,7 @@ function switchRepo(id){
   const r = currentRepo();
   closeRepoMenu();
   applyRepoChrome();
-  if(r.live && r.bootstrap==="ready"){
+  if(hasMap(r) || r.live){
     loadLive(r);
     renderAll();
     fitView();
@@ -781,13 +846,14 @@ function switchRepo(id){
   renderAll();
   fitView();
 }
-function hideFirstUse(){
-  document.getElementById("first-use").classList.remove("open");
-  document.getElementById("first-use-ask").hidden = false;
-  document.getElementById("first-use-work").hidden = true;
+function setOverlay(open, analyzingView){
+  document.getElementById("first-use").classList.toggle("open", !!open);
+  document.getElementById("first-use-ask").hidden = !!analyzingView;
+  document.getElementById("first-use-work").hidden = !analyzingView;
+}
+function closeOverlay(){
+  setOverlay(false, false);
   currentRepo().firstUseOpen = false;
-  currentRepo().bootstrap = "ready";
-  persist();
 }
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
@@ -803,13 +869,12 @@ function emptyFirstUse(){
   currentRepo().firstUseOpen = true;
   currentRepo().live = null;
   document.getElementById("session-name").textContent = "S-0823 首次使用";
-  document.getElementById("first-use").classList.add("open");
-  document.getElementById("first-use-ask").hidden = false;
-  document.getElementById("first-use-work").hidden = true;
+  setOverlay(true, false);
   applyRepoChrome();
 }
 function startEmptyRoot(){
-  hideFirstUse();
+  closeOverlay();
+  currentRepo().bootstrap = "ready";
   data.memories = [{text:"绿场项目：只留下根节点。有了真实模块再往下长。", state:"success"}];
   document.getElementById("session-name").textContent = "S-0823 空白项目";
   renderAll();
@@ -817,33 +882,46 @@ function startEmptyRoot(){
   persist();
 }
 let analyzing = false;
+function stepText(s){ return typeof s==="string" ? s : s.do; }
+function stepFind(s){ return typeof s==="string" ? "" : (s.find||""); }
 function renderAnalyzeLog(steps, active){
   const ul = document.getElementById("analyze-log");
   ul.innerHTML = steps.map((s,i)=>{
     const st = i<active? "done" : i===active? "on" : "wait";
-    return `<li class="${st}">${s}</li>`;
+    const find = stepFind(s);
+    const findHtml = find && i<=active ? `<div class="find">${find}</div>` : "";
+    return `<li class="${st}">${stepText(s)}${findHtml}</li>`;
   }).join("");
+}
+function proposedTree(r){
+  const next = clone(r.blueprint);
+  return {
+    id: next.id,
+    title: next.title,
+    state: next.state,
+    kind: next.kind,
+    bugs: next.bugs||[],
+    dormant: next.dormant||[],
+    memories: [
+      {text:"来源：Agent 理解架构后的第一层，不是目录树，也不是瞬间出图", state:"success"},
+      {text:"未确认的模块后续 Agent 读不到。确认一层，再往下拆。下次打开仍是这张图。", state:"success"}
+    ].concat(next.memories||[]),
+    children: (next.children||[]).map(c=>asProposal(clone(c)))
+  };
 }
 function applyProposedMap(){
   const r = currentRepo();
-  const next = clone(r.blueprint);
-  data.title = next.title;
-  data.state = next.state;
-  data.bugs = next.bugs;
-  data.dormant = next.dormant;
-  data.memories = [
-    {text:"来源：当前仓库 "+r.source+"（Agent 分析后的第一层，不是目录树）", state:"success"},
-    {text:"未确认的模块后续 Agent 读不到。确认一层，再往下拆。", state:"success"}
-  ].concat(next.memories);
-  data.children = next.children.map(asProposal);
+  adoptTree(proposedTree(r));
   sessionAuth.clear();
   sessionAuth.add("T0");
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
   composingId = null;
-  document.getElementById("session-name").textContent = "S-0823 首次建图";
-  hideFirstUse();
+  r.bootstrap = "proposed";
+  r.live = clone(data);
+  document.getElementById("session-name").textContent = "S-0823 待确认";
+  closeOverlay();
   renderAll();
   fitView();
   persist();
@@ -851,25 +929,32 @@ function applyProposedMap(){
 function startRepoSplit(){
   if(analyzing) return;
   analyzing = true;
-  const steps = currentRepo().analyze || ["阅读仓库","归纳第一层模块"];
-  document.getElementById("first-use").classList.add("open");
-  document.getElementById("first-use-ask").hidden = true;
-  document.getElementById("first-use-work").hidden = false;
+  const steps = currentRepo().analyze || ["理解仓库分层","提出第一层模块"];
   currentRepo().bootstrap = "analyzing";
-  renderAnalyzeLog(steps, 0);
-  persist();
+  setOverlay(true, true);
   let i = 0;
-  const tick = ()=>{
+  const advance = ()=>{
     renderAnalyzeLog(steps, i);
+    persist();
     if(i>=steps.length){
       analyzing = false;
       applyProposedMap();
       return;
     }
     i += 1;
-    setTimeout(tick, i===1? 700 : 900);
+    setTimeout(advance, 2100);
   };
-  setTimeout(tick, 400);
+  advance();
+}
+function reanalyzeRepo(id){
+  closeRepoMenu();
+  if(id!==repoId){
+    persist();
+    repoId = id;
+    applyRepoChrome();
+  }
+  emptyFirstUse();
+  startRepoSplit();
 }
 
 /* ================= 树工具 ================= */
@@ -1525,14 +1610,21 @@ vp.addEventListener("wheel", e=>{
 },{passive:false});
 
 function renderAll(){ renderNav(); renderTray(); renderMap(); renderDetail();
-  if(currentRepo().bootstrap==="ready") persist(); }
+  const st = currentRepo().bootstrap;
+  if(st==="ready" || st==="proposed") persist(); }
 function boot(){
+  applyRepoChrome();
   if(restore()){
     renderAll();
     fitView();
     return;
   }
-  emptyFirstUse();
+  const r = currentRepo();
+  if(hasMap(r)){
+    loadLive(r);
+  }else{
+    emptyFirstUse();
+  }
   renderAll();
   fitView();
 }

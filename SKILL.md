@@ -85,15 +85,15 @@ Context records need a folder-scoped language preference so Codex does not mix l
 
 ## First Use: Architecture Map
 
-The architecture map is created once: the first time Context Guard is used in a folder. It is not a later “import from GitHub” action, and it is not a dump of the directory tree.
+The architecture map is created once: the first time Context Guard is used in a folder. It is not a later “import from GitHub” action, not a dump of the directory tree, and not an instant click.
 
-1. Treat a folder as first use when `.codex/context/` does not exist, `preferences.json` has `map_bootstrap` missing or `pending`, or the map has no human-confirmed modules.
-2. First use itself is the trigger. Do not wait for the user to click import, paste a repo URL, or ask to “build a map”.
-3. Read the opened project: README, package/workspace boundaries, existing architecture docs, and obvious runtime entrypoints. Do not create one node per file or copy the folder tree.
+1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If a proposed or confirmed map already exists, later sessions open that map. Do not re-analyze.
+2. First-use analysis is work, not a scan. The agent must read README, package/workspace boundaries, existing architecture docs, and runtime entrypoints, then form a judgment of the system's layers. This takes time. Do not emit one node per file, copy the folder tree, or treat the map as an instant import.
+3. First use itself is the trigger. Do not wait for a GitHub URL or an import button. Do not pretend the map can appear in one click.
 4. Propose only the first layer of modules (name, one-line purpose, sparse memories) as unconfirmed proposals in the HTML workbench. Later agents must not read unconfirmed proposals.
 5. The human confirms, rewrites, or hides modules. After a module is confirmed, unpack the next layer only when they enter that module or explicitly ask to expand it.
 6. If the folder is greenfield (almost no code or docs), create a root node only. Do not invent a fake architecture.
-7. After the human confirms the first layer, or explicitly starts from an empty root, set `map_bootstrap` to `ready` in `.codex/context/preferences.json`. Later sessions load the existing map and must not re-split the repository unless the user asks to rebuild.
+7. After proposing L1, set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set `map_bootstrap` to `ready`. Later sessions load the existing map and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
 
 ## User Message Memory

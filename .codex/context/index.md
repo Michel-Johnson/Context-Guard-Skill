@@ -13,8 +13,8 @@
 - Title: 工作台交互与首次建图
 - State: current
 - Last updated: 2026-08-23
-- Summary: 把 Context Guard 做成「人编辑、Agent 记录」的项目地图；首次使用从当前仓库拆第一层。
-- Next step: 人在工作台确认 Context Guard 第一层模块，并点标题切换仓库。
+- Summary: 把 Context Guard 做成「人编辑、Agent 记录」的项目地图；首次建图要分析架构，之后打开已有图，不重拆。
+- Next step: 人在工作台确认 Context Guard 第一层；需要重拆时才点「重新分析」。
 
 ## Parked / Resume Candidates
 

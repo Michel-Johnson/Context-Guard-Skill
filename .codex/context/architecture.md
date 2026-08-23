@@ -1,7 +1,9 @@
 # Architecture Map
 
-Status: proposed (first use, awaiting human confirmation)
+Status: proposed (analysis done, awaiting human confirmation)
 Source: this repository, not a directory dump
+Later sessions: open this map. Do not re-analyze unless the human asks to rebuild.
+Analysis is not instant: the agent must understand architecture before proposing L1.
 
 Root: Context Guard  
 Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作台确认、改写、授权。

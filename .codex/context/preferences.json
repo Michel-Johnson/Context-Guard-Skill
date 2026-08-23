@@ -1,7 +1,7 @@
 {
   "record_language": "zh",
   "display_language": "zh",
-  "map_bootstrap": "pending",
+  "map_bootstrap": "proposed",
   "last_updated": "2026-08-23",
   "note": "Set with: context_guard.py set-language --language <language>"
 }
