@@ -1916,6 +1916,26 @@ function renderDetail(){
     !(isModule && moduleAuthState(node)!=="none");
   const composing = composingId===node.id;
 
+  /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Bug/继承都先不出现。 */
+  if(proposed){
+    const why = (node.memories||[]).filter(m=>m.text)
+      .map(m=>`<p class="note">${m.text}</p>`).join("");
+    el.innerHTML = `
+      <h2>${node.title}
+        <span class="state-chip proposed-chip">提议</span>
+      </h2>
+      ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
+      <p class="note">尚未加入地图，后续 Agent 读不到。</p>
+      ${why}
+      <div class="actions">
+        <button data-act="accept" class="primary">加入</button>
+        <button data-act="cancel" class="warn">隐藏</button>
+      </div>`;
+    el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
+    el.querySelector('[data-act="cancel"]').onclick = ()=>cancelProposal(node);
+    return;
+  }
+
   const inherited = [];
   path.slice(0,-1).filter(a=>!isProposed(a)&&!isCancelled(a)).forEach(anc=>{
     anc.memories.filter(m=>m.state!=="dirty").forEach(m=>inherited.push({mem:m, from:anc.title}));
