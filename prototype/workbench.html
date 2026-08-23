@@ -1447,11 +1447,13 @@ function isCatalogView(){
 }
 function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
+  if(isCatalogView()) return n.id===viewRootId ? kids : [];
   if(n.id===viewRootId) return kids;
-  if(isCatalogView()) return [];
   const d = depthFromView(n);
   if(d<0 || d>=VIEW_DEPTH) return [];
-  return kids;
+  /* 更深层只展开子模块。开工胶囊只出现在当前模块正下方，
+     否则会和模块卡上的用途再重复一列。 */
+  return kids.filter(c=>c.kind==="module");
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -1607,8 +1609,11 @@ function nodeHtml(n, isViewRoot){
     ? `<span class="auth-mark ${isAuth(n)?"on":""}">${isAuth(n)?"✓":""}</span>` : "";
   if(n.kind==="module"){
     const st = moduleAuthState(n);
+    const lock = isProposed(n) ? ""
+      : st==="none"?`<span class="lock">🔒</span>`
+      : st==="partial"?`<span class="part-tag">部分</span>`:"";
     return `<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
-        ${st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:""}
+        ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>
       <div class="m-blurb">${n.purpose||""}</div>`;
@@ -1974,8 +1979,8 @@ function renderDetail(){
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
-    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级；点卡片可聚焦那一枝。</p>`;
-    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元（命令/文件）。左右/上下排整枝，不只一层。</p>`;
+    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级子模块；开工胶囊只出现在当前这一层。</p>`;
+    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元。点进子模块后才会看到那一层的文件/命令胶囊。</p>`;
   }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
     note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
   }
