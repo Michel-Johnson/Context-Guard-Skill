@@ -111,7 +111,8 @@ Hard rules for the proposing agent:
 2. L2 is work units, not another round of slogans. Prefer `src/commands/onboard.ts` over `CLI 入口`.
 3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
 4. Do not emit one node per file. Group what you would change together; title with the primary path.
-5. Root layout: L1 confirmation. Work units appear when the human selects or enters a module. Analysis depth lives in `architecture.md` either way.
+5. Root layout: a grid of L1 cards, never one long trunk. Each card previews its first few work units; selecting a card peeks the full list; entering shows the tree. Analysis depth lives in `architecture.md` either way.
+6. Every node carries a one-line purpose in the record language that a maintainer can read cold: "when would I open this". If the human cannot tell what a node is for, the analysis failed — the confirmation gate exists to delete exactly those nodes, and the agent must rewrite, not defend, them.
 
 ## User Message Memory
 
