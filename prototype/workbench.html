@@ -1192,6 +1192,10 @@ function loadLive(r){
   viewRootId = r.viewRootId || "T0";
   focusId = r.focusId || null;
   composingId = null;
+  if(viewRootId!==data.id){
+    const n = getNode(viewRootId);
+    if(n) unpackToDepth(n, VIEW_DEPTH);
+  }
   document.getElementById("session-name").textContent = r.sessionName || (r.bootstrap==="proposed"?"S-0823 待确认":"当前会话");
   setOverlay(overlayOpenFor(r), r.bootstrap==="analyzing");
 }
@@ -1445,15 +1449,18 @@ function depthFromView(n){
 function isCatalogView(){
   return viewRootId===data.id;
 }
+function unpackToDepth(n, remain){
+  if(!n || remain<0) return;
+  unpackInbox(n);
+  (n.children||[]).forEach(c=>unpackToDepth(c, remain-1));
+}
 function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(isCatalogView()) return n.id===viewRootId ? kids : [];
   if(n.id===viewRootId) return kids;
   const d = depthFromView(n);
   if(d<0 || d>=VIEW_DEPTH) return [];
-  /* 更深层只展开子模块。开工胶囊只出现在当前模块正下方，
-     否则会和模块卡上的用途再重复一列。 */
-  return kids.filter(c=>c.kind==="module");
+  return kids;
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -1503,6 +1510,8 @@ function cancelledList(){
 }
 function enterView(id){
   viewRootId = id; selectedId = id;
+  const n = getNode(id);
+  if(n && id!==data.id) unpackToDepth(n, VIEW_DEPTH);
   renderAll();
   fitView();
 }
@@ -1979,8 +1988,8 @@ function renderDetail(){
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
-    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级子模块；开工胶囊只出现在当前这一层。</p>`;
-    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元。点进子模块后才会看到那一层的文件/命令胶囊。</p>`;
+    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级（子模块和开工单元）。</p>`;
+    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元。左右/上下排整枝，不只一层。</p>`;
   }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
     note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
   }
