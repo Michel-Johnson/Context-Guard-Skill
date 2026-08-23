@@ -1891,9 +1891,13 @@ function acceptLayer(node){
   renderAll();
 }
 function cancelProposal(n){
+  if(!n || n.id===data.id) return;
   n.proposal = "cancelled"; n.isNew = false;
   const p = findPath(n.id);
-  selectedId = p.length>1? p[p.length-2].id : "T0";
+  const parent = p.length>1? p[p.length-2] : data;
+  const vp = findPath(viewRootId);
+  if(n.id===viewRootId || (vp && vp.some(x=>x.id===n.id))) viewRootId = parent.id;
+  selectedId = parent.id;
   renderAll();
 }
 
@@ -1991,9 +1995,7 @@ function renderDetail(){
     : "";
 
   const pendingKids = node.children.filter(isProposed).length;
-  const note = cancelled? `<p class="note">已隐藏。</p>`
-    : noauth? `<p class="note">未授权。</p>`
-    : "";
+  const canDelete = node.id!==data.id;
   /* dirty/探索中是缺省，不是要人改的活状态；只在有结论或自定义标签时才露芯片。 */
   const chip = cancelled? `<span class="state-chip failed">已取消</span>`
     : isModule? `<span class="state-chip module">模块</span>`
@@ -2007,13 +2009,13 @@ function renderDetail(){
   el.innerHTML = `
     <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
-    ${note}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">恢复</button>`:""}
       ${!cancelled? `
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
-        ${composing?"":`<button data-act="child">＋ 子节点</button>`}`:""}
+        ${composing?"":`<button data-act="child">＋ 子节点</button>`}
+        ${canDelete? `<button data-act="delete" class="quiet">删除</button>`:""}`:""}
     </div>
     ${composing? `<div class="compose">
         <span class="ed ghost" data-ed="compose-title">子节点名称</span>
@@ -2057,6 +2059,7 @@ function renderDetail(){
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
+  if(q('[data-act="delete"]'))  q('[data-act="delete"]').onclick  = ()=>cancelProposal(node);
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
