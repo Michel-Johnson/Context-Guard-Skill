@@ -64,6 +64,7 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .dir-toggle button + button{border-left:2px solid var(--line-ink)}
 .dir-toggle button:hover{color:var(--ink)}
 .dir-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+.dir-toggle.is-catalog{display:none}
 body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
 .first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
@@ -285,7 +286,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块；命令和文件是开工单元，点选模块才预览，不整页铺开。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块。点进模块后才看到子模块或开工单元，根上不预览、不摊开文件。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -297,7 +298,7 @@ details.fold .mem-list{margin-top:6px}
     <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；命令和文件点选后才预览。这不是这次点击实时读仓得到的。</p>
+    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；点进模块才看到子模块和开工单元。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -341,7 +342,7 @@ function U(id, title, purpose, children, extra){
   if(extra.isNew) node.isNew = extra.isNew;
   return node;
 }
-/* 导图数据来自 github.com/openclaw/openclaw；L2 是可开工的命令/文件，不是口号分组 */
+/* 导图数据来自 github.com/openclaw/openclaw。点进 L1 先看到子模块卡；用途必须点名文件。文件挂在子模块下，不要在一张卡下摊开十几份，也不要 CLI/TUI/UI 空壳。 */
 const OPENCLAW_MAP = {
   id:"T0", title:"OpenClaw", state:"dirty", memories:[
     {text:"定位：跑在自己设备上的个人助手，在已有聊天渠道里见面", state:"success"},
@@ -350,10 +351,13 @@ const OPENCLAW_MAP = {
   ], bugs:[], dormant:[], children:[
 
     U("M1", "Gateway 控制面", "本机长驻进程：WebSocket 协议、会话、工具、事件、渠道连接的唯一入口", [
+      U("M11", "进程与绑定", "src/gateway 绑 127.0.0.1:18789；healthz 与 loopback 校验", [
       U("N11", "src/gateway 服务入口", "默认绑 127.0.0.1:18789；macOS / CLI / Web / Node 都连同一条 WS", [
         U("N11a", "bind 与 loopback 校验", "非 loopback 禁止把 auth.mode 整段关掉", []),
         U("N11b", "hello-ok methods/events", "连上后发现协议面，不是另开 REST 目录", [])
       ], {memories:[{text:"每台主机一个 Gateway；渠道会话只由它打开", state:"success"}], bugs:[{id:"B10", title:"非 loopback 误开 auth.mode=none", desc:"私有入口的 none 模式若暴露到公网，共享密钥校验被整段关掉", status:"open"}]}),
+      ]),
+      U("M12", "WebSocket 协议", "connect 首帧、req/res/event、TypeBox schema", [
       U("N12", "src/gateway/protocol/connect.ts", "首帧必须是 connect；非 JSON 或非 connect 直接断开", [
         U("N12a", "connect 握手", "设备签名与 challenge 在这一帧完成", []),
         U("N12b", "非 connect 断开", "协议门卫，不是日志提示", [])
@@ -368,6 +372,8 @@ const OPENCLAW_MAP = {
         U("N14b", "JSON Schema 导出", "给 Web / 文档 / 校验", []),
         U("N14c", "Swift 客户端模型生成", "macOS/iOS 不手写对等类型", [])
       ]),
+      ]),
+      U("M13", "会话与 agent 调度", "agent-runner、sessionKey、每会话队列", [
       U("N15", "src/auto-reply/agent-runner.ts", "一轮 agent turn：accepted → stream → final", [
         U("N15a", "req:agent accepted + runId", "先 ack 再推流", []),
         U("N15b", "stream → final 事件序", "UI 按这条组装气泡", []),
@@ -379,14 +385,18 @@ const OPENCLAW_MAP = {
         U("N17b", "跨会话并发上限", "一台主机不是无限 agent", []),
         U("N17c", "shutdown drain", "关掉 Gateway 前先排空", [])
       ]),
-      U("N18", "/__openclaw__/canvas/", "与 WS 同端口托管 widget 文档", []),
-      U("N19", "/__openclaw__/a2ui/", "A2UI 渲染面，不是另起 HTTP 服务", []),
-      U("N1a", "Control UI 静态资源", "Vite 产物由 Gateway 同端口端出", []),
-      U("N1b", "/healthz", "守护进程和 doctor 探活", []),
       U("P1", "Computer-use harness 加强", "下一优先：computer-use 与 agent harness 在 Gateway 侧留稳定 node caps 合同", [], {origin:"agent", proposal:"proposed", isNew:true, memories:[{text:"Agent 提议理由：computer-use 需要稳定的 node caps 合同，不要散落在各端", state:"dirty"}]})
+      ]),
+      U("M14", "同端口 HTTP", "canvas / a2ui / Control UI 静态资源，不另起服务", [
+        U("N18", "/__openclaw__/canvas/", "与 WS 同端口托管 widget 文档", []),
+        U("N19", "/__openclaw__/a2ui/", "A2UI 渲染面，不是另起 HTTP 服务", []),
+        U("N1a", "Control UI 静态资源", "Vite 产物由 Gateway 同端口端出", []),
+        U("N1b", "/healthz", "守护进程和 doctor 探活", [])
+      ])
     ]),
 
     U("M2", "Agent Runtime", "一次 agent 调用如何取上下文、选模型、跑工具、写记忆", [
+      U("M21", "循环与上下文裁剪", "packages/agent-core loop 和进 prompt 前的压缩/截断", [
       U("N21", "packages/agent-core 循环", "一轮 tool-call 循环，不是聊天 UI", [
         U("N21a", "src/runtime 或 packages/agent-core loop", "stop / max-turns 在这里", []),
         U("N21b", "tool-call 解析与重试", "坏 JSON 不能直接炸 run", [])
@@ -396,18 +406,24 @@ const OPENCLAW_MAP = {
       U("N24", "轨迹 / 工具结果截断", "长 tool 输出必须切，否则单次调用超时", []),
       U("N25", "转录窗口", "渠道消息进 prompt 的窗口，不是全文", []),
       U("N26", "system prompt 拼装", "技能说明、工具表、会话卡在这里拼", []),
+      ]),
+      U("M22", "Memory 槽", "memory-host-sdk 单槽；默认文件 memory", [
       U("N27", "memory-host-sdk", "host 对 memory 插件的 load / search / write；同时只能激活一个", [
         U("N27a", "load / search / write API", "合同在 SDK，不在某个文件 memory 里", []),
         U("N27b", "单槽互斥", "两种 memory 实现不能同时写", [])
       ]),
       U("N28", "默认文件 memory", "当前 bundled 实现；切换实现不改 loop", []),
+      ]),
+      U("M23", "工具与沙箱", "host 派发、sandbox、fs/shell、computer-use", [
       U("N29", "host 工具派发", "主会话工具默认在宿主机跑", []),
       U("N2a", "sandbox 开关与策略", "暴露 Gateway 或连上其他人之前必须先开", []),
       U("N2b", "文件系统 / shell 工具", "和工作区绑定，不是抽象 REPL", []),
       U("N2c", "browser / computer-use 工具", "走 node caps，不在 loop 里写死浏览器", [])
+      ])
     ], {bugs:[{id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"},{id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}]}),
 
     U("M3", "Channels 消息渠道", "把助手接到 WhatsApp / Telegram / Slack / Discord / Signal / iMessage 等已有聊天里", [
+      U("M31", "已接聊天渠道", "whatsapp/baileys、telegram/grammy，以及 slack/discord/signal/imessage 各自实现目录", [
       U("N31", "src/channels/whatsapp/baileys.ts", "每台主机一个 Baileys 会话，只由 Gateway 打开", [
         U("N31a", "auth 状态落盘", "扫码会话必须能复活", []),
         U("N31b", "入站消息 → sessionKey", "渠道消息进 Gateway 会话", []),
@@ -422,111 +438,156 @@ const OPENCLAW_MAP = {
       U("N35", "src/channels/googlechat", "Google Chat app，不是 webhook 包装", []),
       U("N36", "src/channels/signal", "本机身份渠道，不能多开", []),
       U("N37", "src/channels/imessage", "iMessage / BlueBubbles 桥", []),
+      ]),
+      U("M32", "入站配对", "allowlist、pairing 队列、pairing approve", [
       U("N38", "allowlist 匹配", "能私聊的渠道默认要配对未知发送者", []),
       U("N39", "pairing 队列", "未知发送者先卡住，不进 agent", []),
       U("N3a", "openclaw pairing approve", "CLI 和 Control UI 改同一份队列", []),
       U("P3", "再包一层已有渠道的 wrapper", "已取消：不收无能力/安全缺口的 wrapper channel", [], {origin:"agent", proposal:"cancelled", isNew:false, memories:[{text:"Agent 提议给已支持渠道再做包装通道。已取消：不收无能力/安全缺口的 wrapper channel", state:"dirty"}]})
+      ])
     ], {memories:[{text:"渠道把入站消息当不可信输入；能私聊的渠道默认要配对未知发送者", state:"success"}], bugs:[{id:"B30", title:"DM 渠道默认配对提示易被忽略", desc:"操作者以为渠道一连上就能聊，实际消息卡在 pairing 队列", status:"open"}]}),
 
     U("M4", "Models 与供应商", "模型目录、选择器、托管/本地供应商，核心只认当前配置 schema", [
+      U("M41", "目录与选择器", "catalog schema、别名、默认/覆盖/回退", [
       U("N41", "model-catalog JSON schema", "当前 schema 下的目录；改名必须走 doctor", []),
       U("N42", "别名与弃用项", "旧模型名不能默默失效", []),
       U("N43", "默认模型解析", "一次 run 的起点", []),
       U("N44", "会话级模型覆盖", "TUI / Control UI / 渠道都能改", []),
       U("N45", "失败回退链", "主模型挂了走下一家，不是直接红", []),
+      ]),
+      U("M42", "供应商适配", "extensions/anthropic、vertex、ollama、网关代理", [
       U("N46", "extensions/anthropic", "官方 API 适配", []),
       U("N47", "extensions/vertex", "Vertex 适配，不堆进 core", []),
       U("N48", "ollama / 本地", "本机模型走 extensions", []),
       U("N49", "cloudflare-ai-gateway", "网关型供应商与主 picker 的优先级", []),
       U("N4a", "copilot-proxy", "代理供应商，优先级写进 picker 而不是 if-else", [])
+      ])
     ], {memories:[{text:"配置改名必须带 doctor 迁移：检测旧形态、备份、改写成规范格式", state:"success"}]}),
 
     U("M5", "Plugins · Skills · MCP", "core 保持瘦；能力默认做插件。代码插件改运行时，bundle 插件装技能/MCP", [
+      U("M51", "插件运行时", "plugin-sdk hook、工具表、配置合同、ClawHub、安装签名", [
       U("N51", "packages/plugin-sdk 生命周期", "hook：load / register / dispose，不是业务堆头", []),
       U("N52", "工具注册表", "插件往这里挂 tool，loop 只看表", []),
       U("N53", "插件配置 schema 合同", "core doctor 不改插件私有键", []),
       U("N54", "ClawHub org publisher", "官方插件走受审 org", []),
       U("N55", "安装 / 更新 / 签名", "分发面，core 文档只写扩展点", []),
+      ]),
+      U("M52", "MCP", "自己当 server、接外部 client、与 tool 路径合流", [
       U("N56", "MCP server 暴露 tools", "OpenClaw 自己当 MCP server", []),
       U("N57", "MCP client 接入外部 server", "外部工具并进同一 tool 路径", []),
       U("N58", "与 runtime tool 路径合流", "避免再复制一套 agent/tool", []),
+      ]),
+      U("M53", "Skills 加载", "基线 UX、workspace→bundled 覆盖序", [
       U("N59", "skills/ 基线 UX 清单", "只留基线；新技能不进 core", []),
       U("N5a", "workspace → 个人 → managed → bundled 加载序", "高优先级覆盖，不合并冲突技能", []),
       U("P2", "向 core 合入新 skill", "已取消：VISION 写明新 skill 走 ClawHub", [], {origin:"agent", proposal:"cancelled", isNew:false, memories:[{text:"Agent 提议把常用 skill 放进 core。已取消：VISION 写明新 skill 走 ClawHub", state:"dirty"}]})
+      ])
     ], {memories:[{text:"新技能先上 ClawHub，不默认合进 core", state:"success"},{text:"同一种能力出现多次，就在 core/SDK 落合同，再把捆绑实现迁到合同上", state:"success"}]}),
 
     U("M6", "伴侣应用与 Nodes", "macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", [
+      U("M61", "macOS 伴侣", "菜单栏客户端、Swift 模型、canvas widget", [
       U("N61", "apps/macos Gateway 客户端", "菜单栏伴侣，连本机 WS", []),
       U("N62", "Swift 模型生成", "从协议 JSON Schema 生成，不手写", []),
       U("N63", "canvas.* widget 命令", "macOS 画布控件", []),
+      ]),
+      U("M62", "iOS / Android node", "camera/screen/location caps；Android 策略源不能分叉", [
       U("N64", "apps/ios node", "camera.* / screen.record / location.get", []),
       U("N65", "apps/android node", "同一套 caps，策略源必须一致", []),
       U("N66", "camera / screen / location caps", "connect 里声明，按设备配对", []),
       U("N67", "Android policy-config vs policy-source", "required-commands 判断不能分叉", []),
+      ]),
+      U("M63", "Linux node", "headless caps 与远程命令", [
       U("N68", "headless Linux node", "无界面：只报 caps、跑命令", []),
       U("N69", "远程命令执行", "node 上的 shell/文件，不是 Gateway 本机", []),
+      ]),
+      U("M64", "Canvas / A2UI", "Gateway 同端口托管 widget 文档", [
       U("N6a", "canvas 文档路由", "Gateway HTTP 与 WS 同端口", []),
       U("N6b", "A2UI 渲染", "托管 widget 文档", [])
+      ])
     ], {memories:[{text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"}], bugs:[{id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}]}),
 
-    U("M7", "控制面 UI", "人操作 Gateway：每个命令、每个主循环、每个面板都是可改文件，不是 CLI/TUI/UI 三个名字", [
-      U("N70", "src/entry.ts", "CLI 进程入口，设环境后交给 run-main", []),
-      U("N71", "src/cli/run-main.ts", "注册全部子命令；名词用复数", []),
-      U("N72", "src/commands/onboard.ts", "openclaw onboard：模型、工作区、可选 --install-daemon", [
-        U("N72a", "模型 / 工作区问卷", "第一次把助手装上", []),
-        U("N72b", "失败回 doctor", "向导不是一次性脚本", [])
+    U("M7", "控制面 UI", "人操作 Gateway：命令、终端会话、浏览器面板、远程隧道分面开工，不是把所有文件摊在一张卡下", [
+      U("M71", "CLI 命令", "src/entry.ts → run-main.ts → src/commands/*：终端里改 Gateway 的那一组命令", [
+        U("M711", "进程入口", "entry 设环境，run-main 按复数名词注册子命令", [
+          U("N70", "src/entry.ts", "CLI 进程入口，设环境后交给 run-main", []),
+          U("N71", "src/cli/run-main.ts", "注册全部子命令；名词用复数", [])
+        ]),
+        U("M712", "安装与守护", "第一次把助手装上：onboard / daemon / gateway / doctor", [
+          U("N72", "src/commands/onboard.ts", "openclaw onboard：模型、工作区、可选 --install-daemon", [
+            U("N72a", "模型 / 工作区问卷", "第一次把助手装上", []),
+            U("N72b", "失败回 doctor", "向导不是一次性脚本", [])
+          ]),
+          U("N73", "src/commands/daemon.ts", "install-daemon：launchd / systemd 入口", []),
+          U("N74", "src/commands/gateway.ts", "gateway start / stop / status / restart / --bind", []),
+          U("N78", "src/commands/doctor.ts", "doctor --fix 是配置迁移主路径，不是可选项", [])
+        ]),
+        U("M713", "会话与模型", "命令行发 agent、列会话、改默认模型", [
+          U("N75", "src/commands/agent.ts", "命令行发一轮 agent，拿 runId", []),
+          U("N76", "src/commands/sessions.ts", "列会话、补发消息、看历史", []),
+          U("N77", "src/commands/models.ts", "模型列表、默认模型、扫描供应商", [])
+        ]),
+        U("M714", "渠道与配置", "channels / pairing / plugins / config，和 Control UI 改同一份状态", [
+          U("N79", "src/commands/channels.ts", "渠道连接向导，和 Control UI 向导改同一份状态", []),
+          U("N7a", "src/commands/pairing.ts", "pairing approve / 列表，放行未知发送者", []),
+          U("N7b", "src/commands/plugins.ts", "插件与技能安装、更新", []),
+          U("N7c", "src/commands/config.ts", "config get/set，对齐当前 schema", [])
+        ]),
+        U("M715", "运维命令", "logs / cron / nodes / dashboard：用 token 打开 Control UI", [
+          U("N7d", "src/commands/logs.ts", "经 RPC 拉 Gateway 文件日志", []),
+          U("N7e", "src/commands/cron.ts", "定时任务走 Gateway scheduler", []),
+          U("N7f", "src/commands/nodes.ts", "设备节点列表与 caps", []),
+          U("N7g", "src/commands/dashboard.ts", "用当前 token 打开 Control UI", [])
+        ])
       ]),
-      U("N73", "src/commands/daemon.ts", "install-daemon：launchd / systemd 入口", []),
-      U("N74", "src/commands/gateway.ts", "gateway start / stop / status / restart / --bind", []),
-      U("N75", "src/commands/agent.ts", "命令行发一轮 agent，拿 runId", []),
-      U("N76", "src/commands/sessions.ts", "列会话、补发消息、看历史", []),
-      U("N77", "src/commands/models.ts", "模型列表、默认模型、扫描供应商", []),
-      U("N78", "src/commands/doctor.ts", "doctor --fix 是配置迁移主路径，不是可选项", []),
-      U("N79", "src/commands/channels.ts", "渠道连接向导，和 Control UI 向导改同一份状态", []),
-      U("N7a", "src/commands/pairing.ts", "pairing approve / 列表，放行未知发送者", []),
-      U("N7b", "src/commands/plugins.ts", "插件与技能安装、更新", []),
-      U("N7c", "src/commands/config.ts", "config get/set，对齐当前 schema", []),
-      U("N7d", "src/commands/logs.ts", "经 RPC 拉 Gateway 文件日志", []),
-      U("N7e", "src/commands/cron.ts", "定时任务走 Gateway scheduler", []),
-      U("N7f", "src/commands/nodes.ts", "设备节点列表与 caps", []),
-      U("N7g", "src/commands/dashboard.ts", "用当前 token 打开 Control UI", []),
-      U("N7h", "src/cli/tui-cli.ts", "注册 tui，别名 terminal / chat；--local 才嵌入式", []),
-      U("N7i", "src/tui/tui.ts", "终端会话主循环：header / chat log / status / editor", [
-        U("N7i1", "pi-tui 组件树", "布局和渲染循环", []),
-        U("N7i2", "editor 组件", "输入、补全、粘贴", [])
+      U("M72", "TUI", "src/tui/tui.ts 主循环：连已有 Gateway，或 --local 嵌入式跑 agent", [
+        U("N7h", "src/cli/tui-cli.ts", "注册 tui，别名 terminal / chat；--local 才嵌入式", []),
+        U("N7i", "src/tui/tui.ts", "终端会话主循环：header / chat log / status / editor", [
+          U("N7i1", "pi-tui 组件树", "布局和渲染循环", []),
+          U("N7i2", "editor 组件", "输入、补全、粘贴", [])
+        ]),
+        U("N7j", "GatewayChatClient", "TUI 连已有 Gateway 的 WS 后端", []),
+        U("N7k", "EmbeddedBackend --local", "无 Gateway 时在进程内跑 agent；chat/terminal 别名默认走这条", []),
+        U("N7l", "src/tui 流式组装", "把 event:agent 分片拼成气泡，含 tool-call 可视化", []),
+        U("N7m", "src/tui/commands.ts slash", "/status /agent /session /model /auth；随当前 agent 变", []),
+        U("N7n", "TUI 会话与 agent 切换", "session scope、mainKey、多 agent", []),
+        U("N7o", "createLocalShellRunner", "!command 走本机 PTY，不是把输出当普通文本贴进去", [])
       ]),
-      U("N7j", "GatewayChatClient", "TUI 连已有 Gateway 的 WS 后端", []),
-      U("N7k", "EmbeddedBackend --local", "无 Gateway 时在进程内跑 agent；chat/terminal 别名默认走这条", []),
-      U("N7l", "src/tui 流式组装", "把 event:agent 分片拼成气泡，含 tool-call 可视化", []),
-      U("N7m", "src/tui/commands.ts slash", "/status /agent /session /model /auth；随当前 agent 变", []),
-      U("N7n", "TUI 会话与 agent 切换", "session scope、mainKey、多 agent", []),
-      U("N7o", "createLocalShellRunner", "!command 走本机 PTY，不是把输出当普通文本贴进去", []),
-      U("N7p", "ui/src 会话侧栏", "浏览器里的会话列表，走 Gateway WS", []),
-      U("N7q", "ui/src/chat/transcript", "流式气泡与工具调用展示", []),
-      U("N7r", "ui/src/chat/composer", "发送、附件、会话内覆盖模型", []),
-      U("N7s", "Control UI 渠道接入向导", "在浏览器完成渠道连接，不是只丢 CLI", []),
-      U("N7t", "Control UI Nodes 面板", "摄像头/屏幕 node 的配对与 caps", []),
-      U("N7u", "Control UI skills / 模型 / 配置", "和 CLI 改同一份 schema", []),
-      U("N7v", "Control UI 日志 / Cron", "事件日志和定时任务", []),
-      U("N7w", "OpenClawTerminalPanel", "浏览器终端坞接到 Gateway PTY", []),
-      U("N7x", "远程 token / password / TLS fingerprint", "设 --url 时不回落到配置里的凭据", []),
-      U("N7y", "SSH / Tailscale 同隧道", "远程 Control UI 必须和 Gateway 走同一条隧道", [])
-    ], {memories:[{text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"},{text:"分析必须落到 src/commands/*.ts、src/tui/tui.ts、ui/src/chat/*，停在 CLI/TUI/UI 三个名字没有意义", state:"success"}], bugs:[{id:"B70", title:"远程 Control UI 必须与 Gateway 同隧道", desc:"WebChat 在远程环境下要走同一条 SSH/Tailscale，漏配就会连错端口", status:"open"}]}),
+      U("M73", "Control UI", "ui/src/chat/*：浏览器里的会话、向导、Nodes、终端坞，Gateway 同端口", [
+        U("N7p", "ui/src 会话侧栏", "浏览器里的会话列表，走 Gateway WS", []),
+        U("N7q", "ui/src/chat/transcript", "流式气泡与工具调用展示", []),
+        U("N7r", "ui/src/chat/composer", "发送、附件、会话内覆盖模型", []),
+        U("N7s", "Control UI 渠道接入向导", "在浏览器完成渠道连接，不是只丢 CLI", []),
+        U("N7t", "Control UI Nodes 面板", "摄像头/屏幕 node 的配对与 caps", []),
+        U("N7u", "Control UI skills / 模型 / 配置", "和 CLI 改同一份 schema", []),
+        U("N7v", "Control UI 日志 / Cron", "事件日志和定时任务", []),
+        U("N7w", "OpenClawTerminalPanel", "浏览器终端坞接到 Gateway PTY", [])
+      ]),
+      U("M74", "远程鉴权与隧道", "设 --url 时不回落本地凭据；WebChat 必须和 Gateway 走同一条 SSH/Tailscale", [
+        U("N7x", "远程 token / password / TLS fingerprint", "设 --url 时不回落到配置里的凭据", []),
+        U("N7y", "SSH / Tailscale 同隧道", "远程 Control UI 必须和 Gateway 走同一条隧道", [])
+      ])
+    ], {memories:[{text:"openclaw onboard --install-daemon 做模型、工作区、Gateway；dashboard 打开 Control UI", state:"success"},{text:"点进控制面 UI 应先看到 CLI / TUI / Control UI / 远程 四张子模块卡，再进到具体 ts。既不要三张空壳，也不要一张卡下摊开全部文件", state:"success"}], bugs:[{id:"B70", title:"远程 Control UI 必须与 Gateway 同隧道", desc:"WebChat 在远程环境下要走同一条 SSH/Tailscale，漏配就会连错端口", status:"open"}]}),
 
     U("M8", "安全、配对、部署", "默认安全但不阉割能力；危险路径必须显式、由操作者打开", [
+      U("M81", "握手与配对", "connect.challenge、pairing v3、loopback vs Tailnet", [
       U("N81", "connect.challenge 签名", "设备握手必须签名", []),
       U("N82", "pairing v3 platform / deviceFamily", "按设备族绑，不按用户会话", []),
       U("N83", "loopback 自动配对", "本机可免批准", []),
       U("N84", "Tailnet/LAN 人工批准", "非 loopback 必须人点", []),
+      ]),
+      U("M82", "暴露与沙箱", "docs/security、exposure-runbook、sandboxing 指南", [
       U("N85", "docs/security", "暴露前必读", []),
       U("N86", "exposure-runbook", "把 Gateway 给别人之前的检查单", []),
       U("N87", "sandboxing 指南", "工具权限与宿主机隔离", []),
+      ]),
+      U("M83", "部署与 doctor", "launchd/systemd/Docker/fly；core vs 插件 doctor", [
       U("N88", "launchd plist", "macOS 守护", []),
       U("N89", "systemd unit", "Linux 守护", []),
       U("N8a", "Dockerfile / compose", "容器部署", []),
       U("N8b", "fly.toml", "Fly 部署", []),
       U("N8c", "core doctor --fix", "修 core 配置，迁移前备份", []),
       U("N8d", "插件 doctor 合同", "插件配置由该插件自己的 doctor 修", [])
+      ])
     ], {memories:[{text:"无使用分析、无跟踪，除非操作者自己打开", state:"success"},{text:"loopback 可自动配对；Tailnet/LAN 必须人工批准", state:"success"}]})
   ]
 };
@@ -544,18 +605,26 @@ const CONTEXT_GUARD_MAP = {
       U("N14", "简洁合同", "context 是导航不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", [])
     ], {memories:[{text:"每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图", state:"success"}]}),
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
-      U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", []),
-      U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途", []),
-      U("N23", "visibleChildren", "根上只铺 L1；点选模块才预览开工单元", []),
-      U("N24", "layout 左右 / 上下 + fitView", "同一棵树可左右读模块栈，或上下读兄弟并排", []),
-      U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
-      U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", []),
-      U("N27", "架构笔记演示稿", "根检查器里的预置 markdown，标明未调用 Agent", []),
-      U("N28", "点标题切换仓库", "每个仓库自己的首次建图状态分开记", []),
-      U("N29", "首次分析叠层", "步骤日志 + 预置稿；不能用三秒动画冒充读仓", []),
-      U("N2a", "localStorage 持久化", "已建图的仓库再次打开直接进图；重新分析必须是人点的", []),
-      U("N2b", "asProposal 只收更深层", "L2 开工单元挂在模块下；根画布点选才预览，不一次铺开", []),
-      U("N2c", "unpackInbox", "确认模块后展开文件内部，不把孙子再藏一层", [])
+      U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
+        U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", []),
+        U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
+        U("N23", "visibleChildren", "根上只铺 L1；点卡片进入模块，不在根上预览孩子", []),
+        U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
+      ]),
+      U("M22", "检查器", "标题、用途、记忆可点进编辑；Bug 用 + 号", [
+        U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
+        U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", [])
+      ]),
+      U("M23", "仓库与首次分析", "切仓、演示叠层、localStorage；标明未调用 Agent", [
+        U("N27", "架构笔记演示稿", "根检查器里的预置 markdown，标明未调用 Agent", []),
+        U("N28", "点标题切换仓库", "每个仓库自己的首次建图状态分开记", []),
+        U("N29", "首次分析叠层", "步骤日志 + 预置稿；不能用三秒动画冒充读仓", []),
+        U("N2a", "localStorage 持久化", "已建图的仓库再次打开直接进图；重新分析必须是人点的", [])
+      ]),
+      U("M24", "提议展开", "子模块卡保持可见；只把开工单元的内部收进 inbox", [
+        U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
+        U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
+      ])
     ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success"}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open"}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，随项目走", [
       U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
@@ -574,7 +643,7 @@ const CONTEXT_GUARD_MAP = {
       U("N51", "信号源", "README / SKILL / 包与插件边界 / docs / 运行时入口，不是每个源文件一张卡", []),
       U("N52", "L1 确认门", "未确认的第一层后续 Agent 读不到；确认不等于授权整棵树", []),
       U("N53", "architecture.md 产出", "整仓笔记是分析本身；地图是投影，不是用三张卡冒充分析", []),
-      U("N54", "L2 必须是可改文件/命令", "点进「控制面 UI」应看到 onboard.ts、tui.ts、ui/src/chat，而不是 CLI/TUI/UI", []),
+      U("N54", "先建子模块再挂文件", "点进「控制面 UI」先看到 CLI/TUI/Control UI/远程 四张子模块卡，再进到 onboard.ts。既不要三张空壳，也不要一张卡下摊开全部文件", []),
       U("N55", "以后会话打开已有图", "除非人要求重新分析", [])
     ], {memories:[{text:"读 README、包边界、已有架构文档；一文件一节点是错的", state:"success"}]}),
     U("M6", "会话授权与提议", "新会话默认很小；人决定 Agent 能读哪一段", [
@@ -622,23 +691,14 @@ Gateway 控制面 · Agent Runtime · Channels · Models 与供应商 · Plugins
 - slack / discord / googlechat / signal / imessage 各自实现目录
 - allowlist、pairing 队列、openclaw pairing approve
 
-## 控制面（命令级，不要收成 CLI 一张卡）
+## 控制面 UI（先建子模块，再挂文件）
 
-src/entry.ts → src/cli/run-main.ts → src/commands/：
-onboard.ts、daemon.ts、gateway.ts、agent.ts、sessions.ts、models.ts、
-doctor.ts（--fix 是迁移主路径）、channels.ts、pairing.ts、plugins.ts、
-config.ts、logs.ts、cron.ts、nodes.ts、dashboard.ts
+点进「控制面 UI」应先看到四张子模块卡，而不是二十几个文件胶囊：
 
-TUI：
-- src/cli/tui-cli.ts（tui / terminal / chat 别名，--local 才嵌入）
-- src/tui/tui.ts 主循环；GatewayChatClient vs EmbeddedBackend
-- src/tui/commands.ts slash；createLocalShellRunner 的 !command PTY
-
-Control UI（ui/ Vite，Gateway 同端口）：
-- ui/src 会话侧栏、ui/src/chat/transcript、composer
-- 渠道向导、Nodes、skills/模型/配置（同一 schema）
-- 日志、Cron、OpenClawTerminalPanel（Gateway PTY）
-- 远程：token / password / TLS fingerprint；必须与 Gateway 同 SSH/Tailscale 隧道
+- CLI 命令：entry.ts → run-main.ts → src/commands/*（安装、会话、渠道、运维再分组）
+- TUI：tui-cli.ts、tui.ts、GatewayChatClient / EmbeddedBackend、slash、PTY
+- Control UI：ui/src/chat/*、渠道向导、Nodes、终端坞
+- 远程鉴权与隧道：token/TLS；必须与 Gateway 同 SSH/Tailscale
 
 ## Models / Plugins / Nodes / 安全
 
@@ -656,18 +716,18 @@ const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（演示稿 · 未调�
 Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆图 · 会话授权与提议 · 遗留测试中台
 
 ## 工作台（prototype/workbench.html）
-- renderNode 模块卡（标题 + 一句用途）
-- visibleChildren：根上就要看到 L2 开工节点
+- renderNode 模块卡（标题 + 一句用途，不印文件）
+- visibleChildren：根上只铺 L1；点卡片进入。孩子若全是子模块，仍用网格目录
 - 检查器 contenteditable、Bug 区块、+ 号
-- 左右/上下布局、fitView
+- 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
 - 首次分析叠层（标明未调用 Agent）
-- localStorage；asProposal 只把更深层收进 inbox，L2 分析完就挂上
+- localStorage；asProposal 递归子模块卡，只把开工单元内部收进 inbox
 
 ## 仓库拆图怎么做
 - 信号：README、包边界、docs、运行时入口（不是一文件一卡）
-- 产出：architecture.md（整仓笔记）+ 地图（L1 确认门，L2 已是命令/文件）
-- 反例：控制面 UI → CLI / TUI / UI 三张空壳
+- 产出：architecture.md（整仓笔记）+ 地图（L1 确认门；进入模块先看子模块，再看命令/文件）
+- 反例：控制面 UI → CLI / TUI / UI 三张空壳；同样反例：一张卡下摊开全部文件
 - 以后会话打开已有图，除非人要求重分析
 `;
 
@@ -685,8 +745,8 @@ const catalog = {
       {do:"打开 README 与 SKILL.md，弄清 skill 合同", find:"人与 Agent 共用项目记忆，不是聊天摘要"},
       {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、CLI 是不同开工面"},
       {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
-      {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"L2 直接挂命令/源文件；inbox 只收文件内部"},
-      {do:"第一层只作为确认门，开工单元挂在模块下、点选才预览", find:"人先确认 4–8 个 L1；根上不一次铺开所有文件"}
+      {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"进入模块先看到子模块卡；文件挂在子模块下"},
+      {do:"第一层只作为确认门；点进模块，不要在根上预览", find:"人先确认 4–8 个 L1；一张卡下超过约 8 个文件就要先建子模块"}
     ]
   },
   openclaw: {
@@ -702,9 +762,9 @@ const catalog = {
       {do:"顺着 connect.ts、agent-runner.ts、sessionKey 把协议和调度拆开", find:"握手、turn、队列是不同文件"},
       {do:"读 packages/agent-core 循环和 memory-host-sdk", find:"loop、裁剪、memory 槽、sandbox 都要单独成节点"},
       {do:"按渠道实现文件拆（baileys.ts、grammy.ts、pairing），不要只列渠道名", find:"WhatsApp 单会话不变量写在 baileys.ts 旁边"},
-      {do:"把 src/commands 下每条命令写成节点，不要收成 CLI 一张卡", find:"onboard.ts、doctor.ts、gateway.ts、pairing.ts 是不同开工面"},
-      {do:"把 src/tui/tui.ts 和 ui/src/chat/* 写成节点，不要收成 TUI/UI 空壳", find:"主循环、双后端、slash、transcript、终端坞都在"},
-      {do:"把这些文件写进 architecture.md；L1 只当确认门", find:"分析完成时画布上就挂着命令和源文件"}
+      {do:"控制面先拆成 CLI / TUI / Control UI / 远程 四张子模块卡，命令文件挂在卡下", find:"点进控制面 UI 先看到子模块，不是二十几个文件平铺"},
+      {do:"TUI 与 Control UI 的主循环、双后端、transcript 写进对应子模块，不要空壳也不要平铺", find:"tui.ts、GatewayChatClient、ui/src/chat 都在子模块里"},
+      {do:"写进 architecture.md；L1 只当确认门，进入模块才看到子模块", find:"根上是 4–8 张模块卡；文件不出现在第一屏"}
     ]
   }
 };
@@ -733,10 +793,14 @@ function asProposal(n){
   n.origin = n.origin || "agent";
   (n.children||[]).forEach(c=>{
     if(c.proposal==="cancelled") return;
-    c.proposal = "proposed";
-    c.isNew = true;
-    c.origin = c.origin || "agent";
-    parkChildren(c);
+    if(c.kind==="module"){
+      asProposal(c);
+    }else{
+      c.proposal = "proposed";
+      c.isNew = true;
+      c.origin = c.origin || "agent";
+      parkChildren(c);
+    }
   });
   return n;
 }
@@ -763,7 +827,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v7";
+const STORE_KEY = "cg-workbench-maps-v8";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
@@ -1003,7 +1067,7 @@ function proposedTree(r){
     dormant: next.dormant||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一层只确认 4–8 个模块。开工单元（命令/文件）点选模块后才预览，不在根上一次铺开。", state:"success"}
+      {text:"第一层只确认 4–8 个模块。点进模块才看到子模块或开工单元，根上不预览。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c)))
   };
@@ -1088,16 +1152,18 @@ function depthFromView(n){
   if(i<0) return 99;
   return p.length-1-i;
 }
-function peekModuleId(){
-  if(viewRootId!==data.id) return null;
-  const p = findPath(selectedId);
-  if(!p || p.length<2) return null;
-  return p[1].id;
+function isCatalogView(){
+  if(viewRootId===data.id) return true;
+  const n = getNode(viewRootId);
+  if(!n) return true;
+  const kids = (n.children||[]).filter(c=>!isCancelled(c));
+  return kids.length>0 && kids.every(c=>c.kind==="module");
 }
 function visibleChildren(n){
   const kids = n.children.filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
-  if(viewRootId===data.id) return peekModuleId()===n.id ? kids : [];
+  if(viewRootId===data.id) return [];
+  if(n.kind==="module") return [];
   const p = findPath(selectedId)||[];
   if(p.some(x=>x.id===n.id)) return kids;
   return [];
@@ -1165,6 +1231,7 @@ function renderNav(){
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
   document.getElementById("auth-count").textContent = sessionAuth.size;
+  document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
 }
 
 /* ================= 授权模式开关 ================= */
@@ -1372,7 +1439,7 @@ function renderMap(){
     });
     pos.set(root.id, {x:Math.max(0, (maxW-rs.w)/2), y:0});
   }
-  if(tb && viewRootId===data.id) layoutRootTB();
+  if(isCatalogView()) layoutRootTB();
   else if(tb) subtreeTB(root, 0, 0);
   else subtreeLR(root, 0, 0);
 
@@ -1418,11 +1485,11 @@ function renderMap(){
       }
       if(e.target.classList.contains("add-child")){ addChild(n); return; }
       if(isProposed(n)){
+        if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
         if(selectedId===id){ acceptProposal(n); return; }
         selectedId = id; n.isNew = false; renderAll(); return;
       }
       if(n.kind==="module" && n.id!==viewRootId){
-        if(viewRootId===data.id && selectedId!==id){ selectedId = id; renderAll(); return; }
         enterView(n.id); return;
       }
       selectedId = id; renderAll();
@@ -1438,7 +1505,7 @@ function acceptProposal(n, silent){
   unpackInbox(n);
   if(silent) return;
   selectedId = n.id;
-  if(n.kind==="module" && n.id!==viewRootId && viewRootId!==data.id){ enterView(n.id); return; }
+  if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
   renderAll();
 }
 function acceptLayer(node){
@@ -1538,11 +1605,12 @@ function renderDetail(){
     : noauth? `<p class="note">Agent 读不到此项。</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
   if(path.length===1){
-    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。点一张模块卡只预览它的开工单元，避免整页铺开。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
-  }else if(isModule && viewRootId===data.id && works.length){
-    note += `<p class="note">这张卡下有 ${works.length} 个开工单元（命令/文件）。再点一次加入；加入后点进去改细节。</p><ul class="work-list">`+
-      works.slice(0,10).map(c=>`<li>${esc(c.title)}</li>`).join("")+
-      (works.length>10?`<li>…共 ${works.length} 个</li>`:"")+`</ul>`;
+    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。点卡片进入该模块，根上不展开孩子。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
+  }else if(isModule){
+    const mods = works.filter(c=>c.kind==="module");
+    const units = works.filter(c=>c.kind!=="module");
+    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。点卡片进入；在检查器里点加入。</p>`;
+    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元（命令/文件）。左右/上下只排这一层。</p>`;
   }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
     note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
   }

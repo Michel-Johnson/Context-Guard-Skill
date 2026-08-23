@@ -90,8 +90,8 @@ The architecture map is created once: the first time Context Guard is used in a 
 1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If a proposed or confirmed map already exists, later sessions open that map. Do not re-analyze.
 2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change). This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
 3. First use itself is the trigger. Do not wait for a GitHub URL or an import button. Do not pretend the map can appear in one click.
-4. The HTML map uses L1 as a confirmation gate, not as the analysis. Propose **4–8 L1 modules** (cluster if more; greenfield = root only). Each module already has **work units** as children: a command, main loop, or file you would open. Title that unit with the identifier (`src/tui/tui.ts`, `onboard`). Do not park work units in an inbox. Only internals of a work unit go to inbox. Later agents must not read unconfirmed proposals.
-5. The human confirms, rewrites, or hides L1. The root canvas shows **L1 only**; selecting a module peeks its work units. Do not paint every L2 on the root at once. Unpack inbox layers when they enter a work unit. Depth must already exist in `architecture.md`.
+4. The HTML map uses L1 as a confirmation gate, not as the analysis. Propose **4–8 L1 modules** (cluster if more; greenfield = root only). Clicking an L1 card **enters** it. If that module would show more than about eight work siblings, cluster them into **submodules** (still `kind: module` cards: name + purpose that names the files). Work units hang under those submodules. Do not park work units in an inbox. Only internals of a work unit go to inbox. Later agents must not read unconfirmed proposals.
+5. The human confirms, rewrites, or hides L1. The root canvas is a **module grid**; click enters. Do not peek children on the root. Do not dump 15 files as siblings of a module. Empty slogan umbrellas (`CLI` / `TUI` / `UI` with no files underneath) are still forbidden. Unpack inbox layers when they enter a work unit. Depth must already exist in `architecture.md`.
 6. If the folder is greenfield (almost no code or docs), create a root node only. Do not invent a fake architecture.
 7. After proposing L1, set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set `map_bootstrap` to `ready`. Later sessions load the existing map and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
@@ -102,18 +102,18 @@ Every node is one of two kinds. Mixing them on the same layer is what makes firs
 
 | Kind | Where | Canvas | Title | Not this |
 |------|--------|--------|--------|----------|
-| **module** | L1 only (rare true subsystem) | Large card: name + one-line purpose | Short architecture bucket | Slogan umbrellas (`CLI` / `TUI` / `UI`) |
-| **work** | L2 under a module | Small capsule | File, command, or loop you would change | Rules, status, memories, bugs |
+| **module** | L1 and true nested subsystems | Large card: name + one-line purpose | Short architecture bucket that names the files it owns | Empty slogan umbrellas (`CLI` / `TUI` / `UI` with no children) |
+| **work** | Under a module that is already at development grain (typically ≤8 siblings) | Small capsule | File, command, or loop you would change | Rules, status, memories, bugs |
 
 Hard rules for the proposing agent:
 
 1. L1 count is 4–8. If analysis finds more concerns, cluster them. Do not emit 12 sibling modules.
-2. L2 is work units, not another round of slogans. Prefer `src/commands/onboard.ts` over `CLI 入口`.
+2. After entering a module, if more than about eight work units would sit as siblings, **build submodules** first. A submodule is a module card whose purpose names locatable artifacts (`src/commands/onboard.ts`, `src/tui/tui.ts`). Prefer that over a flat fan of files. Prefer `src/commands/onboard.ts` under a “安装与守护” card over an empty `CLI 入口`.
 3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
-4. Do not emit one node per file. Group what you would change together; title with the primary path.
-5. Root canvas is still the existing tree (left-right or top-down). It shows **L1 module cards only** (title + one-line purpose). Selecting a module peeks its work-unit capsules; a second click on that module enters the tree. Do not print files on the module card. Do not paint every L2 at once. Depth lives in `architecture.md`.
+4. Do not emit one node per file at the layer the human first sees after entering a module. Group what you would change together; title work units with the primary path.
+5. Root canvas is a **grid of L1 module cards** (title + one-line purpose). Click a card to enter. Left-right / top-down layout applies to the work-unit tree **inside** a module, not to the root catalog. Do not print files on the module card. Do not peek L2 on the root. Depth lives in `architecture.md`.
 6. Every node must answer “when would I open this” in the record language. If the human cannot tell, the analysis failed: delete or rewrite, the agent must not defend it.
-7. Do not invent a dumpster module (`其他`, `misc`). Cluster or drop the leftover. L2 titles should name a locatable artifact (file, command, or panel), not an abstract bucket.
+7. Do not invent a dumpster module (`其他`, `misc`). Cluster or drop the leftover. Work-unit titles should name a locatable artifact (file, command, or panel), not an abstract bucket.
 
 ## User Message Memory
 
