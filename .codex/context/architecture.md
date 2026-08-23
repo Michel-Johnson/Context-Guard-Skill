@@ -33,7 +33,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 ### 工作台
 - `prototype/workbench.html` 单文件原型
 - `renderNode` 模块卡（标题 + 一句用途，不印文件清单）
-- `visibleChildren`：根上只铺 L1；点卡片进入，不在根上预览
+- `visibleChildren`：根上铺 L1，并用正交灰线挂出下一层子模块；蓝线表示模块之间的输入/输出，不是目录树
 - 根和「孩子全是子模块」的视图用网格目录；左右/上下只排模块内部的开工树
 - 检查器 contenteditable、Bug 区块、`+` 号
 - 仓库切换与每仓 `map_bootstrap`

@@ -100,12 +100,15 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
-#links path.link{fill:none;stroke:#c9c0ae;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
-#links path.link.dimmed{opacity:.12}
-#links path.link.focus-link{stroke:var(--green);stroke-width:2}
-#links path.link.proposed-link{stroke-dasharray:5 4;stroke:#c7ccc6}
-#links path.link.noauth-link{stroke:#d7d7d4}
-#links path.link.stem{stroke:#d2c8b4;stroke-width:1.25}
+#links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter;transition:opacity .2s}
+#links path.link.dimmed{opacity:.18}
+#links path.link.focus-link{stroke:var(--green);stroke-width:2.4}
+#links path.link.proposed-link{stroke-dasharray:6 5;stroke:#7a8078}
+#links path.link.noauth-link{stroke:#8a8478}
+#links path.link.stem{stroke:#5c564c;stroke-width:2}
+#links path.link.flow{stroke:#3d6ea8;stroke-width:1.8;stroke-linecap:square;stroke-linejoin:miter}
+#links path.link.flow.dimmed{opacity:.2}
+#links text.flow-label{fill:#3d6ea8;font-size:10px;font-family:var(--font-ui);pointer-events:none}
 
 /* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
@@ -294,7 +297,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块。点进模块后才看到子模块或开工单元，根上不预览、不摊开文件。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。第一层只确认 4–8 个模块。根上用连线挂出子模块关系；文件仍要点进模块才看到，不在根上摊开。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -306,7 +309,7 @@ details.fold .mem-list{margin-top:6px}
     <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；点进模块才看到子模块和开工单元。这不是这次点击实时读仓得到的。</p>
+    <p>下面的笔记是预置演示稿。第一层只确认 4–8 个模块；根上用连线挂出子模块，文件仍要点进去才看到。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -356,7 +359,25 @@ const OPENCLAW_MAP = {
     {text:"定位：跑在自己设备上的个人助手，在已有聊天渠道里见面", state:"success"},
     {text:"形态：一个 Gateway 管会话、工具、事件和渠道连接", state:"success"},
     {text:"仓库：pnpm workspace；核心 TypeScript，附带 macOS/iOS/Android 伴侣应用", state:"success"}
-  ], bugs:[], dormant:[], children:[
+  ], bugs:[], dormant:[],
+  flows:[
+    {from:"M3", to:"M1", label:"入站消息"},
+    {from:"M1", to:"M2", label:"调度 agent"},
+    {from:"M2", to:"M1", label:"stream / final"},
+    {from:"M1", to:"M3", label:"出站 send"},
+    {from:"M4", to:"M2", label:"模型与供应商"},
+    {from:"M5", to:"M2", label:"工具 / 技能"},
+    {from:"M6", to:"M1", label:"node caps"},
+    {from:"M7", to:"M1", label:"人操作 Gateway"},
+    {from:"M8", to:"M1", label:"握手与暴露"},
+    {from:"M8", to:"M7", label:"远程同隧道"},
+    {from:"M71", to:"M1", label:"CLI 改状态"},
+    {from:"M72", to:"M1", label:"TUI 连 WS"},
+    {from:"M73", to:"M1", label:"Control UI WS"},
+    {from:"M12", to:"M13", label:"协议帧 → 调度"},
+    {from:"M13", to:"M2", label:"runner 进 loop"}
+  ],
+  children:[
 
     U("M1", "Gateway 控制面", "本机长驻进程：WebSocket 协议、会话、工具、事件、渠道连接的唯一入口", [
       U("M11", "进程与绑定", "src/gateway 绑 127.0.0.1:18789；healthz 与 loopback 校验", [
@@ -605,7 +626,24 @@ const CONTEXT_GUARD_MAP = {
     {text:"定位：人与 Agent 共用的项目记忆，活在仓库里，而不是某一次聊天里", state:"success"},
     {text:"形态：Agent 记录，人在 HTML 工作台确认、改写、授权", state:"success"},
     {text:"第一次使用时从当前仓库拆第一层模块；之后会话打开这张图，不再重拆", state:"success"}
-  ], bugs:[], dormant:[], children:[
+  ], bugs:[], dormant:[],
+  flows:[
+    {from:"M1", to:"M2", label:"合同约束工作台"},
+    {from:"M1", to:"M4", label:"启动 CLI / Hook"},
+    {from:"M1", to:"M5", label:"拆图粒度"},
+    {from:"M5", to:"M2", label:"投影地图"},
+    {from:"M5", to:"M3", label:"写 architecture.md"},
+    {from:"M2", to:"M3", label:"读写记忆"},
+    {from:"M3", to:"M2", label:"打开已有图"},
+    {from:"M4", to:"M3", label:"init 骨架"},
+    {from:"M6", to:"M2", label:"会话切片"},
+    {from:"M21", to:"M22", label:"选中节点"},
+    {from:"M23", to:"M21", label:"切仓重绘"},
+    {from:"M24", to:"M21", label:"提议卡片"},
+    {from:"N22", to:"N23", label:"谁可见"},
+    {from:"N23", to:"N24", label:"怎么排"}
+  ],
+  children:[
     U("M1", "Skill 合同", "何时启动、记什么、什么必须等人确认", [
       U("N11", "SKILL.md 启动时机", "首次使用、看导图、改方向、park/resume、编码/调试/评审时启用", []),
       U("N12", "首次建图合同", "无图才分析；有提议或已确认的图则打开，不重拆", []),
@@ -614,10 +652,11 @@ const CONTEXT_GUARD_MAP = {
     ], {memories:[{text:"每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图", state:"success"}]}),
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
-        U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", []),
-        U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
-        U("N23", "visibleChildren", "根上只铺 L1；点卡片进入模块，不在根上预览孩子", []),
-        U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
+        U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
+          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
+          U("N23", "visibleChildren", "根上铺 L1，并用连线挂出下一层子模块；文件仍要点进去才看到", []),
+          U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
+        ])
       ]),
       U("M22", "检查器", "标题、用途、记忆可点进编辑；Bug 用 + 号", [
         U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
@@ -725,7 +764,7 @@ Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆�
 
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
-- visibleChildren：根上只铺 L1；点卡片进入。孩子若全是子模块，仍用网格目录
+- visibleChildren：根上铺 L1，并用正交连线挂出下一层子模块；文件仍要点进去才看到。孩子若全是子模块，仍用网格目录
 - 检查器 contenteditable、Bug 区块、+ 号
 - 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
@@ -956,6 +995,7 @@ function adoptTree(tree){
   data.bugs = src.bugs||[];
   data.dormant = src.dormant||[];
   data.children = src.children||[];
+  data.flows = src.flows||[];
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -1075,9 +1115,10 @@ function proposedTree(r){
     dormant: next.dormant||[],
     memories: [
       {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
-      {text:"第一层只确认 4–8 个模块。点进模块才看到子模块或开工单元，根上不预览。", state:"success"}
+      {text:"第一层只确认 4–8 个模块。灰线是从属；蓝线是模块之间的输入/输出。文件仍要点进模块才看到。", state:"success"}
     ].concat(next.memories||[]),
-    children: (next.children||[]).map(c=>asProposal(clone(c)))
+    children: (next.children||[]).map(c=>asProposal(clone(c))),
+    flows: clone(next.flows||[])
   };
 }
 function applyProposedMap(){
@@ -1168,10 +1209,15 @@ function isCatalogView(){
   return kids.length>0 && kids.every(c=>c.kind==="module");
 }
 function visibleChildren(n){
-  const kids = n.children.filter(c=>!isCancelled(c));
+  const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
-  if(viewRootId===data.id) return [];
-  if(n.kind==="module") return [];
+  // On an ancestor canvas, hang one extra layer of nested MODULES so
+  // parent→child module relations are visible. Work units stay hidden
+  // until you enter that module (root still does not dump files).
+  if(n.kind==="module"){
+    if(depthFromView(n)===1) return kids.filter(c=>c.kind==="module");
+    return [];
+  }
   const p = findPath(selectedId)||[];
   if(p.some(x=>x.id===n.id)) return kids;
   return [];
@@ -1349,6 +1395,9 @@ function nodeHtml(n, isViewRoot){
 }
 
 function renderMap(){
+  if(!(data.flows && data.flows.length) && currentRepo().blueprint && currentRepo().blueprint.flows){
+    data.flows = clone(currentRepo().blueprint.flows);
+  }
   const root = getNode(viewRootId);
 
   nodesEl.innerHTML = "";
@@ -1431,6 +1480,33 @@ function renderMap(){
     })(n);
     return max - pos.get(n.id).y;
   }
+  const NEST_STEM = 30, NEST_GY = 16;
+  function nestedMods(n){
+    return visibleChildren(n).filter(c=>c.kind==="module");
+  }
+  function stackH(n){
+    const s = size.get(n.id);
+    const nested = nestedMods(n);
+    if(!nested.length) return s.h;
+    return s.h + NEST_STEM + nested.reduce((a,c,i)=>a+size.get(c.id).h+(i?NEST_GY:0),0);
+  }
+  function placeNested(n){
+    const nested = nestedMods(n);
+    if(!nested.length) return;
+    const p = pos.get(n.id), s = size.get(n.id);
+    let y = p.y + s.h + NEST_STEM;
+    nested.forEach(c=>{
+      const cs = size.get(c.id);
+      pos.set(c.id, {x:p.x + (s.w-cs.w)/2, y});
+      y += cs.h + NEST_GY;
+    });
+  }
+  function nestBottom(n){
+    const nested = nestedMods(n);
+    if(!nested.length) return pos.get(n.id).y + size.get(n.id).h;
+    const last = nested[nested.length-1];
+    return pos.get(last.id).y + size.get(last.id).h;
+  }
   function layoutCatalog(){
     const kids = visibleChildren(root);
     const rs = size.get(root.id);
@@ -1438,32 +1514,28 @@ function renderMap(){
     const cellW = Math.max(...kids.map(c=>size.get(c.id).w));
     const n = kids.length;
     const cols = n<=2 ? n : n<=6 ? Math.min(3,n) : 4;
-    const GX = 44, GY = 32, STEM = 48;
+    const GX = 44, GY = 36, STEM = 56;
     const gridW = cols*cellW + (cols-1)*GX;
     pos.set(root.id, {x:Math.max(0,(gridW-rs.w)/2), y:0});
     const rows = Math.ceil(n/cols);
-    const rowH = [];
-    for(let r=0;r<rows;r++){
-      let h=0;
-      for(let c=0;c<cols;c++){
-        const i=r*cols+c; if(i>=n) break;
-        h = Math.max(h, size.get(kids[i].id).h);
-      }
-      rowH[r]=h;
-    }
     let y = rs.h + STEM;
     for(let r=0;r<rows;r++){
       const start = r*cols;
       const inRow = Math.min(cols, n-start);
       const rowW = inRow*cellW + (inRow-1)*GX;
       const x0 = (gridW-rowW)/2;
+      let rowCardH = 0;
+      for(let c=0;c<inRow;c++) rowCardH = Math.max(rowCardH, size.get(kids[start+c].id).h);
+      let rowTotal = 0;
       for(let c=0;c<inRow;c++){
         const kid = kids[start+c];
         const s = size.get(kid.id);
         pos.set(kid.id, {x:x0 + c*(cellW+GX) + (cellW-s.w)/2, y});
-        size.set(kid.id, {w:s.w, h:rowH[r]});
+        size.set(kid.id, {w:s.w, h:rowCardH});
+        placeNested(kid);
+        rowTotal = Math.max(rowTotal, stackH(kid));
       }
-      y += rowH[r] + GY;
+      y += rowTotal + GY;
     }
   }
   if(isCatalogView()) layoutCatalog();
@@ -1471,10 +1543,12 @@ function renderMap(){
   else subtreeLR(root, 0, 0);
 
   let maxX=0, maxY=0;
+  const catalogIds = isCatalogView() ? new Set(visibleChildren(root).map(k=>k.id)) : null;
   els.forEach((el,id)=>{
     const p = pos.get(id), s = size.get(id);
+    if(!p || !s) return;
     el.style.left = p.x+"px"; el.style.top = p.y+"px";
-    el.style.height = (isCatalogView() && id!==root.id && getNode(id).kind==="module") ? s.h+"px" : "";
+    el.style.height = (catalogIds && catalogIds.has(id)) ? s.h+"px" : "";
     el.style.visibility = "";
     maxX = Math.max(maxX, p.x+s.w); maxY = Math.max(maxY, p.y+s.h);
   });
@@ -1486,8 +1560,30 @@ function renderMap(){
   function linkClass(n,c){
     const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
     const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
-    const na = !isProposed(c) && !isAuth(c) && !(c.kind==="module" && moduleAuthState(c)!=="none");
+    // Module rails stay readable even when a card is still locked.
+    const na = c.kind!=="module" && !isProposed(c) && !isAuth(c);
     return `link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
+  }
+  function drawStackLinks(parent){
+    const nested = nestedMods(parent);
+    if(!nested.length) return;
+    const p = pos.get(parent.id), ps = size.get(parent.id);
+    if(!p) return;
+    const x = p.x + ps.w/2;
+    let yFrom = p.y + ps.h;
+    nested.forEach(ch=>{
+      const cp = pos.get(ch.id), cs = size.get(ch.id);
+      if(!cp) return;
+      const x2 = cp.x + cs.w/2, yTo = cp.y;
+      if(Math.abs(x-x2)<1){
+        paths += `<path class="${linkClass(parent,ch)}" d="M${x},${yFrom} L${x2},${yTo}"/>`;
+      }else{
+        const mid = (yFrom+yTo)/2;
+        paths += `<path class="link stem" d="M${x},${yFrom} L${x},${mid} L${x2},${mid}"/>`;
+        paths += `<path class="${linkClass(parent,ch)}" d="M${x2},${mid} L${x2},${yTo}"/>`;
+      }
+      yFrom = cp.y + cs.h;
+    });
   }
   if(isCatalogView()){
     const kids = visibleChildren(root);
@@ -1503,7 +1599,7 @@ function renderMap(){
       });
       rows.sort((a,b)=>a.y-b.y);
       let prevY = yRoot;
-      rows.forEach((row, ri)=>{
+      rows.forEach((row)=>{
         const cxs = row.nodes.map(c=>pos.get(c.id).x + size.get(c.id).w/2);
         const railY = prevY + (row.y-prevY)*0.45;
         paths += `<path class="link stem" d="M${xRoot},${prevY} L${xRoot},${railY}"/>`;
@@ -1513,9 +1609,9 @@ function renderMap(){
         }
         row.nodes.forEach((c,i)=>{
           paths += `<path class="${linkClass(root,c)}" d="M${cxs[i]},${railY} L${cxs[i]},${row.y}"/>`;
+          drawStackLinks(c);
         });
-        const bottoms = row.nodes.map(c=>pos.get(c.id).y + size.get(c.id).h);
-        prevY = Math.max(...bottoms);
+        prevY = Math.max(...row.nodes.map(nestBottom));
       });
     }
   }else{
@@ -1547,6 +1643,36 @@ function renderMap(){
         kids.forEach((c,i)=>{
           paths += `<path class="${linkClass(n,c)}" d="M${railX},${cys[i]} L${lefts[i]},${cys[i]}"/>`;
         });
+      }
+    });
+  }
+  const flows = data.flows||[];
+  if(flows.length){
+    paths = `<defs><marker id="flow-arrow" viewBox="0 0 8 8" markerWidth="7" markerHeight="7" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#3d6ea8"/></marker></defs>` + paths;
+    flows.forEach(e=>{
+      const a = pos.get(e.from), b = pos.get(e.to);
+      const sa = size.get(e.from), sb = size.get(e.to);
+      if(!a || !b || !sa || !sb) return;
+      const dim = focusId && !(onFocusPath(e.from) && onFocusPath(e.to));
+      const ax = a.x+sa.w/2, ay = a.y+sa.h/2;
+      const bx = b.x+sb.w/2, by = b.y+sb.h/2;
+      let x1,y1,x2,y2,d,lx,ly;
+      if(Math.abs(bx-ax) >= Math.abs(by-ay)){
+        if(bx>=ax){ x1=a.x+sa.w; y1=ay; x2=b.x; y2=by; }
+        else { x1=a.x; y1=ay; x2=b.x+sb.w; y2=by; }
+        const mx = (x1+x2)/2;
+        d = `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`;
+        lx = mx; ly = (y1+y2)/2;
+      }else{
+        if(by>=ay){ x1=ax; y1=a.y+sa.h; x2=bx; y2=b.y; }
+        else { x1=ax; y1=a.y; x2=bx; y2=b.y+sb.h; }
+        const my = (y1+y2)/2;
+        d = `M${x1},${y1} L${x1},${my} L${x2},${my} L${x2},${y2}`;
+        lx = (x1+x2)/2; ly = my;
+      }
+      paths += `<path class="link flow ${dim?'dimmed':''}" marker-end="url(#flow-arrow)" d="${d}"/>`;
+      if(e.label){
+        paths += `<text class="flow-label" text-anchor="middle" x="${lx}" y="${ly-5}">${esc(e.label)}</text>`;
       }
     });
   }
@@ -1680,7 +1806,7 @@ function renderDetail(){
     : noauth? `<p class="note">Agent 读不到此项。</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
   if(path.length===1){
-    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。点卡片进入该模块，根上不展开孩子。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
+    note += `<p class="note">第一层是确认门，建议 ${L1_SOFT_MIN}–${L1_SOFT_MAX} 个模块。灰线是从属，蓝线是模块之间的输入/输出。点卡片进入。文件不出现在根上。当前 ${l1n} 个。${l1n>L1_SOFT_MAX?" 请合并后再确认。":""}</p>`;
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
