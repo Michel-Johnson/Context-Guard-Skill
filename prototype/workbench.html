@@ -32,6 +32,12 @@ header.top h1{margin:0;font-size:16px}
   border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth);margin-left:auto}
 .session-chip b{font-weight:700}
 .tray-btn,.auth-btn,.import-btn{font-size:12.5px;padding:5px 11px}
+.dir-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:0 0 auto}
+.dir-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:#fff;color:var(--muted);cursor:pointer}
+.dir-toggle button + button{border-left:1px solid var(--line)}
+.dir-toggle button:hover{color:var(--ink)}
+.dir-toggle button.on{background:var(--module-soft);color:var(--module);font-weight:700}
+body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
 .import-bar{display:none;position:fixed;left:0;right:0;top:52px;z-index:28;
   align-items:center;gap:10px;flex-wrap:wrap;padding:8px 18px;
   background:#fff;border-bottom:1px solid var(--line);cursor:default}
@@ -214,6 +220,10 @@ details.fold .mem-list{margin-top:6px}
     <h1>OpenClaw 架构导图</h1>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
+  <div class="dir-toggle" id="dir-toggle">
+    <button type="button" data-dir="lr" class="on">左右</button>
+    <button type="button" data-dir="tb">上下</button>
+  </div>
   <div class="session-chip">当前会话：<b id="session-name">S-0823 Gateway 协议</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="import-btn" id="btn-import">从仓库拆图</button>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
@@ -605,6 +615,19 @@ document.getElementById("import-cancel").onclick = ()=>importBar.classList.remov
 document.getElementById("import-go").onclick = ()=>{
   startRepoSplit(textOf(document.getElementById("import-repo")));
 };
+function setLayoutDir(dir){
+  layoutDir = dir;
+  document.body.classList.toggle("layout-tb", dir==="tb");
+  document.querySelectorAll("#dir-toggle [data-dir]").forEach(b=>{
+    b.classList.toggle("on", b.dataset.dir===dir);
+  });
+  renderAll();
+  fitView();
+}
+document.getElementById("dir-toggle").onclick = e=>{
+  const b = e.target.closest("[data-dir]");
+  if(b) setLayoutDir(b.dataset.dir);
+};
 function renderTray(){
   const list = cancelledList();
   const ul = document.getElementById("tray-list");
@@ -647,10 +670,12 @@ function renderTray(){
 
 /* ================= 导图渲染 ================= */
 const GAP_X = 70, GAP_Y = 14, MOD_GAP_Y = 30;
+const GAP_TB = 56, GAP_TB_X = 22, MOD_GAP_X = 28;
 const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
 let extents = {w:800, h:500};
+let layoutDir = "lr";
 
 function nodeHtml(n, isViewRoot){
   const openBugs = n.bugs.filter(b=>b.status!=="dormant").length;
@@ -700,32 +725,55 @@ function renderMap(){
   els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
 
   const pos = new Map();
-  function gapFor(c){ return c.kind==="module" ? MOD_GAP_Y : GAP_Y; }
-  function subtree(n, x, top){
+  const tb = layoutDir==="tb";
+  function gapY(c){ return c.kind==="module" ? MOD_GAP_Y : GAP_Y; }
+  function gapX(c){ return c.kind==="module" ? MOD_GAP_X : GAP_TB_X; }
+  function shiftSubtree(n, dx, dy){
+    const p = pos.get(n.id); if(p){ p.x += dx; p.y += dy; }
+    visibleChildren(n).forEach(c=>shiftSubtree(c, dx, dy));
+  }
+  function subtreeLR(n, x, top){
     const s = size.get(n.id);
     const kids = visibleChildren(n);
     const childX = x + s.w + GAP_X;
     if(!kids.length){ pos.set(n.id,{x, y:top}); return s.h; }
     let y = top;
-    kids.forEach((c,i)=>{ y += subtree(c, childX, y) + gapFor(c); });
-    let total = y - gapFor(kids[kids.length-1]) - top;
+    kids.forEach(c=>{ y += subtreeLR(c, childX, y) + gapY(c); });
+    let total = y - gapY(kids[kids.length-1]) - top;
     const first = kids[0], last = kids[kids.length-1];
     const fc = pos.get(first.id), lc = pos.get(last.id);
     const cy = (fc.y + size.get(first.id).h/2 + lc.y + size.get(last.id).h/2)/2;
     let ny = cy - s.h/2;
     if(s.h > total){
       const shift = (s.h-total)/2;
-      kids.forEach(c=>shiftSubtree(c, shift));
+      kids.forEach(c=>shiftSubtree(c, 0, shift));
       ny = top; total = s.h;
     }
     pos.set(n.id,{x, y:Math.max(ny, top)});
     return total;
   }
-  function shiftSubtree(n, dy){
-    const p = pos.get(n.id); if(p) p.y += dy;
-    visibleChildren(n).forEach(c=>shiftSubtree(c, dy));
+  function subtreeTB(n, left, y){
+    const s = size.get(n.id);
+    const kids = visibleChildren(n);
+    const childY = y + s.h + GAP_TB;
+    if(!kids.length){ pos.set(n.id,{x:left, y}); return s.w; }
+    let x = left;
+    kids.forEach(c=>{ x += subtreeTB(c, x, childY) + gapX(c); });
+    let total = x - gapX(kids[kids.length-1]) - left;
+    const first = kids[0], last = kids[kids.length-1];
+    const fc = pos.get(first.id), lc = pos.get(last.id);
+    const cx = (fc.x + size.get(first.id).w/2 + lc.x + size.get(last.id).w/2)/2;
+    let nx = cx - s.w/2;
+    if(s.w > total){
+      const shift = (s.w-total)/2;
+      kids.forEach(c=>shiftSubtree(c, shift, 0));
+      nx = left; total = s.w;
+    }
+    pos.set(n.id,{x:Math.max(nx, left), y});
+    return total;
   }
-  subtree(root, 0, 0);
+  if(tb) subtreeTB(root, 0, 0);
+  else subtreeLR(root, 0, 0);
 
   let maxX=0, maxY=0;
   els.forEach((el,id)=>{
@@ -743,13 +791,20 @@ function renderMap(){
     const p = pos.get(n.id), psz = size.get(n.id);
     visibleChildren(n).forEach(c=>{
       const q = pos.get(c.id), qs = size.get(c.id);
-      const x1=p.x+psz.w, y1=p.y+psz.h/2, x2=q.x, y2=q.y+qs.h/2;
-      const mx=x1+(x2-x1)*.5;
+      let x1,y1,x2,y2,d;
+      if(tb){
+        x1=p.x+psz.w/2; y1=p.y+psz.h; x2=q.x+qs.w/2; y2=q.y;
+        const my=y1+(y2-y1)*.5;
+        d=`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+      }else{
+        x1=p.x+psz.w; y1=p.y+psz.h/2; x2=q.x; y2=q.y+qs.h/2;
+        const mx=x1+(x2-x1)*.5;
+        d=`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+      }
       const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
       const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
       const na = !isProposed(c) && !isAuth(c) && !(c.kind==="module" && moduleAuthState(c)!=="none");
-      paths += `<path class="link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}"
-        d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+      paths += `<path class="link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}" d="${d}"/>`;
     });
   });
   linksEl.innerHTML = paths;
