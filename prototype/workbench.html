@@ -1115,7 +1115,6 @@ function currentRepo(){ return catalog[repoId]; }
 const STORE_KEY = "cg-workbench-maps-v12";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
-const VIEW_DEPTH = 3;
 function hasMap(r){
   return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
 }
@@ -1194,7 +1193,7 @@ function loadLive(r){
   composingId = null;
   if(viewRootId!==data.id){
     const n = getNode(viewRootId);
-    if(n) unpackToDepth(n, VIEW_DEPTH);
+    if(n) unpackInbox(n);
   }
   document.getElementById("session-name").textContent = r.sessionName || (r.bootstrap==="proposed"?"S-0823 待确认":"当前会话");
   setOverlay(overlayOpenFor(r), r.bootstrap==="analyzing");
@@ -1449,18 +1448,16 @@ function depthFromView(n){
 function isCatalogView(){
   return viewRootId===data.id;
 }
-function unpackToDepth(n, remain){
-  if(!n || remain<0) return;
-  unpackInbox(n);
-  (n.children||[]).forEach(c=>unpackToDepth(c, remain-1));
-}
 function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
-  if(isCatalogView()) return n.id===viewRootId ? kids : [];
+  /* 死规定：画布一次只画一层。根目录只铺 L1；点进节点只画直接孩子。 */
   if(n.id===viewRootId) return kids;
-  const d = depthFromView(n);
-  if(d<0 || d>=VIEW_DEPTH) return [];
-  return kids;
+  return [];
+}
+function canEnter(n){
+  if(!n || n.id===viewRootId) return false;
+  if(n.kind==="module") return true;
+  return (n.children&&n.children.length) || (n._inbox&&n._inbox.length);
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -1511,7 +1508,7 @@ function cancelledList(){
 function enterView(id){
   viewRootId = id; selectedId = id;
   const n = getNode(id);
-  if(n && id!==data.id) unpackToDepth(n, VIEW_DEPTH);
+  if(n && id!==data.id) unpackInbox(n);
   renderAll();
   fitView();
 }
@@ -1843,13 +1840,11 @@ function renderMap(){
       }
       if(e.target.classList.contains("add-child")){ addChild(n); return; }
       if(isProposed(n)){
-        if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+        if(canEnter(n)){ enterView(n.id); return; }
         if(selectedId===id){ acceptProposal(n); return; }
         selectedId = id; n.isNew = false; renderAll(); return;
       }
-      if(n.kind==="module" && n.id!==viewRootId){
-        enterView(n.id); return;
-      }
+      if(canEnter(n)){ enterView(n.id); return; }
       selectedId = id; renderAll();
     };
   });
@@ -1988,8 +1983,8 @@ function renderDetail(){
   }else if(isModule){
     const mods = works.filter(c=>c.kind==="module");
     const units = works.filter(c=>c.kind!=="module");
-    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布展开其下最多 ${VIEW_DEPTH} 级（子模块和开工单元）。</p>`;
-    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元。左右/上下排整枝，不只一层。</p>`;
+    if(mods.length) note += `<p class="note">下有 ${mods.length} 个子模块。画布一次只展示一层，点卡片进入下一层。</p>`;
+    if(units.length) note += `<p class="note">下有 ${units.length} 个开工单元。点进去只看这一层的直接孩子。</p>`;
   }else if(!proposed && !cancelled && !noauth && (pendingKids||buried)){
     note += `<p class="note">${pendingKids? "本层 "+pendingKids+" 项待确认。":""}${buried? " 这枝已分析 "+buried+" 个开工单元。":""}</p>`;
   }
