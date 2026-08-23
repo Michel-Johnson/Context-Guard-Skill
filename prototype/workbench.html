@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Context Guard · 工作台原型（模块钻取）</title>
+<title>Context Guard · 工作台原型（模块钻取 + Agent 提议）</title>
 <style>
 :root{
   --ink:#2a2f2b; --muted:#75807a; --paper:#ffffff; --bg:#fafaf7; --line:#d9ded7;
@@ -26,14 +26,16 @@ header.top h1{margin:0;font-size:16px}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
+.tray-btn{font-size:12.5px;padding:5px 11px}
 .legend{margin-left:auto;display:flex;gap:12px;color:var(--muted);font-size:12px;flex-wrap:wrap}
 .legend span{display:flex;align-items:center;gap:5px}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
 .dot.failed{background:var(--red)} .dot.dormant{background:var(--gray)}
 .dot.module{background:var(--module);border-radius:2px}
+.dot.proposed{background:#c7ccc6}
 .hint-bar{position:fixed;left:16px;bottom:12px;z-index:30;color:var(--muted);font-size:12px;
-  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px;max-width:60%}
 
 /* ---------- 画布 ---------- */
 #viewport{position:absolute;inset:0;cursor:grab}
@@ -43,8 +45,9 @@ header.top h1{margin:0;font-size:16px}
 #links path.link{fill:none;stroke:#c3cdc0;stroke-width:1.5;transition:opacity .2s}
 #links path.link.dimmed{opacity:.12}
 #links path.link.focus-link{stroke:var(--green);stroke-width:2}
+#links path.link.proposed-link{stroke-dasharray:5 4;stroke:#c7ccc6}
 
-/* 普通节点：小文字标签 */
+/* 普通节点 */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
   background:var(--paper);border:1px solid var(--line);border-radius:7px;
   padding:4px 11px 4px 9px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
@@ -54,12 +57,23 @@ header.top h1{margin:0;font-size:16px}
 .node.dimmed{opacity:.18}
 .node.root{font-size:14.5px;font-weight:700;padding:7px 15px 7px 12px;border-width:1.5px;border-color:#aab8a8}
 
-/* 模块胶囊：点击钻入 */
+/* 模块胶囊 */
 .node.module{border:1.5px solid #b7c2d2;background:var(--module-soft);font-weight:650;
   padding:7px 13px;border-radius:9px}
 .node.module:hover{border-color:var(--module);box-shadow:0 3px 10px rgba(92,111,138,.22)}
 .node.module .stats{color:var(--muted);font-weight:400;font-size:11.5px}
 .node.module .enter{color:var(--module);font-weight:700;margin-left:2px}
+
+/* Agent 提议节点：灰色虚线；首次提议带呼吸绿点 */
+.node.proposed{border:1.5px dashed #bcc4bb;background:#f3f4f0;color:var(--muted)}
+.node.proposed:hover{border-color:var(--green);color:var(--ink)}
+.node.proposed.selected{border-color:var(--green);box-shadow:0 0 0 2.5px var(--green-soft)}
+.node .new-dot{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
+  background:var(--green);border:2px solid #fff;box-shadow:0 0 0 1px var(--green-soft);
+  animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.7}}
+.node .accept-hint{font-size:10.5px;color:var(--green);font-weight:600;margin-left:2px}
+
 .node .bug-badge{background:var(--red);color:#fff;border-radius:8px;min-width:16px;height:16px;
   line-height:16px;text-align:center;font-size:10.5px;padding:0 4px}
 .node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
@@ -68,6 +82,22 @@ header.top h1{margin:0;font-size:16px}
   line-height:17px;text-align:center;opacity:0;transition:opacity .12s}
 .node:hover .add-child{opacity:1}
 .node .add-child:hover{border-color:var(--green);color:var(--green)}
+
+/* ---------- 已取消托盘 ---------- */
+.tray{position:fixed;left:16px;top:60px;z-index:29;width:330px;background:var(--paper);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(42,47,43,.14);
+  padding:14px 16px;display:none}
+.tray.open{display:block}
+.tray h3{margin:0 0 3px;font-size:14px}
+.tray p.hint{margin:0 0 10px;font-size:12px;color:var(--muted)}
+.tray ul{list-style:none;margin:0;padding:0}
+.tray li{padding:9px 0;border-top:1px solid var(--line)}
+.tray li:first-child{border-top:0}
+.tray .t-title{font-size:13px;color:var(--muted);text-decoration:line-through}
+.tray .t-actions{display:flex;gap:6px;margin-top:6px}
+.tray .t-actions button{font-size:12px;padding:3px 9px}
+.tray .t-actions .danger:hover{border-color:var(--red);color:var(--red)}
+.tray .empty{color:var(--muted);font-size:12.5px;padding:6px 0}
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:49px;right:0;bottom:0;width:400px;z-index:20;background:var(--paper);
@@ -81,12 +111,19 @@ header.top h1{margin:0;font-size:16px}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
 .state-chip.failed{background:var(--red-soft);color:var(--red)}
 .state-chip.module{background:var(--module-soft);color:var(--module)}
+.state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .actions{display:flex;gap:8px;margin:13px 0 4px;flex-wrap:wrap}
 button{font:inherit;font-size:13px;padding:6px 13px;border:1px solid var(--line);background:#fff;
   border-radius:7px;cursor:pointer;color:var(--ink)}
 button:hover{border-color:var(--green);color:var(--green)}
 button.primary{background:var(--green);border-color:var(--green);color:#fff}
 button.primary:hover{opacity:.9;color:#fff}
+button.warn:hover{border-color:var(--red);color:var(--red)}
+.proposal-banner{margin:12px 0 0;padding:10px 13px;background:#f3f4f0;border:1.5px dashed #bcc4bb;
+  border-radius:8px;font-size:12.5px;color:var(--muted)}
+.proposal-banner b{color:var(--green)}
+.cancel-banner{margin:12px 0 0;padding:10px 13px;background:var(--red-soft);border:1px solid #e0c4bf;
+  border-radius:8px;font-size:12.5px;color:var(--red)}
 .focus-banner{margin:12px 0 0;padding:9px 13px;background:var(--focus-soft);border:1px solid #e3d5a8;
   border-radius:8px;font-size:12.5px;color:var(--focus)}
 section.block{margin-top:20px}
@@ -131,12 +168,13 @@ section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
     <h1>任务导图</h1>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
+  <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
   <div class="legend">
-    <span><i class="dot module"></i>模块（点击进入）</span>
+    <span><i class="dot module"></i>模块</span>
     <span><i class="dot dirty"></i>探索中</span>
     <span><i class="dot success"></i>成功</span>
     <span><i class="dot failed"></i>失败</span>
-    <span><i class="dot dormant"></i>休眠经验</span>
+    <span><i class="dot proposed"></i>Agent 提议</span>
   </div>
 </header>
 
@@ -147,9 +185,15 @@ section.block>p.hint{margin:0 0 9px;font-size:12px;color:var(--muted)}
   </div>
 </div>
 
+<div class="tray" id="tray">
+  <h3>已取消的提议</h3>
+  <p class="hint">已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。</p>
+  <ul id="tray-list"></ul>
+</div>
+
 <aside class="drawer" id="detail"></aside>
 
-<div class="hint-bar">点击模块进入其全局视图 · 顶部面包屑返回上层 · 拖拽平移 / 滚轮缩放 · 悬停节点点「＋」延伸 · 原型数据不落盘</div>
+<div class="hint-bar">灰色虚线 = Agent 提议 · 绿点 = 新提议 · 第一次点击看详情，再点一次加入 Context Map · 点模块进入其全局视图 · 原型数据不落盘</div>
 
 <script>
 /* ================= 假数据 ================= */
@@ -159,6 +203,7 @@ const PINNED = [
 ];
 
 let NODE_SEQ = 100;
+/* proposal: accepted(默认) | proposed | cancelled；origin: human | agent；isNew: 首次提议绿点 */
 const data = {
   id:"T0", title:"Context Guard 重构", state:"dirty", memories:[
     {text:"目标：Context Guard 变成人机协作维护记忆的范式", state:"success"},
@@ -184,8 +229,9 @@ const data = {
         { id:"M1c", title:"归档流程", state:"dirty", memories:[], bugs:[
             {id:"B0", title:"会话结束无干净信号导致归档丢失", desc:"人不再回消息时，草稿未被提议合并", status:"open"}
           ], dormant:[], children:[] },
-        { id:"M1x", title:"测试中台（已废弃）", state:"failed", memories:[
-            {text:"教训：测试门禁不属于记忆 skill，每轮强制跑测试让人放弃使用", state:"failed"}
+        { id:"P2", title:"记忆过期清理", origin:"agent", proposal:"proposed", isNew:false, state:"dirty",
+          memories:[
+            {text:"Agent 提议理由：sessions/ 会无限增长，需要按时间或数量清理旧会话草稿", state:"dirty"}
           ], bugs:[], dormant:[], children:[] }
       ]
     },
@@ -204,6 +250,15 @@ const data = {
           ], dormant:[], children:[] },
         { id:"M2c", title:"焦点链路加载", state:"dirty", memories:[
             {text:"探索：新会话只注入焦点链路上的记忆，兄弟分支不可见", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"P1", title:"模块钻取导航", origin:"agent", proposal:"proposed", isNew:true, state:"dirty",
+          memories:[
+            {text:"Agent 提议理由：本次任务实现了模块钻取，建议在 map 中沉淀为正式节点，记录钻取交互的设计决定", state:"dirty"},
+            {text:"完成情况：点模块进入其全局视图，面包屑返回上层", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"P3", title:"自动跑回归测试", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
+          memories:[
+            {text:"Agent 提议理由：每次改完工作台自动跑测试。已被人取消：测试门禁不属于本 skill", state:"dirty"}
           ], bugs:[], dormant:[], children:[] }
       ]
     },
@@ -221,7 +276,7 @@ const data = {
 
 let selectedId = "T0";
 let focusId = null;
-let viewRootId = "T0";          /* 当前钻取到的模块（T0 = 项目全局） */
+let viewRootId = "T0";
 
 /* ================= 树工具 ================= */
 function walk(node, fn, parents=[]){
@@ -234,10 +289,12 @@ function findPath(id){
   return result;
 }
 function getNode(id){ const p=findPath(id); return p? p[p.length-1] : null; }
-/* 当前视图内：子模块显示为胶囊（不展开内部） */
+function isCancelled(n){ return n.proposal==="cancelled"; }
+function isProposed(n){ return n.proposal==="proposed"; }
+/* 当前视图内：取消的不显示；子模块显示为胶囊 */
 function visibleChildren(n){
   if(n.kind==="module" && n.id!==viewRootId) return [];
-  return n.children;
+  return n.children.filter(c=>!isCancelled(c));
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
@@ -250,19 +307,28 @@ function onFocusPath(id){
   return fp.includes(id) || p.includes(focusId);
 }
 function aggregate(n){
-  let nodes=0, bugs=0, dormant=0;
-  walk(n,(x)=>{ nodes++; bugs += x.bugs.filter(b=>b.status!=="dormant").length; dormant += x.dormant.length; });
-  return {nodes:nodes-1, bugs, dormant};
+  let nodes=0, bugs=0, dormant=0, proposals=0;
+  walk(n,(x)=>{
+    if(isCancelled(x)) return;
+    if(isProposed(x)){ proposals++; return; }
+    nodes++;
+    bugs += x.bugs.filter(b=>b.status!=="dormant").length;
+    dormant += x.dormant.length;
+  });
+  return {nodes:nodes-1, bugs, dormant, proposals};
 }
-/* 进入某个视图（模块或项目根） */
+function cancelledList(){
+  const out=[];
+  walk(data,(n,ps)=>{ if(isCancelled(n)) out.push({node:n, parent:ps[ps.length-1]}); });
+  return out;
+}
 function enterView(id){
-  viewRootId = id;
-  selectedId = id;
+  viewRootId = id; selectedId = id;
   view = {x:60, y:120, k:1};
   renderAll(); applyView();
 }
 
-/* ================= 顶部导航面包屑 ================= */
+/* ================= 顶部导航 ================= */
 function renderNav(){
   const path = findPath(viewRootId);
   const el = document.getElementById("nav-crumbs");
@@ -271,6 +337,38 @@ function renderNav(){
     : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${n.title}</a><span class="sep">›</span>`
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+  document.getElementById("tray-count").textContent = cancelledList().length;
+}
+
+/* ================= 已取消托盘 ================= */
+document.getElementById("btn-tray").onclick = ()=>{
+  document.getElementById("tray").classList.toggle("open");
+};
+function renderTray(){
+  const list = cancelledList();
+  const ul = document.getElementById("tray-list");
+  ul.innerHTML = list.length? list.map(({node,parent})=>`
+    <li>
+      <div class="t-title">${node.title}<span style="font-size:11px"> · 原属：${parent?parent.title:"根"}</span></div>
+      <div class="t-actions">
+        <button data-restore="${node.id}">↩ 重新加入 Map</button>
+        <button data-delete="${node.id}" class="danger">永久删除</button>
+      </div>
+    </li>`).join("") : `<li class="empty">没有已取消的提议。</li>`;
+  ul.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
+    const n = getNode(b.dataset.restore);
+    n.proposal="accepted"; n.isNew=false;
+    renderAll();
+  });
+  ul.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{
+    const path = findPath(b.dataset.delete);
+    const n = path[path.length-1], parent = path[path.length-2];
+    if(!parent) return;
+    if(!confirm(`永久删除「${n.title}」？此操作不可恢复。`)) return;
+    parent.children = parent.children.filter(c=>c.id!==n.id);
+    if(selectedId===n.id) selectedId = parent.id;
+    renderAll();
+  });
 }
 
 /* ================= 导图渲染 ================= */
@@ -284,10 +382,15 @@ function nodeHtml(n, isViewRoot){
   if(n.kind==="module" && !isViewRoot){
     const agg = aggregate(n);
     return `<i class="dot module"></i><span>${n.title}</span>`+
-      `<span class="stats">${agg.nodes} 节点${agg.dormant?` · 休眠 ${agg.dormant}`:""}</span>`+
+      `<span class="stats">${agg.nodes} 节点${agg.proposals?` · 提议 ${agg.proposals}`:""}${agg.dormant?` · 休眠 ${agg.dormant}`:""}</span>`+
       (agg.bugs?`<span class="bug-badge">${agg.bugs}</span>`:"")+
       (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
       `<span class="enter">›</span>`;
+  }
+  if(isProposed(n)){
+    return (n.isNew?`<span class="new-dot" title="Agent 新提议"></span>`:"")+
+      `<i class="dot proposed"></i><span>${n.title}</span>`+
+      (n.id===selectedId?`<span class="accept-hint">再点一次加入 ✓</span>`:"");
   }
   return `<i class="dot ${n.state}"></i><span>${n.title}</span>`+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
@@ -298,7 +401,6 @@ function nodeHtml(n, isViewRoot){
 function renderMap(){
   const root = getNode(viewRootId);
 
-  /* 第一遍：建可见节点 DOM 并测量 */
   nodesEl.innerHTML = "";
   const els = new Map();
   vwalk(root,(n,ps)=>{
@@ -306,6 +408,7 @@ function renderMap(){
     const div = document.createElement("div");
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module" && !isViewRoot?" module":"") +
+      (isProposed(n)?" proposed":"") +
       (n.id===selectedId?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
     div.innerHTML = nodeHtml(n, isViewRoot);
     div.style.visibility = "hidden";
@@ -315,7 +418,6 @@ function renderMap(){
   const size = new Map();
   els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
 
-  /* 第二遍：可变尺寸布局 */
   const pos = new Map();
   function subtree(n, x, top){
     const s = size.get(n.id);
@@ -353,7 +455,6 @@ function renderMap(){
   linksEl.setAttribute("width", maxX+140);
   linksEl.setAttribute("height", maxY+140);
 
-  /* 细曲线连接 */
   let paths="";
   vwalk(root,(n)=>{
     const p = pos.get(n.id), psz = size.get(n.id);
@@ -363,27 +464,44 @@ function renderMap(){
       const mx=x1+(x2-x1)*.5;
       const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
       const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
-      paths += `<path class="link ${dim?'dimmed':''} ${onF?'focus-link':''}"
+      paths += `<path class="link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''}"
         d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
     });
   });
   linksEl.innerHTML = paths;
 
-  /* 事件：模块胶囊点击 = 钻入；普通节点点击 = 选中 */
+  /* 点击：提议节点 = 第一次选中看详情（清除绿点），再次点击 = 加入 Map；模块 = 钻入 */
   els.forEach((el,id)=>{
     el.onclick = (e)=>{
       const n = getNode(id);
       if(e.target.classList.contains("add-child")){ addChild(n); return; }
+      if(isProposed(n)){
+        if(selectedId===id){ acceptProposal(n); return; }
+        selectedId = id; n.isNew = false; renderAll(); return;
+      }
       if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
       selectedId = id; renderAll();
     };
   });
 }
 
+function acceptProposal(n){
+  n.proposal = "accepted"; n.isNew = false;
+  selectedId = n.id;
+  renderAll();
+}
+function cancelProposal(n){
+  n.proposal = "cancelled"; n.isNew = false;
+  const parent = findPath(n.id)[findPath(n.id).length-2];
+  selectedId = parent? parent.id : "T0";
+  renderAll();
+}
+
 function addChild(node){
-  const t = prompt("子节点名称（新任务从这里延伸）：");
+  const t = prompt("子节点名称（人工创建，直接进入 Context Map）：");
   if(!t) return;
-  node.children.push({id:"N"+(NODE_SEQ++), title:t, state:"dirty", memories:[], bugs:[], dormant:[], children:[]});
+  node.children.push({id:"N"+(NODE_SEQ++), title:t, origin:"human", state:"dirty",
+    memories:[], bugs:[], dormant:[], children:[]});
   if(node.kind==="module" && node.id!==viewRootId){ enterView(node.id); return; }
   selectedId = node.children[node.children.length-1].id;
   renderAll();
@@ -396,13 +514,15 @@ function renderDetail(){
   const el = document.getElementById("detail");
   const node = path[path.length-1];
   const isModule = node.kind==="module";
+  const proposed = isProposed(node), cancelled = isCancelled(node);
 
   const crumbs = path.map((n,i)=> i===path.length-1
     ? `<span>${n.title}</span>`
     : `<a data-id="${n.id}">${n.title}</a><span class="sep">›</span>`).join("");
 
+  /* 继承：只从已接受的祖先取已完成记忆 */
   const inherited = [];
-  path.slice(0,-1).forEach(anc=>{
+  path.slice(0,-1).filter(a=>!isProposed(a)&&!isCancelled(a)).forEach(anc=>{
     anc.memories.filter(m=>m.state!=="dirty").forEach(m=>inherited.push({...m, from:anc.title}));
   });
 
@@ -434,7 +554,7 @@ function renderDetail(){
   const moduleStats = isModule
     ? `<section class="block"><h3>模块概览</h3>
         <ul class="mem-list">
-          <li><i class="dot module"></i><span class="txt">内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条</span></li>
+          <li><i class="dot module"></i><span class="txt">内部节点 ${agg.nodes} 个 · 待修 Bug ${agg.bugs} 个 · 休眠经验 ${agg.dormant} 条${agg.proposals?` · Agent 提议 ${agg.proposals} 条`:""}</span></li>
         </ul></section>`
     : "";
 
@@ -452,14 +572,24 @@ function renderDetail(){
     <div class="crumbs">${crumbs}</div>
     <h2>${node.title}
       ${isModule? `<span class="state-chip module">模块</span>`:""}
-      <span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span></h2>
+      ${proposed? `<span class="state-chip proposed-chip">Agent 提议</span>`
+        : cancelled? `<span class="state-chip failed">已取消</span>`
+        : `<span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span>`}
+    </h2>
+    ${proposed? `<div class="proposal-banner">这是 <b>Agent 提议</b>的节点，尚未加入 Context Map，后续 Agent 不会读到它。
+      查看下方细节后决定：加入，或取消（隐藏）。</div>`:""}
+    ${cancelled? `<div class="cancel-banner">已取消：此节点被隐藏，后续 Agent 不会读到。可从「已取消」托盘恢复或永久删除。</div>`:""}
     <div class="actions">
-      ${isModule && node.id!==viewRootId? `<button data-act="enter" class="primary">进入模块 ›</button>`:""}
-      <button data-act="child">＋ 子节点</button>
-      <button data-act="focus" class="${focusId===node.id?'':'primary'}">
-        ${focusId===node.id? "解除焦点":"◎ 只看这条线"}</button>
-      ${node.state==="dirty" && !isModule? `<button data-act="done">完成·成功</button>
-      <button data-act="fail">完成·失败</button>`:""}
+      ${proposed? `<button data-act="accept" class="primary">✓ 加入 Context Map</button>
+                   <button data-act="cancel" class="warn">Cancel（隐藏）</button>`:""}
+      ${cancelled? `<button data-act="restore" class="primary">↩ 重新加入 Map</button>`:""}
+      ${!proposed && !cancelled? `
+        ${isModule && node.id!==viewRootId? `<button data-act="enter" class="primary">进入模块 ›</button>`:""}
+        <button data-act="child">＋ 子节点</button>
+        <button data-act="focus" class="${focusId===node.id?'':'primary'}">
+          ${focusId===node.id? "解除焦点":"◎ 只看这条线"}</button>
+        ${node.state==="dirty" && !isModule? `<button data-act="done">完成·成功</button>
+        <button data-act="fail">完成·失败</button>`:""}`:""}
     </div>
     ${focusId? `<div class="focus-banner">焦点链路：${findPath(focusId).map(n=>n.title).join(" → ")}
       —— 其余分支已对 Agent 隐藏，新会话只加载这条线的记忆。</div>`:""}
@@ -470,7 +600,7 @@ function renderDetail(){
       ${inhHtml}
     </section>
     <section class="block">
-      <h3>本节点记忆</h3>
+      <h3>本节点记忆${proposed?"（提议内容）":""}</h3>
       ${memHtml}
     </section>
     <section class="block">
@@ -487,7 +617,6 @@ function renderDetail(){
   el.querySelectorAll(".crumbs a").forEach(a=>a.onclick=()=>{
     const target = getNode(a.dataset.id);
     const tp = findPath(target.id);
-    /* 跳转到能看见目标的视图：目标本身是模块则进入它，否则进入最近的模块祖先 */
     const anchor = target.kind==="module" ? target
       : [...tp].reverse().find(n=>n.kind==="module" && n.id!==target.id) || data;
     viewRootId = anchor.id;
@@ -495,24 +624,24 @@ function renderDetail(){
     renderAll();
   });
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
-  const enterBtn = el.querySelector('[data-act="enter"]');
-  if(enterBtn) enterBtn.onclick = ()=>enterView(node.id);
-  el.querySelector('[data-act="child"]').onclick = ()=>addChild(node);
-  el.querySelector('[data-act="focus"]').onclick = ()=>{
-    focusId = (focusId===node.id? null : node.id); renderAll();
-  };
-  const doneBtn = el.querySelector('[data-act="done"]');
-  if(doneBtn) doneBtn.onclick = ()=>{ node.state="success";
+  const q = s=>el.querySelector(s);
+  if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
+  if(q('[data-act="cancel"]'))  q('[data-act="cancel"]').onclick  = ()=>cancelProposal(node);
+  if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>{ node.proposal="accepted"; renderAll(); };
+  if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
+  if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
+  if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
+    focusId = (focusId===node.id? null : node.id); renderAll(); };
+  if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
     node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success"}); renderAll(); };
-  const failBtn = el.querySelector('[data-act="fail"]');
-  if(failBtn) failBtn.onclick = ()=>{ node.state="failed";
+  if(q('[data-act="fail"]'))    q('[data-act="fail"]').onclick    = ()=>{ node.state="failed";
     node.memories.push({text:"（演示）任务失败收场，Agent 记录教训供后续避坑", state:"failed"}); renderAll(); };
 
-  const search = el.querySelector("[data-dorm-search]");
+  const search = q("[data-dorm-search]");
   if(search) search.oninput = ()=>{
-    const q = search.value.trim();
-    const listEl = el.querySelector("[data-dorm-list]");
-    const hits = node.dormant.filter(d=>!q || (d.title+d.exp).includes(q));
+    const kw = search.value.trim();
+    const listEl = q("[data-dorm-list]");
+    const hits = node.dormant.filter(d=>!kw || (d.title+d.exp).includes(kw));
     listEl.innerHTML = hits.length
       ? hits.map(d=>`<li><b>${d.title}</b><span class="exp">${d.exp}</span></li>`).join("")
       : `<li>没有匹配的经验。</li>`;
@@ -564,7 +693,7 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ renderNav(); renderMap(); renderDetail(); }
+function renderAll(){ renderNav(); renderTray(); renderMap(); renderDetail(); }
 renderAll(); applyView();
 </script>
 </body>
