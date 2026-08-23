@@ -31,7 +31,14 @@ header.top h1{margin:0;font-size:16px}
 .session-chip{display:flex;align-items:center;gap:7px;background:var(--auth-soft);border:1px solid #d8cceb;
   border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth);margin-left:auto}
 .session-chip b{font-weight:700}
-.tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
+.tray-btn,.auth-btn,.import-btn{font-size:12.5px;padding:5px 11px}
+.import-bar{display:none;position:fixed;left:0;right:0;top:52px;z-index:28;
+  align-items:center;gap:10px;flex-wrap:wrap;padding:8px 18px;
+  background:#fff;border-bottom:1px solid var(--line);cursor:default}
+.import-bar.open{display:flex}
+.import-bar .label{font-size:12.5px;color:var(--muted)}
+.import-bar .repo{min-width:16em;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:var(--bg)}
+.import-bar .hint{font-size:12px;color:var(--muted)}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
@@ -207,10 +214,18 @@ details.fold .mem-list{margin-top:6px}
     <h1>OpenClaw 架构导图</h1>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
-  <div class="session-chip">当前会话：<b>S-0823 Gateway 协议</b> · 可读 <b id="auth-count">0</b> 节点</div>
+  <div class="session-chip">当前会话：<b id="session-name">S-0823 Gateway 协议</b> · 可读 <b id="auth-count">0</b> 节点</div>
+  <button class="import-btn" id="btn-import">从仓库拆图</button>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
+<div class="import-bar" id="import-bar">
+  <span class="label">仓库</span>
+  <span class="ed repo" id="import-repo">openclaw/openclaw</span>
+  <button class="primary" id="import-go">拆第一层</button>
+  <button class="quiet" id="import-cancel">取消</button>
+  <span class="hint">Agent 只提议模块，目录树不会整仓灌进地图。</span>
+</div>
 
 <div id="viewport">
   <div id="world">
@@ -437,6 +452,51 @@ let foldInherited = false;
 let foldDormant = false;
 const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
 const sessionAuth = new Set(["T0","M1","M1a","N11","N12","N13","M1b","N14","N15","M1c"]);
+const clone = o => JSON.parse(JSON.stringify(o));
+const REPO_SPLIT = clone(data);
+
+function parkChildren(n){
+  if(n.children && n.children.length){
+    n._inbox = n.children;
+    n.children = [];
+  }
+}
+function asProposal(n){
+  n.proposal = "proposed";
+  n.isNew = true;
+  n.origin = n.origin || "agent";
+  parkChildren(n);
+  return n;
+}
+function unpackInbox(n){
+  if(!n._inbox || !n._inbox.length) return;
+  const next = n._inbox.map(asProposal);
+  n._inbox = [];
+  n.children = (n.children||[]).concat(next);
+}
+function startRepoSplit(repo){
+  const src = (repo||"openclaw/openclaw").trim() || "openclaw/openclaw";
+  const next = clone(REPO_SPLIT);
+  data.title = next.title;
+  data.state = next.state;
+  data.bugs = next.bugs;
+  data.dormant = next.dormant;
+  data.memories = [
+    {text:"来源：github.com/"+src, state:"success"},
+    {text:"Agent 只提交第一层模块。确认后才往下拆；仓库目录 ≠ 导图。", state:"success"}
+  ].concat(next.memories);
+  data.children = next.children.map(asProposal);
+  sessionAuth.clear();
+  sessionAuth.add("T0");
+  selectedId = "T0";
+  viewRootId = "T0";
+  focusId = null;
+  composingId = null;
+  document.getElementById("session-name").textContent = "S-0823 拆仓库";
+  document.getElementById("import-bar").classList.remove("open");
+  renderAll();
+  fitView();
+}
 
 /* ================= 树工具 ================= */
 function walk(node, fn, parents=[]){
@@ -533,6 +593,18 @@ document.getElementById("btn-auth").onclick = ()=>{
 document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("tray").classList.toggle("open");
 };
+const importBar = document.getElementById("import-bar");
+document.getElementById("btn-import").onclick = ()=>{
+  importBar.classList.toggle("open");
+  if(importBar.classList.contains("open")){
+    const ed = document.getElementById("import-repo");
+    ed.focus();
+  }
+};
+document.getElementById("import-cancel").onclick = ()=>importBar.classList.remove("open");
+document.getElementById("import-go").onclick = ()=>{
+  startRepoSplit(textOf(document.getElementById("import-repo")));
+};
 function renderTray(){
   const list = cancelledList();
   const ul = document.getElementById("tray-list");
@@ -551,6 +623,9 @@ function renderTray(){
   ul.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
     const n = getNode(b.dataset.restore);
     n.proposal="accepted"; n.isNew=false;
+    unpackInbox(n);
+    sessionAuth.add(n.id);
+    findPath(n.id).forEach(a=>sessionAuth.add(a.id));
     renderAll();
   });
   ul.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{
@@ -696,9 +771,19 @@ function renderMap(){
   });
 }
 
-function acceptProposal(n){
+function acceptProposal(n, silent){
   n.proposal = "accepted"; n.isNew = false;
+  sessionAuth.add(n.id);
+  const path = findPath(n.id);
+  if(path) path.forEach(a=>sessionAuth.add(a.id));
+  unpackInbox(n);
+  if(silent) return;
   selectedId = n.id;
+  if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+  renderAll();
+}
+function acceptLayer(node){
+  node.children.filter(isProposed).forEach(c=>acceptProposal(c, true));
   renderAll();
 }
 function cancelProposal(n){
@@ -785,9 +870,11 @@ function renderDetail(){
         </li>`).join("")+`</ul>`
     : "";
 
+  const pendingKids = node.children.filter(isProposed).length;
   const note = proposed? `<p class="note">尚未加入地图，后续 Agent 读不到。</p>`
     : cancelled? `<p class="note">已隐藏。可从「已取消」恢复。</p>`
     : noauth? `<p class="note">Agent 读不到此项。</p>`
+    : pendingKids? `<p class="note">Agent 拆出 ${pendingKids} 项，等你确认后再往下。</p>`
     : (focusId===node.id? `<p class="note">只看这条线。</p>`:"");
 
   const last = path.length-1;
@@ -810,6 +897,7 @@ function renderDetail(){
                    <button data-act="cancel" class="warn">隐藏</button>`:""}
       ${cancelled? `<button data-act="restore" class="primary">恢复</button>`:""}
       ${!proposed && !cancelled? `
+        ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
         ${composing?"":`<button data-act="child">＋ 子节点</button>`}
         <button data-act="focus" class="quiet">${focusId===node.id? "显示全部":"只看这条"}</button>
@@ -862,7 +950,8 @@ function renderDetail(){
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
   if(q('[data-act="cancel"]'))  q('[data-act="cancel"]').onclick  = ()=>cancelProposal(node);
-  if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>{ node.proposal="accepted"; renderAll(); };
+  if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>acceptProposal(node);
+  if(q('[data-act="accept-layer"]')) q('[data-act="accept-layer"]').onclick = ()=>acceptLayer(node);
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
