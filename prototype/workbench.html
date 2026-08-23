@@ -186,7 +186,8 @@ details.fold .mem-list{margin-top:6px}
 .bug-check:hover{background:var(--red-soft)}
 .bug-check.done{background:var(--green);border-color:var(--green)}
 .bug-title{font-weight:600;font-size:13px}
-.bug-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.bug-sub{color:var(--muted);font-size:12px;margin-top:2px;min-height:1.2em}
+.bug-sub.ed:empty:before{content:"补充说明（可选）";color:#b5bab6}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
 .summarizing{color:var(--green);font-size:12px;margin-top:3px}
 
@@ -234,6 +235,7 @@ const PINNED = [
 ];
 
 let NODE_SEQ = 100;
+let BUG_SEQ = 10;
 const data = {
   id:"T0", title:"Context Guard 重构", state:"dirty", memories:[
     {text:"目标：Context Guard 变成人机协作维护记忆的范式", state:"success"},
@@ -703,7 +705,11 @@ function renderDetail(){
       ${memHtml}
       <div class="empty ed ghost" data-ed="mem-new">${node.memories.length? "添加记忆":"还没有记忆。"}</div>
     </section>
-    ${openBugs.length? `<section class="block"><h3><span class="ed" data-ed="label-bugs">${uiLabels.bugs}</span></h3>${bugHtml}</section>`:""}
+    <section class="block">
+      <h3><span class="ed" data-ed="label-bugs">${uiLabels.bugs}</span></h3>
+      ${bugHtml}
+      <div class="empty ed ghost" data-ed="bug-new">${openBugs.length? "添加 Bug":"还没有 Bug。"}</div>
+    </section>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
       <summary><span class="ed" data-ed="label-inherited">${uiLabels.inherited}</span> ${inhCount} 条</summary>
       <ul class="mem-list">
@@ -784,6 +790,11 @@ function renderDetail(){
         if(!v || v==="添加记忆" || v==="还没有记忆。") return;
         node.memories.push({text:v, state:"dirty"}); renderAll(); return;
       }
+      if(kind==="bug-new"){
+        if(!v || v==="添加 Bug" || v==="还没有 Bug。") return;
+        node.bugs.push({id:"B"+(BUG_SEQ++), title:v, desc:"", status:"open"});
+        renderAll(); return;
+      }
       if(kind==="pinned"){
         const i = +ed.dataset.i;
         if(v) PINNED[i] = v; return;
@@ -794,7 +805,9 @@ function renderDetail(){
       }
       if(kind==="bug-title"){
         const b = node.bugs.find(x=>x.id===ed.dataset.bug);
-        if(b && v) b.title = v; return;
+        if(!b) return;
+        if(!v){ node.bugs = node.bugs.filter(x=>x.id!==b.id); renderAll(); return; }
+        b.title = v; return;
       }
       if(kind==="bug-desc"){
         const b = node.bugs.find(x=>x.id===ed.dataset.bug);
