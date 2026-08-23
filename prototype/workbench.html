@@ -1994,9 +1994,13 @@ function renderDetail(){
   const note = cancelled? `<p class="note">已隐藏。</p>`
     : noauth? `<p class="note">未授权。</p>`
     : "";
+  /* dirty/探索中是缺省，不是要人改的活状态；只在有结论或自定义标签时才露芯片。 */
   const chip = cancelled? `<span class="state-chip failed">已取消</span>`
     : isModule? `<span class="state-chip module">模块</span>`
-    : `<span class="state-chip ${node.state} ed" data-ed="badge">${node.badge||STATE_LABEL[node.state]}</span>`;
+    : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
+    : (node.state==="success"||node.state==="failed")
+      ? `<span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span>`
+      : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
 
@@ -2018,27 +2022,27 @@ function renderDetail(){
       </div>`:""}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
-      <summary><span class="ed" data-ed="label-memory">${uiLabels.memory}</span> ${node.memories.length||""}
+      <summary>${uiLabels.memory} ${node.memories.length||""}
         <button type="button" class="plus-btn" data-act="add-mem" title="添加记忆">+</button>
       </summary>
       ${memHtml}
     </details>
     <section class="block">
       <div class="block-head">
-        <h3><span class="ed" data-ed="label-bugs">${uiLabels.bugs}</span></h3>
+        <h3>${uiLabels.bugs}</h3>
         <button type="button" class="plus-btn" data-act="add-bug" title="添加 Bug">+</button>
       </div>
       ${bugHtml}
     </section>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
-      <summary><span class="ed" data-ed="label-inherited">${uiLabels.inherited}</span> ${inhCount}</summary>
+      <summary>${uiLabels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
         ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
-      <summary><span class="ed" data-ed="label-dormant">${uiLabels.dormant}</span> ${node.dormant.length}</summary>
+      <summary>${uiLabels.dormant} ${node.dormant.length}</summary>
       <ul class="dormant-list">
         ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b></li>`).join("")}
       </ul>
@@ -2090,18 +2094,7 @@ function renderDetail(){
         if(!v || v===node.title) return;
         node.title = v; renderAll(); return;
       }
-      if(kind==="badge"){
-        if(!v) return;
-        const hit = Object.keys(STATE_LABEL).find(k=>STATE_LABEL[k]===v);
-        if(hit){ node.state = hit; node.badge = ""; }
-        else node.badge = v;
-        renderAll(); return;
-      }
       if(kind==="purpose"){ node.purpose = v; renderAll(); return; }
-      if(kind==="label-memory"){ uiLabels.memory = v||"记忆"; return; }
-      if(kind==="label-bugs"){ uiLabels.bugs = v||"Bug"; return; }
-      if(kind==="label-inherited"){ uiLabels.inherited = v||"继承的"; return; }
-      if(kind==="label-dormant"){ uiLabels.dormant = v||"休眠经验"; return; }
       if(kind==="mem"){
         const i = +ed.dataset.i;
         if(!v){ node.memories.splice(i,1); renderAll(); return; }
