@@ -104,7 +104,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #links path.link.dimmed{opacity:.18}
 #links path.link.focus-link{stroke:var(--green);stroke-width:2.4}
 #links path.link.proposed-link{stroke-dasharray:6 5;stroke:#7a8078}
-#links path.link.noauth-link{stroke:#8a8478}
+#links path.link.noauth-link{stroke:#9a9a94}
 #links path.link.stem{stroke:#5c564c;stroke-width:2}
 
 /* ===== 节点：小圆角胶囊 ===== */
@@ -150,11 +150,22 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.7}}
 .node .accept-hint{font-size:10.5px;color:var(--green);font-weight:600;margin-left:2px}
 
-/* 无权限：灰色带锁 */
-.node.noauth{background:#f1f1ef;border-color:#dcdcd8;color:#a9aca7}
-.node.noauth .dot{background:#cfcfcf !important}
-.node.noauth.module{background:#f0f0ee;border-color:#d8d8d4}
-.node.noauth .m-blurb{color:#b5b8b3}
+/* 无权限：整卡灰色，和已授权的米色模块卡分开。选中仍用黄底，方便点进检查器。 */
+.node.noauth{background:#d4d4d0;border-color:#a3a39c;color:#5c5c58;
+  box-shadow:2px 2px 0 #a3a39c}
+.node.noauth .dot{background:#9a9a94 !important}
+.node.noauth.module{background:#d4d4d0;border-color:#a3a39c;color:#5c5c58}
+.node.noauth.module .m-head,
+.node.noauth.module .m-head span{color:#5a5a56}
+.node.noauth .m-blurb,
+.node.noauth.module .m-blurb{color:#8a8a84}
+.node.noauth.selected{background:var(--yellow);color:var(--ink);
+  border-color:var(--line-ink);box-shadow:var(--shadow)}
+.node.module.noauth.selected{background:#fff3bf;color:var(--ink);
+  border-color:var(--line-ink);box-shadow:var(--shadow)}
+.node.module.noauth.selected .m-head,
+.node.module.noauth.selected .m-head span{color:var(--ink)}
+.node.module.noauth.selected .m-blurb{color:#8a8278}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
@@ -1725,8 +1736,8 @@ function renderMap(){
   function linkClass(n,c){
     const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
     const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
-    // Module rails stay readable even when a card is still locked.
-    const na = c.kind!=="module" && !isProposed(c) && !isAuth(c);
+    const na = !isProposed(c) && !isAuth(c) &&
+      !(c.kind==="module" && moduleAuthState(c)!=="none");
     return `link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
   }
   function curveTB(n,c){
