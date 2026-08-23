@@ -341,13 +341,25 @@ const OPENCLAW_MAP = {
           ], bugs:[], dormant:[], children:[
             { id:"N11", title:"connect 握手与 hello-ok", state:"success", memories:[
                 {text:"hello-ok 带回 presence、health，以及可发现的 methods/events", state:"success"}
-              ], bugs:[], dormant:[], children:[] },
+              ], bugs:[], dormant:[], children:[
+                { id:"N11a", title:"src/gateway/protocol/connect.ts", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N11b", title:"首帧校验 / 非 connect 断开", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N11c", title:"hello-ok methods/events 发现", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+              ] },
             { id:"N12", title:"req / res / event 帧", state:"dirty", memories:[
                 {text:"探索：event 不重放，客户端发现序号缺口必须自己刷新", state:"dirty"}
-              ], bugs:[], dormant:[], children:[] },
+              ], bugs:[], dormant:[], children:[
+                { id:"N12a", title:"帧序号与缺口刷新", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N12b", title:"幂等键 send / agent", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N12c", title:"event:agent 流式分片", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+              ] },
             { id:"N13", title:"TypeBox → JSON Schema → Swift", state:"success", memories:[
                 {text:"协议用 TypeBox 建模，生成 JSON Schema 和 Swift 模型", state:"success"}
-              ], bugs:[], dormant:[], children:[] }
+              ], bugs:[], dormant:[], children:[
+                { id:"N13a", title:"TypeBox schema 源", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N13b", title:"JSON Schema 导出", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N13c", title:"Swift 客户端模型生成", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+              ] }
           ] },
         { id:"M1b", title:"会话、队列、Agent 调度", kind:"module", purpose:"agent 请求的受理、流式 event、运行队列与并发", state:"dirty", memories:[
             {text:"req:agent 先 ack accepted（带 runId），再推流式 event:agent，最后 final", state:"success"}
@@ -356,12 +368,25 @@ const OPENCLAW_MAP = {
           ], dormant:[], children:[
             { id:"N14", title:"agent-turn 执行线", state:"dirty", memories:[
                 {text:"探索：把 runtime execution lineage 从 gateway 调度里拆清", state:"dirty"}
-              ], bugs:[], dormant:[], children:[] },
-            { id:"N15", title:"命令队列与并发", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+              ], bugs:[], dormant:[], children:[
+                { id:"N14a", title:"req:agent accepted + runId", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N14b", title:"stream → final 事件序", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N14c", title:"取消 / abort 传播", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+              ] },
+            { id:"N15", title:"命令队列与并发", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+                { id:"N15a", title:"每会话队列", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N15b", title:"跨会话并发上限", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+                { id:"N15c", title:"shutdown drain", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+              ] }
           ] },
-        { id:"M1c", title:"HTTP 托管表面", state:"success", memories:[
+        { id:"M1c", title:"HTTP 托管表面", kind:"module", purpose:"与 WS 同端口的静态/画布/A2UI 托管", state:"success", memories:[
             {text:"同一端口提供 /__openclaw__/canvas/ 与 /__openclaw__/a2ui/", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
+          ], bugs:[], dormant:[], children:[
+            { id:"N16", title:"/__openclaw__/canvas/", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N17", title:"/__openclaw__/a2ui/", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N18", title:"Control UI 静态资源", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N19", title:"健康检查 /healthz", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"P1", title:"Computer-use harness 加强", origin:"agent", proposal:"proposed", isNew:true, state:"dirty",
           memories:[
             {text:"Agent 提议理由：下一优先是 computer-use 与 agent harness，建议在 Gateway 侧留稳定的 node caps 合同", state:"dirty"}
@@ -372,46 +397,87 @@ const OPENCLAW_MAP = {
     { id:"M2", title:"Agent Runtime", kind:"module", purpose:"一次 agent 调用如何取上下文、选模型、跑工具、写记忆", state:"dirty", memories:[
         {text:"编排层：提示词、工具、协议、集成；TypeScript 是为了可改", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"M2a", title:"Agent Loop", state:"dirty", memories:[
-            {text:"探索：admitted-run-context 决定一次 run 能看见哪些工具和记忆", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"M2b", title:"Context Engine", state:"dirty", memories:[
-            {text:"探索：会话卡片、轨迹、转录如何拼进 prompt，而不把全部历史塞进去", state:"dirty"}
+        { id:"M2a", title:"Agent Loop", kind:"module", purpose:"admitted-run-context 决定一次 run 能看见哪些工具和记忆", state:"dirty", memories:[
+            {text:"src/runtime/loop.ts 是一轮 tool-call 循环，不是聊天 UI", state:"dirty"}
+          ], bugs:[], dormant:[], children:[
+            { id:"N2a1", title:"src/runtime/loop.ts", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2a2", title:"admitted-run-context 裁剪", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2a3", title:"stop / max-turns", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2a4", title:"tool-call 解析与重试", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"M2b", title:"Context Engine", kind:"module", purpose:"会话卡片、轨迹、转录如何拼进 prompt，而不把全部历史塞进去", state:"dirty", memories:[
+            {text:"探索：transcripts 未裁剪时单次 agent 调用超时", state:"dirty"}
           ], bugs:[
             {id:"B20", title:"长会话上下文膨胀", desc:"transcripts 未裁剪时单次 agent 调用超时", status:"open"}
-          ], dormant:[], children:[] },
+          ], dormant:[], children:[
+            { id:"N2b1", title:"会话卡片压缩", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2b2", title:"轨迹 / 工具结果截断", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2b3", title:"转录窗口", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2b4", title:"system prompt 拼装", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"M2c", title:"Memory 插件槽", kind:"module", purpose:"同时只能激活一个 memory 插件，走插件合同而不是写死存储", state:"dirty", memories:[
             {text:"VISION：多种 memory 实现会收敛到一条推荐默认路径", state:"dirty"}
           ], bugs:[], dormant:[], children:[
-            { id:"N21", title:"memory-host-sdk", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-            { id:"N22", title:"active-memory 扩展", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            { id:"N21", title:"memory-host-sdk", kind:"module", purpose:"host 对 memory 插件的合同：load/search/write", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+              { id:"N21a", title:"load / search / write API", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N21b", title:"单槽互斥", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
+            { id:"N22", title:"active-memory 扩展", kind:"module", purpose:"当前启用的 memory 实现", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+              { id:"N22a", title:"默认文件 memory", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N22b", title:"切换实现不改 loop", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] }
           ] },
-        { id:"M2d", title:"Tools 与沙箱", state:"dirty", memories:[
-            {text:"主会话工具默认在宿主机跑，除非显式开 sandbox", state:"success"}
+        { id:"M2d", title:"Tools 与沙箱", kind:"module", purpose:"主会话工具默认在宿主机跑，除非显式开 sandbox", state:"dirty", memories:[
+            {text:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", state:"success"}
           ], bugs:[
             {id:"B21", title:"未沙箱时工具等同本机权限", desc:"连上其他用户或把 Gateway 暴露出去之前必须先读 sandbox 指南", status:"open"}
-          ], dormant:[], children:[] }
+          ], dormant:[], children:[
+            { id:"N2d1", title:"host 工具派发", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2d2", title:"sandbox 开关与策略", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2d3", title:"文件系统 / shell 工具", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N2d4", title:"browser / computer-use 工具", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] }
       ]
     },
 
     { id:"M3", title:"Channels 消息渠道", kind:"module", purpose:"把助手接到 WhatsApp / Telegram / Slack / Discord / Signal / iMessage 等已有聊天里", state:"dirty", memories:[
         {text:"渠道把入站消息当不可信输入；能私聊的渠道默认要配对未知发送者", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N31", title:"WhatsApp · Baileys", state:"success", memories:[
+        { id:"N31", title:"WhatsApp · Baileys", kind:"module", purpose:"每台主机一个 Baileys 会话，只由 Gateway 打开", state:"success", memories:[
             {text:"不变量：每台主机只有一个 Baileys 会话，且只由 Gateway 打开", state:"success"}
           ], bugs:[], dormant:[
             {title:"多实例抢同一 WhatsApp session", exp:"第二台 Gateway 再开 Baileys 会互踢；修复：单主机单 Gateway 不变量写进协议文档。"}
-          ], children:[] },
-        { id:"N32", title:"Telegram · grammY", state:"success", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"N33", title:"Slack / Discord / Google Chat", state:"dirty", memories:[
+          ], children:[
+            { id:"N31a", title:"src/channels/whatsapp/baileys.ts", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N31b", title:"auth 状态落盘", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N31c", title:"入站消息 → Gateway 会话", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N31d", title:"出站 send 与媒体", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N32", title:"Telegram · grammY", kind:"module", purpose:"grammY bot、webhook/long-poll、chat id 映射", state:"success", memories:[], bugs:[], dormant:[], children:[
+            { id:"N32a", title:"src/channels/telegram/grammy.ts", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N32b", title:"webhook vs long-poll", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N32c", title:"chat/user id 映射", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N33", title:"Slack / Discord / Google Chat", kind:"module", purpose:"工作区机器人、线程、mention 策略", state:"dirty", memories:[
             {text:"VISION：继续补齐主渠道，并加几个高需求渠道", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N34", title:"Signal / iMessage", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"N35", title:"allowlist 与 pairing", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N33a", title:"Slack Events API / 线程", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N33b", title:"Discord gateway intents", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N33c", title:"Google Chat app", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N34", title:"Signal / iMessage", kind:"module", purpose:"本机身份渠道，和 WhatsApp 一样不能多开", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N34a", title:"Signal 本机会话", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N34b", title:"iMessage / BlueBubbles 桥", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N35", title:"allowlist 与 pairing", kind:"module", purpose:"未知发送者走 pairing；openclaw pairing approve 才能放行", state:"dirty", memories:[
             {text:"未知发送者走 pairing；openclaw pairing approve 才能放行", state:"success"}
           ], bugs:[
             {id:"B30", title:"DM 渠道默认配对提示易被忽略", desc:"操作者以为渠道一连上就能聊，实际消息卡在 pairing 队列", status:"open"}
-          ], dormant:[], children:[] },
+          ], dormant:[], children:[
+            { id:"N35a", title:"allowlist 匹配", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N35b", title:"pairing 队列", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N35c", title:"pairing approve CLI/UI", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"P3", title:"再包一层已有渠道的 wrapper", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
           memories:[
             {text:"Agent 提议给已支持渠道再做包装通道。已取消：不收无能力/安全缺口的 wrapper channel", state:"dirty"}
@@ -422,15 +488,29 @@ const OPENCLAW_MAP = {
     { id:"M4", title:"Models 与供应商", kind:"module", purpose:"模型目录、选择器、托管/本地供应商，核心只认当前配置 schema", state:"dirty", memories:[
         {text:"配置改名必须带 doctor 迁移：检测旧形态、备份、改写成规范格式", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N41", title:"model-catalog", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"N42", title:"model-picker", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N41", title:"model-catalog", kind:"module", purpose:"当前 schema 下的模型目录，改名必须走 doctor", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N41a", title:"catalog JSON schema", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N41b", title:"别名与弃用项", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N42", title:"model-picker", kind:"module", purpose:"一次 run 如何选模型：默认、覆盖、失败回退", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N42a", title:"默认模型解析", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N42b", title:"会话级覆盖", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N42c", title:"失败回退链", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"M4a", title:"供应商扩展", kind:"module", purpose:"Anthropic / Bedrock / Azure / 本地等走 extensions，不堆进 core", state:"dirty", memories:[
             {text:"extensions/ 下已有 anthropic、amazon-bedrock、deepseek、cerebras 等", state:"success"}
           ], bugs:[], dormant:[], children:[
-            { id:"N44", title:"anthropic / vertex", state:"success", memories:[], bugs:[], dormant:[], children:[] },
-            { id:"N45", title:"本地与网关型供应商", state:"dirty", memories:[
+            { id:"N44", title:"anthropic / vertex", kind:"module", purpose:"官方 API 与 Vertex 适配", state:"success", memories:[], bugs:[], dormant:[], children:[
+              { id:"N44a", title:"extensions/anthropic", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N44b", title:"extensions/vertex", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
+            { id:"N45", title:"本地与网关型供应商", kind:"module", purpose:"Ollama / 网关代理与主 picker 的优先级", state:"dirty", memories:[
                 {text:"探索：cloudflare-ai-gateway、copilot-proxy 与主 picker 的优先级", state:"dirty"}
-              ], bugs:[], dormant:[], children:[] }
+              ], bugs:[], dormant:[], children:[
+              { id:"N45a", title:"ollama / 本地", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N45b", title:"cloudflare-ai-gateway", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N45c", title:"copilot-proxy", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] }
           ] }
       ]
     },
@@ -439,18 +519,32 @@ const OPENCLAW_MAP = {
         {text:"新技能先上 ClawHub，不默认合进 core", state:"success"},
         {text:"同一种能力出现多次，就在 core/SDK 落合同，再把捆绑实现迁到合同上", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N51", title:"plugin-sdk", state:"dirty", memories:[
+        { id:"N51", title:"plugin-sdk", kind:"module", purpose:"packages/plugin-sdk 是扩展面，不是业务堆头", state:"dirty", memories:[
             {text:"packages/plugin-sdk 是扩展面，不是业务堆头", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N52", title:"ClawHub 分发", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N51a", title:"plugin 生命周期 hook", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N51b", title:"工具注册表", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N51c", title:"配置 schema 合同", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N52", title:"ClawHub 分发", kind:"module", purpose:"官方插件走受审 org；core 文档只写扩展点", state:"dirty", memories:[
             {text:"官方插件走受审的 org publisher；core 文档只写扩展点", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N53", title:"MCP 服务器与运行时", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N52a", title:"org publisher 审核", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N52b", title:"安装 / 更新 / 签名", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N53", title:"MCP 服务器与运行时", kind:"module", purpose:"既当 MCP server，也当运行时集成面", state:"dirty", memories:[
             {text:"既当 MCP server，也当运行时集成面；避免再复制一套 agent/tool 路径", state:"dirty"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N54", title:"bundled skills", state:"success", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N53a", title:"MCP server 暴露 tools", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N53b", title:"MCP client 接入外部 server", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N53c", title:"与 runtime tool 路径合流", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N54", title:"bundled skills", kind:"module", purpose:"只留基线 UX 技能；新技能不进 core", state:"success", memories:[
             {text:"只留基线 UX 技能；新技能不进 core", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
+          ], bugs:[], dormant:[], children:[
+            { id:"N54a", title:"基线 UX skill 清单", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N54b", title:"禁止默认合入新 skill", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"P2", title:"向 core 合入新 skill", origin:"agent", proposal:"cancelled", isNew:false, state:"dirty",
           memories:[
             {text:"Agent 提议把常用 skill 放进 core。已取消：VISION 写明新 skill 走 ClawHub", state:"dirty"}
@@ -461,18 +555,33 @@ const OPENCLAW_MAP = {
     { id:"M6", title:"伴侣应用与 Nodes", kind:"module", purpose:"macOS / iOS / Android / Linux 以 role:node 连上 Gateway，提供摄像头、屏幕、Canvas", state:"dirty", memories:[
         {text:"Node 在 connect 里声明 caps/commands；配对按设备而不是按用户会话", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N61", title:"macOS app", state:"dirty", memories:[
+        { id:"N61", title:"macOS app", kind:"module", purpose:"Swift 模型从协议 JSON Schema 生成；canvas.* widget", state:"dirty", memories:[
             {text:"Swift 模型从协议 JSON Schema 生成；另有 canvas.* widget 命令", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N62", title:"iOS / Android", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N61a", title:"apps/macos Gateway 客户端", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N61b", title:"Swift 模型生成", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N61c", title:"canvas.* widget 命令", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N62", title:"iOS / Android", kind:"module", purpose:"camera.* / screen.record / location.get", state:"dirty", memories:[
             {text:"apps/ios、apps/android；camera.* / screen.record / location.get", state:"dirty"}
           ], bugs:[
             {id:"B60", title:"Android node caps 策略来源不一致", desc:"policy-config 与 policy-source 对 required-commands 判断分叉", status:"open"}
-          ], dormant:[], children:[] },
-        { id:"N63", title:"Linux / headless node", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-        { id:"N64", title:"Canvas 与 A2UI", state:"dirty", memories:[
+          ], dormant:[], children:[
+            { id:"N62a", title:"apps/ios node", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N62b", title:"apps/android node", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N62c", title:"camera / screen / location caps", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N62d", title:"Android policy-config vs policy-source", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N63", title:"Linux / headless node", kind:"module", purpose:"无界面 node：只报 caps、跑命令", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+            { id:"N63a", title:"headless 连接与心跳", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N63b", title:"远程命令执行", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N64", title:"Canvas 与 A2UI", kind:"module", purpose:"托管 widget 文档由 Gateway HTTP 提供，和 WS 同端口", state:"dirty", memories:[
             {text:"托管 widget 文档由 Gateway HTTP 提供，和 WS 同端口", state:"success"}
-          ], bugs:[], dormant:[], children:[] }
+          ], bugs:[], dormant:[], children:[
+            { id:"N64a", title:"canvas 文档路由", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N64b", title:"A2UI 渲染", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] }
       ]
     },
 
@@ -483,8 +592,13 @@ const OPENCLAW_MAP = {
         { id:"N7a", title:"CLI · onboard / daemon", kind:"module", purpose:"第一次把 Gateway 装上：模型、工作区、launchd/systemd", state:"dirty", memories:[
             {text:"openclaw onboard --install-daemon；失败要能 doctor 回去", state:"success"}
           ], bugs:[], dormant:[], children:[
-            { id:"N7a1", title:"onboard 向导", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-            { id:"N7a2", title:"install-daemon", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N7a1", title:"onboard 向导", kind:"module", purpose:"src/cli/commands/onboard.ts", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7a1a", title:"src/cli/commands/onboard.ts", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N7a1b", title:"模型 / 工作区问卷", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
+            { id:"N7a2", title:"install-daemon", kind:"module", purpose:"launchd/systemd 安装入口", state:"success", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7a2a", title:"src/cli/commands/daemon.ts", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
             { id:"N7a3", title:"工作区初始化", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
           ] },
         { id:"N7b", title:"CLI · gateway 生命周期", kind:"module", purpose:"start / stop / status / restart，本机守护进程合同", state:"dirty", memories:[
@@ -517,8 +631,15 @@ const OPENCLAW_MAP = {
         { id:"N7g", title:"TUI · 主循环 tui.ts", kind:"module", purpose:"终端里的会话面：布局、输入、渲染循环", state:"dirty", memories:[
             {text:"入口 src/tui/tui.ts；组件树 header / chat log / status / editor", state:"success"}
           ], bugs:[], dormant:[], children:[
-            { id:"N7g1", title:"pi-tui 组件树", state:"success", memories:[], bugs:[], dormant:[], children:[] },
-            { id:"N7g2", title:"openclaw tui / chat 入口", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+            { id:"N7g1", title:"pi-tui 组件树", kind:"module", purpose:"header / chat log / status / editor", state:"success", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7g1a", title:"src/tui/tui.ts", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N7g1b", title:"header / status 组件", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N7g1c", title:"editor 组件", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
+            { id:"N7g2", title:"openclaw tui / chat 入口", kind:"module", purpose:"CLI 把 tui 和 chat 指到同一循环", state:"success", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7g2a", title:"openclaw tui", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N7g2b", title:"openclaw chat 别名", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
           ] },
         { id:"N7h", title:"TUI · Gateway vs Embedded 后端", kind:"module", purpose:"连上已有 Gateway，或 --local 嵌入式跑 agent", state:"dirty", memories:[
             {text:"TuiBackend：GatewayChatClient（WS）与 EmbeddedBackend（无 Gateway）", state:"success"}
@@ -543,8 +664,13 @@ const OPENCLAW_MAP = {
         { id:"N7m", title:"Control UI · 会话与聊天", kind:"module", purpose:"浏览器里的会话列表、transcript、发送与流式", state:"dirty", memories:[
             {text:"ui/ 是 Vite 应用，走 Gateway WS", state:"dirty"}
           ], bugs:[], dormant:[], children:[
-            { id:"N7m1", title:"会话侧栏", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
-            { id:"N7m2", title:"transcript / 发送", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            { id:"N7m1", title:"会话侧栏", kind:"module", purpose:"ui/src 会话列表", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7m1a", title:"ui/src/sessions/list", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
+            { id:"N7m2", title:"transcript / 发送", kind:"module", purpose:"流式气泡与 composer", state:"dirty", memories:[], bugs:[], dormant:[], children:[
+              { id:"N7m2a", title:"ui/src/chat/transcript", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+              { id:"N7m2b", title:"ui/src/chat/composer", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+            ] },
           ] },
         { id:"N7n", title:"Control UI · 渠道接入向导", kind:"module", purpose:"在浏览器里完成渠道连接，而不是只丢 CLI", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
         { id:"N7o", title:"Control UI · Nodes 设备", kind:"module", purpose:"摄像头/屏幕等 node 的配对与 caps", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
@@ -575,18 +701,36 @@ const OPENCLAW_MAP = {
         {text:"无使用分析、无跟踪，除非操作者自己打开", state:"success"},
         {text:"loopback 可自动配对；Tailnet/LAN 必须人工批准", state:"success"}
       ], bugs:[], dormant:[], children:[
-        { id:"N81", title:"设备配对与签名", state:"dirty", memories:[
+        { id:"N81", title:"设备配对与签名", kind:"module", purpose:"connect.challenge 必须签名；v3 绑定 platform 与 deviceFamily", state:"dirty", memories:[
             {text:"connect.challenge 必须签名；v3 还绑定 platform 与 deviceFamily", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N82", title:"Sandbox 与暴露 runbook", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N81a", title:"connect.challenge 签名", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N81b", title:"v3 platform / deviceFamily", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N81c", title:"loopback 自动配对", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N81d", title:"Tailnet/LAN 人工批准", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N82", title:"Sandbox 与暴露 runbook", kind:"module", purpose:"暴露 Gateway 前先读 security + exposure-runbook + sandboxing", state:"dirty", memories:[
             {text:"把 Gateway 暴露给他人之前先读 security + exposure-runbook + sandboxing", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N83", title:"Daemon · Docker · Fly", state:"success", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N82a", title:"docs/security", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N82b", title:"exposure-runbook", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N82c", title:"sandboxing 指南", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N83", title:"Daemon · Docker · Fly", kind:"module", purpose:"launchd/systemd；Dockerfile、fly.toml、compose", state:"success", memories:[
             {text:"launchd/systemd 守护；另有 Dockerfile、fly.toml、docker-compose", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N84", title:"doctor 配置迁移", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N83a", title:"launchd plist", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N83b", title:"systemd unit", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N83c", title:"Dockerfile / compose", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N83d", title:"fly.toml", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N84", title:"doctor 配置迁移", kind:"module", purpose:"core doctor 修 core；插件 doctor 修插件配置", state:"dirty", memories:[
             {text:"core 配置由 core doctor 修；插件配置由该插件的 doctor 合同修", state:"success"}
-          ], bugs:[], dormant:[], children:[] }
+          ], bugs:[], dormant:[], children:[
+            { id:"N84a", title:"core doctor --fix", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N84b", title:"插件 doctor 合同", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N84c", title:"迁移前备份", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+          ] }
       ]
     }
   ]
@@ -618,12 +762,19 @@ const CONTEXT_GUARD_MAP = {
       ], bugs:[
         {id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open"}
       ], dormant:[], children:[
-        { id:"N21", title:"模块卡与节点", state:"success", memories:[
+        { id:"N21", title:"模块卡与节点", kind:"module", purpose:"大方卡只露标题和一句用途", state:"success", memories:[
             {text:"模块是大方卡，只露标题和一句用途；点进去才看见子节点", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
-        { id:"N22", title:"检查器", state:"dirty", memories:[
+          ], bugs:[], dormant:[], children:[
+            { id:"N21a", title:"renderNode 模块卡", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N21b", title:"visibleChildren 分层展开", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
+        { id:"N22", title:"检查器", kind:"module", purpose:"标题、用途、记忆可点进编辑；Bug 是内容不是子节点", state:"dirty", memories:[
             {text:"标题、用途、本节点记忆可点进编辑；Bug 是节点内容不是子节点", state:"success"}
-          ], bugs:[], dormant:[], children:[] },
+          ], bugs:[], dormant:[], children:[
+            { id:"N22a", title:"contenteditable 提交", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N22b", title:"Bug 区块 + 号", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+            { id:"N22c", title:"架构笔记演示稿", state:"dirty", memories:[], bugs:[], dormant:[], children:[] }
+          ] },
         { id:"N23", title:"布局方向", state:"success", memories:[
             {text:"同一棵树可左右读模块栈，或上下读兄弟并排", state:"success"}
           ], bugs:[], dormant:[], children:[] },
@@ -741,13 +892,23 @@ const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent�
 
 ## 其它层（摘要）
 
-Gateway：WS 协议、会话队列、HTTP 托管面、幂等与 drain。
-Runtime：loop、context 裁剪、memory 单槽、tools/sandbox。
-Channels：Baileys 单会话不变量、grammY、pairing。
-Models：catalog/picker + extensions，改名走 doctor。
-Plugins：plugin-sdk、ClawHub、MCP，新技能不进 core。
-Nodes：macOS/iOS/Android caps，按设备配对。
-安全：loopback 可自动配对；Tailnet/LAN 必须人批。
+Gateway：
+- src/gateway/protocol/connect.ts、帧序号、幂等键、TypeBox→Swift
+- agent-turn：accepted/runId、stream→final、abort
+- 每会话队列、drain、/__openclaw__/canvas、/healthz
+
+Runtime：
+- src/runtime/loop.ts、admitted-run-context、max-turns、tool-call 重试
+- 会话卡片压缩、轨迹截断、转录窗口、system prompt
+- memory-host-sdk load/search/write；host 工具 vs sandbox；computer-use
+
+Channels：
+- whatsapp/baileys.ts 含 auth 落盘与媒体 send
+- telegram/grammy.ts webhook vs long-poll
+- Slack/Discord/GChat 线程与 intents
+- pairing 队列与 approve
+
+控制面 UI：进模块后应同时看到命令族、src/tui/tui.ts、ui/src/chat/* 这些可改文件，而不是停在 CLI/TUI 三个名字。
 `;
 
 const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（演示稿 · 未调用 Agent）
@@ -840,12 +1001,17 @@ function esc(s){
 }
 function unpackInbox(n){
   if(!n._inbox || !n._inbox.length) return;
-  const next = n._inbox.map(asProposal);
+  const next = n._inbox.map(c=>{
+    c.proposal = "proposed";
+    c.isNew = true;
+    c.origin = c.origin || "agent";
+    return c;
+  });
   n._inbox = [];
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v3";
+const STORE_KEY = "cg-workbench-maps-v4";
 function hasMap(r){
   return r.bootstrap==="proposed" || r.bootstrap==="ready" || !!(r.live && (r.live.children||[]).length);
 }
@@ -1161,9 +1327,20 @@ function getNode(id){ const p=findPath(id); return p? p[p.length-1] : null; }
 function isCancelled(n){ return n.proposal==="cancelled"; }
 function isProposed(n){ return n.proposal==="proposed"; }
 function isAuth(n){ return sessionAuth.has(n.id); }
+function depthFromView(n){
+  const p = findPath(n.id);
+  if(!p) return 99;
+  const i = p.findIndex(x=>x.id===viewRootId);
+  if(i<0) return 99;
+  return p.length-1-i;
+}
 function visibleChildren(n){
-  if(n.kind==="module" && n.id!==viewRootId) return [];
-  return n.children.filter(c=>!isCancelled(c));
+  const kids = n.children.filter(c=>!isCancelled(c));
+  if(n.id===viewRootId) return kids;
+  const drilled = viewRootId!==data.id;
+  if(drilled && depthFromView(n)<=2) return kids;
+  if(n.kind==="module") return [];
+  return kids;
 }
 function vwalk(node, fn, parents=[]){
   fn(node, parents);
