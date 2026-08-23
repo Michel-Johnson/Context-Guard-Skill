@@ -263,7 +263,7 @@ details.fold .mem-list{margin-top:6px}
 <body>
 <header class="top">
   <div class="brand">
-    <div class="eyebrow">CONTEXT GUARD · 工作台原型</div>
+    <div class="eyebrow">CONTEXT GUARD · 工作台原型 · 分析是演示</div>
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
     <div class="repo-menu" id="repo-menu"></div>
   </div>
@@ -278,22 +278,22 @@ details.fold .mem-list{margin-top:6px}
 </header>
 <div class="first-use" id="first-use">
   <div class="card" id="first-use-ask">
-    <div class="kicker">第一次使用 CONTEXT GUARD</div>
+    <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
-    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 要先把整仓读成一份架构笔记（markdown），粒度必须对得上真实开工单元，而不是七个空壳名字。</p>
-    <p>地图上先只确认第一层；下层已经写在笔记和 inbox 里，点进模块才展开。这不是瞬间出图，也不是目录树。</p>
+    <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md。演示仍然按那个流程走：先笔记，再只确认第一层。</p>
     <div class="actions">
-      <button class="primary" id="first-use-go">开始分析仓库</button>
+      <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
     </div>
   </div>
   <div class="card" id="first-use-work" hidden>
-    <div class="kicker">Agent 正在理解架构</div>
-    <h2>先写架构笔记，再投影成地图</h2>
-    <p>Agent 在读边界、入口和实现，写成 markdown。第一层只是确认门；CLI / TUI / Control UI 这种空壳三节点不够，必须拆到可开工的命令、面板、主循环。</p>
+    <div class="kicker">演示中 · 未调用 Agent</div>
+    <h2>正在播放预置的分析过程</h2>
+    <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>真实会话里这一步由 Agent 读仓库完成，耗时随项目复杂度增加，不能为了快而停在口号层。</p>
+    <p>下面的笔记是预置演示稿，用来表示目标形态，不是这次点击实时分析出来的。</p>
   </div>
 </div>
 
@@ -698,7 +698,7 @@ const CONTEXT_GUARD_MAP = {
   ]
 };
 
-const OPENCLAW_NOTES = `# OpenClaw 架构笔记（首次分析稿）
+const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent）
 
 分析对象：openclaw/openclaw。这不是目录树，也不是七句口号。粒度要对齐「接下来能改哪一块」。
 
@@ -750,7 +750,7 @@ Nodes：macOS/iOS/Android caps，按设备配对。
 安全：loopback 可自动配对；Tailnet/LAN 必须人批。
 `;
 
-const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（首次分析稿）
+const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（演示稿 · 未调用 Agent）
 
 分析对象：本仓库。第一层是确认门；开发粒度在下层。
 
@@ -978,9 +978,9 @@ function snapshotRepo(){
 }
 function renderFirstUseCopy(){
   const r = currentRepo();
-  document.getElementById("first-use-heading").textContent = "从 "+r.name+" 建立架构图";
+  document.getElementById("first-use-heading").textContent = "演示：从 "+r.name+" 建立架构图";
   document.getElementById("first-use-copy").textContent =
-    "这是 "+r.name+" 第一次启用 skill。Agent 要先写出整仓架构笔记，粒度对齐真实开发单元，再把第一层投影到地图上等人确认——不是瞬间出图，也不是三个空壳。";
+    "这是原型演示，不会调用 Agent，也不会去读 "+r.name+" 的真实代码。点击后只播放预置步骤，并投影已经写好的笔记和地图。产品里才由当前会话的 Agent 做这一步。";
 }
 function applyRepoChrome(){
   const r = currentRepo();
@@ -995,7 +995,7 @@ function renderRepoMenu(){
       <b>${r.name}</b>
       <span class="src">${r.source}</span>
       <span class="tag${r.bootstrap==="pending"||r.bootstrap==="analyzing"?" wait":""}">${bootstrapLabel(r.bootstrap)}</span>
-      ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">重新分析此仓库</span>`:""}
+      ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">重新演示分析（不调用 Agent）</span>`:""}
     </button>`).join("");
   el.querySelectorAll("[data-repo]").forEach(b=>b.onclick=e=>{
     e.stopPropagation();
@@ -1082,7 +1082,7 @@ function proposedTree(r){
     bugs: next.bugs||[],
     dormant: next.dormant||[],
     memories: [
-      {text:"来源：Agent 把整仓写成 architecture.md 后投影的第一层，不是目录树，也不是空壳口号", state:"success"},
+      {text:"来源：工作台原型的预置演示稿（未调用 Agent）。产品里才由当前会话 Agent 读仓写成 architecture.md", state:"success"},
       {text:"第一层是确认门。下层已按开发粒度放进 inbox，进入模块再展开。", state:"success"}
     ].concat(next.memories||[]),
     children: (next.children||[]).map(c=>asProposal(clone(c)))
@@ -1583,7 +1583,7 @@ function renderDetail(){
     </h2>
     ${isModule? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
     ${note}
-    ${path.length===1 && currentRepo().notes ? `<details class="fold" open><summary>架构笔记</summary><pre class="arch-md">${esc(currentRepo().notes)}</pre></details>`:""}
+    ${path.length===1 && currentRepo().notes ? `<details class="fold" open><summary>架构笔记（演示稿，未调用 Agent）</summary><pre class="arch-md">${esc(currentRepo().notes)}</pre></details>`:""}
     <div class="actions">
       ${proposed? `<button data-act="accept" class="primary">加入</button>
                    <button data-act="cancel" class="warn">隐藏</button>`:""}
