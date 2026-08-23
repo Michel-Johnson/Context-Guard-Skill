@@ -21,7 +21,20 @@ body.auth-mode{background:#f6f3fa}
 header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:13px;
   padding:10px 18px;background:rgba(250,250,247,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(4px);flex-wrap:wrap;cursor:default}
 header.top .eyebrow{color:var(--green);font-weight:750;font-size:11px;letter-spacing:.08em}
+header.top .brand{position:relative}
 header.top h1{margin:0;font-size:16px}
+header.top h1.repo-switch{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+header.top h1.repo-switch:hover{color:var(--module)}
+header.top h1 .caret{font-size:11px;color:var(--muted)}
+.repo-menu{display:none;position:absolute;left:0;top:100%;margin-top:8px;z-index:40;min-width:280px;
+  background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(42,47,43,.14);padding:6px}
+.repo-menu.open{display:block}
+.repo-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;
+  text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:8px;cursor:pointer}
+.repo-menu button:hover,.repo-menu button.on{background:var(--module-soft)}
+.repo-menu .src{font-size:11px;color:var(--muted)}
+.repo-menu .tag{font-size:10.5px;color:var(--green)}
+.repo-menu .tag{font-size:10.5px;color:var(--green)}
 .nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap}
 .nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;padding:3px 9px;
   border:1px solid transparent;border-radius:6px}
@@ -217,9 +230,10 @@ details.fold .mem-list{margin-top:6px}
 </head>
 <body>
 <header class="top">
-  <div>
+  <div class="brand">
     <div class="eyebrow">CONTEXT GUARD · 工作台原型</div>
-    <h1>OpenClaw 架构导图</h1>
+    <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
+    <div class="repo-menu" id="repo-menu"></div>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
   <div class="dir-toggle" id="dir-toggle">
@@ -233,8 +247,8 @@ details.fold .mem-list{margin-top:6px}
 <div class="first-use open" id="first-use">
   <div class="card">
     <div class="kicker">第一次使用 CONTEXT GUARD</div>
-    <h2>从当前仓库建立架构图</h2>
-    <p>这是此项目第一次启用 skill。Agent 会读 README、包边界和现有文档，只提出第一层模块，由你确认后才写入地图。</p>
+    <h2 id="first-use-heading">从当前仓库建立架构图</h2>
+    <p id="first-use-copy">这是此项目第一次启用 skill。Agent 会读 README、包边界和现有文档，只提出第一层模块，由你确认后才写入地图。</p>
     <p>目录树不会整仓灌进来。之后的会话直接打开这张图，不会再拆一遍仓库。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">根据当前仓库建立</button>
@@ -268,7 +282,7 @@ const PINNED = [
 let NODE_SEQ = 400;
 let BUG_SEQ = 40;
 /* 导图数据来自 github.com/openclaw/openclaw */
-const data = {
+const OPENCLAW_MAP = {
   id:"T0", title:"OpenClaw", state:"dirty", memories:[
     {text:"定位：跑在自己设备上的个人助手，在已有聊天渠道里见面", state:"success"},
     {text:"形态：一个 Gateway 管会话、工具、事件和渠道连接", state:"success"},
@@ -458,6 +472,120 @@ const data = {
   ]
 };
 
+const CONTEXT_GUARD_MAP = {
+  id:"T0", title:"Context Guard", state:"dirty", memories:[
+    {text:"定位：人与 Agent 共用的项目记忆，活在仓库里，而不是某一次聊天里", state:"success"},
+    {text:"形态：Agent 记录，人在 HTML 工作台确认、改写、授权", state:"success"},
+    {text:"第一次使用时从当前仓库拆第一层模块；之后会话打开这张图，不再重拆", state:"success"}
+  ], bugs:[], dormant:[], children:[
+    { id:"M1", title:"Skill 合同", kind:"module", purpose:"何时启动、记什么、什么必须等人确认", state:"dirty", memories:[
+        {text:"每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N11", title:"启动时机", state:"success", memories:[
+            {text:"首次使用、看导图、改方向、park/resume、编码/调试/评审时启用", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N12", title:"首次建图", state:"dirty", memories:[
+            {text:"map_bootstrap=pending 时拆当前仓库第一层，不等待人贴 GitHub 地址", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N13", title:"简洁合同", state:"success", memories:[
+            {text:"context 是导航，不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", state:"success"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M2", title:"工作台", kind:"module", purpose:"人在浏览器里看图、改记忆、确认提议、切换仓库", state:"dirty", memories:[
+        {text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success"}
+      ], bugs:[
+        {id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open"}
+      ], dormant:[], children:[
+        { id:"N21", title:"模块卡与节点", state:"success", memories:[
+            {text:"模块是大方卡，只露标题和一句用途；点进去才看见子节点", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N22", title:"检查器", state:"dirty", memories:[
+            {text:"标题、用途、本节点记忆可点进编辑；Bug 是节点内容不是子节点", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N23", title:"布局方向", state:"success", memories:[
+            {text:"同一棵树可左右读模块栈，或上下读兄弟并排", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N24", title:"仓库切换", state:"dirty", memories:[
+            {text:"点标题切换已加载仓库；每个仓库自己的首次建图状态分开记", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M3", title:"项目 Context 目录", kind:"module", purpose:"记忆落在仓库 .codex/context/，随项目走", state:"dirty", memories:[
+        {text:"公开记录可进 git；密钥只留 private/，永远不进 HTML", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N31", title:"index.md", state:"success", memories:[
+            {text:"四行速览：当前任务、最新节点、热坏例、可恢复项", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N32", title:"preferences.json", state:"dirty", memories:[
+            {text:"record_language 与 map_bootstrap；未确认前 map 保持 pending", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N33", title:"architecture.md", state:"dirty", memories:[
+            {text:"架构图的源；工作台第一层模块应对齐这份文件，而不是目录树", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N34", title:"private/", state:"success", memories:[
+            {text:"gitignored；Agent 可读指针，不能把密钥投影到导图", state:"success"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M4", title:"CLI 与 Hook", kind:"module", purpose:"init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库", state:"dirty", memories:[
+        {text:"scripts/context_guard.py；禁止把 skill 安装目录当成项目根", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N41", title:"init", state:"dirty", memories:[
+            {text:"第一次在文件夹工作时创建 .codex/context/ 骨架", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N42", title:"show-roadmap", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N43", title:"SessionStart hook", state:"dirty", memories:[
+            {text:"当前开发进程也应加载本 skill，而不是只给别人的仓库用", state:"dirty"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M5", title:"仓库拆图", kind:"module", purpose:"已有项目变成地图：Agent 提议一层，人确认后再往下", state:"dirty", memories:[
+        {text:"读 README、包边界、已有架构文档；一文件一节点是错的", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N51", title:"信号源", state:"dirty", memories:[
+            {text:"README / SKILL / 包与插件边界 / docs，而不是每个源文件", state:"success"}
+          ], bugs:[], dormant:[], children:[] },
+        { id:"N52", title:"一层提议", state:"dirty", memories:[
+            {text:"未确认的提议后续 Agent 读不到；确认后才展开下一层", state:"success"}
+          ], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M6", title:"会话授权与提议", kind:"module", purpose:"新会话默认很小；人决定 Agent 能读哪一段", state:"dirty", memories:[
+        {text:"点虚线提议两次加入；取消进托盘，可恢复或永久删除", state:"success"}
+      ], bugs:[], dormant:[], children:[
+        { id:"N61", title:"可读切片", state:"dirty", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N62", title:"虚线提议", state:"success", memories:[], bugs:[], dormant:[], children:[] },
+        { id:"N63", title:"已取消托盘", state:"success", memories:[], bugs:[], dormant:[], children:[] }
+      ]
+    },
+    { id:"M7", title:"遗留测试中台", kind:"module", purpose:"仓库里仍有 Test Hub / 功能链代码，当前产品主线先不扩它", state:"dirty", memories:[
+        {text:"人设计测试、Agent 只提草案这一点仍成立；先把地图和工作台做对", state:"dirty"}
+      ], bugs:[], dormant:[], children:[] }
+  ]
+};
+
+const clone = o => JSON.parse(JSON.stringify(o));
+const catalog = {
+  "context-guard": {
+    id:"context-guard",
+    name:"Context Guard",
+    heading:"Context Guard 架构导图",
+    source:"Michel-Johnson/Context-Guard-Skill",
+    blueprint: CONTEXT_GUARD_MAP,
+    live:null, auth:null, bootstrap:"pending", firstUseOpen:true
+  },
+  openclaw: {
+    id:"openclaw",
+    name:"OpenClaw",
+    heading:"OpenClaw 架构导图",
+    source:"openclaw/openclaw",
+    blueprint: OPENCLAW_MAP,
+    live:null, auth:null, bootstrap:"pending", firstUseOpen:true
+  }
+};
+let repoId = "context-guard";
+const data = clone(CONTEXT_GUARD_MAP);
 let selectedId = "T0";
 let focusId = null;
 let viewRootId = "T0";
@@ -467,9 +595,7 @@ let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
 const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
-const sessionAuth = new Set(["T0","M1","M1a","N11","N12","N13","M1b","N14","N15","M1c"]);
-const clone = o => JSON.parse(JSON.stringify(o));
-const REPO_SPLIT = clone(data);
+const sessionAuth = new Set(["T0"]);
 
 function parkChildren(n){
   if(n.children && n.children.length){
@@ -490,25 +616,98 @@ function unpackInbox(n){
   n._inbox = [];
   n.children = (n.children||[]).concat(next);
 }
+function currentRepo(){ return catalog[repoId]; }
+function adoptTree(tree){
+  const src = clone(tree);
+  data.id = src.id;
+  data.title = src.title;
+  data.state = src.state;
+  data.kind = src.kind;
+  data.memories = src.memories||[];
+  data.bugs = src.bugs||[];
+  data.dormant = src.dormant||[];
+  data.children = src.children||[];
+}
+function snapshotRepo(){
+  const r = currentRepo();
+  r.live = clone(data);
+  r.auth = [...sessionAuth];
+  r.selectedId = selectedId;
+  r.viewRootId = viewRootId;
+  r.focusId = focusId;
+  r.sessionName = document.getElementById("session-name").textContent;
+  r.firstUseOpen = document.getElementById("first-use").classList.contains("open");
+  if(!r.firstUseOpen) r.bootstrap = "ready";
+}
+function renderFirstUseCopy(){
+  const r = currentRepo();
+  document.getElementById("first-use-heading").textContent = "从 "+r.name+" 建立架构图";
+  document.getElementById("first-use-copy").textContent =
+    "这是 "+r.name+" 第一次启用 skill。Agent 会读 README、包边界和现有文档，只提出第一层模块，由你确认后才写入地图。";
+}
+function applyRepoChrome(){
+  const r = currentRepo();
+  document.getElementById("repo-title").innerHTML = r.heading+' <span class="caret">▾</span>';
+  renderRepoMenu();
+  renderFirstUseCopy();
+}
+function renderRepoMenu(){
+  const el = document.getElementById("repo-menu");
+  el.innerHTML = Object.values(catalog).map(r=>`
+    <button type="button" data-repo="${r.id}" class="${r.id===repoId?"on":""}">
+      <b>${r.name}</b>
+      <span class="src">${r.source}</span>
+      <span class="tag">${r.bootstrap==="ready"?"已建图":"首次使用"}</span>
+    </button>`).join("");
+  el.querySelectorAll("[data-repo]").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    switchRepo(b.dataset.repo);
+  });
+}
+function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
+function switchRepo(id){
+  if(id===repoId){ closeRepoMenu(); return; }
+  snapshotRepo();
+  repoId = id;
+  const r = currentRepo();
+  closeRepoMenu();
+  applyRepoChrome();
+  if(r.live){
+    adoptTree(r.live);
+    sessionAuth.clear();
+    (r.auth||["T0"]).forEach(x=>sessionAuth.add(x));
+    selectedId = r.selectedId || "T0";
+    viewRootId = r.viewRootId || "T0";
+    focusId = r.focusId || null;
+    document.getElementById("session-name").textContent = r.sessionName || "当前会话";
+    document.getElementById("first-use").classList.toggle("open", !!r.firstUseOpen);
+    renderAll();
+    fitView();
+    return;
+  }
+  emptyFirstUse();
+  renderAll();
+  fitView();
+}
 function hideFirstUse(){
   document.getElementById("first-use").classList.remove("open");
+  currentRepo().firstUseOpen = false;
+  currentRepo().bootstrap = "ready";
 }
 function emptyFirstUse(){
-  const next = clone(REPO_SPLIT);
-  data.title = next.title;
-  data.state = next.state;
-  data.bugs = [];
-  data.dormant = [];
-  data.memories = [];
-  data.children = [];
+  const next = clone(currentRepo().blueprint);
+  adoptTree({...next, memories:[], bugs:[], dormant:[], children:[]});
   sessionAuth.clear();
   sessionAuth.add("T0");
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
   composingId = null;
+  currentRepo().bootstrap = "pending";
+  currentRepo().firstUseOpen = true;
   document.getElementById("session-name").textContent = "S-0823 首次使用";
   document.getElementById("first-use").classList.add("open");
+  applyRepoChrome();
 }
 function startEmptyRoot(){
   hideFirstUse();
@@ -517,15 +716,15 @@ function startEmptyRoot(){
   renderAll();
   fitView();
 }
-function startRepoSplit(repo){
-  const src = (repo||"openclaw/openclaw").trim() || "openclaw/openclaw";
-  const next = clone(REPO_SPLIT);
+function startRepoSplit(){
+  const r = currentRepo();
+  const next = clone(r.blueprint);
   data.title = next.title;
   data.state = next.state;
   data.bugs = next.bugs;
   data.dormant = next.dormant;
   data.memories = [
-    {text:"来源：当前仓库 "+src, state:"success"},
+    {text:"来源：当前仓库 "+r.source, state:"success"},
     {text:"第一次使用：Agent 只提交第一层模块。确认后才往下拆；仓库目录 ≠ 导图。", state:"success"}
   ].concat(next.memories);
   data.children = next.children.map(asProposal);
@@ -636,8 +835,14 @@ document.getElementById("btn-auth").onclick = ()=>{
 document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("tray").classList.toggle("open");
 };
-document.getElementById("first-use-go").onclick = ()=>startRepoSplit("openclaw/openclaw");
+document.getElementById("first-use-go").onclick = ()=>startRepoSplit();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
+document.getElementById("repo-title").onclick = e=>{
+  e.stopPropagation();
+  document.getElementById("repo-menu").classList.toggle("open");
+};
+document.addEventListener("click", ()=>closeRepoMenu());
+document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
 function setLayoutDir(dir){
   layoutDir = dir;
   document.body.classList.toggle("layout-tb", dir==="tb");
