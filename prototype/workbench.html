@@ -103,7 +103,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
 #links path.link.dimmed{opacity:.18}
 #links path.link.focus-link{stroke:var(--green);stroke-width:2.4}
-#links path.link.proposed-link{stroke-dasharray:6 5;stroke:#7a8078}
+#links path.link.proposed-link{stroke:#c4c4be;stroke-dasharray:4 7;opacity:.28}
 #links path.link.noauth-link{stroke:#9a9a94}
 #links path.link.stem{stroke:#5c564c;stroke-width:2}
 
@@ -139,14 +139,23 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.work{display:flex;align-items:flex-start;white-space:normal;width:max-content;max-width:280px;
   font-size:12.5px;line-height:1.35;padding:6px 12px 6px 10px;border-radius:14px;word-break:keep-all}
 .node.work > span{white-space:normal;overflow:visible;word-break:keep-all;overflow-wrap:break-word}
-.node.proposed.module{border-radius:8px;background:#f7f1e4}
-.drawer .work-list{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12px;line-height:1.45}
-.drawer .work-list li{margin:0 0 2px}
-.node.proposed{border:2px dashed var(--line-ink);background:#f7f1e4;color:var(--muted);box-shadow:none}
-.node.proposed:hover{background:var(--yellow);color:var(--ink);transform:none}
+/* Agent 提议：灰、透明草稿，不要画成已确认节点 */
+.node.proposed{border:1.5px dashed rgba(110,110,106,.55);background:rgba(130,130,126,.1);
+  color:#8a8a86;box-shadow:none;opacity:.55}
+.node.proposed.module{border-radius:8px;background:rgba(130,130,126,.08);color:#7a7a76}
+.node.proposed.module .m-head,
+.node.proposed.module .m-head span{color:#7a7a76}
+.node.proposed.module .m-blurb{color:#949490}
+.node.proposed .dot{background:#c4c4be !important}
+.node.proposed:hover,.node.proposed.module:hover{background:rgba(255,230,109,.22);
+  color:#6a6a66;opacity:.78;transform:none;box-shadow:none}
+.node.proposed.selected,.node.proposed.module.selected{background:rgba(255,230,109,.32);
+  color:#5a5a56;opacity:.88;border-color:rgba(110,110,106,.7);box-shadow:none}
+.node.proposed.module.selected .m-head,
+.node.proposed.module.selected .m-head span{color:#5a5a56}
 .node .new-dot{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;
-  background:var(--green);border:2px solid #fff;box-shadow:0 0 0 1px var(--green-soft);
-  animation:pulse 1.6s ease-in-out infinite}
+  background:#a8b8a8;border:2px solid rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(168,184,168,.3);
+  animation:pulse 1.6s ease-in-out infinite;opacity:.55}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.7}}
 .node .accept-hint{font-size:10.5px;color:var(--green);font-weight:600;margin-left:2px}
 
@@ -220,6 +229,8 @@ body.auth-mode .node .add-child{display:none}
 .state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
 .lead{margin:8px 0 0;color:var(--muted);font-size:12px;line-height:1.5;font-family:var(--font-note)}
+.drawer .work-list{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12px;line-height:1.45}
+.drawer .work-list li{margin:0 0 2px}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
 .note.alert{color:var(--red)}
 .actions{display:flex;gap:6px;margin:12px 0 0;flex-wrap:wrap}

@@ -19,7 +19,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 项目 Context 目录 — `.codex/context/`，公开记录可进 git
 - CLI 与 Hook — init、语言、导图；当前开发进程也要加载本 skill
 - 仓库拆图 — 已有项目变成地图：先写笔记，再投影 L1；进入后再看子模块和文件
-- 会话授权与提议 — 新会话默认很小，虚线提议等人点两次
+- 会话授权与提议 — 新会话默认很小；Agent 提议节点灰色半透明虚线，看起来像草稿，点两次才变成实节点
 - 遗留测试中台 — 仓库里还有，当前主线先不扩
 
 ## Development grain (on the map, not buried)
