@@ -37,7 +37,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 检查器 contenteditable、Bug 区块、`+` 号
 - 仓库切换与每仓 `map_bootstrap`
 - 首次分析叠层（标明未调用 Agent）
-- `localStorage`（`cg-workbench-maps-v6`）
+- `localStorage`（`cg-workbench-maps-v7`）
 - `asProposal` 只把 L3+ 收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 

@@ -126,10 +126,6 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.module .m-head{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px;line-height:1.25}
 .node.module .m-head .dot{width:11px;height:11px;flex:0 0 auto}
 .node.module .m-blurb{margin-top:7px;color:var(--muted);font-family:var(--font-note);font-size:11px;font-weight:400;line-height:1.4}
-.node.module .m-units{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);
-  font-size:10.5px;line-height:1.65;color:var(--muted);
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.node.module .m-units .m-more{display:block;margin-top:3px;color:var(--gray);font-family:var(--font-ui)}
 .node.module.selected{background:#fff3bf}
 
 /* Agent 提议节点（圆角虚线胶囊） */
@@ -767,7 +763,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v6";
+const STORE_KEY = "cg-workbench-maps-v7";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
@@ -1259,17 +1255,11 @@ function nodeHtml(n, isViewRoot){
     ? `<span class="auth-mark ${isAuth(n)?"on":""}">${isAuth(n)?"✓":""}</span>` : "";
   if(n.kind==="module" && !isViewRoot){
     const st = moduleAuthState(n);
-    const atRoot = viewRootId===data.id;
-    const units = (n.children||[]).concat(n._inbox||[]).filter(c=>c.proposal!=="cancelled");
-    const unitsHtml = atRoot && units.length && peekModuleId()!==n.id
-      ? `<div class="m-units">${units.slice(0,3).map(u=>esc(u.title)).join("<br>")}` +
-        (units.length>3? `<span class="m-more">…共 ${units.length} 个开工单元，点选预览</span>`:"") + `</div>`
-      : "";
     return `<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
         ${st==="none"?`<span class="lock">🔒</span>`: st==="partial"?`<span class="part-tag">部分</span>`:""}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>
-      <div class="m-blurb">${n.purpose||""}</div>${unitsHtml}`;
+      <div class="m-blurb">${n.purpose||""}</div>`;
   }
   if(isProposed(n)){
     return (n.isNew?`<span class="new-dot" title="Agent 新提议"></span>`:"")+
@@ -1382,7 +1372,7 @@ function renderMap(){
     });
     pos.set(root.id, {x:Math.max(0, (maxW-rs.w)/2), y:0});
   }
-  if(viewRootId===data.id) layoutRootTB();
+  if(tb && viewRootId===data.id) layoutRootTB();
   else if(tb) subtreeTB(root, 0, 0);
   else subtreeLR(root, 0, 0);
 
@@ -1403,7 +1393,7 @@ function renderMap(){
     visibleChildren(n).forEach(c=>{
       const q = pos.get(c.id), qs = size.get(c.id);
       let x1,y1,x2,y2,d;
-      if(tb || viewRootId===data.id){
+      if(tb){
         x1=p.x+psz.w/2; y1=p.y+psz.h; x2=q.x+qs.w/2; y2=q.y;
         const my=y1+(y2-y1)*.5;
         d=`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
@@ -1431,7 +1421,10 @@ function renderMap(){
         if(selectedId===id){ acceptProposal(n); return; }
         selectedId = id; n.isNew = false; renderAll(); return;
       }
-      if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+      if(n.kind==="module" && n.id!==viewRootId){
+        if(viewRootId===data.id && selectedId!==id){ selectedId = id; renderAll(); return; }
+        enterView(n.id); return;
+      }
       selectedId = id; renderAll();
     };
   });
