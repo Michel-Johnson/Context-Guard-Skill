@@ -19,7 +19,7 @@ body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
 body.auth-mode{background:#f6f3fa}
 
 header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:13px;
-  padding:10px 18px;background:rgba(250,250,247,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(4px);flex-wrap:wrap}
+  padding:10px 18px;background:rgba(250,250,247,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(4px);flex-wrap:wrap;cursor:default}
 header.top .eyebrow{color:var(--green);font-weight:750;font-size:11px;letter-spacing:.08em}
 header.top h1{margin:0;font-size:16px}
 .nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap}
@@ -29,23 +29,18 @@ header.top h1{margin:0;font-size:16px}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:flex;align-items:center;gap:7px;background:var(--auth-soft);border:1px solid #d8cceb;
-  border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth)}
+  border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth);margin-left:auto}
 .session-chip b{font-weight:700}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
-.legend{margin-left:auto;display:flex;gap:11px;color:var(--muted);font-size:12px;flex-wrap:wrap}
-.legend span{display:flex;align-items:center;gap:5px}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
 .dot.failed{background:var(--red)} .dot.module{background:var(--module);border-radius:2px}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
-.hint-bar{position:fixed;left:16px;bottom:12px;z-index:30;color:var(--muted);font-size:12px;
-  background:rgba(250,250,247,.92);border:1px solid var(--line);border-radius:8px;padding:6px 11px;max-width:58%}
-.hint-bar.auth{border-color:#d8cceb;color:var(--auth);background:rgba(246,243,250,.95)}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:0;cursor:grab}
-#viewport.grabbing{cursor:grabbing}
+#viewport{position:absolute;inset:52px 0 0 0;cursor:default}
+#viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#c3cdc0;stroke-width:1.5;transition:opacity .2s}
@@ -132,7 +127,7 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
-  border-left:1px solid var(--line);overflow:auto;padding:16px 18px 28px}
+  border-left:1px solid var(--line);overflow:auto;padding:16px 18px 28px;cursor:default}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -214,12 +209,6 @@ details.fold .mem-list{margin-top:6px}
   <div class="session-chip">当前会话：<b>S-0823 工作台开发</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
-  <div class="legend">
-    <span><i class="dot module"></i>模块</span>
-    <span><i class="dot dirty"></i>节点（圆角）</span>
-    <span><i class="dot proposed"></i>Agent 提议</span>
-    <span><i class="dot noauth"></i>🔒 无权限</span>
-  </div>
 </header>
 
 <div id="viewport">
@@ -236,8 +225,6 @@ details.fold .mem-list{margin-top:6px}
 </div>
 
 <aside class="drawer" id="detail"></aside>
-
-<div class="hint-bar" id="hint-bar"></div>
 
 <script>
 /* ================= 假数据 ================= */
@@ -409,15 +396,6 @@ function renderNav(){
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
   document.getElementById("auth-count").textContent = sessionAuth.size;
-
-  const hint = document.getElementById("hint-bar");
-  if(authMode){
-    hint.className = "hint-bar auth";
-    hint.textContent = "授权模式：点击节点/模块勾选进入当前会话记忆（模块 = 整棵子树；授权自动补全祖先链）。再点 🔑 退出。";
-  }else{
-    hint.className = "hint-bar";
-    hint.textContent = "方形卡片 = 模块（标题 + 用途）· 圆角胶囊 = 节点 · 灰色带锁 = 本会话无权限 · 灰虚线 = Agent 提议 · 原型数据不落盘";
-  }
 }
 
 /* ================= 授权模式开关 ================= */
