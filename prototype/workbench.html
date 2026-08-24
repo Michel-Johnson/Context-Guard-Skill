@@ -109,13 +109,19 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #links path.link.proposed-link{stroke:#c4c4be;stroke-dasharray:4 7;opacity:.28}
 #links path.link.noauth-link{stroke:#9a9a94}
 #links path.link.stem{stroke:#5c564c;stroke-width:2}
+#links path.link.rel-dim{opacity:.12}
 #links path.flow{fill:none;stroke:#5a7a62;stroke-width:1.7;stroke-dasharray:6 5;stroke-linecap:round;stroke-linejoin:round;opacity:.82}
-#links path.flow.dim{opacity:.14}
+#links path.flow.dim{opacity:.1}
 #links path.flow.hot{stroke:#2f6f4e;stroke-width:2.15;opacity:1;stroke-dasharray:7 5}
 #links text.flow-lab{font-size:10px;fill:#4a6454;font-family:var(--font-ui, inherit);pointer-events:none}
 .node.ghost{opacity:.8;border-style:dashed;box-shadow:none}
 .node.ghost.module{background:#f4f1ea}
 .node.ghost .add-child{display:none}
+.node.rel-dim{opacity:.16;filter:grayscale(.55) brightness(.82)}
+.node.rel-dim.selected,.node.rel-hot.selected{opacity:1;filter:none}
+.node.rel-hot{opacity:1;filter:none}
+body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
+body.rel-mode .node .add-child{display:none}
 .rel-list{list-style:none;margin:10px 0 0;padding:0}
 .rel-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;padding:4px 0;border-top:1px solid var(--line);font-size:12px}
 .rel-list li:first-child{border-top:0}
@@ -367,7 +373,7 @@ details.fold .mem-list{margin-top:6px}
     <button type="button" data-dir="lr" class="on">左右</button>
     <button type="button" data-dir="tb">上下</button>
   </div>
-  <div class="rel-toggle" id="rel-toggle" title="平时只画从属。打开后拉开模块并画出生产/消费虚线。">
+  <div class="rel-toggle" id="rel-toggle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
     <button type="button" id="btn-rel">关系</button>
   </div>
   <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
@@ -379,7 +385,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」才画虚线，那时模块会拉开以免线叠在一起。点进模块后画布展开多级节点；文件不出现在根上。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」：那时点击节点只高亮相关模块、其余变暗，不会进入下一页。用顶栏面包屑进入模块。点进模块后画布展开多级节点；文件不出现在根上。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -1933,6 +1939,14 @@ function onFocusPath(id){
   const p  = findPath(id).map(n=>n.id);
   return fp.includes(id) || p.includes(focusId);
 }
+function flowPartners(id){
+  const s = new Set([id]);
+  (data.flows||[]).forEach(f=>{
+    if(f.from===id) s.add(f.to);
+    if(f.to===id) s.add(f.from);
+  });
+  return s;
+}
 function subtreeIds(n){
   const ids=[];
   walk(n,(x)=>{ if(!isCancelled(x) && !isProposed(x)) ids.push(x.id); });
@@ -2116,6 +2130,8 @@ function renderMap(){
     data.flows = clone(currentRepo().blueprint.flows);
   }
   const root = liveViewRoot();
+  const relFocus = relationMode && selectedId ? selectedId : null;
+  const relSet = relFocus ? flowPartners(relFocus) : null;
 
   nodesEl.innerHTML = "";
   const els = new Map();
@@ -2123,6 +2139,7 @@ function renderMap(){
     const isViewRoot = !ghost && n.id===viewRootId;
     const noauth = !isProposed(n) && !isAuth(n) &&
       !(n.kind==="module" && moduleAuthState(n)!=="none");
+    const relDim = !!(relationMode && relSet && !relSet.has(n.id));
     const div = document.createElement("div");
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module"?" module":"") +
@@ -2130,7 +2147,8 @@ function renderMap(){
       (isProposed(n)?" proposed":"") +
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
-      (n.id===selectedId && !isCancelled(n)?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
+      (n.id===selectedId && !isCancelled(n)?" selected":"") +
+      (relationMode ? (relDim?" rel-dim":" rel-hot") : (onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
@@ -2302,7 +2320,8 @@ function renderMap(){
     const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
     const na = !isProposed(c) && !isAuth(c) &&
       !(c.kind==="module" && moduleAuthState(c)!=="none");
-    return `link ${dim?'dimmed':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
+    const relOff = relationMode && relSet && (!relSet.has(n.id) || !relSet.has(c.id));
+    return `link ${dim?'dimmed':''} ${relOff?'rel-dim':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
   }
   function curveTB(n,c){
     const p = pos.get(n.id), ps = size.get(n.id);
@@ -2329,14 +2348,10 @@ function renderMap(){
     });
   });
   if(relationMode){
-    const related = new Set();
-    (data.flows||[]).forEach(f=>{
-      if(f.from===viewRootId || f.to===viewRootId || f.from===selectedId || f.to===selectedId){
-        related.add(f.from); related.add(f.to);
-      }
-    });
+    const related = relSet || new Set();
     let gx = maxX + 96, gy = 8;
     related.forEach(id=>{
+      if(id===relFocus) return;
       if(els.has(id) || pos.has(id)) return;
       const n = getNode(id);
       if(!n || isCancelled(n)) return;
@@ -2375,21 +2390,15 @@ function renderMap(){
       const ly = 0.25*a.y + 0.5*cy + 0.25*b.y;
       return {d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`, lx, ly};
     }
-    const sid = selectedId, vid = viewRootId;
-    const hasSel = (data.flows||[]).some(f=>f.from===sid || f.to===sid);
     paths = `<defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#5a7a62" stroke-width="1.2"/></marker></defs>` + paths;
     (data.flows||[]).forEach(f=>{
+      if(f.from!==relFocus && f.to!==relFocus) return;
       if(!pos.has(f.from) || !pos.has(f.to)) return;
       const curve = flowCurve(f.from, f.to);
       if(!curve) return;
-      const involved = f.from===sid || f.to===sid;
-      const aroundView = f.from===vid || f.to===vid;
-      const dim = hasSel && sid!==vid && !involved;
-      const hot = involved || (sid===vid && aroundView);
-      const cls = `flow${hot&&!dim?" hot":""}${dim?" dim":""}`;
-      paths += `<path class="${cls}" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
-      if(f.label && !dim){
-      paths += `<text class="flow-lab" text-anchor="middle" x="${curve.lx.toFixed(1)}" y="${(curve.ly-4).toFixed(1)}">${esc(f.label)}</text>`;
+      paths += `<path class="flow hot" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
+      if(f.label){
+        paths += `<text class="flow-lab" text-anchor="middle" x="${curve.lx.toFixed(1)}" y="${(curve.ly-4).toFixed(1)}">${esc(f.label)}</text>`;
       }
     });
   }
@@ -2401,6 +2410,12 @@ function onNodeClick(e, n){
     toggleAuth(n); return;
   }
   if(e.target.classList.contains("add-child")){ addModule(n); return; }
+  if(relationMode){
+    selectedId = n.id;
+    renderAll();
+    fitView();
+    return;
+  }
   if(isProposed(n)){
     if(selectedId===n.id){ acceptProposal(n); return; }
     selectedId = n.id; renderAll(); return;
@@ -2421,7 +2436,7 @@ function acceptProposal(n, silent){
   unpackInbox(n);
   if(silent) return;
   selectedId = n.id;
-  if(n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
+  if(!relationMode && n.kind==="module" && n.id!==viewRootId){ enterView(n.id); return; }
   renderAll();
 }
 function acceptLayer(node){
@@ -2501,6 +2516,12 @@ function commitChild(node, title){
 function jumpToNode(id){
   const n = getNode(id);
   if(!n || isCancelled(n)) return;
+  if(relationMode){
+    selectedId = n.id;
+    renderAll();
+    fitView();
+    return;
+  }
   if(n.kind==="module"){ enterView(n.id); return; }
   const p = findPath(id) || [];
   const mod = [...p].reverse().find(x=>x.kind==="module");
@@ -2641,6 +2662,7 @@ function renderDetail(){
       ${!cancelled? `
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
+        ${relationMode && canEnter(node)? `<button type="button" data-act="enter">进入</button>`:""}
         ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
@@ -2687,6 +2709,7 @@ function renderDetail(){
   if(q('[data-act="accept-layer"]')) q('[data-act="accept-layer"]').onclick = ()=>acceptLayer(node);
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
+  if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
   bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
