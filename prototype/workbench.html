@@ -955,6 +955,7 @@ let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
+let foldBug = false;
 const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
 const sessionAuth = new Set(["T0"]);
 
@@ -1966,6 +1967,15 @@ function renderDetail(){
     el.querySelector('[data-act="cancel"]').onclick = ()=>cancelProposal(node);
     return;
   }
+  if(cancelled){
+    el.innerHTML = `
+      <h2>${node.title}</h2>
+      <div class="actions">
+        <button data-act="restore" class="primary">恢复</button>
+      </div>`;
+    el.querySelector('[data-act="restore"]').onclick = ()=>acceptProposal(node);
+    return;
+  }
 
   const inherited = [];
   path.slice(0,-1).filter(a=>!isProposed(a)&&!isCancelled(a)).forEach(anc=>{
@@ -2026,13 +2036,12 @@ function renderDetail(){
       </summary>
       ${memHtml}
     </details>
-    <section class="block">
-      <div class="block-head">
-        <h3>${uiLabels.bugs}</h3>
+    <details class="fold" data-fold="bug" ${foldBug?"open":""}>
+      <summary>${uiLabels.bugs} ${openBugs.length||""}
         <button type="button" class="plus-btn" data-act="add-bug" title="添加 Bug">+</button>
-      </div>
+      </summary>
       ${bugHtml}
-    </section>
+    </details>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
       <summary>${uiLabels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
@@ -2064,7 +2073,9 @@ function renderDetail(){
     const last = document.querySelector(".mem-list li:last-child .ed");
     if(last) last.focus();
   };
-  if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = ()=>{
+  if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    foldBug = true;
     node.bugs.push({id:"B"+(BUG_SEQ++), title:"", desc:"", status:"open", files:[]});
     renderAll();
     const last = document.querySelector(".bug-list .bug-title.ed:last-of-type, .bug-list li:last-child .bug-title");
@@ -2080,6 +2091,7 @@ function renderDetail(){
       if(d.dataset.fold==="inherited") foldInherited = d.open;
       if(d.dataset.fold==="dormant") foldDormant = d.open;
       if(d.dataset.fold==="mem") foldMem = d.open;
+      if(d.dataset.fold==="bug") foldBug = d.open;
     });
   });
 
