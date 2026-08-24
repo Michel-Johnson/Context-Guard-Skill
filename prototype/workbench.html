@@ -242,6 +242,39 @@ body.auth-mode .node .add-child{display:none}
 .tray .confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
 .tray .empty{color:var(--muted);font-size:12.5px;padding:6px 0}
 
+/* ---------- 未修 Bug 面板 ---------- */
+#btn-bugs.on{background:var(--yellow);font-weight:800}
+.bug-panel{position:fixed;left:0;top:52px;bottom:0;z-index:22;width:280px;
+  background:var(--paper);border-right:2px solid var(--line-ink);overflow:auto;
+  padding:14px 14px 28px;display:none;cursor:default}
+.bug-panel.open{display:block}
+body.bugs-open #viewport{left:280px}
+.bug-panel h3{margin:0 0 4px;font-size:14px}
+.bug-panel p.hint{margin:0 0 12px;font-size:12px;color:var(--muted);line-height:1.45}
+.bug-panel ul{list-style:none;margin:0;padding:0}
+.bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:4px;
+  padding:9px 8px;border:2px solid transparent;border-radius:10px;cursor:pointer;margin:0 0 6px}
+.bug-panel li:hover{background:#fff;border-color:var(--line)}
+.bug-panel li.on{background:#fff3bf;border-color:var(--line-ink);box-shadow:var(--shadow-sm)}
+.bug-panel .bug-title{font-size:13px;font-weight:800;line-height:1.35}
+.bug-panel .bug-where{font-size:11.5px;color:var(--muted);line-height:1.35}
+.bug-panel .bug-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:2px}
+.bug-panel .sess-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  padding:2px 8px;border-radius:999px;background:#eef6ff;color:#2d5da1;border:1px solid #c5d8f0}
+.bug-panel .sess-chip i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.bug-panel .claim{font-size:11.5px;padding:3px 8px;box-shadow:none}
+.bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 0}
+body.bug-path-mode{background:#f7f1e6}
+body.bug-path-mode header.top{background:rgba(247,241,230,.96)}
+body.bug-path-mode .node .add-child{display:none}
+body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0 #c45c4a}
+.nav-crumbs .bug-exit{font-size:12px;padding:3px 9px;margin-right:4px}
+.nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;padding:3px 9px;border-radius:6px}
+#links path.link.bug-path{stroke:#8a5348;stroke-width:2.4}
+#links path.current-flow{fill:none;stroke-width:3.1;stroke-dasharray:10 22;stroke-linecap:round;
+  opacity:.95;filter:url(#current-glow);animation:current-run 1.15s linear infinite}
+@keyframes current-run{to{stroke-dashoffset:-32}}
+
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
@@ -383,6 +416,7 @@ details.fold .mem-list{margin-top:6px}
   <span id="rel-hint">点击模块看关系，不会进入</span>
   <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
+  <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
 <div class="first-use" id="first-use">
@@ -390,7 +424,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」：那时点击节点只高亮相关模块、其余变暗，不会进入下一页。用顶栏面包屑进入模块。点进模块后画布展开多级节点；文件不出现在根上。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在左侧面板；点一条只画从根到该节点的链路，不进分级页面。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -418,6 +452,12 @@ details.fold .mem-list{margin-top:6px}
   <p class="hint">已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。</p>
   <ul id="tray-list"></ul>
 </div>
+
+<aside class="bug-panel" id="bug-panel">
+  <h3>未修的 Bug</h3>
+  <p class="hint">点一条，画布只留下从根到该节点的链路。其余模块藏掉。本会话或多会话都可以同时在修，链路上会走电流。</p>
+  <ul id="bug-panel-list"></ul>
+</aside>
 
 <aside class="drawer" id="detail"></aside>
 
@@ -566,7 +606,7 @@ const OPENCLAW_MAP = {
         U("N15a", "req:agent accepted + runId", "先 ack 再推流", []),
         U("N15b", "stream → final 事件序", "UI 按这条组装气泡", []),
         U("N15c", "取消 / abort 传播", "TUI、Control UI、渠道共用", [])
-      ], {memories:[{text:"探索：把 runtime execution lineage 从 gateway 调度里拆清", state:"dirty"}], bugs:[{id:"B11", title:"关闭时 active session 排空竞态", desc:"shutdown drain 与新 agent 请求交错，偶发丢 final 事件", status:"open"}]}),
+      ], {memories:[{text:"探索：把 runtime execution lineage 从 gateway 调度里拆清", state:"dirty"}], bugs:[{id:"B11", title:"关闭时 active session 排空竞态", desc:"shutdown drain 与新 agent 请求交错，偶发丢 final 事件", status:"open", sessions:["S-0819"]}]}),
       U("N16", "src/routing sessionKey", "会话键是一等公民：持久化、并发、上下文恢复都靠它", []),
       U("N17", "每会话命令队列", "同会话串行，跨会话有并发上限", [
         U("N17a", "每会话队列", "避免同一聊天交错 tool-call", []),
@@ -866,7 +906,7 @@ const CONTEXT_GUARD_MAP = {
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
         U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
-          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", []),
+          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open"}]}),
           U("N23", "visibleChildren", "模块一次只露一层；开工节点若后面还有开工节点（最多两岔）则默认展开", []),
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
@@ -886,7 +926,7 @@ const CONTEXT_GUARD_MAP = {
         U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
         U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
       ])
-    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}]}]}),
+    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"]}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，活地图是 map.json", [
       U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
       U("N32", "preferences.json", "record_language 与 map_bootstrap；未确认前保持 pending", []),
@@ -1047,6 +1087,9 @@ let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
 let pendingDeleteId = null;
+let bugPathMode = false;
+let bugFocus = null;
+let bugPathReturn = null;
 let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
@@ -1882,6 +1925,13 @@ function pathOf(node){
   return result;
 }
 function getNode(id){ const p=findPath(id); return p? p[p.length-1] : null; }
+function getNodeAny(id){
+  const live = getNode(id);
+  if(live) return live;
+  let hit=null;
+  walkAll(data, n=>{ if(!hit && n.id===id) hit=n; });
+  return hit;
+}
 function isCancelled(n){ return n.proposal==="cancelled"; }
 function isProposed(n){ return n.proposal==="proposed"; }
 function isAuth(n){ return sessionAuth.has(n.id); }
@@ -1893,10 +1943,19 @@ function depthFromView(n){
   return p.length-1-i;
 }
 function isCatalogView(){
+  if(bugPathMode) return false;
   return viewRootId===data.id;
 }
 function visibleChildren(n){
   if(!n || isCancelled(n)) return [];
+  if(bugPathMode && bugFocus){
+    const path = findPath(bugFocus.nodeId);
+    if(!path) return [];
+    const idx = path.findIndex(x=>x.id===n.id);
+    if(idx<0 || idx===path.length-1) return [];
+    const next = path[idx+1];
+    return (n.children||[]).filter(c=>c.id===next.id && !isCancelled(c));
+  }
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
   if(isCatalogView()) return [];
@@ -1906,6 +1965,10 @@ function visibleChildren(n){
   return kids;
 }
 function liveViewRoot(){
+  if(bugPathMode){
+    viewRootId = data.id;
+    return data;
+  }
   let n = getNode(viewRootId) || data;
   let guard = 0;
   while(n && isCancelled(n) && n.id!==data.id && guard++<80){
@@ -1988,7 +2051,167 @@ function cancelledList(){
   walk(data,(n,ps)=>{ if(isCancelled(n)) out.push({node:n, parent:ps[ps.length-1]}); });
   return out;
 }
+function walkAll(node, fn, parents=[]){
+  if(!node) return;
+  fn(node, parents);
+  (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
+  (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
+}
+function currentSessionId(){
+  const raw = String((currentRepo() && currentRepo().sessionName) || (document.getElementById("session-name")||{}).textContent || "S-0823").trim();
+  const m = raw.match(/^(\S+)/);
+  return m ? m[1] : "S-0823";
+}
+function sessionColor(name){
+  const pal = ["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
+  let h = 0;
+  String(name||"").split("").forEach(ch=>{ h = (h*33 + ch.charCodeAt(0))|0; });
+  return pal[Math.abs(h)%pal.length];
+}
+function bugSessionsOf(bug){
+  if(!bug) return [];
+  if(!Array.isArray(bug.sessions)) bug.sessions = [];
+  return bug.sessions;
+}
+function openBugList(){
+  const out=[];
+  walkAll(data,(n,ps)=>{
+    if(isCancelled(n)) return;
+    (n.bugs||[]).forEach(b=>{
+      if(!b || b.status==="dormant") return;
+      out.push({bug:b, node:n, path:[...ps, n]});
+    });
+  });
+  return out;
+}
+function revealPath(path){
+  if(!path || path.length<2) return;
+  for(let i=0;i<path.length-1;i++){
+    const parent = path[i], child = path[i+1];
+    if((parent.children||[]).some(c=>c.id===child.id)) continue;
+    if((parent._inbox||[]).some(c=>c.id===child.id)) unpackInbox(parent);
+  }
+}
+function focusedBug(){
+  if(!bugFocus) return null;
+  const n = getNode(bugFocus.nodeId);
+  if(!n) return null;
+  const b = (n.bugs||[]).find(x=>x.id===bugFocus.bugId);
+  return b ? {node:n, bug:b} : null;
+}
+function clearRelationMode(){
+  if(!relationMode) return;
+  relationMode = false;
+  relAnchorId = null;
+  const btn = document.getElementById("btn-rel");
+  if(btn){
+    btn.classList.remove("on");
+    btn.setAttribute("aria-pressed","false");
+  }
+  document.body.classList.remove("rel-mode");
+}
+function enterBugPath(nodeId, bugId){
+  clearRelationMode();
+  let path = findPath(nodeId);
+  if(!path || !path.length){
+    walkAll(data,(n,ps)=>{ if(n.id===nodeId) path = [...ps, n]; });
+  }
+  revealPath(path||[]);
+  path = findPath(nodeId);
+  if(!path || !path.length) return;
+  if(!bugPathMode){
+    bugPathReturn = {viewRootId, selectedId};
+  }
+  bugPathMode = true;
+  bugFocus = {nodeId, bugId};
+  selectedId = nodeId;
+  viewRootId = data.id;
+  document.body.classList.add("bug-path-mode");
+  openBugPanel(true);
+  renderAll();
+  fitView();
+}
+function exitBugPath(restore){
+  if(!bugPathMode) return;
+  bugPathMode = false;
+  bugFocus = null;
+  document.body.classList.remove("bug-path-mode");
+  const ret = bugPathReturn;
+  bugPathReturn = null;
+  if(restore!==false && ret){
+    viewRootId = ret.viewRootId || data.id;
+    selectedId = ret.selectedId;
+  }
+  liveViewRoot();
+  liveSelected();
+  renderAll();
+  fitView();
+}
+function openBugPanel(open){
+  if(open) document.getElementById("tray").classList.remove("open");
+  document.body.classList.toggle("bugs-open", !!open);
+  document.getElementById("bug-panel").classList.toggle("open", !!open);
+  document.getElementById("btn-bugs").classList.toggle("on", !!open);
+}
+function toggleBugSession(node, bug){
+  if(!node || !bug) return;
+  const sid = currentSessionId();
+  const list = bugSessionsOf(bug);
+  const i = list.indexOf(sid);
+  if(i>=0) list.splice(i,1);
+  else list.push(sid);
+  renderAll();
+}
+function renderBugPanel(){
+  const list = openBugList();
+  const countEl = document.getElementById("bug-count");
+  if(countEl) countEl.textContent = list.length;
+  const ul = document.getElementById("bug-panel-list");
+  if(!ul) return;
+  if(!list.length){
+    ul.innerHTML = `<li class="empty">没有未修的 Bug。</li>`;
+    return;
+  }
+  const sid = currentSessionId();
+  ul.innerHTML = list.map(item=>{
+    const title = item.bug.title || "未命名 Bug";
+    const where = item.path.map(n=>n.title).slice(-2).join(" · ");
+    const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
+    const sessions = bugSessionsOf(item.bug);
+    const mine = sessions.indexOf(sid)>=0;
+    const chips = sessions.map(s=>`<span class="sess-chip"><i style="background:${sessionColor(s)}"></i>${esc(s)}</span>`).join("");
+    return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
+      <span class="bug-title">${esc(title)}</span>
+      <span class="bug-where">${esc(where)}</span>
+      <div class="bug-row">${chips}
+        <button type="button" class="claim ${mine?"primary":""}" data-claim>${mine?"本会话离开":"本会话在修"}</button>
+      </div>
+    </li>`;
+  }).join("");
+  ul.querySelectorAll("li[data-node]").forEach(li=>{
+    li.onclick = e=>{
+      if(e.target.closest("[data-claim]")) return;
+      enterBugPath(li.dataset.node, li.dataset.bug);
+    };
+  });
+  ul.querySelectorAll("[data-claim]").forEach(btn=>{
+    btn.onclick = e=>{
+      e.preventDefault(); e.stopPropagation();
+      const li = btn.closest("li");
+      const n = getNodeAny(li.dataset.node);
+      const b = n && (n.bugs||[]).find(x=>x.id===li.dataset.bug);
+      toggleBugSession(n, b);
+    };
+  });
+}
+
 function enterView(id, opts){
+  if(bugPathMode){
+    bugPathMode = false;
+    bugFocus = null;
+    bugPathReturn = null;
+    document.body.classList.remove("bug-path-mode");
+  }
   viewRootId = id; selectedId = id;
   const n = getNode(id);
   if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
@@ -1998,8 +2221,24 @@ function enterView(id, opts){
 
 /* ================= 顶部导航 / 提示条 ================= */
 function renderNav(){
-  const path = findPath(viewRootId);
   const el = document.getElementById("nav-crumbs");
+  if(bugPathMode && bugFocus){
+    const path = findPath(bugFocus.nodeId) || [];
+    const hit = focusedBug();
+    const tag = hit && hit.bug ? `<span class="bug-tag">${esc(hit.bug.title || "Bug")}</span>` : "";
+    el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">退出链路</button>` +
+      path.map((n,i)=> i===path.length-1
+        ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
+        : `<span class="here" style="background:transparent;font-weight:600">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span><span class="sep">›</span>`
+      ).join("") + tag;
+    const ex = document.getElementById("btn-bug-exit");
+    if(ex) ex.onclick = ()=>exitBugPath(true);
+    document.getElementById("tray-count").textContent = cancelledList().length;
+    document.getElementById("auth-count").textContent = sessionAuth.size;
+    document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
+    return;
+  }
+  const path = findPath(viewRootId);
   el.innerHTML = path.map((n,i)=> i===path.length-1
     ? `<span class="here">${n.kind==="module"?"▣ ":""}${n.title}</span>`
     : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${n.title}</a><span class="sep">›</span>`
@@ -2044,6 +2283,7 @@ document.getElementById("dir-toggle").onclick = e=>{
   if(b) setLayoutDir(b.dataset.dir);
 };
 document.getElementById("btn-rel").onclick = ()=>{
+  if(bugPathMode) exitBugPath(true);
   relationMode = !relationMode;
   if(!relationMode) relAnchorId = null;
   const btn = document.getElementById("btn-rel");
@@ -2051,6 +2291,13 @@ document.getElementById("btn-rel").onclick = ()=>{
   btn.setAttribute("aria-pressed", relationMode ? "true" : "false");
   document.body.classList.toggle("rel-mode", relationMode);
   renderAll();
+  fitView();
+};
+document.getElementById("btn-bugs").onclick = ()=>{
+  const open = !document.body.classList.contains("bugs-open");
+  if(!open && bugPathMode){ exitBugPath(true); openBugPanel(false); return; }
+  openBugPanel(open);
+  renderBugPanel();
   fitView();
 };
 function renderTray(){
@@ -2157,7 +2404,8 @@ function renderMap(){
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
       (n.id===selectedId && !isCancelled(n)?" selected":"") +
-      (relationMode ? (relDim?" rel-dim":" rel-hot") : (onFocusPath(n.id)?"":" dimmed"));
+      (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
+      (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
@@ -2171,8 +2419,8 @@ function renderMap(){
 
   const pos = new Map();
   const tb = layoutDir==="tb";
-  const hopX = relationMode ? 148 : GAP_X;
-  const hopTB = relationMode ? 92 : GAP_TB;
+  const hopX = bugPathMode ? 128 : (relationMode ? 148 : GAP_X);
+  const hopTB = bugPathMode ? 90 : (relationMode ? 92 : GAP_TB);
   function gapY(c){
     if(relationMode) return c.kind==="module" ? 84 : GAP_Y+10;
     return c.kind==="module" ? MOD_GAP_Y : GAP_Y;
@@ -2324,13 +2572,14 @@ function renderMap(){
   linksEl.setAttribute("height", maxY+140);
 
   let paths="";
+  const pathSegs=[];
   function linkClass(n,c){
     const onF = focusId && onFocusPath(n.id) && onFocusPath(c.id);
     const dim = focusId && !(onFocusPath(n.id)&&onFocusPath(c.id));
     const na = !isProposed(c) && !isAuth(c) &&
       !(c.kind==="module" && moduleAuthState(c)!=="none");
     const relOff = relationMode && relSet && (!relSet.has(n.id) || !relSet.has(c.id));
-    return `link ${dim?'dimmed':''} ${relOff?'rel-dim':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
+    return `link ${bugPathMode?'bug-path':''} ${dim?'dimmed':''} ${relOff?'rel-dim':''} ${onF?'focus-link':''} ${isProposed(c)?'proposed-link':''} ${na?'noauth-link':''}`;
   }
   function curveTB(n,c){
     const p = pos.get(n.id), ps = size.get(n.id);
@@ -2353,9 +2602,27 @@ function renderMap(){
   vwalk(root,(n)=>{
     visibleChildren(n).forEach(c=>{
       const d = (spreadGrid || tb) ? curveTB(n,c) : curveLR(n,c);
-      if(d) paths += `<path class="${linkClass(n,c)}" d="${d}"/>`;
+      if(d){
+        pathSegs.push(d);
+        paths += `<path class="${linkClass(n,c)}" d="${d}"/>`;
+      }
     });
   });
+  if(bugPathMode){
+    const hit = focusedBug();
+    const sessions = hit ? bugSessionsOf(hit.bug) : [];
+    if(sessions.length && pathSegs.length){
+      paths = `<defs><filter id="current-glow" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` + paths;
+      sessions.forEach((sid, si)=>{
+        const color = sessionColor(sid);
+        pathSegs.forEach((d, di)=>{
+          const delay = (di*0.2 + si*0.36).toFixed(2);
+          paths += `<path class="current-flow" stroke="${color}" style="animation-delay:${delay}s" d="${d}"/>`;
+          paths += `<circle r="5.2" fill="${color}" filter="url(#current-glow)"><animateMotion dur="1.5s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
+        });
+      });
+    }
+  }
   if(relationMode){
     const related = relSet || new Set();
     let gx = maxX + 96, gy = 8;
@@ -2420,6 +2687,11 @@ function onNodeClick(e, n){
     toggleAuth(n); return;
   }
   if(e.target.classList.contains("add-child")){ addModule(n); return; }
+  if(bugPathMode){
+    selectedId = n.id;
+    renderAll();
+    return;
+  }
   if(relationMode){
     relAnchorId = n.id;
     selectedId = n.id;
@@ -2643,15 +2915,19 @@ function renderDetail(){
     : "";
 
   const bugHtml = openBugs.length
-    ? `<ul class="bug-list">`+openBugs.map(b=>`
+    ? `<ul class="bug-list">`+openBugs.map(b=>{
+        const onPath = bugPathMode && bugFocus && bugFocus.nodeId===node.id && bugFocus.bugId===b.id;
+        return `
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
           <div class="bug-main">
             <div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>
             ${b.status==='pending'? `<div class="summarizing">沉淀中…</div>`:""}
+            ${onPath?"":`<button type="button" class="quiet" data-bug-path="${b.id}">看链路</button>`}
             ${attachHtml("bug", b.id, b)}
           </div>
-        </li>`).join("")+`</ul>`
+        </li>`;
+      }).join("")+`</ul>`
     : "";
 
   const pendingKids = node.children.filter(isProposed).length;
@@ -2675,6 +2951,7 @@ function renderDetail(){
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
         ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">进入</button>`:""}
+        ${bugPathMode? `<button type="button" data-act="bug-exit">退出链路</button>`:""}
         ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
@@ -2714,6 +2991,9 @@ function renderDetail(){
     </details>`:""}`;
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
+  el.querySelectorAll("[data-bug-path]").forEach(b=>{
+    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); enterBugPath(node.id, b.dataset.bugPath); };
+  });
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
   bindSilent(q('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -2722,6 +3002,7 @@ function renderDetail(){
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
+  if(q('[data-act="bug-exit"]')) q('[data-act="bug-exit"]').onclick = ()=>exitBugPath(true);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
   bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -2850,7 +3131,8 @@ function crossBug(node, bugId){
       exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
       files: fileList(bug).map(f=>({path:f.path}))
     });
-    renderAll();
+    if(bugPathMode && bugFocus && bugFocus.bugId===bugId) exitBugPath(true);
+    else renderAll();
   }, 1600);
 }
 
@@ -2861,7 +3143,8 @@ function applyView(){
 }
 /* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
 function fitView(){
-  const availW = window.innerWidth - 340 - 90;
+  const left = document.body.classList.contains("bugs-open") ? 280 : 0;
+  const availW = window.innerWidth - 340 - 90 - left;
   const availH = window.innerHeight - 150;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
@@ -2894,7 +3177,7 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderMap(); renderDetail();
+function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 async function boot(){

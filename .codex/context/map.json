@@ -375,6 +375,7 @@
             "title": "原生 prompt 会打断看图",
             "desc": "检查器编辑和建图确认必须留在页面里",
             "status": "open",
+            "sessions": ["S-0812"],
             "files": [
               {
                 "path": "workbench-global.png"
@@ -416,7 +417,14 @@
                     "purpose": "大方卡只露标题和一句用途，不印文件清单",
                     "state": "dirty",
                     "memories": [],
-                    "bugs": [],
+                    "bugs": [
+                      {
+                        "id": "B22",
+                        "title": "根上铺开关系线会看不清",
+                        "desc": "生产/消费不能在正常视图和分级页面里一起画",
+                        "status": "open"
+                      }
+                    ],
                     "dormant": [],
                     "children": [],
                     "files": []
