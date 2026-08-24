@@ -271,9 +271,15 @@ body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0
 .nav-crumbs .bug-exit{font-size:12px;padding:3px 9px;margin-right:4px}
 .nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;padding:3px 9px;border-radius:6px}
 #links path.link.bug-path{stroke:#8a5348;stroke-width:2.4}
-#links path.current-flow{fill:none;stroke-width:4.4;stroke-dasharray:5 13;stroke-linecap:round;
-  opacity:1;filter:url(#current-glow);animation:current-run .72s linear infinite}
-@keyframes current-run{to{stroke-dashoffset:-18}}
+#links path.current-flow{fill:none;stroke-width:4.6;stroke-dasharray:7 16;stroke-linecap:round;
+  opacity:1;filter:drop-shadow(0 0 5px #fff8) drop-shadow(0 0 7px);animation:current-run .65s linear infinite}
+@keyframes current-run{to{stroke-dashoffset:-23}}
+#currents{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
+.current-bead{position:absolute;left:0;top:0;width:13px;height:13px;margin:-7px 0 0 -7px;
+  border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px 3px rgba(255,255,255,.8);pointer-events:none;
+  offset-rotate:0deg;animation:bead-run .85s linear infinite}
+.current-bead:after{content:"";position:absolute;inset:3px;border-radius:50%;background:#fff;opacity:.9}
+@keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
@@ -444,6 +450,7 @@ details.fold .mem-list{margin-top:6px}
   <div id="world">
     <svg id="links"></svg>
     <div id="nodes"></div>
+    <div id="currents"></div>
   </div>
 </div>
 
@@ -2346,6 +2353,7 @@ const GAP_TB = 56, GAP_TB_X = 22, MOD_GAP_X = 28;
 const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
+const currentsEl = document.getElementById("currents");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
@@ -2390,6 +2398,7 @@ function renderMap(){
   const relSet = relFocus ? flowPartners(relFocus) : null;
 
   nodesEl.innerHTML = "";
+  if(currentsEl) currentsEl.innerHTML = "";
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
@@ -2612,14 +2621,24 @@ function renderMap(){
     const hit = focusedBug();
     const sessions = hit ? bugSessionsOf(hit.bug) : [];
     if(sessions.length && pathSegs.length){
-      paths = `<defs><filter id="current-glow" x="-70%" y="-70%" width="240%" height="240%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` + paths;
+      if(currentsEl){
+        currentsEl.style.width = (maxX+140)+"px";
+        currentsEl.style.height = (maxY+140)+"px";
+      }
       sessions.forEach((sid, si)=>{
         const color = sessionColor(sid);
         pathSegs.forEach((d, di)=>{
-          const delay = (di*0.2 + si*0.36).toFixed(2);
+          const delay = (di*0.18 + si*0.32).toFixed(2);
           paths += `<path class="current-flow" stroke="${color}" style="animation-delay:${delay}s" d="${d}"/>`;
-          paths += `<circle r="6.4" fill="${color}" filter="url(#current-glow)"><animateMotion dur=".9s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
-          paths += `<circle r="2.6" fill="#fff"><animateMotion dur=".9s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
+          if(currentsEl){
+            const bead = document.createElement("div");
+            bead.className = "current-bead";
+            bead.style.background = color;
+            bead.style.boxShadow = `0 0 12px 4px ${color}`;
+            bead.style.offsetPath = `path("${d}")`;
+            bead.style.animationDelay = delay+"s";
+            currentsEl.appendChild(bead);
+          }
         });
       });
     }
