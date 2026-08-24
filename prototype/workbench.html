@@ -375,6 +375,13 @@ const PINNED = [
 
 let NODE_SEQ = 400;
 let BUG_SEQ = 40;
+function bumpNodeSeq(n){
+  if(!n) return;
+  const m = /^N(\d+)$/.exec(String(n.id||""));
+  if(m) NODE_SEQ = Math.max(NODE_SEQ, (+m[1])+1);
+  (n.children||[]).forEach(bumpNodeSeq);
+  (n._inbox||[]).forEach(bumpNodeSeq);
+}
 function U(id, title, purpose, children, extra){
   extra = extra || {};
   const kind = extra.kind || (String(id).charAt(0)==="M" ? "module" : "work");
@@ -1261,6 +1268,7 @@ function adoptTree(tree){
   data.children = src.children||[];
   data.flows = src.flows||[];
   promoteFatWork(data);
+  bumpNodeSeq(data);
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -1445,8 +1453,9 @@ function reanalyzeRepo(id){
 
 /* ================= 树工具 ================= */
 function walk(node, fn, parents=[]){
+  if(!node) return;
   fn(node, parents);
-  node.children.forEach(c=>walk(c, fn, [...parents, node]));
+  (node.children||[]).forEach(c=>walk(c, fn, [...parents, node]));
 }
 function findPath(id){
   let result=null;
@@ -1468,6 +1477,7 @@ function isCatalogView(){
   return viewRootId===data.id;
 }
 function visibleChildren(n){
+  if(!n || isCancelled(n)) return [];
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
   if(isCatalogView()) return [];
@@ -1475,6 +1485,17 @@ function visibleChildren(n){
   if(n.kind==="module") return [];
   if(kids.some(c=>c.kind==="module") || kids.length>2) return [];
   return kids;
+}
+function liveViewRoot(){
+  let n = getNode(viewRootId) || data;
+  let guard = 0;
+  while(n && isCancelled(n) && n.id!==data.id && guard++<80){
+    const p = findPath(n.id);
+    n = (p && p.length>1) ? p[p.length-2] : data;
+  }
+  if(!n) n = data;
+  if(n.id!==viewRootId) viewRootId = n.id;
+  return n;
 }
 function canEnter(n){
   if(!n || n.id===viewRootId) return false;
@@ -1484,6 +1505,7 @@ function canEnter(n){
   return kids.some(c=>c.kind==="module") || kids.length>2;
 }
 function vwalk(node, fn, parents=[]){
+  if(!node || isCancelled(node)) return;
   fn(node, parents);
   visibleChildren(node).forEach(c=>vwalk(c, fn, [...parents, node]));
 }
@@ -1529,10 +1551,10 @@ function cancelledList(){
   walk(data,(n,ps)=>{ if(isCancelled(n)) out.push({node:n, parent:ps[ps.length-1]}); });
   return out;
 }
-function enterView(id){
+function enterView(id, opts){
   viewRootId = id; selectedId = id;
   const n = getNode(id);
-  if(n && id!==data.id) unpackInbox(n);
+  if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
   renderAll();
   fitView();
 }
@@ -1663,7 +1685,7 @@ function renderMap(){
   if(!(data.flows && data.flows.length) && currentRepo().blueprint && currentRepo().blueprint.flows){
     data.flows = clone(currentRepo().blueprint.flows);
   }
-  const root = getNode(viewRootId);
+  const root = liveViewRoot();
 
   nodesEl.innerHTML = "";
   const els = new Map();
@@ -1867,8 +1889,12 @@ function renderMap(){
         if(selectedId===id){ acceptProposal(n); return; }
         selectedId = id; renderAll(); return;
       }
-      if(canEnter(n)){ enterView(n.id); return; }
-      selectedId = id; renderAll();
+      /* 模块仍是一点就进入。开工节点第一次只选中，避免为了点删除而 unpack 出隐藏子节点。 */
+      if(n.kind==="module" && n.id!==viewRootId){
+        enterView(n.id); return;
+      }
+      if(id!==selectedId){ selectedId = id; renderAll(); return; }
+      if(canEnter(n) && n.id!==viewRootId) enterView(n.id);
     };
   });
 }
@@ -1890,12 +1916,14 @@ function acceptLayer(node){
 }
 function cancelProposal(n){
   if(!n || n.id===data.id) return;
+  composingId = null;
   n.proposal = "cancelled"; n.isNew = false;
-  const p = findPath(n.id);
+  const p = findPath(n.id) || [];
   const parent = p.length>1? p[p.length-2] : data;
-  const vp = findPath(viewRootId);
-  if(n.id===viewRootId || (vp && vp.some(x=>x.id===n.id))) viewRootId = parent.id;
-  selectedId = parent.id;
+  const vp = findPath(viewRootId) || [];
+  if(n.id===viewRootId || vp.some(x=>x.id===n.id)) viewRootId = parent.id;
+  liveViewRoot();
+  selectedId = n.id;
   renderAll();
 }
 
@@ -1910,12 +1938,20 @@ function commitChild(node, title){
   const t = (title||"").trim();
   if(!t) return;
   composingId = null;
-  const child = {id:"N"+(NODE_SEQ++), title:t, origin:"human", state:"dirty",
+  const child = {id:"N"+(NODE_SEQ++), title:t, kind:"work", origin:"human", state:"dirty",
     memories:[], bugs:[], dormant:[], files:[], children:[]};
+  if(!Array.isArray(node.children)) node.children = [];
   node.children.push(child);
   sessionAuth.add(child.id);
-  findPath(child.id).forEach(a=>sessionAuth.add(a.id));
-  if(node.kind==="module" && node.id!==viewRootId){ enterView(node.id); return; }
+  const createdPath = findPath(child.id);
+  if(createdPath) createdPath.forEach(a=>sessionAuth.add(a.id));
+  if(node.kind==="module" && node.id!==viewRootId){
+    viewRootId = node.id;
+    selectedId = child.id;
+    renderAll();
+    fitView();
+    return;
+  }
   selectedId = child.id;
   renderAll();
 }
@@ -1942,9 +1978,18 @@ function bindEdit(el, commit, multiline){
     commit(v);
   });
 }
+function bindSilent(el, fn){
+  if(!el) return;
+  el.onmousedown = e=>e.preventDefault();
+  el.onclick = fn;
+}
 function renderDetail(){
-  const path = findPath(selectedId);
+  let path = findPath(selectedId);
   const el = document.getElementById("detail");
+  if(!path || !path.length){
+    selectedId = liveViewRoot().id;
+    path = findPath(selectedId) || [data];
+  }
   const node = path[path.length-1];
   const isModule = node.kind==="module";
   const proposed = isProposed(node), cancelled = isCancelled(node);
@@ -1964,7 +2009,7 @@ function renderDetail(){
         <button data-act="cancel">隐藏</button>
       </div>`;
     el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
-    el.querySelector('[data-act="cancel"]').onclick = ()=>cancelProposal(node);
+    bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ composingId=null; cancelProposal(node); });
     return;
   }
   if(cancelled){
@@ -2021,13 +2066,13 @@ function renderDetail(){
       ${!cancelled? `
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
-        ${composing?"":`<button data-act="child">＋ 子节点</button>`}
-        ${canDelete? `<button data-act="delete" class="quiet">删除</button>`:""}`:""}
+        ${composing?"":`<button type="button" data-act="child">＋ 子节点</button>`}
+        ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
     </div>
     ${composing? `<div class="compose">
-        <span class="ed ghost" data-ed="compose-title">子节点名称</span>
-        <button data-act="compose-ok" class="primary">添加</button>
-        <button data-act="compose-cancel" class="quiet">取消</button>
+        <span class="ed ghost" data-ed="compose-title" data-compose>子节点名称</span>
+        <button type="button" data-act="compose-ok" class="primary">添加</button>
+        <button type="button" data-act="compose-cancel" class="quiet">取消</button>
       </div>`:""}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
@@ -2059,13 +2104,13 @@ function renderDetail(){
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
-  if(q('[data-act="cancel"]'))  q('[data-act="cancel"]').onclick  = ()=>cancelProposal(node);
+  bindSilent(q('[data-act="cancel"]'), ()=>{ composingId=null; cancelProposal(node); });
   if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>acceptProposal(node);
   if(q('[data-act="accept-layer"]')) q('[data-act="accept-layer"]').onclick = ()=>acceptLayer(node);
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
-  if(q('[data-act="delete"]'))  q('[data-act="delete"]').onclick  = ()=>cancelProposal(node);
+  bindSilent(q('[data-act="delete"]'), ()=>{ composingId=null; cancelProposal(node); });
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
@@ -2147,6 +2192,7 @@ function renderDetail(){
 
   const composeEl = q("[data-ed='compose-title']");
   const doCommit = ()=>{
+    if(composingId!==node.id) return;
     const v = composeEl ? textOf(composeEl) : "";
     if(v && v!=="子节点名称") commitChild(node, v);
   };
@@ -2213,7 +2259,7 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ renderNav(); renderTray(); renderMap(); renderDetail();
+function renderAll(){ liveViewRoot(); renderNav(); renderTray(); renderMap(); renderDetail();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 function boot(){
