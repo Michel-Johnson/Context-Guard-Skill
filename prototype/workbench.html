@@ -271,9 +271,9 @@ body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0
 .nav-crumbs .bug-exit{font-size:12px;padding:3px 9px;margin-right:4px}
 .nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;padding:3px 9px;border-radius:6px}
 #links path.link.bug-path{stroke:#8a5348;stroke-width:2.4}
-#links path.current-flow{fill:none;stroke-width:3.1;stroke-dasharray:10 22;stroke-linecap:round;
-  opacity:.95;filter:url(#current-glow);animation:current-run 1.15s linear infinite}
-@keyframes current-run{to{stroke-dashoffset:-32}}
+#links path.current-flow{fill:none;stroke-width:4.4;stroke-dasharray:5 13;stroke-linecap:round;
+  opacity:1;filter:url(#current-glow);animation:current-run .72s linear infinite}
+@keyframes current-run{to{stroke-dashoffset:-18}}
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
@@ -2618,7 +2618,8 @@ function renderMap(){
         pathSegs.forEach((d, di)=>{
           const delay = (di*0.2 + si*0.36).toFixed(2);
           paths += `<path class="current-flow" stroke="${color}" style="animation-delay:${delay}s" d="${d}"/>`;
-          paths += `<circle r="5.2" fill="${color}" filter="url(#current-glow)"><animateMotion dur="1.5s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
+          paths += `<circle r="6.4" fill="${color}" filter="url(#current-glow)"><animateMotion dur=".9s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
+          paths += `<circle r="2.6" fill="#fff"><animateMotion dur=".9s" begin="${delay}s" repeatCount="indefinite" path="${d}"/></circle>`;
         });
       });
     }
