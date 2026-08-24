@@ -382,6 +382,33 @@ function bumpNodeSeq(n){
   (n.children||[]).forEach(bumpNodeSeq);
   (n._inbox||[]).forEach(bumpNodeSeq);
 }
+function uniquifyIds(n, seen){
+  seen = seen || new Set();
+  if(!n) return;
+  bumpNodeSeq(n);
+  if(!n.id || seen.has(n.id)){
+    do { n.id = "N"+(NODE_SEQ++); } while(seen.has(n.id));
+  }
+  seen.add(n.id);
+  (n.children||[]).forEach(c=>uniquifyIds(c, seen));
+  (n._inbox||[]).forEach(c=>uniquifyIds(c, seen));
+}
+function nextNodeId(){
+  let id;
+  do { id = "N"+(NODE_SEQ++); } while(idTaken(id));
+  return id;
+}
+function idTaken(id){
+  let found = false;
+  function scan(n){
+    if(!n || found) return;
+    if(n.id===id) found = true;
+    (n.children||[]).forEach(scan);
+    (n._inbox||[]).forEach(scan);
+  }
+  scan(data);
+  return found;
+}
 function U(id, title, purpose, children, extra){
   extra = extra || {};
   const kind = extra.kind || (String(id).charAt(0)==="M" ? "module" : "work");
@@ -1268,7 +1295,7 @@ function adoptTree(tree){
   data.children = src.children||[];
   data.flows = src.flows||[];
   promoteFatWork(data);
-  bumpNodeSeq(data);
+  uniquifyIds(data);
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -1458,8 +1485,18 @@ function walk(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walk(c, fn, [...parents, node]));
 }
 function findPath(id){
+  let live=null, any=null;
+  walk(data,(n,ps)=>{
+    if(n.id!==id) return;
+    const path=[...ps,n];
+    any = path;
+    if(!isCancelled(n)) live = path;
+  });
+  return live || any;
+}
+function pathOf(node){
   let result=null;
-  walk(data,(n,ps)=>{ if(n.id===id) result=[...ps,n]; });
+  walk(data,(n,ps)=>{ if(n===node) result=[...ps,n]; });
   return result;
 }
 function getNode(id){ const p=findPath(id); return p? p[p.length-1] : null; }
@@ -1490,12 +1527,22 @@ function liveViewRoot(){
   let n = getNode(viewRootId) || data;
   let guard = 0;
   while(n && isCancelled(n) && n.id!==data.id && guard++<80){
-    const p = findPath(n.id);
+    const p = pathOf(n) || findPath(n.id);
     n = (p && p.length>1) ? p[p.length-2] : data;
   }
   if(!n) n = data;
   if(n.id!==viewRootId) viewRootId = n.id;
   return n;
+}
+function liveSelected(){
+  let n = getNode(selectedId);
+  if(n && !isCancelled(n)) return n;
+  const p = (n && pathOf(n)) || findPath(selectedId) || [];
+  for(let i=p.length-2;i>=0;i--){
+    if(p[i] && !isCancelled(p[i])){ selectedId = p[i].id; return p[i]; }
+  }
+  selectedId = liveViewRoot().id;
+  return getNode(selectedId) || data;
 }
 function canEnter(n){
   if(!n || n.id===viewRootId) return false;
@@ -1699,11 +1746,12 @@ function renderMap(){
       (n.kind==="work" && n.kind!=="module"?" work":"") +
       (isProposed(n)?" proposed":"") +
       (noauth?" noauth":"") +
-      (n.id===selectedId?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
+      (n.id===selectedId && !isCancelled(n)?" selected":"") + (onFocusPath(n.id)?"":" dimmed");
     div.innerHTML = nodeHtml(n, isViewRoot);
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
     els.set(n.id, div);
+    div.addEventListener("click", e=>onNodeClick(e, n));
   });
   const size = new Map();
   els.forEach((el,id)=>size.set(id,{w:el.offsetWidth,h:el.offsetHeight}));
@@ -1876,27 +1924,24 @@ function renderMap(){
     });
   });
   linksEl.innerHTML = paths;
-
-  els.forEach((el,id)=>{
-    el.onclick = (e)=>{
-      const n = getNode(id);
-      if(authMode){
-        toggleAuth(n); return;
-      }
-      if(e.target.classList.contains("add-child")){ addChild(n); return; }
-      if(isProposed(n)){
-        if(canEnter(n)){ enterView(n.id); return; }
-        if(selectedId===id){ acceptProposal(n); return; }
-        selectedId = id; renderAll(); return;
-      }
-      /* 模块仍是一点就进入。开工节点第一次只选中，避免为了点删除而 unpack 出隐藏子节点。 */
-      if(n.kind==="module" && n.id!==viewRootId){
-        enterView(n.id); return;
-      }
-      if(id!==selectedId){ selectedId = id; renderAll(); return; }
-      if(canEnter(n) && n.id!==viewRootId) enterView(n.id);
-    };
-  });
+}
+function onNodeClick(e, n){
+  if(!n) return;
+  if(authMode){
+    toggleAuth(n); return;
+  }
+  if(e.target.classList.contains("add-child")){ addChild(n); return; }
+  if(isProposed(n)){
+    if(canEnter(n)){ enterView(n.id); return; }
+    if(selectedId===n.id){ acceptProposal(n); return; }
+    selectedId = n.id; renderAll(); return;
+  }
+  /* 模块仍是一点就进入。开工节点第一次只选中，避免为了点删除而 unpack 出隐藏子节点。 */
+  if(n.kind==="module" && n.id!==viewRootId){
+    enterView(n.id); return;
+  }
+  if(n.id!==selectedId){ selectedId = n.id; renderAll(); return; }
+  if(canEnter(n) && n.id!==viewRootId) enterView(n.id);
 }
 
 function acceptProposal(n, silent){
@@ -1917,13 +1962,17 @@ function acceptLayer(node){
 function cancelProposal(n){
   if(!n || n.id===data.id) return;
   composingId = null;
+  const p = pathOf(n) || [];
   n.proposal = "cancelled"; n.isNew = false;
-  const p = findPath(n.id) || [];
-  const parent = p.length>1? p[p.length-2] : data;
-  const vp = findPath(viewRootId) || [];
-  if(n.id===viewRootId || vp.some(x=>x.id===n.id)) viewRootId = parent.id;
+  let parent = p.length>1? p[p.length-2] : data;
+  while(parent && isCancelled(parent) && parent.id!==data.id){
+    const pp = pathOf(parent) || [];
+    parent = pp.length>1? pp[pp.length-2] : data;
+  }
+  if(!parent || isCancelled(parent)) parent = data;
+  if(n.id===viewRootId || (pathOf(getNode(viewRootId))||[]).some(x=>x===n)) viewRootId = parent.id;
   liveViewRoot();
-  selectedId = n.id;
+  selectedId = parent.id;
   renderAll();
 }
 
@@ -1938,7 +1987,7 @@ function commitChild(node, title){
   const t = (title||"").trim();
   if(!t) return;
   composingId = null;
-  const child = {id:"N"+(NODE_SEQ++), title:t, kind:"work", origin:"human", state:"dirty",
+  const child = {id:nextNodeId(), title:t, kind:"work", origin:"human", state:"dirty",
     memories:[], bugs:[], dormant:[], files:[], children:[]};
   if(!Array.isArray(node.children)) node.children = [];
   node.children.push(child);
@@ -1984,7 +2033,8 @@ function bindSilent(el, fn){
   el.onclick = fn;
 }
 function renderDetail(){
-  let path = findPath(selectedId);
+  liveSelected();
+  let path = pathOf(getNode(selectedId)) || findPath(selectedId);
   const el = document.getElementById("detail");
   if(!path || !path.length){
     selectedId = liveViewRoot().id;
@@ -2259,7 +2309,7 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ liveViewRoot(); renderNav(); renderTray(); renderMap(); renderDetail();
+function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderMap(); renderDetail();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 function boot(){
