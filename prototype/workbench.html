@@ -305,8 +305,11 @@ details.fold .mem-list{margin-top:6px}
   font-size:12px;color:#fff;background:#fff}
 .bug-check:hover{background:var(--red-soft)}
 .bug-check.done{background:var(--green);border-color:var(--green)}
-.bug-title{font-weight:700;font-size:13px;display:block;min-height:1.6em;padding:4px 6px;line-height:1.4}
+.bug-title{font-weight:700;font-size:13px;display:block;min-height:2.2em;padding:8px 10px;line-height:1.4;box-sizing:border-box}
 .bug-title.ed:empty:before{content:"Bug 标题";color:var(--muted);font-weight:600}
+.bug-title.ed:empty,
+.bug-title.ed:focus{min-height:2.6em;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
+.bug-title.ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .bug-sub{color:var(--muted);font-size:11px;margin-top:2px;min-height:1.2em;font-family:var(--font-note)}
 .bug-sub.ed:empty:before{content:"补充说明（可选）";color:#b5bab6}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
@@ -330,7 +333,9 @@ details.fold .mem-list{margin-top:6px}
 .file-x:hover{color:var(--red);background:transparent;transform:none;box-shadow:none}
 .clip-btn{width:24px;height:24px;padding:0;font-size:11px;font-weight:800;border-radius:6px;box-shadow:none;flex:0 0 auto}
 .file-add{display:flex;flex-wrap:wrap;gap:4px;align-items:center;width:100%}
-.file-path{flex:1;min-width:140px;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:6px}
+.file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
+  border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
+.file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
 </style>
 </head>
 <body>
@@ -1006,6 +1011,8 @@ let composingKind = "work";
 let composeParent = null;
 function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
+let attachDraft = "";
+function clearAttach(){ attaching = null; attachDraft = ""; }
 let pendingDeleteId = null;
 let foldInherited = false;
 let foldDormant = false;
@@ -1103,6 +1110,56 @@ function addFilePath(node, kind, key, path){
   files.push({path:p});
   return true;
 }
+function repoRelPath(s){
+  const p = String(s||"").trim().replace(/\\/g,"/").split(/\s/)[0];
+  if(!p || p.length>240) return "";
+  if(/^[a-z]+:\/\//i.test(p)) return "";
+  if(p.startsWith("/") || p.startsWith("~") || p.includes("..")) return "";
+  if(!p.includes("/") && !/\.\w{1,8}$/.test(p)) return "";
+  return p;
+}
+function pathFromClipboard(e){
+  const dt = e.clipboardData || e.dataTransfer;
+  if(!dt) return {path:"", fileName:""};
+  const text = repoRelPath(dt.getData && dt.getData("text/plain"));
+  if(text && text.includes("/")) return {path:text, fileName:""};
+  const f = dt.files && dt.files[0];
+  if(f && f.name) return {path:"", fileName:f.name};
+  const items = dt.items ? [...dt.items] : [];
+  const it = items.find(x=>x.kind==="file");
+  if(it){
+    const file = it.getAsFile && it.getAsFile();
+    if(file && file.name) return {path:"", fileName:file.name};
+    if(it.type && it.type.startsWith("image/")){
+      const ext = (it.type.split("/")[1]||"png").replace("jpeg","jpg");
+      return {path:"", fileName:"image."+ext};
+    }
+  }
+  if(text) return {path:"", fileName:text};
+  return {path:"", fileName:""};
+}
+function beginAttach(kind, key, draft){
+  attaching = {kind, key};
+  attachDraft = draft || "";
+  renderAll();
+}
+function takeAttach(node, kind, key, e){
+  const got = pathFromClipboard(e);
+  if(got.path){
+    if(addFilePath(node, kind, key, got.path)){
+      e.preventDefault();
+      clearAttach();
+      renderAll();
+    }
+    return true;
+  }
+  if(got.fileName){
+    e.preventDefault();
+    beginAttach(kind, key, got.fileName);
+    return true;
+  }
+  return false;
+}
 function attachHtml(kind, key, owner, readonly){
   const files = fileList(owner);
   const fk = escAttr(kind), fi = escAttr(String(key));
@@ -1118,7 +1175,7 @@ function attachHtml(kind, key, owner, readonly){
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
   const add = isAttaching(kind, key)
     ? `<span class="file-add">
-         <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" placeholder="仓库相对路径，如 docs/shot.png" autocomplete="off">
+         <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="仓库相对路径，文件需已在仓库中" autocomplete="off">
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">添加</button>
          <button type="button" class="quiet" data-act="cancel-file">取消</button>
        </span>`
@@ -1130,16 +1187,16 @@ function bindFileUi(el, node){
     const kind = host.dataset.fk, key = host.dataset.fi;
     const box = el.querySelector("[data-file-input]");
     const path = box ? box.value : "";
-    if(addFilePath(node, kind, key, path)){ attaching = null; renderAll(); }
+    if(addFilePath(node, kind, key, path)){ clearAttach(); renderAll(); }
   };
   el.querySelectorAll('[data-act="ask-file"]').forEach(b=>{
-    b.onclick = ()=>{ attaching = {kind:b.dataset.fk, key:b.dataset.fi}; renderAll(); };
+    b.onclick = ()=>beginAttach(b.dataset.fk, b.dataset.fi, "");
   });
   el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
     b.onclick = ()=>saveFrom(b);
   });
   el.querySelectorAll('[data-act="cancel-file"]').forEach(b=>{
-    b.onclick = ()=>{ attaching = null; renderAll(); };
+    b.onclick = ()=>{ clearAttach(); renderAll(); };
   });
   el.querySelectorAll('[data-act="rm-file"]').forEach(b=>{
     b.onclick = e=>{
@@ -1155,7 +1212,7 @@ function bindFileUi(el, node){
     inp.focus();
     inp.addEventListener("keydown", e=>{
       if(e.key==="Enter"){ e.preventDefault(); saveFrom(inp); }
-      if(e.key==="Escape"){ e.preventDefault(); attaching = null; renderAll(); }
+      if(e.key==="Escape"){ e.preventDefault(); clearAttach(); renderAll(); }
     });
   }
   el.querySelectorAll("[data-drop-files]").forEach(box=>{
@@ -1169,10 +1226,7 @@ function bindFileUi(el, node){
     box.addEventListener("drop", e=>{
       e.preventDefault();
       box.classList.remove("is-drop");
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      const text = (e.dataTransfer.getData("text/plain")||"").trim();
-      const path = f ? (f.name||"") : text.split(/\s/)[0];
-      if(addFilePath(node, box.dataset.fk, box.dataset.fi, path)){ attaching = null; renderAll(); }
+      takeAttach(node, box.dataset.fk, box.dataset.fi, e);
     });
   });
 }
@@ -2130,7 +2184,7 @@ function renderDetail(){
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${(m.files&&m.files.length)?attachHtml("mem", i, m):""}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${attachHtml("mem", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
 
@@ -2141,6 +2195,7 @@ function renderDetail(){
           <div class="bug-main">
             <div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>
             ${b.status==='pending'? `<div class="summarizing">沉淀中…</div>`:""}
+            ${attachHtml("bug", b.id, b)}
           </div>
         </li>`).join("")+`</ul>`
     : "";
@@ -2308,6 +2363,14 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
+  el.addEventListener("paste", e=>{
+    const memEd = e.target.closest('[data-ed="mem"]');
+    const bugEd = e.target.closest('[data-ed="bug-title"]');
+    const drop = e.target.closest("[data-drop-files]");
+    if(memEd) takeAttach(node, "mem", memEd.dataset.i, e);
+    else if(bugEd) takeAttach(node, "bug", bugEd.dataset.bug, e);
+    else if(drop) takeAttach(node, drop.dataset.fk, drop.dataset.fi, e);
+  });
 }
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
