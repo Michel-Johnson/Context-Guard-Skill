@@ -244,30 +244,35 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;left:0;top:52px;bottom:0;z-index:22;width:280px;
+.bug-panel{position:fixed;left:0;top:52px;bottom:0;z-index:22;width:240px;
   background:var(--paper);border-right:2px solid var(--line-ink);overflow:auto;
-  padding:14px 14px 28px;display:none;cursor:default}
+  padding:12px 10px 24px;display:none;cursor:default}
 .bug-panel.open{display:block}
-body.bugs-open #viewport{left:280px}
-.bug-panel h3{margin:0 0 4px;font-size:14px}
-.bug-panel p.hint{margin:0 0 12px;font-size:12px;color:var(--muted);line-height:1.45}
+body.bugs-open #viewport{left:240px}
+.bug-panel h3{margin:0 0 10px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0}
-.bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:4px;
-  padding:9px 8px;border:2px solid transparent;border-radius:10px;cursor:pointer;margin:0 0 6px}
-.bug-panel li:hover{background:#fff;border-color:var(--line)}
-.bug-panel li.on{background:#fff3bf;border-color:var(--line-ink);box-shadow:var(--shadow-sm)}
-.bug-panel .bug-title{font-size:13px;font-weight:800;line-height:1.35}
-.bug-panel .bug-where{font-size:11.5px;color:var(--muted);line-height:1.35}
-.bug-panel .bug-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:2px}
-.bug-panel .sess-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
-  padding:2px 8px;border-radius:999px;background:#eef6ff;color:#2d5da1;border:1px solid #c5d8f0}
-.bug-panel .sess-chip i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.bug-panel .claim{font-size:11.5px;padding:3px 8px;box-shadow:none}
+.bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:2px;
+  padding:8px 8px 7px;border:2px solid transparent;border-radius:8px;cursor:pointer;margin:0 0 2px}
+.bug-panel li:hover{background:#fff}
+.bug-panel li.on{background:#fff3bf;border-color:var(--line-ink)}
+.bug-panel .bug-title{font-size:13px;font-weight:800;line-height:1.3}
+.bug-panel .bug-where{font-size:11.5px;color:var(--muted);line-height:1.3}
+.bug-panel .bug-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
+.bug-panel .sess-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.bug-panel .claim{font-size:12px;padding:2px 0;border:0;box-shadow:none;background:transparent;color:var(--module)}
+.bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 0}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:rgba(247,241,230,.96)}
 body.bug-path-mode .node .add-child{display:none}
 body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0 #c45c4a}
+body.bug-path-mode .dir-toggle,
+body.bug-path-mode .rel-toggle,
+body.bug-path-mode #rel-hint{display:none}
+body.bug-path-mode .drawer .lead{min-height:0;-webkit-line-clamp:2}
+body.bug-path-mode .drawer .actions{margin-top:8px}
+body.bug-path-mode .drawer h2{font-size:18px}
+body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;display:inline-block;align-self:center}
 .nav-crumbs .bug-exit{font-size:12px;padding:3px 9px;margin-right:4px}
 .nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;padding:3px 9px;border-radius:6px}
 #links path.link.bug-path{stroke:#8a5348;stroke-width:2.4}
@@ -462,7 +467,6 @@ details.fold .mem-list{margin-top:6px}
 
 <aside class="bug-panel" id="bug-panel">
   <h3>未修的 Bug</h3>
-  <p class="hint">点一条，画布只留下从根到该节点的链路。其余模块藏掉。本会话或多会话都可以同时在修，链路上会走电流。</p>
   <ul id="bug-panel-list"></ul>
 </aside>
 
@@ -2189,17 +2193,18 @@ function renderBugPanel(){
   const sid = currentSessionId();
   ul.innerHTML = list.map(item=>{
     const title = item.bug.title || "未命名 Bug";
-    const where = item.path.map(n=>n.title).slice(-2).join(" · ");
+    const where = item.node.title || "";
     const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
-    const chips = sessions.map(s=>`<span class="sess-chip"><i style="background:${sessionColor(s)}"></i>${esc(s)}</span>`).join("");
+    const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
+    const claim = on
+      ? `<button type="button" class="claim" data-claim>${mine?"离开":"本会话在修"}</button>`
+      : "";
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-title">${esc(title)}</span>
       <span class="bug-where">${esc(where)}</span>
-      <div class="bug-row">${chips}
-        <button type="button" class="claim ${mine?"primary":""}" data-claim>${mine?"本会话离开":"本会话在修"}</button>
-      </div>
+      ${on || sessions.length ? `<div class="bug-row">${dots}${claim}</div>` : ""}
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach(li=>{
@@ -2237,14 +2242,9 @@ function enterView(id, opts){
 function renderNav(){
   const el = document.getElementById("nav-crumbs");
   if(bugPathMode && bugFocus){
-    const path = findPath(bugFocus.nodeId) || [];
     const hit = focusedBug();
-    const tag = hit && hit.bug ? `<span class="bug-tag">${esc(hit.bug.title || "Bug")}</span>` : "";
-    el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">退出链路</button>` +
-      path.map((n,i)=> i===path.length-1
-        ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
-        : `<span class="here" style="background:transparent;font-weight:600">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span><span class="sep">›</span>`
-      ).join("") + tag;
+    const tag = hit && hit.bug ? `<span class="here">${esc(hit.bug.title || "Bug")}</span>` : "";
+    el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">退出链路</button>` + tag;
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
@@ -2901,6 +2901,25 @@ function renderDetail(){
     !(isModule && moduleAuthState(node)!=="none");
   const composing = composingId===node.id;
 
+  if(bugPathMode && bugFocus){
+    const hit = focusedBug();
+    const bug = hit && hit.bug;
+    const sid = currentSessionId();
+    const sessions = bugSessionsOf(bug);
+    const mine = bug && sessions.indexOf(sid)>=0;
+    const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
+    el.innerHTML = `
+      <h2>${esc(bug && bug.title ? bug.title : "Bug")}</h2>
+      <p class="lead">${esc(node.title)}</p>
+      <div class="actions">
+        ${dots}
+        <button type="button" data-act="claim">${mine?"离开":"本会话在修"}</button>
+      </div>`;
+    const claim = el.querySelector('[data-act="claim"]');
+    if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
+    return;
+  }
+
   /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Bug/继承都先不出现。 */
   if(proposed){
     el.innerHTML = `
@@ -2942,19 +2961,15 @@ function renderDetail(){
     : "";
 
   const bugHtml = openBugs.length
-    ? `<ul class="bug-list">`+openBugs.map(b=>{
-        const onPath = bugPathMode && bugFocus && bugFocus.nodeId===node.id && bugFocus.bugId===b.id;
-        return `
+    ? `<ul class="bug-list">`+openBugs.map(b=>`
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
           <div class="bug-main">
             <div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>
             ${b.status==='pending'? `<div class="summarizing">沉淀中…</div>`:""}
-            ${onPath?"":`<button type="button" class="quiet" data-bug-path="${b.id}">看链路</button>`}
             ${attachHtml("bug", b.id, b)}
           </div>
-        </li>`;
-      }).join("")+`</ul>`
+        </li>`).join("")+`</ul>`
     : "";
 
   const pendingKids = node.children.filter(isProposed).length;
@@ -2978,7 +2993,6 @@ function renderDetail(){
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
         ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">进入</button>`:""}
-        ${bugPathMode? `<button type="button" data-act="bug-exit">退出链路</button>`:""}
         ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
@@ -3018,9 +3032,6 @@ function renderDetail(){
     </details>`:""}`;
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
-  el.querySelectorAll("[data-bug-path]").forEach(b=>{
-    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); enterBugPath(node.id, b.dataset.bugPath); };
-  });
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
   bindSilent(q('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -3029,7 +3040,6 @@ function renderDetail(){
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
-  if(q('[data-act="bug-exit"]')) q('[data-act="bug-exit"]').onclick = ()=>exitBugPath(true);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
   bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -3170,7 +3180,7 @@ function applyView(){
 }
 /* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
 function fitView(){
-  const left = document.body.classList.contains("bugs-open") ? 280 : 0;
+  const left = document.body.classList.contains("bugs-open") ? 240 : 0;
   const availW = window.innerWidth - 340 - 90 - left;
   const availH = window.innerHeight - 150;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
