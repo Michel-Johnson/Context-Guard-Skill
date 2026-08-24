@@ -336,6 +336,8 @@ details.fold .mem-list{margin-top:6px}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
+.fs-note{margin:8px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+.fs-note button{font-size:11.5px;padding:3px 8px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -1110,6 +1112,154 @@ function addFilePath(node, kind, key, path){
   files.push({path:p});
   return true;
 }
+function canFsAccess(){ return typeof window.showDirectoryPicker==="function"; }
+let repoRootHandle = null;
+let repoFsOk = false;
+let pendingWrite = null;
+const filePreviewUrl = Object.create(null);
+const SHOT_DIR = "docs/shots";
+const FS_DB = "cg-workbench-fs";
+function openFsDb(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(FS_DB, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function fsDbGet(key){
+  const db = await openFsDb();
+  return new Promise((resolve, reject)=>{
+    const req = db.transaction("kv").objectStore("kv").get(key);
+    req.onsuccess = ()=>resolve(req.result||null);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function fsDbSet(key, val){
+  const db = await openFsDb();
+  return new Promise((resolve, reject)=>{
+    const req = db.transaction("kv","readwrite").objectStore("kv").put(val, key);
+    req.onsuccess = ()=>resolve();
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function ensureRepoPerm(){
+  if(!repoRootHandle) return false;
+  const opts = {mode:"readwrite"};
+  try{
+    if(repoRootHandle.queryPermission){
+      const q = await repoRootHandle.queryPermission(opts);
+      if(q==="granted") return true;
+    }
+    if(repoRootHandle.requestPermission){
+      const q = await repoRootHandle.requestPermission(opts);
+      return q==="granted";
+    }
+    return true;
+  }catch(e){ return false; }
+}
+async function restoreRepoDir(){
+  if(!canFsAccess()) return;
+  try{
+    const h = await fsDbGet("repoDir");
+    if(!h) return;
+    repoRootHandle = h;
+    repoFsOk = await ensureRepoPerm();
+  }catch(e){ repoFsOk = false; }
+}
+async function linkRepo(){
+  if(!canFsAccess()) return false;
+  try{
+    repoRootHandle = await window.showDirectoryPicker({id:"context-guard-repo", mode:"readwrite"});
+    repoFsOk = await ensureRepoPerm();
+    if(repoFsOk) await fsDbSet("repoDir", repoRootHandle);
+    if(repoFsOk && pendingWrite){
+      const pw = pendingWrite;
+      pendingWrite = null;
+      await saveBlobToOwner(pw.node, pw.kind, pw.key, pw.blob, pw.name);
+    }else{
+      renderAll();
+    }
+    return repoFsOk;
+  }catch(e){ return false; }
+}
+function safeFilePart(name){
+  const raw = String(name||"paste").split(/[\\/]/).pop();
+  const extMatch = raw.match(/\.[a-z0-9]{1,8}$/i);
+  const ext = (extMatch ? extMatch[0] : "").toLowerCase();
+  let base = raw.slice(0, raw.length-ext.length).replace(/[^a-zA-Z0-9._-]+/g,"-").replace(/^-+|-+$/g,"");
+  if(!base) base = "paste";
+  return base.slice(0,40)+ext;
+}
+function extForBlob(blob, fileName){
+  const fromName = String(fileName||"").match(/\.[a-z0-9]{1,8}$/i);
+  if(fromName) return fromName[0].toLowerCase();
+  const t = (blob && blob.type)||"";
+  if(t==="image/jpeg") return ".jpg";
+  if(t==="image/png") return ".png";
+  if(t==="image/webp") return ".webp";
+  if(t==="image/gif") return ".gif";
+  if(t==="image/svg+xml") return ".svg";
+  return ".bin";
+}
+function shotRel(fileName, blob){
+  const now = new Date();
+  const pad = n=>String(n).padStart(2,"0");
+  const stamp = now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"-"+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds());
+  let name = safeFilePart(fileName);
+  if(!/\.[a-z0-9]{1,8}$/i.test(name)) name += extForBlob(blob, fileName);
+  return SHOT_DIR+"/"+stamp+"-"+name;
+}
+async function writeRepoPath(rel, blob){
+  if(!repoRootHandle) throw new Error("no repo");
+  const parts = String(rel).split("/").filter(Boolean);
+  if(parts.some(part=>part==="."||part==="..")) throw new Error("bad path");
+  let dir = repoRootHandle;
+  for(let i=0;i<parts.length-1;i++) dir = await dir.getDirectoryHandle(parts[i], {create:true});
+  const fh = await dir.getFileHandle(parts[parts.length-1], {create:true});
+  const w = await fh.createWritable();
+  await w.write(blob);
+  await w.close();
+}
+async function readRepoFile(rel){
+  if(!repoRootHandle || !repoFsOk) return null;
+  try{
+    const parts = String(rel).split("/").filter(Boolean);
+    let dir = repoRootHandle;
+    for(let i=0;i<parts.length-1;i++) dir = await dir.getDirectoryHandle(parts[i]);
+    const fh = await dir.getFileHandle(parts[parts.length-1]);
+    return await fh.getFile();
+  }catch(e){ return null; }
+}
+function rememberPreview(rel, blob){
+  if(filePreviewUrl[rel]) URL.revokeObjectURL(filePreviewUrl[rel]);
+  filePreviewUrl[rel] = URL.createObjectURL(blob);
+}
+function hydrateThumbs(root){
+  (root||document).querySelectorAll("img[data-repo-src]").forEach(async img=>{
+    const p = img.dataset.repoSrc;
+    if(filePreviewUrl[p]){ img.src = filePreviewUrl[p]; return; }
+    const f = await readRepoFile(p);
+    if(f){ rememberPreview(p, f); img.src = filePreviewUrl[p]; }
+  });
+}
+async function saveBlobToOwner(node, kind, key, blob, fileName){
+  if(!blob) return false;
+  const name = fileName || blob.name || "paste.bin";
+  if(!repoFsOk){
+    pendingWrite = {node, kind, key, blob, name};
+    beginAttach(kind, key, shotRel(name, blob));
+    return false;
+  }
+  const rel = shotRel(name, blob);
+  await writeRepoPath(rel, blob);
+  rememberPreview(rel, blob);
+  addFilePath(node, kind, key, rel);
+  pendingWrite = null;
+  clearAttach();
+  renderAll();
+  return true;
+}
 function repoRelPath(s){
   const p = String(s||"").trim().replace(/\\/g,"/").split(/\s/)[0];
   if(!p || p.length>240) return "";
@@ -1118,32 +1268,36 @@ function repoRelPath(s){
   if(!p.includes("/") && !/\.\w{1,8}$/.test(p)) return "";
   return p;
 }
-function pathFromClipboard(e){
+function blobFromEvent(e){
   const dt = e.clipboardData || e.dataTransfer;
-  if(!dt) return {path:"", fileName:""};
-  const text = repoRelPath(dt.getData && dt.getData("text/plain"));
-  if(text && text.includes("/")) return {path:text, fileName:""};
-  const f = dt.files && dt.files[0];
-  if(f && f.name) return {path:"", fileName:f.name};
+  if(!dt) return null;
+  if(dt.files && dt.files[0]) return dt.files[0];
   const items = dt.items ? [...dt.items] : [];
   const it = items.find(x=>x.kind==="file");
-  if(it){
-    const file = it.getAsFile && it.getAsFile();
-    if(file && file.name) return {path:"", fileName:file.name};
-    if(it.type && it.type.startsWith("image/")){
-      const ext = (it.type.split("/")[1]||"png").replace("jpeg","jpg");
-      return {path:"", fileName:"image."+ext};
-    }
+  return it && it.getAsFile ? it.getAsFile() : null;
+}
+function pathFromClipboard(e){
+  const dt = e.clipboardData || e.dataTransfer;
+  if(!dt) return {path:"", fileName:"", blob:null};
+  const text = repoRelPath(dt.getData && dt.getData("text/plain"));
+  if(text && text.includes("/")) return {path:text, fileName:"", blob:null};
+  const blob = blobFromEvent(e);
+  if(blob) return {path:"", fileName:blob.name||"", blob};
+  const items = dt.items ? [...dt.items] : [];
+  const it = items.find(x=>x.kind==="file");
+  if(it && it.type && it.type.startsWith("image/")){
+    const ext = (it.type.split("/")[1]||"png").replace("jpeg","jpg");
+    return {path:"", fileName:"image."+ext, blob:null};
   }
-  if(text) return {path:"", fileName:text};
-  return {path:"", fileName:""};
+  if(text) return {path:"", fileName:text, blob:null};
+  return {path:"", fileName:"", blob:null};
 }
 function beginAttach(kind, key, draft){
   attaching = {kind, key};
   attachDraft = draft || "";
   renderAll();
 }
-function takeAttach(node, kind, key, e){
+async function takeAttach(node, kind, key, e){
   const got = pathFromClipboard(e);
   if(got.path){
     if(addFilePath(node, kind, key, got.path)){
@@ -1153,6 +1307,11 @@ function takeAttach(node, kind, key, e){
     }
     return true;
   }
+  if(got.blob){
+    e.preventDefault();
+    await saveBlobToOwner(node, kind, key, got.blob, got.fileName);
+    return true;
+  }
   if(got.fileName){
     e.preventDefault();
     beginAttach(kind, key, got.fileName);
@@ -1160,6 +1319,26 @@ function takeAttach(node, kind, key, e){
   }
   return false;
 }
+async function pickLocalFile(){
+  try{
+    if(window.showOpenFilePicker){
+      const [h] = await window.showOpenFilePicker({multiple:false});
+      return await h.getFile();
+    }
+  }catch(e){ return null; }
+  return new Promise(resolve=>{
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.onchange = ()=>resolve((inp.files && inp.files[0]) || null);
+    inp.click();
+  });
+}
+function fsNoteHtml(){
+  if(!canFsAccess()) return "";
+  if(repoFsOk) return `<p class="fs-note">本机仓库已连接，粘贴写入 docs/shots/，地图只记路径。</p>`;
+  return `<p class="fs-note">本地可把粘贴文件写入仓库。GitHub 预览不能写盘。<button type="button" class="quiet" data-act="link-repo">连接本机仓库</button></p>`;
+}
+
 function attachHtml(kind, key, owner, readonly){
   const files = fileList(owner);
   const fk = escAttr(kind), fi = escAttr(String(key));
@@ -1167,7 +1346,7 @@ function attachHtml(kind, key, owner, readonly){
     const p = escAttr(f.path);
     const name = esc(fileBase(f.path));
     const img = isImagePath(f.path)
-      ? `<img class="file-thumb" src="${p}" alt="${name}" title="${p}" onerror="this.remove()">`
+      ? `<img class="file-thumb" data-repo-src="${p}" alt="${name}" title="${p}">`
       : "";
     const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="移除">×</button>`;
     return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
@@ -1179,7 +1358,7 @@ function attachHtml(kind, key, owner, readonly){
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">添加</button>
          <button type="button" class="quiet" data-act="cancel-file">取消</button>
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="附带文件或图片">附</button>`;
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="附带文件或图片">附</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">连接仓库</button>` : ""}`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
@@ -1190,7 +1369,17 @@ function bindFileUi(el, node){
     if(addFilePath(node, kind, key, path)){ clearAttach(); renderAll(); }
   };
   el.querySelectorAll('[data-act="ask-file"]').forEach(b=>{
-    b.onclick = ()=>beginAttach(b.dataset.fk, b.dataset.fi, "");
+    b.onclick = async ()=>{
+      if(repoFsOk){
+        const f = await pickLocalFile();
+        if(f) await saveBlobToOwner(node, b.dataset.fk, b.dataset.fi, f, f.name);
+        return;
+      }
+      beginAttach(b.dataset.fk, b.dataset.fi, "");
+    };
+  });
+  el.querySelectorAll('[data-act="link-repo"]').forEach(b=>{
+    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); linkRepo(); };
   });
   el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
     b.onclick = ()=>saveFrom(b);
@@ -2224,6 +2413,7 @@ function renderDetail(){
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
     </div>
+    ${fsNoteHtml()}
     ${composing? `<div class="compose">
         <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?"模块名称":"子节点名称"}</span>
         <button type="button" data-act="compose-ok" class="primary">添加</button>
@@ -2363,6 +2553,9 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
+  hydrateThumbs(el);
+  const linkRepoBtn = el.querySelector('[data-act="link-repo"]');
+  if(linkRepoBtn) linkRepoBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); linkRepo(); };
   el.addEventListener("paste", e=>{
     const memEd = e.target.closest('[data-ed="mem"]');
     const bugEd = e.target.closest('[data-ed="bug-title"]');
@@ -2435,6 +2628,7 @@ function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray();
   if(st==="ready" || st==="proposed") persist(); }
 function boot(){
   applyRepoChrome();
+  restoreRepoDir().then(()=>{ if(repoFsOk) renderAll(); });
   if(restore()){
     renderAll();
     fitView();
