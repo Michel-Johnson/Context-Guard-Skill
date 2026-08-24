@@ -244,11 +244,12 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;left:0;top:52px;bottom:0;z-index:22;width:240px;
-  background:var(--paper);border-right:2px solid var(--line-ink);overflow:auto;
+.bug-panel{position:fixed;right:0;top:49px;bottom:0;z-index:22;width:240px;
+  background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
-body.bugs-open #viewport{left:240px}
+body.bugs-open #viewport{right:240px}
+body.bugs-open .drawer{display:none}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:1px;
@@ -3185,8 +3186,9 @@ function applyView(){
 }
 /* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
 function fitView(){
-  const left = document.body.classList.contains("bugs-open") ? 240 : 0;
-  const availW = window.innerWidth - 340 - 90 - left;
+  const bugs = document.body.classList.contains("bugs-open");
+  const right = bugs ? 240 : 340;
+  const availW = window.innerWidth - right - 90;
   const availH = window.innerHeight - 150;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
