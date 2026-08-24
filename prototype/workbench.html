@@ -230,17 +230,25 @@ body.auth-mode .node .add-child{display:none}
 .state-chip.module{background:var(--module-soft);color:var(--module)}
 .state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
-.lead{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.4;font-family:var(--font-note);
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.lead:focus{display:block;-webkit-line-clamp:unset;overflow:visible}
+.lead{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.45;font-family:var(--font-note);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  min-height:2.9em}
+.lead.ed{display:block;padding:6px 8px;min-height:1.5em;box-sizing:border-box}
+.lead.ed:empty,
+.lead.ed:focus{min-height:5.5em;padding:8px 10px;border:2px solid var(--line-ink);
+  border-radius:8px;background:#fff;overflow:auto;-webkit-line-clamp:unset}
+.lead.ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
+.lead.ed:empty:before{content:"一句用途";color:var(--muted)}
 .drawer .work-list{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12px;line-height:1.45}
 .drawer .work-list li{margin:0 0 2px}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
 .note.alert{color:var(--red)}
 .actions{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap}
 .files-row{margin-top:10px}
-.compose{display:flex;gap:6px;margin-top:10px;align-items:center}
-.compose .ed{flex:1;min-width:0;padding:4px 2px}
+.compose{display:flex;gap:6px;margin-top:10px;align-items:stretch}
+.compose .ed{flex:1;min-width:0;min-height:40px;padding:8px 12px;line-height:1.45;
+  display:block;box-sizing:border-box;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
+.compose .ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
 .drawer h2{margin:4px 0 0;font-size:22px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:800}
 button{font:inherit;font-size:13px;font-weight:700;padding:6px 12px;border:2px solid var(--line-ink);background:var(--paper);
@@ -265,15 +273,22 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
 .mem-list li.dirty-item{color:var(--muted)}
 .mem-body,.bug-main{flex:1;min-width:0}
-.mem-body .txt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.mem-body .txt:focus{display:block;-webkit-line-clamp:unset;overflow:visible}
+.mem-body .txt{display:block;width:100%;box-sizing:border-box;line-height:1.5;
+  min-height:1.5em;padding:2px 4px;overflow:hidden}
+.mem-body .txt:not(:focus):not(:empty){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mem-body .txt:empty,
+.mem-body .txt:focus{min-height:6em;padding:8px 10px;border:2px solid var(--line-ink);
+  border-radius:8px;background:#fff;overflow:auto;-webkit-line-clamp:unset}
+.mem-body .txt:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
+.mem-body .txt:empty:before{content:"写一条记忆";color:var(--muted)}
 .empty{color:var(--muted);font-size:13px;padding:4px 0}
-.ed{cursor:text;border-radius:3px;outline:none;-webkit-user-modify:read-write-plaintext-only}
+.ed{cursor:text;border-radius:6px;outline:none;-webkit-user-modify:read-write-plaintext-only;
+  min-height:1.6em;line-height:1.5;padding:4px 6px;box-sizing:border-box}
 .ed:hover{background:rgba(47,125,99,.07)}
-.ed:focus{background:var(--green-soft);box-shadow:inset 0 -1.5px 0 var(--green)}
+.ed:focus{background:var(--green-soft);box-shadow:inset 0 -2px 0 var(--green)}
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
-h2 .ed{flex:1 1 auto;min-width:4em}
+h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
 details.fold{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
 details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none;
   display:flex;align-items:center;gap:8px}
@@ -290,7 +305,8 @@ details.fold .mem-list{margin-top:6px}
   font-size:12px;color:#fff;background:#fff}
 .bug-check:hover{background:var(--red-soft)}
 .bug-check.done{background:var(--green);border-color:var(--green)}
-.bug-title{font-weight:700;font-size:13px}
+.bug-title{font-weight:700;font-size:13px;display:block;min-height:1.6em;padding:4px 6px;line-height:1.4}
+.bug-title.ed:empty:before{content:"Bug 标题";color:var(--muted);font-weight:600}
 .bug-sub{color:var(--muted);font-size:11px;margin-top:2px;min-height:1.2em;font-family:var(--font-note)}
 .bug-sub.ed:empty:before{content:"补充说明（可选）";color:#b5bab6}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
