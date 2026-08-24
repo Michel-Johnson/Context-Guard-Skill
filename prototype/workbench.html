@@ -2078,6 +2078,13 @@ function sessionColor(name){
 function bugSessionsOf(bug){
   if(!bug) return [];
   if(!Array.isArray(bug.sessions)) bug.sessions = [];
+  const seen = new Set();
+  bug.sessions = bug.sessions.filter(s=>{
+    const k = String(s||"").trim();
+    if(!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   return bug.sessions;
 }
 function openBugList(){
