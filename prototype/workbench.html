@@ -198,7 +198,6 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node:hover .add-child{opacity:1}
 .node .add-child:hover{border-color:var(--green);color:var(--green)}
 body.auth-mode .node .add-child{display:none}
-.node.module .add-child{display:none}
 
 /* ---------- 已取消托盘 ---------- */
 .tray{position:fixed;left:16px;top:60px;z-index:29;width:330px;background:var(--paper);
@@ -1032,8 +1031,8 @@ function promoteFatWork(n){
   (n._inbox||[]).forEach(promoteFatWork);
   if(n.kind==="module") return;
   const kids = (n.children||[]).concat(n._inbox||[]).filter(c=>c.proposal!=="cancelled");
-  /* 多于两个分支（或孩子已是模块）就不是开工节点。 */
-  if(kids.length>2 || kids.some(c=>c.kind==="module")) n.kind = "module";
+  /* 多于两个分支才晋升。开工节点后面可以接一个模块，不必因此变成模块。 */
+  if(kids.length>2) n.kind = "module";
 }
 function workCount(n){
   let c = 0;
@@ -1523,9 +1522,9 @@ function visibleChildren(n){
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
   if(isCatalogView()) return [];
-  /* 模块不展开。开工节点后面还有开工节点（最多两岔）则默认展开。 */
+  /* 模块不展开。开工节点后面还可再接开工节点或一个模块（最多两岔）则默认展开。 */
   if(n.kind==="module") return [];
-  if(kids.some(c=>c.kind==="module") || kids.length>2) return [];
+  if(kids.length>2) return [];
   return kids;
 }
 function liveViewRoot(){
@@ -1554,7 +1553,7 @@ function canEnter(n){
   if(n.kind==="module") return true;
   if(n._inbox && n._inbox.length) return true;
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
-  return kids.some(c=>c.kind==="module") || kids.length>2;
+  return kids.length>2;
 }
 function vwalk(node, fn, parents=[]){
   if(!node || isCancelled(node)) return;
@@ -1723,7 +1722,8 @@ function nodeHtml(n, isViewRoot){
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
-      (n.purpose? `<div class="m-blurb">${n.purpose}</div>`:"");
+      (n.purpose? `<div class="m-blurb">${n.purpose}</div>`:"")+
+      (isProposed(n)?"":`<span class="add-child" title="接入模块">＋</span>`);
   }
   if(isProposed(n)){
     return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
@@ -1732,7 +1732,7 @@ function nodeHtml(n, isViewRoot){
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
-    `<span class="add-child" title="延伸子任务">＋</span>`;
+    `<span class="add-child" title="接入模块">＋</span>`;
 }
 
 function renderMap(){
@@ -1937,7 +1937,7 @@ function onNodeClick(e, n){
   if(authMode){
     toggleAuth(n); return;
   }
-  if(e.target.classList.contains("add-child")){ addChild(n); return; }
+  if(e.target.classList.contains("add-child")){ startCompose(n, "module"); return; }
   if(isProposed(n)){
     if(selectedId===n.id){ acceptProposal(n); return; }
     selectedId = n.id; renderAll(); return;
@@ -2009,6 +2009,8 @@ function commitChild(node, title){
   if(createdPath) createdPath.forEach(a=>sessionAuth.add(a.id));
   promoteFatWork(node);
   if(kind==="module"){
+    const shown = node.id===viewRootId || visibleChildren(node).some(c=>c.id===child.id);
+    if(!shown) viewRootId = node.id;
     selectedId = child.id;
     renderAll();
     fitView();
