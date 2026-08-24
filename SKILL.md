@@ -97,7 +97,7 @@ The architecture map is created once: the first time Context Guard is used in a 
 7. After proposing L1, write `.codex/context/map.json` and set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set it to `ready`. Later sessions load `map.json` and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
 9. Produce/consume relations belong in `map.json` `flows` (`from`, `to`, `label`). Hierarchy stays parent–child solid curves. Do not draw sibling hierarchy links. The workbench hides those flows in the normal view. Turning on 「关系」 spreads module cards. A click then highlights that node’s produce/consume partners and dims everything else; it does not enter the module. Use breadcrumbs to enter.
-10. Open bugs stay on nodes. The workbench lists them in a side panel. Clicking a bug shows the ancestor chain from the root to that node and hides everything else; it does not use the usual enter-module paging. Sessions assigned to a bug show as current flowing along that chain.
+10. Open bugs stay on nodes. The workbench lists them in a right-hand panel. Clicking a bug shows the ancestor chain from the root to that node and hides everything else; it does not use the usual enter-module paging. Sessions assigned to a bug show as current flowing along that chain.
 
 ## Map grammar
 
