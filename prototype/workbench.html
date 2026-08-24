@@ -68,6 +68,10 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .rel-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
 .rel-toggle button:hover{color:var(--ink)}
 .rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+#rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+body.rel-mode #rel-hint{display:inline}
+body.rel-mode{background:#f3eee4}
+body.rel-mode header.top{background:rgba(243,238,228,.96)}
 body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
 .first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
@@ -374,8 +378,9 @@ details.fold .mem-list{margin-top:6px}
     <button type="button" data-dir="tb">上下</button>
   </div>
   <div class="rel-toggle" id="rel-toggle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
-    <button type="button" id="btn-rel">关系</button>
+    <button type="button" id="btn-rel" aria-pressed="false">关系</button>
   </div>
+  <span id="rel-hint">点击模块看关系，不会进入</span>
   <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
   <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
@@ -2040,7 +2045,10 @@ document.getElementById("dir-toggle").onclick = e=>{
 };
 document.getElementById("btn-rel").onclick = ()=>{
   relationMode = !relationMode;
-  document.getElementById("btn-rel").classList.toggle("on", relationMode);
+  if(!relationMode) relAnchorId = null;
+  const btn = document.getElementById("btn-rel");
+  btn.classList.toggle("on", relationMode);
+  btn.setAttribute("aria-pressed", relationMode ? "true" : "false");
   document.body.classList.toggle("rel-mode", relationMode);
   renderAll();
   fitView();
@@ -2094,6 +2102,7 @@ const linksEl = document.getElementById("links");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
+let relAnchorId = null;
 
 function nodeHtml(n, isViewRoot, ghost){
   const openBugs = (n.bugs||[]).filter(b=>b.status!=="dormant").length;
@@ -2130,7 +2139,7 @@ function renderMap(){
     data.flows = clone(currentRepo().blueprint.flows);
   }
   const root = liveViewRoot();
-  const relFocus = relationMode && selectedId ? selectedId : null;
+  const relFocus = relationMode ? relAnchorId : null;
   const relSet = relFocus ? flowPartners(relFocus) : null;
 
   nodesEl.innerHTML = "";
@@ -2406,11 +2415,13 @@ function renderMap(){
 }
 function onNodeClick(e, n){
   if(!n) return;
+  e.stopPropagation();
   if(authMode){
     toggleAuth(n); return;
   }
   if(e.target.classList.contains("add-child")){ addModule(n); return; }
   if(relationMode){
+    relAnchorId = n.id;
     selectedId = n.id;
     renderAll();
     fitView();
@@ -2517,6 +2528,7 @@ function jumpToNode(id){
   const n = getNode(id);
   if(!n || isCancelled(n)) return;
   if(relationMode){
+    relAnchorId = n.id;
     selectedId = n.id;
     renderAll();
     fitView();
@@ -2662,7 +2674,7 @@ function renderDetail(){
       ${!cancelled? `
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
-        ${relationMode && canEnter(node)? `<button type="button" data-act="enter">进入</button>`:""}
+        ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">进入</button>`:""}
         ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
