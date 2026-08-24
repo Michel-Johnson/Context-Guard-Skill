@@ -157,7 +157,10 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   background:#2f9e44;border:2px solid #fff;box-shadow:0 0 0 1px rgba(47,158,68,.4);
   animation:pulse 1.6s ease-in-out infinite;z-index:2}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.7}}
-.node .accept-hint{font-size:10.5px;color:var(--green);font-weight:600;margin-left:2px}
+.node .join-spin{position:absolute;top:-6px;right:-6px;width:14px;height:14px;border-radius:50%;
+  border:2px solid rgba(47,158,68,.22);border-top-color:#2f9e44;background:#fff;
+  animation:spin .7s linear infinite;z-index:2;box-shadow:0 0 0 1px #fff}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* 无权限：整卡灰色，和已授权的米色模块卡分开。选中仍用黄底，方便点进检查器。 */
 .node.noauth{background:#d4d4d0;border-color:#a3a39c;color:#5c5c58;
@@ -1707,7 +1710,10 @@ function nodeHtml(n, isViewRoot){
   const authMark = authMode && !isProposed(n)
     ? `<span class="auth-mark ${isAuth(n)?"on":""}">${isAuth(n)?"✓":""}</span>` : "";
   const pending = isProposed(n)
-    ? `<span class="new-dot" title="Agent 生成，待人批准"></span>` : "";
+    ? (n.id===selectedId && !authMode
+        ? `<span class="join-spin" aria-hidden="true"></span>`
+        : `<span class="new-dot"></span>`)
+    : "";
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
@@ -1718,8 +1724,7 @@ function nodeHtml(n, isViewRoot){
       (n.purpose? `<div class="m-blurb">${n.purpose}</div>`:"");
   }
   if(isProposed(n)){
-    return pending+`<i class="dot proposed"></i><span>${n.title}</span>`+
-      (n.id===selectedId && !authMode?`<span class="accept-hint">再点一次加入 ✓</span>`:"");
+    return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
   }
   return authMark+`<i class="dot ${n.state}"></i><span>${n.title}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
@@ -1932,7 +1937,6 @@ function onNodeClick(e, n){
   }
   if(e.target.classList.contains("add-child")){ addChild(n); return; }
   if(isProposed(n)){
-    if(canEnter(n)){ enterView(n.id); return; }
     if(selectedId===n.id){ acceptProposal(n); return; }
     selectedId = n.id; renderAll(); return;
   }
