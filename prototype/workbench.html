@@ -987,7 +987,8 @@ let viewRootId = "T0";
 let authMode = false;
 let composingId = null;
 let composingKind = "work";
-function clearCompose(){ composingId = null; composingKind = "work"; }
+let composeParent = null;
+function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
 let pendingDeleteId = null;
 let foldInherited = false;
@@ -1937,7 +1938,7 @@ function onNodeClick(e, n){
   if(authMode){
     toggleAuth(n); return;
   }
-  if(e.target.classList.contains("add-child")){ startCompose(n, "module"); return; }
+  if(e.target.classList.contains("add-child")){ addModule(n); return; }
   if(isProposed(n)){
     if(selectedId===n.id){ acceptProposal(n); return; }
     selectedId = n.id; renderAll(); return;
@@ -1983,6 +1984,8 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
+  if(!node) return;
+  composeParent = node;
   selectedId = node.id;
   composingId = node.id;
   composingKind = kind==="module" ? "module" : "work";
@@ -1991,33 +1994,39 @@ function startCompose(node, kind){
   if(input) input.focus();
 }
 function addChild(node){ startCompose(node, "work"); }
-function addModule(){
-  const node = liveViewRoot();
-  startCompose(node, "module");
+function addModule(from){
+  const target = from || getNode(selectedId);
+  /* 挂在点中的节点后。不要因为提议/找不到就改挂到当前页根（看起来像最开始那个模块）。 */
+  if(!target || isCancelled(target)) return;
+  startCompose(target, "module");
 }
+function inTree(n){ return !!(n && pathOf(n)); }
 function commitChild(node, title){
   const t = (title||"").trim();
   if(!t) return;
+  let parent = composeParent;
+  if(!inTree(parent) || isCancelled(parent)) parent = node;
+  if(!inTree(parent) || isCancelled(parent)) return;
   const kind = composingKind==="module" ? "module" : "work";
   clearCompose();
   const child = {id:nextNodeId(), title:t, kind, origin:"human", state:"dirty",
     purpose:"", memories:[], bugs:[], dormant:[], files:[], children:[]};
-  if(!Array.isArray(node.children)) node.children = [];
-  node.children.push(child);
+  if(!Array.isArray(parent.children)) parent.children = [];
+  parent.children.push(child);
   sessionAuth.add(child.id);
   const createdPath = findPath(child.id);
   if(createdPath) createdPath.forEach(a=>sessionAuth.add(a.id));
-  promoteFatWork(node);
+  promoteFatWork(parent);
   if(kind==="module"){
-    const shown = node.id===viewRootId || visibleChildren(node).some(c=>c.id===child.id);
-    if(!shown) viewRootId = node.id;
+    const shown = parent.id===viewRootId || visibleChildren(parent).some(c=>c.id===child.id);
+    if(!shown) viewRootId = parent.id;
     selectedId = child.id;
     renderAll();
     fitView();
     return;
   }
-  if(node.kind==="module" && node.id!==viewRootId){
-    viewRootId = node.id;
+  if(parent.kind==="module" && parent.id!==viewRootId){
+    viewRootId = parent.id;
     selectedId = child.id;
     renderAll();
     fitView();
@@ -2083,7 +2092,7 @@ function renderDetail(){
       </div>`;
     el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
     bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
-    el.querySelector('[data-act="module"]').onclick = ()=>addModule();
+    el.querySelector('[data-act="module"]').onclick = ()=>addModule(node);
     return;
   }
   if(cancelled){
@@ -2185,7 +2194,7 @@ function renderDetail(){
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
-  if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule();
+  if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
   bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
@@ -2268,13 +2277,20 @@ function renderDetail(){
 
   const composeEl = q("[data-ed='compose-title']");
   const doCommit = ()=>{
-    if(composingId!==node.id) return;
+    const parent = (inTree(composeParent) && !isCancelled(composeParent)) ? composeParent : node;
+    if(!composingId || !parent) return;
     const v = composeEl ? textOf(composeEl) : "";
-    if(v && v!=="子节点名称" && v!=="模块名称") commitChild(node, v);
+    if(v && v!=="子节点名称" && v!=="模块名称") commitChild(parent, v);
   };
   if(q('[data-act="compose-ok"]')) q('[data-act="compose-ok"]').onclick = doCommit;
   if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ clearCompose(); renderAll(); };
-  if(composeEl) composeEl.focus();
+  if(composeEl){
+    composeEl.addEventListener("keydown", e=>{
+      if(e.key==="Enter"){ e.preventDefault(); e.stopPropagation(); doCommit(); }
+      if(e.key==="Escape"){ e.preventDefault(); clearCompose(); renderAll(); }
+    }, true);
+    composeEl.focus();
+  }
   bindFileUi(el, node);
 }
 
