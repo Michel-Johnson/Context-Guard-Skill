@@ -246,22 +246,25 @@ body.auth-mode .node .add-child{display:none}
 #btn-bugs.on{background:var(--yellow);font-weight:800}
 .bug-panel{position:fixed;left:0;top:52px;bottom:0;z-index:22;width:240px;
   background:var(--paper);border-right:2px solid var(--line-ink);overflow:auto;
-  padding:12px 10px 24px;display:none;cursor:default}
+  padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
 body.bugs-open #viewport{left:240px}
-.bug-panel h3{margin:0 0 10px;font-size:13px;font-weight:800}
-.bug-panel ul{list-style:none;margin:0;padding:0}
-.bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:2px;
-  padding:8px 8px 7px;border:2px solid transparent;border-radius:8px;cursor:pointer;margin:0 0 2px}
+.bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
+.bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.bug-panel li{display:flex;flex-direction:column;align-items:stretch;gap:1px;
+  padding:7px 12px 6px;border:0;border-bottom:1px solid var(--line);border-radius:0;cursor:pointer;margin:0}
 .bug-panel li:hover{background:#fff}
-.bug-panel li.on{background:#fff3bf;border-color:var(--line-ink)}
-.bug-panel .bug-title{font-size:13px;font-weight:800;line-height:1.3}
-.bug-panel .bug-where{font-size:11.5px;color:var(--muted);line-height:1.3}
-.bug-panel .bug-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px}
-.bug-panel .sess-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.bug-panel .claim{font-size:12px;padding:2px 0;border:0;box-shadow:none;background:transparent;color:var(--module)}
+.bug-panel li.on{background:#fff3bf;box-shadow:inset 3px 0 0 var(--line-ink)}
+.bug-panel .bug-title{font-size:12.5px;font-weight:800;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bug-panel .bug-sub{display:flex;align-items:center;gap:8px;min-width:0}
+.bug-panel .bug-where{flex:1;min-width:0;font-size:11px;color:var(--muted);line-height:1.3;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bug-panel .bug-row{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;flex:0 0 auto;margin:0}
+.bug-panel .sess-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.bug-panel .claim{font-size:11.5px;padding:0;border:0;box-shadow:none;background:transparent;color:var(--module);font-weight:800}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
-.bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 0}
+.bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:rgba(247,241,230,.96)}
 body.bug-path-mode .node .add-child{display:none}
@@ -2203,8 +2206,10 @@ function renderBugPanel(){
       : "";
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-title">${esc(title)}</span>
-      <span class="bug-where">${esc(where)}</span>
-      ${on || sessions.length ? `<div class="bug-row">${dots}${claim}</div>` : ""}
+      <div class="bug-sub">
+        <span class="bug-where">${esc(where)}</span>
+        ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
+      </div>
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach(li=>{
@@ -2913,7 +2918,7 @@ function renderDetail(){
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        <button type="button" data-act="claim">${mine?"离开":"本会话在修"}</button>
+        <button type="button" class="quiet" data-act="claim">${mine?"离开":"本会话在修"}</button>
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
     if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
