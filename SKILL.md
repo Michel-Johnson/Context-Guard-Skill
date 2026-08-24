@@ -96,7 +96,7 @@ The architecture map is created once: the first time Context Guard is used in a 
 6. If the folder is greenfield (almost no code or docs), create a root node only. Do not invent a fake architecture.
 7. After proposing L1, write `.codex/context/map.json` and set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set it to `ready`. Later sessions load `map.json` and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
-9. Produce/consume relations belong in `map.json` `flows` (`from`, `to`, `label`). Hierarchy stays parent–child solid curves. Do not draw sibling hierarchy links. The workbench shows flows as dashed lines and, after entering a module, as that module’s relations to other modules or nodes.
+9. Produce/consume relations belong in `map.json` `flows` (`from`, `to`, `label`). Hierarchy stays parent–child solid curves. Do not draw sibling hierarchy links. The workbench hides those flows in the normal view. Turning on 「关系」 spreads module cards and draws dashed produce/consume edges.
 
 ## Map grammar
 

@@ -367,8 +367,8 @@ details.fold .mem-list{margin-top:6px}
     <button type="button" data-dir="lr" class="on">左右</button>
     <button type="button" data-dir="tb">上下</button>
   </div>
-  <div class="rel-toggle" id="rel-toggle" title="生产/消费关系：虚线。从属仍是实线。">
-    <button type="button" id="btn-rel" class="on">关系</button>
+  <div class="rel-toggle" id="rel-toggle" title="平时只画从属。打开后拉开模块并画出生产/消费虚线。">
+    <button type="button" id="btn-rel">关系</button>
   </div>
   <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
   <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
@@ -379,7 +379,7 @@ details.fold .mem-list{margin-top:6px}
     <div class="kicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。实线只表示从属，同级不相连。虚线是生产/消费；点「关系」开关，进入模块后会带出它和其它模块/节点的关系。点进模块后画布展开多级节点；文件不出现在根上。</p>
+    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」才画虚线，那时模块会拉开以免线叠在一起。点进模块后画布展开多级节点；文件不出现在根上。</p>
     <div class="actions">
       <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
@@ -2027,7 +2027,9 @@ document.getElementById("dir-toggle").onclick = e=>{
 document.getElementById("btn-rel").onclick = ()=>{
   relationMode = !relationMode;
   document.getElementById("btn-rel").classList.toggle("on", relationMode);
+  document.body.classList.toggle("rel-mode", relationMode);
   renderAll();
+  fitView();
 };
 function renderTray(){
   const list = cancelledList();
@@ -2077,7 +2079,7 @@ const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
-let relationMode = true;
+let relationMode = false;
 
 function nodeHtml(n, isViewRoot, ghost){
   const openBugs = (n.bugs||[]).filter(b=>b.status!=="dormant").length;
@@ -2142,8 +2144,16 @@ function renderMap(){
 
   const pos = new Map();
   const tb = layoutDir==="tb";
-  function gapY(c){ return c.kind==="module" ? MOD_GAP_Y : GAP_Y; }
-  function gapX(c){ return c.kind==="module" ? MOD_GAP_X : GAP_TB_X; }
+  const hopX = relationMode ? 148 : GAP_X;
+  const hopTB = relationMode ? 92 : GAP_TB;
+  function gapY(c){
+    if(relationMode) return c.kind==="module" ? 84 : GAP_Y+10;
+    return c.kind==="module" ? MOD_GAP_Y : GAP_Y;
+  }
+  function gapX(c){
+    if(relationMode) return c.kind==="module" ? 120 : GAP_TB_X+18;
+    return c.kind==="module" ? MOD_GAP_X : GAP_TB_X;
+  }
   function shiftSubtree(n, dx, dy){
     const p = pos.get(n.id); if(p){ p.x += dx; p.y += dy; }
     visibleChildren(n).forEach(c=>shiftSubtree(c, dx, dy));
@@ -2151,7 +2161,7 @@ function renderMap(){
   function subtreeLR(n, x, top){
     const s = size.get(n.id);
     const kids = visibleChildren(n);
-    const childX = x + s.w + GAP_X;
+    const childX = x + s.w + hopX;
     if(!kids.length){ pos.set(n.id,{x, y:top}); return s.h; }
     let y = top;
     kids.forEach(c=>{ y += subtreeLR(c, childX, y) + gapY(c); });
@@ -2171,7 +2181,7 @@ function renderMap(){
   function subtreeTB(n, left, y){
     const s = size.get(n.id);
     const kids = visibleChildren(n);
-    const childY = y + s.h + GAP_TB;
+    const childY = y + s.h + hopTB;
     if(!kids.length){ pos.set(n.id,{x:left, y}); return s.w; }
     let x = left;
     kids.forEach(c=>{ x += subtreeTB(c, x, childY) + gapX(c); });
@@ -2232,8 +2242,12 @@ function renderMap(){
     if(!kids.length){ pos.set(root.id,{x:0,y:0}); return; }
     const cellW = Math.max(...kids.map(c=>size.get(c.id).w));
     const n = kids.length;
-    const cols = n<=2 ? n : n<=6 ? Math.min(3,n) : 4;
-    const GX = 44, GY = 36, STEM = 56;
+    const cols = relationMode
+      ? (n<=2 ? n : 2)
+      : (n<=2 ? n : n<=6 ? Math.min(3,n) : 4);
+    const GX = relationMode ? 168 : 44;
+    const GY = relationMode ? 110 : 36;
+    const STEM = relationMode ? 96 : 56;
     const gridW = cols*cellW + (cols-1)*GX;
     pos.set(root.id, {x:Math.max(0,(gridW-rs.w)/2), y:0});
     const rows = Math.ceil(n/cols);
@@ -2257,12 +2271,19 @@ function renderMap(){
       y += rowTotal + GY;
     }
   }
-  if(isCatalogView()) layoutCatalog();
+  function useSpreadGrid(){
+    if(isCatalogView()) return true;
+    if(!relationMode) return false;
+    const kids = visibleChildren(root);
+    return kids.length>=2 && kids.every(c=>c.kind==="module");
+  }
+  const spreadGrid = useSpreadGrid();
+  if(spreadGrid) layoutCatalog();
   else if(tb) subtreeTB(root, 0, 0);
   else subtreeLR(root, 0, 0);
 
   let maxX=0, maxY=0;
-  const catalogIds = isCatalogView() ? new Set(visibleChildren(root).map(k=>k.id)) : null;
+  const catalogIds = spreadGrid ? new Set(visibleChildren(root).map(k=>k.id)) : null;
   els.forEach((el,id)=>{
     const p = pos.get(id), s = size.get(id);
     if(!p || !s) return;
@@ -2303,7 +2324,7 @@ function renderMap(){
   }
   vwalk(root,(n)=>{
     visibleChildren(n).forEach(c=>{
-      const d = (isCatalogView() || tb) ? curveTB(n,c) : curveLR(n,c);
+      const d = (spreadGrid || tb) ? curveTB(n,c) : curveLR(n,c);
       if(d) paths += `<path class="${linkClass(n,c)}" d="${d}"/>`;
     });
   });
@@ -2314,7 +2335,7 @@ function renderMap(){
         related.add(f.from); related.add(f.to);
       }
     });
-    let gx = maxX + 52, gy = 0;
+    let gx = maxX + 96, gy = 8;
     related.forEach(id=>{
       if(els.has(id) || pos.has(id)) return;
       const n = getNode(id);
@@ -2326,7 +2347,7 @@ function renderMap(){
       div.style.left = gx+"px";
       div.style.top = gy+"px";
       div.style.visibility = "";
-      gy += s.h + 14;
+      gy += s.h + 40;
       maxX = Math.max(maxX, gx+s.w);
       maxY = Math.max(maxY, gy);
     });
@@ -2347,7 +2368,7 @@ function renderMap(){
       const b = port(p2,s2,p1.x+s1.w/2,p1.y+s1.h/2);
       const dx=b.x-a.x, dy=b.y-a.y;
       const dist = Math.hypot(dx,dy)||1;
-      const bulge = Math.min(86, Math.max(28, dist*0.22));
+      const bulge = Math.min(150, Math.max(56, dist*0.4));
       const cx = (a.x+b.x)/2 - (dy/dist)*bulge;
       const cy = (a.y+b.y)/2 + (dx/dist)*bulge;
       const lx = 0.25*a.x + 0.5*cx + 0.25*b.x;
