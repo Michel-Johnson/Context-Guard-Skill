@@ -987,6 +987,8 @@ let focusId = null;
 let viewRootId = "T0";
 let authMode = false;
 let composingId = null;
+let composingKind = "work";
+function clearCompose(){ composingId = null; composingKind = "work"; }
 let attaching = null;
 let pendingDeleteId = null;
 let foldInherited = false;
@@ -1248,7 +1250,7 @@ function loadLive(r){
   selectedId = r.selectedId || "T0";
   viewRootId = r.viewRootId || "T0";
   focusId = r.focusId || null;
-  composingId = null;
+  clearCompose();
   if(viewRootId!==data.id){
     const n = getNode(viewRootId);
     if(n) unpackInbox(n);
@@ -1377,7 +1379,7 @@ function emptyFirstUse(){
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
-  composingId = null;
+  clearCompose();
   analyzing = false;
   currentRepo().bootstrap = "pending";
   currentRepo().firstUseOpen = true;
@@ -1430,7 +1432,7 @@ function applyProposedMap(){
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
-  composingId = null;
+  clearCompose();
   r.bootstrap = "proposed";
   r.live = clone(data);
   document.getElementById("session-name").textContent = "S-0823 待确认";
@@ -1965,7 +1967,7 @@ function acceptLayer(node){
 }
 function cancelProposal(n){
   if(!n || n.id===data.id) return;
-  composingId = null;
+  clearCompose();
   const p = pathOf(n) || [];
   n.proposal = "cancelled"; n.isNew = false;
   let parent = p.length>1? p[p.length-2] : data;
@@ -1980,24 +1982,38 @@ function cancelProposal(n){
   renderAll();
 }
 
-function addChild(node){
+function startCompose(node, kind){
   selectedId = node.id;
   composingId = node.id;
+  composingKind = kind==="module" ? "module" : "work";
   renderAll();
   const input = document.querySelector("[data-compose]");
   if(input) input.focus();
 }
+function addChild(node){ startCompose(node, "work"); }
+function addModule(){
+  const node = liveViewRoot();
+  startCompose(node, "module");
+}
 function commitChild(node, title){
   const t = (title||"").trim();
   if(!t) return;
-  composingId = null;
-  const child = {id:nextNodeId(), title:t, kind:"work", origin:"human", state:"dirty",
-    memories:[], bugs:[], dormant:[], files:[], children:[]};
+  const kind = composingKind==="module" ? "module" : "work";
+  clearCompose();
+  const child = {id:nextNodeId(), title:t, kind, origin:"human", state:"dirty",
+    purpose:"", memories:[], bugs:[], dormant:[], files:[], children:[]};
   if(!Array.isArray(node.children)) node.children = [];
   node.children.push(child);
   sessionAuth.add(child.id);
   const createdPath = findPath(child.id);
   if(createdPath) createdPath.forEach(a=>sessionAuth.add(a.id));
+  promoteFatWork(node);
+  if(kind==="module"){
+    selectedId = child.id;
+    renderAll();
+    fitView();
+    return;
+  }
   if(node.kind==="module" && node.id!==viewRootId){
     viewRootId = node.id;
     selectedId = child.id;
@@ -2061,9 +2077,11 @@ function renderDetail(){
       <div class="actions">
         <button data-act="accept" class="primary">加入</button>
         <button data-act="cancel">隐藏</button>
+        <button type="button" data-act="module">＋ 模块</button>
       </div>`;
     el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
-    bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ composingId=null; cancelProposal(node); });
+    bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
+    el.querySelector('[data-act="module"]').onclick = ()=>addModule();
     return;
   }
   if(cancelled){
@@ -2120,11 +2138,12 @@ function renderDetail(){
       ${!cancelled? `
         ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
         ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
-        ${composing?"":`<button type="button" data-act="child">＋ 子节点</button>`}
+        ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
+        <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
     </div>
     ${composing? `<div class="compose">
-        <span class="ed ghost" data-ed="compose-title" data-compose>子节点名称</span>
+        <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?"模块名称":"子节点名称"}</span>
         <button type="button" data-act="compose-ok" class="primary">添加</button>
         <button type="button" data-act="compose-cancel" class="quiet">取消</button>
       </div>`:""}
@@ -2158,13 +2177,14 @@ function renderDetail(){
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
-  bindSilent(q('[data-act="cancel"]'), ()=>{ composingId=null; cancelProposal(node); });
+  bindSilent(q('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
   if(q('[data-act="restore"]')) q('[data-act="restore"]').onclick = ()=>acceptProposal(node);
   if(q('[data-act="accept-layer"]')) q('[data-act="accept-layer"]').onclick = ()=>acceptLayer(node);
   if(q('[data-act="grant"]'))   q('[data-act="grant"]').onclick   = ()=>toggleAuth(node);
   if(q('[data-act="revoke"]'))  q('[data-act="revoke"]').onclick  = ()=>toggleAuth(node);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
-  bindSilent(q('[data-act="delete"]'), ()=>{ composingId=null; cancelProposal(node); });
+  if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule();
+  bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
@@ -2248,10 +2268,10 @@ function renderDetail(){
   const doCommit = ()=>{
     if(composingId!==node.id) return;
     const v = composeEl ? textOf(composeEl) : "";
-    if(v && v!=="子节点名称") commitChild(node, v);
+    if(v && v!=="子节点名称" && v!=="模块名称") commitChild(node, v);
   };
   if(q('[data-act="compose-ok"]')) q('[data-act="compose-ok"]').onclick = doCommit;
-  if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ composingId=null; renderAll(); };
+  if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ clearCompose(); renderAll(); };
   if(composeEl) composeEl.focus();
   bindFileUi(el, node);
 }
