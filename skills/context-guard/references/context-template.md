@@ -7,6 +7,8 @@ Use this structure for project context:
 .codex/context/
 ├── index.md
 ├── user-messages.md
+├── architecture.md
+├── map.json
 ├── roadmap.md
 ├── bad-cases.md
 ├── preferences.json
@@ -48,6 +50,36 @@ The `private/` folder is local-only sensitive memory. It must be covered by `.co
 ```
 
 Ask the user for a context record language the first time `record_language` is `unset`, then update this file. `map_bootstrap` is `pending` until the agent finishes first-use analysis and writes a proposed map (`proposed`); after the human confirms the first layer (or starts from an empty root), set it to `ready`. If a proposed or confirmed map already exists, do not re-split the repository on later sessions unless the user asks to rebuild. Use that language for future source context records. Keep literal code identifiers, paths, commands, logs, API names, and exact error text unchanged. If the user changes language later, update this file and use the new language going forward; do not bulk-translate history unless asked.
+
+## map.json
+
+The live architecture map. Memories, bugs, attachments (repo-relative paths), and produce/consume flows live on this tree. Do not keep a parallel memory dump.
+
+```json
+{
+  "v": 1,
+  "project": "optional-catalog-id",
+  "bootstrap": "pending",
+  "updated": "YYYY-MM-DD",
+  "flows": [
+    { "from": "M1", "to": "M2", "label": "what M1 produces for M2" }
+  ],
+  "root": {
+    "id": "T0",
+    "title": "Project",
+    "kind": "module",
+    "purpose": "one-line purpose",
+    "state": "dirty",
+    "memories": [{ "text": "confirmed memory", "state": "success", "files": [] }],
+    "bugs": [],
+    "dormant": [],
+    "files": [],
+    "children": []
+  }
+}
+```
+
+`architecture.md` is the first-use analysis essay. After `root` exists, later sessions open `map.json`. Hierarchy is parent–child; `flows` are produce/consume, never sibling hierarchy links.
 
 ## index.md
 

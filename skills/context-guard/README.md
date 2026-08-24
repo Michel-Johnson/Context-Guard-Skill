@@ -268,6 +268,9 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 ```text
 .codex/context/
 |-- index.md              # quick index and active task
+|-- architecture.md       # first-use analysis essay
+|-- map.json              # live map: tree, memories, produce/consume
+|-- user-messages.md      # user wording and constraints
 |-- roadmap.md            # agent-readable roadmap
 |-- bad-cases.md          # bad-case register
 |-- preferences.json      # language and project preferences

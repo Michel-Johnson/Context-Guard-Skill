@@ -5,6 +5,7 @@ Source: this repository, not a directory dump
 Later sessions: open this map. Do not re-analyze unless the human asks to rebuild.
 
 This file is the analysis, not a slogan list. L1 is only the confirmation gate.
+The live tree, memories, and produce/consume flows live in `map.json`.
 Clicking an L1 card enters it. If that module would fan out more than about eight
 work units, cluster them into submodule cards first. Files hang under those
 submodules. Inbox holds internals of work units, not the work units themselves.
@@ -40,14 +41,18 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 记忆 / Bug / 节点 / 休眠经验可附文件或图片：只存仓库相对路径，不存二进制，不弹 `window.prompt`。本地 Chrome 用 File System Access 把粘贴/选中的文件写入仓库 `docs/shots/`，地图只记相对路径。不要拷进 `.codex/context/`。GitHub htmlpreview 不必能写盘。
 - 仓库切换与每仓 `map_bootstrap`
 - 首次分析叠层（标明未调用 Agent）
-- `localStorage`（`cg-workbench-maps-v12`）
+- 活地图是 `.codex/context/map.json`：树、生产/消费、节点上的记忆和 Bug 同一份文件。`localStorage`（`cg-workbench-maps-v12`）只是没连仓库时的缓存。连接本机仓库后读写 `map.json`。
+- 生产/消费用虚线，从属仍是实线。顶栏「关系」开关。进入模块后自动带出该模块和其它模块/节点的关系（画布虚线 + 必要时幽灵卡）。点模块仍然立刻进入。
 - L1 确认门数量 4–8，按仓库体量定，不强制恰好 4 张
 - 伴侣/Linux node 这类模块要多层子模块（连接 / 远程命令 / 常驻），不能只有一级两个胶囊
 - `asProposal` 递归子模块卡，只把开工单元内部收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 
 ### 项目 Context 目录
-- `index.md` / `preferences.json` / `architecture.md` / `user-messages.md` / `private/`
+- `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files）。人改和工作台写回都落这里。不要另存一份平行的记忆清单。
+- `architecture.md` — 首次分析笔记，不是活树
+- `index.md` / `preferences.json`（含 `map_bootstrap`）/ `user-messages.md` / `private/`
+- 附件二进制在 `docs/shots/`，context 里只记相对路径
 
 ### CLI 与 Hook
 - `scripts/context_guard.py init`
@@ -68,4 +73,4 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 先不扩；人设计测试、Agent 只提草案
 
 Do not treat L1 as confirmed until the human accepts it in the workbench.
-The root canvas is a module grid. Depth lives in this file; each view answers one question.
+The root canvas is a module grid. Depth lives in `map.json`; `architecture.md` is the analysis essay. Each view answers one question.

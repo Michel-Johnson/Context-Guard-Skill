@@ -341,6 +341,28 @@ None.
 Last initialized: {today}
 """,
         ctx / "preferences.json": json.dumps(default_preferences(today), ensure_ascii=False, indent=2) + "\n",
+        ctx / "architecture.md": f"""# Architecture Map
+
+Status: pending
+Source: this repository, not a directory dump
+Later sessions: open `.codex/context/map.json`. Do not re-analyze unless the human asks to rebuild.
+
+This file is the first-use analysis essay. The live tree, memories, bugs, and produce/consume flows live in `map.json`.
+
+Last initialized: {today}
+""",
+        ctx / "map.json": json.dumps(
+            {
+                "v": 1,
+                "bootstrap": "pending",
+                "updated": today,
+                "flows": [],
+                "root": None,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
     }
     for path, content in files.items():
         if write_if_missing(path, content):

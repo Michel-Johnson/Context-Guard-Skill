@@ -48,15 +48,16 @@ Do not use the active chat/thread name, the skill installation directory, a remo
 4. Maintain the main route map at `.codex/context/roadmap.md`.
 5. Maintain folder preferences at `.codex/context/preferences.json`.
 6. Maintain user-message memory at `.codex/context/user-messages.md`.
-7. Store local-only sensitive memory under `.codex/context/private/`; keep it gitignored and never project it into HTML.
-8. Store task-specific context under `.codex/context/tasks/<task-id>/`.
-9. Store task-oriented evaluation scenarios under `.codex/context/task-cases/` when a reusable long workflow is more useful than isolated bug checks.
-10. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`.
-11. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
-12. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
-13. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
-14. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
-15. Use `references/register-template.md` when creating or updating bad-case entries.
+7. Maintain the live architecture map at `.codex/context/map.json` (tree, produce/consume flows, and memories/bugs on nodes). `architecture.md` is the first-use analysis essay, not the live tree.
+8. Store local-only sensitive memory under `.codex/context/private/`; keep it gitignored and never project it into HTML.
+9. Store task-specific context under `.codex/context/tasks/<task-id>/`.
+10. Store task-oriented evaluation scenarios under `.codex/context/task-cases/` when a reusable long workflow is more useful than isolated bug checks.
+11. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`.
+12. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
+13. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
+14. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
+15. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
+16. Use `references/register-template.md` when creating or updating bad-case entries.
 
 Do not store project context inside the skill directory. If a command would use `/Users/.../.agents/skills/context-guard` or another installed skill path as the implicit root, stop and rerun it from the opened Codex workspace or pass the workspace with `--root`. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
 
@@ -87,14 +88,15 @@ Context records need a folder-scoped language preference so Codex does not mix l
 
 The architecture map is created once: the first time Context Guard is used in a folder. It is not a later “import from GitHub” action, not a dump of the directory tree, and not an instant click.
 
-1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If a proposed or confirmed map already exists, later sessions open that map. Do not re-analyze.
-2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change). This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
+1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map.json` has no `root`, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If `map.json` already has a proposed or confirmed tree, later sessions open that map. Do not re-analyze.
+2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change) and project it into `.codex/context/map.json`. Memories and bugs live on map nodes in that file, not in a parallel dump. This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
 3. First use itself is the trigger. Do not wait for a GitHub URL or an import button. Do not pretend the map can appear in one click.
 4. The HTML map uses L1 as a confirmation gate, not as the analysis. Propose **4–8 L1 modules** (cluster if more; greenfield = root only). Clicking an L1 card **enters** it. If that module would show more than about eight work siblings, cluster them into **submodules** (still `kind: module` cards: name + purpose that names the files). Work units hang under those submodules. Do not park work units in an inbox. Only internals of a work unit go to inbox. Later agents must not read unconfirmed proposals.
 5. The human confirms, rewrites, or hides L1. The root canvas is a **module grid**; click enters. Do not peek children on the root. Do not dump 15 files as siblings of a module. Empty slogan umbrellas (`CLI` / `TUI` / `UI` with no files underneath) are still forbidden. Unpack inbox layers when they enter a work unit. Depth must already exist in `architecture.md`.
 6. If the folder is greenfield (almost no code or docs), create a root node only. Do not invent a fake architecture.
-7. After proposing L1, set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set `map_bootstrap` to `ready`. Later sessions load the existing map and must not re-split the repository unless the user asks to rebuild.
+7. After proposing L1, write `.codex/context/map.json` and set `map_bootstrap` to `proposed`. After the human confirms the first layer, or explicitly starts from an empty root, set it to `ready`. Later sessions load `map.json` and must not re-split the repository unless the user asks to rebuild.
 8. Confirming the first-use map does not authorize every module for the current session. New sessions still load a small readable slice.
+9. Produce/consume relations belong in `map.json` `flows` (`from`, `to`, `label`). Hierarchy stays parent–child solid curves. Do not draw sibling hierarchy links. The workbench shows flows as dashed lines and, after entering a module, as that module’s relations to other modules or nodes.
 
 ## Map grammar
 
@@ -109,7 +111,7 @@ Hard rules for the proposing agent:
 
 1. L1 count is 4–8. If analysis finds more concerns, cluster them. Do not emit 12 sibling modules.
 2. After entering a module, if more than about eight work units would sit as siblings, **build submodules** first. A submodule is a module card whose purpose names locatable artifacts (`src/commands/onboard.ts`, `src/tui/tui.ts`). Prefer that over a flat fan of files. Prefer `src/commands/onboard.ts` under a “安装与守护” card over an empty `CLI 入口`.
-3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
+3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. They are stored on that node inside `map.json`. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
 4. Do not emit one node per file at the layer the human first sees after entering a module. Group what you would change together; title work units with the primary path.
 5. Root canvas is a **grid of L1 module cards** (title + one-line purpose). Click a card to enter. Left-right / top-down layout applies to the work-unit tree **inside** a module, not to the root catalog. Do not print files on the module card. Do not peek L2 on the root. Depth lives in `architecture.md`.
 6. Every node must answer “when would I open this” in the record language. If the human cannot tell, the analysis failed: delete or rewrite, the agent must not defend it.
@@ -263,6 +265,8 @@ For Codex context intake, checkpointing, bad-case review, and task switching, re
 
 - `.codex/context/index.md`
 - `.codex/context/user-messages.md`
+- `.codex/context/map.json`
+- `.codex/context/architecture.md`
 - `.codex/context/roadmap.md`
 - `.codex/context/bad-cases.md`
 - `.codex/context/tasks/<task-id>/context.md`
