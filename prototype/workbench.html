@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
 :root{
+  --chrome-top:52px;
   --ink:#2d2d2d; --muted:#746c60; --paper:#fffdf8; --bg:#fefaf2; --line:#d7ccb8; --line-ink:#2d2d2d;
   --green:#3a6e55; --green-soft:#efe6d2; --red:#e24b4b; --red-soft:#f8e4dc;
   --blue:#2d5da1; --blue-soft:#e4ebf4; --gray:#9a9084;
@@ -31,8 +32,8 @@ body::before{
   background-size:100% 34px, 18px 18px;
 }
 
-header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:13px;
-  padding:10px 18px;background:rgba(254,250,242,.94);border-bottom:2px solid var(--line-ink);flex-wrap:wrap;cursor:default}
+header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:10px 13px;
+  padding:10px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink);flex-wrap:wrap;cursor:default}
 header.top .brand{position:relative}
 header.top h1{margin:0;font-size:16px}
 header.top h1.repo-switch{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
@@ -48,14 +49,15 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-menu .tag{font-size:10.5px;color:var(--green)}
 .repo-menu .tag.wait{color:var(--red)}
 .repo-menu .reanalyze{margin-top:4px;font-size:11px;color:var(--red);text-decoration:underline;cursor:pointer}
-.nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap}
+.nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:wrap;flex:1 1 220px;min-width:0}
+.top-tools{display:flex;align-items:center;gap:10px 13px;flex:0 0 auto;margin-left:auto;flex-wrap:wrap}
 .nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;padding:3px 9px;
   border:1px solid transparent;border-radius:6px}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:flex;align-items:center;gap:7px;background:var(--auth-soft);border:1px solid #d8cceb;
-  border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth);margin-left:auto}
+  border-radius:8px;padding:4px 11px;font-size:12.5px;color:var(--auth)}
 .session-chip b{font-weight:700}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
 .dir-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
@@ -71,9 +73,9 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
 body.rel-mode{background:#f3eee4}
-body.rel-mode header.top{background:rgba(243,238,228,.96)}
+body.rel-mode header.top{background:#f3eee4}
 body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
-.first-use{display:none;position:fixed;inset:52px 0 0 0;z-index:26;
+.first-use{display:none;position:fixed;inset:var(--chrome-top) 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
 .first-use.open{display:flex}
 .first-use .card{width:min(720px,94%);background:var(--paper);border:2px solid var(--line-ink);
@@ -103,7 +105,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:52px 0 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) 0 0 0;cursor:default;z-index:1}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -220,7 +222,7 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 body.auth-mode .node .add-child{display:none}
 
 /* ---------- 已取消托盘 ---------- */
-.tray{position:fixed;left:16px;top:60px;z-index:29;width:330px;background:var(--paper);
+.tray{position:fixed;left:16px;top:calc(var(--chrome-top) + 8px);z-index:29;width:330px;background:var(--paper);
   border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(42,47,43,.14);
   padding:14px 16px;display:none}
 .tray.open{display:block}
@@ -238,7 +240,7 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;right:0;top:49px;bottom:0;z-index:22;width:240px;
+.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:240px;
   background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
@@ -258,7 +260,7 @@ body.bugs-open .drawer{display:none}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
 body.bug-path-mode{background:#f7f1e6}
-body.bug-path-mode header.top{background:rgba(247,241,230,.96)}
+body.bug-path-mode header.top{background:#f7f1e6}
 body.bug-path-mode .node .add-child{display:none}
 body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0 #c45c4a}
 body.bug-path-mode .dir-toggle,
@@ -282,7 +284,7 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:49px;right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
@@ -410,18 +412,20 @@ details.fold .mem-list{margin-top:6px}
     <div class="repo-menu" id="repo-menu"></div>
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
-  <div class="dir-toggle" id="dir-toggle">
-    <button type="button" data-dir="lr" class="on">左右</button>
-    <button type="button" data-dir="tb">上下</button>
+  <div class="top-tools">
+    <div class="dir-toggle" id="dir-toggle">
+      <button type="button" data-dir="lr" class="on">左右</button>
+      <button type="button" data-dir="tb">上下</button>
+    </div>
+    <div class="rel-toggle" id="rel-toggle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
+      <button type="button" id="btn-rel" aria-pressed="false">关系</button>
+    </div>
+    <span id="rel-hint">点击模块看关系，不会进入</span>
+    <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
+    <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
+    <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
+    <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
   </div>
-  <div class="rel-toggle" id="rel-toggle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
-    <button type="button" id="btn-rel" aria-pressed="false">关系</button>
-  </div>
-  <span id="rel-hint">点击模块看关系，不会进入</span>
-  <div class="session-chip">当前会话：<b id="session-name">S-0823</b> · 可读 <b id="auth-count">0</b> 节点</div>
-  <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
-  <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
-  <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
 </header>
 <div class="first-use" id="first-use">
   <div class="card" id="first-use-ask">
@@ -2235,6 +2239,7 @@ function renderNav(){
     document.getElementById("tray-count").textContent = cancelledList().length;
     document.getElementById("auth-count").textContent = sessionAuth.size;
     document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
+    syncChrome();
     return;
   }
   const path = findPath(viewRootId);
@@ -2246,6 +2251,7 @@ function renderNav(){
   document.getElementById("tray-count").textContent = cancelledList().length;
   document.getElementById("auth-count").textContent = sessionAuth.size;
   document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
+  syncChrome();
 }
 
 /* ================= 授权模式开关 ================= */
@@ -3116,23 +3122,34 @@ function crossBug(node, bugId){
 }
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
-let view = {x:60, y:120, k:1};
+let view = {x:36, y:24, k:1};
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
 }
-/* 让当前视图铺满可用区域：抽屉占右侧 400px，顶栏约 100px */
+/* 让当前视图贴在顶栏下面：顶栏变高时画布和检查器一起让位，不要把标题盖成灰色。 */
+function chromeTop(){
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--chrome-top");
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n>0 ? n : 52;
+}
+function syncChrome(){
+  const h = document.querySelector("header.top");
+  if(!h) return;
+  const px = Math.ceil(h.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--chrome-top", px+"px");
+}
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
   const right = bugs ? 240 : 340;
-  const availW = window.innerWidth - right - 90;
-  const availH = window.innerHeight - 150;
+  const availW = window.innerWidth - right - 72;
+  const availH = window.innerHeight - chromeTop() - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
-  view.x = 50 + Math.max(0,(availW - extents.w*view.k)/2);
-  view.y = 115 + Math.max(0,(availH - extents.h*view.k)/2);
+  view.x = 36;
+  view.y = 24;
   applyView();
 }
-window.addEventListener("resize", fitView);
+window.addEventListener("resize", ()=>{ syncChrome(); fitView(); });
 const vp = document.getElementById("viewport");
 let dragging=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
@@ -3172,7 +3189,12 @@ async function boot(){
     applyRepoChrome();
   }
   renderAll();
+  syncChrome();
   fitView();
+}
+const headerEl = document.querySelector("header.top");
+if(window.ResizeObserver && headerEl){
+  new ResizeObserver(()=>{ syncChrome(); }).observe(headerEl);
 }
 boot();
 </script>
