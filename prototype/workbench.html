@@ -126,12 +126,6 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.rel-hot{opacity:1;filter:none}
 body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
 body.rel-mode .node .add-child{display:none}
-.rel-list{list-style:none;margin:10px 0 0;padding:0}
-.rel-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;padding:4px 0;border-top:1px solid var(--line);font-size:12px}
-.rel-list li:first-child{border-top:0}
-.rel-list .rel-jump{padding:3px 8px;font-size:12px;box-shadow:none}
-.rel-list .rel-lab{color:var(--muted);font-size:11px}
-
 /* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
   width:max-content;max-width:280px;word-break:keep-all;overflow:visible;
@@ -407,8 +401,6 @@ details.fold .mem-list{margin-top:6px}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
-.fs-note{margin:8px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
-.fs-note button{font-size:11.5px;padding:3px 8px;margin-left:6px}
 </style>
 </head>
 <body>
@@ -1420,12 +1412,6 @@ async function pickLocalFile(){
     inp.click();
   });
 }
-function fsNoteHtml(){
-  if(!canFsAccess()) return "";
-  if(repoFsOk) return `<p class="fs-note">本机仓库已连接。粘贴写入 docs/shots/；人改的地图写入 .codex/context/map.json，记忆在节点上。</p>`;
-  return `<p class="fs-note">本地可把粘贴文件和活地图写入仓库。GitHub 预览不能写盘。<button type="button" class="quiet" data-act="link-repo">连接本机仓库</button></p>`;
-}
-
 function attachHtml(kind, key, owner, readonly){
   const files = fileList(owner);
   const fk = escAttr(kind), fi = escAttr(String(key));
@@ -2822,42 +2808,6 @@ function commitChild(node, title){
   renderAll();
 }
 
-function jumpToNode(id){
-  const n = getNode(id);
-  if(!n || isCancelled(n)) return;
-  if(relationMode){
-    relAnchorId = n.id;
-    selectedId = n.id;
-    renderAll();
-    fitView();
-    return;
-  }
-  if(n.kind==="module"){ enterView(n.id); return; }
-  const p = findPath(id) || [];
-  const mod = [...p].reverse().find(x=>x.kind==="module");
-  if(mod && mod.id!==viewRootId){
-    enterView(mod.id);
-    selectedId = n.id;
-    renderAll();
-    return;
-  }
-  selectedId = n.id;
-  renderAll();
-}
-function relListHtml(id){
-  const flows = (data.flows||[]).filter(f=>f.from===id || f.to===id);
-  if(!flows.length) return "";
-  return `<ul class="rel-list">`+flows.map(f=>{
-    const out = f.from===id;
-    const otherId = out ? f.to : f.from;
-    const other = getNode(otherId);
-    const title = other ? other.title : otherId;
-    const role = out ? "产出" : "消费";
-    const arrow = out ? "→" : "←";
-    return `<li><button type="button" class="quiet rel-jump" data-jump="${escAttr(otherId)}">${role} ${arrow} ${esc(title)}</button>${f.label? `<span class="rel-lab">${esc(f.label)}</span>`:""}</li>`;
-  }).join("")+`</ul>`;
-}
-
 /* ================= 抽屉 ================= */
 const STATE_LABEL = {dirty:"探索中", success:"成功", failed:"失败"};
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
@@ -2996,8 +2946,6 @@ function renderDetail(){
         <button type="button" data-act="child">＋ 子节点</button>`}
         ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
     </div>
-    ${fsNoteHtml()}
-    ${relListHtml(node.id)}
     ${composing? `<div class="compose">
         <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?"模块名称":"子节点名称"}</span>
         <button type="button" data-act="compose-ok" class="primary">添加</button>
@@ -3139,11 +3087,6 @@ function renderDetail(){
   }
   bindFileUi(el, node);
   hydrateThumbs(el);
-  el.querySelectorAll("[data-jump]").forEach(b=>{
-    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); jumpToNode(b.dataset.jump); };
-  });
-  const linkRepoBtn = el.querySelector('[data-act="link-repo"]');
-  if(linkRepoBtn) linkRepoBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); linkRepo(); };
   el.addEventListener("paste", e=>{
     const memEd = e.target.closest('[data-ed="mem"]');
     const bugEd = e.target.closest('[data-ed="bug-title"]');
