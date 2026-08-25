@@ -141,10 +141,46 @@ Context Guard 自己的图上已有两条桩，按本方案挂了正文：
 
 OpenClaw 演示图里的 Bug 桩可以暂时只有标题，直到那条真是本仓要记的坏例。
 
-## 还没做（等这版方案被接受后再开）
+## Harbor 实验：不同落盘对 Agent 的影响
+
+假仓 `fixtures/harbor/`（约 59 个节点、42 个源文件、27 条记忆、12 条坏例），同一份语料投影到 `fixtures/harbor-eval/layouts/`。评测把 **index**（为了找到答案扫过的字节）和 **payload**（会进模型的切片）分开。复现：
+
+```bash
+python3 scripts/harbor_recall.py project
+python3 scripts/harbor_recall.py eval
+```
+
+完整表在 `fixtures/harbor-eval/REPORT.md`。跑出来的形状是：
+
+| 策略 | 改文件 | 按现象搜 | payload | index | 问题 |
+|---|---|---|---|---|---|
+| 整份 `map.json` 塞进上下文（A-all） | 召回高 | 召回高 | ~45KB | 0 | 噪声极大；没有 owns 的 `docs/handbook.md` 也会灌进全仓记忆；inbox 子函数记忆泄漏 |
+| 扁平 `memories.md` + `bad-cases.md`（C-all / C-grep） | grep 命中往往是**整份登记册** | 能搜中文 | 5–35KB | 整册 | 一词多例互相污染；不能当第二份真相 |
+| 只按 `owns` 切片（A/B/D/E 的 edit-file） | 召回完整 | **空** | ~0.5–2KB | 见下 | `owns` 不看中文症状 |
+| **B-hybrid：改文件走 owns，现象扫 `bugs/` + 短记忆** | 完整 | 完整 | ~0.9KB | 仍要扫 map 或 bug 文件 | 推荐的 Agent 读法 |
+| 镜像 `nodes/{id}.md`（D） | 与 B 接近 | 空（除非再 grep） | 与 B 接近 | 仍要走一遍 map | 文件多、易和 map 漂移 |
+| `owns-index.json` + 祖先卡片（E） | 与 B 接近 | 空 | 略大 | **~7KB vs B 的 ~37KB map** | 图变大之后值得生成；不要手写 |
+
+其它观察：
+
+1. **短记忆进节点、胖坏例进 `bugs/{id}.md` 是对的。** 改 `session.ts` 时 B 的 payload 大约 1.4KB，A-all 是 45KB。长记忆（drain 关闭顺序）拆到 `memories/R-drain-order.md` 后，切片仍然只带这一段。
+2. **不要把整份 map 当上下文。** map 当索引扫一遍可以（B 的 index ~37KB），但 payload 只能是命中节点 + 祖先短记忆 + 对应正文。
+3. **按现象搜必须能扫 `bugs/*.md`。** 只做 owns 的策略在 `symptom-*` 上召回为 0。扁平登记册能搜到，但一次返回整册。
+4. **inbox 里没有 owns 的子函数，改文件时不该被加载。** A-all / C 会漏出 `R-card`；owns 切片不会。这是产品语义，不是漏检。
+5. **祖先记忆会带上根口号（`R-root`）。** 根节点记忆必须极短，否则每条文件编辑都吃一句空话。
+6. **图变大后生成 `owns-index.json`。** `python3 scripts/map_owns.py index`。E 布局证明它把 index 从整图的几万字节降到几千。活地图仍是 `map.json`；index 是投影，改 owns 后重生成。
+7. **lookup 必须带上祖先记忆。** 改 `session.ts` 需要本节点的裁剪规则，也需要 Gateway 上「会话只由它打开」。`scripts/map_owns.py lookup` 已返回 `ancestors[].memories`。
+
+Agent 读本仓的约定因此收成两条：
+
+- 改源码：`lookup --path` → 节点短记忆 + 祖先短记忆 + 未修 `bugs/{id}.md`（有 `record` 再打开长记忆）。
+- 对现象 / 用户报错：在 `.codex/context/bugs/` 里搜，不要把 `bad-cases.md` 或整份 `map.json` 贴进上下文。
+
+## 还没做（等人确认后再开）
 
 - 检查器点标题打开 / 预览 `bugs/{id}.md`
-- 从 map 生成 `bad-cases.md` 目录
-- `memories/` 长记忆拆文件
+- 从 map 生成 `bad-cases.md` 目录（实验已证明不要把它当真相）
+- 本仓记忆仍短，不必建 `memories/`；Harbor 夹具里已演示长记忆拆文件
+- 把 `owns-index.json` 做成工作台写回时自动投影
 - Test Hub、feature chain、Stop-hook、`validate-bad-cases`
 - 把旧 `BC-…` 登记册迁进 `bugs/`

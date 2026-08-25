@@ -1,0 +1,106 @@
+{
+  "owns": [
+    {
+      "path": "SKILL.md",
+      "node": "N11",
+      "kind": "work",
+      "title": "SKILL.md 启动时机"
+    },
+    {
+      "path": "prototype/",
+      "node": "M21",
+      "kind": "module",
+      "title": "画布"
+    },
+    {
+      "path": "prototype/workbench.html",
+      "node": "N21",
+      "kind": "work",
+      "title": "prototype/workbench.html"
+    },
+    {
+      "path": ".codex/context/",
+      "node": "M3",
+      "kind": "module",
+      "title": "项目 Context 目录"
+    },
+    {
+      "path": ".codex/context/index.md",
+      "node": "N31",
+      "kind": "work",
+      "title": "index.md"
+    },
+    {
+      "path": ".codex/context/preferences.json",
+      "node": "N32",
+      "kind": "work",
+      "title": "preferences.json"
+    },
+    {
+      "path": ".codex/context/architecture.md",
+      "node": "N33",
+      "kind": "work",
+      "title": "architecture.md"
+    },
+    {
+      "path": ".codex/context/map.json",
+      "node": "N36",
+      "kind": "work",
+      "title": "map.json"
+    },
+    {
+      "path": ".codex/context/user-messages.md",
+      "node": "N34",
+      "kind": "work",
+      "title": "user-messages.md"
+    },
+    {
+      "path": ".codex/context/private/",
+      "node": "N35",
+      "kind": "work",
+      "title": "private/"
+    },
+    {
+      "path": "scripts/",
+      "node": "M4",
+      "kind": "module",
+      "title": "CLI 与 Hook"
+    },
+    {
+      "path": "skills/context-guard/",
+      "node": "M4",
+      "kind": "module",
+      "title": "CLI 与 Hook"
+    },
+    {
+      "path": "scripts/context_guard.py",
+      "node": "N41",
+      "kind": "work",
+      "title": "scripts/context_guard.py init"
+    },
+    {
+      "path": "skills/context-guard/scripts/context_guard.py",
+      "node": "N41",
+      "kind": "work",
+      "title": "scripts/context_guard.py init"
+    },
+    {
+      "path": "scripts/context_guard_hook.py",
+      "node": "N43",
+      "kind": "work",
+      "title": "SessionStart hook"
+    },
+    {
+      "path": "skills/context-guard/scripts/context_guard_hook.py",
+      "node": "N43",
+      "kind": "work",
+      "title": "SessionStart hook"
+    },
+    {
+      "path": "README.md",
+      "node": "N51",
+      "kind": "work",
+      "title": "信号源"
+    }
+  ]
+}

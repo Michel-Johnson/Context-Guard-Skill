@@ -1,0 +1,1213 @@
+{
+  "v": 1,
+  "project": "harbor",
+  "layout": "B-stub-files",
+  "root": {
+    "id": "T0",
+    "title": "Harbor",
+    "kind": "module",
+    "purpose": "自己设备上的操作平台：Gateway 管会话，控制面给人看，节点在远端执行",
+    "state": "dirty",
+    "owns": [],
+    "dormant": [],
+    "files": [],
+    "memories": [
+      {
+        "id": "R-root",
+        "text": "一个 Gateway 管会话、工具、事件和渠道连接",
+        "state": "success"
+      }
+    ],
+    "bugs": [],
+    "children": [
+      {
+        "id": "M1",
+        "title": "Gateway 运行时",
+        "kind": "module",
+        "purpose": "会话、工具、鉴权、排空；入口是 apps/gateway/server.ts",
+        "state": "dirty",
+        "owns": [
+          "apps/gateway/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [
+          {
+            "id": "R-gw-only",
+            "text": "每台主机一个 Gateway；渠道会话只由它打开",
+            "state": "success"
+          }
+        ],
+        "bugs": [],
+        "children": [
+          {
+            "id": "M11",
+            "title": "会话与工具",
+            "kind": "module",
+            "purpose": "session.ts 打开会话，tools.ts 把结果写回同一 session",
+            "state": "dirty",
+            "owns": [
+              "apps/gateway/session.ts",
+              "apps/gateway/tools.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N111",
+                "title": "apps/gateway/session.ts",
+                "kind": "work",
+                "purpose": "打开渠道会话；进 tool loop 前裁剪 transcript",
+                "state": "dirty",
+                "owns": [
+                  "apps/gateway/session.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-clip",
+                    "text": "transcripts 必须在进入 tool loop 前按预算裁剪",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-clip",
+                    "title": "长会话未裁剪导致超时",
+                    "status": "open",
+                    "sessions": [
+                      "S-h01"
+                    ],
+                    "files": [
+                      {
+                        "path": "docs/shots/session-timeout.png"
+                      }
+                    ],
+                    "record": ".codex/context/bugs/B-clip.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N112",
+                "title": "apps/gateway/tools.ts",
+                "kind": "work",
+                "purpose": "工具调用与结果写回，不另开 transcript",
+                "state": "dirty",
+                "owns": [
+                  "apps/gateway/tools.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-tool-same",
+                    "text": "工具结果写回打开它的那条 session",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-tool-orphan",
+                    "title": "工具事件找不到 session",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-tool-orphan.md"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M12",
+            "title": "鉴权与排空",
+            "kind": "module",
+            "purpose": "auth.ts 管 none/loopback，drain.ts 管关闭顺序",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N121",
+                "title": "apps/gateway/auth.ts",
+                "kind": "work",
+                "purpose": "监听地址与 auth.mode 的约束",
+                "state": "dirty",
+                "owns": [
+                  "apps/gateway/auth.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-auth-none",
+                    "text": "非 loopback 禁止 auth.mode=none",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-auth-none",
+                    "title": "非 loopback 误开 auth.mode=none",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-auth-none.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N122",
+                "title": "apps/gateway/drain.ts",
+                "kind": "work",
+                "purpose": "关闭时先拒绝新请求再排空 session",
+                "state": "dirty",
+                "owns": [
+                  "apps/gateway/drain.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-drain-order",
+                    "text": "Gateway 关闭顺序：先拒绝新的 agent 请求，再排空 active session 的 tool 事件，最后才停 WS。",
+                    "state": "success",
+                    "record": ".codex/context/memories/R-drain-order.md"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-drain-race",
+                    "title": "关闭时 active session 排空竞态",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-drain-race.md"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "N130",
+            "title": "apps/gateway/server.ts",
+            "kind": "work",
+            "purpose": "HTTP 与 WS 同端口；/healthz 在同进程",
+            "state": "dirty",
+            "owns": [
+              "apps/gateway/server.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [
+              {
+                "id": "R-same-port",
+                "text": "HTTP 和 WS 必须同端口，不要另起 widget 服务",
+                "state": "success"
+              }
+            ],
+            "bugs": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "M2",
+        "title": "控制面",
+        "kind": "module",
+        "purpose": "CLI / TUI / dashboard / 远程隧道，给人看和操作",
+        "state": "dirty",
+        "owns": [
+          "apps/control/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [],
+        "bugs": [],
+        "children": [
+          {
+            "id": "M21",
+            "title": "本地入口",
+            "kind": "module",
+            "purpose": "cli.ts 做 onboard，tui.ts 做终端会话",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N211",
+                "title": "apps/control/cli.ts",
+                "kind": "work",
+                "purpose": "onboard：模型、工作区、可选 daemon",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/cli.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-onboard",
+                    "text": "onboard --install-daemon 做模型、工作区、Gateway；下一步才是 dashboard",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-onboard",
+                    "title": "onboard 装了 daemon 却没打开 dashboard",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-onboard.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N212",
+                "title": "apps/control/tui.ts",
+                "kind": "work",
+                "purpose": "终端里的会话列表，不托管 WebChat",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/tui.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M22",
+            "title": "仪表盘",
+            "kind": "module",
+            "purpose": "dashboard.ts 静态资源，webchat.ts 聊，canvas.ts 看图",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N221",
+                "title": "apps/control/dashboard.ts",
+                "kind": "work",
+                "purpose": "Control UI 静态入口",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/dashboard.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N222",
+                "title": "apps/control/webchat.ts",
+                "kind": "work",
+                "purpose": "浏览器聊天；远程必须与 Gateway 同隧道",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/webchat.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-tunnel",
+                    "text": "远程 WebChat 必须与 Gateway 同隧道（同一条 SSH/Tailscale）",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-tunnel",
+                    "title": "远程 WebChat 必须与 Gateway 同隧道",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [
+                      {
+                        "path": "docs/shots/tunnel-mismatch.png"
+                      }
+                    ],
+                    "record": ".codex/context/bugs/B-tunnel.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N223",
+                "title": "apps/control/canvas.ts",
+                "kind": "work",
+                "purpose": "单文件画布；假数据，不弹原生对话框",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/canvas.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-canvas",
+                    "text": "画布交互不使用 window.prompt / confirm",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": [],
+                "_inbox": [
+                  {
+                    "id": "N223a",
+                    "title": "renderCard",
+                    "kind": "work",
+                    "purpose": "大方卡只露标题和一句用途，不印文件清单",
+                    "state": "dirty",
+                    "owns": [],
+                    "dormant": [],
+                    "files": [],
+                    "memories": [
+                      {
+                        "id": "R-card",
+                        "text": "模块卡不要印 owns 清单，那是检查器的事",
+                        "state": "success"
+                      }
+                    ],
+                    "bugs": [
+                      {
+                        "id": "B-lines",
+                        "title": "根上铺开关系线会看不清",
+                        "status": "open",
+                        "sessions": [],
+                        "files": [],
+                        "record": ".codex/context/bugs/B-lines.md"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "M23",
+            "title": "远程",
+            "kind": "module",
+            "purpose": "tunnel.ts 把 dashboard 和 Gateway WS 绑在同一条隧道",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N231",
+                "title": "apps/control/tunnel.ts",
+                "kind": "work",
+                "purpose": "SSH/Tailscale 端口对齐",
+                "state": "dirty",
+                "owns": [
+                  "apps/control/tunnel.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-tunnel-impl",
+                    "text": "漏转 WS 端口时要在 UI 报错，不要默默连 localhost",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "M3",
+        "title": "节点",
+        "kind": "module",
+        "purpose": "Linux / Android / macOS 远端执行面",
+        "state": "dirty",
+        "owns": [
+          "apps/nodes/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [],
+        "bugs": [],
+        "children": [
+          {
+            "id": "M31",
+            "title": "Linux 节点",
+            "kind": "module",
+            "purpose": "连接、远程命令、常驻 daemon",
+            "state": "dirty",
+            "owns": [
+              "apps/nodes/linux/"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N311",
+                "title": "apps/nodes/linux/connect.ts",
+                "kind": "work",
+                "purpose": "配对与能力声明",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/linux/connect.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N312",
+                "title": "apps/nodes/linux/exec.ts",
+                "kind": "work",
+                "purpose": "远程命令；走 Gateway session",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/linux/exec.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N313",
+                "title": "apps/nodes/linux/daemon.ts",
+                "kind": "work",
+                "purpose": "systemd --user 常驻",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/linux/daemon.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M32",
+            "title": "Android 节点",
+            "kind": "module",
+            "purpose": "caps 与 policy 必须读同一来源",
+            "state": "dirty",
+            "owns": [
+              "apps/nodes/android/"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N321",
+                "title": "apps/nodes/android/caps.ts",
+                "kind": "work",
+                "purpose": "required-commands 能力",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/android/caps.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [
+                  {
+                    "id": "B-caps",
+                    "title": "Android node caps 策略来源不一致",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-caps.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N322",
+                "title": "apps/nodes/android/policy.ts",
+                "kind": "work",
+                "purpose": "policy-config / policy-source",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/android/policy.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-caps-one",
+                    "text": "policy-config 与 policy-source 对 required-commands 必须同结论",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M33",
+            "title": "macOS 节点",
+            "kind": "module",
+            "purpose": "桌面伴侣连接，不在此托管 Gateway",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N331",
+                "title": "apps/nodes/macos/connect.ts",
+                "kind": "work",
+                "purpose": "伴侣配对",
+                "state": "dirty",
+                "owns": [
+                  "apps/nodes/macos/connect.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "M4",
+        "title": "渠道",
+        "kind": "module",
+        "purpose": "入站消息当不可信输入；私聊默认配对",
+        "state": "dirty",
+        "owns": [
+          "apps/channels/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [
+          {
+            "id": "R-untrusted-in",
+            "text": "渠道把入站消息当不可信输入",
+            "state": "success"
+          }
+        ],
+        "bugs": [],
+        "children": [
+          {
+            "id": "M41",
+            "title": "入站",
+            "kind": "module",
+            "purpose": "slack / telegram / webhook 适配",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N411",
+                "title": "apps/channels/slack.ts",
+                "kind": "work",
+                "purpose": "Slack 适配",
+                "state": "dirty",
+                "owns": [
+                  "apps/channels/slack.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N412",
+                "title": "apps/channels/telegram.ts",
+                "kind": "work",
+                "purpose": "Telegram 适配",
+                "state": "dirty",
+                "owns": [
+                  "apps/channels/telegram.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N413",
+                "title": "apps/channels/webhook.ts",
+                "kind": "work",
+                "purpose": "Webhook 入站",
+                "state": "dirty",
+                "owns": [
+                  "apps/channels/webhook.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M42",
+            "title": "配对",
+            "kind": "module",
+            "purpose": "pairing.ts 与 identity 队列是同一份",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N421",
+                "title": "apps/channels/pairing.ts",
+                "kind": "work",
+                "purpose": "未知发送者进配对队列",
+                "state": "dirty",
+                "owns": [
+                  "apps/channels/pairing.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-dm",
+                    "text": "能私聊的渠道默认要配对未知发送者；第一条消息进配对队列，不进 session",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-dm",
+                    "title": "DM 渠道默认配对提示易被忽略",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-dm.md"
+                  },
+                  {
+                    "id": "B-pair-cli",
+                    "title": "CLI 与 Control UI 改的不是同一份配对队列",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-pair-cli.md"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "M5",
+        "title": "插件",
+        "kind": "module",
+        "purpose": "注册、沙箱、权限，再挂各槽文件",
+        "state": "dirty",
+        "owns": [
+          "packages/plugins/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [],
+        "bugs": [],
+        "children": [
+          {
+            "id": "M51",
+            "title": "运行时",
+            "kind": "module",
+            "purpose": "registry / sandbox / permissions",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N511",
+                "title": "packages/plugins/registry.ts",
+                "kind": "work",
+                "purpose": "槽位加载表",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/registry.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N512",
+                "title": "packages/plugins/sandbox.ts",
+                "kind": "work",
+                "purpose": "没有 sandbox 不能碰身份目录",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/sandbox.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-sandbox",
+                    "text": "未沙箱时工具等同本机权限，不能加载 shell 类插件",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [
+                  {
+                    "id": "B-escape",
+                    "title": "沙箱外的插件 shell 等同本机权限",
+                    "status": "open",
+                    "sessions": [],
+                    "files": [],
+                    "record": ".codex/context/bugs/B-escape.md"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "id": "N513",
+                "title": "packages/plugins/permissions.ts",
+                "kind": "work",
+                "purpose": "插件能力与路径允许表",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/permissions.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "M52",
+            "title": "插件槽",
+            "kind": "module",
+            "purpose": "每个槽一份 ts，stdout 不可信",
+            "state": "dirty",
+            "owns": [],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": [
+              {
+                "id": "N5-weather",
+                "title": "packages/plugins/slots/weather.ts",
+                "kind": "work",
+                "purpose": "weather 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/weather.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-weather-untrusted",
+                    "text": "weather 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-browser",
+                "title": "packages/plugins/slots/browser.ts",
+                "kind": "work",
+                "purpose": "browser 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/browser.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-browser-untrusted",
+                    "text": "browser 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-cron",
+                "title": "packages/plugins/slots/cron.ts",
+                "kind": "work",
+                "purpose": "cron 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/cron.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-cron-untrusted",
+                    "text": "cron 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-memory",
+                "title": "packages/plugins/slots/memory.ts",
+                "kind": "work",
+                "purpose": "memory 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/memory.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-memory-untrusted",
+                    "text": "memory 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-shell",
+                "title": "packages/plugins/slots/shell.ts",
+                "kind": "work",
+                "purpose": "shell 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/shell.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-shell-untrusted",
+                    "text": "shell 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-cdp",
+                "title": "packages/plugins/slots/cdp.ts",
+                "kind": "work",
+                "purpose": "cdp 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/cdp.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-cdp-untrusted",
+                    "text": "cdp 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-tts",
+                "title": "packages/plugins/slots/tts.ts",
+                "kind": "work",
+                "purpose": "tts 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/tts.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-tts-untrusted",
+                    "text": "tts 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              },
+              {
+                "id": "N5-image",
+                "title": "packages/plugins/slots/image.ts",
+                "kind": "work",
+                "purpose": "image 槽：加载、权限、stdout 回写",
+                "state": "dirty",
+                "owns": [
+                  "packages/plugins/slots/image.ts"
+                ],
+                "dormant": [],
+                "files": [],
+                "memories": [
+                  {
+                    "id": "R-image-untrusted",
+                    "text": "image 插件的 stdout 当不可信输入，不能直接拼进 prompt",
+                    "state": "success"
+                  }
+                ],
+                "bugs": [],
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "M6",
+        "title": "身份",
+        "kind": "module",
+        "purpose": "vault、allowlist、配对队列",
+        "state": "dirty",
+        "owns": [
+          "packages/identity/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [],
+        "bugs": [],
+        "children": [
+          {
+            "id": "N61",
+            "title": "packages/identity/vault.ts",
+            "kind": "work",
+            "purpose": "密钥只放 vault，公开 context 只留指针",
+            "state": "dirty",
+            "owns": [
+              "packages/identity/vault.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [
+              {
+                "id": "R-vault",
+                "text": "密钥不进 map.json / 日志 / README",
+                "state": "success"
+              }
+            ],
+            "bugs": [],
+            "children": []
+          },
+          {
+            "id": "N62",
+            "title": "packages/identity/allowlist.ts",
+            "kind": "work",
+            "purpose": "谁可以连 Gateway",
+            "state": "dirty",
+            "owns": [
+              "packages/identity/allowlist.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": []
+          },
+          {
+            "id": "N63",
+            "title": "packages/identity/pairing-queue.ts",
+            "kind": "work",
+            "purpose": "CLI 与 Control UI 的同一份队列",
+            "state": "dirty",
+            "owns": [
+              "packages/identity/pairing-queue.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "M7",
+        "title": "可观测",
+        "kind": "module",
+        "purpose": "transcripts / metrics / logs",
+        "state": "dirty",
+        "owns": [
+          "packages/obs/"
+        ],
+        "dormant": [],
+        "files": [],
+        "memories": [
+          {
+            "id": "R-obs-clean",
+            "text": "失败留证据，成功清临时文件",
+            "state": "success"
+          }
+        ],
+        "bugs": [],
+        "children": [
+          {
+            "id": "N71",
+            "title": "packages/obs/transcripts.ts",
+            "kind": "work",
+            "purpose": "会话记录落地；不是裁剪预算本身",
+            "state": "dirty",
+            "owns": [
+              "packages/obs/transcripts.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [
+              {
+                "id": "R-retain",
+                "text": "transcript 保留 7 天，裁剪预算在 session.ts",
+                "state": "success"
+              }
+            ],
+            "bugs": [],
+            "children": []
+          },
+          {
+            "id": "N72",
+            "title": "packages/obs/metrics.ts",
+            "kind": "work",
+            "purpose": "tool 延迟与 drain 超时",
+            "state": "dirty",
+            "owns": [
+              "packages/obs/metrics.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [],
+            "children": []
+          },
+          {
+            "id": "N73",
+            "title": "packages/obs/logs.ts",
+            "kind": "work",
+            "purpose": "失败日志脱敏",
+            "state": "dirty",
+            "owns": [
+              "packages/obs/logs.ts"
+            ],
+            "dormant": [],
+            "files": [],
+            "memories": [],
+            "bugs": [
+              {
+                "id": "B-secret-log",
+                "title": "失败日志打印了 vault 原文",
+                "status": "open",
+                "sessions": [],
+                "files": [],
+                "record": ".codex/context/bugs/B-secret-log.md"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "flows": [
+    {
+      "from": "M1",
+      "to": "M4",
+      "label": "渠道入站进 Gateway session"
+    },
+    {
+      "from": "M1",
+      "to": "M5",
+      "label": "工具经沙箱执行"
+    },
+    {
+      "from": "M1",
+      "to": "M3",
+      "label": "远端节点执行"
+    },
+    {
+      "from": "M2",
+      "to": "M1",
+      "label": "控制面连 Gateway WS"
+    },
+    {
+      "from": "M4",
+      "to": "M6",
+      "label": "未知发送者进配对队列"
+    },
+    {
+      "from": "M5",
+      "to": "M6",
+      "label": "插件不得读 vault"
+    },
+    {
+      "from": "M1",
+      "to": "M7",
+      "label": "session 写 transcript"
+    },
+    {
+      "from": "M23",
+      "to": "M1",
+      "label": "隧道同时转 dashboard 与 WS"
+    }
+  ]
+}

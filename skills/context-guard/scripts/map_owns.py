@@ -93,6 +93,30 @@ def lookup(doc: dict, file: str) -> dict | None:
         ties.sort(key=lambda n: (0 if n.get("kind") == "work" else 1, -len(str(n.get("id") or ""))))
         node = ties[0]
         chain = next(c for n, c in walk_nodes(root) if n.get("id") == node.get("id"))
+    def mem_rows(n):
+        return [
+            {
+                "id": m.get("id"),
+                "text": m.get("text"),
+                "state": m.get("state"),
+                "record": m.get("record"),
+            }
+            for m in (n.get("memories") or [])
+            if isinstance(m, dict)
+        ]
+
+    def bug_rows(n):
+        return [
+            {
+                "id": b.get("id"),
+                "title": b.get("title"),
+                "status": b.get("status"),
+                "record": b.get("record"),
+            }
+            for b in (n.get("bugs") or [])
+            if isinstance(b, dict) and b.get("status") != "dormant"
+        ]
+
     return {
         "path": file,
         "node_id": node.get("id"),
@@ -101,17 +125,17 @@ def lookup(doc: dict, file: str) -> dict | None:
         "owns": node.get("owns") or [],
         "conflict": len({n.get("id") for n in ties}) > 1,
         "tie_ids": [n.get("id") for n in ties] if len(ties) > 1 else [],
-        "memories": [
-            {"text": m.get("text"), "state": m.get("state")}
-            for m in (node.get("memories") or [])
-            if isinstance(m, dict)
+        "memories": mem_rows(node),
+        "bugs": bug_rows(node),
+        "ancestors": [
+            {
+                "id": a.get("id"),
+                "title": a.get("title"),
+                "memories": mem_rows(a),
+                "bugs": bug_rows(a),
+            }
+            for a in chain[:-1]
         ],
-        "bugs": [
-            {"id": b.get("id"), "title": b.get("title"), "status": b.get("status")}
-            for b in (node.get("bugs") or [])
-            if isinstance(b, dict) and b.get("status") != "dormant"
-        ],
-        "ancestors": [{"id": a.get("id"), "title": a.get("title")} for a in chain[:-1]],
     }
 
 
@@ -126,6 +150,33 @@ def stamp_owns(node: dict, table: dict) -> None:
         stamp_owns(child, table)
 
 
+def build_owns_index(doc: dict) -> dict:
+    rows = []
+    root = doc.get("root") or doc
+    for node, _ in walk_nodes(root):
+        if node.get("proposal") == "cancelled":
+            continue
+        for owned in node.get("owns") or []:
+            rows.append(
+                {
+                    "path": owned,
+                    "node": node.get("id"),
+                    "kind": node.get("kind"),
+                    "title": node.get("title"),
+                }
+            )
+    return {"owns": rows}
+
+
+def write_owns_index(root: Path) -> Path:
+    dest = root / ".codex" / "context" / "owns-index.json"
+    dest.write_text(
+        json.dumps(build_owns_index(load_map(root)), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return dest
+
+
 def stamp_map(root: Path) -> Path:
     path = root / ".codex" / "context" / "map.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
@@ -137,13 +188,17 @@ def stamp_map(root: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Map path ownership for Context Guard")
-    parser.add_argument("command", choices=["lookup", "stamp"])
+    parser.add_argument("command", choices=["lookup", "stamp", "index"])
     parser.add_argument("--path", default="", help="Repo-relative file to look up")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
     root = (args.root or Path.cwd()).resolve()
     if args.command == "stamp":
         dest = stamp_map(root)
+        print(dest)
+        return 0
+    if args.command == "index":
+        dest = write_owns_index(root)
         print(dest)
         return 0
     if not args.path:

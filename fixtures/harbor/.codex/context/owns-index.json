@@ -1,0 +1,298 @@
+{
+  "owns": [
+    {
+      "path": "apps/gateway/",
+      "node": "M1",
+      "kind": "module",
+      "title": "Gateway 运行时"
+    },
+    {
+      "path": "apps/gateway/session.ts",
+      "node": "M11",
+      "kind": "module",
+      "title": "会话与工具"
+    },
+    {
+      "path": "apps/gateway/tools.ts",
+      "node": "M11",
+      "kind": "module",
+      "title": "会话与工具"
+    },
+    {
+      "path": "apps/gateway/session.ts",
+      "node": "N111",
+      "kind": "work",
+      "title": "apps/gateway/session.ts"
+    },
+    {
+      "path": "apps/gateway/tools.ts",
+      "node": "N112",
+      "kind": "work",
+      "title": "apps/gateway/tools.ts"
+    },
+    {
+      "path": "apps/gateway/auth.ts",
+      "node": "N121",
+      "kind": "work",
+      "title": "apps/gateway/auth.ts"
+    },
+    {
+      "path": "apps/gateway/drain.ts",
+      "node": "N122",
+      "kind": "work",
+      "title": "apps/gateway/drain.ts"
+    },
+    {
+      "path": "apps/gateway/server.ts",
+      "node": "N130",
+      "kind": "work",
+      "title": "apps/gateway/server.ts"
+    },
+    {
+      "path": "apps/control/",
+      "node": "M2",
+      "kind": "module",
+      "title": "控制面"
+    },
+    {
+      "path": "apps/control/cli.ts",
+      "node": "N211",
+      "kind": "work",
+      "title": "apps/control/cli.ts"
+    },
+    {
+      "path": "apps/control/tui.ts",
+      "node": "N212",
+      "kind": "work",
+      "title": "apps/control/tui.ts"
+    },
+    {
+      "path": "apps/control/dashboard.ts",
+      "node": "N221",
+      "kind": "work",
+      "title": "apps/control/dashboard.ts"
+    },
+    {
+      "path": "apps/control/webchat.ts",
+      "node": "N222",
+      "kind": "work",
+      "title": "apps/control/webchat.ts"
+    },
+    {
+      "path": "apps/control/canvas.ts",
+      "node": "N223",
+      "kind": "work",
+      "title": "apps/control/canvas.ts"
+    },
+    {
+      "path": "apps/control/tunnel.ts",
+      "node": "N231",
+      "kind": "work",
+      "title": "apps/control/tunnel.ts"
+    },
+    {
+      "path": "apps/nodes/",
+      "node": "M3",
+      "kind": "module",
+      "title": "节点"
+    },
+    {
+      "path": "apps/nodes/linux/",
+      "node": "M31",
+      "kind": "module",
+      "title": "Linux 节点"
+    },
+    {
+      "path": "apps/nodes/linux/connect.ts",
+      "node": "N311",
+      "kind": "work",
+      "title": "apps/nodes/linux/connect.ts"
+    },
+    {
+      "path": "apps/nodes/linux/exec.ts",
+      "node": "N312",
+      "kind": "work",
+      "title": "apps/nodes/linux/exec.ts"
+    },
+    {
+      "path": "apps/nodes/linux/daemon.ts",
+      "node": "N313",
+      "kind": "work",
+      "title": "apps/nodes/linux/daemon.ts"
+    },
+    {
+      "path": "apps/nodes/android/",
+      "node": "M32",
+      "kind": "module",
+      "title": "Android 节点"
+    },
+    {
+      "path": "apps/nodes/android/caps.ts",
+      "node": "N321",
+      "kind": "work",
+      "title": "apps/nodes/android/caps.ts"
+    },
+    {
+      "path": "apps/nodes/android/policy.ts",
+      "node": "N322",
+      "kind": "work",
+      "title": "apps/nodes/android/policy.ts"
+    },
+    {
+      "path": "apps/nodes/macos/connect.ts",
+      "node": "N331",
+      "kind": "work",
+      "title": "apps/nodes/macos/connect.ts"
+    },
+    {
+      "path": "apps/channels/",
+      "node": "M4",
+      "kind": "module",
+      "title": "渠道"
+    },
+    {
+      "path": "apps/channels/slack.ts",
+      "node": "N411",
+      "kind": "work",
+      "title": "apps/channels/slack.ts"
+    },
+    {
+      "path": "apps/channels/telegram.ts",
+      "node": "N412",
+      "kind": "work",
+      "title": "apps/channels/telegram.ts"
+    },
+    {
+      "path": "apps/channels/webhook.ts",
+      "node": "N413",
+      "kind": "work",
+      "title": "apps/channels/webhook.ts"
+    },
+    {
+      "path": "apps/channels/pairing.ts",
+      "node": "N421",
+      "kind": "work",
+      "title": "apps/channels/pairing.ts"
+    },
+    {
+      "path": "packages/plugins/",
+      "node": "M5",
+      "kind": "module",
+      "title": "插件"
+    },
+    {
+      "path": "packages/plugins/registry.ts",
+      "node": "N511",
+      "kind": "work",
+      "title": "packages/plugins/registry.ts"
+    },
+    {
+      "path": "packages/plugins/sandbox.ts",
+      "node": "N512",
+      "kind": "work",
+      "title": "packages/plugins/sandbox.ts"
+    },
+    {
+      "path": "packages/plugins/permissions.ts",
+      "node": "N513",
+      "kind": "work",
+      "title": "packages/plugins/permissions.ts"
+    },
+    {
+      "path": "packages/plugins/slots/weather.ts",
+      "node": "N5-weather",
+      "kind": "work",
+      "title": "packages/plugins/slots/weather.ts"
+    },
+    {
+      "path": "packages/plugins/slots/browser.ts",
+      "node": "N5-browser",
+      "kind": "work",
+      "title": "packages/plugins/slots/browser.ts"
+    },
+    {
+      "path": "packages/plugins/slots/cron.ts",
+      "node": "N5-cron",
+      "kind": "work",
+      "title": "packages/plugins/slots/cron.ts"
+    },
+    {
+      "path": "packages/plugins/slots/memory.ts",
+      "node": "N5-memory",
+      "kind": "work",
+      "title": "packages/plugins/slots/memory.ts"
+    },
+    {
+      "path": "packages/plugins/slots/shell.ts",
+      "node": "N5-shell",
+      "kind": "work",
+      "title": "packages/plugins/slots/shell.ts"
+    },
+    {
+      "path": "packages/plugins/slots/cdp.ts",
+      "node": "N5-cdp",
+      "kind": "work",
+      "title": "packages/plugins/slots/cdp.ts"
+    },
+    {
+      "path": "packages/plugins/slots/tts.ts",
+      "node": "N5-tts",
+      "kind": "work",
+      "title": "packages/plugins/slots/tts.ts"
+    },
+    {
+      "path": "packages/plugins/slots/image.ts",
+      "node": "N5-image",
+      "kind": "work",
+      "title": "packages/plugins/slots/image.ts"
+    },
+    {
+      "path": "packages/identity/",
+      "node": "M6",
+      "kind": "module",
+      "title": "身份"
+    },
+    {
+      "path": "packages/identity/vault.ts",
+      "node": "N61",
+      "kind": "work",
+      "title": "packages/identity/vault.ts"
+    },
+    {
+      "path": "packages/identity/allowlist.ts",
+      "node": "N62",
+      "kind": "work",
+      "title": "packages/identity/allowlist.ts"
+    },
+    {
+      "path": "packages/identity/pairing-queue.ts",
+      "node": "N63",
+      "kind": "work",
+      "title": "packages/identity/pairing-queue.ts"
+    },
+    {
+      "path": "packages/obs/",
+      "node": "M7",
+      "kind": "module",
+      "title": "可观测"
+    },
+    {
+      "path": "packages/obs/transcripts.ts",
+      "node": "N71",
+      "kind": "work",
+      "title": "packages/obs/transcripts.ts"
+    },
+    {
+      "path": "packages/obs/metrics.ts",
+      "node": "N72",
+      "kind": "work",
+      "title": "packages/obs/metrics.ts"
+    },
+    {
+      "path": "packages/obs/logs.ts",
+      "node": "N73",
+      "kind": "work",
+      "title": "packages/obs/logs.ts"
+    }
+  ]
+}

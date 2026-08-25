@@ -1,0 +1,141 @@
+[
+  {
+    "id": "edit-session",
+    "kind": "edit-file",
+    "path": "apps/gateway/session.ts",
+    "must_mem": [
+      "R-clip",
+      "R-gw-only"
+    ],
+    "must_bug": [
+      "B-clip"
+    ],
+    "note": "文件编辑：要拿到本节点裁剪规则和祖先「会话只由 Gateway 打开」"
+  },
+  {
+    "id": "edit-auth",
+    "kind": "edit-file",
+    "path": "apps/gateway/auth.ts",
+    "must_mem": [
+      "R-auth-none"
+    ],
+    "must_bug": [
+      "B-auth-none"
+    ],
+    "note": "精确 owns 应打到 N121，不要停在 apps/gateway/ 目录主人 M1"
+  },
+  {
+    "id": "edit-webchat",
+    "kind": "edit-file",
+    "path": "apps/control/webchat.ts",
+    "must_mem": [
+      "R-tunnel"
+    ],
+    "must_bug": [
+      "B-tunnel"
+    ],
+    "note": "目录主人是 apps/control/，文件主人应赢"
+  },
+  {
+    "id": "edit-linux-connect",
+    "kind": "edit-file",
+    "path": "apps/nodes/linux/connect.ts",
+    "must_mem": [],
+    "must_bug": [],
+    "must_node": "N311",
+    "note": "三层目录 owns：nodes/ vs linux/ vs 文件"
+  },
+  {
+    "id": "edit-canvas",
+    "kind": "edit-file",
+    "path": "apps/control/canvas.ts",
+    "must_mem": [
+      "R-canvas"
+    ],
+    "must_bug": [],
+    "forbid_mem": [
+      "R-card"
+    ],
+    "note": "inbox 里的 renderCard 没有 owns；改 canvas.ts 不应自动灌入子函数记忆"
+  },
+  {
+    "id": "edit-shell-slot",
+    "kind": "edit-file",
+    "path": "packages/plugins/slots/shell.ts",
+    "must_mem": [
+      "R-shell-untrusted"
+    ],
+    "must_bug": [],
+    "note": "槽文件有自己的卡；沙箱坏例在 N512，改槽不应默认打开 B-escape"
+  },
+  {
+    "id": "edit-sandbox",
+    "kind": "edit-file",
+    "path": "packages/plugins/sandbox.ts",
+    "must_mem": [
+      "R-sandbox"
+    ],
+    "must_bug": [
+      "B-escape"
+    ],
+    "note": "真正改沙箱时才加载逃逸坏例"
+  },
+  {
+    "id": "edit-handbook",
+    "kind": "edit-file",
+    "path": "docs/handbook.md",
+    "must_mem": [],
+    "must_bug": [],
+    "expect_miss": true,
+    "note": "没有 owns 的文档：查找应失败，而不是退回根上把整仓记忆灌进来"
+  },
+  {
+    "id": "edit-drain",
+    "kind": "edit-file",
+    "path": "apps/gateway/drain.ts",
+    "must_mem": [
+      "R-drain-order"
+    ],
+    "must_bug": [
+      "B-drain-race"
+    ],
+    "note": "长记忆：切片加载只要这一段，整图加载会把所有节点散文一起读进来"
+  },
+  {
+    "id": "symptom-none",
+    "kind": "symptom",
+    "needle": "auth.mode=none",
+    "must_mem": [
+      "R-auth-none"
+    ],
+    "must_bug": [
+      "B-auth-none"
+    ],
+    "note": "按现象搜：owns 帮不上，要能扫坏例正文/短记忆"
+  },
+  {
+    "id": "symptom-tunnel",
+    "kind": "symptom",
+    "needle": "同隧道",
+    "must_mem": [
+      "R-tunnel"
+    ],
+    "must_bug": [
+      "B-tunnel"
+    ],
+    "note": "中文现象词应打到 webchat 卡，而不是整份登记册"
+  },
+  {
+    "id": "symptom-pairing",
+    "kind": "symptom",
+    "needle": "配对队列",
+    "must_bug": [
+      "B-dm",
+      "B-pair-cli"
+    ],
+    "must_mem": [
+      "R-dm"
+    ],
+    "note": "一词多例：应拿到两条坏例，而不是整个渠道模块的入站适配器"
+  }
+]

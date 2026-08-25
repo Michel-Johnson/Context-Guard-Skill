@@ -1,3 +1,5 @@
 .codex/context/private/
 .codex/context/**/*.local.json
 .codex/context/**/secrets*.json
+fixtures/harbor-eval/layouts/
+**/__pycache__/
