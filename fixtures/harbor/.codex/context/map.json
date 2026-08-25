@@ -1208,6 +1208,16 @@
       "from": "M23",
       "to": "M1",
       "label": "隧道同时转 dashboard 与 WS"
+    },
+    {
+      "from": "N231",
+      "to": "N222",
+      "label": "隧道把 WS 交给 WebChat"
+    },
+    {
+      "from": "N61",
+      "to": "N512",
+      "label": "vault 被沙箱挡住"
     }
   ]
 }

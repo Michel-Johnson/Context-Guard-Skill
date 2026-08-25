@@ -607,6 +607,9 @@ FLOWS = [
     {"from": "M5", "to": "M6", "label": "插件不得读 vault"},
     {"from": "M1", "to": "M7", "label": "session 写 transcript"},
     {"from": "M23", "to": "M1", "label": "隧道同时转 dashboard 与 WS"},
+    # 箭头指向挂坏例的那张卡：只许顺着箭头离开时会漏；当往返则能找到。
+    {"from": "N231", "to": "N222", "label": "隧道把 WS 交给 WebChat"},
+    {"from": "N61", "to": "N512", "label": "vault 被沙箱挡住"},
 ]
 
 
@@ -709,6 +712,40 @@ QUERIES = [
         "must_bug": ["B-dm", "B-pair-cli"],
         "must_mem": ["R-dm"],
         "note": "一词多例：应拿到两条坏例，而不是整个渠道模块的入站适配器",
+    },
+]
+
+
+GRAPH_QUERIES = [
+    {
+        "id": "fix-tunnel",
+        "kind": "fix-bug",
+        "path": "apps/control/webchat.ts",
+        "must_mem": ["R-tunnel", "R-tunnel-impl"],
+        "must_bug": ["B-tunnel"],
+        "note": "坏例挂在 WebChat 上，漏转端口要报错写在隧道那张卡；箭头是隧道→WebChat",
+    },
+    {
+        "id": "fix-sandbox",
+        "kind": "fix-bug",
+        "path": "packages/plugins/sandbox.ts",
+        "must_mem": ["R-sandbox", "R-vault"],
+        "must_bug": ["B-escape"],
+        "note": "修沙箱逃逸需要身份卡上「密钥不进日志」；箭头是 vault→沙箱",
+    },
+    {
+        "id": "fix-session",
+        "kind": "fix-bug",
+        "path": "apps/gateway/session.ts",
+        "must_mem": ["R-clip", "R-gw-only"],
+        "must_bug": ["B-clip"],
+        "forbid_mem": [
+            "R-weather-untrusted",
+            "R-shell-untrusted",
+            "R-vault",
+            "R-untrusted-in",
+        ],
+        "note": "这条链上就够；若把 Gateway 每一层邻居都打开，会灌进插件和渠道",
     },
 ]
 
@@ -1246,6 +1283,85 @@ STRATEGIES = [
 ]
 
 
+def find_node(doc: dict, nid: str):
+    root = doc.get("root") or doc
+    for n, chain in walk_nodes(root):
+        if n.get("id") == nid:
+            return n, chain
+    return None, []
+
+
+def flow_partners(doc: dict, nid: str, mode: str) -> set[str]:
+    found: set[str] = set()
+    for f in doc.get("flows") or []:
+        a, b = f.get("from"), f.get("to")
+        if mode == "out" and a == nid:
+            found.add(b)
+        elif mode == "in" and b == nid:
+            found.add(a)
+        elif mode == "undirected":
+            if a == nid:
+                found.add(b)
+            if b == nid:
+                found.add(a)
+    found.discard(nid)
+    return {x for x in found if x}
+
+
+def emit_node_only(log: ReadLog, n: dict, ctx: Path) -> None:
+    log.add_payload(json.dumps(slim_node(n), ensure_ascii=False), name=str(n.get("id")))
+    for m in n.get("memories") or []:
+        rec = m.get("record")
+        if rec:
+            f = ctx / "memories" / Path(rec).name
+            if f.exists():
+                log.read_payload(f)
+    for b in n.get("bugs") or []:
+        f = ctx / "bugs" / f"{b.get('id')}.md"
+        if f.exists():
+            log.read_payload(f)
+
+
+def strategy_graph(ctx: Path, q: dict, *, hop: str) -> ReadLog:
+    """hop: none | out | undirected | ancestor-undirected"""
+    log = ReadLog()
+    doc = json.loads(log.read_index(ctx / "map.json"))
+    if not q.get("path"):
+        return log
+    hit = lookup(doc, q["path"])
+    if not hit:
+        return log
+    emit_hit(log, hit, ctx)
+    if hop == "none":
+        return log
+    seeds = [hit["node_id"]]
+    if hop == "ancestor-undirected":
+        seeds = [hit["node_id"]] + [a["id"] for a in (hit.get("ancestors") or [])]
+        mode = "undirected"
+    elif hop == "out":
+        mode = "out"
+    else:
+        mode = "undirected"
+    seen = {hit["node_id"], *(a["id"] for a in (hit.get("ancestors") or []))}
+    for seed in seeds:
+        for pid in flow_partners(doc, seed, mode):
+            if pid in seen:
+                continue
+            seen.add(pid)
+            n, _ = find_node(doc, pid)
+            if n:
+                emit_node_only(log, n, ctx)
+    return log
+
+
+GRAPH_STRATEGIES = [
+    ("只读这条链", "none"),
+    ("只顺着箭头离开这张卡", "out"),
+    ("这张卡的往返一跳", "undirected"),
+    ("链上每一层都打开邻居", "ancestor-undirected"),
+]
+
+
 def score(q: dict, log: ReadLog) -> dict:
     text = log.blob()
     mems, bugs = parse_ids(text)
@@ -1410,12 +1526,90 @@ def cmd_eval() -> None:
     print(report)
 
 
+def run_graph_eval() -> dict:
+    ctx = layout_ctx("B-stub-files")
+    rows = []
+    for title, hop in GRAPH_STRATEGIES:
+        for q in GRAPH_QUERIES:
+            log = strategy_graph(ctx, q, hop=hop)
+            s = score(q, log)
+            s["strategy"] = title
+            s["kind"] = q["kind"]
+            rows.append(s)
+    return {"rows": rows}
+
+
+def summarize_graph(result: dict) -> str:
+    rows = result["rows"]
+    lines = [
+        "# 修 bug 时顺着哪条线走",
+        "",
+        "还是 Harbor 假仓。三种修 bug 的情况，四种读法。",
+        "「该拿到」= 这件事真正需要的规矩是否读到；「多读了」= 读进了无关模块。",
+        "",
+        "## 三种情况",
+        "",
+    ]
+    for q in GRAPH_QUERIES:
+        lines.append(f"- `{q['id']}`：{q['note']}")
+    lines += ["", "## 结果", ""]
+    by_q: dict = {}
+    for r in rows:
+        by_q.setdefault(r["query"], []).append(r)
+    for qid, items in by_q.items():
+        q = next(x for x in GRAPH_QUERIES if x["id"] == qid)
+        lines.append(f"### {qid}")
+        lines.append(q["note"])
+        lines.append("")
+        lines.append("| 读法 | 该拿的记忆 | 该拿的坏例 | 多读或灌进来的 |")
+        lines.append("|---|---:|---:|---|")
+        for r in items:
+            dumped = r["extra_mem"] + r["leak_inbox"]
+            lines.append(
+                "| {strategy} | {mem_recall:.0%} | {bug_recall:.0%} | {extra} |".format(
+                    strategy=r["strategy"],
+                    mem_recall=r["mem_recall"],
+                    bug_recall=r["bug_recall"],
+                    extra=", ".join(dumped[:8]) or "没有",
+                )
+            )
+        lines.append("")
+    lines += [
+        "## 人话",
+        "",
+        "- 只读上下级链：修 WebChat 隧道问题、修沙箱逃逸，会漏掉隔壁卡上的规矩。",
+        "- 只许顺着箭头离开这张卡：箭头若指向这张卡，同样漏。给人看的「谁给谁」不能当成 Agent 只许往一个方向走。",
+        "- 这张卡能往返找一跳邻居：上面两题能拿到，多读很少。",
+        "- 把链上每一层的邻居都打开：修会话裁剪这种本链就够的事，会灌进插件、渠道、身份等无关规矩。",
+        "",
+        "和讨论稿一致：关系线可以保留「谁给谁」这句话；Agent 加载时当能往返的邻居，而且先只打开**这张卡**的一跳，不要把祖先每一层都铺开。真正「牵到别的模块」以后可以再走下一跳，这次实验还没做按需第二跳。",
+        "",
+        "```bash",
+        "python3 scripts/harbor_recall.py project",
+        "python3 scripts/harbor_recall.py eval-graph",
+        "```",
+        "",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def cmd_eval_graph() -> None:
+    result = run_graph_eval()
+    write_json(EVAL / "graph-last-run.json", result)
+    report = summarize_graph(result)
+    write_text(EVAL / "GRAPH.md", report)
+    print(report)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("command", choices=["project", "eval"])
+    p.add_argument("command", choices=["project", "eval", "eval-graph"])
     args = p.parse_args()
     if args.command == "project":
         cmd_project()
+        return 0
+    if args.command == "eval-graph":
+        cmd_eval_graph()
         return 0
     cmd_eval()
     return 0

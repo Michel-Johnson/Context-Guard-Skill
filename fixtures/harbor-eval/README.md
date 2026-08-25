@@ -8,8 +8,9 @@ python3 scripts/harbor_recall.py eval
 ```
 
 - 假仓源码：`fixtures/harbor/`（活 context 用 B：map 桩 + `bugs/*.md`）
-- 对照布局：`fixtures/harbor-eval/layouts/`
+- 对照布局：运行 `project` 后写到 `fixtures/harbor-eval/layouts/`（已 gitignore）
 - 题目：`queries.json`
-- 最近一次表：`REPORT.md`
+- 存法对照：`REPORT.md`
+- 修 bug 顺着哪条线走：`python3 scripts/harbor_recall.py eval-graph` → `GRAPH.md`
 
 结论写在仓库 `.codex/context/records.md` 的「Harbor 实验」一节。
