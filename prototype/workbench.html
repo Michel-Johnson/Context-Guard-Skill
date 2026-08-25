@@ -3133,7 +3133,7 @@ let view = {x:36, y:24, k:1};
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
 }
-/* 让当前视图贴在顶栏下面：顶栏变高时画布和检查器一起让位，不要把标题盖成灰色。 */
+/* 导图在顶栏和检查器让出的区域内居中；顶栏变高时用 --chrome-top 让位，不要把标题盖住。 */
 function chromeTop(){
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--chrome-top");
   const n = parseFloat(raw);
@@ -3152,8 +3152,8 @@ function fitView(){
   const availH = window.innerHeight - chromeTop() - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
-  view.x = 36;
-  view.y = 24;
+  view.x = 36 + Math.max(0, (availW - extents.w*view.k)/2);
+  view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
 window.addEventListener("resize", ()=>{ syncChrome(); fitView(); });
