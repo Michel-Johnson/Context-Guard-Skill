@@ -1,6 +1,25 @@
 # Context Guard 记录文件怎么存、怎么挂到 map
 
-这是给工作台主线用的落盘方案。`map.json` 是唯一索引；Context Guard 自己记下的东西按「短的进节点、胖的进文件」拆。人在 HTML 里只看标题；Agent 按节点去打开正文。
+人改图仍写 `map.json`。Agent **不要**把整份 map 读进上下文。磁盘上要让它能跳着找：
+
+```
+.codex/context/
+  FIND.md            怎么找（给人/Agent 看的入口）
+  map.json           工作台的活地图（树、关系、短记忆、坏例标题）
+  owns-index.json    源码路径 → 卡号
+  cards/N21.md       一张卡一份：上级、整条链、负责的文件、邻居、记忆、坏例链接
+  bugs/B20.md        一条坏例一份正文
+  user-messages.md   全局人话
+  architecture.md    首次分析长文
+```
+
+三步就能落到该读的位置：
+
+1. **改某个文件** → `owns-index.json` 里的卡号 → 打开 `cards/那张卡.md`。上面几层的规矩看卡片里的 `chain`，按需再打开。
+2. **修某个坏例** → `bugs/B20.md`（写了挂在哪）→ 打开那张 `cards/`。链上往上走；牵到别的模块看卡片上的 `related`（能往返，不必分谁指向谁）。
+3. **人改过图** → `python3 scripts/map_owns.py cards` 重新写出 `cards/` 和 `owns-index.json`。也可以 `where --path …` / `where --bug B20` 问该打开哪个文件。
+
+`cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。
 
 旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当这份产品的真相**。可执行 always-run 守卫以后再说。
 
