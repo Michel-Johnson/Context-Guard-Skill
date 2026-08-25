@@ -51,7 +51,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - `unpackInbox`：进入开工节点后再展开文件内部
 
 ### 项目 Context 目录
-- `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files）。人改和工作台写回都落这里。不要另存一份平行的记忆清单。
+- `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files/`owns`）。`owns` 是源码归属（仓库相对路径，目录以 `/` 结尾）；`files` 只是附件。人改和工作台写回都落这里。不要另存一份平行的记忆清单。Agent 改文件时用 `scripts/map_owns.py lookup --path` 落到节点，只读该节点和已授权祖先的记忆。
 - `architecture.md` — 首次分析笔记，不是活树
 - `index.md` / `preferences.json`（含 `map_bootstrap`）/ `user-messages.md` / `private/`
 - 附件二进制在 `docs/shots/`，context 里只记相对路径

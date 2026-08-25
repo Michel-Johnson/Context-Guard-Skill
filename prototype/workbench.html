@@ -403,6 +403,14 @@ details.fold .mem-list{margin-top:6px}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
+.owns-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.owns-lab{font-size:11.5px;font-weight:800;color:var(--muted);flex:0 0 auto}
+.own-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;
+  border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px 8px;font-size:11px;
+  font-family:var(--font-note);color:var(--ink)}
+.own-chip .own-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.own-chip.is-conflict{border-color:var(--red);color:var(--red)}
+.owns-row .file-path{flex:1;min-width:160px;min-height:32px;padding:6px 8px;font-size:12px}
 </style>
 </head>
 <body>
@@ -515,9 +523,18 @@ function idTaken(id){
   scan(data);
   return found;
 }
+function inferOwnPath(title){
+  const t = String(title||"").trim();
+  const m = t.match(/((?:src|apps|packages|scripts|prototype|extensions|skills|\.codex|ui)\/[^\s，。；、]+)/);
+  if(!m) return "";
+  let p = m[1].replace(/[.,;:]+$/,"");
+  if(!/\.[A-Za-z0-9]+$/.test(p) && !p.endsWith("/")) p += "/";
+  return p;
+}
 function U(id, title, purpose, children, extra){
   extra = extra || {};
   const kind = extra.kind || (String(id).charAt(0)==="M" ? "module" : "work");
+  const inferred = inferOwnPath(title);
   const node = {
     id, title, kind, purpose: purpose || "",
     state: extra.state || "dirty",
@@ -525,7 +542,8 @@ function U(id, title, purpose, children, extra){
     bugs: extra.bugs || [],
     dormant: extra.dormant || [],
     children: children || [],
-    files: extra.files || []
+    files: extra.files || [],
+    owns: extra.owns ? extra.owns.slice() : (inferred ? [inferred] : [])
   };
   if(extra.origin) node.origin = extra.origin;
   if(extra.proposal) node.proposal = extra.proposal;
@@ -968,6 +986,31 @@ const CONTEXT_GUARD_MAP = {
   ]
 };
 
+const CG_OWNS = {
+  N11:["SKILL.md"],
+  N21:["prototype/workbench.html"],
+  M21:["prototype/"],
+  N31:[".codex/context/index.md"],
+  N32:[".codex/context/preferences.json"],
+  N33:[".codex/context/architecture.md"],
+  N34:[".codex/context/user-messages.md"],
+  N35:[".codex/context/private/"],
+  N36:[".codex/context/map.json"],
+  M3:[".codex/context/"],
+  N41:["scripts/context_guard.py","skills/context-guard/scripts/context_guard.py"],
+  N43:["scripts/context_guard_hook.py","skills/context-guard/scripts/context_guard_hook.py"],
+  M4:["scripts/","skills/context-guard/"],
+  N51:["README.md"]
+};
+function stampOwns(n, table){
+  if(!n) return;
+  if(table[n.id]) n.owns = table[n.id].slice();
+  else if(!Array.isArray(n.owns)) n.owns = [];
+  (n.children||[]).forEach(c=>stampOwns(c, table));
+  (n._inbox||[]).forEach(c=>stampOwns(c, table));
+}
+stampOwns(CONTEXT_GUARD_MAP, CG_OWNS);
+
 const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent）
 
 分析对象：openclaw/openclaw。不是目录树，也不是「CLI / TUI / Control UI」三句口号。
@@ -1096,7 +1139,10 @@ let composeParent = null;
 function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
 let attachDraft = "";
+let ownEditingId = null;
+let ownDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
+function clearOwnEdit(){ ownEditingId = null; ownDraft = ""; }
 let pendingDeleteId = null;
 let bugPathMode = false;
 let bugFocus = null;
@@ -1168,6 +1214,66 @@ function fileList(owner){
   if(!Array.isArray(owner.files)) owner.files = [];
   owner.files = owner.files.map(filePathOf).filter(Boolean).map(path=>({path}));
   return owner.files;
+}
+function normRepoPath(p){
+  return String(p||"").replace(/\\/g,"/").replace(/^\.\//,"").replace(/^\/+/,"").trim();
+}
+function ownsList(n){
+  if(!n) return [];
+  if(!Array.isArray(n.owns)) n.owns = [];
+  n.owns = n.owns.map(normRepoPath).filter(Boolean);
+  const seen = new Set();
+  n.owns = n.owns.filter(p=>{ if(seen.has(p)) return false; seen.add(p); return true; });
+  return n.owns;
+}
+function pathOwnScore(owned, file){
+  const o = normRepoPath(owned), f = normRepoPath(file);
+  if(!o || !f) return 0;
+  if(f===o) return 10000 + o.length;
+  const dir = o.endsWith("/") ? o : o+"/";
+  if(f.startsWith(dir)) return 1000 + dir.length;
+  return 0;
+}
+function lookupOwns(file, tree){
+  const f = normRepoPath(file);
+  let best=null, score=0, ties=[];
+  function visit(n){
+    if(!n || isCancelled(n)) return;
+    ownsList(n).forEach(o=>{
+      const s = pathOwnScore(o, f);
+      if(!s) return;
+      if(s>score){ score=s; best=n; ties=[n]; }
+      else if(s===score && best && best.id!==n.id){ ties.push(n); }
+    });
+    (n.children||[]).forEach(visit);
+    (n._inbox||[]).forEach(visit);
+  }
+  visit(tree || data);
+  if(ties.length>1){
+    ties.sort((a,b)=>{
+      const dw = (a.kind==="work")-(b.kind==="work");
+      if(dw) return dw;
+      return String(b.id).length-String(a.id).length;
+    });
+    best = ties[0];
+  }
+  return best ? {node:best, score, conflict:ties.length>1, ties:ties.map(n=>n.id)} : null;
+}
+function ownConflictsFor(n){
+  const paths = ownsList(n);
+  const hit = [];
+  paths.forEach(p=>{
+    const found = lookupOwns(p);
+    if(found && found.conflict) hit.push(p);
+  });
+  return hit;
+}
+function normalizeTree(n){
+  if(!n) return;
+  ownsList(n);
+  fileList(n);
+  (n.children||[]).forEach(normalizeTree);
+  (n._inbox||[]).forEach(normalizeTree);
 }
 function isImagePath(p){
   return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(p||"");
@@ -1440,6 +1546,58 @@ function attachHtml(kind, key, owner, readonly){
        </span>`
     : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="附带文件或图片">附</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">连接仓库</button>` : ""}`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
+}
+function ownsHtml(node, readonly){
+  const paths = ownsList(node);
+  const bad = readonly ? [] : ownConflictsFor(node);
+  const chips = paths.map((p,i)=>{
+    const clash = bad.indexOf(p)>=0 ? " is-conflict" : "";
+    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-own" data-i="${i}" title="移除">×</button>`;
+    return `<span class="own-chip${clash}" title="${escAttr(p)}"><span class="own-path">${esc(p)}</span>${rm}</span>`;
+  }).join("");
+  if(readonly) return paths.length ? `<div class="owns-row"><span class="owns-lab">负责</span>${chips}</div>` : "";
+  const add = ownEditingId===node.id
+    ? `<input class="file-path" data-own-input value="${escAttr(ownDraft)}" placeholder="仓库相对路径，目录以 / 结尾" autocomplete="off">
+       <button type="button" class="quiet" data-act="save-own">添加</button>
+       <button type="button" class="quiet" data-act="cancel-own">取消</button>`
+    : `<button type="button" class="clip-btn quiet" data-act="add-own" title="负责的仓库路径">+</button>`;
+  return `<div class="owns-row"><span class="owns-lab">负责</span>${chips}${add}</div>`;
+}
+function addOwnPath(node, path){
+  const p = normRepoPath(path);
+  if(!p || !node) return false;
+  const list = ownsList(node);
+  if(list.indexOf(p)>=0) return true;
+  list.push(p);
+  return true;
+}
+function bindOwnUi(el, node){
+  const save = ()=>{
+    const box = el.querySelector("[data-own-input]");
+    const path = box ? box.value : ownDraft;
+    if(addOwnPath(node, path)){ clearOwnEdit(); renderAll(); }
+  };
+  const addBtn = el.querySelector('[data-act="add-own"]');
+  if(addBtn) addBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); ownEditingId = node.id; ownDraft = ""; renderAll(); };
+  const saveBtn = el.querySelector('[data-act="save-own"]');
+  if(saveBtn) saveBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); save(); };
+  const cancelBtn = el.querySelector('[data-act="cancel-own"]');
+  if(cancelBtn) cancelBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); clearOwnEdit(); renderAll(); };
+  el.querySelectorAll('[data-act="rm-own"]').forEach(b=>{
+    b.onclick = e=>{
+      e.preventDefault(); e.stopPropagation();
+      ownsList(node).splice(+b.dataset.i, 1);
+      renderAll();
+    };
+  });
+  const inp = el.querySelector("[data-own-input]");
+  if(inp){
+    inp.focus();
+    inp.addEventListener("keydown", e=>{
+      if(e.key==="Enter"){ e.preventDefault(); save(); }
+      if(e.key==="Escape"){ e.preventDefault(); clearOwnEdit(); renderAll(); }
+    });
+  }
 }
 function bindFileUi(el, node){
   const saveFrom = host=>{
@@ -1722,10 +1880,12 @@ function adoptTree(tree){
   data.bugs = src.bugs||[];
   data.dormant = src.dormant||[];
   data.files = src.files||[];
+  data.owns = src.owns||[];
   data.children = src.children||[];
   data.flows = src.flows||[];
   promoteFatWork(data);
   uniquifyIds(data);
+  normalizeTree(data);
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -1798,7 +1958,7 @@ function closeOverlay(){
 }
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
-  adoptTree({...next, memories:[], bugs:[], dormant:[], files:[], children:[]});
+  adoptTree({...next, memories:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
   sessionAuth.clear();
   sessionAuth.add("T0");
   selectedId = "T0";
@@ -1844,6 +2004,7 @@ function proposedTree(r){
     bugs: next.bugs||[],
     dormant: next.dormant||[],
     files: next.files||[],
+    owns: next.owns||[],
     memories: next.memories||[],
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
@@ -2795,7 +2956,7 @@ function commitChild(node, title){
   const kind = composingKind==="module" ? "module" : "work";
   clearCompose();
   const child = {id:nextNodeId(), title:t, kind, origin:"human", state:"dirty",
-    purpose:"", memories:[], bugs:[], dormant:[], files:[], children:[]};
+    purpose:"", memories:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
   if(!Array.isArray(parent.children)) parent.children = [];
   parent.children.push(child);
   sessionAuth.add(child.id);
@@ -2889,6 +3050,7 @@ function renderDetail(){
         <span class="state-chip proposed-chip">待批</span>
       </h2>
       ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
+      ${ownsList(node).length? ownsHtml(node, true):""}
       <div class="actions">
         <button data-act="accept" class="primary">加入</button>
         <button data-act="cancel">隐藏</button>
@@ -2964,6 +3126,7 @@ function renderDetail(){
         <button type="button" data-act="compose-ok" class="primary">添加</button>
         <button type="button" data-act="compose-cancel" class="quiet">取消</button>
       </div>`:""}
+    ${ownsHtml(node, false)}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
       <summary>${uiLabels.memory} ${node.memories.length||""}
@@ -3099,6 +3262,7 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
+  bindOwnUi(el, node);
   hydrateThumbs(el);
   el.addEventListener("paste", e=>{
     const memEd = e.target.closest('[data-ed="mem"]');

@@ -299,7 +299,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              "SKILL.md"
+            ]
           },
           {
             "id": "N12",
@@ -375,7 +378,9 @@
             "title": "原生 prompt 会打断看图",
             "desc": "检查器编辑和建图确认必须留在页面里",
             "status": "open",
-            "sessions": ["S-0812"],
+            "sessions": [
+              "S-0812"
+            ],
             "files": [
               {
                 "path": "workbench-global.png"
@@ -453,13 +458,19 @@
                     "children": [],
                     "files": []
                   }
+                ],
+                "owns": [
+                  "prototype/workbench.html"
                 ]
               }
             ],
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              "prototype/"
+            ]
           },
           {
             "id": "M22",
@@ -682,7 +693,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/index.md"
+            ]
           },
           {
             "id": "N32",
@@ -697,7 +711,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/preferences.json"
+            ]
           },
           {
             "id": "N33",
@@ -712,7 +729,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/architecture.md"
+            ]
           },
           {
             "id": "N36",
@@ -727,7 +747,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/map.json"
+            ]
           },
           {
             "id": "N34",
@@ -742,7 +765,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/user-messages.md"
+            ]
           },
           {
             "id": "N35",
@@ -757,13 +783,19 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              ".codex/context/private/"
+            ]
           }
         ],
         "files": [],
         "proposal": "proposed",
         "isNew": true,
-        "origin": "agent"
+        "origin": "agent",
+        "owns": [
+          ".codex/context/"
+        ]
       },
       {
         "id": "M4",
@@ -793,7 +825,11 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              "scripts/context_guard.py",
+              "skills/context-guard/scripts/context_guard.py"
+            ]
           },
           {
             "id": "N42",
@@ -823,7 +859,11 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              "scripts/context_guard_hook.py",
+              "skills/context-guard/scripts/context_guard_hook.py"
+            ]
           },
           {
             "id": "N44",
@@ -844,7 +884,11 @@
         "files": [],
         "proposal": "proposed",
         "isNew": true,
-        "origin": "agent"
+        "origin": "agent",
+        "owns": [
+          "scripts/",
+          "skills/context-guard/"
+        ]
       },
       {
         "id": "M5",
@@ -874,7 +918,10 @@
             "files": [],
             "proposal": "proposed",
             "isNew": true,
-            "origin": "agent"
+            "origin": "agent",
+            "owns": [
+              "README.md"
+            ]
           },
           {
             "id": "N52",
