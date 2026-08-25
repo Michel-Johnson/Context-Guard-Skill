@@ -11,7 +11,7 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Preserves user wording**: stores short user instructions, constraints, preferences, route hints, and bad-case reports in `user-messages.md`.
 - **Keeps secrets local-only**: redacts credentials from public context and stores durable secrets only under `.codex/context/private/`.
 - **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
-- **Tracks bad cases**: records symptoms, triggers, causes, fixes, and recurrence checks.
+- **Tracks bad cases**: on the workbench line, a stub on the map node plus `.codex/context/bugs/{id}.md`; the HTML list shows titles only.
 - **Generates Roadmap HTML**: shows clickable node details with card and compact high-density views.
 - **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
 - **Supports record language preferences**: writes future context in Chinese or English.
@@ -269,10 +269,12 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 .codex/context/
 |-- index.md              # quick index and active task
 |-- architecture.md       # first-use analysis essay
-|-- map.json              # live map: tree, memories, produce/consume
+|-- map.json              # live map: tree, short memories, bug stubs, owns
+|-- records.md            # how CG record files hang off the map
+|-- bugs/                 # bad-case bodies, one file per id
 |-- user-messages.md      # user wording and constraints
 |-- roadmap.md            # agent-readable roadmap
-|-- bad-cases.md          # bad-case register
+|-- bad-cases.md          # pointer only (map + bugs/), not a second register
 |-- preferences.json      # language and project preferences
 |-- roadmap/
 |   |-- roadmap.html      # human-facing roadmap

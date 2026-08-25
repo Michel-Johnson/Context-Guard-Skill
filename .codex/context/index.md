@@ -6,6 +6,7 @@
 - Latest roadmap node: NODE-20260823-001
 - Hot bad-case tags: none
 - Resume candidate: none
+- Record layout: `.codex/context/records.md`（map 桩 + `bugs/{id}.md`）
 
 ## Current
 

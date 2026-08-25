@@ -11,7 +11,7 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 - **保留用户原话**：把短用户指令、约束、偏好、路线提示和 bad case 反馈写入 `user-messages.md`。
 - **敏感信息只留本地**：公开 context 里只保留脱敏指针，真正需要复用的凭据只放在 `.codex/context/private/`。
 - **记录路线图**：维护主线、支线、分叉节点和当前进度。
-- **记录 bad case**：保存问题现象、触发条件、原因、修复方式和防复发检查。
+- **记录 bad case**：工作台主线把桩挂在 map 节点上，正文写在 `bugs/{id}.md`；检查器只显示标题。
 - **生成 Roadmap HTML**：支持卡片和高密度紧凑总览，点击节点看详情。
 - **区分人类视图和 agent 视图**：HTML 给人看，Markdown/JSON 给 Codex 读取。
 - **支持多语言记录**：按项目偏好用中文或英文写 context。
@@ -269,10 +269,12 @@ python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadma
 .codex/context/
 |-- index.md              # 快速索引和当前任务
 |-- architecture.md       # 首次分析笔记
-|-- map.json              # 活地图：树、记忆、生产/消费
+|-- map.json              # 活地图：树、短记忆、Bug 桩、owns
+|-- records.md            # 记录文件如何挂到 map
+|-- bugs/                 # 坏例正文，一篇一例
 |-- user-messages.md      # 用户原话与约束
 |-- roadmap.md            # agent 可读路线图
-|-- bad-cases.md          # bad case 登记表
+|-- bad-cases.md          # 兼容入口（指向 map + bugs/）
 |-- preferences.json      # 语言和项目偏好
 |-- roadmap/
 |   |-- roadmap.html      # 用户查看的路线图

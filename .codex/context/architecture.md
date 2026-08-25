@@ -51,8 +51,11 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - `unpackInbox`：进入开工节点后再展开文件内部
 
 ### 项目 Context 目录
-- `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files/`owns`）。`owns` 是源码归属（仓库相对路径，目录以 `/` 结尾）；`files` 只是附件。人改和工作台写回都落这里。不要另存一份平行的记忆清单。Agent 改文件时用 `scripts/map_owns.py lookup --path` 落到节点，只读该节点和已授权祖先的记忆。
+- `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files/`owns`）。`owns` 是源码归属（仓库相对路径，目录以 `/` 结尾）；`files` 只是证据附件。Bug **桩**（id/title/status/sessions/files/record）在节点上；胖正文不进这份 JSON。人改和工作台写回都落这里。不要另存一份平行的记忆清单。
+- `records.md` — Context Guard 自己记下的文件怎么存、怎么挂到 map（短记忆进节点，bad case 进 `bugs/{id}.md`）。
+- `bugs/{id}.md` — 坏例正文（现象/触发/根因/守卫）。检查器和右侧面板只显示标题。Agent 改文件时：`scripts/map_owns.py lookup --path` 落到节点，再读该节点和已授权祖先的短记忆 + 未修坏例正文。
 - `architecture.md` — 首次分析笔记，不是活树
+- `bad-cases.md` — 兼容入口，指向 map + `bugs/`，不再手写登记册
 - `index.md` / `preferences.json`（含 `map_bootstrap`）/ `user-messages.md` / `private/`
 - 附件二进制在 `docs/shots/`，context 里只记相对路径
 

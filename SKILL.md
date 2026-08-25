@@ -48,16 +48,16 @@ Do not use the active chat/thread name, the skill installation directory, a remo
 4. Maintain the main route map at `.codex/context/roadmap.md`.
 5. Maintain folder preferences at `.codex/context/preferences.json`.
 6. Maintain user-message memory at `.codex/context/user-messages.md`.
-7. Maintain the live architecture map at `.codex/context/map.json` (tree, produce/consume flows, memories/bugs, and `owns` paths on nodes). `architecture.md` is the first-use analysis essay, not the live tree.
+7. Maintain the live architecture map at `.codex/context/map.json` (tree, produce/consume flows, memories/bugs stubs, `owns` source paths, and `record` pointers). `architecture.md` is the first-use analysis essay, not the live tree. How Context Guard's own files hang off the map is `.codex/context/records.md`.
 8. Store local-only sensitive memory under `.codex/context/private/`; keep it gitignored and never project it into HTML.
 9. Store task-specific context under `.codex/context/tasks/<task-id>/`.
 10. Store task-oriented evaluation scenarios under `.codex/context/task-cases/` when a reusable long workflow is more useful than isolated bug checks.
-11. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`.
-12. Store shared bad-case and test-chain context at `.codex/context/bad-cases.md` unless a bad case belongs only inside one task folder.
+11. Store the Test Hub registry and run evidence under `.codex/context/test-hub/`. (Workbench line: do not expand Test Hub until the human asks.)
+12. On the workbench line, store each bad case as a stub on the map node plus `.codex/context/bugs/{id}.md`. `.codex/context/bad-cases.md` is only a pointer, not a second register. Do not copy binaries into `.codex/context/`.
 13. If no canonical context exists, read legacy bad-case locations if present: `.codex/bad-cases.md`, `BAD_CASES.md`, `docs/bad-cases.md`, or `.agents/bad-cases.md`.
 14. If legacy context exists and the task modifies context, migrate or copy it into `.codex/context/` unless the repository clearly standardizes on the legacy path.
 15. Use `references/context-template.md` for index, roadmap, task-folder, and task-case formats.
-16. Use `references/register-template.md` when creating or updating bad-case entries.
+16. Use `references/bug-record-template.md` when writing `.codex/context/bugs/{id}.md`. Do not fill `references/register-template.md` on the workbench line.
 
 Do not store project context inside the skill directory. If a command would use `/Users/.../.agents/skills/context-guard` or another installed skill path as the implicit root, stop and rerun it from the opened Codex workspace or pass the workspace with `--root`. Do not create a separate top-level bad-case folder; bad cases are part of `context`.
 
@@ -89,7 +89,7 @@ Context records need a folder-scoped language preference so Codex does not mix l
 The architecture map is created once: the first time Context Guard is used in a folder. It is not a later “import from GitHub” action, not a dump of the directory tree, and not an instant click.
 
 1. Treat a folder as first use only when there is no map yet: `.codex/context/` does not exist, or `map.json` has no `root`, or `map_bootstrap` is missing/`pending` **and** `architecture.md` has no proposed or confirmed first layer. If `map.json` already has a proposed or confirmed tree, later sessions open that map. Do not re-analyze.
-2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change) and project it into `.codex/context/map.json` with `owns` paths on nodes. Memories and bugs live on map nodes in that file, not in a parallel dump. This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
+2. First-use analysis is work, not a speed run. The agent must read README, package/workspace boundaries, existing docs, and runtime entrypoints, then write a detailed `architecture.md` at **development granularity** (commands, main loops, panels, contracts you would actually change) and project it into `.codex/context/map.json` with `owns` paths on nodes. Short memories stay on those nodes. Fat bad cases are a stub on the node plus `.codex/context/bugs/{id}.md` (see `.codex/context/records.md`). Do not keep a parallel dump in `bad-cases.md`. This takes time. Do not emit one node per file, copy the folder tree, stop at seven slogan names, or treat the map as an instant import.
 3. First use itself is the trigger. Do not wait for a GitHub URL or an import button. Do not pretend the map can appear in one click.
 4. The HTML map uses L1 as a confirmation gate, not as the analysis. Propose **4–8 L1 modules** (cluster if more; greenfield = root only). Clicking an L1 card **enters** it. If that module would show more than about eight work siblings, cluster them into **submodules** (still `kind: module` cards: name + purpose that names the files). Work units hang under those submodules. Do not park work units in an inbox. Only internals of a work unit go to inbox. Later agents must not read unconfirmed proposals.
 5. The human confirms, rewrites, or hides L1. The root canvas is a **module grid**; click enters. Do not peek children on the root. Do not dump 15 files as siblings of a module. Empty slogan umbrellas (`CLI` / `TUI` / `UI` with no files underneath) are still forbidden. Unpack inbox layers when they enter a work unit. Depth must already exist in `architecture.md`.
@@ -112,8 +112,8 @@ Hard rules for the proposing agent:
 
 1. L1 count is 4–8. If analysis finds more concerns, cluster them. Do not emit 12 sibling modules.
 2. After entering a module, if more than about eight work units would sit as siblings, **build submodules** first. A submodule is a module card whose purpose names locatable artifacts (`src/commands/onboard.ts`, `src/tui/tui.ts`). Prefer that over a flat fan of files. Prefer `src/commands/onboard.ts` under a “安装与守护” card over an empty `CLI 入口`.
-3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. They are stored on that node inside `map.json`. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
-4. **owns vs files.** `owns` is source ownership: repo-relative files, or directories ending in `/`. `files` is evidence (shots, logs), not ownership. One path has one owner. A parent directory plus a child file is allowed; the more specific path wins. When the agent edits a file, look up `owns` (see `scripts/map_owns.py lookup --path <file>`), then read memories and open bugs on that node plus **authorized ancestors** only. Do not load the rest of the map. If a path has no owner, do not invent one; record on the nearest authorized ancestor or ask. Changing a path updates `owns`, it does not rebuild the tree.
+3. Memories, constraints, and bugs are **content on a node**, never sibling nodes. Short memories are stored on that node inside `map.json`. Fat bad cases are a stub on the node (`id`, `title`, `status`, `sessions`, evidence `files`, `record`) plus `.codex/context/bugs/{id}.md`. The workbench lists **titles only**. “禁止把 skill 安装目录当项目根” belongs as a memory on the CLI module, not as a card.
+4. **owns vs files vs record.** `owns` is source ownership: repo-relative files, or directories ending in `/`. `files` is evidence (shots, logs), not ownership. `record` on a bug (or a long memory later) points at a Context Guard body file under `.codex/context/bugs/` (convention: `.codex/context/bugs/{id}.md`). One source path has one owner. A parent directory plus a child file is allowed; the more specific path wins. When the agent edits a file, look up `owns` (see `scripts/map_owns.py lookup --path <file>`), then read short memories and **open** bugs on that node plus **authorized ancestors** only. If a bug has a `record` file (or `bugs/{id}.md` exists), open that body. Do not load the rest of the map. Do not treat `bad-cases.md` as a second source of truth. If a path has no owner, do not invent one; record on the nearest authorized ancestor or ask. Changing a path updates `owns`, it does not rebuild the tree.
 5. Do not emit one node per file at the layer the human first sees after entering a module. Group what you would change together; title work units with the primary path.
 6. Root canvas is a **grid of L1 module cards** (title + one-line purpose). Click a card to enter. Left-right / top-down layout applies to the work-unit tree **inside** a module, not to the root catalog. Do not print files on the module card. Do not peek L2 on the root. Depth lives in `architecture.md`.
 7. Every node must answer “when would I open this” in the record language. If the human cannot tell, the analysis failed: delete or rewrite, the agent must not defend it.
@@ -648,16 +648,16 @@ Whenever a task reaches meaningful progress, first decide whether that progress 
 
 During goal mode, do this during the work as soon as a goal checkpoint is reached. Do not defer roadmap and bad-case updates until the final response.
 
-Whenever a bad case appears:
+Whenever a bad case appears on the workbench line:
 
-1. Add a new entry or update the matching existing entry.
-2. Record the exact phenomenon, minimal trigger, affected scope, suspected or confirmed cause, current status, and evidence.
-3. Before fixing, reproduce it or document why reproduction is blocked; for fixed cases, keep the original trigger as the red-capable signal.
-4. If not fixed, mark it `open` or `deferred` and explain why it cannot be completed in the current task.
-5. If fixed, record the solution plus `Guard / verification`, `Guard type`, `Red condition`, `Green condition`, and `Expected failure reason`.
-6. Prefer existing project tests or clear manual checks; add a script only when it materially improves future reuse.
+1. Add or update a stub on the responsible map node (`id` like `B20`, `title`, `status`, `sessions`, evidence `files`, `record`).
+2. Write or update `.codex/context/bugs/{id}.md` using `references/bug-record-template.md` (phenomenon, trigger, root cause, fix, guard as prose, evidence paths).
+3. Do not append a full case to `.codex/context/bad-cases.md`. Do not use `BC-YYYYMMDD-001` for new workbench cases.
+4. Before fixing, reproduce it or document why reproduction is blocked.
+5. If not fixed, keep `status: open` (or `deferred`) on both the stub and the body file.
+6. If fixed, set stub `status` to `fixed`, keep the stub on the node, and fill 修复 + 守卫 in the body. Do not invent Test Hub scripts unless the human asks.
 
-Use stable IDs such as `BC-YYYYMMDD-001` or the next local sequence already used by the register.
+Legacy Test Hub registers (if the human explicitly resumes that line) still use `BC-YYYYMMDD-001` and `references/register-template.md`.
 
 ### End-of-Work Self-Check
 

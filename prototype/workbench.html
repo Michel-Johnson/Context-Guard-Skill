@@ -935,7 +935,7 @@ const CONTEXT_GUARD_MAP = {
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
         U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
-          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open"}]}),
+          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open", record:".codex/context/bugs/B22.md"}]}),
           U("N23", "visibleChildren", "模块一次只露一层；开工节点若后面还有开工节点（最多两岔）则默认展开", []),
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
@@ -955,7 +955,7 @@ const CONTEXT_GUARD_MAP = {
         U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
         U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
       ])
-    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"]}]}),
+    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"], record:".codex/context/bugs/B20.md"}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，活地图是 map.json", [
       U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
       U("N32", "preferences.json", "record_language 与 map_bootstrap；未确认前保持 pending", []),
@@ -3176,7 +3176,8 @@ function renderDetail(){
   if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldBug = true;
-    node.bugs.push({id:"B"+(BUG_SEQ++), title:"", desc:"", status:"open", files:[]});
+    const bid = "B"+(BUG_SEQ++);
+    node.bugs.push({id:bid, title:"", desc:"", status:"open", files:[], record:".codex/context/bugs/"+bid+".md"});
     renderAll();
     const last = document.querySelector(".bug-list .bug-title.ed:last-of-type, .bug-list li:last-child .bug-title");
     if(last) last.focus();

@@ -385,7 +385,8 @@
               {
                 "path": "workbench-global.png"
               }
-            ]
+            ],
+            "record": ".codex/context/bugs/B20.md"
           }
         ],
         "dormant": [],
@@ -427,7 +428,8 @@
                         "id": "B22",
                         "title": "根上铺开关系线会看不清",
                         "desc": "生产/消费不能在正常视图和分级页面里一起画",
-                        "status": "open"
+                        "status": "open",
+                        "record": ".codex/context/bugs/B22.md"
                       }
                     ],
                     "dormant": [],

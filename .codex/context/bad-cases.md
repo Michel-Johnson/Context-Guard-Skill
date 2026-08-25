@@ -1,13 +1,7 @@
 # Bad Case Register
 
-This register tracks bad cases found during development and the guards that prevent them from recurring.
+这份文件不再手写 Active Cases。
 
-## Active Cases
+活索引在 `.codex/context/map.json` 各节点的 `bugs[]`。正文在 `.codex/context/bugs/{id}.md`。约定见 `.codex/context/records.md`。
 
-None.
-
-## Resolved History
-
-None.
-
-Last initialized: 2026-08-23
+旧的 40 字段登记册 / Test Hub 模板不用于工作台主线。
