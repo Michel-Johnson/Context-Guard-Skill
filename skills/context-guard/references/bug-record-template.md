@@ -34,6 +34,6 @@
 - docs/shots/…
 ```
 
-代码只记仓库相对路径，必要时几行片段。不要把源码再抄一份。
+未修时「怎么修」写 `未修`。代码只记仓库相对路径，必要时几行片段。不要把源码再抄一份。
 
 地图桩仍写 `record: .codex/context/bugs/{id}.md`。同一轮两份都要写。关键词表用 `python3 scripts/map_owns.py cards` 重生成。

@@ -303,7 +303,7 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
         f"- chain: {chain_s}",
         f"- owns: {', '.join(owns) if owns else '(none)'}",
         f"- related: {rel_s}",
-        f"- card: `.codex/context/cards/{nid}.md`",
+        f"- card: .codex/context/cards/{nid}.md",
         "",
         "## 记忆",
         "",

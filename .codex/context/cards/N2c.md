@@ -5,7 +5,7 @@
 - chain: T0 Context Guard > M2 工作台 > M24 提议展开 > N2c unpackInbox
 - owns: (none)
 - related: (none)
-- card: `.codex/context/cards/N2c.md`
+- card: .codex/context/cards/N2c.md
 
 ## 记忆
 

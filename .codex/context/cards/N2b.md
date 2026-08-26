@@ -5,7 +5,7 @@
 - chain: T0 Context Guard > M2 工作台 > M24 提议展开 > N2b asProposal 递归子模块
 - owns: (none)
 - related: (none)
-- card: `.codex/context/cards/N2b.md`
+- card: .codex/context/cards/N2b.md
 
 ## 记忆
 

@@ -1,6 +1,6 @@
 # 底层：第一版四块
 
-跳转说明书：`.codex/context/FIND.md`。
+跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。
 
 一条记忆挂多张卡，等真遇到再做。
 

@@ -5,6 +5,7 @@
 ```
 .codex/context/
   FIND.md            怎么跳（四跳）
+  FORMAT.md          第一版每个文件怎么写
   sessions.jsonl     会话目录，每行一个 JSON
   bugs-index.json    坏例关键词 → 编号
   bugs/B20.md        坏例索引卡
@@ -23,7 +24,7 @@
 3. **再做同类的活** → `tasks-index.json` → `tasks/J1.md` → 按 `chain` 打开那些卡，复用命令
 4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`
 
-`cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。完整跳转见 `FIND.md`。
+`cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。怎么跳见 `FIND.md`。每个文件怎么写见 `FORMAT.md`。
 
 旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。
 

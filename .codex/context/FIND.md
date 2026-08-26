@@ -11,6 +11,7 @@
 ```
 .codex/context/
   FIND.md              本页（怎么跳）
+  FORMAT.md            第一版每个文件怎么写
   sessions.jsonl       会话目录 · JSONL，每行一个 JSON
   sessions/某次.md     可选 · Markdown，只有这轮原文太长才建
   bugs-index.json      坏例关键词表 · JSON
@@ -55,5 +56,7 @@
 | `tasks/J1.md` | Markdown | `chain` / `card` → 走过的卡；「命令」当场复用；「代码」→ 仓库路径 |
 | `owns-index.json` | JSON | `path` → `node` → `cards/node.md` |
 | `cards/N21.md` | Markdown | `parent` / `chain` → 别的卡；`owns` → 源码；Bug 列表 → `bugs/` 再 → `fixes/` |
+
+格式细节：`.codex/context/FORMAT.md`。
 
 禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。
