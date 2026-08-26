@@ -6,7 +6,7 @@
 .codex/context/
   FIND.md            怎么跳（四跳）
   FORMAT.md          第一版每个文件怎么写
-  TODO.md            第一版之后：检索、CI/CD、首次建图
+  TODO.md            第一版之后：首次建图、检索、CI/CD
   sessions.jsonl     会话目录，每行一个 JSON
   bugs-index.json    坏例关键词 → 编号
   bugs/B20.md        坏例索引卡

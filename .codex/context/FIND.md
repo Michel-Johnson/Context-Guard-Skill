@@ -12,7 +12,7 @@
 .codex/context/
   FIND.md              本页（怎么跳）
   FORMAT.md            第一版每个文件怎么写
-  TODO.md              第一版之后要做的（检索、CI/CD、首次建图）
+  TODO.md              第一版之后要做的（首次建图、检索、CI/CD）
   sessions.jsonl       会话目录 · JSONL，每行一个 JSON
   sessions/某次.md     可选 · Markdown，只有这轮原文太长才建
   bugs-index.json      坏例关键词表 · JSON

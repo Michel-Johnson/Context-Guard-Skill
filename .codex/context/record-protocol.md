@@ -15,4 +15,4 @@
 
 ## 以后（现在不做）
 
-清单在 `.codex/context/TODO.md`：优化检索、CI/CD 测试（第五块）、首次建图。仓库里旧的 Test Hub / 功能链 / Stop-hook 先不动、不扩。
+清单在 `.codex/context/TODO.md`：首次建图（最难也最要紧）、优化检索、CI/CD 测试（第五块）。仓库里旧的 Test Hub / 功能链 / Stop-hook 先不动、不扩。
