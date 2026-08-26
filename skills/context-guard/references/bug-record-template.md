@@ -7,7 +7,8 @@ The map stub in `map.json` keeps `id`, `title`, `status`, `sessions`, evidence `
 ```md
 # {id} {title}
 
-- node: {nodeId}
+- node: {homeNodeId}
+- also: {otherNodeIds, comma-separated; omit if only one node}
 - status: open | fixed | deferred | wontfix
 - 现象: one-line user-visible symptom
 - 触发: shortest steps or precondition
@@ -19,4 +20,4 @@ The map stub in `map.json` keeps `id`, `title`, `status`, `sessions`, evidence `
 
 Write titles and prose in the folder `record_language`. Keep paths, identifiers, and commands literal.
 
-When recording: write the stub on the responsible node and this file in the same turn. Do not maintain a second source of truth in `bad-cases.md`.
+When recording: write the stub on the **home** node, list other related node ids in `also`, and write this file in the same turn. Do not copy the same case onto two nodes.

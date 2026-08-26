@@ -16,7 +16,7 @@
 三步就能落到该读的位置：
 
 1. **改某个文件** → `owns-index.json` 里的卡号 → 打开 `cards/那张卡.md`。上面几层的规矩看卡片里的 `chain`，按需再打开。
-2. **修某个坏例** → `bugs/B20.md`（写了挂在哪）→ 打开那张 `cards/`。链上往上走；牵到别的模块看卡片上的 `related`（能往返，不必分谁指向谁）。
+2. **修某个坏例** → `bugs/B20.md`。正文只有一份：`node` 是主卡，`also` 是其他相关卡。每张相关卡片上都挂同一条链接。不要复制成两条坏例。整层的事挂共同上级，具体开工卡写在 also 里。
 3. **人改过图** → `python3 scripts/map_owns.py cards` 重新写出 `cards/` 和 `owns-index.json`。也可以 `where --path …` / `where --bug B20` 问该打开哪个文件。
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。

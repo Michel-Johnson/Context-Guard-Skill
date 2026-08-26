@@ -935,7 +935,7 @@ const CONTEXT_GUARD_MAP = {
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
       U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
         U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
-          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open", record:".codex/context/bugs/B22.md"}]}),
+          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open", record:".codex/context/bugs/B22.md", also:["N21","M21"]}]}),
           U("N23", "visibleChildren", "模块一次只露一层；开工节点若后面还有开工节点（最多两岔）则默认展开", []),
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
@@ -955,7 +955,7 @@ const CONTEXT_GUARD_MAP = {
         U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
         U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
       ])
-    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"], record:".codex/context/bugs/B20.md"}]}),
+    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}], also:["N21"]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"], record:".codex/context/bugs/B20.md", also:["N21"]}]}),
     U("M3", "项目 Context 目录", "记忆落在仓库 .codex/context/，活地图是 map.json", [
       U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
       U("N32", "preferences.json", "record_language 与 map_bootstrap；未确认前保持 pending", []),
@@ -2217,6 +2217,50 @@ function cancelledList(){
   walk(data,(n,ps)=>{ if(isCancelled(n)) out.push({node:n, parent:ps[ps.length-1]}); });
   return out;
 }
+function alsoIds(obj){
+  const a = obj && obj.also;
+  if(Array.isArray(a)) return a.map(String);
+  if(typeof a==="string") return a.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
+  return [];
+}
+function bugsFor(node){
+  const rows = (node.bugs||[]).filter(b=>b && b.status!=="dormant").map(b=>({bug:b, home:true, from:node.id}));
+  const seen = new Set(rows.map(r=>r.bug.id));
+  walkAll(data, n=>{
+    if(!n || n.id===node.id || isCancelled(n)) return;
+    (n.bugs||[]).forEach(b=>{
+      if(!b || b.status==="dormant") return;
+      if(!alsoIds(b).includes(node.id) || seen.has(b.id)) return;
+      seen.add(b.id);
+      rows.push({bug:b, home:false, from:n.id});
+    });
+  });
+  return rows;
+}
+function memsAlsoFor(node){
+  const rows=[];
+  const seen=new Set();
+  const anc = new Set((findPath(node.id)||[]).map(x=>x.id));
+  walkAll(data, n=>{
+    if(!n || n.id===node.id || isCancelled(n) || anc.has(n.id)) return;
+    (n.memories||[]).forEach(m=>{
+      if(!m || !alsoIds(m).includes(node.id)) return;
+      const k = m.id || m.text;
+      if(seen.has(k)) return;
+      seen.add(k);
+      rows.push({mem:m, from:n.id});
+    });
+  });
+  return rows;
+}
+function findBugHome(bugId){
+  let found=null;
+  walkAll(data, n=>{
+    if(found || isCancelled(n)) return;
+    if((n.bugs||[]).some(b=>b && b.id===bugId)) found=n;
+  });
+  return found;
+}
 function walkAll(node, fn, parents=[]){
   if(!node) return;
   fn(node, parents);
@@ -2526,7 +2570,7 @@ let relationMode = false;
 let relAnchorId = null;
 
 function nodeHtml(n, isViewRoot, ghost){
-  const openBugs = (n.bugs||[]).filter(b=>b.status!=="dormant").length;
+  const openBugs = bugsFor(n).length;
   const authMark = authMode && !isProposed(n)
     ? `<span class="auth-mark ${isAuth(n)?"on":""}">${isAuth(n)?"✓":""}</span>` : "";
   const pending = isProposed(n)
@@ -3075,8 +3119,10 @@ function renderDetail(){
   path.slice(0,-1).filter(a=>!isProposed(a)&&!isCancelled(a)).forEach(anc=>{
     anc.memories.filter(m=>m.state!=="dirty").forEach(m=>inherited.push({mem:m, from:anc.title}));
   });
-  const inhCount = PINNED.length + inherited.length;
-  const openBugs = node.bugs.filter(b=>b.status!=="dormant");
+  const alsoMems = memsAlsoFor(node);
+  const inhCount = PINNED.length + inherited.length + alsoMems.length;
+  const bugRows = bugsFor(node);
+  const openBugs = bugRows.map(r=>r.bug);
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
@@ -3084,16 +3130,23 @@ function renderDetail(){
       ).join("")+`</ul>`
     : "";
 
-  const bugHtml = openBugs.length
-    ? `<ul class="bug-list">`+openBugs.map(b=>`
+  const bugHtml = bugRows.length
+    ? `<ul class="bug-list">`+bugRows.map(row=>{
+        const b = row.bug;
+        const title = row.home
+          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>`
+          : `<div class="bug-title">${b.title}</div>`;
+        const attach = row.home ? attachHtml("bug", b.id, b) : "";
+        return `
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
           <div class="bug-main">
-            <div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>
+            ${title}
             ${b.status==='pending'? `<div class="summarizing">沉淀中…</div>`:""}
-            ${attachHtml("bug", b.id, b)}
+            ${attach}
           </div>
-        </li>`).join("")+`</ul>`
+        </li>`;
+      }).join("")+`</ul>`
     : "";
 
   const pendingKids = node.children.filter(isProposed).length;
@@ -3145,6 +3198,7 @@ function renderDetail(){
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
         ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
+        ${alsoMems.map(m=>`<li><i class="dot ${m.mem.state||"success"}"></i><span class="txt">${m.mem.text||""}</span></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
@@ -3277,13 +3331,15 @@ function renderDetail(){
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
 function crossBug(node, bugId){
-  const bug = node.bugs.find(b=>b.id===bugId);
+  const home = ((node.bugs||[]).some(b=>b.id===bugId) ? node : findBugHome(bugId)) || node;
+  const bug = (home.bugs||[]).find(b=>b.id===bugId);
   if(!bug || bug.status!=="open") return;
   bug.status = "pending";
   renderAll();
   setTimeout(()=>{
     bug.status = "dormant";
-    node.dormant.push({
+    home.dormant = home.dormant || [];
+    home.dormant.push({
       title: bug.title,
       exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
       files: fileList(bug).map(f=>({path:f.path}))

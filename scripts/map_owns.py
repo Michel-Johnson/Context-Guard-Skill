@@ -117,6 +117,42 @@ def lookup(doc: dict, file: str) -> dict | None:
             if isinstance(b, dict) and b.get("status") != "dormant"
         ]
 
+    extra_bugs = []
+    nid = node.get("id")
+    for n, _ in walk_nodes(root):
+        if n.get("id") == nid:
+            continue
+        for b in n.get("bugs") or []:
+            if not isinstance(b, dict) or b.get("status") == "dormant":
+                continue
+            if nid in also_ids(b):
+                extra_bugs.append(
+                    {
+                        "id": b.get("id"),
+                        "title": b.get("title"),
+                        "status": b.get("status"),
+                        "record": b.get("record"),
+                        "home": n.get("id"),
+                    }
+                )
+    extra_mems = []
+    for n, _ in walk_nodes(root):
+        if n.get("id") == nid:
+            continue
+        for m in n.get("memories") or []:
+            if not isinstance(m, dict):
+                continue
+            if nid in also_ids(m):
+                extra_mems.append(
+                    {
+                        "id": m.get("id"),
+                        "text": m.get("text"),
+                        "state": m.get("state"),
+                        "record": m.get("record"),
+                        "home": n.get("id"),
+                    }
+                )
+
     return {
         "path": file,
         "node_id": node.get("id"),
@@ -126,7 +162,9 @@ def lookup(doc: dict, file: str) -> dict | None:
         "conflict": len({n.get("id") for n in ties}) > 1,
         "tie_ids": [n.get("id") for n in ties] if len(ties) > 1 else [],
         "memories": mem_rows(node),
+        "also_memories": extra_mems,
         "bugs": bug_rows(node),
+        "also_bugs": extra_bugs,
         "ancestors": [
             {
                 "id": a.get("id"),
@@ -137,6 +175,13 @@ def lookup(doc: dict, file: str) -> dict | None:
             for a in chain[:-1]
         ],
     }
+
+
+def also_ids(obj) -> list[str]:
+    raw = (obj or {}).get("also") or []
+    if isinstance(raw, str):
+        raw = [p.strip() for p in raw.replace("，", ",").split(",") if p.strip()]
+    return [str(x) for x in raw if x]
 
 
 def stamp_owns(node: dict, table: dict) -> None:
@@ -219,13 +264,30 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
     mems = []
     for m in node.get("memories") or []:
         if isinstance(m, dict) and m.get("text"):
-            mems.append(f"- {m.get('text')}")
+            extra = also_ids(m)
+            tag = f" · 也挂 {', '.join(extra)}" if extra else ""
+            mems.append(f"- {m.get('text')}{tag}")
     bugs = []
     for b in node.get("bugs") or []:
         if not isinstance(b, dict) or b.get("status") == "dormant":
             continue
         bid = b.get("id")
-        bugs.append(f"- [{bid}](../bugs/{bid}.md) {b.get('title') or ''}")
+        extra = also_ids(b)
+        tag = f" · 也挂 {', '.join(extra)}" if extra else ""
+        bugs.append(f"- [{bid}](../bugs/{bid}.md) {b.get('title') or ''}{tag}")
+    tree = doc.get("root") or doc
+    for n, _ in walk_nodes(tree):
+        if n.get("id") == nid or n.get("proposal") == "cancelled":
+            continue
+        for m in n.get("memories") or []:
+            if isinstance(m, dict) and nid in also_ids(m) and m.get("text"):
+                mems.append(f"- （主卡 {n.get('id')}）{m.get('text')}")
+        for b in n.get("bugs") or []:
+            if not isinstance(b, dict) or b.get("status") == "dormant":
+                continue
+            if nid in also_ids(b):
+                bid = b.get("id")
+                bugs.append(f"- [{bid}](../bugs/{bid}.md) {b.get('title') or ''} · 主卡 {n.get('id')}")
     rel_s = ", ".join(
         f"{r['id']}（{r['label']}）" if r.get("label") else r["id"] for r in related
     ) or "(none)"
@@ -277,9 +339,11 @@ def write_cards(root: Path) -> Path:
         "先打开小文件，再按上面的指针跳。\n\n"
         "1. **改某个源码**：打开 `owns-index.json`，找到卡号，再打开 `cards/卡号.md`。"
         "需要上面几层的规矩：看卡片里的 `chain`，按需打开那些 `cards/`。\n"
-        "2. **修某个坏例**：打开 `bugs/B20.md`（里面写了挂在哪张卡），再打开那张 `cards/`。"
-        "链上的记忆按 `chain` 往上走。牵到别的模块：看卡片上的 `related`，再打开那些卡。"
-        "related 是能往返的邻居，不必分谁指向谁。\n"
+        "2. **修某个坏例**：打开 `bugs/B20.md`。"
+        "正文只有一份：`node` 是主卡（点 Bug 面板走这条链），`also` 是其他相关卡。"
+        "每张相关 `cards/` 上都有同一条链接。链上的记忆按 `chain` 往上走。"
+        "牵到别的模块：看 `related`，或看坏例/记忆上的 `also`。\n"
+        "一条规矩不要复制成两份。整层的事挂共同上级，具体开工卡写在 also 里。\n"
         "3. **图改过之后**：`python3 scripts/map_owns.py cards` 重新写出 `cards/` 和 `owns-index.json`。\n",
         encoding="utf-8",
     )
@@ -320,6 +384,7 @@ def main() -> int:
                 print(json.dumps({"bug": args.bug, "card": None}, ensure_ascii=False, indent=2))
                 return 1
             nid = hit["node"].get("id")
+            also = also_ids(hit["bug"])
             print(
                 json.dumps(
                     {
@@ -327,6 +392,8 @@ def main() -> int:
                         "bug_file": f".codex/context/bugs/{args.bug}.md",
                         "node_id": nid,
                         "card": f".codex/context/cards/{nid}.md",
+                        "also": also,
+                        "also_cards": [f".codex/context/cards/{x}.md" for x in also],
                         "chain": [n.get("id") for n in hit["chain"]],
                     },
                     ensure_ascii=False,

@@ -369,6 +369,9 @@
               {
                 "path": "prototype/workbench.html"
               }
+            ],
+            "also": [
+              "N21"
             ]
           }
         ],
@@ -386,7 +389,10 @@
                 "path": "workbench-global.png"
               }
             ],
-            "record": ".codex/context/bugs/B20.md"
+            "record": ".codex/context/bugs/B20.md",
+            "also": [
+              "N21"
+            ]
           }
         ],
         "dormant": [],
@@ -429,7 +435,11 @@
                         "title": "根上铺开关系线会看不清",
                         "desc": "生产/消费不能在正常视图和分级页面里一起画",
                         "status": "open",
-                        "record": ".codex/context/bugs/B22.md"
+                        "record": ".codex/context/bugs/B22.md",
+                        "also": [
+                          "N21",
+                          "M21"
+                        ]
                       }
                     ],
                     "dormant": [],
