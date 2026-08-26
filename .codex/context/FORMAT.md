@@ -1,6 +1,6 @@
 # 第一版文件格式（已定）
 
-编码一律 UTF-8。路径一律仓库相对路径，不要前导 `./`。不要把源码或截图二进制写进这些文件。
+编码一律 UTF-8。路径一律仓库相对路径，不要前导 `./`。Markdown 里可以写超链接给人点，但字段值仍写纯路径，方便脚本和 Agent 打开。Agent 跳转用 `python3 scripts/map_owns.py jump`，不要靠点链接。
 
 手改：`sessions.jsonl`、`sessions/*.md`、`bugs/*.md`、`fixes/*.md`、`tasks/*.md`、`map.json`（工作台写）。  
 机器生成、不要手改：`cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。生成命令：`python3 scripts/map_owns.py cards`。

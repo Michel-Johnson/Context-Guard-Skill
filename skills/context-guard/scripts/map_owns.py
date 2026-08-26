@@ -412,11 +412,116 @@ def find_bug_card(doc: dict, bug_id: str) -> dict | None:
     return None
 
 
+def ctx_dir(root: Path) -> Path:
+    return root / ".codex" / "context"
+
+
+def read_json(path: Path, default):
+    if not path.is_file():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def best_index_match(query: str, index: dict) -> str | None:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    if q in {k.lower(): k for k in index}:
+        for k in index:
+            if k.lower() == q:
+                return k
+    best, score = None, 0
+    for kid, row in index.items():
+        s = 0
+        title = str(row.get("title") or "").lower()
+        if q == kid.lower():
+            return kid
+        if q in title:
+            s += 3
+        for key in row.get("keys") or []:
+            kl = str(key).lower()
+            if kl == q:
+                s += 5
+            elif kl in q or q in kl:
+                s += 2
+        if s > score:
+            best, score = kid, s
+    return best if score else None
+
+
+def jump(root: Path, *, path="", bug="", task="", last=False) -> dict:
+    ctx = ctx_dir(root)
+    if last:
+        lines = []
+        sess = ctx / "sessions.jsonl"
+        if sess.is_file():
+            lines = [ln for ln in sess.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if not lines:
+            return {"kind": "session", "open": [], "then": []}
+        row = json.loads(lines[-1])
+        open_files: list[str] = []
+        then: list[str] = []
+        for tid in row.get("tasks") or []:
+            open_files.append(f".codex/context/tasks/{tid}.md")
+        for bid in row.get("bugs") or []:
+            open_files.append(f".codex/context/bugs/{bid}.md")
+            then.append(f".codex/context/fixes/{bid}.md")
+        then.extend(row.get("files") or [])
+        if not open_files:
+            open_files = then[:2]
+            then = then[2:]
+        return {
+            "kind": "session",
+            "id": row.get("id"),
+            "open": open_files[:3],
+            "then": then[:6],
+        }
+    if bug:
+        index = read_json(ctx / "bugs-index.json", {})
+        bid = bug.strip()
+        if bid not in index:
+            bid = best_index_match(bug, index) or ""
+        if not bid or bid not in index:
+            return {"kind": "bug", "query": bug, "open": [], "then": []}
+        row = index[bid]
+        open_files = [p for p in (row.get("bug"), row.get("fix")) if p]
+        then = [row["card"]] if row.get("card") else []
+        return {"kind": "bug", "id": bid, "open": open_files, "then": then}
+    if task:
+        index = read_json(ctx / "tasks-index.json", {})
+        jid = task.strip()
+        if jid not in index:
+            jid = best_index_match(task, index) or ""
+        if not jid or jid not in index:
+            return {"kind": "task", "query": task, "open": [], "then": []}
+        row = index[jid]
+        open_files = [p for p in (row.get("task"),) if p]
+        then = [f".codex/context/cards/{nid}.md" for nid in (row.get("chain") or [])]
+        if row.get("card") and row["card"] not in then:
+            then.append(row["card"])
+        return {"kind": "task", "id": jid, "open": open_files, "then": then}
+    if path:
+        hit = lookup(load_map(root), path)
+        if not hit:
+            return {"kind": "path", "query": path, "open": [], "then": []}
+        nid = hit["node_id"]
+        open_files = [f".codex/context/cards/{nid}.md"]
+        then = [
+            f".codex/context/cards/{a['id']}.md"
+            for a in reversed(hit.get("ancestors") or [])
+            if a.get("id")
+        ][:3]
+        return {"kind": "path", "id": nid, "open": open_files, "then": then}
+    return {"error": "jump needs --path, --bug, --task, or --last", "open": [], "then": []}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Map path ownership for Context Guard")
-    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where", "bugs-index", "tasks-index"])
+    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where", "bugs-index", "tasks-index", "jump"])
     parser.add_argument("--path", default="", help="Repo-relative file to look up")
-    parser.add_argument("--bug", default="", help="Bug id such as B20")
+    parser.add_argument("--bug", default="", help="Bug id such as B20, or a keyword")
+    parser.add_argument("--task", default="", help="Task id such as J1, or a keyword")
+    parser.add_argument("--last", action="store_true", help="Jump from the latest sessions.jsonl line")
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args()
     root = (args.root or Path.cwd()).resolve()
@@ -435,6 +540,12 @@ def main() -> int:
     if args.command == "tasks-index":
         print(write_tasks_index(root))
         return 0
+    if args.command == "jump":
+        result = jump(
+            root, path=args.path, bug=args.bug, task=args.task, last=args.last
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if result.get("error") or not (result.get("open") or result.get("then")) else 0
     if args.command == "where":
         doc = load_map(root)
         if args.bug:

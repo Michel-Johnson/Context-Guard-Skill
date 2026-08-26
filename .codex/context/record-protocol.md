@@ -1,6 +1,6 @@
 # 底层：第一版四块
 
-跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。
+跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。Agent 用 `python3 scripts/map_owns.py jump`，不靠点超链接。
 
 一条记忆挂多张卡，等真遇到再做。
 

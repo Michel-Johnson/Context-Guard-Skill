@@ -26,6 +26,17 @@
 
 图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。本页手改，脚本不覆盖。
 
+**Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看；Agent 跑下面的命令，只打开返回的 `open` 那一两份，需要再打开 `then`。
+
+```
+python3 scripts/map_owns.py jump --path <文件>
+python3 scripts/map_owns.py jump --bug B20
+python3 scripts/map_owns.py jump --bug 对话框
+python3 scripts/map_owns.py jump --task J1
+python3 scripts/map_owns.py jump --task 找卡
+python3 scripts/map_owns.py jump --last
+```
+
 ## 链路 1：改某个源码
 
 `owns-index.json` → `cards/卡号.md` → 需要时按卡片里的 `chain` 打开上面几层 `cards/`。
