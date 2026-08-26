@@ -25,7 +25,7 @@
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。完整跳转见 `FIND.md`。
 
-旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当这份产品的真相**。可执行 always-run 守卫以后再说。
+旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。
 
 ## 三种角色
 

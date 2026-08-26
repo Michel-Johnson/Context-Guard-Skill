@@ -21,7 +21,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - CLI 与 Hook — init、语言、导图；当前开发进程也要加载本 skill
 - 仓库拆图 — 已有项目变成地图：先写笔记，再投影 L1；进入后再看子模块和文件
 - 会话授权与提议 — 新会话默认很小；Agent 提议节点灰色半透明虚线，看起来像草稿。点一次右上角绿点变成转圈，再点一次才变成实节点。不要「再点一次加入」文案。
-- 遗留测试中台 — 仓库里还有，当前主线先不扩
+- 遗留测试中台 — 仓库里还有；第一版不做。以后可能作为第五块（CI/CD 测试）再加。
 
 ## Development grain (on the map, not buried)
 
@@ -77,7 +77,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - `sessionAuth` 可读切片、虚线点两次加入、已取消托盘
 
 ### 遗留测试中台
-- 先不扩；人设计测试、Agent 只提草案
+- 第一版不做。以后可能作为第五块（CI/CD 测试）再加。人设计测试、Agent 只提草案。
 
 Do not treat L1 as confirmed until the human accepts it in the workbench.
 The root canvas is a module grid. Depth lives in `map.json`; `architecture.md` is the analysis essay. Each view answers one question.
