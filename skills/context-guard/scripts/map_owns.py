@@ -274,7 +274,9 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
         bid = b.get("id")
         extra = also_ids(b)
         tag = f" · 也挂 {', '.join(extra)}" if extra else ""
-        bugs.append(f"- [{bid}](../bugs/{bid}.md) {b.get('title') or ''}{tag}")
+        bugs.append(
+            f"- [{bid}](../bugs/{bid}.md) → [经验](../fixes/{bid}.md) {b.get('title') or ''}{tag}"
+        )
     tree = doc.get("root") or doc
     for n, _ in walk_nodes(tree):
         if n.get("id") == nid or n.get("proposal") == "cancelled":
@@ -287,7 +289,9 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
                 continue
             if nid in also_ids(b):
                 bid = b.get("id")
-                bugs.append(f"- [{bid}](../bugs/{bid}.md) {b.get('title') or ''} · 主卡 {n.get('id')}")
+                bugs.append(
+                    f"- [{bid}](../bugs/{bid}.md) → [经验](../fixes/{bid}.md) {b.get('title') or ''} · 主卡 {n.get('id')}"
+                )
     rel_s = ", ".join(
         f"{r['id']}（{r['label']}）" if r.get("label") else r["id"] for r in related
     ) or "(none)"
@@ -332,21 +336,44 @@ def write_cards(root: Path) -> Path:
             card_markdown(node, chain, doc), encoding="utf-8"
         )
     write_owns_index(root)
-    find = ctx / "FIND.md"
-    find.write_text(
-        "# 怎么找到该读的那一段\n\n"
-        "人改图仍写 `map.json`。Agent 不要把整份 map 读进上下文。"
-        "先打开小文件，再按上面的指针跳。\n\n"
-        "1. **改某个源码**：打开 `owns-index.json`，找到卡号，再打开 `cards/卡号.md`。"
-        "需要上面几层的规矩：看卡片里的 `chain`，按需打开那些 `cards/`。\n"
-        "2. **修某个坏例**：打开 `bugs/B20.md`。"
-        "正文只有一份：`node` 是主卡（点 Bug 面板走这条链），`also` 是其他相关卡。"
-        "每张相关 `cards/` 上都有同一条链接。链上的记忆按 `chain` 往上走。"
-        "牵到别的模块：看 `related`，或看坏例/记忆上的 `also`。\n"
-        "一条规矩不要复制成两份。整层的事挂共同上级，具体开工卡写在 also 里。\n"
-        "3. **图改过之后**：`python3 scripts/map_owns.py cards` 重新写出 `cards/` 和 `owns-index.json`。\n",
-        encoding="utf-8",
-    )
+    write_bugs_index(root)
+    return dest
+
+
+def parse_md_fields(text: str) -> dict:
+    fields: dict[str, str] = {}
+    for i, line in enumerate(text.splitlines()):
+        if i == 0 and line.startswith("# "):
+            fields["_title"] = line[2:].strip()
+            continue
+        if line.startswith("- ") and ":" in line:
+            key, _, val = line[2:].partition(":")
+            fields[key.strip()] = val.strip()
+    return fields
+
+
+def write_bugs_index(root: Path) -> Path:
+    ctx = root / ".codex" / "context"
+    bugs_dir = ctx / "bugs"
+    index: dict = {}
+    if bugs_dir.is_dir():
+        for path in sorted(bugs_dir.glob("B*.md")):
+            fields = parse_md_fields(path.read_text(encoding="utf-8"))
+            bid = path.stem
+            title = fields.get("_title") or bid
+            if title.startswith(bid + " "):
+                title = title[len(bid) + 1 :]
+            keys = [k.strip() for k in (fields.get("keys") or "").split(",") if k.strip()]
+            index[bid] = {
+                "title": title,
+                "keys": keys,
+                "status": fields.get("status") or "",
+                "bug": f".codex/context/bugs/{bid}.md",
+                "fix": fields.get("fix") or f".codex/context/fixes/{bid}.md",
+                "card": fields.get("card") or "",
+            }
+    dest = ctx / "bugs-index.json"
+    dest.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return dest
 
 
@@ -361,7 +388,7 @@ def find_bug_card(doc: dict, bug_id: str) -> dict | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Map path ownership for Context Guard")
-    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where"])
+    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where", "bugs-index"])
     parser.add_argument("--path", default="", help="Repo-relative file to look up")
     parser.add_argument("--bug", default="", help="Bug id such as B20")
     parser.add_argument("--root", type=Path, default=None)
@@ -375,6 +402,9 @@ def main() -> int:
         return 0
     if args.command == "cards":
         print(write_cards(root))
+        return 0
+    if args.command == "bugs-index":
+        print(write_bugs_index(root))
         return 0
     if args.command == "where":
         doc = load_map(root)
@@ -390,6 +420,7 @@ def main() -> int:
                     {
                         "bug": args.bug,
                         "bug_file": f".codex/context/bugs/{args.bug}.md",
+                        "fix_file": f".codex/context/fixes/{args.bug}.md",
                         "node_id": nid,
                         "card": f".codex/context/cards/{nid}.md",
                         "also": also,

@@ -1,0 +1,29 @@
+{
+  "B20": {
+    "title": "原生 prompt 会打断看图",
+    "keys": [
+      "prompt",
+      "confirm",
+      "检查器",
+      "对话框"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B20.md",
+    "fix": ".codex/context/fixes/B20.md",
+    "card": ".codex/context/cards/M2.md"
+  },
+  "B22": {
+    "title": "根上铺开关系线会看不清",
+    "keys": [
+      "关系",
+      "虚线",
+      "生产",
+      "消费",
+      "根目录"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B22.md",
+    "fix": ".codex/context/fixes/B22.md",
+    "card": ".codex/context/cards/N22.md"
+  }
+}

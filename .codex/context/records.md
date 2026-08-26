@@ -4,22 +4,23 @@
 
 ```
 .codex/context/
-  FIND.md            怎么找（给人/Agent 看的入口）
-  map.json           工作台的活地图（树、关系、短记忆、坏例标题）
+  FIND.md            怎么跳（三跳）
+  sessions.jsonl     会话目录，每行一个 JSON
+  bugs-index.json    坏例关键词 → 编号
+  bugs/B20.md        坏例索引卡
+  fixes/B20.md       经验正文（怎么修、代码路径）
+  map.json           工作台的活地图
   owns-index.json    源码路径 → 卡号
-  cards/N21.md       一张卡一份：上级、整条链、负责的文件、邻居、记忆、坏例链接
-  bugs/B20.md        一条坏例一份正文
-  user-messages.md   全局人话
-  architecture.md    首次分析长文
+  cards/N21.md       一张卡一份
 ```
 
 三步就能落到该读的位置：
 
-1. **改某个文件** → `owns-index.json` 里的卡号 → 打开 `cards/那张卡.md`。上面几层的规矩看卡片里的 `chain`，按需再打开。
-2. **修某个坏例** → `bugs/B20.md`。正文只有一份：`node` 是主卡，`also` 是其他相关卡。每张相关卡片上都挂同一条链接。不要复制成两条坏例。整层的事挂共同上级，具体开工卡写在 also 里。
-3. **人改过图** → `python3 scripts/map_owns.py cards` 重新写出 `cards/` 和 `owns-index.json`。也可以 `where --path …` / `where --bug B20` 问该打开哪个文件。
+1. **改某个文件** → `owns-index.json` → `cards/那张卡.md`
+2. **修某个坏例** → `bugs-index.json` → `bugs/B20.md`（是不是这条）→ `fixes/B20.md`（怎么修）
+3. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`
 
-`cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。
+`cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。完整跳转见 `FIND.md`。
 
 旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当这份产品的真相**。可执行 always-run 守卫以后再说。
 
@@ -27,9 +28,9 @@
 
 | 角色 | 放哪 | 干什么 |
 |------|------|--------|
-| **索引** | `.codex/context/map.json` | 树、节点上的短记忆、Bug **桩**、源码 `owns`、附件路径 |
-| **正文** | `.codex/context/bugs/{id}.md` | 现象 / 触发 / 根因 / 守卫。检查器不展示 |
-| **证据** | `docs/shots/…`（或仓库里其它已有路径） | 截图、日志。只把相对路径写进桩上的 `files`。二进制永不进 `.codex/context/` |
+| **索引** | `bugs-index.json` + `bugs/{id}.md` | 关键词、标题、现象一句 |
+| **正文** | `fixes/{id}.md` | 怎么修、怎么防、源码路径 |
+| **证据** | `docs/shots/…` | 截图。只把相对路径写进经验正文。二进制永不进 `.codex/context/` |
 
 另外两份全局文件不算节点记录：
 
@@ -68,7 +69,7 @@
 | `owns` | 这个节点负责哪些**源码**（文件，或以 `/` 结尾的目录） | 不是截图，不是 bad case 正文 |
 | `files`（节点 / 记忆 / Bug 上） | **证据附件**的仓库相对路径 | 不是所有权 |
 | `memories[].text` | 人在检查器里能改的短句 | 不是 bad case 正文 |
-| `bugs[].record` | 这篇坏例的正文文件 | 缺省也可按约定找 `.codex/context/bugs/{id}.md`；推荐写明，少漂移 |
+| `bugs[].record` | 坏例索引卡路径 | 缺省 `.codex/context/bugs/{id}.md`；经验正文在 `fixes/{id}.md` |
 
 `bugs[].desc` 逐步作废：工作台本来就不展示它。现象写进 `bugs/{id}.md`。
 
@@ -77,27 +78,12 @@ ID 用 map 上的 `B20`，不要再用 `BC-YYYYMMDD-001`。后者是旧登记册
 ## 短的进 map，胖的进文件
 
 - **记忆 ≤ 两行**：只写在 `map.json` 该节点上。不另建文件。
-- **Bug**：map 上只留桩（`id` / `title` / `status` / `sessions` / 证据 `files` / `record`）。现象、触发、根因、修复、守卫一律进 `bugs/{id}.md`。
+- **Bug**：map 上只留桩（`id` / `title` / `status` / `sessions` / 证据 `files` / `record` 指向索引卡）。现象一句在 `bugs/{id}.md`；根因、修复、守卫、代码路径在 `fixes/{id}.md`。
 - **检查器 / 右侧 Bug 面板**：永远只显示标题。不要把正文、模板字段、守卫命令灌进 HTML。
 
-## `bugs/{id}.md` 写什么
+## `bugs/{id}.md` 和 `fixes/{id}.md` 写什么
 
-用瘦字段，不要抄 `references/register-template.md`。模板见 `skills/context-guard/references/bug-record-template.md`。
-
-```md
-# B20 原生 prompt 会打断看图
-
-- node: M2
-- status: open
-- 现象: …
-- 触发: …
-- 根因: …
-- 修复: （未修可空）
-- 守卫: 人能复述的检查，一句话；不是 Test Hub 脚本
-- 证据: docs/shots/…
-```
-
-`node` 写挂桩的那个节点 id（模块或开工节点）。守卫先记成文字；不要在这里登记 `every-dev-completion`、feature chain、Stop-hook。
+模板见 `skills/context-guard/references/bug-record-template.md`。索引卡只留标题、现象一句、关键词、指向经验。经验正文才写根因、怎么修、怎么防、代码路径。
 
 ## 和 map 怎么配合
 
@@ -112,7 +98,7 @@ ID 用 map 上的 `B20`，不要再用 `BC-YYYYMMDD-001`。后者是旧登记册
     └─ 在 N 上读 Context Guard 记下的东西
           1. N.memories 短句（已在 map.json）
           2. N.bugs 里 status=open 的桩（标题）
-          3. 若存在 bugs/{id}.md（或桩上的 record），打开正文
+          3. 若存在 bugs/{id}.md，打开索引卡确认是不是这条；再打开 fixes/{id}.md 看怎么修
           4. 同样读「已授权祖先」的短记忆 + 未修坏例正文（项目级约束）
           5. 不要读整张图，也不要把 bad-cases.md 当第二份清单
 ```
@@ -124,20 +110,23 @@ ID 用 map 上的 `B20`，不要再用 `BC-YYYYMMDD-001`。后者是旧登记册
 点标题打开 bugs/{id}.md = 以后再说，本方案不改 UI
 ```
 
-Agent **记一条坏例**时一次写两处，不要只改其一：
+Agent **记一条坏例**时一次写三处，不要只改其一：
 
-1. 在责任节点的 `bugs[]` 推入桩（含 `record`）
-2. 新建或更新 `.codex/context/bugs/{id}.md`
-3. 截图落到 `docs/shots/`，路径进桩的 `files`
+1. 在责任节点的 `bugs[]` 推入桩（`record` 指向索引卡）
+2. 新建或更新 `.codex/context/bugs/{id}.md`（索引卡）
+3. 新建或更新 `.codex/context/fixes/{id}.md`（怎么修、代码路径）
+4. 截图落到 `docs/shots/`，路径进经验正文的「证据」
 
-修完：桩 `status` 改成 `fixed`（或以后要的其它状态），正文里补修复和守卫；文件留着，不要从 map 上删桩，否则右侧面板和查找会丢历史。
+修完：桩 `status` 改成 `fixed`，经验正文里补怎么修和怎么防；文件留着，不要从 map 上删桩。
 
 ## 全局文件怎么摆
 
 | 文件 | 还干嘛 |
 |------|--------|
 | `map.json` | 活地图 + 短记忆 + Bug 桩。人改和工作台写回都在这里 |
-| `bugs/*.md` | 坏例正文。一篇一例，文件名 = 桩 id |
+| `bugs/*.md` | 坏例索引卡 |
+| `fixes/*.md` | 经验正文 |
+| `sessions.jsonl` | 会话目录 |
 | `docs/shots/` | 证据二进制 |
 | `user-messages.md` | 全局人约束；子系统规则 promote 到节点记忆 |
 | `architecture.md` | 首次分析 |

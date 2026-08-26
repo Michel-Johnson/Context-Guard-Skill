@@ -1,23 +1,39 @@
-# Bug record (map-linked)
+# Bug 索引卡 + 经验正文
 
-Use this for `.codex/context/bugs/{id}.md`. One file per map bug stub. Do **not** use `register-template.md` (Test Hub / 40-field register) on the workbench line.
+不要用 `register-template.md`（测试中台那套）。工作台只显示标题。
 
-The map stub in `map.json` keeps `id`, `title`, `status`, `sessions`, evidence `files`, and `record` (this path). The workbench shows **title only**.
+## 索引卡 `.codex/context/bugs/{id}.md`
 
 ```md
 # {id} {title}
 
 - node: {homeNodeId}
-- also: {otherNodeIds, comma-separated; omit if only one node}
 - status: open | fixed | deferred | wontfix
-- 现象: one-line user-visible symptom
-- 触发: shortest steps or precondition
-- 根因: confirmed, suspected, or unknown — one line
-- 修复: what changed, or empty if still open
-- 守卫: a check a human can repeat; not a Test Hub script
-- 证据: repo-relative paths (usually docs/shots/…)
+- 现象: 一句话
+- keys: 用来搜的词, 逗号分隔
+- fix: .codex/context/fixes/{id}.md
+- card: .codex/context/cards/{homeNodeId}.md
 ```
 
-Write titles and prose in the folder `record_language`. Keep paths, identifiers, and commands literal.
+## 经验正文 `.codex/context/fixes/{id}.md`
 
-When recording: write the stub on the **home** node, list other related node ids in `also`, and write this file in the same turn. Do not copy the same case onto two nodes.
+```md
+# {id} 怎么修
+
+- bug: .codex/context/bugs/{id}.md
+- node: {homeNodeId}
+- card: .codex/context/cards/{homeNodeId}.md
+- status: open | fixed | …
+
+## 根因
+## 怎么修
+## 怎么防
+## 代码
+- path/to/source.py
+## 证据
+- docs/shots/…
+```
+
+代码只记仓库相对路径，必要时几行片段。不要把源码再抄一份。
+
+地图桩仍写 `record: .codex/context/bugs/{id}.md`。同一轮两份都要写。关键词表用 `python3 scripts/map_owns.py cards` 重生成。
