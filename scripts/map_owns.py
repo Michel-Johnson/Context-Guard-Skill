@@ -337,6 +337,7 @@ def write_cards(root: Path) -> Path:
         )
     write_owns_index(root)
     write_bugs_index(root)
+    write_tasks_index(root)
     return dest
 
 
@@ -377,6 +378,31 @@ def write_bugs_index(root: Path) -> Path:
     return dest
 
 
+def write_tasks_index(root: Path) -> Path:
+    ctx = root / ".codex" / "context"
+    tasks_dir = ctx / "tasks"
+    index: dict = {}
+    if tasks_dir.is_dir():
+        for path in sorted(tasks_dir.glob("J*.md")):
+            fields = parse_md_fields(path.read_text(encoding="utf-8"))
+            jid = path.stem
+            title = fields.get("_title") or jid
+            if title.startswith(jid + " "):
+                title = title[len(jid) + 1 :]
+            keys = [k.strip() for k in (fields.get("keys") or "").split(",") if k.strip()]
+            chain = [p.strip() for p in (fields.get("chain") or "").replace(">", " ").split() if p.strip()]
+            index[jid] = {
+                "title": title,
+                "keys": keys,
+                "task": f".codex/context/tasks/{jid}.md",
+                "chain": chain,
+                "card": fields.get("card") or "",
+            }
+    dest = ctx / "tasks-index.json"
+    dest.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return dest
+
+
 def find_bug_card(doc: dict, bug_id: str) -> dict | None:
     root = doc.get("root") or doc
     for node, chain in walk_nodes(root):
@@ -388,7 +414,7 @@ def find_bug_card(doc: dict, bug_id: str) -> dict | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Map path ownership for Context Guard")
-    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where", "bugs-index"])
+    parser.add_argument("command", choices=["lookup", "stamp", "index", "cards", "where", "bugs-index", "tasks-index"])
     parser.add_argument("--path", default="", help="Repo-relative file to look up")
     parser.add_argument("--bug", default="", help="Bug id such as B20")
     parser.add_argument("--root", type=Path, default=None)
@@ -405,6 +431,9 @@ def main() -> int:
         return 0
     if args.command == "bugs-index":
         print(write_bugs_index(root))
+        return 0
+    if args.command == "tasks-index":
+        print(write_tasks_index(root))
         return 0
     if args.command == "where":
         doc = load_map(root)

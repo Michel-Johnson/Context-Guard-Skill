@@ -1,1 +1,2 @@
-{"id":"2026-08-26-a","human":"底层三个仓库、坏例只当索引、经验另存；要文件结构和跳转","agent":"落下 FIND.md 三跳，并把 B20/B22 拆成索引卡+经验正文","files":[".codex/context/FIND.md",".codex/context/record-protocol.md","scripts/map_owns.py"],"bugs":["B20","B22"]}
+{"id":"2026-08-26-a","human":"底层三个仓库、坏例只当索引、经验另存；要文件结构和跳转","agent":"落下 FIND.md 三跳，并把 B20/B22 拆成索引卡+经验正文","files":[".codex/context/FIND.md",".codex/context/record-protocol.md","scripts/map_owns.py"],"bugs":["B20","B22"],"tasks":[]}
+{"id":"2026-08-26-b","human":"同类任务要复用map上画过的链路和命令","agent":"加链路4：tasks-index + tasks/J1，命令和代码路径写在说明书里","files":[".codex/context/FIND.md",".codex/context/tasks/J1.md","scripts/map_owns.py"],"bugs":[],"tasks":["J1"]}

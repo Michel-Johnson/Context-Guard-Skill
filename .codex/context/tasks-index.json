@@ -1,0 +1,19 @@
+{
+  "J1": {
+    "title": "按路径找卡并更新复印件",
+    "keys": [
+      "找卡",
+      "lookup",
+      "owns",
+      "cards",
+      "复印件"
+    ],
+    "task": ".codex/context/tasks/J1.md",
+    "chain": [
+      "T0",
+      "M3",
+      "N36"
+    ],
+    "card": ".codex/context/cards/N36.md"
+  }
+}

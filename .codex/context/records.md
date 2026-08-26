@@ -4,11 +4,13 @@
 
 ```
 .codex/context/
-  FIND.md            怎么跳（三跳）
+  FIND.md            怎么跳（四跳）
   sessions.jsonl     会话目录，每行一个 JSON
   bugs-index.json    坏例关键词 → 编号
   bugs/B20.md        坏例索引卡
   fixes/B20.md       经验正文（怎么修、代码路径）
+  tasks-index.json   任务关键词 → 编号
+  tasks/J1.md        一类活怎么走（链路、命令、代码路径）
   map.json           工作台的活地图
   owns-index.json    源码路径 → 卡号
   cards/N21.md       一张卡一份
@@ -17,8 +19,9 @@
 三步就能落到该读的位置：
 
 1. **改某个文件** → `owns-index.json` → `cards/那张卡.md`
-2. **修某个坏例** → `bugs-index.json` → `bugs/B20.md`（是不是这条）→ `fixes/B20.md`（怎么修）
-3. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`
+2. **修某个坏例** → `bugs-index.json` → `bugs/B20.md` → `fixes/B20.md`
+3. **再做同类的活** → `tasks-index.json` → `tasks/J1.md` → 按 `chain` 打开那些卡，复用命令
+4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。完整跳转见 `FIND.md`。
 
@@ -127,6 +130,7 @@ Agent **记一条坏例**时一次写三处，不要只改其一：
 | `bugs/*.md` | 坏例索引卡 |
 | `fixes/*.md` | 经验正文 |
 | `sessions.jsonl` | 会话目录 |
+| `tasks/*.md` | 一类活怎么走 |
 | `docs/shots/` | 证据二进制 |
 | `user-messages.md` | 全局人约束；子系统规则 promote 到节点记忆 |
 | `architecture.md` | 首次分析 |

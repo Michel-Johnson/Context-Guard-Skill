@@ -1,6 +1,8 @@
-# 三跳：先打开小索引，再打开 1–2 个文件
+# 四跳：先打开小索引，再打开 1–2 个文件
 
-人改图仍写 `map.json`。Agent 不要把整份地图、全部会话、全部坏例一次读进来。
+人改图仍写 `map.json`。Agent 不要把整份地图、全部会话、全部坏例、全部任务说明书一次读进来。
+
+这不是测试中台的功能链。地图上那条路只是「这次活走过哪些卡」；下次怎么走、用哪些命令，写在 `tasks/`。
 
 ## 文件树
 
@@ -12,12 +14,14 @@
   bugs-index.json      坏例关键词表 · JSON
   bugs/B20.md          坏例索引卡 · Markdown
   fixes/B20.md         经验正文 · Markdown
+  tasks-index.json     任务关键词表 · JSON
+  tasks/J1.md          一类活怎么走 · Markdown
   map.json             软件图 · JSON，工作台写
   owns-index.json      源码路径 → 卡号 · JSON
   cards/N21.md         一张卡 · Markdown，从地图复印
 ```
 
-图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`。本页手改，脚本不覆盖。
+图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。本页手改，脚本不覆盖。
 
 ## 链路 1：改某个源码
 
@@ -31,17 +35,23 @@
 
 ## 链路 3：问上次说过什么
 
-只看 `sessions.jsonl` 末尾几行，或按词搜这一文件。一行里的 `bugs` / `files` 再跳到上面两条。太长才打开 `sessions/某次.md`。
+只看 `sessions.jsonl` 末尾几行，或按词搜这一文件。一行里的 `bugs` / `files` / `tasks` 再跳到对应文件。太长才打开 `sessions/某次.md`。
+
+## 链路 4：做和上次同类的活
+
+人说「再做一次某某 / 按这个任务来」→ `tasks-index.json` 按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。
 
 ## 各文件里靠哪跳
 
 | 打开 | 类型 | 里面哪个字段往哪跳 |
 | --- | --- | --- |
-| `sessions.jsonl` 一行 | JSONL | `files` → 源码路径 → `owns-index.json`；`bugs` → `bugs/编号.md` 和 `fixes/编号.md` |
-| `bugs-index.json` | JSON | `B20.keys` 用来搜；`bug` → 索引卡；`fix` → 经验正文 |
+| `sessions.jsonl` 一行 | JSONL | `files` → `owns-index.json`；`bugs` → 坏例索引/经验；`tasks` → `tasks/编号.md` |
+| `bugs-index.json` | JSON | `keys` 用来搜；`bug` → 索引卡；`fix` → 经验正文 |
 | `bugs/B20.md` | Markdown | `fix` → `fixes/B20.md`；`card` → `cards/卡号.md` |
-| `fixes/B20.md` | Markdown | `bug` → 索引卡；「代码」下列的路径 → 仓库源码（不抄第二份）；`card` → 那张卡 |
+| `fixes/B20.md` | Markdown | `bug` → 索引卡；「代码」→ 仓库源码；`card` → 那张卡 |
+| `tasks-index.json` | JSON | `keys` 用来搜；`task` → 说明书；`chain` → 那几张 `cards/` |
+| `tasks/J1.md` | Markdown | `chain` / `card` → 走过的卡；「命令」当场复用；「代码」→ 仓库路径 |
 | `owns-index.json` | JSON | `path` → `node` → `cards/node.md` |
-| `cards/N21.md` | Markdown | `parent` / `chain` → 别的卡；`owns` → 源码；`related` → 邻居卡；Bug 列表 → `bugs/` 再 → `fixes/` |
+| `cards/N21.md` | Markdown | `parent` / `chain` → 别的卡；`owns` → 源码；Bug 列表 → `bugs/` 再 → `fixes/` |
 
-禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/` 一次读进下一轮。
+禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。
