@@ -6,22 +6,60 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 
 ## What It Does
 
-- **Maintains project context**: creates and updates `.codex/context/`.
-- **Builds the architecture map on first use**: the first time the skill runs in a folder, the agent must take time to understand the architecture, then propose only the first layer of modules for human confirmation. Later sessions open that map and do not rebuild. This is not a later import and not a directory dump.
-- **Preserves user wording**: stores short user instructions, constraints, preferences, route hints, and bad-case reports in `user-messages.md`.
-- **Keeps secrets local-only**: redacts credentials from public context and stores durable secrets only under `.codex/context/private/`.
-- **Records the roadmap**: tracks main routes, side routes, branch points, and progress.
-- **Tracks bad cases**: records symptoms, triggers, causes, fixes, and recurrence checks.
-- **Generates Roadmap HTML**: shows clickable node details with card and compact high-density views.
-- **Separates human and agent views**: HTML is for humans; Markdown/JSON are for Codex.
-- **Supports record language preferences**: writes future context in Chinese or English.
-- **Handles task switches**: parks, resumes, and branches interrupted work.
-- **Binds subagent projects**: maps each agent ID to its real local project root so context does not leak into a parent workspace or SSH server.
-- **Archives concrete repairs**: keeps observed symptoms, causes, fixes, and verification while deduplicating repeated completion events.
-- **Keeps tests human-designed**: Codex reuses approved checks or proposes drafts, but does not silently create durable tests.
-- **Covers bad cases with feature chains**: prefer one real feature/workflow chain covering multiple bad cases over one separate test per bad case.
-- **Runs approved tests by default**: user-created or user-approved tests run at every development completion unless the user sets another cadence.
-- **Provides a Test Hub entrypoint**: `dev-complete` runs approved always-run tests, cleans success artifacts, and preserves failed evidence.
+- **Four stores**: sessions, bugs, tasks, map — in the opened project’s `.codex/context/`
+- **First-use map**: the agent reads the repo, writes `architecture.md`, and proposes 4–8 L1 modules. Later sessions open that map
+- **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
+- **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
+- **Record language**: Chinese or English per folder
+
+v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
+
+## Human workbench
+
+People confirm the architecture map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
+
+**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
+
+The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
+
+The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
+
+Serve the repo root so the page can load `.codex/context/map.json`:
+
+```bash
+python3 -m http.server 8877
+# then open http://127.0.0.1:8877/prototype/workbench.html
+```
+
+### Overview
+
+Root catalog: 4–8 module cards. Click a card to enter. Bugs stay in the right-hand list.
+
+![Workbench overview](docs/shots/workbench/overview.png)
+
+### Inside a module
+
+Work units hang under the module. Hierarchy is parent–child solid curves.
+
+![Inside a module](docs/shots/workbench/module.png)
+
+### Module relations
+
+「关系」 highlights produce/consume partners and dims the rest. It does not enter the module.
+
+![Module relations](docs/shots/workbench/relations.png)
+
+### Session flow
+
+Click a bug with an assigned session. The path from the root to that node lights up; current session beads run along the chain.
+
+![Session flow](docs/shots/workbench/session-flow.png)
+
+### Auth / inspect mode
+
+「授权模式」 marks which slices this session’s agent may read. Grey cards are not authorized.
+
+![Auth mode](docs/shots/workbench/auth-mode.png)
 
 ## Install
 
@@ -95,212 +133,41 @@ If the user provides a credential that future Codex turns need, Context Guard re
 <Codex project root>/.codex/context/private/
 ```
 
-When running scripts manually, pass the project root explicitly:
+When running scripts manually, pass the project root:
 
 ```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
+python3 scripts/context_guard.py init --root /path/to/project
+python3 scripts/context_guard.py set-language --root /path/to/project --language English
 ```
 
-Register a user-approved automated test:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-add \
-  --root /path/to/project \
-  --title "Markdown preview rendering" \
-  --command-text "npm test"
-```
-
-Create a proposed feature-chain test:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-add \
-  --root /path/to/project \
-  --title "GPU monitor button" \
-  --entry "Click the GPU monitor button" \
-  --exit-check "Open a monitoring page with a valid grafana_url"
-```
-
-Attach a bad case to a specific feature-chain checkpoint:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-attach-bc \
-  --root /path/to/project \
-  --chain-id FC-... \
-  --node-title "Backend returns monitor URL" \
-  --bad-case BC-... \
-  --check "grafana_url is non-empty and the frontend does not hang"
-```
-
-After the user confirms the flow, approve that same chain:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-approve \
-  --root /path/to/project \
-  --chain-id FC-... \
-  --command-text "npm test -- gpu-monitor"
-```
-
-Feature-chain commands can emit checkpoint markers so the Test Hub can report the exact failed step:
-
-```text
-CG_CHECKPOINT:Backend returns monitor URL:PASS
-CG_CHECKPOINT:Frontend opens monitor page:FAIL:missing grafana_url
-```
-
-The checkpoint name in each marker must match a registered feature-chain node. Unknown names are treated as test-chain errors. Approved feature-chain commands must report every registered checkpoint unless the checkpoint is explicitly optional.
-
-If a checkpoint should not run every time, mark that checkpoint as optional explicitly:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-checkpoint \
-  --root /path/to/project \
-  --chain-id FC-... \
-  --node-title "Frontend opens monitor page" \
-  --required optional \
-  --reason "Only runs in browser integration environment"
-```
-
-Audit which checkpoints are required or optional:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-list \
-  --root /path/to/project \
-  --verbose
-```
-
-If the user says this chain should not run every time, change its cadence:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py feature-chain-set-policy \
-  --root /path/to/project \
-  --chain-id FC-... \
-  --run-policy relevant-only \
-  --reason "Only run when GPU monitor flow changes"
-```
-
-After development, hand completion to the Test Hub:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py dev-complete --root /path/to/project --jobs 2
-```
-
-Open the read-only Test Hub page:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py show-test-hub --root /path/to/project --open
-```
-
-Manage tests lightly:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-list --root /path/to/project
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-disable --root /path/to/project --test-id TC-... --reason "not needed every time"
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-enable --root /path/to/project --test-id TC-...
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-set-policy --root /path/to/project --test-id TC-... --run-policy relevant-only --reason "only editor changes need it"
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py test-hub-remove --root /path/to/project --test-id TC-...
-```
+People look at `prototype/workbench.html`. `show-roadmap` only prints that path.
 
 ## Common Usage
 
-Ask Codex to maintain context:
-
 ```text
-Use $context-guard to maintain this task context.
+Use $context-guard. Four stores: sessions, bugs, tasks, map.
 ```
-
-Show the current roadmap:
-
-```text
-Use $context-guard to show the roadmap.
-```
-
-Initialize project context:
 
 ```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py init --root /path/to/project
+python3 scripts/context_guard.py init --root /path/to/project
+python3 scripts/context_guard.py set-language --root /path/to/project --language English
 ```
 
-Set the record language:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py set-language --root /path/to/project --language English
-```
-
-Generate the roadmap:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py show-roadmap --root /path/to/project
-```
-
-Or use the npm CLI as a thin wrapper:
-
-```bash
-npx @michelj/context-guard show-roadmap --root /path/to/project
-```
-
-Create a branch task:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py create-branch-task \
-  --root /path/to/project \
-  --title "branch task title" \
-  --branch "branch name" \
-  --parent-node NODE-YYYYMMDD-001
-```
-
-Record a roadmap checkpoint:
-
-```bash
-python3 ~/.codex/skills/context-guard/scripts/context_guard.py checkpoint-roadmap-node \
-  --root /path/to/project \
-  --title "source title for Codex" \
-  --display-title "short human title" \
-  --user-request "what the user asked" \
-  --progress-summary "current progress" \
-  --method-summary "method used" \
-  --branch Main \
-  --level major \
-  --outcome "result"
-```
+Open `prototype/workbench.html` to see the map.
 
 ## Main Files
 
 ```text
 .codex/context/
-|-- index.md              # quick index and active task
-|-- architecture.md       # first-use analysis essay
-|-- map.json              # live map: tree, memories, produce/consume
-|-- user-messages.md      # user wording and constraints
-|-- roadmap.md            # agent-readable roadmap
-|-- bad-cases.md          # bad-case register
-|-- preferences.json      # language and project preferences
-|-- roadmap/
-|   |-- roadmap.html      # human-facing roadmap
-|   |-- roadmap.md        # agent-readable export
-|   `-- roadmap.json      # structured index
-|-- tasks/                # task-level context
-|-- task-cases/           # task-oriented test cases
-|-- test-hub/             # test registry, latest result, and failed evidence
-`-- bad-case-tests/       # reusable bad-case checks
+|-- FIND.md
+|-- sessions.jsonl
+|-- bugs/ and fixes/
+|-- tasks/
+|-- map.json
+|-- owns-index.json and cards/   # generated
+|-- preferences.json
+|-- user-messages.md
+`-- private/                     # gitignored
 ```
 
-## Principles
-
-- Record only meaningful progress, not every small action.
-- Human-facing titles should read naturally, not like implementation logs.
-- A bad case should help future Codex prevent recurrence.
-- Test design belongs to humans; Codex can run approved checks or draft a proposal for confirmation.
-- When a task is likely to recur or fits a reusable workflow check, Codex should gently ask whether the user wants to create a test task, but must not create durable tests silently.
-- Prefer feature chains as the durable testing unit: one clear entry, one real workflow, ordered checkpoints, and multiple covered bad cases.
-- Attach new bad cases to an existing feature-chain checkpoint first; propose a new chain only when no existing workflow matches.
-- Feature chains start as `proposed`; promote them with `feature-chain-approve` only after user confirmation and checkpoint coverage.
-- User-approved tests default to `every-dev-completion`; Codex may lower that cadence only when the user asks.
-- Approved automated tests should go into `.codex/context/test-hub/registry.json` or `.codex/context/test-hub/feature-chains.json` and be scheduled through `dev-complete`.
-- Keep the Test Hub simple: one registry, one `dev-complete` runner, one latest-result file, one read-only HTML status page, and a few management commands.
-- Final Codex summaries should state the current Test Hub result: whether approved always-run tests all passed, failed, blocked, or do not exist.
-- Verification should reuse existing commands, scripts, screenshots, or manual checks first.
-- Do not create a new script for every bad case.
-- For frontend or HTML changes, inspect the rendered page or screenshot before claiming success.
-- For any new durable test case, draft a short task-case proposal and confirm with the user before making it active.
-
-See [`SKILL.md`](SKILL.md) for the full behavior rules.
+See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.

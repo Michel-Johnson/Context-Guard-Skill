@@ -1,4 +1,4 @@
 interface:
   display_name: "Context Guard"
-  short_description: "Keep context regressions from recurring"
-  default_prompt: "Use $context-guard to show the current roadmap."
+  short_description: "Keep folder-scoped project memory"
+  default_prompt: "Use $context-guard. Four stores: sessions, bugs, tasks, map. Jump with FIND.md."

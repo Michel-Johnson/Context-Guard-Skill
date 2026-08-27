@@ -12,21 +12,18 @@
 
 ## 2. 优化检索
 
-现状：Agent 靠 `python3 scripts/map_owns.py jump` 找到该打开的文件。能跳，但多跑一次命令，会话可能变慢。
+多查时不要连跑 N 次 `jump`。慢的是每次起 Python（OpenClaw 夹具一次子进程约 26ms），不是文件数量。
 
-以后要改的方向（未定，先记着）：
+已经做的：
 
-- 少起进程：OpenClaw 夹具实测（25 条坏例 / 53 张卡）子进程 jump 中位约 26ms，同进程查索引 <1ms。慢主要在每次起 Python，不在文件数量。见 `fixtures/openclaw/JUMP-SPEED.md`
-- 一次只读该读的：jump 返回的 `open` 要更短，避免 `then` 里堆太多卡
-- 同类问题先命中坏例/任务索引，不要扫全部 `bugs/`、`fixes/`、`tasks/`
-- 测一下：从人一句话到打开正确那一份，实际慢在哪（起命令、读索引、还是读错文件）
-
-超链接仍然只给人看，不当 Agent 跳转。
+- 真 Agent 难任务对照见 `fixtures/openclaw/eval/REPORT.md`：**只靠索引最干净**（约 1 分钟、10 次 Read）。Grep / `jump --json` 都会额外扫盘；只跟链接会迷路。
+- Agent 主找法锁定为小索引：`owns-index.json` / `bugs-index.json` / `tasks-index.json` / `sessions.jsonl` 末尾，再打开命中的 Markdown。`jump` 留给脚本。
+- 计时见 `fixtures/openclaw/JUMP-SPEED.md`。
 
 ## 3. CI/CD 测试（第五块）
 
 第一版没有这一块。以后可能作为第五部分：改完代码怎么自动验、失败怎么回到坏例。
 
-现在明确不做：测试中台、功能链、Stop-hook 门禁。仓库里旧的那套先不动、不扩。
+现在明确不做：测试中台、功能链、Stop-hook 门禁。仓库里那套旧 CLI 和 BC 脚本已经删掉，不要再加回来。
 
 做的时候要接上现有四块：测试失败 → 坏例索引；常跑的验法 → 任务说明书里的命令；不要另做一本平行登记册。

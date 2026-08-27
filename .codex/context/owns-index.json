@@ -22,7 +22,7 @@
       "path": ".codex/context/",
       "node": "M3",
       "kind": "module",
-      "title": "项目 Context 目录"
+      "title": "skill文件结构"
     },
     {
       "path": ".codex/context/index.md",
@@ -67,31 +67,13 @@
       "title": "CLI 与 Hook"
     },
     {
-      "path": "skills/context-guard/",
-      "node": "M4",
-      "kind": "module",
-      "title": "CLI 与 Hook"
-    },
-    {
       "path": "scripts/context_guard.py",
       "node": "N41",
       "kind": "work",
       "title": "scripts/context_guard.py init"
     },
     {
-      "path": "skills/context-guard/scripts/context_guard.py",
-      "node": "N41",
-      "kind": "work",
-      "title": "scripts/context_guard.py init"
-    },
-    {
       "path": "scripts/context_guard_hook.py",
-      "node": "N43",
-      "kind": "work",
-      "title": "SessionStart hook"
-    },
-    {
-      "path": "skills/context-guard/scripts/context_guard_hook.py",
       "node": "N43",
       "kind": "work",
       "title": "SessionStart hook"

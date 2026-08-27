@@ -1,0 +1,17 @@
+{
+  "strategy": "jump-json",
+  "root_cause": "UI 和 Gateway 走了两条隧道。",
+  "config": "claw.tunnel.share=gateway-18789",
+  "command": "ssh -L 18789:127.0.0.1:18789 user@host",
+  "card_rule": "远程页只许走 Gateway 已占用的那条跳",
+  "files_opened": [
+    ".codex/context/tasks/J9.md",
+    ".codex/context/bugs/B70.md",
+    ".codex/context/fixes/B70.md",
+    ".codex/context/tasks/J5.md",
+    ".codex/context/cards/N7p.md",
+    ".codex/context/cards/N82.md"
+  ],
+  "agent_id": "bc-577d2174-c1dd-5f28-8fcb-fefce75dff74",
+  "elapsed_ms": 157230
+}

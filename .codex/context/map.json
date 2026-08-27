@@ -1,8 +1,8 @@
 {
   "v": 1,
   "project": "context-guard",
-  "bootstrap": "proposed",
-  "updated": "2026-08-24",
+  "bootstrap": "ready",
+  "updated": "2026-08-27",
   "flows": [
     {
       "from": "M1",
@@ -297,8 +297,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               "SKILL.md"
@@ -315,8 +315,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -330,8 +330,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -345,14 +345,14 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent"
       },
       {
@@ -418,8 +418,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent",
                 "_inbox": [
                   {
@@ -477,8 +477,8 @@
               }
             ],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               "prototype/"
@@ -505,8 +505,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -520,8 +520,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -535,14 +535,14 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               }
             ],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -566,8 +566,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -581,8 +581,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -596,8 +596,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -611,14 +611,14 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               }
             ],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -642,8 +642,8 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               },
               {
@@ -657,25 +657,25 @@
                 "dormant": [],
                 "children": [],
                 "files": [],
-                "proposal": "proposed",
-                "isNew": true,
+                "proposal": "accepted",
+                "isNew": false,
                 "origin": "agent"
               }
             ],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent"
       },
       {
         "id": "M3",
-        "title": "项目 Context 目录",
+        "title": "skill文件结构",
         "kind": "module",
         "purpose": "记忆落在仓库 .codex/context/，活地图是 map.json",
         "state": "dirty",
@@ -703,8 +703,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/index.md"
@@ -721,8 +721,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/preferences.json"
@@ -739,8 +739,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/architecture.md"
@@ -757,8 +757,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/map.json"
@@ -775,8 +775,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/user-messages.md"
@@ -793,8 +793,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               ".codex/context/private/"
@@ -802,8 +802,8 @@
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent",
         "owns": [
           ".codex/context/"
@@ -835,27 +835,26 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
-              "scripts/context_guard.py",
-              "skills/context-guard/scripts/context_guard.py"
+              "scripts/context_guard.py"
             ]
           },
           {
             "id": "N42",
             "title": "show-roadmap",
             "kind": "work",
-            "purpose": "把已有图打到终端，不是重建",
+            "purpose": "打开工作台看图，不再生成 HTML 路线图",
             "state": "dirty",
             "memories": [],
             "bugs": [],
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -869,12 +868,11 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
-              "scripts/context_guard_hook.py",
-              "skills/context-guard/scripts/context_guard_hook.py"
+              "scripts/context_guard_hook.py"
             ]
           },
           {
@@ -888,18 +886,17 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent",
         "owns": [
-          "scripts/",
-          "skills/context-guard/"
+          "scripts/"
         ]
       },
       {
@@ -928,8 +925,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent",
             "owns": [
               "README.md"
@@ -946,8 +943,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -961,8 +958,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -976,8 +973,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -991,14 +988,14 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent"
       },
       {
@@ -1027,8 +1024,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -1042,8 +1039,8 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           },
           {
@@ -1057,14 +1054,14 @@
             "dormant": [],
             "children": [],
             "files": [],
-            "proposal": "proposed",
-            "isNew": true,
+            "proposal": "accepted",
+            "isNew": false,
             "origin": "agent"
           }
         ],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent"
       },
       {
@@ -1083,8 +1080,8 @@
         "dormant": [],
         "children": [],
         "files": [],
-        "proposal": "proposed",
-        "isNew": true,
+        "proposal": "accepted",
+        "isNew": false,
         "origin": "agent"
       }
     ]

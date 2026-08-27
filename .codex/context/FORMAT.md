@@ -1,9 +1,9 @@
 # 第一版文件格式（已定）
 
-编码一律 UTF-8。路径一律仓库相对路径，不要前导 `./`。Markdown 里可以写超链接给人点，但字段值仍写纯路径，方便脚本和 Agent 打开。Agent 跳转用 `python3 scripts/map_owns.py jump`，不要靠点链接。
+编码一律 UTF-8。路径一律仓库相对路径，不要前导 `./`。Markdown 里可以写超链接给人点，但字段值仍写纯路径，方便脚本和 Agent 打开。Agent 先读小索引再打开命中文件，不要靠点链接，也不要把 `jump-index.json` 或 `map.json` 整份读进对话。
 
 手改：`sessions.jsonl`、`sessions/*.md`、`bugs/*.md`、`fixes/*.md`、`tasks/*.md`、`map.json`（工作台写）。  
-机器生成、不要手改：`cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。生成命令：`python3 scripts/map_owns.py cards`。
+机器生成、不要手改：`cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`。生成命令：`python3 scripts/map_owns.py cards`。
 
 编号：会话 `2026-08-26-a`（日期 + 当天字母）；坏例 `B20`；任务 `J1`；卡号跟地图（`M2`、`N21`）。
 
@@ -90,8 +90,10 @@ JSONL：一行一个 JSON，只追加，不改旧行。每行必有这些键，�
 `tasks-index.json` 每个编号：`title`、`keys`、`task`、`chain`（卡号数组）、`card`。  
 `owns-index.json`：`owns` 数组，每项 `path`、`node`、`kind`、`title`。
 
+`jump-index.json` 把上面三份合成一份，给 `jump --json` 一次读完：`owns`（`path`、`node`、`kind`、`card`、`chain` 祖先卡号）、`bugs`、`tasks`。不要手改，也不要整份贴进对话。
+
 ## 地图复印件 `cards/{id}.md`（生成）
 
-头字段：`kind`、`parent`、`chain`、`owns`、`related`、`card`。下面三节：记忆、Bug、孩子。不要手改。
+头字段：`kind`、`parent`、`chain`、`owns`、`related`、`card`。下面：记忆、Idea（有才写）、Bug、孩子。不要手改。
 
-`map.json` 仍是工作台那份活图，第一版不另定 Agent 手写格式。短规矩写在节点的记忆里，随复印件进卡。
+`map.json` 仍是工作台那份活图，第一版不另定 Agent 手写格式。短规矩写在节点的记忆里，随复印件进卡。Idea 也是节点上的短句，未定的想法，不进记忆、也不另开仓库。

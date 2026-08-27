@@ -15,6 +15,7 @@
   tasks/J1.md        一类活怎么走（链路、命令、代码路径）
   map.json           工作台的活地图
   owns-index.json    源码路径 → 卡号
+  jump-index.json    三份索引合成一份，给 jump --json 用，不要整份贴进对话
   cards/N21.md       一张卡一份
 ```
 
@@ -23,11 +24,11 @@
 1. **改某个文件** → `owns-index.json` → `cards/那张卡.md`
 2. **修某个坏例** → `bugs-index.json` → `bugs/B20.md` → `fixes/B20.md`
 3. **再做同类的活** → `tasks-index.json` → `tasks/J1.md` → 按 `chain` 打开那些卡，复用命令
-4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`
+4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。怎么跳见 `FIND.md`。每个文件怎么写见 `FORMAT.md`。
 
-旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。
+旧的 `bad-cases.md` 整册登记和 Test Hub 那套，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。仓库里的测试中台 / Roadmap HTML 已经删掉。
 
 ## 三种角色
 
@@ -74,6 +75,7 @@
 | `owns` | 这个节点负责哪些**源码**（文件，或以 `/` 结尾的目录） | 不是截图，不是 bad case 正文 |
 | `files`（节点 / 记忆 / Bug 上） | **证据附件**的仓库相对路径 | 不是所有权 |
 | `memories[].text` | 人在检查器里能改的短句 | 不是 bad case 正文 |
+| `ideas[].text` | 未定的想法，检查器 Idea 栏 | 不是已确认的记忆，也不另开文件 |
 | `bugs[].record` | 坏例索引卡路径 | 缺省 `.codex/context/bugs/{id}.md`；经验正文在 `fixes/{id}.md` |
 
 `bugs[].desc` 逐步作废：工作台本来就不展示它。现象写进 `bugs/{id}.md`。
@@ -88,7 +90,7 @@ ID 用 map 上的 `B20`，不要再用 `BC-YYYYMMDD-001`。后者是旧登记册
 
 ## `bugs/{id}.md` 和 `fixes/{id}.md` 写什么
 
-模板见 `skills/context-guard/references/bug-record-template.md`。索引卡只留标题、现象一句、关键词、指向经验。经验正文才写根因、怎么修、怎么防、代码路径。
+模板见 `references/bug-record-template.md`。索引卡只留标题、现象一句、关键词、指向经验。经验正文才写根因、怎么修、怎么防、代码路径。
 
 ## 和 map 怎么配合
 

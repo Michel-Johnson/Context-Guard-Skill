@@ -22,21 +22,26 @@
   tasks/J1.md          一类活怎么走 · Markdown
   map.json             软件图 · JSON，工作台写
   owns-index.json      源码路径 → 卡号 · JSON
+  jump-index.json      三份索引合成一份 · JSON，给脚本一次读完，不要整份贴进对话
   cards/N21.md         一张卡 · Markdown，从地图复印
 ```
 
-图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。本页手改，脚本不覆盖。
+图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`。本页手改，脚本不覆盖。
 
-**Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看；Agent 跑下面的命令，只打开返回的 `open` 那一两份，需要再打开 `then`。
+**Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看。
 
-```
-python3 scripts/map_owns.py jump --path <文件>
-python3 scripts/map_owns.py jump --bug B20
-python3 scripts/map_owns.py jump --bug 对话框
-python3 scripts/map_owns.py jump --task J1
-python3 scripts/map_owns.py jump --task 找卡
-python3 scripts/map_owns.py jump --last
-```
+先打开小索引，再只打开命中的那一两份 Markdown：
+
+- 改某个源码 → `owns-index.json` → `cards/卡号.md`
+- 人报了 bug → `bugs-index.json` 按 `keys` 对词 → `bugs/B20.md` → `fixes/B20.md`
+- 再做同类的活 → `tasks-index.json` 按 `keys` 对词 → `tasks/J1.md`
+- 问上次说过什么 → `sessions.jsonl` 末尾几行
+
+不要 Grep 整个 `.codex/context/`，不要把 `map.json`、`jump-index.json` 整份读进对话。OpenClaw 难任务对照里，只靠索引最快也最干净。
+
+`python3 scripts/map_owns.py jump` 留给脚本自己用（例如一次 `--json` 查很多条）。Agent 不要当主找法。
+
+`jump-index.json` 怎么对：脚本按 `owns` 里 `path` 最长前缀命中（精确文件优先于目录）；`bugs` / `tasks` 按编号，或用 `keys` / 标题对上人的词。Agent 不要自己扫这份文件。
 
 ## 链路 1：改某个源码
 
@@ -60,7 +65,8 @@ python3 scripts/map_owns.py jump --last
 
 | 打开 | 类型 | 里面哪个字段往哪跳 |
 | --- | --- | --- |
-| `sessions.jsonl` 一行 | JSONL | `files` → `owns-index.json`；`bugs` → 坏例索引/经验；`tasks` → `tasks/编号.md` |
+| `sessions.jsonl` 一行 | JSONL | `files` → `owns`；`bugs` → 坏例索引/经验；`tasks` → `tasks/编号.md` |
+| `jump-index.json` | JSON | 脚本一次读完；Agent 不要整份贴进对话 |
 | `bugs-index.json` | JSON | `keys` 用来搜；`bug` → 索引卡；`fix` → 经验正文 |
 | `bugs/B20.md` | Markdown | `fix` → `fixes/B20.md`；`card` → `cards/卡号.md` |
 | `fixes/B20.md` | Markdown | `bug` → 索引卡；「代码」→ 仓库源码；`card` → 那张卡 |
@@ -71,4 +77,4 @@ python3 scripts/map_owns.py jump --last
 
 格式细节：`.codex/context/FORMAT.md`。
 
-禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。
+禁止：把整份 `map.json`、`jump-index.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。不要 Grep 整个 context 目录。

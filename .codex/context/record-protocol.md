@@ -1,6 +1,6 @@
 # 底层：第一版四块
 
-跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。Agent 用 `python3 scripts/map_owns.py jump`，不靠点超链接。
+跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。Agent 先读小索引（`owns-index.json` / `bugs-index.json` / `tasks-index.json` / `sessions.jsonl`），再打开命中文件。不靠点超链接，也不要把 `jump-index.json` 或 `map.json` 整份读进对话。
 
 一条记忆挂多张卡，等真遇到再做。
 
@@ -15,4 +15,4 @@
 
 ## 以后（现在不做）
 
-清单在 `.codex/context/TODO.md`：首次建图（最难也最要紧）、优化检索、CI/CD 测试（第五块）。仓库里旧的 Test Hub / 功能链 / Stop-hook 先不动、不扩。
+清单在 `.codex/context/TODO.md`：首次建图（最难也最要紧）、优化检索、CI/CD 测试（第五块）。测试中台 / 功能链 / Roadmap HTML 已从仓库拿掉，不要加回来。

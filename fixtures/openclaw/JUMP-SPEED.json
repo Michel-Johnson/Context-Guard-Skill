@@ -5,71 +5,131 @@
     "fixes": 25,
     "tasks": 12,
     "sessions": 30,
-    "owns": 55
+    "owns": 55,
+    "jump_index_bytes": 22231
+  },
+  "batch": {
+    "path": [
+      "src/gateway/server.ts",
+      "src/gateway/healthz.ts",
+      "src/gateway/protocol/connect.ts",
+      "src/auto-reply/agent-runner.ts",
+      "src/routing/session-key.ts",
+      "packages/agent-core/"
+    ],
+    "bug": [
+      "B20",
+      "配对",
+      "loopback"
+    ],
+    "task": [
+      "J5",
+      "隧道",
+      "onboard"
+    ],
+    "last": true
+  },
+  "hits": {
+    "ok": true,
+    "queries": 13,
+    "open_files": 15,
+    "open_bytes": 5106,
+    "ids": [
+      "N11",
+      "N11b",
+      "N12",
+      "N15",
+      "N16",
+      "M2",
+      "B20",
+      "B30",
+      "B10",
+      "J5",
+      "J5",
+      "J1",
+      "2026-08-02-d"
+    ]
   },
   "runs": [
     {
-      "cmd": "/usr/bin/python3 -c pass",
+      "cmd": "python3 -c pass",
       "rounds": 5,
-      "min_ms": 8.1,
-      "median_ms": 8.2,
-      "max_ms": 9.4,
+      "min_ms": 8.0,
+      "median_ms": 8.1,
+      "max_ms": 8.2,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --path src/gateway/server.ts",
+      "cmd": "1 subprocess jump --path",
       "rounds": 5,
-      "min_ms": 26.6,
-      "median_ms": 28.3,
-      "max_ms": 29.7,
+      "min_ms": 26.5,
+      "median_ms": 26.8,
+      "max_ms": 27.0,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --bug B20",
+      "cmd": "1 subprocess jump --bug B20",
       "rounds": 5,
-      "min_ms": 25.7,
-      "median_ms": 25.9,
-      "max_ms": 26.0,
+      "min_ms": 26.5,
+      "median_ms": 26.6,
+      "max_ms": 26.9,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --bug 配对",
+      "cmd": "1 subprocess jump --bug 配对",
       "rounds": 5,
-      "min_ms": 25.5,
-      "median_ms": 26.0,
-      "max_ms": 27.5,
+      "min_ms": 26.4,
+      "median_ms": 26.8,
+      "max_ms": 26.9,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --task J5",
+      "cmd": "1 subprocess jump --task J5",
       "rounds": 5,
-      "min_ms": 25.6,
-      "median_ms": 26.1,
-      "max_ms": 27.7,
+      "min_ms": 26.4,
+      "median_ms": 26.5,
+      "max_ms": 26.8,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --task 隧道",
+      "cmd": "1 subprocess jump --task 隧道",
       "rounds": 5,
-      "min_ms": 25.6,
-      "median_ms": 25.8,
-      "max_ms": 27.1,
+      "min_ms": 26.5,
+      "median_ms": 26.6,
+      "max_ms": 26.7,
       "ok": true
     },
     {
-      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --last",
+      "cmd": "1 subprocess jump --last",
       "rounds": 5,
-      "min_ms": 25.4,
-      "median_ms": 25.5,
-      "max_ms": 25.6,
+      "min_ms": 26.7,
+      "median_ms": 26.8,
+      "max_ms": 26.9,
+      "ok": true
+    },
+    {
+      "cmd": "13 sequential subprocess jumps",
+      "rounds": 5,
+      "min_ms": 346.4,
+      "median_ms": 347.1,
+      "max_ms": 347.2,
+      "ok": true,
+      "queries": 13
+    },
+    {
+      "cmd": "1 subprocess jump --json (13 queries)",
+      "rounds": 5,
+      "min_ms": 26.9,
+      "median_ms": 27.0,
+      "max_ms": 27.2,
       "ok": true
     },
     {
       "cmd": "in-process jump {'path': 'src/gateway/server.ts'}",
       "rounds": 5,
-      "min_ms": 0.3,
-      "median_ms": 0.3,
-      "max_ms": 0.5,
+      "min_ms": 0.1,
+      "median_ms": 0.2,
+      "max_ms": 0.2,
       "ok": true
     },
     {
@@ -83,10 +143,28 @@
     {
       "cmd": "in-process jump {'last': True}",
       "rounds": 5,
-      "min_ms": 0.0,
-      "median_ms": 0.0,
-      "max_ms": 0.0,
+      "min_ms": 0.1,
+      "median_ms": 0.1,
+      "max_ms": 0.2,
       "ok": true
+    },
+    {
+      "cmd": "in-process jump_many (13 queries)",
+      "rounds": 5,
+      "min_ms": 0.4,
+      "median_ms": 0.4,
+      "max_ms": 0.4,
+      "ok": true,
+      "open": 15
+    },
+    {
+      "cmd": "read jump-index.json once, match in-process",
+      "rounds": 5,
+      "min_ms": 0.3,
+      "median_ms": 0.3,
+      "max_ms": 0.3,
+      "ok": true,
+      "hits": 13
     }
   ]
 }

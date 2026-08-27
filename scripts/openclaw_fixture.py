@@ -63,7 +63,10 @@ def bug_files(bid: str, title: str, node_id: str, keys: str, 现象: str, 根因
         f"- 现象: {现象}\n"
         f"- keys: {keys}\n"
         f"- fix: .codex/context/fixes/{bid}.md\n"
-        f"- card: .codex/context/cards/{node_id}.md\n",
+        f"- card: .codex/context/cards/{node_id}.md\n\n"
+        f"## 跳转\n\n"
+        f"- [经验](../fixes/{bid}.md)\n"
+        f"- [卡](../cards/{node_id}.md)\n",
     )
     write(
         CTX / "fixes" / f"{bid}.md",
@@ -76,7 +79,10 @@ def bug_files(bid: str, title: str, node_id: str, keys: str, 现象: str, 根因
         f"## 怎么修\n\n{怎么修}\n\n"
         f"## 怎么防\n\n{怎么防}\n\n"
         f"## 代码\n\n- {code}\n\n"
-        f"## 证据\n\n- docs/shots/{bid.lower()}.png\n",
+        f"## 证据\n\n- docs/shots/{bid.lower()}.png\n\n"
+        f"## 跳转\n\n"
+        f"- [索引卡](../bugs/{bid}.md)\n"
+        f"- [卡](../cards/{node_id}.md)\n",
     )
 
 
@@ -89,6 +95,8 @@ def task_file(jid: str, title: str, keys: str, chain: str, card: str, what: str,
         f"- keys: {keys}\n"
         f"- chain: {chain}\n"
         f"- card: .codex/context/cards/{card}.md\n\n"
+        f"## 跳转\n\n"
+        f"- [卡](../cards/{card}.md)\n\n"
         f"## 这是哪类活\n\n{what}\n\n"
         f"## 命令\n\n{cmd_lines}\n\n"
         f"## 代码\n\n{code_lines}\n",
@@ -482,6 +490,7 @@ def build_map() -> dict:
                         "apps/control/webchat.ts",
                         "Control UI 走同一条隧道",
                         owns=["apps/control/webchat.ts"],
+                        memories=["远程页只许走 Gateway 已占用的那条跳"],
                         bugs=[b70],
                     ),
                     node(
@@ -549,7 +558,7 @@ BUGS = [
     ("B60", "Android node caps 策略来源不一致", "M6", "android, policy, caps", "policy-config 与 policy-source 对 required-commands 判断分叉。", "两份策略各算各的。", "单一来源。", "required-commands 不能分叉。", "apps/android/Policy.kt", "open"),
     ("B61", "Linux exec 取消杀不到子进程", "N69", "linux, exec, abort, 取消", "Gateway abort 后 Linux 上命令还在跑。", "取消没传到 node。", "abort 必须杀掉 node 子进程。", "取消时杀子进程。", "apps/linux/exec.ts", "open"),
     ("B62", "Swift 协议模型手写后和 schema 分叉", "N62", "swift, schema, 协议", "iOS 字段和 TypeBox 对不上。", "手写了对等类型。", "只从 schema 生成。", "macOS/iOS 不手写对等类型。", "apps/macos/ProtocolModels.swift", "open"),
-    ("B70", "远程 Control UI 必须与 Gateway 同隧道", "N7p", "隧道, Control UI, 远程, ssh", "WebChat 远程连错端口。", "UI 和 Gateway 走了两条隧道。", "同隧道同端口。", "远程 Control UI 与 Gateway 同隧道。", "apps/control/webchat.ts", "open"),
+    ("B70", "远程 Control UI 必须与 Gateway 同隧道", "N7p", "隧道, Control UI, 远程, ssh", "WebChat 远程连错端口。", "UI 和 Gateway 走了两条隧道。", "同隧道同端口。配置键必须写成 claw.tunnel.share=gateway-18789。", "远程 Control UI 与 Gateway 同隧道。", "apps/control/webchat.ts", "open"),
     ("B71", "TUI --local 误当成第二个 Gateway", "N7i", "tui, local, Gateway", "--local 又拉起一套会话存储。", "嵌入式模式没复用已有 Gateway。", "默认连已有 Gateway。", "--local 才嵌入式，不是第二个 Gateway。", "src/tui/tui.ts", "open"),
     ("B72", "doctor --fix 被当成可选项跳过", "N78", "doctor, 迁移, config", "配置迁移没跑，旧键继续生效。", "向导把 doctor 当可选。", "失败回 doctor --fix。", "doctor --fix 是配置迁移主路径。", "src/commands/doctor.ts", "open"),
     ("B80", "allowlist 空时私聊直进 agent", "N38", "allowlist, 私聊, 配对", "空名单被当成「谁都能聊」。", "空值当放行。", "空名单仍要求配对。", "能私聊的渠道默认配对未知发送者。", "src/channels/allowlist.ts", "open"),
@@ -750,7 +759,7 @@ def main() -> int:
         FIX / "README.md",
         "# OpenClaw 底层夹具（测 jump 速度）\n\n"
         "假的 OpenClaw 项目记忆，格式跟第一版一样：会话、坏例、任务、地图。\n"
-        "用来测 `python3 scripts/map_owns.py jump --root fixtures/openclaw` 有多慢。\n\n"
+        "用来测检索：连跑多次 jump、一次 `--json`。`jump-index.json` 给脚本用，不要整份读进对话。\n\n"
         "重新生成：`python3 scripts/openclaw_fixture.py`\n"
         "计时：`python3 scripts/bench_jump.py`\n",
     )
@@ -762,8 +771,11 @@ def main() -> int:
     write(
         CTX / "FIND.md",
         "# OpenClaw 夹具怎么跳\n\n"
-        "这是假的 OpenClaw 记忆，用来测 jump 速度。不要把整份 map 读进来。\n\n"
+        "这是假的 OpenClaw 记忆，用来测检索速度。不要把整份 map 读进来。\n\n"
+        "同时查很多东西时，一次 `--json`，不要连跑 N 次 jump，也不要把 `jump-index.json` 整份读进对话。\n\n"
         "```\n"
+        "python3 scripts/map_owns.py jump --root fixtures/openclaw --json "
+        '\'{"path":["src/gateway/server.ts"],"bug":["配对"],"task":["隧道"],"last":true}\'\n'
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --path src/gateway/server.ts\n"
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --bug 配对\n"
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --task 隧道\n"
