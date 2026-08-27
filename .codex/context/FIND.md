@@ -30,36 +30,28 @@
 
 **Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看。
 
-同时要查很多路径 / 坏例 / 任务时，**不要连跑 N 次 jump**。慢的是每次起 Python。用一次命令查完：
+先打开小索引，再只打开命中的那一两份 Markdown：
 
-```
-python3 scripts/map_owns.py jump --json '{"path":["src/a.ts","src/b.ts"],"bug":["B20","对话框"],"task":["J1"],"last":true}'
-```
+- 改某个源码 → `owns-index.json` → `cards/卡号.md`
+- 人报了 bug → `bugs-index.json` 按 `keys` 对词 → `bugs/B20.md` → `fixes/B20.md`
+- 再做同类的活 → `tasks-index.json` 按 `keys` 对词 → `tasks/J1.md`
+- 问上次说过什么 → `sessions.jsonl` 末尾几行
 
-只打开返回的 `open`；需要再打开 `then`。不要把 `jump-index.json` 整份读进对话——那是给脚本用的合成表，体量和地图差不多。
+不要 Grep 整个 `.codex/context/`，不要把 `map.json`、`jump-index.json` 整份读进对话。OpenClaw 难任务对照里，只靠索引最快也最干净。
 
-单查一条仍可用：
-
-```
-python3 scripts/map_owns.py jump --path <文件>
-python3 scripts/map_owns.py jump --bug B20
-python3 scripts/map_owns.py jump --bug 对话框
-python3 scripts/map_owns.py jump --task J1
-python3 scripts/map_owns.py jump --task 找卡
-python3 scripts/map_owns.py jump --last
-```
+`python3 scripts/map_owns.py jump` 留给脚本自己用（例如一次 `--json` 查很多条）。Agent 不要当主找法。
 
 `jump-index.json` 怎么对：脚本按 `owns` 里 `path` 最长前缀命中（精确文件优先于目录）；`bugs` / `tasks` 按编号，或用 `keys` / 标题对上人的词。Agent 不要自己扫这份文件。
 
 ## 链路 1：改某个源码
 
-`owns-index.json` → `cards/卡号.md` → 需要时按卡片里的 `chain` 打开上面几层 `cards/`。多查时让 `jump --json` 去对 `jump-index.json`。
+`owns-index.json` → `cards/卡号.md` → 需要时按卡片里的 `chain` 打开上面几层 `cards/`。
 
 卡上的 Bug 链接先到 `bugs/B20.md`（是不是这条），再到 `fixes/B20.md`（怎么修过）。卡上的记忆就是还生效的短规矩。
 
 ## 链路 2：人报了个 bug / 报错
 
-`bugs-index.json` 按 `keys` 找编号 → `bugs/B20.md` 看现象是不是这条 → `fixes/B20.md` 看怎么修 → 正文「代码」下列的路径再走链路 1。多查同样走 `jump --json`。
+`bugs-index.json` 按 `keys` 找编号 → `bugs/B20.md` 看现象是不是这条 → `fixes/B20.md` 看怎么修 → 正文「代码」下列的路径再走链路 1。
 
 ## 链路 3：问上次说过什么
 
@@ -67,7 +59,7 @@ python3 scripts/map_owns.py jump --last
 
 ## 链路 4：做和上次同类的活
 
-人说「再做一次某某 / 按这个任务来」→ `tasks-index.json` 按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。多查走 `jump --json`。
+人说「再做一次某某 / 按这个任务来」→ `tasks-index.json` 按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。
 
 ## 各文件里靠哪跳
 
@@ -85,4 +77,4 @@ python3 scripts/map_owns.py jump --last
 
 格式细节：`.codex/context/FORMAT.md`。
 
-禁止：把整份 `map.json`、`jump-index.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。连跑很多次 `jump` 也不要。
+禁止：把整份 `map.json`、`jump-index.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。不要 Grep 整个 context 目录。

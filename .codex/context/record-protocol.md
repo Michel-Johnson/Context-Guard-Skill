@@ -1,6 +1,6 @@
 # 底层：第一版四块
 
-跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。Agent 多查用 `python3 scripts/map_owns.py jump --json`，单条用 `--path` / `--bug` / `--task` / `--last`。不靠点超链接，也不要把 `jump-index.json` 整份读进对话。
+跳转说明书：`.codex/context/FIND.md`。字段怎么写：`.codex/context/FORMAT.md`。Agent 先读小索引（`owns-index.json` / `bugs-index.json` / `tasks-index.json` / `sessions.jsonl`），再打开命中文件。不靠点超链接，也不要把 `jump-index.json` 或 `map.json` 整份读进对话。
 
 一条记忆挂多张卡，等真遇到再做。
 

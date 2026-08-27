@@ -16,14 +16,9 @@
 
 已经做的：
 
-- 多查一次查完：`python3 scripts/map_owns.py jump --json '{"path":[...],"bug":[...],"task":[...],"last":true}'`
-- 脚本背后读一份 `jump-index.json`。Agent 不要把这份索引整份读进对话（OpenClaw 夹具约 22KB，跟地图一个量级）
-- 计时和命中对照见 `fixtures/openclaw/JUMP-SPEED.md`：13 条连跑约 351ms，一次 `--json` 约 28ms，命中与逐条相同
-- 真 Agent 难任务对照在 `fixtures/openclaw/eval/REPORT.md`：四种找法都能答对。转写核对后，只靠索引最干净；Grep / jump 都会额外扫盘；只跟链接会迷路。
-
-以后若还慢，再看：`open` 是否太长、有没有扫完全部 `bugs/`、从人一句话到打开正确那一份实际卡在哪。超链接仍然只给人看。真 Agent 会不会按说明书去 `--json`，还没跑过一轮。
-
-以后若还慢，再看：`open` 是否太长、有没有扫完全部 `bugs/`、从人一句话到打开正确那一份实际卡在哪。超链接仍然只给人看。
+- 真 Agent 难任务对照见 `fixtures/openclaw/eval/REPORT.md`：**只靠索引最干净**（约 1 分钟、10 次 Read）。Grep / `jump --json` 都会额外扫盘；只跟链接会迷路。
+- Agent 主找法锁定为小索引：`owns-index.json` / `bugs-index.json` / `tasks-index.json` / `sessions.jsonl` 末尾，再打开命中的 Markdown。`jump` 留给脚本。
+- 计时见 `fixtures/openclaw/JUMP-SPEED.md`。
 
 ## 3. CI/CD 测试（第五块）
 

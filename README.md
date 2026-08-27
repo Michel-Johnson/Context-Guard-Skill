@@ -23,6 +23,49 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Runs approved tests by default**: user-created or user-approved tests run at every development completion unless the user sets another cadence.
 - **Provides a Test Hub entrypoint**: `dev-complete` runs approved always-run tests, cleans success artifacts, and preserves failed evidence.
 
+## Human workbench
+
+People confirm the architecture map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
+
+**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
+
+Serve the repo root so the page can load `.codex/context/map.json`:
+
+```bash
+python3 -m http.server 8877
+# then open http://127.0.0.1:8877/prototype/workbench.html
+```
+
+### Overview
+
+Root catalog: 4–8 module cards. Click a card to enter. Bugs stay in the right-hand list.
+
+![Workbench overview](docs/shots/workbench/overview.png)
+
+### Inside a module
+
+Work units hang under the module. Hierarchy is parent–child solid curves.
+
+![Inside a module](docs/shots/workbench/module.png)
+
+### Module relations
+
+「关系」 highlights produce/consume partners and dims the rest. It does not enter the module.
+
+![Module relations](docs/shots/workbench/relations.png)
+
+### Session flow
+
+Click a bug with an assigned session. The path from the root to that node lights up; current session beads run along the chain.
+
+![Session flow](docs/shots/workbench/session-flow.png)
+
+### Auth / inspect mode
+
+「授权模式」 marks which slices this session’s agent may read. Grey cards are not authorized.
+
+![Auth mode](docs/shots/workbench/auth-mode.png)
+
 ## Install
 
 Install with npx:

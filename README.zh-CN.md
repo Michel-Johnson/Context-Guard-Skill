@@ -23,6 +23,49 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 - **默认运行已确认测试**：用户创建或确认的测试，默认每次开发结束都要运行；只有用户说明不必每次运行时才降频。
 - **提供测试中台入口**：`dev-complete` 会统一运行已确认的 always-run 测试，成功清理临时产物，失败保留证据。
 
+## 工作台
+
+人在 `prototype/workbench.html` 里看图、点头。Agent 读 `.codex/context/` 里的小索引，不操作画布。
+
+**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
+
+本地从仓库根起一个静态服务，页面才能读到 `.codex/context/map.json`：
+
+```bash
+python3 -m http.server 8877
+# 打开 http://127.0.0.1:8877/prototype/workbench.html
+```
+
+### 总览
+
+第一页 4–8 张主干模块卡。点一张进入。未修 Bug 在右侧列表。
+
+![工作台总览](docs/shots/workbench/overview.png)
+
+### 进入模块
+
+开工单元挂在模块下面，只画从属实线。
+
+![模块内部](docs/shots/workbench/module.png)
+
+### 模块关系
+
+点「关系」再点一张卡，只高亮它的生产/消费，其它变暗，不会进入该模块。
+
+![模块关系](docs/shots/workbench/relations.png)
+
+### 会话流动
+
+点一条挂了会话的 Bug。从根到该节点的链路亮起来，当前会话沿线流动。
+
+![会话流动](docs/shots/workbench/session-flow.png)
+
+### 授权模式
+
+「授权模式」标出这次会话 Agent 能读哪一段。灰色卡未授权。
+
+![授权模式](docs/shots/workbench/auth-mode.png)
+
 ## 安装
 
 使用 npx 安装：
