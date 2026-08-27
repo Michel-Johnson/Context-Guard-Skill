@@ -4,3 +4,4 @@
 {"id":"2026-08-26-d","human":"确认底层文件格式细节决定了没有","agent":"把第一版字段收进 FORMAT.md 并按此对齐现有文件","files":[".codex/context/FORMAT.md",".codex/context/FIND.md","scripts/map_owns.py"],"bugs":[],"tasks":[]}
 {"id":"2026-08-26-e","human":"能不能用超链接跳转，还是skill里做跳转工具","agent":"超链接给人看；Agent 用 map_owns.py jump，只打开返回的 open 文件","files":["scripts/map_owns.py",".codex/context/FIND.md","SKILL.md"],"bugs":[],"tasks":["J1"]}
 {"id":"2026-08-26-f","human":"建To-Do：优化检索、CI/CD；另加首次建图","agent":"写下 .codex/context/TODO.md 三件事，第一版先不做","files":[".codex/context/TODO.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-26-g","human":"首次建图是比较困难也比较重要的To-Do","agent":"把首次建图调到 TODO 第一条，标成最难也最要紧","files":[".codex/context/TODO.md"],"bugs":[],"tasks":[]}
