@@ -8,8 +8,27 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GOLD_PATH = ROOT / "fixtures" / "openclaw" / "eval" / "gold.json"
-CTX = ROOT / "fixtures" / "openclaw" / ".codex" / "context"
+OPENCLAW = ROOT / "fixtures" / "openclaw"
+GOLD_PATH = OPENCLAW / "eval" / "gold.json"
+CTX = OPENCLAW / ".codex" / "context"
+
+
+def resolve_openclaw_path(rel: str) -> Path | None:
+    text = str(rel or "").replace("\\", "/").strip()
+    if "fixtures/openclaw/" in text:
+        text = text.split("fixtures/openclaw/", 1)[1]
+    if text.startswith("./"):
+        text = text[2:]
+    if text.startswith("/"):
+        path = Path(text)
+        return path if path.is_file() else None
+    candidates = [OPENCLAW / text, CTX / text]
+    if not text.startswith(".codex/"):
+        candidates.append(CTX / text.lstrip("/"))
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
 
 
 def load_gold() -> dict:
@@ -80,10 +99,15 @@ def parse_answer_blob(text: str) -> dict:
 def store_sizes() -> dict:
     files = list(CTX.rglob("*"))
     bytes_all = sum(p.stat().st_size for p in files if p.is_file())
+    gold_bytes = 0
+    for rel in load_gold()["must_files"]:
+        path = resolve_openclaw_path(rel)
+        if path:
+            gold_bytes += path.stat().st_size
     return {
         "context_files": sum(1 for p in files if p.is_file()),
         "context_bytes": bytes_all,
-        "gold_payload_bytes": sum((CTX.parent / rel).stat().st_size for rel in load_gold()["must_files"] if (CTX.parent / rel).is_file()),
+        "gold_payload_bytes": gold_bytes,
     }
 
 
