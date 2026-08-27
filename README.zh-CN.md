@@ -7,7 +7,7 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 ## 能做什么
 
 - **四块**：会话、坏例、任务、地图，都在当前项目的 `.codex/context/`
-- **首次建图**：Agent 读仓、写 `architecture.md`，提出 4–8 张主干模块。之后会话打开这张图
+- **首次建图**：人和 Agent 先商量第一层怎么切（可以先给几种拆法或较多候选），定了再拆第二层、第三层。卡名要一眼能看懂。之后会话打开这张图
 - **人看工作台**：`prototype/workbench.html`。Agent 读小索引，不读整张地图
 - **用户原话**：写进 `user-messages.md`；密钥只在 `private/`
 - **记录语言**：按文件夹选中文或英文
@@ -18,7 +18,7 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 
 人在 `prototype/workbench.html` 里看图、点头。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
+**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/first-use-interactive-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/first-use-interactive-f54e/prototype/workbench.html)
 
 第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
 

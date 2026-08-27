@@ -446,7 +446,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <div class="kicker" data-i18n="firstKicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p data-i18n="firstProduct">产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在右侧面板；点一条只画从根到该节点的链路，不进分级页面。</p>
+    <p data-i18n="firstProduct">产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。平时只画从属实线。生产/消费要点「关系」。未修 Bug 在右侧面板。</p>
     <div class="actions">
       <button class="primary" id="first-use-go" data-i18n="firstGo">演示分析（不调用 Agent）</button>
       <button class="quiet" id="first-use-empty" data-i18n="firstEmpty">仓库几乎是空的</button>
@@ -458,7 +458,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <p data-i18n="workCopy1">浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p data-i18n="workCopy2">下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。</p>
+    <p data-i18n="workCopy2">下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -503,13 +503,13 @@ const I18N = {
     firstKicker:"演示 · 第一次使用",
     firstHeading:"从 {name} 建立架构图",
     firstCopy:"这是原型演示，不会调用任何 Agent，也不会去读 {name} 的真实代码。点击后只播放预置步骤，并投影已经写好的笔记和地图。产品里才由当前会话的 Agent 做这一步。",
-    firstProduct:"产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在右侧面板；点一条只画从根到该节点的链路，不进分级页面。",
+    firstProduct:"产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。平时只画从属实线。生产/消费要点「关系」。未修 Bug 在右侧面板。",
     firstGo:"演示分析（不调用 Agent）",
     firstEmpty:"仓库几乎是空的",
     workKicker:"演示中 · 未调用 Agent",
     workHeading:"正在播放预置的分析过程",
     workCopy1:"浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。",
-    workCopy2:"下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。",
+    workCopy2:"下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。",
     trayTitle:"已取消的提议",
     trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
     openBugs:"未修的 Bug",
@@ -552,13 +552,13 @@ const I18N = {
     firstKicker:"Demo · first use",
     firstHeading:"Build a map from {name}",
     firstCopy:"This is a prototype demo. It does not call an agent or read {name}'s real code. The click only plays prepared steps and projects notes and a map that are already written. In the product, the current session's agent does this.",
-    firstProduct:"In the product, the current session's agent reads the repo, writes architecture.md, and lands the live map at .codex/context/map.json. The first page only confirms 4–8 trunk modules. Everyday view draws parent–child solids only. Produce/consume needs Relations. Open bugs stay in the right panel; clicking one draws the root-to-node chain, not the paged view.",
+    firstProduct:"In the product, the current session's agent talks with you layer by layer: first several ways to cut L1, or a larger set of candidate modules whose titles you can read in seconds. After you lock L1, then L2, then L3. The agreed trunk (about 4–8 cards) lands in architecture.md and map.json. Everyday view draws parent–child solids only. Produce/consume needs Relations. Open bugs stay in the right panel.",
     firstGo:"Play demo analysis (no agent)",
     firstEmpty:"The repo is almost empty",
     workKicker:"Demo · no agent called",
     workHeading:"Playing the prepared analysis",
     workCopy1:"The browser is walking hard-coded steps. No model is reading OpenClaw or this repo. When the real skill runs, the agent you are talking to reads the code.",
-    workCopy2:"The notes below are a prepared demo. The first page confirms 4–8 trunk modules; entering a module expands the tree. This is not a live read of the repo.",
+    workCopy2:"The notes below are a prepared demo. Real first-use decides L1 with you, then goes deeper; titles must be instantly readable. This demo still shows the agreed 4–8 trunk cards. This is not a live read of the repo.",
     trayTitle:"Cancelled proposals",
     trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
     openBugs:"Open bugs",
@@ -1068,8 +1068,8 @@ const CONTEXT_GUARD_MAP = {
   children:[
     U("M1", "Skill 合同", "何时启动、记什么、什么必须等人确认", [
       U("N11", "SKILL.md 启动时机", "首次使用、看导图、改方向、park/resume、编码/调试/评审时启用", []),
-      U("N12", "首次建图合同", "无图才分析；有提议或已确认的图则打开，不重拆", []),
-      U("N13", "architecture.md 必须先写", "分析粒度对齐真实开工单元；第一层只是确认门", []),
+      U("N12", "首次建图合同", "无图才建；先和人商量第一层怎么切，定了再拆下一层，不一次倒整棵树", [], {memories:[{text:"首次建图要和人实时商量：先给第一层几种拆法或较多候选，定了再拆第二层、第三层。卡名和用途必须一眼能看懂。", state:"success"}]}),
+      U("N13", "architecture.md 必须先写", "边商量边写笔记；卡名和那一句用途要让人几秒内知道这是啥", []),
       U("N14", "简洁合同", "context 是导航不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", [])
     ], {memories:[{text:"每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图", state:"success"}]}),
     U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
@@ -1110,9 +1110,9 @@ const CONTEXT_GUARD_MAP = {
       U("N43", "SessionStart hook", "当前开发进程也应加载本 skill，而不是只给别人的仓库用", []),
       U("N44", "禁止把 skill 安装目录当项目根", "context 跟被分析的仓库走", [])
     ], {memories:[{text:"scripts/context_guard.py；禁止把 skill 安装目录当成项目根", state:"success"}]}),
-    U("M5", "仓库拆图", "已有项目变成地图：先写整仓笔记，再投影 L1 确认门和 L2 开工节点", [
+    U("M5", "仓库拆图", "已有项目变成地图：先商量第一层怎么切，定了再拆第二层、第三层", [
       U("N51", "信号源", "README / SKILL / 包与插件边界 / docs / 运行时入口，不是每个源文件一张卡", []),
-      U("N52", "L1 确认门", "未确认的第一层后续 Agent 读不到；确认不等于授权整棵树", []),
+      U("N52", "L1 确认门", "商量之后的定稿大约 4–8 张；未确认的第一层后续 Agent 读不到", []),
       U("N53", "architecture.md 产出", "整仓笔记是分析本身；地图是投影，不是用三张卡冒充分析", []),
       U("N54", "先建子模块再挂文件", "点进「控制面 UI」先看到 CLI/TUI/Control UI/远程 四张子模块卡，再进到 onboard.ts。既不要三张空壳，也不要一张卡下摊开全部文件", []),
       U("N55", "以后会话打开已有图", "除非人要求重新分析", [])
@@ -1154,9 +1154,9 @@ stampOwns(CONTEXT_GUARD_MAP, CG_OWNS);
 const OPENCLAW_NOTES = `# OpenClaw 架构笔记（演示稿 · 未调用 Agent）
 
 分析对象：openclaw/openclaw。不是目录树，也不是「CLI / TUI / Control UI」三句口号。
-粒度：接下来改代码时会打开哪一个文件、哪一条命令。
+粒度：接下来改代码时会打开哪一个文件、哪一条命令。真做时先和人商量第一层怎么切（可以先给几种拆法），定了再往下拆。卡名要一眼能看懂。
 
-## 第一层（确认门，不是分析深度）
+## 第一层（商量之后的定稿，不是一上来倒出的整棵树）
 
 L1 数量视仓库而定，建议 4–8，不写死成 4。OpenClaw 体量大，这一页确认 8 张卡：
 
@@ -1209,7 +1209,7 @@ Gateway 控制面 · Agent Runtime · Channels · Models 与供应商 · Plugins
 
 const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（演示稿 · 未调用 Agent）
 
-分析对象：本仓库。第一层是确认门。开发粒度是工作台里的函数/文件，不是「工作台」三个字。
+分析对象：本仓库。真做时先商量第一层怎么切，定了再往下拆。下面是定稿后的第一层。开发粒度是工作台里的函数/文件，不是「工作台」三个字。
 
 ## 第一层
 Skill 合同 · 工作台 · skill文件结构 · CLI 与 Hook · 仓库拆图 · 会话授权与提议 · 遗留测试中台
@@ -1224,6 +1224,8 @@ Skill 合同 · 工作台 · skill文件结构 · CLI 与 Hook · 仓库拆图 �
 - 活地图 .codex/context/map.json（记忆在节点上）；localStorage 只当缓存；asProposal 递归子模块卡，只把开工单元内部收进 inbox
 
 ## 仓库拆图怎么做
+- 先拿出几种第一层拆法或较多候选；人和 Agent 定了再拆第二层、第三层
+- 卡名和那一句用途要让人几秒内知道这是啥
 - 信号：README、包边界、docs、运行时入口（不是一文件一卡）
 - 产出：architecture.md（整仓笔记）+ map.json（活地图：树、记忆、生产/消费）
 - 反例：控制面 UI → CLI / TUI / UI 三张空壳；同样反例：一张卡下摊开全部文件
@@ -1245,7 +1247,7 @@ const catalog = {
       {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、skill 文件是不同开工面"},
       {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
       {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"进入模块先看到子模块卡；文件挂在子模块下"},
-      {do:"第一层只作为确认门；点进模块，不要在根上预览", find:"人先确认 4–8 个 L1；一张卡下超过约 8 个文件就要先建子模块"}
+      {do:"先拿出几种第一层拆法给人对，定了再往下拆", find:"卡名和用途要一眼能看懂；定稿大约 4–8 张，不是一上来倒整棵树"}
     ]
   },
   openclaw: {
@@ -1263,7 +1265,7 @@ const catalog = {
       {do:"按渠道实现文件拆（baileys.ts、grammy.ts、pairing），不要只列渠道名", find:"WhatsApp 单会话不变量写在 baileys.ts 旁边"},
       {do:"控制面先拆成 CLI / TUI / Control UI / 远程 四张子模块卡，命令文件挂在卡下", find:"点进控制面 UI 先看到子模块，不是二十几个文件平铺"},
       {do:"TUI 与 Control UI 的主循环、双后端、transcript 写进对应子模块，不要空壳也不要平铺", find:"tui.ts、GatewayChatClient、ui/src/chat 都在子模块里"},
-      {do:"写进 architecture.md；L1 只当确认门，数量 4–8 视仓库而定，不写死成 4", find:"OpenClaw 体量大：根上 8 张卡；小仓库可以只有 4 张主干"}
+      {do:"先拿出几种第一层拆法给人对，定了再往下拆；边写 architecture.md", find:"卡名要一眼能看懂；OpenClaw 定稿可以 8 张主干，小仓库可以只有 4 张"}
     ]
   }
 };

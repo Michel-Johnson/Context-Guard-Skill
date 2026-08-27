@@ -4,7 +4,9 @@ Status: proposed (analysis done, awaiting human confirmation)
 Source: this repository, not a directory dump
 Later sessions: open this map. Do not re-analyze unless the human asks to rebuild.
 
-This file is the analysis, not a slogan list. L1 is only the confirmation gate.
+This file is the analysis, not a slogan list. First-use talks layer by layer:
+several candidate cuts for L1, then lock L1, then L2, then L3. Agreed L1 is
+the confirmation gate (about 4–8). Card titles must be instantly readable.
 The live tree, memories, and produce/consume flows live in `map.json`.
 Clicking an L1 card enters it. If that module would fan out more than about eight
 work units, cluster them into submodule cards first. Files hang under those
@@ -19,7 +21,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 工作台 — 看图、改记忆、确认提议、切换仓库
 - skill文件结构 — `.codex/context/`，公开记录可进 git
 - CLI 与 Hook — init、语言、导图；当前开发进程也要加载本 skill
-- 仓库拆图 — 已有项目变成地图：先写笔记，再投影 L1；进入后再看子模块和文件
+- 仓库拆图 — 已有项目变成地图：先商量第一层怎么切，定了再拆下一层
 - 会话授权与提议 — 新会话默认很小；Agent 提议节点灰色半透明虚线，看起来像草稿。点一次右上角绿点变成转圈，再点一次才变成实节点。不要「再点一次加入」文案。
 - 遗留测试中台 — 仓库里还有；第一版不做。以后可能作为第五块（CI/CD 测试）再加。
 
@@ -27,8 +29,8 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 
 ### Skill 合同
 - `SKILL.md` 启动时机（首次 / 看图 / 改方向 / park-resume / 编码调试评审）
-- 首次建图合同：无图才分析；有图则打开
-- `architecture.md` 必须先写，粒度对齐真实开工单元
+- 首次建图合同：无图才建；先和人商量第一层怎么切，定了再拆下一层
+- `architecture.md` 边商量边写；卡名和那一句用途要让人几秒内知道这是啥
 - 简洁合同：导航不是逐字稿
 
 ### 工作台
@@ -45,7 +47,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 活地图是 `.codex/context/map.json`：树、生产/消费、节点上的记忆和 Bug 同一份文件。`localStorage`（`cg-workbench-maps-v12`）只是没连仓库时的缓存。连接本机仓库后读写 `map.json`。
 - 生产/消费默认不画虚线。打开「关系」后模块拉开；点击任意节点只高亮它的生产/消费对端，其余变暗，不会进入下一页。用顶栏面包屑进入模块。
 - 未修 Bug 在右侧面板。点一条只展示从根到该节点的链路，其余隐藏，不走分级进入。本会话或多会话可同时在修；链路上用电流表示谁在修。列表只留 Bug 标题。
-- L1 确认门数量 4–8，按仓库体量定，不强制恰好 4 张
+- 定稿的第一层仍是确认门，大约 4–8 张；那是商量之后的结果，不是一上来摊开的终稿
 - 伴侣/Linux node 这类模块要多层子模块（连接 / 远程命令 / 常驻），不能只有一级两个胶囊
 - `asProposal` 递归子模块卡，只把开工单元内部收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
@@ -68,6 +70,8 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 禁止把 skill 安装目录当项目根
 
 ### 仓库拆图
+- 先拿出几种第一层拆法或较多候选；人和 Agent 定了再拆第二层、第三层
+- 卡名和那一句用途要让人几秒内知道这是啥
 - 信号源：README、包边界、docs、运行时入口（不是一文件一卡）
 - L1 确认门；进入模块先看子模块卡，文件挂在子模块下
 - 反例：控制面 UI → CLI / TUI / Control UI 三个空壳

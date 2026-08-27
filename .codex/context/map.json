@@ -308,9 +308,14 @@
             "id": "N12",
             "title": "首次建图合同",
             "kind": "work",
-            "purpose": "无图才分析；有提议或已确认的图则打开，不重拆",
+            "purpose": "无图才建；先和人商量第一层怎么切，定了再拆下一层，不一次倒整棵树",
             "state": "dirty",
-            "memories": [],
+            "memories": [
+              {
+                "text": "首次建图要和人实时商量：先给第一层几种拆法或较多候选，定了再拆第二层、第三层。卡名和用途必须一眼能看懂。",
+                "state": "success"
+              }
+            ],
             "bugs": [],
             "dormant": [],
             "children": [],
@@ -323,7 +328,7 @@
             "id": "N13",
             "title": "architecture.md 必须先写",
             "kind": "work",
-            "purpose": "分析粒度对齐真实开工单元；第一层只是确认门",
+            "purpose": "边商量边写笔记；卡名和那一句用途要让人几秒内知道这是啥",
             "state": "dirty",
             "memories": [],
             "bugs": [],
@@ -903,7 +908,7 @@
         "id": "M5",
         "title": "仓库拆图",
         "kind": "module",
-        "purpose": "已有项目变成地图：先写整仓笔记，再投影 L1 确认门和 L2 开工节点",
+        "purpose": "已有项目变成地图：先商量第一层怎么切，定了再拆第二层、第三层",
         "state": "dirty",
         "memories": [
           {
@@ -936,7 +941,7 @@
             "id": "N52",
             "title": "L1 确认门",
             "kind": "work",
-            "purpose": "未确认的第一层后续 Agent 读不到；确认不等于授权整棵树",
+            "purpose": "商量之后的定稿大约 4–8 张；未确认的第一层后续 Agent 读不到",
             "state": "dirty",
             "memories": [],
             "bugs": [],

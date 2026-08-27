@@ -7,7 +7,7 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 ## What It Does
 
 - **Four stores**: sessions, bugs, tasks, map — in the opened project’s `.codex/context/`
-- **First-use map**: the agent reads the repo, writes `architecture.md`, and proposes 4–8 L1 modules. Later sessions open that map
+- **First-use map**: the agent and the human decide the first layer together (several candidate cuts, then lock L1), then L2, then L3. Titles must be instantly readable. Later sessions open that map
 - **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
 - **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
 - **Record language**: Chinese or English per folder
@@ -18,7 +18,7 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 People confirm the architecture map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
+**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/first-use-interactive-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/first-use-interactive-f54e/prototype/workbench.html)
 
 The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
 

@@ -26,7 +26,7 @@ How to find a file: read `.codex/context/FIND.md`, then the small indexes (`owns
 
 Formats: `.codex/context/FORMAT.md`. Human canvas: `prototype/workbench.html`.
 
-First use (no map yet): read the repo, write `architecture.md` at development grain, project 4–8 L1 modules into `map.json` with `owns` paths, set `map_bootstrap` to `proposed`. Later sessions open that map. Do not rebuild unless asked. Do not emit a directory dump or one node per file.
+First use (no map yet): talk with the human layer by layer. First offer several ways to cut L1, or a larger set of candidate modules whose titles a person can read in seconds. After they lock L1 (about 4–8), design L2, then L3. Write `architecture.md` as you go. Put the agreed L1 into `map.json` with `owns` paths and `map_bootstrap` proposed. Later sessions open that map. Do not dump a full tree, a directory listing, or one node per file.
 
 CLI: `python3 scripts/context_guard.py init --root <project>` and `set-language`. People look at the workbench, not a generated roadmap page.
 
