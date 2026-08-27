@@ -67,7 +67,7 @@ python3 scripts/map_owns.py jump --last
 
 ## 链路 4：做和上次同类的活
 
-人说「再做一次某某 / 按这个任务来」→ `jump-index.json` 的 `tasks`（或 `tasks-index.json`）按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。
+人说「再做一次某某 / 按这个任务来」→ `tasks-index.json` 按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。多查走 `jump --json`。
 
 ## 各文件里靠哪跳
 

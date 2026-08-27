@@ -5,3 +5,4 @@
 
 重新生成：`python3 scripts/openclaw_fixture.py`
 计时：`python3 scripts/bench_jump.py`
+难任务 Agent 对照：`fixtures/openclaw/eval/`
