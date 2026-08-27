@@ -110,15 +110,6 @@
       ]
     },
     {
-      "path": "skills/context-guard/",
-      "node": "M4",
-      "kind": "module",
-      "card": ".codex/context/cards/M4.md",
-      "chain": [
-        "T0"
-      ]
-    },
-    {
       "path": "scripts/context_guard.py",
       "node": "N41",
       "kind": "work",
@@ -129,27 +120,7 @@
       ]
     },
     {
-      "path": "skills/context-guard/scripts/context_guard.py",
-      "node": "N41",
-      "kind": "work",
-      "card": ".codex/context/cards/N41.md",
-      "chain": [
-        "T0",
-        "M4"
-      ]
-    },
-    {
       "path": "scripts/context_guard_hook.py",
-      "node": "N43",
-      "kind": "work",
-      "card": ".codex/context/cards/N43.md",
-      "chain": [
-        "T0",
-        "M4"
-      ]
-    },
-    {
-      "path": "skills/context-guard/scripts/context_guard_hook.py",
       "node": "N43",
       "kind": "work",
       "card": ".codex/context/cards/N43.md",

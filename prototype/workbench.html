@@ -1106,7 +1106,7 @@ const CONTEXT_GUARD_MAP = {
     ], {memories:[{text:"公开记录可进 git；密钥只留 private/，永远不进 HTML", state:"success"},{text:"记忆是 map.json 节点上的字段，不要另存一份平行的记忆清单", state:"success"}]}),
     U("M4", "CLI 与 Hook", "init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库", [
       U("N41", "scripts/context_guard.py init", "第一次在文件夹工作时创建 .codex/context/ 骨架", []),
-      U("N42", "show-roadmap", "把已有图打到终端，不是重建", []),
+      U("N42", "show-roadmap", "打开工作台看图，不再生成 HTML 路线图", []),
       U("N43", "SessionStart hook", "当前开发进程也应加载本 skill，而不是只给别人的仓库用", []),
       U("N44", "禁止把 skill 安装目录当项目根", "context 跟被分析的仓库走", [])
     ], {memories:[{text:"scripts/context_guard.py；禁止把 skill 安装目录当成项目根", state:"success"}]}),
@@ -1137,9 +1137,9 @@ const CG_OWNS = {
   N35:[".codex/context/private/"],
   N36:[".codex/context/map.json"],
   M3:[".codex/context/"],
-  N41:["scripts/context_guard.py","skills/context-guard/scripts/context_guard.py"],
-  N43:["scripts/context_guard_hook.py","skills/context-guard/scripts/context_guard_hook.py"],
-  M4:["scripts/","skills/context-guard/"],
+  N41:["scripts/context_guard.py"],
+  N43:["scripts/context_guard_hook.py"],
+  M4:["scripts/"],
   N51:["README.md"]
 };
 function stampOwns(n, table){

@@ -839,15 +839,14 @@
             "isNew": false,
             "origin": "agent",
             "owns": [
-              "scripts/context_guard.py",
-              "skills/context-guard/scripts/context_guard.py"
+              "scripts/context_guard.py"
             ]
           },
           {
             "id": "N42",
             "title": "show-roadmap",
             "kind": "work",
-            "purpose": "把已有图打到终端，不是重建",
+            "purpose": "打开工作台看图，不再生成 HTML 路线图",
             "state": "dirty",
             "memories": [],
             "bugs": [],
@@ -873,8 +872,7 @@
             "isNew": false,
             "origin": "agent",
             "owns": [
-              "scripts/context_guard_hook.py",
-              "skills/context-guard/scripts/context_guard_hook.py"
+              "scripts/context_guard_hook.py"
             ]
           },
           {
@@ -898,8 +896,7 @@
         "isNew": false,
         "origin": "agent",
         "owns": [
-          "scripts/",
-          "skills/context-guard/"
+          "scripts/"
         ]
       },
       {

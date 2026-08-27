@@ -20,7 +20,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py subagent-start",
             "timeout": 10,
-            "statusMessage": "Initializing subagent context"
+            "statusMessage": "Initializing folder context"
           }
         ]
       }
@@ -32,7 +32,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py user-prompt-submit",
             "timeout": 10,
-            "statusMessage": "Checking context intake"
+            "statusMessage": "Recording durable user wording"
           }
         ]
       }
@@ -43,8 +43,8 @@
           {
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py subagent-stop",
-            "timeout": 900,
-            "statusMessage": "Checking subagent context and Test Hub"
+            "timeout": 10,
+            "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
           }
         ]
       }
@@ -55,8 +55,8 @@
           {
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py stop",
-            "timeout": 900,
-            "statusMessage": "Checking context checkpoint"
+            "timeout": 10,
+            "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
           }
         ]
       }

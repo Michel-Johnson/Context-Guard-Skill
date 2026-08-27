@@ -28,7 +28,7 @@
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。怎么跳见 `FIND.md`。每个文件怎么写见 `FORMAT.md`。
 
-旧的 `.codex/context/bad-cases.md` 整册登记、以及 `register-template.md` 那套 40 字段 / Test Hub，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。
+旧的 `bad-cases.md` 整册登记和 Test Hub 那套，**不再当第一版的真相**。第一版只有会话、坏例、任务、地图。CI/CD 测试是以后可能的第五块，现在不做。仓库里的测试中台 / Roadmap HTML 已经删掉。
 
 ## 三种角色
 
@@ -90,7 +90,7 @@ ID 用 map 上的 `B20`，不要再用 `BC-YYYYMMDD-001`。后者是旧登记册
 
 ## `bugs/{id}.md` 和 `fixes/{id}.md` 写什么
 
-模板见 `skills/context-guard/references/bug-record-template.md`。索引卡只留标题、现象一句、关键词、指向经验。经验正文才写根因、怎么修、怎么防、代码路径。
+模板见 `references/bug-record-template.md`。索引卡只留标题、现象一句、关键词、指向经验。经验正文才写根因、怎么修、怎么防、代码路径。
 
 ## 和 map 怎么配合
 

@@ -25,9 +25,9 @@ CG_OWNS = {
     "N35": [".codex/context/private/"],
     "N36": [".codex/context/map.json"],
     "M3": [".codex/context/"],
-    "N41": ["scripts/context_guard.py", "skills/context-guard/scripts/context_guard.py"],
-    "N43": ["scripts/context_guard_hook.py", "skills/context-guard/scripts/context_guard_hook.py"],
-    "M4": ["scripts/", "skills/context-guard/"],
+    "N41": ["scripts/context_guard.py"],
+    "N43": ["scripts/context_guard_hook.py"],
+    "M4": ["scripts/"],
     "N51": ["README.md"],
 }
 

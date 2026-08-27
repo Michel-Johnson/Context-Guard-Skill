@@ -31,7 +31,7 @@ Usage:
 Examples:
   npx @michelj/context-guard install
   npx @michelj/context-guard install --with-hooks
-  npx @michelj/context-guard show-roadmap --root /path/to/project
+  npx @michelj/context-guard init --root /path/to/project
 `);
 }
 
