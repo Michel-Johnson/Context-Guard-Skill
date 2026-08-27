@@ -16,7 +16,7 @@
 
 以后要改的方向（未定，先记着）：
 
-- 少起进程：关键词表很小，能不能让 Agent 直接打开 `bugs-index.json` / `owns-index.json` / `tasks-index.json`，不必每次再包一层 jump
+- 少起进程：OpenClaw 夹具实测（25 条坏例 / 53 张卡）子进程 jump 中位约 26ms，同进程查索引 <1ms。慢主要在每次起 Python，不在文件数量。见 `fixtures/openclaw/JUMP-SPEED.md`
 - 一次只读该读的：jump 返回的 `open` 要更短，避免 `then` 里堆太多卡
 - 同类问题先命中坏例/任务索引，不要扫全部 `bugs/`、`fixes/`、`tasks/`
 - 测一下：从人一句话到打开正确那一份，实际慢在哪（起命令、读索引、还是读错文件）

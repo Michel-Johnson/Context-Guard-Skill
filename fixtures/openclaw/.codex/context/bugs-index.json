@@ -1,0 +1,309 @@
+{
+  "B10": {
+    "title": "非 loopback 误开 auth.mode=none",
+    "keys": [
+      "loopback",
+      "auth",
+      "none",
+      "公网"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B10.md",
+    "fix": ".codex/context/fixes/B10.md",
+    "card": ".codex/context/cards/N11.md"
+  },
+  "B11": {
+    "title": "关闭时 active session 排空竞态",
+    "keys": [
+      "drain",
+      "shutdown",
+      "session",
+      "竞态"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B11.md",
+    "fix": ".codex/context/fixes/B11.md",
+    "card": ".codex/context/cards/N15.md"
+  },
+  "B12": {
+    "title": "connect 不是首帧仍保持连接",
+    "keys": [
+      "connect",
+      "握手",
+      "断开"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B12.md",
+    "fix": ".codex/context/fixes/B12.md",
+    "card": ".codex/context/cards/N12.md"
+  },
+  "B20": {
+    "title": "长会话上下文膨胀",
+    "keys": [
+      "transcript",
+      "超时",
+      "裁剪",
+      "上下文"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B20.md",
+    "fix": ".codex/context/fixes/B20.md",
+    "card": ".codex/context/cards/M2.md"
+  },
+  "B21": {
+    "title": "未沙箱时工具等同本机权限",
+    "keys": [
+      "sandbox",
+      "权限",
+      "暴露"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B21.md",
+    "fix": ".codex/context/fixes/B21.md",
+    "card": ".codex/context/cards/M2.md"
+  },
+  "B22": {
+    "title": "tool JSON 损坏直接炸 run",
+    "keys": [
+      "tool",
+      "JSON",
+      "重试"
+    ],
+    "status": "fixed",
+    "bug": ".codex/context/bugs/B22.md",
+    "fix": ".codex/context/fixes/B22.md",
+    "card": ".codex/context/cards/N21.md"
+  },
+  "B23": {
+    "title": "两种 memory 实现同时写入",
+    "keys": [
+      "memory",
+      "单槽",
+      "互斥"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B23.md",
+    "fix": ".codex/context/fixes/B23.md",
+    "card": ".codex/context/cards/N27.md"
+  },
+  "B30": {
+    "title": "DM 渠道默认配对提示易被忽略",
+    "keys": [
+      "pairing",
+      "DM",
+      "配对",
+      "队列"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B30.md",
+    "fix": ".codex/context/fixes/B30.md",
+    "card": ".codex/context/cards/M3.md"
+  },
+  "B31": {
+    "title": "第二台 Gateway 踢掉 Baileys 会话",
+    "keys": [
+      "whatsapp",
+      "baileys",
+      "多实例"
+    ],
+    "status": "fixed",
+    "bug": ".codex/context/bugs/B31.md",
+    "fix": ".codex/context/fixes/B31.md",
+    "card": ".codex/context/cards/N31.md"
+  },
+  "B32": {
+    "title": "pairing CLI 与 Control UI 改两份队列",
+    "keys": [
+      "pairing",
+      "CLI",
+      "队列"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B32.md",
+    "fix": ".codex/context/fixes/B32.md",
+    "card": ".codex/context/cards/N3a.md"
+  },
+  "B40": {
+    "title": "新 skill 被合进 core",
+    "keys": [
+      "skill",
+      "core",
+      "ClawHub"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B40.md",
+    "fix": ".codex/context/fixes/B40.md",
+    "card": ".codex/context/cards/N59.md"
+  },
+  "B41": {
+    "title": "MCP 工具复制了一套 agent 路径",
+    "keys": [
+      "MCP",
+      "tool",
+      "合流"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B41.md",
+    "fix": ".codex/context/fixes/B41.md",
+    "card": ".codex/context/cards/N56.md"
+  },
+  "B50": {
+    "title": "模型扫描把密钥打进日志",
+    "keys": [
+      "密钥",
+      "日志",
+      "scan",
+      "模型"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B50.md",
+    "fix": ".codex/context/fixes/B50.md",
+    "card": ".codex/context/cards/N44.md"
+  },
+  "B60": {
+    "title": "Android node caps 策略来源不一致",
+    "keys": [
+      "android",
+      "policy",
+      "caps"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B60.md",
+    "fix": ".codex/context/fixes/B60.md",
+    "card": ".codex/context/cards/M6.md"
+  },
+  "B61": {
+    "title": "Linux exec 取消杀不到子进程",
+    "keys": [
+      "linux",
+      "exec",
+      "abort",
+      "取消"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B61.md",
+    "fix": ".codex/context/fixes/B61.md",
+    "card": ".codex/context/cards/N69.md"
+  },
+  "B62": {
+    "title": "Swift 协议模型手写后和 schema 分叉",
+    "keys": [
+      "swift",
+      "schema",
+      "协议"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B62.md",
+    "fix": ".codex/context/fixes/B62.md",
+    "card": ".codex/context/cards/N62.md"
+  },
+  "B70": {
+    "title": "远程 Control UI 必须与 Gateway 同隧道",
+    "keys": [
+      "隧道",
+      "Control UI",
+      "远程",
+      "ssh"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B70.md",
+    "fix": ".codex/context/fixes/B70.md",
+    "card": ".codex/context/cards/N7p.md"
+  },
+  "B71": {
+    "title": "TUI --local 误当成第二个 Gateway",
+    "keys": [
+      "tui",
+      "local",
+      "Gateway"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B71.md",
+    "fix": ".codex/context/fixes/B71.md",
+    "card": ".codex/context/cards/N7i.md"
+  },
+  "B72": {
+    "title": "doctor --fix 被当成可选项跳过",
+    "keys": [
+      "doctor",
+      "迁移",
+      "config"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B72.md",
+    "fix": ".codex/context/fixes/B72.md",
+    "card": ".codex/context/cards/N78.md"
+  },
+  "B80": {
+    "title": "allowlist 空时私聊直进 agent",
+    "keys": [
+      "allowlist",
+      "私聊",
+      "配对"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B80.md",
+    "fix": ".codex/context/fixes/B80.md",
+    "card": ".codex/context/cards/N38.md"
+  },
+  "B81": {
+    "title": "healthz 在非 loopback 也 200",
+    "keys": [
+      "healthz",
+      "探活",
+      "暴露"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B81.md",
+    "fix": ".codex/context/fixes/B81.md",
+    "card": ".codex/context/cards/N11.md"
+  },
+  "B82": {
+    "title": "event 缺口客户端不刷新导致气泡乱序",
+    "keys": [
+      "event",
+      "序号",
+      "刷新"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B82.md",
+    "fix": ".codex/context/fixes/B82.md",
+    "card": ".codex/context/cards/N13.md"
+  },
+  "B83": {
+    "title": "cron 任务在 Gateway 停掉后仍打本机",
+    "keys": [
+      "cron",
+      "scheduler",
+      "Gateway"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B83.md",
+    "fix": ".codex/context/fixes/B83.md",
+    "card": ".codex/context/cards/N7e.md"
+  },
+  "B84": {
+    "title": "插件 dispose 不跑导致热更新泄漏",
+    "keys": [
+      "插件",
+      "dispose",
+      "热更新"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B84.md",
+    "fix": ".codex/context/fixes/B84.md",
+    "card": ".codex/context/cards/N51.md"
+  },
+  "B85": {
+    "title": "iMessage 桥多开抢同一身份",
+    "keys": [
+      "imessage",
+      "多开",
+      "身份"
+    ],
+    "status": "open",
+    "bug": ".codex/context/bugs/B85.md",
+    "fix": ".codex/context/fixes/B85.md",
+    "card": ".codex/context/cards/N37.md"
+  }
+}

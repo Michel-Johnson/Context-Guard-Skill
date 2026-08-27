@@ -1,0 +1,189 @@
+{
+  "J1": {
+    "title": "本机第一次 onboard",
+    "keys": [
+      "onboard",
+      "安装",
+      "daemon",
+      "工作区"
+    ],
+    "task": ".codex/context/tasks/J1.md",
+    "chain": [
+      "T0",
+      "M7",
+      "N72"
+    ],
+    "card": ".codex/context/cards/N72.md"
+  },
+  "J10": {
+    "title": "WhatsApp 只开一个会话",
+    "keys": [
+      "whatsapp",
+      "baileys",
+      "单实例"
+    ],
+    "task": ".codex/context/tasks/J10.md",
+    "chain": [
+      "T0",
+      "M3",
+      "N31"
+    ],
+    "card": ".codex/context/cards/N31.md"
+  },
+  "J11": {
+    "title": "doctor 迁移旧配置",
+    "keys": [
+      "doctor",
+      "迁移",
+      "config"
+    ],
+    "task": ".codex/context/tasks/J11.md",
+    "chain": [
+      "T0",
+      "M7",
+      "N78"
+    ],
+    "card": ".codex/context/cards/N78.md"
+  },
+  "J12": {
+    "title": "取消 Linux 远程命令",
+    "keys": [
+      "linux",
+      "abort",
+      "exec"
+    ],
+    "task": ".codex/context/tasks/J12.md",
+    "chain": [
+      "T0",
+      "M6",
+      "N69"
+    ],
+    "card": ".codex/context/cards/N69.md"
+  },
+  "J2": {
+    "title": "批准未知发送者",
+    "keys": [
+      "pairing",
+      "批准",
+      "DM",
+      "队列"
+    ],
+    "task": ".codex/context/tasks/J2.md",
+    "chain": [
+      "T0",
+      "M3",
+      "N3a"
+    ],
+    "card": ".codex/context/cards/N3a.md"
+  },
+  "J3": {
+    "title": "暴露前打开沙箱",
+    "keys": [
+      "sandbox",
+      "暴露",
+      "权限"
+    ],
+    "task": ".codex/context/tasks/J3.md",
+    "chain": [
+      "T0",
+      "M2",
+      "M23",
+      "N2a"
+    ],
+    "card": ".codex/context/cards/N2a.md"
+  },
+  "J4": {
+    "title": "Linux node 常驻",
+    "keys": [
+      "linux",
+      "node",
+      "systemd",
+      "常驻"
+    ],
+    "task": ".codex/context/tasks/J4.md",
+    "chain": [
+      "T0",
+      "M6",
+      "N68"
+    ],
+    "card": ".codex/context/cards/N68.md"
+  },
+  "J5": {
+    "title": "远程 Control UI 同隧道",
+    "keys": [
+      "隧道",
+      "ssh",
+      "Control UI",
+      "远程"
+    ],
+    "task": ".codex/context/tasks/J5.md",
+    "chain": [
+      "T0",
+      "M8",
+      "N82"
+    ],
+    "card": ".codex/context/cards/N82.md"
+  },
+  "J6": {
+    "title": "裁剪长会话后再跑 agent",
+    "keys": [
+      "裁剪",
+      "transcript",
+      "超时"
+    ],
+    "task": ".codex/context/tasks/J6.md",
+    "chain": [
+      "T0",
+      "M2",
+      "M21",
+      "N23"
+    ],
+    "card": ".codex/context/cards/N23.md"
+  },
+  "J7": {
+    "title": "从 schema 再生 Swift 模型",
+    "keys": [
+      "swift",
+      "schema",
+      "协议"
+    ],
+    "task": ".codex/context/tasks/J7.md",
+    "chain": [
+      "T0",
+      "M1",
+      "M12",
+      "N14"
+    ],
+    "card": ".codex/context/cards/N14.md"
+  },
+  "J8": {
+    "title": "热更新插件",
+    "keys": [
+      "插件",
+      "dispose",
+      "热更新"
+    ],
+    "task": ".codex/context/tasks/J8.md",
+    "chain": [
+      "T0",
+      "M5",
+      "N51"
+    ],
+    "card": ".codex/context/cards/N51.md"
+  },
+  "J9": {
+    "title": "扫模型供应商且不泄密",
+    "keys": [
+      "模型",
+      "scan",
+      "密钥"
+    ],
+    "task": ".codex/context/tasks/J9.md",
+    "chain": [
+      "T0",
+      "M4",
+      "N44"
+    ],
+    "card": ".codex/context/cards/N44.md"
+  }
+}

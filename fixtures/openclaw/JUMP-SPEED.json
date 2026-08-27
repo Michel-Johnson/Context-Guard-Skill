@@ -1,0 +1,92 @@
+{
+  "store": {
+    "cards": 53,
+    "bugs": 25,
+    "fixes": 25,
+    "tasks": 12,
+    "sessions": 30,
+    "owns": 55
+  },
+  "runs": [
+    {
+      "cmd": "/usr/bin/python3 -c pass",
+      "rounds": 5,
+      "min_ms": 8.1,
+      "median_ms": 8.2,
+      "max_ms": 9.4,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --path src/gateway/server.ts",
+      "rounds": 5,
+      "min_ms": 26.6,
+      "median_ms": 28.3,
+      "max_ms": 29.7,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --bug B20",
+      "rounds": 5,
+      "min_ms": 25.7,
+      "median_ms": 25.9,
+      "max_ms": 26.0,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --bug 配对",
+      "rounds": 5,
+      "min_ms": 25.5,
+      "median_ms": 26.0,
+      "max_ms": 27.5,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --task J5",
+      "rounds": 5,
+      "min_ms": 25.6,
+      "median_ms": 26.1,
+      "max_ms": 27.7,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --task 隧道",
+      "rounds": 5,
+      "min_ms": 25.6,
+      "median_ms": 25.8,
+      "max_ms": 27.1,
+      "ok": true
+    },
+    {
+      "cmd": "/usr/bin/python3 /workspace/scripts/map_owns.py jump --root /workspace/fixtures/openclaw --last",
+      "rounds": 5,
+      "min_ms": 25.4,
+      "median_ms": 25.5,
+      "max_ms": 25.6,
+      "ok": true
+    },
+    {
+      "cmd": "in-process jump {'path': 'src/gateway/server.ts'}",
+      "rounds": 5,
+      "min_ms": 0.3,
+      "median_ms": 0.3,
+      "max_ms": 0.5,
+      "ok": true
+    },
+    {
+      "cmd": "in-process jump {'bug': '配对'}",
+      "rounds": 5,
+      "min_ms": 0.1,
+      "median_ms": 0.1,
+      "max_ms": 0.1,
+      "ok": true
+    },
+    {
+      "cmd": "in-process jump {'last': True}",
+      "rounds": 5,
+      "min_ms": 0.0,
+      "median_ms": 0.0,
+      "max_ms": 0.0,
+      "ok": true
+    }
+  ]
+}
