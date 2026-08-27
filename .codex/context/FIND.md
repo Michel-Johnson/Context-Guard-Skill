@@ -22,12 +22,24 @@
   tasks/J1.md          一类活怎么走 · Markdown
   map.json             软件图 · JSON，工作台写
   owns-index.json      源码路径 → 卡号 · JSON
+  jump-index.json      三份索引合成一份 · JSON，给 Agent 一次读完
   cards/N21.md         一张卡 · Markdown，从地图复印
 ```
 
-图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`。本页手改，脚本不覆盖。
+图改过之后：`python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`。本页手改，脚本不覆盖。
 
-**Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看；Agent 跑下面的命令，只打开返回的 `open` 那一两份，需要再打开 `then`。
+**Agent 怎么跳：** 不要指望点 Markdown 超链接。文件里的链接给人看。
+
+同时要查很多路径 / 坏例 / 任务时，**不要连跑 N 次 jump**。慢的是每次起 Python，不是文件多。两种做法：
+
+1. **首选：读一份 `jump-index.json`。** 里面已经有路径归属、坏例表、任务表。自己在这份 JSON 里匹配，只再打开命中的那几份 Markdown。这是读一次文件，不起进程。
+2. **仍要脚本：一次查完。** 不要 `--path` 跑十遍。
+
+```
+python3 scripts/map_owns.py jump --json '{"path":["src/a.ts","src/b.ts"],"bug":["B20","对话框"],"task":["J1"],"last":true}'
+```
+
+只打开返回的 `open`；需要再打开 `then`。单查一条仍可用：
 
 ```
 python3 scripts/map_owns.py jump --path <文件>
@@ -38,15 +50,17 @@ python3 scripts/map_owns.py jump --task 找卡
 python3 scripts/map_owns.py jump --last
 ```
 
+`jump-index.json` 怎么对：`owns` 里 `path` 最长前缀命中（精确文件优先于目录）；`bugs` / `tasks` 按编号，或用 `keys` / 标题对上人的词。
+
 ## 链路 1：改某个源码
 
-`owns-index.json` → `cards/卡号.md` → 需要时按卡片里的 `chain` 打开上面几层 `cards/`。
+`jump-index.json` 的 `owns`（或 `owns-index.json`）→ `cards/卡号.md` → 需要时按卡片里的 `chain` 打开上面几层 `cards/`。
 
 卡上的 Bug 链接先到 `bugs/B20.md`（是不是这条），再到 `fixes/B20.md`（怎么修过）。卡上的记忆就是还生效的短规矩。
 
 ## 链路 2：人报了个 bug / 报错
 
-`bugs-index.json` 按 `keys` 找编号 → `bugs/B20.md` 看现象是不是这条 → `fixes/B20.md` 看怎么修 → 正文「代码」下列的路径再走链路 1。
+`jump-index.json` 的 `bugs`（或 `bugs-index.json`）按 `keys` 找编号 → `bugs/B20.md` 看现象是不是这条 → `fixes/B20.md` 看怎么修 → 正文「代码」下列的路径再走链路 1。
 
 ## 链路 3：问上次说过什么
 
@@ -54,13 +68,14 @@ python3 scripts/map_owns.py jump --last
 
 ## 链路 4：做和上次同类的活
 
-人说「再做一次某某 / 按这个任务来」→ `tasks-index.json` 按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。
+人说「再做一次某某 / 按这个任务来」→ `jump-index.json` 的 `tasks`（或 `tasks-index.json`）按 `keys` 找编号 → 只打开那一份 `tasks/J1.md` → 按里面的 `chain` 打开那几张 `cards/` → 复用「命令」和「代码」路径。不要重画一遍，也不要把命令堆在会话日记里。
 
 ## 各文件里靠哪跳
 
 | 打开 | 类型 | 里面哪个字段往哪跳 |
 | --- | --- | --- |
-| `sessions.jsonl` 一行 | JSONL | `files` → `owns-index.json`；`bugs` → 坏例索引/经验；`tasks` → `tasks/编号.md` |
+| `sessions.jsonl` 一行 | JSONL | `files` → `owns`；`bugs` → 坏例索引/经验；`tasks` → `tasks/编号.md` |
+| `jump-index.json` | JSON | `owns` / `bugs` / `tasks` 合成一份，Agent 一次读完再打开命中文件 |
 | `bugs-index.json` | JSON | `keys` 用来搜；`bug` → 索引卡；`fix` → 经验正文 |
 | `bugs/B20.md` | Markdown | `fix` → `fixes/B20.md`；`card` → `cards/卡号.md` |
 | `fixes/B20.md` | Markdown | `bug` → 索引卡；「代码」→ 仓库源码；`card` → 那张卡 |
@@ -71,4 +86,4 @@ python3 scripts/map_owns.py jump --last
 
 格式细节：`.codex/context/FORMAT.md`。
 
-禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。
+禁止：把整份 `map.json`、全部 `sessions/`、全部 `bugs/`、全部 `fixes/`、全部 `tasks/` 一次读进下一轮。连跑很多次 `jump` 也不要。

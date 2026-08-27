@@ -1,0 +1,220 @@
+{
+  "owns": [
+    {
+      "path": "SKILL.md",
+      "node": "N11",
+      "kind": "work",
+      "card": ".codex/context/cards/N11.md",
+      "chain": [
+        "T0",
+        "M1"
+      ]
+    },
+    {
+      "path": "prototype/",
+      "node": "M21",
+      "kind": "module",
+      "card": ".codex/context/cards/M21.md",
+      "chain": [
+        "T0",
+        "M2"
+      ]
+    },
+    {
+      "path": "prototype/workbench.html",
+      "node": "N21",
+      "kind": "work",
+      "card": ".codex/context/cards/N21.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M21"
+      ]
+    },
+    {
+      "path": ".codex/context/",
+      "node": "M3",
+      "kind": "module",
+      "card": ".codex/context/cards/M3.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": ".codex/context/index.md",
+      "node": "N31",
+      "kind": "work",
+      "card": ".codex/context/cards/N31.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": ".codex/context/preferences.json",
+      "node": "N32",
+      "kind": "work",
+      "card": ".codex/context/cards/N32.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": ".codex/context/architecture.md",
+      "node": "N33",
+      "kind": "work",
+      "card": ".codex/context/cards/N33.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": ".codex/context/map.json",
+      "node": "N36",
+      "kind": "work",
+      "card": ".codex/context/cards/N36.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": ".codex/context/user-messages.md",
+      "node": "N34",
+      "kind": "work",
+      "card": ".codex/context/cards/N34.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": ".codex/context/private/",
+      "node": "N35",
+      "kind": "work",
+      "card": ".codex/context/cards/N35.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "scripts/",
+      "node": "M4",
+      "kind": "module",
+      "card": ".codex/context/cards/M4.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "skills/context-guard/",
+      "node": "M4",
+      "kind": "module",
+      "card": ".codex/context/cards/M4.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "scripts/context_guard.py",
+      "node": "N41",
+      "kind": "work",
+      "card": ".codex/context/cards/N41.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "skills/context-guard/scripts/context_guard.py",
+      "node": "N41",
+      "kind": "work",
+      "card": ".codex/context/cards/N41.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "scripts/context_guard_hook.py",
+      "node": "N43",
+      "kind": "work",
+      "card": ".codex/context/cards/N43.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "skills/context-guard/scripts/context_guard_hook.py",
+      "node": "N43",
+      "kind": "work",
+      "card": ".codex/context/cards/N43.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "README.md",
+      "node": "N51",
+      "kind": "work",
+      "card": ".codex/context/cards/N51.md",
+      "chain": [
+        "T0",
+        "M5"
+      ]
+    }
+  ],
+  "bugs": {
+    "B20": {
+      "title": "原生 prompt 会打断看图",
+      "keys": [
+        "prompt",
+        "confirm",
+        "检查器",
+        "对话框"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B20.md",
+      "fix": ".codex/context/fixes/B20.md",
+      "card": ".codex/context/cards/M2.md"
+    },
+    "B22": {
+      "title": "根上铺开关系线会看不清",
+      "keys": [
+        "关系",
+        "虚线",
+        "生产",
+        "消费",
+        "根目录"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B22.md",
+      "fix": ".codex/context/fixes/B22.md",
+      "card": ".codex/context/cards/N22.md"
+    }
+  },
+  "tasks": {
+    "J1": {
+      "title": "按路径找卡并更新复印件",
+      "keys": [
+        "找卡",
+        "lookup",
+        "owns",
+        "cards",
+        "复印件"
+      ],
+      "task": ".codex/context/tasks/J1.md",
+      "chain": [
+        "T0",
+        "M3",
+        "N36"
+      ],
+      "card": ".codex/context/cards/N36.md"
+    }
+  }
+}

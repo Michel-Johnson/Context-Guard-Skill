@@ -750,7 +750,7 @@ def main() -> int:
         FIX / "README.md",
         "# OpenClaw 底层夹具（测 jump 速度）\n\n"
         "假的 OpenClaw 项目记忆，格式跟第一版一样：会话、坏例、任务、地图。\n"
-        "用来测 `python3 scripts/map_owns.py jump --root fixtures/openclaw` 有多慢。\n\n"
+        "用来测检索：连跑多次 jump、一次 `--json`、直接读 `jump-index.json`。\n\n"
         "重新生成：`python3 scripts/openclaw_fixture.py`\n"
         "计时：`python3 scripts/bench_jump.py`\n",
     )
@@ -762,8 +762,11 @@ def main() -> int:
     write(
         CTX / "FIND.md",
         "# OpenClaw 夹具怎么跳\n\n"
-        "这是假的 OpenClaw 记忆，用来测 jump 速度。不要把整份 map 读进来。\n\n"
+        "这是假的 OpenClaw 记忆，用来测检索速度。不要把整份 map 读进来。\n\n"
+        "同时查很多东西时，读一份 `jump-index.json`，或一次 `--json`，不要连跑 N 次 jump。\n\n"
         "```\n"
+        "python3 scripts/map_owns.py jump --root fixtures/openclaw --json "
+        '\'{"path":["src/gateway/server.ts"],"bug":["配对"],"task":["隧道"],"last":true}\'\n'
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --path src/gateway/server.ts\n"
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --bug 配对\n"
         "python3 scripts/map_owns.py jump --root fixtures/openclaw --task 隧道\n"

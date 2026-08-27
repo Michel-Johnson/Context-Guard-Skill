@@ -15,6 +15,7 @@
   tasks/J1.md        一类活怎么走（链路、命令、代码路径）
   map.json           工作台的活地图
   owns-index.json    源码路径 → 卡号
+  jump-index.json    三份索引合成一份，多查时读这一份
   cards/N21.md       一张卡一份
 ```
 
@@ -23,7 +24,7 @@
 1. **改某个文件** → `owns-index.json` → `cards/那张卡.md`
 2. **修某个坏例** → `bugs-index.json` → `bugs/B20.md` → `fixes/B20.md`
 3. **再做同类的活** → `tasks-index.json` → `tasks/J1.md` → 按 `chain` 打开那些卡，复用命令
-4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`
+4. **人改过图** → `python3 scripts/map_owns.py cards` 重写 `cards/`、`owns-index.json`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`
 
 `cards/` 是从 `map.json` 投影出来的，方便跳转，不是第二份要手改的地图。怎么跳见 `FIND.md`。每个文件怎么写见 `FORMAT.md`。
 

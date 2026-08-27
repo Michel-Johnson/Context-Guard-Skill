@@ -12,16 +12,15 @@
 
 ## 2. 优化检索
 
-现状：Agent 靠 `python3 scripts/map_owns.py jump` 找到该打开的文件。能跳，但多跑一次命令，会话可能变慢。
+多查时不要连跑 N 次 `jump`。慢的是每次起 Python（OpenClaw 夹具一次子进程约 26ms），不是文件数量。
 
-以后要改的方向（未定，先记着）：
+已经做的：
 
-- 少起进程：OpenClaw 夹具实测（25 条坏例 / 53 张卡）子进程 jump 中位约 26ms，同进程查索引 <1ms。慢主要在每次起 Python，不在文件数量。见 `fixtures/openclaw/JUMP-SPEED.md`
-- 一次只读该读的：jump 返回的 `open` 要更短，避免 `then` 里堆太多卡
-- 同类问题先命中坏例/任务索引，不要扫全部 `bugs/`、`fixes/`、`tasks/`
-- 测一下：从人一句话到打开正确那一份，实际慢在哪（起命令、读索引、还是读错文件）
+- Agent 先读一份 `jump-index.json`（路径 + 坏例 + 任务），再只打开命中的 Markdown
+- 仍要脚本时一次查完：`python3 scripts/map_owns.py jump --json '{"path":[...],"bug":[...],"task":[...],"last":true}'`
+- 计时见 `fixtures/openclaw/JUMP-SPEED.md`
 
-超链接仍然只给人看，不当 Agent 跳转。
+以后若还慢，再看：`open` 是否太长、有没有扫完全部 `bugs/`、从人一句话到打开正确那一份实际卡在哪。超链接仍然只给人看。
 
 ## 3. CI/CD 测试（第五块）
 
