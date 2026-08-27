@@ -1,0 +1,28 @@
+{
+  "id": "remote-control-ui-tunnel",
+  "fields": {
+    "root_cause": {
+      "needles": ["两条隧道"]
+    },
+    "config": {
+      "needles": ["claw.tunnel.share", "gateway-18789"]
+    },
+    "command": {
+      "needles": ["ssh -L 18789:127.0.0.1:18789"]
+    },
+    "card_rule": {
+      "needles": ["远程页只许走 Gateway 已占用的那条跳"]
+    }
+  },
+  "must_files": [
+    ".codex/context/fixes/B70.md",
+    ".codex/context/tasks/J5.md",
+    ".codex/context/cards/N7p.md"
+  ],
+  "helpful_files": [
+    ".codex/context/bugs/B70.md",
+    ".codex/context/bugs-index.json",
+    ".codex/context/tasks-index.json",
+    ".codex/context/sessions.jsonl"
+  ]
+}
