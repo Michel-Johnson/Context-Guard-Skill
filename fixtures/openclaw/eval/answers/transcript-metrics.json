@@ -1,0 +1,130 @@
+[
+  {
+    "strategy": "grep-all",
+    "tool_calls": 12,
+    "tool_names": {
+      "read_file": 10,
+      "glob_file_search": 1,
+      "grep": 1
+    },
+    "tool_duration_ms": 1138,
+    "result_chars": 54264,
+    "reads": [
+      "/workspace/fixtures/openclaw/eval/TASK.md",
+      "/workspace/fixtures/openclaw/eval/strategies/grep-all.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7p.md",
+      "/workspace/fixtures/openclaw/.codex/context/tasks/J5.md",
+      "/workspace/fixtures/openclaw/.codex/context/FIND.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M7.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M8.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N82.md"
+    ],
+    "greps": [],
+    "shells": []
+  },
+  {
+    "strategy": "index-only",
+    "tool_calls": 10,
+    "tool_names": {
+      "read_file": 10
+    },
+    "tool_duration_ms": 978,
+    "result_chars": 20526,
+    "reads": [
+      "/workspace/fixtures/openclaw/eval/TASK.md",
+      "/workspace/fixtures/openclaw/eval/strategies/index-only.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs-index.json",
+      "/workspace/fixtures/openclaw/.codex/context/tasks-index.json",
+      "/workspace/fixtures/openclaw/.codex/context/sessions.jsonl",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7p.md",
+      "/workspace/fixtures/openclaw/.codex/context/tasks/J5.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N82.md"
+    ],
+    "greps": [],
+    "shells": []
+  },
+  {
+    "strategy": "jump-json",
+    "tool_calls": 24,
+    "tool_names": {
+      "read_file": 15,
+      "glob_file_search": 3,
+      "grep": 4,
+      "run_terminal_cmd": 2
+    },
+    "tool_duration_ms": 2593,
+    "result_chars": 52524,
+    "reads": [
+      "/workspace/fixtures/openclaw/eval/TASK.md",
+      "/workspace/fixtures/openclaw/eval/strategies/jump-json.md",
+      "/workspace/scripts/map_owns.py",
+      "/workspace/scripts/map_owns.py",
+      "/workspace/fixtures/openclaw/.codex/context/FIND.md",
+      "/workspace/fixtures/openclaw/.codex/context/tasks/J9.md",
+      "/workspace/fixtures/openclaw/README.md",
+      "/workspace/fixtures/openclaw/JUMP-SPEED.md",
+      "/workspace/scripts/summarize_openclaw_eval.py",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/tasks/J5.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7p.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N82.md"
+    ],
+    "greps": [],
+    "shells": [
+      "python3 scripts/map_owns.py jump --root /workspace/fixtures/openclaw --json '{\"bug\":[\"消息发不出去\",\"浏览器\",\"控制台\",\"公司外面\",\"页面出来了\",\"消息\"],\"task\":[\"控制台\",\"浏览器\",\"公司外面\",\"助手\",\"消息\"],\"last\":true}'",
+      "python3 scripts/map_owns.py jump --root /workspace/fixtures/openclaw --json '{\"bug\":[\"Control UI\",\"远程\",\"发不出去\",\"WebChat\"],\"task\":[\"Control UI\",\"远程\",\"WebChat\"],\"last\":true}'"
+    ]
+  },
+  {
+    "strategy": "follow-links",
+    "tool_calls": 35,
+    "tool_names": {
+      "read_file": 33,
+      "glob_file_search": 2
+    },
+    "tool_duration_ms": 3215,
+    "result_chars": 28743,
+    "reads": [
+      "/workspace/fixtures/openclaw/eval/TASK.md",
+      "/workspace/fixtures/openclaw/eval/strategies/follow-links.md",
+      "/workspace/fixtures/openclaw/.codex/context/FIND.md",
+      "/workspace/fixtures/openclaw/.codex/context/sessions.jsonl",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B10.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B12.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B32.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B81.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N11.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B10.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B81.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N3a.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M11.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M1.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/T0.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B32.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M7.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M8.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/M12.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N11b.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7p.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N82.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N81.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N78.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N72.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B70.md",
+      "/workspace/fixtures/openclaw/.codex/context/bugs/B72.md",
+      "/workspace/fixtures/openclaw/.codex/context/fixes/B72.md",
+      "/workspace/fixtures/openclaw/.codex/context/sessions.jsonl",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7i.md",
+      "/workspace/fixtures/openclaw/.codex/context/cards/N7e.md",
+      "/workspace/fixtures/openclaw/.codex/context/tasks/J5.md"
+    ],
+    "greps": [],
+    "shells": []
+  }
+]
