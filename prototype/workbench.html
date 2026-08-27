@@ -81,6 +81,15 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .first-use.open{display:flex}
 .first-use .card{width:min(720px,94%);background:var(--paper);border:2px solid var(--line-ink);
   border-radius:14px;padding:26px 26px 20px;box-shadow:var(--shadow)}
+.first-use .card.wide{width:min(920px,96%);max-height:min(86vh,760px);overflow:auto}
+.cut-list{display:flex;flex-direction:column;gap:10px;margin:14px 0 0}
+.cut-opt{display:block;width:100%;text-align:left;border:2px solid var(--line-ink);background:#fff;
+  border-radius:12px;padding:12px 14px;cursor:pointer;box-shadow:var(--shadow-sm);font:inherit;color:inherit}
+.cut-opt:hover{background:var(--yellow)}
+.cut-opt b{display:block;font-size:15px;margin:0 0 4px}
+.cut-opt .why{color:var(--muted);font-size:12.5px;line-height:1.45;margin:0 0 8px}
+.cut-opt .chips{display:flex;flex-wrap:wrap;gap:6px}
+.cut-opt .chips span{font-size:11.5px;padding:3px 8px;background:var(--module-soft);border-radius:999px;color:var(--ink)}
 .arch-md{margin:12px 0 0;max-height:280px;overflow:auto;padding:10px 12px;border:1px solid var(--line);
   border-radius:8px;background:#fff;font-size:11.5px;line-height:1.45;white-space:pre-wrap;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
@@ -445,11 +454,20 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <div class="card" id="first-use-ask">
     <div class="kicker" data-i18n="firstKicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
-    <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p data-i18n="firstProduct">产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。平时只画从属实线。生产/消费要点「关系」。未修 Bug 在右侧面板。</p>
+    <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。点下去你会看到几种第一层切法，选一种才上画布。效果由你定，不是自动播完一张图。</p>
+    <p data-i18n="firstProduct">产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。</p>
     <div class="actions">
-      <button class="primary" id="first-use-go" data-i18n="firstGo">演示分析（不调用 Agent）</button>
+      <button class="primary" id="first-use-go" data-i18n="firstGo">看几种第一层切法</button>
       <button class="quiet" id="first-use-empty" data-i18n="firstEmpty">仓库几乎是空的</button>
+    </div>
+  </div>
+  <div class="card wide" id="first-use-cuts" hidden>
+    <div class="kicker" data-i18n="cutKicker">演示 · 请你定第一层</div>
+    <h2 data-i18n="cutHeading">这几种切法，你选一种</h2>
+    <p data-i18n="cutCopy">还没有真的读仓。卡名是预置的。你选了才投影到画布，选完可以改标题。这才是定效果。</p>
+    <div class="cut-list" id="cut-list"></div>
+    <div class="actions">
+      <button class="quiet" id="first-use-cut-back" data-i18n="cutBack">返回</button>
     </div>
   </div>
   <div class="card" id="first-use-work" hidden>
@@ -502,9 +520,14 @@ const I18N = {
     cancelled:"已取消",
     firstKicker:"演示 · 第一次使用",
     firstHeading:"从 {name} 建立架构图",
-    firstCopy:"这是原型演示，不会调用任何 Agent，也不会去读 {name} 的真实代码。点击后只播放预置步骤，并投影已经写好的笔记和地图。产品里才由当前会话的 Agent 做这一步。",
-    firstProduct:"产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。平时只画从属实线。生产/消费要点「关系」。未修 Bug 在右侧面板。",
-    firstGo:"演示分析（不调用 Agent）",
+    firstCopy:"这是原型演示，不会调用任何 Agent，也不会去读 {name} 的真实代码。点下去你会看到几种第一层切法，选一种才上画布。效果由你定。",
+    firstProduct:"产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。",
+    firstGo:"看几种第一层切法",
+    cutKicker:"演示 · 请你定第一层",
+    cutHeading:"这几种切法，你选一种",
+    cutCopy:"还没有真的读仓。卡名是预置的。你选了才投影到画布，选完可以改标题。这才是定效果。",
+    cutBack:"返回",
+    cutPick:"选这个",
     firstEmpty:"仓库几乎是空的",
     workKicker:"演示中 · 未调用 Agent",
     workHeading:"正在播放预置的分析过程",
@@ -515,7 +538,7 @@ const I18N = {
     openBugs:"未修的 Bug",
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
-    reanalyze:"重新演示分析（不调用 Agent）",
+    reanalyze:"重新选第一层切法",
     attach:"附", linkRepo:"连接仓库", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
@@ -551,9 +574,14 @@ const I18N = {
     cancelled:"Cancelled",
     firstKicker:"Demo · first use",
     firstHeading:"Build a map from {name}",
-    firstCopy:"This is a prototype demo. It does not call an agent or read {name}'s real code. The click only plays prepared steps and projects notes and a map that are already written. In the product, the current session's agent does this.",
-    firstProduct:"In the product, the current session's agent talks with you layer by layer: first several ways to cut L1, or a larger set of candidate modules whose titles you can read in seconds. After you lock L1, then L2, then L3. The agreed trunk (about 4–8 cards) lands in architecture.md and map.json. Everyday view draws parent–child solids only. Produce/consume needs Relations. Open bugs stay in the right panel.",
-    firstGo:"Play demo analysis (no agent)",
+    firstCopy:"This is a prototype demo. It does not call an agent or read {name}'s real code. You will see several ways to cut the first layer; picking one lands it on the canvas. You decide the map.",
+    firstProduct:"In the product, the current session's agent talks with you layer by layer: first several ways to cut L1, or a larger set of candidate modules whose titles you can read in seconds. After you lock L1, then L2, then L3. The agreed trunk (about 4–8 cards) lands in architecture.md and map.json.",
+    firstGo:"See first-layer cuts",
+    cutKicker:"Demo · you pick L1",
+    cutHeading:"Pick one way to cut the first layer",
+    cutCopy:"This still does not read the repo. Titles are prepared. Your pick lands on the canvas; you can rename cards. That is how you decide the map.",
+    cutBack:"Back",
+    cutPick:"Use this",
     firstEmpty:"The repo is almost empty",
     workKicker:"Demo · no agent called",
     workHeading:"Playing the prepared analysis",
@@ -564,7 +592,7 @@ const I18N = {
     openBugs:"Open bugs",
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
-    reanalyze:"Replay demo analysis (no agent)",
+    reanalyze:"Pick a new first-layer cut",
     attach:"File", linkRepo:"Link repo", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
@@ -623,6 +651,8 @@ function setUiLang(lang, persistPref){
   if(typeof applyRepoChrome==="function") applyRepoChrome();
   if(typeof renderAll==="function") renderAll();
   applyStaticI18n();
+  const cutsEl = document.getElementById("first-use-cuts");
+  if(cutsEl && !cutsEl.hidden && typeof renderCutList==="function") renderCutList();
   if(persistPref!==false) schedulePrefLangWrite();
 }
 
@@ -1248,6 +1278,22 @@ const catalog = {
       {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
       {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"进入模块先看到子模块卡；文件挂在子模块下"},
       {do:"先拿出几种第一层拆法给人对，定了再往下拆", find:"卡名和用途要一眼能看懂；定稿大约 4–8 张，不是一上来倒整棵树"}
+    ],
+    l1Cuts:[
+      {id:"surfaces", title:"按开工面切", why:"合同、工作台、文件、CLI 是不同的改法。", fromBlueprint:true},
+      {id:"jobs", title:"按人要干的事切", why:"先问这次人在干什么，再落到文件。", modules:[
+        {id:"C1", title:"第一次把仓库画成图", purpose:"和人商量第一层怎么切，定了再往下拆"},
+        {id:"C2", title:"看图、改记忆、点头", purpose:"人在工作台里确认，不在命令行里"},
+        {id:"C3", title:"Agent 按路径找卡", purpose:"小索引跳到坏例、任务、那张卡，不读整张地图"},
+        {id:"C4", title:"记下坏例和一类活", purpose:"bugs/fixes 和 tasks 说明书，挂在节点上"},
+        {id:"C5", title:"把 skill 装进这个仓库", purpose:"init、语言、SessionStart hook"}
+      ]},
+      {id:"folders", title:"按仓库目录切", why:"跟文件夹长得像。容易变成目录树，一般不该当第一层。", modules:[
+        {id:"F1", title:"SKILL.md", purpose:"技能说明书"},
+        {id:"F2", title:"prototype/", purpose:"工作台 HTML"},
+        {id:"F3", title:".codex/context/", purpose:"会话、坏例、任务、地图文件"},
+        {id:"F4", title:"scripts/", purpose:"init 和 hook"}
+      ]}
     ]
   },
   openclaw: {
@@ -1266,6 +1312,24 @@ const catalog = {
       {do:"控制面先拆成 CLI / TUI / Control UI / 远程 四张子模块卡，命令文件挂在卡下", find:"点进控制面 UI 先看到子模块，不是二十几个文件平铺"},
       {do:"TUI 与 Control UI 的主循环、双后端、transcript 写进对应子模块，不要空壳也不要平铺", find:"tui.ts、GatewayChatClient、ui/src/chat 都在子模块里"},
       {do:"先拿出几种第一层拆法给人对，定了再往下拆；边写 architecture.md", find:"卡名要一眼能看懂；OpenClaw 定稿可以 8 张主干，小仓库可以只有 4 张"}
+    ],
+    l1Cuts:[
+      {id:"runtime", title:"按运行面切", why:"人碰到的是 Gateway、聊天渠道、控制面板、手机伴侣，不是文件夹。", fromBlueprint:true},
+      {id:"jobs", title:"按人要干的事切", why:"先问接下来要改哪一类活，再对文件。", modules:[
+        {id:"J1", title:"接到已有聊天里", purpose:"WhatsApp / Telegram 等渠道怎么把消息送进助手"},
+        {id:"J2", title:"跑完一轮对话", purpose:"选模型、调工具、写记忆，一次 agent 调用怎么走完"},
+        {id:"J3", title:"在本机操作 Gateway", purpose:"CLI、终端界面、浏览器控制面，人怎么改状态"},
+        {id:"J4", title:"给这台设备装伴侣", purpose:"手机和电脑以 node 连上；Linux 只跑远程命令"},
+        {id:"J5", title:"谁能连上、怎么部署", purpose:"配对、默认安全、隧道和安装"}
+      ]},
+      {id:"folders", title:"按仓库目录切", why:"跟文件夹长得像。容易变成目录树，一般不该当第一层。", modules:[
+        {id:"D1", title:"src/gateway", purpose:"Gateway 进程和协议文件"},
+        {id:"D2", title:"packages/agent-core", purpose:"agent 循环和工具"},
+        {id:"D3", title:"src/channels", purpose:"各聊天渠道实现"},
+        {id:"D4", title:"apps", purpose:"macOS / iOS / Android / Linux"},
+        {id:"D5", title:"ui", purpose:"Control UI 前端"},
+        {id:"D6", title:"scripts 与 CLI", purpose:"命令行入口"}
+      ]}
     ]
   }
 };
@@ -2030,10 +2094,13 @@ function switchRepo(id){
   renderAll();
   fitView();
 }
-function setOverlay(open, analyzingView){
+function setOverlay(open, view){
+  const v = view===true ? "work" : (view||false);
   document.getElementById("first-use").classList.toggle("open", !!open);
-  document.getElementById("first-use-ask").hidden = !!analyzingView;
-  document.getElementById("first-use-work").hidden = !analyzingView;
+  document.getElementById("first-use-ask").hidden = !open || !!v;
+  document.getElementById("first-use-work").hidden = v!=="work";
+  const cuts = document.getElementById("first-use-cuts");
+  if(cuts) cuts.hidden = v!=="cuts";
 }
 function closeOverlay(){
   setOverlay(false, false);
@@ -2120,27 +2187,77 @@ function revealNotes(frac){
   const n = Math.max(120, Math.floor(notes.length * frac));
   pre.textContent = notes.slice(0, n) + (n<notes.length ? "\n…" : "");
 }
+function cutModules(cut, r){
+  if(cut.fromBlueprint) return (r.blueprint.children||[]).map(c=>({title:c.title, purpose:c.purpose||""}));
+  return cut.modules||[];
+}
+function renderCutList(){
+  const r = currentRepo();
+  const el = document.getElementById("cut-list");
+  if(!el) return;
+  const cuts = r.l1Cuts || [];
+  el.innerHTML = cuts.map(cut=>{
+    const mods = cutModules(cut, r);
+    const chips = mods.map(m=>`<span>${esc(m.title)}</span>`).join("");
+    return `<button type="button" class="cut-opt" data-cut="${escAttr(cut.id)}">
+      <b>${esc(cut.title)}</b>
+      <p class="why">${esc(cut.why||"")}</p>
+      <div class="chips">${chips}</div>
+    </button>`;
+  }).join("");
+  el.querySelectorAll("[data-cut]").forEach(b=>{
+    b.onclick = ()=>applyL1Cut(b.dataset.cut);
+  });
+}
+function showCuts(){
+  analyzing = false;
+  const r = currentRepo();
+  r.bootstrap = "pending";
+  r.firstUseOpen = true;
+  renderCutList();
+  setOverlay(true, "cuts");
+  persist();
+}
+function applyL1Cut(cutId){
+  const r = currentRepo();
+  const cut = (r.l1Cuts||[]).find(c=>c.id===cutId);
+  if(!cut){ applyProposedMap(); return; }
+  if(cut.fromBlueprint){
+    applyProposedMap();
+    return;
+  }
+  const next = clone(r.blueprint);
+  const children = (cut.modules||[]).map(m=>asProposal(U(m.id, m.title, m.purpose, [])));
+  adoptTree({
+    id: next.id,
+    title: next.title,
+    state: next.state,
+    kind: next.kind,
+    bugs: next.bugs||[],
+    dormant: next.dormant||[],
+    files: next.files||[],
+    owns: next.owns||[],
+    memories: next.memories||[],
+    ideas: next.ideas||[],
+    children,
+    flows: []
+  });
+  sessionAuth.clear();
+  sessionAuth.add("T0");
+  selectedId = "T0";
+  viewRootId = "T0";
+  focusId = null;
+  clearCompose();
+  r.bootstrap = "proposed";
+  r.live = clone(data);
+  document.getElementById("session-name").textContent = "S-0823 "+t("sessionPending");
+  closeOverlay();
+  renderAll();
+  fitView();
+  persist();
+}
 function startRepoSplit(){
-  if(analyzing) return;
-  analyzing = true;
-  const steps = currentRepo().analyze || ["理解仓库分层","提出第一层模块"];
-  currentRepo().bootstrap = "analyzing";
-  setOverlay(true, true);
-  revealNotes(0.12);
-  let i = 0;
-  const advance = ()=>{
-    renderAnalyzeLog(steps, i);
-    revealNotes((i+1)/(steps.length+0.4));
-    persist();
-    if(i>=steps.length){
-      revealNotes(1);
-      setTimeout(()=>{ analyzing = false; applyProposedMap(); }, 2600);
-      return;
-    }
-    i += 1;
-    setTimeout(advance, 2400);
-  };
-  advance();
+  showCuts();
 }
 function reanalyzeRepo(id){
   closeRepoMenu();
@@ -2562,8 +2679,12 @@ document.getElementById("btn-auth").onclick = ()=>{
 document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("tray").classList.toggle("open");
 };
-document.getElementById("first-use-go").onclick = ()=>startRepoSplit();
+document.getElementById("first-use-go").onclick = ()=>showCuts();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
+document.getElementById("first-use-cut-back").onclick = ()=>{
+  currentRepo().firstUseOpen = true;
+  setOverlay(true, false);
+};
 document.getElementById("repo-title").onclick = e=>{
   e.stopPropagation();
   document.getElementById("repo-menu").classList.toggle("open");

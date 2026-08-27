@@ -8,3 +8,4 @@
 {"id":"2026-08-27-a","human":"给OpenClaw造详细底层文件和坏例，测python jump速度","agent":"落下 fixtures/openclaw，子进程jump约26ms，同进程不到1ms","files":["scripts/openclaw_fixture.py","fixtures/openclaw/JUMP-SPEED.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-27-b","human":"首次建图要和人实时商量，先给第一层几种拆法或较多候选，定了再拆第二层、第三层；节点必须一眼能看懂","agent":"把这条写进 TODO、SKILL、README 和工作台叠层文案；4-8 张是商量之后的确认门，不是一上来倒出的终稿。真分析仍未做","files":["SKILL.md",".codex/context/TODO.md","prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-27-c","human":"这种开发环境下首次建图怎么测、怎么验收","agent":"锁成三层：脚本抓硬错、浏览器点工作台、人看卡点头。不要测试中台。写进 TODO.md 第一条","files":[".codex/context/TODO.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-27-d","human":"那些测法不能让我决定建图效果","agent":"承认脚本和云里点一遍都不能替人定效果。工作台改成先出几种第一层切法，人选了才上画布","files":["prototype/workbench.html",".codex/context/TODO.md"],"bugs":[],"tasks":[]}
