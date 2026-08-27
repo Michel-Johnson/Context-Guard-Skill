@@ -29,6 +29,8 @@ People confirm the architecture map in `prototype/workbench.html`. Agents read t
 
 **Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/web-dev-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/web-dev-f54e/prototype/workbench.html)
 
+The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
+
 Serve the repo root so the page can load `.codex/context/map.json`:
 
 ```bash
