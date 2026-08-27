@@ -565,14 +565,14 @@ def jump_many(root: Path, queries: dict | None = None) -> dict:
     queries = queries or {}
     packed = load_packed(root)
     hits = []
-    if queries.get("last"):
-        hits.append(jump(root, last=True, packed=packed))
     for item in as_query_list(queries.get("path")):
         hits.append(jump(root, path=item, packed=packed))
     for item in as_query_list(queries.get("bug")):
         hits.append(jump(root, bug=item, packed=packed))
     for item in as_query_list(queries.get("task")):
         hits.append(jump(root, task=item, packed=packed))
+    if queries.get("last"):
+        hits.append(jump(root, last=True, packed=packed))
     if not hits:
         return {
             "error": "jump --json needs path, bug, task, or last",

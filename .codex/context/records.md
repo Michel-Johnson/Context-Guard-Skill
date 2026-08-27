@@ -15,7 +15,7 @@
   tasks/J1.md        一类活怎么走（链路、命令、代码路径）
   map.json           工作台的活地图
   owns-index.json    源码路径 → 卡号
-  jump-index.json    三份索引合成一份，多查时读这一份
+  jump-index.json    三份索引合成一份，给 jump --json 用，不要整份贴进对话
   cards/N21.md       一张卡一份
 ```
 

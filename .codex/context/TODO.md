@@ -16,9 +16,11 @@
 
 已经做的：
 
-- Agent 先读一份 `jump-index.json`（路径 + 坏例 + 任务），再只打开命中的 Markdown
-- 仍要脚本时一次查完：`python3 scripts/map_owns.py jump --json '{"path":[...],"bug":[...],"task":[...],"last":true}'`
-- 计时见 `fixtures/openclaw/JUMP-SPEED.md`
+- 多查一次查完：`python3 scripts/map_owns.py jump --json '{"path":[...],"bug":[...],"task":[...],"last":true}'`
+- 脚本背后读一份 `jump-index.json`。Agent 不要把这份索引整份读进对话（OpenClaw 夹具约 22KB，跟地图一个量级）
+- 计时和命中对照见 `fixtures/openclaw/JUMP-SPEED.md`：13 条连跑约 351ms，一次 `--json` 约 28ms，命中与逐条相同
+
+以后若还慢，再看：`open` 是否太长、有没有扫完全部 `bugs/`、从人一句话到打开正确那一份实际卡在哪。超链接仍然只给人看。真 Agent 会不会按说明书去 `--json`，还没跑过一轮。
 
 以后若还慢，再看：`open` 是否太长、有没有扫完全部 `bugs/`、从人一句话到打开正确那一份实际卡在哪。超链接仍然只给人看。
 

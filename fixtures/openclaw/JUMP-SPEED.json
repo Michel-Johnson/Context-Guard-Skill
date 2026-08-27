@@ -29,78 +29,99 @@
     ],
     "last": true
   },
+  "hits": {
+    "ok": true,
+    "queries": 13,
+    "open_files": 15,
+    "open_bytes": 5106,
+    "ids": [
+      "N11",
+      "N11b",
+      "N12",
+      "N15",
+      "N16",
+      "M2",
+      "B20",
+      "B30",
+      "B10",
+      "J5",
+      "J5",
+      "J1",
+      "2026-08-02-d"
+    ]
+  },
   "runs": [
     {
       "cmd": "python3 -c pass",
       "rounds": 5,
-      "min_ms": 7.9,
+      "min_ms": 8.0,
       "median_ms": 8.1,
-      "max_ms": 8.3,
+      "max_ms": 8.2,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --path",
       "rounds": 5,
-      "min_ms": 26.7,
-      "median_ms": 27.2,
-      "max_ms": 27.9,
+      "min_ms": 26.5,
+      "median_ms": 26.8,
+      "max_ms": 27.0,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --bug B20",
       "rounds": 5,
       "min_ms": 26.5,
-      "median_ms": 27.0,
-      "max_ms": 27.2,
+      "median_ms": 26.6,
+      "max_ms": 26.9,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --bug 配对",
       "rounds": 5,
-      "min_ms": 26.7,
+      "min_ms": 26.4,
       "median_ms": 26.8,
-      "max_ms": 27.0,
+      "max_ms": 26.9,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --task J5",
       "rounds": 5,
-      "min_ms": 26.9,
-      "median_ms": 27.0,
-      "max_ms": 27.4,
+      "min_ms": 26.4,
+      "median_ms": 26.5,
+      "max_ms": 26.8,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --task 隧道",
       "rounds": 5,
-      "min_ms": 26.9,
-      "median_ms": 27.0,
-      "max_ms": 27.5,
+      "min_ms": 26.5,
+      "median_ms": 26.6,
+      "max_ms": 26.7,
       "ok": true
     },
     {
       "cmd": "1 subprocess jump --last",
       "rounds": 5,
       "min_ms": 26.7,
-      "median_ms": 26.9,
-      "max_ms": 27.3,
+      "median_ms": 26.8,
+      "max_ms": 26.9,
       "ok": true
     },
     {
       "cmd": "13 sequential subprocess jumps",
       "rounds": 5,
-      "min_ms": 347.5,
-      "median_ms": 350.7,
-      "max_ms": 352.1,
+      "min_ms": 346.4,
+      "median_ms": 347.1,
+      "max_ms": 347.2,
       "ok": true,
       "queries": 13
     },
     {
       "cmd": "1 subprocess jump --json (13 queries)",
       "rounds": 5,
-      "min_ms": 27.5,
-      "median_ms": 27.7,
-      "max_ms": 27.8,
+      "min_ms": 26.9,
+      "median_ms": 27.0,
+      "max_ms": 27.2,
       "ok": true
     },
     {
@@ -108,7 +129,7 @@
       "rounds": 5,
       "min_ms": 0.1,
       "median_ms": 0.2,
-      "max_ms": 0.3,
+      "max_ms": 0.2,
       "ok": true
     },
     {
@@ -123,7 +144,7 @@
       "cmd": "in-process jump {'last': True}",
       "rounds": 5,
       "min_ms": 0.1,
-      "median_ms": 0.2,
+      "median_ms": 0.1,
       "max_ms": 0.2,
       "ok": true
     },
