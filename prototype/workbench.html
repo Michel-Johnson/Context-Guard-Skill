@@ -614,6 +614,10 @@ function applyStaticI18n(){
   document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
+  const titleEl = document.getElementById("repo-title");
+  if(titleEl && catalog[repoId]){
+    titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
+  }
 }
 function readStoredUiLang(){
   try{
@@ -626,8 +630,9 @@ function setUiLang(lang, persistPref){
   uiLang = lang==="en" ? "en" : "zh";
   try{ localStorage.setItem(LANG_KEY, uiLang); }catch(e){}
   applyStaticI18n();
-  applyRepoChrome();
-  renderAll();
+  if(typeof applyRepoChrome==="function") applyRepoChrome();
+  if(typeof renderAll==="function") renderAll();
+  applyStaticI18n();
   if(persistPref!==false) schedulePrefLangWrite();
 }
 
@@ -2684,6 +2689,7 @@ document.getElementById("dir-toggle").onclick = e=>{
   if(b) setLayoutDir(b.dataset.dir);
 };
 document.getElementById("lang-toggle").onclick = e=>{
+  e.stopPropagation();
   const b = e.target.closest("[data-lang]");
   if(b) setUiLang(b.dataset.lang);
 };
