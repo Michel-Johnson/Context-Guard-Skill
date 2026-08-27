@@ -60,11 +60,12 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
-.dir-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
-.dir-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
-.dir-toggle button + button{border-left:2px solid var(--line-ink)}
-.dir-toggle button:hover{color:var(--ink)}
-.dir-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+.dir-toggle,.lang-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
+.dir-toggle button,.lang-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
+.lang-toggle button{padding:5px 10px;min-width:36px}
+.dir-toggle button + button,.lang-toggle button + button{border-left:2px solid var(--line-ink)}
+.dir-toggle button:hover,.lang-toggle button:hover{color:var(--ink)}
+.dir-toggle button.on,.lang-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
 .dir-toggle.is-catalog{display:none}
 .rel-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
 .rel-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
@@ -306,6 +307,7 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
   border-radius:8px;background:#fff;overflow:auto;-webkit-line-clamp:unset}
 .lead.ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .lead.ed:empty:before{content:"一句用途";color:var(--muted)}
+html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
 .drawer .work-list{margin:8px 0 0;padding:0 0 0 18px;color:var(--muted);font-size:12px;line-height:1.45}
 .drawer .work-list li{margin:0 0 2px}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
@@ -349,6 +351,8 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
 .mem-body .txt:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .mem-body .txt:empty:before{content:"写一条记忆";color:var(--muted)}
 .mem-body .txt[data-ed="idea"]:empty:before{content:"写一条 Idea"}
+html[lang="en"] .mem-body .txt:empty:before{content:"Write a memory"}
+html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an idea"}
 .empty{color:var(--muted);font-size:13px;padding:4px 0}
 .ed{cursor:text;border-radius:6px;outline:none;-webkit-user-modify:read-write-plaintext-only;
   min-height:1.6em;line-height:1.5;padding:4px 6px;box-sizing:border-box}
@@ -375,11 +379,13 @@ details.fold .mem-list{margin-top:6px}
 .bug-check.done{background:var(--green);border-color:var(--green)}
 .bug-title{font-weight:700;font-size:13px;display:block;min-height:2.2em;padding:8px 10px;line-height:1.4;box-sizing:border-box}
 .bug-title.ed:empty:before{content:"Bug 标题";color:var(--muted);font-weight:600}
+html[lang="en"] .bug-title.ed:empty:before{content:"Bug title"}
 .bug-title.ed:empty,
 .bug-title.ed:focus{min-height:2.6em;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
 .bug-title.ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .bug-sub{color:var(--muted);font-size:11px;margin-top:2px;min-height:1.2em;font-family:var(--font-note)}
 .bug-sub.ed:empty:before{content:"补充说明（可选）";color:#b5bab6}
+html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
 .summarizing{color:var(--green);font-size:12px;margin-top:3px}
 
@@ -423,40 +429,44 @@ details.fold .mem-list{margin-top:6px}
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
   <div class="top-tools">
     <div class="dir-toggle" id="dir-toggle">
-      <button type="button" data-dir="lr" class="on">左右</button>
-      <button type="button" data-dir="tb">上下</button>
+      <button type="button" data-dir="lr" class="on" data-i18n="dirLr">左右</button>
+      <button type="button" data-dir="tb" data-i18n="dirTb">上下</button>
     </div>
-    <div class="rel-toggle" id="rel-toggle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
-      <button type="button" id="btn-rel" aria-pressed="false">关系</button>
+    <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+      <button type="button" data-lang="zh" class="on">中</button>
+      <button type="button" data-lang="en">EN</button>
     </div>
-    <span id="rel-hint">点击模块看关系，不会进入</span>
+    <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
+      <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
+    </div>
+    <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
     <div class="session-chip" aria-hidden="true">
       <b id="session-name">S-0823</b>
       <b id="auth-count">0</b>
     </div>
-    <button class="auth-btn" id="btn-auth">🔑 授权模式</button>
+    <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
-    <button class="tray-btn" id="btn-tray">🗂 已取消 (<span id="tray-count">0</span>)</button>
+    <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
   </div>
 </header>
 <div class="first-use" id="first-use">
   <div class="card" id="first-use-ask">
-    <div class="kicker">演示 · 第一次使用</div>
+    <div class="kicker" data-i18n="firstKicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
     <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。页面只是按预置步骤播放「分析」过程，并投影已经写好的笔记和地图。</p>
-    <p>产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在右侧面板；点一条只画从根到该节点的链路，不进分级页面。</p>
+    <p data-i18n="firstProduct">产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在右侧面板；点一条只画从根到该节点的链路，不进分级页面。</p>
     <div class="actions">
-      <button class="primary" id="first-use-go">演示分析（不调用 Agent）</button>
-      <button class="quiet" id="first-use-empty">仓库几乎是空的</button>
+      <button class="primary" id="first-use-go" data-i18n="firstGo">演示分析（不调用 Agent）</button>
+      <button class="quiet" id="first-use-empty" data-i18n="firstEmpty">仓库几乎是空的</button>
     </div>
   </div>
   <div class="card" id="first-use-work" hidden>
-    <div class="kicker">演示中 · 未调用 Agent</div>
-    <h2>正在播放预置的分析过程</h2>
-    <p>浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
+    <div class="kicker" data-i18n="workKicker">演示中 · 未调用 Agent</div>
+    <h2 data-i18n="workHeading">正在播放预置的分析过程</h2>
+    <p data-i18n="workCopy1">浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。</p>
     <ul class="analyze-log" id="analyze-log"></ul>
     <pre class="arch-md" id="analyze-md" hidden></pre>
-    <p>下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。</p>
+    <p data-i18n="workCopy2">下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。</p>
   </div>
 </div>
 
@@ -469,13 +479,13 @@ details.fold .mem-list{margin-top:6px}
 </div>
 
 <div class="tray" id="tray">
-  <h3>已取消的提议</h3>
-  <p class="hint">已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。</p>
+  <h3 data-i18n="trayTitle">已取消的提议</h3>
+  <p class="hint" data-i18n="trayHint">已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。</p>
   <ul id="tray-list"></ul>
 </div>
 
 <aside class="bug-panel" id="bug-panel">
-  <h3>未修的 Bug</h3>
+  <h3 data-i18n="openBugs">未修的 Bug</h3>
   <ul id="bug-panel-list"></ul>
 </aside>
 
@@ -487,6 +497,139 @@ const PINNED = [
   "回复和记忆一律使用中文",
   "记忆文件随 git 提交；密钥只留本地，永不入库"
 ];
+
+const I18N = {
+  zh: {
+    docTitle:"Context Guard · 工作台原型",
+    archMap:"架构导图",
+    dirLr:"左右", dirTb:"上下",
+    relations:"关系",
+    relHint:"点击模块看关系，不会进入",
+    relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
+    authMode:"授权模式",
+    cancelled:"已取消",
+    firstKicker:"演示 · 第一次使用",
+    firstHeading:"从 {name} 建立架构图",
+    firstCopy:"这是原型演示，不会调用任何 Agent，也不会去读 {name} 的真实代码。点击后只播放预置步骤，并投影已经写好的笔记和地图。产品里才由当前会话的 Agent 做这一步。",
+    firstProduct:"产品里这一步才由当前会话的 Agent 读仓、写 architecture.md，并把活地图落到 .codex/context/map.json。第一页只确认 4–8 个主干模块。平时只画从属实线，同级不相连。生产/消费要点「关系」。未修 Bug 在右侧面板；点一条只画从根到该节点的链路，不进分级页面。",
+    firstGo:"演示分析（不调用 Agent）",
+    firstEmpty:"仓库几乎是空的",
+    workKicker:"演示中 · 未调用 Agent",
+    workHeading:"正在播放预置的分析过程",
+    workCopy1:"浏览器在按写死的步骤和稿子走，没有模型在读 OpenClaw 或本仓库。真实 skill 启用时，才由你正在对话的那个 Agent 读代码。",
+    workCopy2:"下面的笔记是预置演示稿。第一页只确认 4–8 个主干模块；点进模块后画布展开多级分支。这不是这次点击实时读仓得到的。",
+    trayTitle:"已取消的提议",
+    trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
+    openBugs:"未修的 Bug",
+    boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
+    sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
+    reanalyze:"重新演示分析（不调用 Agent）",
+    owns:"负责", attach:"附", linkRepo:"连接仓库", add:"添加", cancel:"取消",
+    filePathPh:"仓库相对路径，文件需已在仓库中",
+    ownPathPh:"仓库相对路径，目录以 / 结尾",
+    attachTitle:"附带文件或图片", ownsAddTitle:"负责的仓库路径",
+    remove:"移除", addModule:"接入模块",
+    noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
+    leave:"离开", claim:"本会话在修",
+    exitChain:"退出链路",
+    trayEmpty:"没有已取消的提议。",
+    restoreMap:"↩ 重新加入 Map",
+    forever:"永久删除", deleteAsk:"确定删掉？", delete:"删除",
+    wasUnder:"原属：", root:"根",
+    join:"加入", hide:"隐藏", restore:"恢复",
+    acceptLayer:"本层全部加入", grant:"授权", enter:"进入",
+    plusModule:"＋ 模块", plusChild:"＋ 子节点",
+    moduleName:"模块名称", childName:"子节点名称",
+    memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
+    addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
+    module:"模块", cancelledChip:"已取消",
+    state_dirty:"探索中", state_success:"成功", state_failed:"失败",
+    pendingChip:"待批",
+    summarizing:"沉淀中…",
+    dormantExp:"（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
+    doneMem:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论"
+  },
+  en: {
+    docTitle:"Context Guard · workbench",
+    archMap:"architecture map",
+    dirLr:"Left–right", dirTb:"Top–down",
+    relations:"Relations",
+    relHint:"Click a module to see relations. It will not enter.",
+    relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
+    authMode:"Auth mode",
+    cancelled:"Cancelled",
+    firstKicker:"Demo · first use",
+    firstHeading:"Build a map from {name}",
+    firstCopy:"This is a prototype demo. It does not call an agent or read {name}'s real code. The click only plays prepared steps and projects notes and a map that are already written. In the product, the current session's agent does this.",
+    firstProduct:"In the product, the current session's agent reads the repo, writes architecture.md, and lands the live map at .codex/context/map.json. The first page only confirms 4–8 trunk modules. Everyday view draws parent–child solids only. Produce/consume needs Relations. Open bugs stay in the right panel; clicking one draws the root-to-node chain, not the paged view.",
+    firstGo:"Play demo analysis (no agent)",
+    firstEmpty:"The repo is almost empty",
+    workKicker:"Demo · no agent called",
+    workHeading:"Playing the prepared analysis",
+    workCopy1:"The browser is walking hard-coded steps. No model is reading OpenClaw or this repo. When the real skill runs, the agent you are talking to reads the code.",
+    workCopy2:"The notes below are a prepared demo. The first page confirms 4–8 trunk modules; entering a module expands the tree. This is not a live read of the repo.",
+    trayTitle:"Cancelled proposals",
+    trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
+    openBugs:"Open bugs",
+    boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
+    sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
+    reanalyze:"Replay demo analysis (no agent)",
+    owns:"Owns", attach:"File", linkRepo:"Link repo", add:"Add", cancel:"Cancel",
+    filePathPh:"Repo-relative path; the file must already be in the repo",
+    ownPathPh:"Repo-relative path; directories end with /",
+    attachTitle:"Attach a file or image", ownsAddTitle:"Owned repo path",
+    remove:"Remove", addModule:"Attach module",
+    noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
+    leave:"Leave", claim:"This session is fixing it",
+    exitChain:"Exit chain",
+    trayEmpty:"No cancelled proposals.",
+    restoreMap:"↩ Restore to map",
+    forever:"Delete forever", deleteAsk:"Delete this?", delete:"Delete",
+    wasUnder:"From: ", root:"root",
+    join:"Add", hide:"Hide", restore:"Restore",
+    acceptLayer:"Add all in this layer", grant:"Authorize", enter:"Enter",
+    plusModule:"＋ Module", plusChild:"＋ Child",
+    moduleName:"Module name", childName:"Child name",
+    memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
+    addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
+    module:"Module", cancelledChip:"Cancelled",
+    state_dirty:"Exploring", state_success:"Done", state_failed:"Failed",
+    pendingChip:"Pending",
+    summarizing:"Settling…",
+    dormantExp:"(Demo) The agent summarized the cause and fix. This lesson is dormant until a similar bug returns.",
+    doneMem:"(Demo) The human marked this task done. The agent folded the draft into this memory."
+  }
+};
+const LANG_KEY = "cg-workbench-ui-lang";
+let uiLang = "zh";
+function t(key){
+  const pack = I18N[uiLang] || I18N.zh;
+  return pack[key] || I18N.zh[key] || key;
+}
+function applyStaticI18n(){
+  document.documentElement.lang = uiLang==="en" ? "en" : "zh-CN";
+  document.title = t("docTitle");
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el=>{ el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
+    b.classList.toggle("on", b.dataset.lang===uiLang);
+  });
+}
+function readStoredUiLang(){
+  try{
+    const s = localStorage.getItem(LANG_KEY);
+    if(s==="en"||s==="zh") return s;
+  }catch(e){}
+  return null;
+}
+function setUiLang(lang, persistPref){
+  uiLang = lang==="en" ? "en" : "zh";
+  try{ localStorage.setItem(LANG_KEY, uiLang); }catch(e){}
+  applyStaticI18n();
+  applyRepoChrome();
+  renderAll();
+  if(persistPref!==false) schedulePrefLangWrite();
+}
 
 let NODE_SEQ = 400;
 let BUG_SEQ = 40;
@@ -1154,7 +1297,7 @@ let foldDormant = false;
 let foldMem = false;
 let foldIdea = false;
 let foldBug = false;
-const uiLabels = {memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
+const uiLabels = ()=>({memory:t("memory"), ideas:t("ideas"), bugs:t("bugs"), inherited:t("inherited"), dormant:t("dormant")});
 const sessionAuth = new Set(["T0"]);
 
 function parkChildren(n){
@@ -1542,17 +1685,17 @@ function attachHtml(kind, key, owner, readonly){
     const img = isImagePath(f.path)
       ? `<img class="file-thumb" data-repo-src="${p}" alt="${name}" title="${p}">`
       : "";
-    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="移除">×</button>`;
+    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
     return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
   const add = isAttaching(kind, key)
     ? `<span class="file-add">
-         <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="仓库相对路径，文件需已在仓库中" autocomplete="off">
-         <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">添加</button>
-         <button type="button" class="quiet" data-act="cancel-file">取消</button>
+         <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="${escAttr(t("filePathPh"))}" autocomplete="off">
+         <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
+         <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="附带文件或图片">附</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">连接仓库</button>` : ""}`;
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function ownsHtml(node, readonly){
@@ -1560,16 +1703,16 @@ function ownsHtml(node, readonly){
   const bad = readonly ? [] : ownConflictsFor(node);
   const chips = paths.map((p,i)=>{
     const clash = bad.indexOf(p)>=0 ? " is-conflict" : "";
-    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-own" data-i="${i}" title="移除">×</button>`;
+    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-own" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
     return `<span class="own-chip${clash}" title="${escAttr(p)}"><span class="own-path">${esc(p)}</span>${rm}</span>`;
   }).join("");
-  if(readonly) return paths.length ? `<div class="owns-row"><span class="owns-lab">负责</span>${chips}</div>` : "";
+  if(readonly) return paths.length ? `<div class="owns-row"><span class="owns-lab">${t("owns")}</span>${chips}</div>` : "";
   const add = ownEditingId===node.id
-    ? `<input class="file-path" data-own-input value="${escAttr(ownDraft)}" placeholder="仓库相对路径，目录以 / 结尾" autocomplete="off">
-       <button type="button" class="quiet" data-act="save-own">添加</button>
-       <button type="button" class="quiet" data-act="cancel-own">取消</button>`
-    : `<button type="button" class="clip-btn quiet" data-act="add-own" title="负责的仓库路径">+</button>`;
-  return `<div class="owns-row"><span class="owns-lab">负责</span>${chips}${add}</div>`;
+    ? `<input class="file-path" data-own-input value="${escAttr(ownDraft)}" placeholder="${escAttr(t("ownPathPh"))}" autocomplete="off">
+       <button type="button" class="quiet" data-act="save-own">${t("add")}</button>
+       <button type="button" class="quiet" data-act="cancel-own">${t("cancel")}</button>`
+    : `<button type="button" class="clip-btn quiet" data-act="add-own" title="${escAttr(t("ownsAddTitle"))}">+</button>`;
+  return `<div class="owns-row"><span class="owns-lab">${t("owns")}</span>${chips}${add}</div>`;
 }
 function addOwnPath(node, path){
   const p = normRepoPath(path);
@@ -1687,10 +1830,7 @@ function overlayOpenFor(r){
   return r.bootstrap==="pending" || r.bootstrap==="analyzing";
 }
 function bootstrapLabel(st){
-  if(st==="ready") return "已建图";
-  if(st==="proposed") return "待确认";
-  if(st==="analyzing") return "分析中";
-  return "首次使用";
+  return t("boot_"+(st||"pending"));
 }
 function firstLayerConfirmed(){
   const kids = (data.children||[]).filter(c=>!isCancelled(c));
@@ -1721,6 +1861,7 @@ function persist(){
     };
   });
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(dump)); }catch(e){}
+  try{ localStorage.setItem(LANG_KEY, uiLang); }catch(e){}
   try{
     const light = {v:2, repoId, st:{}};
     Object.values(catalog).forEach(r=>{ light.st[r.id] = r.bootstrap; });
@@ -1792,9 +1933,43 @@ async function syncBootstrapFile(st){
     if(f){ try{ prefs = JSON.parse(await f.text())||{}; }catch(err){ prefs = {}; } }
     if(!prefs || typeof prefs!=="object") prefs = {};
     prefs.map_bootstrap = st;
+    prefs.display_language = uiLang;
     prefs.last_updated = isoDay();
     await writeRepoPath(PREF_FILE, new Blob([JSON.stringify(prefs, null, 2)+"\n"], {type:"application/json"}));
   }catch(e){}
+}
+let prefLangTimer = null;
+function schedulePrefLangWrite(){
+  clearTimeout(prefLangTimer);
+  prefLangTimer = setTimeout(writePrefLang, 400);
+}
+async function writePrefLang(){
+  if(!repoFsOk) return;
+  try{
+    const f = await readRepoFile(PREF_FILE);
+    let prefs = {};
+    if(f){ try{ prefs = JSON.parse(await f.text())||{}; }catch(err){ prefs = {}; } }
+    if(!prefs || typeof prefs!=="object") prefs = {};
+    prefs.display_language = uiLang;
+    prefs.last_updated = isoDay();
+    await writeRepoPath(PREF_FILE, new Blob([JSON.stringify(prefs, null, 2)+"\n"], {type:"application/json"}));
+  }catch(e){}
+}
+async function loadPrefsLang(){
+  try{
+    let prefs = null;
+    if(repoFsOk){
+      const f = await readRepoFile(PREF_FILE);
+      if(f) prefs = JSON.parse(await f.text());
+    }else{
+      const res = await fetch("../.codex/context/preferences.json", {cache:"no-store"});
+      if(res.ok) prefs = await res.json();
+    }
+    const d = prefs && (prefs.display_language || prefs.record_language);
+    if(d==="en" || d==="zh"){ uiLang = d; return; }
+  }catch(e){}
+  const nav = String(navigator.language||"").toLowerCase();
+  if(nav.startsWith("en")) uiLang = "en";
 }
 async function loadMapFromRepo(){
   if(!repoFsOk) return false;
@@ -1844,7 +2019,7 @@ function loadLive(r){
     const n = getNode(viewRootId);
     if(n) unpackInbox(n);
   }
-  document.getElementById("session-name").textContent = r.sessionName || (r.bootstrap==="proposed"?"S-0823 待确认":"当前会话");
+  document.getElementById("session-name").textContent = r.sessionName || (r.bootstrap==="proposed"?"S-0823 "+t("sessionPending"):t("sessionNow"));
   setOverlay(overlayOpenFor(r), r.bootstrap==="analyzing");
 }
 function restore(){
@@ -1909,13 +2084,12 @@ function snapshotRepo(){
 }
 function renderFirstUseCopy(){
   const r = currentRepo();
-  document.getElementById("first-use-heading").textContent = "演示：从 "+r.name+" 建立架构图";
-  document.getElementById("first-use-copy").textContent =
-    "这是原型演示，不会调用 Agent，也不会去读 "+r.name+" 的真实代码。点击后只播放预置步骤，并投影已经写好的笔记和地图。产品里才由当前会话的 Agent 做这一步。";
+  document.getElementById("first-use-heading").textContent = t("firstHeading").replace("{name}", r.name);
+  document.getElementById("first-use-copy").textContent = t("firstCopy").replace("{name}", r.name);
 }
 function applyRepoChrome(){
   const r = currentRepo();
-  document.getElementById("repo-title").innerHTML = r.heading+' <span class="caret">▾</span>';
+  document.getElementById("repo-title").innerHTML = r.name+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -1926,7 +2100,7 @@ function renderRepoMenu(){
       <b>${r.name}</b>
       <span class="src">${r.source}</span>
       <span class="tag${r.bootstrap==="pending"||r.bootstrap==="analyzing"?" wait":""}">${bootstrapLabel(r.bootstrap)}</span>
-      ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">重新演示分析（不调用 Agent）</span>`:""}
+      ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">${t("reanalyze")}</span>`:""}
     </button>`).join("");
   el.querySelectorAll("[data-repo]").forEach(b=>b.onclick=e=>{
     e.stopPropagation();
@@ -1978,7 +2152,7 @@ function emptyFirstUse(){
   currentRepo().bootstrap = "pending";
   currentRepo().firstUseOpen = true;
   currentRepo().live = null;
-  document.getElementById("session-name").textContent = "S-0823 首次使用";
+  document.getElementById("session-name").textContent = "S-0823 "+t("sessionFirst");
   setOverlay(true, false);
   applyRepoChrome();
 }
@@ -1986,7 +2160,7 @@ function startEmptyRoot(){
   closeOverlay();
   currentRepo().bootstrap = "ready";
   data.memories = [{text:"绿场项目：只留下根节点。有了真实模块再往下长。", state:"success"}];
-  document.getElementById("session-name").textContent = "S-0823 空白项目";
+  document.getElementById("session-name").textContent = "S-0823 "+t("sessionEmpty");
   renderAll();
   fitView();
   persist();
@@ -2031,7 +2205,7 @@ function applyProposedMap(){
   clearCompose();
   r.bootstrap = "proposed";
   r.live = clone(data);
-  document.getElementById("session-name").textContent = "S-0823 待确认";
+  document.getElementById("session-name").textContent = "S-0823 "+t("sessionPending");
   closeOverlay();
   renderAll();
   fitView();
@@ -2396,18 +2570,18 @@ function renderBugPanel(){
   const ul = document.getElementById("bug-panel-list");
   if(!ul) return;
   if(!list.length){
-    ul.innerHTML = `<li class="empty">没有未修的 Bug。</li>`;
+    ul.innerHTML = `<li class="empty">${t("noOpenBugs")}</li>`;
     return;
   }
   const sid = currentSessionId();
   ul.innerHTML = list.map(item=>{
-    const title = item.bug.title || "未命名 Bug";
+    const title = item.bug.title || t("unnamedBug");
     const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
     const claim = on
-      ? `<button type="button" class="claim" data-claim>${mine?"离开":"本会话在修"}</button>`
+      ? `<button type="button" class="claim" data-claim>${mine?t("leave"):t("claim")}</button>`
       : "";
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-title">${esc(title)}</span>
@@ -2451,7 +2625,7 @@ function renderNav(){
   if(bugPathMode && bugFocus){
     const hit = focusedBug();
     const tag = hit && hit.bug ? `<span class="here">${esc(hit.bug.title || "Bug")}</span>` : "";
-    el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">退出链路</button>` + tag;
+    el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">${t("exitChain")}</button>` + tag;
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
@@ -2509,6 +2683,10 @@ document.getElementById("dir-toggle").onclick = e=>{
   const b = e.target.closest("[data-dir]");
   if(b) setLayoutDir(b.dataset.dir);
 };
+document.getElementById("lang-toggle").onclick = e=>{
+  const b = e.target.closest("[data-lang]");
+  if(b) setUiLang(b.dataset.lang);
+};
 document.getElementById("btn-rel").onclick = ()=>{
   if(bugPathMode) exitBugPath(true);
   relationMode = !relationMode;
@@ -2532,16 +2710,16 @@ function renderTray(){
   const ul = document.getElementById("tray-list");
   ul.innerHTML = list.length? list.map(({node,parent})=>`
     <li>
-      <div class="t-title">${node.title}<span style="font-size:11px"> · 原属：${parent?parent.title:"根"}</span></div>
+      <div class="t-title">${node.title}<span style="font-size:11px"> · ${t("wasUnder")}${parent?parent.title:t("root")}</span></div>
       <div class="t-actions">
-        <button data-restore="${node.id}">↩ 重新加入 Map</button>
-        ${pendingDeleteId===node.id?"":`<button data-delete="${node.id}" class="danger">永久删除</button>`}
+        <button data-restore="${node.id}">${t("restoreMap")}</button>
+        ${pendingDeleteId===node.id?"":`<button data-delete="${node.id}" class="danger">${t("forever")}</button>`}
       </div>
-      ${pendingDeleteId===node.id? `<div class="confirm-row">确定删掉？
-        <button data-delete-yes="${node.id}" class="danger">删除</button>
-        <button data-delete-no>取消</button>
+      ${pendingDeleteId===node.id? `<div class="confirm-row">${t("deleteAsk")}
+        <button data-delete-yes="${node.id}" class="danger">${t("delete")}</button>
+        <button data-delete-no>${t("cancel")}</button>
       </div>`:""}
-    </li>`).join("") : `<li class="empty">没有已取消的提议。</li>`;
+    </li>`).join("") : `<li class="empty">${t("trayEmpty")}</li>`;
   ul.querySelectorAll("[data-restore]").forEach(b=>b.onclick=()=>{
     const n = getNode(b.dataset.restore);
     n.proposal="accepted"; n.isNew=false;
@@ -2588,7 +2766,7 @@ function nodeHtml(n, isViewRoot, ghost){
         ? `<span class="join-spin" aria-hidden="true"></span>`
         : `<span class="new-dot"></span>`)
     : "";
-  const add = ghost || isProposed(n) ? "" : `<span class="add-child" title="接入模块">＋</span>`;
+  const add = ghost || isProposed(n) ? "" : `<span class="add-child" title="${escAttr(t("addModule"))}">＋</span>`;
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
@@ -3037,7 +3215,7 @@ function commitChild(node, title){
 }
 
 /* ================= 抽屉 ================= */
-const STATE_LABEL = {dirty:"探索中", success:"成功", failed:"失败"};
+const STATE_LABEL = ()=>({dirty:t("state_dirty"), success:t("state_success"), failed:t("state_failed")});
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
@@ -3090,7 +3268,7 @@ function renderDetail(){
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        <button type="button" class="quiet" data-act="claim">${mine?"离开":"本会话在修"}</button>
+        <button type="button" class="quiet" data-act="claim">${mine?t("leave"):t("claim")}</button>
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
     if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
@@ -3101,14 +3279,14 @@ function renderDetail(){
   if(proposed){
     el.innerHTML = `
       <h2>${node.title}
-        <span class="state-chip proposed-chip">待批</span>
+        <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
       ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
       ${ownsList(node).length? ownsHtml(node, true):""}
       <div class="actions">
-        <button data-act="accept" class="primary">加入</button>
-        <button data-act="cancel">隐藏</button>
-        <button type="button" data-act="module">＋ 模块</button>
+        <button data-act="accept" class="primary">${t("join")}</button>
+        <button data-act="cancel">${t("hide")}</button>
+        <button type="button" data-act="module">${t("plusModule")}</button>
       </div>`;
     el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
     bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -3119,7 +3297,7 @@ function renderDetail(){
     el.innerHTML = `
       <h2>${node.title}</h2>
       <div class="actions">
-        <button data-act="restore" class="primary">恢复</button>
+        <button data-act="restore" class="primary">${t("restore")}</button>
       </div>`;
     el.querySelector('[data-act="restore"]').onclick = ()=>acceptProposal(node);
     return;
@@ -3157,7 +3335,7 @@ function renderDetail(){
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
           <div class="bug-main">
             ${title}
-            ${b.status==='pending'? `<div class="summarizing">沉淀中…</div>`:""}
+            ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
             ${attach}
           </div>
         </li>`;
@@ -3167,11 +3345,13 @@ function renderDetail(){
   const pendingKids = node.children.filter(isProposed).length;
   const canDelete = node.id!==data.id;
   /* dirty/探索中是缺省，不是要人改的活状态；只在有结论或自定义标签时才露芯片。 */
-  const chip = cancelled? `<span class="state-chip failed">已取消</span>`
-    : isModule? `<span class="state-chip module">模块</span>`
+  const labels = uiLabels();
+  const states = STATE_LABEL();
+  const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
+    : isModule? `<span class="state-chip module">${t("module")}</span>`
     : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
     : (node.state==="success"||node.state==="failed")
-      ? `<span class="state-chip ${node.state}">${STATE_LABEL[node.state]}</span>`
+      ? `<span class="state-chip ${node.state}">${states[node.state]}</span>`
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
@@ -3180,42 +3360,42 @@ function renderDetail(){
     <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
     <div class="actions">
-      ${cancelled? `<button data-act="restore" class="primary">恢复</button>`:""}
+      ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
-        ${pendingKids? `<button data-act="accept-layer" class="primary">本层全部加入</button>`:""}
-        ${noauth? `<button data-act="grant" class="auth-primary">授权</button>`:""}
-        ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">进入</button>`:""}
-        ${composing?"":`<button type="button" data-act="module">＋ 模块</button>
-        <button type="button" data-act="child">＋ 子节点</button>`}
-        ${canDelete? `<button type="button" data-act="delete" class="quiet">删除</button>`:""}`:""}
+        ${pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:""}
+        ${noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:""}
+        ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""}
+        ${composing?"":`<button type="button" data-act="module">${t("plusModule")}</button>
+        <button type="button" data-act="child">${t("plusChild")}</button>`}
+        ${canDelete? `<button type="button" data-act="delete" class="quiet">${t("delete")}</button>`:""}`:""}
     </div>
     ${composing? `<div class="compose">
-        <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?"模块名称":"子节点名称"}</span>
-        <button type="button" data-act="compose-ok" class="primary">添加</button>
-        <button type="button" data-act="compose-cancel" class="quiet">取消</button>
+        <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?t("moduleName"):t("childName")}</span>
+        <button type="button" data-act="compose-ok" class="primary">${t("add")}</button>
+        <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${ownsHtml(node, false)}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
-      <summary>${uiLabels.memory} ${node.memories.length||""}
-        <button type="button" class="plus-btn" data-act="add-mem" title="添加记忆">+</button>
+      <summary>${labels.memory} ${node.memories.length||""}
+        <button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">+</button>
       </summary>
       ${memHtml}
     </details>
     <details class="fold" data-fold="idea" ${foldIdea?"open":""}>
-      <summary>${uiLabels.ideas} ${node.ideas.length||""}
-        <button type="button" class="plus-btn" data-act="add-idea" title="添加 Idea">+</button>
+      <summary>${labels.ideas} ${node.ideas.length||""}
+        <button type="button" class="plus-btn" data-act="add-idea" title="${escAttr(t("addIdea"))}">+</button>
       </summary>
       ${ideaHtml}
     </details>
     <details class="fold" data-fold="bug" ${foldBug?"open":""}>
-      <summary>${uiLabels.bugs} ${openBugs.length||""}
-        <button type="button" class="plus-btn" data-act="add-bug" title="添加 Bug">+</button>
+      <summary>${labels.bugs} ${openBugs.length||""}
+        <button type="button" class="plus-btn" data-act="add-bug" title="${escAttr(t("addBug"))}">+</button>
       </summary>
       ${bugHtml}
     </details>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
-      <summary>${uiLabels.inherited} ${inhCount}</summary>
+      <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
         ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
@@ -3223,7 +3403,7 @@ function renderDetail(){
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
-      <summary>${uiLabels.dormant} ${node.dormant.length}</summary>
+      <summary>${labels.dormant} ${node.dormant.length}</summary>
       <ul class="dormant-list">
         ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b></li>`).join("")}
       </ul>
@@ -3267,7 +3447,7 @@ function renderDetail(){
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
-    node.memories.push({text:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论", state:"success", files:[]}); renderAll(); };
+    node.memories.push({text:t("doneMem"), state:"success", files:[]}); renderAll(); };
 
   el.querySelectorAll("details.fold").forEach(d=>{
     d.addEventListener("toggle", ()=>{
@@ -3340,7 +3520,7 @@ function renderDetail(){
     const parent = (inTree(composeParent) && !isCancelled(composeParent)) ? composeParent : node;
     if(!composingId || !parent) return;
     const v = composeEl ? textOf(composeEl) : "";
-    if(v && v!=="子节点名称" && v!=="模块名称") commitChild(parent, v);
+    if(v && v!==t("childName") && v!==t("moduleName") && v!=="子节点名称" && v!=="模块名称") commitChild(parent, v);
   };
   if(q('[data-act="compose-ok"]')) q('[data-act="compose-ok"]').onclick = doCommit;
   if(q('[data-act="compose-cancel"]')) q('[data-act="compose-cancel"]').onclick = ()=>{ clearCompose(); renderAll(); };
@@ -3378,7 +3558,7 @@ function crossBug(node, bugId){
     home.dormant = home.dormant || [];
     home.dormant.push({
       title: bug.title,
-      exp: "（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
+      exp: t("dormantExp"),
       files: fileList(bug).map(f=>({path:f.path}))
     });
     if(bugPathMode && bugFocus && bugFocus.bugId===bugId) exitBugPath(true);
@@ -3443,9 +3623,14 @@ function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 async function boot(){
+  const stored = readStoredUiLang();
+  if(stored) uiLang = stored;
+  applyStaticI18n();
   applyRepoChrome();
   restore();
   await restoreRepoDir();
+  if(!stored) await loadPrefsLang();
+  applyStaticI18n();
   if(repoFsOk) await loadMapFromRepo();
   else await loadMapFromHttp();
   if(!(hasMap(currentRepo()) || currentRepo().live)){

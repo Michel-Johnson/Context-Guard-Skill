@@ -31,6 +31,8 @@ People confirm the architecture map in `prototype/workbench.html`. Agents read t
 
 The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
 
+The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
+
 Serve the repo root so the page can load `.codex/context/map.json`:
 
 ```bash

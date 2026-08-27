@@ -31,6 +31,8 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 
 第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
 
+顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
+
 本地从仓库根起一个静态服务，页面才能读到 `.codex/context/map.json`：
 
 ```bash
