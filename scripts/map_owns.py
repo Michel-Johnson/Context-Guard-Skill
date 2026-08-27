@@ -267,6 +267,10 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
             extra = also_ids(m)
             tag = f" · 也挂 {', '.join(extra)}" if extra else ""
             mems.append(f"- {m.get('text')}{tag}")
+    ideas = []
+    for m in node.get("ideas") or []:
+        if isinstance(m, dict) and m.get("text"):
+            ideas.append(f"- {m.get('text')}")
     bugs = []
     for b in node.get("bugs") or []:
         if not isinstance(b, dict) or b.get("status") == "dormant":
@@ -309,6 +313,10 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
         "",
         "\n".join(mems) if mems else "（无）",
         "",
+    ]
+    if ideas:
+        lines.extend(["## Idea", "", "\n".join(ideas), ""])
+    lines.extend([
         "## Bug",
         "",
         "\n".join(bugs) if bugs else "（无）",
@@ -317,7 +325,7 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
         "",
         "\n".join(kids) if kids else "（无）",
         "",
-    ]
+    ])
     return "\n".join(lines)
 
 

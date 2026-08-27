@@ -75,6 +75,7 @@
 | `owns` | 这个节点负责哪些**源码**（文件，或以 `/` 结尾的目录） | 不是截图，不是 bad case 正文 |
 | `files`（节点 / 记忆 / Bug 上） | **证据附件**的仓库相对路径 | 不是所有权 |
 | `memories[].text` | 人在检查器里能改的短句 | 不是 bad case 正文 |
+| `ideas[].text` | 未定的想法，检查器 Idea 栏 | 不是已确认的记忆，也不另开文件 |
 | `bugs[].record` | 坏例索引卡路径 | 缺省 `.codex/context/bugs/{id}.md`；经验正文在 `fixes/{id}.md` |
 
 `bugs[].desc` 逐步作废：工作台本来就不展示它。现象写进 `bugs/{id}.md`。

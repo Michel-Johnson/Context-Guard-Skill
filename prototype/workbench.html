@@ -348,6 +348,7 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
   border-radius:8px;background:#fff;overflow:auto;-webkit-line-clamp:unset}
 .mem-body .txt:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .mem-body .txt:empty:before{content:"写一条记忆";color:var(--muted)}
+.mem-body .txt[data-ed="idea"]:empty:before{content:"写一条 Idea"}
 .empty{color:var(--muted);font-size:13px;padding:4px 0}
 .ed{cursor:text;border-radius:6px;outline:none;-webkit-user-modify:read-write-plaintext-only;
   min-height:1.6em;line-height:1.5;padding:4px 6px;box-sizing:border-box}
@@ -539,6 +540,7 @@ function U(id, title, purpose, children, extra){
     id, title, kind, purpose: purpose || "",
     state: extra.state || "dirty",
     memories: extra.memories || [],
+    ideas: extra.ideas || [],
     bugs: extra.bugs || [],
     dormant: extra.dormant || [],
     children: children || [],
@@ -940,10 +942,10 @@ const CONTEXT_GUARD_MAP = {
           U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
         ])
       ]),
-      U("M22", "检查器", "标题、用途、记忆和 Bug 可点进编辑；附件只存仓库相对路径", [
-        U("N25", "检查器 contenteditable", "标题、用途、本节点记忆可点进编辑", []),
+      U("M22", "检查器", "标题、用途、记忆、Idea 和 Bug 可点进编辑；附件只存仓库相对路径", [
+        U("N25", "检查器 contenteditable", "标题、用途、本节点记忆和 Idea 可点进编辑", []),
         U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", []),
-        U("N2f", "附件路径", "记忆、Bug、节点、休眠经验都可以附文件或图片；只记路径，不存二进制", [])
+        U("N2f", "附件路径", "记忆、Idea、Bug、节点、休眠经验都可以附文件或图片；只记路径，不存二进制", [])
       ]),
       U("M23", "仓库与首次分析", "切仓、演示叠层、map.json；标明未调用 Agent", [
         U("N27", "架构笔记演示稿", "根检查器里的预置 markdown，标明未调用 Agent", []),
@@ -1077,7 +1079,7 @@ Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆�
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
 - visibleChildren：根目录只铺 L1。模块一次只画一层；开工链（最多两岔）默认展开。多于两个分支的开工节点晋升为模块。父子用曲线相连，同级不相连
-- 检查器 contenteditable、Bug 区块、+ 号
+- 检查器 contenteditable、记忆 / Idea / Bug 区块、+ 号
 - 左右/上下只排模块内部的开工树；根目录隐藏该开关
 - 仓库切换与每仓 map_bootstrap
 - 首次分析叠层（标明未调用 Agent）
@@ -1150,8 +1152,9 @@ let bugPathReturn = null;
 let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
+let foldIdea = false;
 let foldBug = false;
-const uiLabels = {memory:"记忆", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
+const uiLabels = {memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验"};
 const sessionAuth = new Set(["T0"]);
 
 function parkChildren(n){
@@ -1272,6 +1275,10 @@ function normalizeTree(n){
   if(!n) return;
   ownsList(n);
   fileList(n);
+  if(!Array.isArray(n.memories)) n.memories = [];
+  if(!Array.isArray(n.ideas)) n.ideas = [];
+  if(!Array.isArray(n.bugs)) n.bugs = [];
+  if(!Array.isArray(n.dormant)) n.dormant = [];
   (n.children||[]).forEach(normalizeTree);
   (n._inbox||[]).forEach(normalizeTree);
 }
@@ -1286,6 +1293,7 @@ function fileBase(p){
 function ownerOf(node, kind, key){
   if(kind==="node") return node;
   if(kind==="mem") return node.memories[+key];
+  if(kind==="idea") return node.ideas[+key];
   if(kind==="bug") return (node.bugs||[]).find(b=>b.id===key);
   if(kind==="dorm") return node.dormant[+key];
   return null;
@@ -1877,6 +1885,7 @@ function adoptTree(tree){
   data.state = src.state;
   data.kind = src.kind;
   data.memories = src.memories||[];
+  data.ideas = src.ideas||[];
   data.bugs = src.bugs||[];
   data.dormant = src.dormant||[];
   data.files = src.files||[];
@@ -1958,7 +1967,7 @@ function closeOverlay(){
 }
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
-  adoptTree({...next, memories:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
+  adoptTree({...next, memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
   sessionAuth.clear();
   sessionAuth.add("T0");
   selectedId = "T0";
@@ -2006,6 +2015,7 @@ function proposedTree(r){
     files: next.files||[],
     owns: next.owns||[],
     memories: next.memories||[],
+    ideas: next.ideas||[],
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
   };
@@ -3000,7 +3010,7 @@ function commitChild(node, title){
   const kind = composingKind==="module" ? "module" : "work";
   clearCompose();
   const child = {id:nextNodeId(), title:t, kind, origin:"human", state:"dirty",
-    purpose:"", memories:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
+    purpose:"", memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
   if(!Array.isArray(parent.children)) parent.children = [];
   parent.children.push(child);
   sessionAuth.add(child.id);
@@ -3087,7 +3097,7 @@ function renderDetail(){
     return;
   }
 
-  /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Bug/继承都先不出现。 */
+  /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Idea/Bug/继承都先不出现。 */
   if(proposed){
     el.innerHTML = `
       <h2>${node.title}
@@ -3127,6 +3137,11 @@ function renderDetail(){
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
         `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${attachHtml("mem", i, m)}</div></li>`
+      ).join("")+`</ul>`
+    : "";
+  const ideaHtml = node.ideas.length
+    ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="idea" data-i="${i}">${m.text||""}</span>${attachHtml("idea", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
 
@@ -3187,6 +3202,12 @@ function renderDetail(){
       </summary>
       ${memHtml}
     </details>
+    <details class="fold" data-fold="idea" ${foldIdea?"open":""}>
+      <summary>${uiLabels.ideas} ${node.ideas.length||""}
+        <button type="button" class="plus-btn" data-act="add-idea" title="添加 Idea">+</button>
+      </summary>
+      ${ideaHtml}
+    </details>
     <details class="fold" data-fold="bug" ${foldBug?"open":""}>
       <summary>${uiLabels.bugs} ${openBugs.length||""}
         <button type="button" class="plus-btn" data-act="add-bug" title="添加 Bug">+</button>
@@ -3224,7 +3245,14 @@ function renderDetail(){
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
     node.memories.push({text:"", state:"dirty", files:[]}); renderAll();
-    const last = document.querySelector(".mem-list li:last-child .ed");
+    const last = el.querySelector('[data-fold="mem"] .mem-list li:last-child .ed');
+    if(last) last.focus();
+  };
+  if(q('[data-act="add-idea"]')) q('[data-act="add-idea"]').onclick = (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    foldIdea = true;
+    node.ideas.push({text:"", state:"dirty", files:[]}); renderAll();
+    const last = el.querySelector('[data-fold="idea"] .mem-list li:last-child .ed');
     if(last) last.focus();
   };
   if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = (e)=>{
@@ -3246,6 +3274,7 @@ function renderDetail(){
       if(d.dataset.fold==="inherited") foldInherited = d.open;
       if(d.dataset.fold==="dormant") foldDormant = d.open;
       if(d.dataset.fold==="mem") foldMem = d.open;
+      if(d.dataset.fold==="idea") foldIdea = d.open;
       if(d.dataset.fold==="bug") foldBug = d.open;
     });
   });
@@ -3255,7 +3284,7 @@ function renderDetail(){
   };
   el.querySelectorAll("[data-ed]").forEach(ed=>{
     const kind = ed.dataset.ed;
-    const multiline = kind==="purpose" || kind==="dorm-exp";
+    const multiline = kind==="purpose" || kind==="dorm-exp" || kind==="idea";
     bindEdit(ed, v=>{
       if(kind==="title"){
         if(!v || v===node.title) return;
@@ -3267,6 +3296,12 @@ function renderDetail(){
         if(!v){ node.memories.splice(i,1); renderAll(); return; }
         if(node.memories[i].text===v) return;
         node.memories[i].text = v; return;
+      }
+      if(kind==="idea"){
+        const i = +ed.dataset.i;
+        if(!v){ node.ideas.splice(i,1); renderAll(); return; }
+        if(node.ideas[i].text===v) return;
+        node.ideas[i].text = v; persist(); return;
       }
       if(kind==="pinned"){
         const i = +ed.dataset.i;
@@ -3321,9 +3356,11 @@ function renderDetail(){
   hydrateThumbs(el);
   el.addEventListener("paste", e=>{
     const memEd = e.target.closest('[data-ed="mem"]');
+    const ideaEd = e.target.closest('[data-ed="idea"]');
     const bugEd = e.target.closest('[data-ed="bug-title"]');
     const drop = e.target.closest("[data-drop-files]");
     if(memEd) takeAttach(node, "mem", memEd.dataset.i, e);
+    else if(ideaEd) takeAttach(node, "idea", ideaEd.dataset.i, e);
     else if(bugEd) takeAttach(node, "bug", bugEd.dataset.bug, e);
     else if(drop) takeAttach(node, drop.dataset.fk, drop.dataset.fi, e);
   });

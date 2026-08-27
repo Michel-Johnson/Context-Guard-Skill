@@ -94,6 +94,6 @@ JSONL：一行一个 JSON，只追加，不改旧行。每行必有这些键，�
 
 ## 地图复印件 `cards/{id}.md`（生成）
 
-头字段：`kind`、`parent`、`chain`、`owns`、`related`、`card`。下面三节：记忆、Bug、孩子。不要手改。
+头字段：`kind`、`parent`、`chain`、`owns`、`related`、`card`。下面：记忆、Idea（有才写）、Bug、孩子。不要手改。
 
-`map.json` 仍是工作台那份活图，第一版不另定 Agent 手写格式。短规矩写在节点的记忆里，随复印件进卡。
+`map.json` 仍是工作台那份活图，第一版不另定 Agent 手写格式。短规矩写在节点的记忆里，随复印件进卡。Idea 也是节点上的短句，未定的想法，不进记忆、也不另开仓库。
