@@ -17,8 +17,8 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 
 - Skill 合同 — 何时启动、记什么、什么必须等人确认
 - 工作台 — 看图、改记忆、确认提议、切换仓库
-- 项目 Context 目录 — `.codex/context/`，公开记录可进 git
-- skill文件结构 — skill 安装包：SKILL.md、scripts/、references/、agents/、tests/；init 和 SessionStart 也在这里
+- skill文件结构 — `.codex/context/`，公开记录可进 git
+- CLI 与 Hook — init、语言、导图；当前开发进程也要加载本 skill
 - 仓库拆图 — 已有项目变成地图：先写笔记，再投影 L1；进入后再看子模块和文件
 - 会话授权与提议 — 新会话默认很小；Agent 提议节点灰色半透明虚线，看起来像草稿。点一次右上角绿点变成转圈，再点一次才变成实节点。不要「再点一次加入」文案。
 - 遗留测试中台 — 仓库里还有；第一版不做。以后可能作为第五块（CI/CD 测试）再加。
@@ -50,7 +50,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - `asProposal` 递归子模块卡，只把开工单元内部收进 inbox
 - `unpackInbox`：进入开工节点后再展开文件内部
 
-### 项目 Context 目录
+### skill文件结构
 - `map.json` — 活地图（树 + `flows` + 节点上的 memories/bugs/files/`owns`）。`owns` 是源码归属（仓库相对路径，目录以 `/` 结尾）；`files` 只是证据附件。Bug **桩**（id/title/status/sessions/files/record）在节点上；胖正文不进这份 JSON。人改和工作台写回都落这里。不要另存一份平行的记忆清单。
 - `records.md` — Context Guard 自己记下的文件怎么存、怎么挂到 map（短记忆进节点，bad case 进 `bugs/{id}.md`）。Harbor 假仓实验结论也在这里。
 - `bugs/{id}.md` — 坏例正文（现象/触发/根因/守卫）。检查器和右侧面板只显示标题。Agent 改文件时：`scripts/map_owns.py lookup --path` 落到节点，再读该节点和已授权祖先的短记忆 + 未修坏例正文。按现象搜则扫 `bugs/`，不要把整份 `map.json` 贴进上下文。
@@ -61,9 +61,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 附件二进制在 `docs/shots/`，context 里只记相对路径
 - 检索夹具：`fixtures/harbor/` + `fixtures/harbor-eval/`（`python3 scripts/harbor_recall.py`）
 
-### skill文件结构
-- 安装包：`SKILL.md`、`scripts/`、`references/`、`agents/`、`tests/`
-- 仓库里的副本：`skills/context-guard/`
+### CLI 与 Hook
 - `scripts/context_guard.py init`
 - `show-roadmap`
 - SessionStart：当前开发进程也要加载 skill

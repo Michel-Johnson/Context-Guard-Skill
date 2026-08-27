@@ -22,7 +22,7 @@
       "path": ".codex/context/",
       "node": "M3",
       "kind": "module",
-      "title": "项目 Context 目录"
+      "title": "skill文件结构"
     },
     {
       "path": ".codex/context/index.md",
@@ -64,13 +64,13 @@
       "path": "scripts/",
       "node": "M4",
       "kind": "module",
-      "title": "skill文件结构"
+      "title": "CLI 与 Hook"
     },
     {
       "path": "skills/context-guard/",
       "node": "M4",
       "kind": "module",
-      "title": "skill文件结构"
+      "title": "CLI 与 Hook"
     },
     {
       "path": "scripts/context_guard.py",

@@ -12,7 +12,7 @@
     {
       "from": "M1",
       "to": "M4",
-      "label": "加载 skill"
+      "label": "启动 CLI / Hook"
     },
     {
       "from": "M1",
@@ -157,7 +157,7 @@
       {
         "from": "M1",
         "to": "M4",
-        "label": "加载 skill"
+        "label": "启动 CLI / Hook"
       },
       {
         "from": "M1",
@@ -675,7 +675,7 @@
       },
       {
         "id": "M3",
-        "title": "项目 Context 目录",
+        "title": "skill文件结构",
         "kind": "module",
         "purpose": "记忆落在仓库 .codex/context/，活地图是 map.json",
         "state": "dirty",
@@ -811,9 +811,9 @@
       },
       {
         "id": "M4",
-        "title": "skill文件结构",
+        "title": "CLI 与 Hook",
         "kind": "module",
-        "purpose": "skill 安装包：SKILL.md、scripts/、references/、agents/、tests/；init 和 SessionStart 也在这里",
+        "purpose": "init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库",
         "state": "dirty",
         "memories": [
           {
