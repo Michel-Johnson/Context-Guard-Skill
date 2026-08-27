@@ -410,14 +410,6 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
-.owns-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
-.owns-lab{font-size:11.5px;font-weight:800;color:var(--muted);flex:0 0 auto}
-.own-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;
-  border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px 8px;font-size:11px;
-  font-family:var(--font-note);color:var(--ink)}
-.own-chip .own-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
-.own-chip.is-conflict{border-color:var(--red);color:var(--red)}
-.owns-row .file-path{flex:1;min-width:160px;min-height:32px;padding:6px 8px;font-size:12px}
 </style>
 </head>
 <body>
@@ -524,10 +516,9 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新演示分析（不调用 Agent）",
-    owns:"负责", attach:"附", linkRepo:"连接仓库", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"连接仓库", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
-    ownPathPh:"仓库相对路径，目录以 / 结尾",
-    attachTitle:"附带文件或图片", ownsAddTitle:"负责的仓库路径",
+    attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
     leave:"离开", claim:"本会话在修",
@@ -574,10 +565,9 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Replay demo analysis (no agent)",
-    owns:"Owns", attach:"File", linkRepo:"Link repo", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Link repo", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
-    ownPathPh:"Repo-relative path; directories end with /",
-    attachTitle:"Attach a file or image", ownsAddTitle:"Owned repo path",
+    attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
     leave:"Leave", claim:"This session is fixing it",
@@ -1051,7 +1041,7 @@ const CONTEXT_GUARD_MAP = {
   ], bugs:[], dormant:[],
   flows:[
     {from:"M1", to:"M2", label:"合同约束工作台"},
-    {from:"M1", to:"M4", label:"启动 CLI / Hook"},
+    {from:"M1", to:"M4", label:"加载 skill"},
     {from:"M1", to:"M5", label:"拆图粒度"},
     {from:"M5", to:"M3", label:"写 architecture.md"},
     {from:"M5", to:"M2", label:"投影地图"},
@@ -1114,7 +1104,7 @@ const CONTEXT_GUARD_MAP = {
       U("N34", "user-messages.md", "用户原话与约束，指导下一轮怎么做", []),
       U("N35", "private/", "gitignored；Agent 可读指针，不能把密钥投影到导图", [])
     ], {memories:[{text:"公开记录可进 git；密钥只留 private/，永远不进 HTML", state:"success"},{text:"记忆是 map.json 节点上的字段，不要另存一份平行的记忆清单", state:"success"}]}),
-    U("M4", "CLI 与 Hook", "init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库", [
+    U("M4", "skill文件结构", "skill 安装包：SKILL.md、scripts/、references/、agents/、tests/；init 和 SessionStart 也在这里", [
       U("N41", "scripts/context_guard.py init", "第一次在文件夹工作时创建 .codex/context/ 骨架", []),
       U("N42", "show-roadmap", "把已有图打到终端，不是重建", []),
       U("N43", "SessionStart hook", "当前开发进程也应加载本 skill，而不是只给别人的仓库用", []),
@@ -1222,7 +1212,7 @@ const CONTEXT_GUARD_NOTES = `# Context Guard 架构笔记（演示稿 · 未调�
 分析对象：本仓库。第一层是确认门。开发粒度是工作台里的函数/文件，不是「工作台」三个字。
 
 ## 第一层
-Skill 合同 · 工作台 · 项目 Context 目录 · CLI 与 Hook · 仓库拆图 · 会话授权与提议 · 遗留测试中台
+Skill 合同 · 工作台 · 项目 Context 目录 · skill文件结构 · 仓库拆图 · 会话授权与提议 · 遗留测试中台
 
 ## 工作台（prototype/workbench.html）
 - renderNode 模块卡（标题 + 一句用途，不印文件）
@@ -1252,7 +1242,7 @@ const catalog = {
     notes: CONTEXT_GUARD_NOTES,
     analyze:[
       {do:"打开 README 与 SKILL.md，弄清 skill 合同", find:"人与 Agent 共用项目记忆，不是聊天摘要"},
-      {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、CLI 是不同开工面"},
+      {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、skill 文件是不同开工面"},
       {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
       {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"进入模块先看到子模块卡；文件挂在子模块下"},
       {do:"第一层只作为确认门；点进模块，不要在根上预览", find:"人先确认 4–8 个 L1；一张卡下超过约 8 个文件就要先建子模块"}
@@ -1289,10 +1279,7 @@ let composeParent = null;
 function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
 let attachDraft = "";
-let ownEditingId = null;
-let ownDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
-function clearOwnEdit(){ ownEditingId = null; ownDraft = ""; }
 let pendingDeleteId = null;
 let bugPathMode = false;
 let bugFocus = null;
@@ -1376,48 +1363,6 @@ function ownsList(n){
   const seen = new Set();
   n.owns = n.owns.filter(p=>{ if(seen.has(p)) return false; seen.add(p); return true; });
   return n.owns;
-}
-function pathOwnScore(owned, file){
-  const o = normRepoPath(owned), f = normRepoPath(file);
-  if(!o || !f) return 0;
-  if(f===o) return 10000 + o.length;
-  const dir = o.endsWith("/") ? o : o+"/";
-  if(f.startsWith(dir)) return 1000 + dir.length;
-  return 0;
-}
-function lookupOwns(file, tree){
-  const f = normRepoPath(file);
-  let best=null, score=0, ties=[];
-  function visit(n){
-    if(!n || isCancelled(n)) return;
-    ownsList(n).forEach(o=>{
-      const s = pathOwnScore(o, f);
-      if(!s) return;
-      if(s>score){ score=s; best=n; ties=[n]; }
-      else if(s===score && best && best.id!==n.id){ ties.push(n); }
-    });
-    (n.children||[]).forEach(visit);
-    (n._inbox||[]).forEach(visit);
-  }
-  visit(tree || data);
-  if(ties.length>1){
-    ties.sort((a,b)=>{
-      const dw = (a.kind==="work")-(b.kind==="work");
-      if(dw) return dw;
-      return String(b.id).length-String(a.id).length;
-    });
-    best = ties[0];
-  }
-  return best ? {node:best, score, conflict:ties.length>1, ties:ties.map(n=>n.id)} : null;
-}
-function ownConflictsFor(n){
-  const paths = ownsList(n);
-  const hit = [];
-  paths.forEach(p=>{
-    const found = lookupOwns(p);
-    if(found && found.conflict) hit.push(p);
-  });
-  return hit;
 }
 function normalizeTree(n){
   if(!n) return;
@@ -1702,58 +1647,6 @@ function attachHtml(kind, key, owner, readonly){
        </span>`
     : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
-}
-function ownsHtml(node, readonly){
-  const paths = ownsList(node);
-  const bad = readonly ? [] : ownConflictsFor(node);
-  const chips = paths.map((p,i)=>{
-    const clash = bad.indexOf(p)>=0 ? " is-conflict" : "";
-    const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-own" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
-    return `<span class="own-chip${clash}" title="${escAttr(p)}"><span class="own-path">${esc(p)}</span>${rm}</span>`;
-  }).join("");
-  if(readonly) return paths.length ? `<div class="owns-row"><span class="owns-lab">${t("owns")}</span>${chips}</div>` : "";
-  const add = ownEditingId===node.id
-    ? `<input class="file-path" data-own-input value="${escAttr(ownDraft)}" placeholder="${escAttr(t("ownPathPh"))}" autocomplete="off">
-       <button type="button" class="quiet" data-act="save-own">${t("add")}</button>
-       <button type="button" class="quiet" data-act="cancel-own">${t("cancel")}</button>`
-    : `<button type="button" class="clip-btn quiet" data-act="add-own" title="${escAttr(t("ownsAddTitle"))}">+</button>`;
-  return `<div class="owns-row"><span class="owns-lab">${t("owns")}</span>${chips}${add}</div>`;
-}
-function addOwnPath(node, path){
-  const p = normRepoPath(path);
-  if(!p || !node) return false;
-  const list = ownsList(node);
-  if(list.indexOf(p)>=0) return true;
-  list.push(p);
-  return true;
-}
-function bindOwnUi(el, node){
-  const save = ()=>{
-    const box = el.querySelector("[data-own-input]");
-    const path = box ? box.value : ownDraft;
-    if(addOwnPath(node, path)){ clearOwnEdit(); renderAll(); }
-  };
-  const addBtn = el.querySelector('[data-act="add-own"]');
-  if(addBtn) addBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); ownEditingId = node.id; ownDraft = ""; renderAll(); };
-  const saveBtn = el.querySelector('[data-act="save-own"]');
-  if(saveBtn) saveBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); save(); };
-  const cancelBtn = el.querySelector('[data-act="cancel-own"]');
-  if(cancelBtn) cancelBtn.onclick = e=>{ e.preventDefault(); e.stopPropagation(); clearOwnEdit(); renderAll(); };
-  el.querySelectorAll('[data-act="rm-own"]').forEach(b=>{
-    b.onclick = e=>{
-      e.preventDefault(); e.stopPropagation();
-      ownsList(node).splice(+b.dataset.i, 1);
-      renderAll();
-    };
-  });
-  const inp = el.querySelector("[data-own-input]");
-  if(inp){
-    inp.focus();
-    inp.addEventListener("keydown", e=>{
-      if(e.key==="Enter"){ e.preventDefault(); save(); }
-      if(e.key==="Escape"){ e.preventDefault(); clearOwnEdit(); renderAll(); }
-    });
-  }
 }
 function bindFileUi(el, node){
   const saveFrom = host=>{
@@ -3288,7 +3181,6 @@ function renderDetail(){
         <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
       ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
-      ${ownsList(node).length? ownsHtml(node, true):""}
       <div class="actions">
         <button data-act="accept" class="primary">${t("join")}</button>
         <button data-act="cancel">${t("hide")}</button>
@@ -3380,7 +3272,6 @@ function renderDetail(){
         <button type="button" data-act="compose-ok" class="primary">${t("add")}</button>
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
-    ${ownsHtml(node, false)}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
       <summary>${labels.memory} ${node.memories.length||""}
@@ -3538,7 +3429,6 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
-  bindOwnUi(el, node);
   hydrateThumbs(el);
   el.addEventListener("paste", e=>{
     const memEd = e.target.closest('[data-ed="mem"]');

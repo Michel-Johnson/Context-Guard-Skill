@@ -18,7 +18,7 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - Skill 合同 — 何时启动、记什么、什么必须等人确认
 - 工作台 — 看图、改记忆、确认提议、切换仓库
 - 项目 Context 目录 — `.codex/context/`，公开记录可进 git
-- CLI 与 Hook — init、语言、导图；当前开发进程也要加载本 skill
+- skill文件结构 — skill 安装包：SKILL.md、scripts/、references/、agents/、tests/；init 和 SessionStart 也在这里
 - 仓库拆图 — 已有项目变成地图：先写笔记，再投影 L1；进入后再看子模块和文件
 - 会话授权与提议 — 新会话默认很小；Agent 提议节点灰色半透明虚线，看起来像草稿。点一次右上角绿点变成转圈，再点一次才变成实节点。不要「再点一次加入」文案。
 - 遗留测试中台 — 仓库里还有；第一版不做。以后可能作为第五块（CI/CD 测试）再加。
@@ -61,7 +61,9 @@ Purpose: 人与 Agent 共用的项目记忆。Agent 记录，人在 HTML 工作�
 - 附件二进制在 `docs/shots/`，context 里只记相对路径
 - 检索夹具：`fixtures/harbor/` + `fixtures/harbor-eval/`（`python3 scripts/harbor_recall.py`）
 
-### CLI 与 Hook
+### skill文件结构
+- 安装包：`SKILL.md`、`scripts/`、`references/`、`agents/`、`tests/`
+- 仓库里的副本：`skills/context-guard/`
 - `scripts/context_guard.py init`
 - `show-roadmap`
 - SessionStart：当前开发进程也要加载 skill

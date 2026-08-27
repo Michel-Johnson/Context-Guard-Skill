@@ -64,13 +64,13 @@
       "path": "scripts/",
       "node": "M4",
       "kind": "module",
-      "title": "CLI 与 Hook"
+      "title": "skill文件结构"
     },
     {
       "path": "skills/context-guard/",
       "node": "M4",
       "kind": "module",
-      "title": "CLI 与 Hook"
+      "title": "skill文件结构"
     },
     {
       "path": "scripts/context_guard.py",
