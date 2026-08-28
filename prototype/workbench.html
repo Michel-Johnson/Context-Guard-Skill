@@ -60,6 +60,9 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
+.repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-status.ok{color:var(--green)}
+.repo-status.err{color:var(--red)}
 .dir-toggle,.lang-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
 .dir-toggle button,.lang-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
 .lang-toggle button{padding:5px 10px;min-width:36px}
@@ -83,6 +86,51 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   border-radius:14px;padding:26px 26px 20px;box-shadow:var(--shadow)}
 .first-use .card.wide{width:min(920px,96%);max-height:min(86vh,760px);overflow:auto}
 .cut-list{display:flex;flex-direction:column;gap:10px;margin:14px 0 0}
+/* 候选搁板：候选卡散落在画布四周，与主节点无连线 */
+.lens-shelf{position:absolute;left:0;top:0;width:0;height:0;overflow:visible;z-index:5;pointer-events:none}
+.lens-shelf .shelf-label,.lens-shelf .shelf-card{pointer-events:auto;position:absolute}
+.lens-shelf .shelf-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;white-space:nowrap}
+.shelf-card{display:flex;flex-direction:column;gap:3px;width:168px;padding:9px 11px;border:1.5px dashed var(--line-ink);
+  border-radius:11px;background:rgba(255,255,255,.86);cursor:pointer;font:inherit;color:inherit;text-align:left;
+  box-shadow:var(--shadow-sm)}
+.shelf-card b{font-size:13px}
+.shelf-card .p{color:var(--muted);font-size:11.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.shelf-card:hover{background:var(--yellow)}
+.shelf-card.taken{display:none}
+.lens-bar{position:absolute;left:14px;bottom:14px;z-index:6;display:flex;align-items:center;gap:10px;
+  padding:9px 14px;border:2px solid var(--line-ink);border-radius:12px;background:var(--paper);box-shadow:var(--shadow)}
+.lens-bar .cnt{font-weight:800}
+.lens-bar .warn{color:var(--red);font-size:12px}
+.lens-bar button{font:inherit;border:1.5px solid var(--line-ink);border-radius:9px;padding:5px 12px;cursor:pointer;background:#fff}
+.lens-bar button.primary{background:var(--ink);color:var(--paper)}
+.lens-bar button:disabled{opacity:.45;cursor:not-allowed}
+.lens-pool{display:flex;flex-direction:column;gap:14px;margin:14px 0 0}
+.lens-group{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.lens-group>button.lens-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:10px 14px;border:0;background:var(--module-soft);cursor:pointer;font:inherit;color:inherit}
+.lens-group>button.lens-head b{font-size:14px}
+.lens-group>button.lens-head .why{color:var(--muted);font-size:12px;flex:1}
+.lens-group>button.lens-head .cnt{font-size:12px;color:var(--muted)}
+.lens-group .lens-items{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;padding:12px}
+.lens-group.collapsed .lens-items{display:none}
+.lens-opt{display:flex;gap:9px;align-items:flex-start;text-align:left;border:1.5px solid var(--line);
+  background:#fff;border-radius:10px;padding:10px 11px;cursor:pointer;font:inherit;color:inherit;min-height:64px}
+.lens-opt:hover{background:var(--yellow)}
+.lens-opt.on{border-color:var(--ink);background:var(--yellow);box-shadow:var(--shadow-sm)}
+.lens-opt .box{margin-top:2px;flex:none}
+.lens-opt b{display:block;font-size:13.5px;margin:0 0 3px}
+.lens-opt .p{color:var(--muted);font-size:12px;line-height:1.45}
+.lens-tray{margin:14px 0 0;border:2px dashed var(--line-ink);border-radius:12px;padding:12px 14px;background:#fffdf3}
+.lens-tray h4{margin:0 0 8px;font-size:13px;color:var(--ink)}
+.lens-tray h4 .n{color:var(--red);font-weight:800}
+.lens-tray ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lens-tray li{display:flex;align-items:center;gap:8px;font-size:13px}
+.lens-tray li input[type=text]{flex:1;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font:inherit}
+.lens-tray li .src{color:var(--muted);font-size:11px;white-space:nowrap}
+.lens-tray li .dup{color:var(--red);font-size:11px}
+.lens-tray li button{border:0;background:none;color:var(--red);cursor:pointer;font-size:12px}
+.lens-tray .empty{color:var(--muted);font-size:12.5px;margin:0}
+.lens-tray .warn{color:var(--red);font-size:12px;margin:8px 0 0}
 .cut-opt{display:block;width:100%;text-align:left;border:2px solid var(--line-ink);background:#fff;
   border-radius:12px;padding:12px 14px;cursor:pointer;box-shadow:var(--shadow-sm);font:inherit;color:inherit}
 .cut-opt:hover{background:var(--yellow)}
@@ -440,12 +488,16 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
+    <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
+      <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
+    </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
     <div class="session-chip" aria-hidden="true">
       <b id="session-name">S-0823</b>
       <b id="auth-count">0</b>
     </div>
     <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
+    <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
     <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
   </div>
@@ -454,18 +506,17 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <div class="card" id="first-use-ask">
     <div class="kicker" data-i18n="firstKicker">演示 · 第一次使用</div>
     <h2 id="first-use-heading">从当前仓库建立架构图</h2>
-    <p id="first-use-copy">这是原型演示，不会调用任何 Agent，也不会读真实仓库。点下去你会看到几种第一层切法，选一种才上画布。效果由你定，不是自动播完一张图。</p>
-    <p data-i18n="firstProduct">产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。</p>
+    <p id="first-use-copy">产品里这一步由当前会话的 Agent 真读仓库，把多个视角的候选模块（标题和用途要一眼能看懂）端到这里。你从各视角挑、改名、删减，拼出自己的第一层，选完才上画布。</p>
+    <p data-i18n="firstProduct">第一层定稿后，Agent 再按你选的模块逐个出第二层候选，同样的池子交互，一层层往下。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。</p>
     <div class="actions">
-      <button class="primary" id="first-use-go" data-i18n="firstGo">看几种第一层切法</button>
+      <button class="primary" id="first-use-go" data-i18n="firstGo">看第一层候选（多视角）</button>
       <button class="quiet" id="first-use-empty" data-i18n="firstEmpty">仓库几乎是空的</button>
     </div>
   </div>
   <div class="card wide" id="first-use-cuts" hidden>
-    <div class="kicker" data-i18n="cutKicker">演示 · 请你定第一层</div>
-    <h2 data-i18n="cutHeading">这几种切法，你选一种</h2>
-    <p data-i18n="cutCopy">还没有真的读仓。卡名是预置的。你选了才投影到画布，选完可以改标题。这才是定效果。</p>
-    <div class="cut-list" id="cut-list"></div>
+    <div class="kicker" data-i18n="cutKicker">Agent 已读仓 · 请你定第一层</div>
+    <h2 data-i18n="cutHeading">候选池不可用</h2>
+    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在顶栏用「第一层候选」进入画布搁板模式。</p>
     <div class="actions">
       <button class="quiet" id="first-use-cut-back" data-i18n="cutBack">返回</button>
     </div>
@@ -516,18 +567,37 @@ const I18N = {
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
+    lensMode:"第一层候选",
+    lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
+    lensShelfHint:"候选（无连线）· 点一个挂到根下",
+    lensFinishL1:"定稿第一层",
+    lensExitL1:"退出候选",
+    lensNeedMin:"还差 {n} 张才到 4 张下限",
+    lensTooMany:"超过 8 张了",
+    lensNoPurpose:"有卡片缺一句用途",
+    lensFileTitle:"有卡片标题像文件/目录名",
+    lensEmptyShelf:"候选都在画布上了",
     authMode:"授权模式",
     cancelled:"已取消",
     firstKicker:"演示 · 第一次使用",
     firstHeading:"从 {name} 建立架构图",
-    firstCopy:"这是原型演示，不会调用任何 Agent，也不会去读 {name} 的真实代码。点下去你会看到几种第一层切法，选一种才上画布。效果由你定。",
-    firstProduct:"产品里这一步由当前会话的 Agent 和人实时商量：先拿出第一层的几种拆法或较多候选模块（标题和用途要一眼能看懂），人定了第一层再拆第二层、第三层。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。",
-    firstGo:"看几种第一层切法",
-    cutKicker:"演示 · 请你定第一层",
-    cutHeading:"这几种切法，你选一种",
-    cutCopy:"还没有真的读仓。卡名是预置的。你选了才投影到画布，选完可以改标题。这才是定效果。",
+    firstCopy:"这一步由当前会话的 Agent 真读 {name}，把多个视角的候选模块端到这里。你挑、改名、删减，拼出自己的第一层。",
+    firstProduct:"第一层定稿后，Agent 再按你选的模块逐个出第二层候选，同样的池子交互，一层层往下。定稿大约 4–8 张主干，写进 architecture.md 和 map.json。",
+    firstGo:"看第一层候选（多视角）",
+    cutKicker:"Agent 已读仓 · 请你定第一层",
+    cutHeading:"多个视角的候选，你挑自己要的",
+    cutCopy:"候选来自 Agent 真读本仓库（.codex/context/l1-candidates.json）。同一块代码在不同视角会有不同名字或归类，互不互斥。勾选你要的，托盘里改名、删减，凑 4–8 张再定稿。",
     cutBack:"返回",
-    cutPick:"选这个",
+    lensPick:"我的第一层",
+    lensFinish:"定稿第一层",
+    lensAdd:"+ 加自定义卡",
+    lensEmpty:"还没勾选。从上面各视角里挑你想要的模块。",
+    lensRemove:"移除",
+    lensNeedMin:"还差 {n} 张才到 4 张下限",
+    lensTooMany:"超过 8 张了，删掉一些",
+    lensNoPurpose:"有卡片缺一句用途，不能定稿",
+    lensFileTitle:"有卡片标题像文件/目录名，不能定稿",
+    lensOwnsHint:"这两张负责同一块代码：{a} 与 {b}",
     firstEmpty:"仓库几乎是空的",
     workKicker:"演示中 · 未调用 Agent",
     workHeading:"正在播放预置的分析过程",
@@ -539,7 +609,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"连接仓库", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"连接仓库", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -570,18 +640,37 @@ const I18N = {
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
+    lensMode:"L1 candidates",
+    lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
+    lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
+    lensFinishL1:"Finish L1",
+    lensExitL1:"Exit candidates",
+    lensNeedMin:"{n} more to reach the minimum of 4",
+    lensTooMany:"Over 8 cards",
+    lensNoPurpose:"A card is missing its one-line purpose",
+    lensFileTitle:"A card title looks like a file/dir name",
+    lensEmptyShelf:"All candidates are on the canvas",
     authMode:"Auth mode",
     cancelled:"Cancelled",
     firstKicker:"Demo · first use",
     firstHeading:"Build a map from {name}",
-    firstCopy:"This is a prototype demo. It does not call an agent or read {name}'s real code. You will see several ways to cut the first layer; picking one lands it on the canvas. You decide the map.",
-    firstProduct:"In the product, the current session's agent talks with you layer by layer: first several ways to cut L1, or a larger set of candidate modules whose titles you can read in seconds. After you lock L1, then L2, then L3. The agreed trunk (about 4–8 cards) lands in architecture.md and map.json.",
-    firstGo:"See first-layer cuts",
-    cutKicker:"Demo · you pick L1",
-    cutHeading:"Pick one way to cut the first layer",
-    cutCopy:"This still does not read the repo. Titles are prepared. Your pick lands on the canvas; you can rename cards. That is how you decide the map.",
+    firstCopy:"The agent you are talking to actually reads {name} and brings candidates from several lenses here. You pick, rename, and trim to build your first layer.",
+    firstProduct:"After L1 is locked, the agent proposes L2 candidates module by module with the same pool interaction, layer by layer. The agreed trunk (about 4–8 cards) lands in architecture.md and map.json.",
+    firstGo:"See L1 candidates (multi-lens)",
+    cutKicker:"Agent read the repo · you pick L1",
+    cutHeading:"Candidates from several lenses; pick yours",
+    cutCopy:"Candidates come from the agent actually reading this repo (.codex/context/l1-candidates.json). The same code may appear under different names in different lenses; they are not mutually exclusive. Check what you want, rename or drop in the tray, and land 4–8 cards.",
     cutBack:"Back",
-    cutPick:"Use this",
+    lensPick:"My first layer",
+    lensFinish:"Finish L1",
+    lensAdd:"+ Add a custom card",
+    lensEmpty:"Nothing picked yet. Choose modules from the lenses above.",
+    lensRemove:"Remove",
+    lensNeedMin:"{n} more to reach the minimum of 4",
+    lensTooMany:"Over 8 cards; drop some",
+    lensNoPurpose:"A card is missing its one-line purpose",
+    lensFileTitle:"A card title looks like a file/dir name",
+    lensOwnsHint:"These two own the same code: {a} and {b}",
     firstEmpty:"The repo is almost empty",
     workKicker:"Demo · no agent called",
     workHeading:"Playing the prepared analysis",
@@ -593,7 +682,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Link repo", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Link repo", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -652,7 +741,7 @@ function setUiLang(lang, persistPref){
   if(typeof renderAll==="function") renderAll();
   applyStaticI18n();
   const cutsEl = document.getElementById("first-use-cuts");
-  if(cutsEl && !cutsEl.hidden && typeof renderCutList==="function") renderCutList();
+  if(lensMode){ renderLensShelf(); }
   if(persistPref!==false) schedulePrefLangWrite();
 }
 
@@ -1065,112 +1154,38 @@ const OPENCLAW_MAP = {
 
 const CONTEXT_GUARD_MAP = {
   id:"T0", title:"Context Guard", kind:"module", purpose:"人与 Agent 共用的项目记忆，活在仓库里", state:"dirty", files:[], memories:[
-    {text:"定位：人与 Agent 共用的项目记忆，活在仓库里，而不是某一次聊天里", state:"success"},
-    {text:"形态：Agent 记录，人在 HTML 工作台确认、改写、授权", state:"success"},
-    {text:"第一次使用时从当前仓库拆第一层模块；之后会话打开这张图，不再重拆", state:"success"}
+    {text:"第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。安装并进冷启动。", state:"success"},
+    {text:"SKILL.md 合同挂在根上：无图才商量；有图则打开；不贴整图。", state:"success"}
   ], bugs:[], dormant:[],
   flows:[
-    {from:"M1", to:"M2", label:"合同约束工作台"},
-    {from:"M1", to:"M4", label:"启动 CLI / Hook"},
-    {from:"M1", to:"M5", label:"拆图粒度"},
-    {from:"M5", to:"M3", label:"写 architecture.md"},
-    {from:"M5", to:"M2", label:"投影地图"},
-    {from:"M4", to:"M3", label:"init 骨架"},
-    {from:"M3", to:"M2", label:"打开已有图"},
-    {from:"M2", to:"M3", label:"确认后写回记忆"},
-    {from:"M6", to:"M2", label:"会话切片"},
-    {from:"M21", to:"M22", label:"选中节点"},
-    {from:"M23", to:"M21", label:"切仓重绘"},
-    {from:"M24", to:"M21", label:"提议卡片"},
-    {from:"N13", to:"N12", label:"先写笔记再投影"},
-    {from:"N12", to:"N52", label:"无图才拆仓"},
-    {from:"N11", to:"N43", label:"启动时机绑 hook"},
-    {from:"N41", to:"N31", label:"init 写出 index"},
-    {from:"N41", to:"N33", label:"init 写出 architecture"},
-    {from:"N51", to:"N53", label:"信号写成笔记"},
-    {from:"N53", to:"N52", label:"笔记投影 L1"},
-    {from:"N52", to:"N54", label:"确认后再拆子模块"},
-    {from:"N33", to:"N22", label:"卡片对齐笔记"},
-    {from:"N22", to:"N23", label:"谁可见"},
-    {from:"N23", to:"N24", label:"怎么排"},
-    {from:"N61", to:"N22", label:"未授权节点变灰"}
+    {from:"M2", to:"M1", label:"建图在工作台点头"},
+    {from:"M2", to:"M3", label:"init 写出骨架"},
+    {from:"M2", to:"M4", label:"安装时可选 hooks"},
+    {from:"M1", to:"M3", label:"确认后写回地图"},
+    {from:"M3", to:"M1", label:"打开已有图"},
+    {from:"M4", to:"M2", label:"SessionStart 触发冷启动"},
+    {from:"M5", to:"M3", label:"失败回到坏例"}
   ],
   children:[
-    U("M1", "Skill 合同", "何时启动、记什么、什么必须等人确认", [
-      U("N11", "SKILL.md 启动时机", "首次使用、看导图、改方向、park/resume、编码/调试/评审时启用", []),
-      U("N12", "首次建图合同", "无图才建；先和人商量第一层怎么切，定了再拆下一层，不一次倒整棵树", [], {memories:[{text:"首次建图要和人实时商量：先给第一层几种拆法或较多候选，定了再拆第二层、第三层。卡名和用途必须一眼能看懂。", state:"success"}]}),
-      U("N13", "architecture.md 必须先写", "边商量边写笔记；卡名和那一句用途要让人几秒内知道这是啥", []),
-      U("N14", "简洁合同", "context 是导航不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息", [])
-    ], {memories:[{text:"每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图", state:"success"}]}),
-    U("M2", "工作台", "人在浏览器里看图、改记忆、确认提议、切换仓库", [
-      U("M21", "画布", "模块卡、可见孩子、进入模块；根上是网格目录", [
-        U("N21", "prototype/workbench.html", "单文件原型；假数据，不弹原生对话框", [
-          U("N22", "renderNode 模块卡", "大方卡只露标题和一句用途，不印文件清单", [], {bugs:[{id:"B22", title:"根上铺开关系线会看不清", desc:"生产/消费不能在正常视图和分级页面里一起画", status:"open", record:".codex/context/bugs/B22.md", also:["N21","M21"]}]}),
-          U("N23", "visibleChildren", "模块一次只露一层；开工节点若后面还有开工节点（最多两岔）则默认展开", []),
-          U("N24", "layout 网格 / 左右 / 上下", "根和子模块目录用网格；开工单元才用左右或上下树", [])
-        ])
-      ]),
-      U("M22", "检查器", "标题、用途、记忆、Idea 和 Bug 可点进编辑；附件只存仓库相对路径", [
-        U("N25", "检查器 contenteditable", "标题、用途、本节点记忆和 Idea 可点进编辑", []),
-        U("N26", "Bug 区块 + 号", "Bug 是节点内容不是子节点", []),
-        U("N2f", "附件路径", "记忆、Idea、Bug、节点、休眠经验都可以附文件或图片；只记路径，不存二进制", [])
-      ]),
-      U("M23", "仓库与首次分析", "切仓、演示叠层、map.json；标明未调用 Agent", [
-        U("N27", "架构笔记演示稿", "根检查器里的预置 markdown，标明未调用 Agent", []),
-        U("N28", "点标题切换仓库", "每个仓库自己的首次建图状态分开记", []),
-        U("N29", "首次分析叠层", "步骤日志 + 预置稿；不能用三秒动画冒充读仓", []),
-        U("N2a", "map.json 与本地缓存", "活地图写在 .codex/context/map.json；localStorage 只是没连仓库时的缓存", [])
-      ]),
-      U("M24", "提议展开", "子模块卡保持可见；只把开工单元的内部收进 inbox", [
-        U("N2b", "asProposal 递归子模块", "模块卡保持可见；只把开工单元的内部收进 inbox", []),
-        U("N2c", "unpackInbox", "进入开工节点后再展开文件内部，不把孙子再藏一层", [])
-      ])
-    ], {memories:[{text:"prototype/workbench.html 单文件原型；假数据，不弹原生对话框", state:"success", files:[{path:"prototype/workbench.html"}], also:["N21"]}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", files:[{path:"workbench-global.png"}], sessions:["S-0812"], record:".codex/context/bugs/B20.md", also:["N21"]}]}),
-    U("M3", "skill文件结构", "记忆落在仓库 .codex/context/，活地图是 map.json", [
-      U("N31", "index.md", "四行速览：当前任务、最新节点、热坏例、可恢复项", []),
-      U("N32", "preferences.json", "record_language 与 map_bootstrap；未确认前保持 pending", []),
-      U("N33", "architecture.md", "首次分析笔记；活树不在这里，在 map.json", []),
-      U("N36", "map.json", "活地图：树、生产/消费、节点上的记忆和 Bug。人改和工作台写回都落这份文件", []),
-      U("N34", "user-messages.md", "用户原话与约束，指导下一轮怎么做", []),
-      U("N35", "private/", "gitignored；Agent 可读指针，不能把密钥投影到导图", [])
-    ], {memories:[{text:"公开记录可进 git；密钥只留 private/，永远不进 HTML", state:"success"},{text:"记忆是 map.json 节点上的字段，不要另存一份平行的记忆清单", state:"success"}]}),
-    U("M4", "CLI 与 Hook", "init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库", [
-      U("N41", "scripts/context_guard.py init", "第一次在文件夹工作时创建 .codex/context/ 骨架", []),
-      U("N42", "show-roadmap", "打开工作台看图，不再生成 HTML 路线图", []),
-      U("N43", "SessionStart hook", "当前开发进程也应加载本 skill，而不是只给别人的仓库用", []),
-      U("N44", "禁止把 skill 安装目录当项目根", "context 跟被分析的仓库走", [])
-    ], {memories:[{text:"scripts/context_guard.py；禁止把 skill 安装目录当成项目根", state:"success"}]}),
-    U("M5", "仓库拆图", "已有项目变成地图：先商量第一层怎么切，定了再拆第二层、第三层", [
-      U("N51", "信号源", "README / SKILL / 包与插件边界 / docs / 运行时入口，不是每个源文件一张卡", []),
-      U("N52", "L1 确认门", "商量之后的定稿大约 4–8 张；未确认的第一层后续 Agent 读不到", []),
-      U("N53", "architecture.md 产出", "整仓笔记是分析本身；地图是投影，不是用三张卡冒充分析", []),
-      U("N54", "先建子模块再挂文件", "点进「控制面 UI」先看到 CLI/TUI/Control UI/远程 四张子模块卡，再进到 onboard.ts。既不要三张空壳，也不要一张卡下摊开全部文件", []),
-      U("N55", "以后会话打开已有图", "除非人要求重新分析", [])
-    ], {memories:[{text:"读 README、包边界、已有架构文档；一文件一节点是错的", state:"success"}]}),
-    U("M6", "会话授权与提议", "新会话默认很小；人决定 Agent 能读哪一段", [
-      U("N61", "可读切片 sessionAuth", "默认只有根；模块要人点授权", []),
-      U("N62", "虚线提议点两次加入", "第一次选中，第二次确认", []),
-      U("N63", "已取消托盘", "可恢复或永久删除", [])
-    ], {memories:[{text:"点虚线提议两次加入；取消进托盘，可恢复或永久删除", state:"success"}]}),
-    U("M7", "遗留测试中台", "仓库里仍有 Test Hub / 功能链代码，当前产品主线先不扩它", [], {memories:[{text:"人设计测试、Agent 只提草案这一点仍成立；先把地图和工作台做对", state:"dirty"}]})
+    U("M1", "工作台", "人在浏览器看图、改记忆、确认提议、授权切片", [], {owns:["prototype/","docs/shots/"], memories:[{text:"prototype/workbench.html 单文件原型；人点头不在 CLI。", state:"success"}], bugs:[{id:"B20", title:"原生 prompt 会打断看图", desc:"检查器编辑和建图确认必须留在页面里", status:"open", record:".codex/context/bugs/B20.md"}]}),
+    U("M2", "冷启动", "skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量", [
+      U("M21", "多平台一键安装", "npx/npm 把 skill 装进各端", [], {origin:"human", isNew:true}),
+      U("M22", "初次使用动画引导", "第一次打开时带人走完建图", [], {origin:"human", isNew:true}),
+      U("M23", "新仓库建图", "空仓从候选池商量第一层", [], {origin:"human", isNew:true}),
+      U("M24", "已有仓库建图", "打开已有 map.json，不重拆", [], {origin:"human", isNew:true})
+    ], {owns:["SKILL.md","bin/","package.json","scripts/context_guard.py","references/","agents/"], memories:[{text:"npx/init/set-language 属于冷启动，不是 hook。", state:"success"}]}),
+    U("M3", "底层文件系统", "会话、坏例、任务、地图怎么写、怎么跳", [], {owns:[".codex/context/","scripts/map_owns.py"], memories:[{text:"先读 FIND.md，再只打开命中的 1–2 个 Markdown。", state:"success"}]}),
+    U("M4", "hook", "当前开发进程的生命周期提醒，把 skill 挂到打开的仓库", [], {owns:["hooks.json","scripts/context_guard_hook.py"]}),
+    U("M5", "CI/CD", "以后怎么自动验；第一版不做测试中台，夹具和冒烟挂在这里", [], {owns:["tests/","fixtures/",".github/"], memories:[{text:"第一版不做 Test Hub / 功能链；人设计测试，Agent 只提草案。", state:"dirty"}]})
   ]
 };
 
 const CG_OWNS = {
-  N11:["SKILL.md"],
-  N21:["prototype/workbench.html"],
-  M21:["prototype/"],
-  N31:[".codex/context/index.md"],
-  N32:[".codex/context/preferences.json"],
-  N33:[".codex/context/architecture.md"],
-  N34:[".codex/context/user-messages.md"],
-  N35:[".codex/context/private/"],
-  N36:[".codex/context/map.json"],
-  M3:[".codex/context/"],
-  N41:["scripts/context_guard.py"],
-  N43:["scripts/context_guard_hook.py"],
-  M4:["scripts/"],
-  N51:["README.md"]
+  M1:["prototype/","docs/shots/"],
+  M2:["SKILL.md","bin/","package.json","scripts/context_guard.py","references/","agents/"],
+  M3:[".codex/context/","scripts/map_owns.py"],
+  M4:["hooks.json","scripts/context_guard_hook.py"],
+  M5:["tests/","fixtures/",".github/"]
 };
 function stampOwns(n, table){
   if(!n) return;
@@ -1270,7 +1285,7 @@ const catalog = {
     heading:"Context Guard 架构导图",
     source:"Michel-Johnson/Context-Guard-Skill",
     blueprint: CONTEXT_GUARD_MAP,
-    live:null, auth:null, bootstrap:"ready", firstUseOpen:false,
+    live:null, auth:null, bootstrap:"proposed", firstUseOpen:false,
     notes: CONTEXT_GUARD_NOTES,
     analyze:[
       {do:"打开 README 与 SKILL.md，弄清 skill 合同", find:"人与 Agent 共用项目记忆，不是聊天摘要"},
@@ -1525,22 +1540,60 @@ async function restoreRepoDir(){
     repoFsOk = await ensureRepoPerm();
   }catch(e){ repoFsOk = false; }
 }
+function setRepoStatus(kind){
+  const el = document.getElementById("repo-status");
+  if(!el) return;
+  if(!kind){ el.hidden = true; el.textContent = ""; el.className = "repo-status"; return; }
+  el.hidden = false;
+  el.className = "repo-status" + (kind==="ok" ? " ok" : " err");
+  const key = kind==="ok" ? "repoWrote" : (kind==="notRoot" ? "repoNotRoot" : "repoWriteFail");
+  el.textContent = t(key);
+  el.title = el.textContent;
+}
+async function looksLikeRepoRoot(){
+  if(!repoRootHandle) return false;
+  try{
+    await repoRootHandle.getFileHandle("SKILL.md");
+    return true;
+  }catch(e){ return false; }
+}
 async function linkRepo(){
   if(!canFsAccess()) return false;
   try{
     repoRootHandle = await window.showDirectoryPicker({id:"context-guard-repo", mode:"readwrite"});
     repoFsOk = await ensureRepoPerm();
-    if(repoFsOk) await fsDbSet("repoDir", repoRootHandle);
-    if(repoFsOk) await loadMapFromRepo();
-    if(repoFsOk && pendingWrite){
+    if(!repoFsOk){ setRepoStatus("fail"); return false; }
+    await fsDbSet("repoDir", repoRootHandle);
+    if(!(await looksLikeRepoRoot())){
+      repoFsOk = false;
+      setRepoStatus("notRoot");
+      renderAll();
+      return false;
+    }
+    snapshotRepo();
+    diskProjectId = currentRepo().id;
+    const liveKids = ((currentRepo().live || data || {}).children || []).length;
+    /* 画布上已有图：写回仓库。空画布才从磁盘读。连接不是用旧文件覆盖人刚改的图。 */
+    if(liveKids){
+      const ok = await writeMapToRepo();
+      setRepoStatus(ok ? "ok" : "fail");
+    }else{
+      const loaded = await loadMapFromRepo();
+      setRepoStatus(loaded ? "ok" : "fail");
+    }
+    if(pendingWrite){
       const pw = pendingWrite;
       pendingWrite = null;
       await saveBlobToOwner(pw.node, pw.kind, pw.key, pw.blob, pw.name);
     }else{
       renderAll();
+      fitView();
     }
     return repoFsOk;
-  }catch(e){ return false; }
+  }catch(e){
+    setRepoStatus("fail");
+    return false;
+  }
 }
 function safeFilePart(name){
   const raw = String(name||"paste").split(/[\\/]/).pop();
@@ -1784,7 +1837,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v12";
+const STORE_KEY = "cg-workbench-maps-v13";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
@@ -1877,18 +1930,22 @@ function scheduleMapWrite(){
   mapWriteTimer = setTimeout(()=>{ writeMapToRepo(); }, 450);
 }
 async function writeMapToRepo(){
-  if(!repoFsOk || mapWriteBusy) return;
+  if(!repoFsOk || mapWriteBusy) return false;
   const r = currentRepo();
-  if(r.id !== diskProjectId) return;
-  if(r.bootstrap!=="ready" && r.bootstrap!=="proposed") return;
+  if(r.id !== diskProjectId) return false;
+  if(r.bootstrap!=="ready" && r.bootstrap!=="proposed") return false;
   mapWriteBusy = true;
   try{
     snapshotRepo();
     const json = JSON.stringify(mapDocFromRepo(r), null, 2) + "\n";
     await writeRepoPath(MAP_FILE, new Blob([json], {type:"application/json"}));
     await syncBootstrapFile(r.bootstrap);
-  }catch(e){}
-  mapWriteBusy = false;
+    mapWriteBusy = false;
+    return true;
+  }catch(e){
+    mapWriteBusy = false;
+    return false;
+  }
 }
 async function syncBootstrapFile(st){
   try{
@@ -1944,7 +2001,6 @@ async function loadMapFromRepo(){
   }catch(e){ return false; }
 }
 async function loadMapFromHttp(){
-  if(restoredFromLs) return false;
   try{
     const res = await fetch("../.codex/context/map.json", {cache:"no-store"});
     if(!res.ok) return false;
@@ -2191,73 +2247,240 @@ function cutModules(cut, r){
   if(cut.fromBlueprint) return (r.blueprint.children||[]).map(c=>({title:c.title, purpose:c.purpose||""}));
   return cut.modules||[];
 }
-function renderCutList(){
-  const r = currentRepo();
-  const el = document.getElementById("cut-list");
-  if(!el) return;
-  const cuts = r.l1Cuts || [];
-  el.innerHTML = cuts.map(cut=>{
-    const mods = cutModules(cut, r);
-    const chips = mods.map(m=>`<span>${esc(m.title)}</span>`).join("");
-    return `<button type="button" class="cut-opt" data-cut="${escAttr(cut.id)}">
-      <b>${esc(cut.title)}</b>
-      <p class="why">${esc(cut.why||"")}</p>
-      <div class="chips">${chips}</div>
-    </button>`;
-  }).join("");
-  el.querySelectorAll("[data-cut]").forEach(b=>{
-    b.onclick = ()=>applyL1Cut(b.dataset.cut);
-  });
+/* ================= 画布候选搁板（L1） ================= */
+const CAND_FILE = ".codex/context/l1-candidates.json";
+let lensDoc = null;          // {lenses:[{id,title,why,candidates:[...]}]}
+let lensPick = [];           // [{cid, title, purpose, owns, src, custom}]
+const lensCollapsed = new Set();  // 记住每组折叠态，重渲染不丢
+let lensMode = false;        // 搁板模式：候选在画布上，无连线
+function lensFmt(key, vars){
+  let s = t(key);
+  Object.entries(vars||{}).forEach(([k,v])=>{ s = s.split("{"+k+"}").join(String(v)); });
+  return s;
 }
-function showCuts(){
-  analyzing = false;
-  const r = currentRepo();
-  r.bootstrap = "pending";
-  r.firstUseOpen = true;
-  renderCutList();
-  setOverlay(true, "cuts");
-  persist();
+function fileLikeTitle(s){
+  return /[\/\\]/.test(s) || /\.(md|json|py|js|ts|html|sh|ya?ml|toml)$/i.test(String(s).trim());
 }
-function applyL1Cut(cutId){
-  const r = currentRepo();
-  const cut = (r.l1Cuts||[]).find(c=>c.id===cutId);
-  if(!cut){ applyProposedMap(); return; }
-  if(cut.fromBlueprint){
-    applyProposedMap();
+async function loadLensDoc(){
+  if(lensDoc) return lensDoc;
+  try{
+    let txt = null;
+    if(repoFsOk){
+      const f = await readRepoFile(CAND_FILE);
+      if(f) txt = await f.text();
+    }else{
+      const res = await fetch("../"+CAND_FILE, {cache:"no-store"});
+      if(res.ok) txt = await res.text();
+    }
+    if(txt) lensDoc = JSON.parse(txt);
+  }catch(e){ lensDoc = null; }
+  return lensDoc;
+}
+function lensById(cid){
+  for(const lens of (lensDoc&&lensDoc.lenses)||[]){
+    const hit = (lens.candidates||[]).find(c=>c.id===cid);
+    if(hit) return {lens, cand: hit};
+  }
+  return null;
+}
+function takenTitles(){
+  return new Set((data.children||[]).filter(c=>!isCancelled(c)).map(c=>c.title));
+}
+const SHELF_CARD = {w:168, h:72, gx:22, gy:18};
+function hashStr(s){
+  let h = 0;
+  for(let i=0;i<String(s).length;i++) h = ((h<<5)-h) + String(s).charCodeAt(i)|0;
+  return Math.abs(h);
+}
+function remainingLensGroups(){
+  const taken = takenTitles();
+  return ((lensDoc&&lensDoc.lenses)||[]).map(lens=>({
+    lens,
+    cands: (lens.candidates||[]).filter(c=>!taken.has(c.title))
+  })).filter(g=>g.cands.length);
+}
+function shelfClusterSize(n){
+  const cols = n<=2 ? Math.max(n,1) : n<=5 ? 3 : 4;
+  const rows = Math.ceil(n/cols) || 1;
+  return {
+    cols, rows,
+    w: cols*SHELF_CARD.w + (cols-1)*SHELF_CARD.gx + 36,
+    h: 22 + rows*SHELF_CARD.h + (rows-1)*SHELF_CARD.gy + 28
+  };
+}
+function lensTreePad(treeW, treeH){
+  if(!lensMode) return {x:0, y:0};
+  const groups = remainingLensGroups();
+  const sizes = groups.map(g=>shelfClusterSize(g.cands.length));
+  const leftW = Math.max(sizes[0]?sizes[0].w:0, sizes[2]?sizes[2].w:0);
+  const topH = Math.max(sizes[0]?sizes[0].h:0, sizes[1]?sizes[1].h:0);
+  return {x: (leftW? leftW+56 : 0), y: (topH? topH+48 : 0), sizes, groups};
+}
+function renderLensShelf(){
+  let shelf = document.getElementById("lens-shelf");
+  if(!lensMode){
+    if(shelf) shelf.remove();
+    const bar = document.getElementById("lens-bar");
+    if(bar) bar.remove();
     return;
   }
-  const next = clone(r.blueprint);
-  const children = (cut.modules||[]).map(m=>asProposal(U(m.id, m.title, m.purpose, [])));
-  adoptTree({
-    id: next.id,
-    title: next.title,
-    state: next.state,
-    kind: next.kind,
-    bugs: next.bugs||[],
-    dormant: next.dormant||[],
-    files: next.files||[],
-    owns: next.owns||[],
-    memories: next.memories||[],
-    ideas: next.ideas||[],
-    children,
-    flows: []
+  const world = document.getElementById("world");
+  if(!shelf){
+    shelf = document.createElement("div");
+    shelf.className = "lens-shelf";
+    shelf.id = "lens-shelf";
+    world.appendChild(shelf);
+  }
+  const groups = remainingLensGroups();
+  shelf.innerHTML = groups.map(g=>
+    `<span class="shelf-label" data-lens="${escAttr(g.lens.id)}">${esc(g.lens.title)}</span>` +
+    g.cands.map(c=>`<button type="button" class="shelf-card" data-lens="${escAttr(g.lens.id)}" data-cand="${escAttr(c.id)}">
+      <b>${esc(c.title)}</b><span class="p">${esc(c.purpose||"")}</span>
+    </button>`).join("")
+  ).join("");
+  shelf.querySelectorAll(".shelf-card").forEach(b=>{
+    b.onclick = ()=>{
+      const hit = lensById(b.dataset.cand);
+      if(!hit) return;
+      attachCandidate(hit.lens, hit.cand);
+    };
   });
-  sessionAuth.clear();
-  sessionAuth.add("T0");
-  selectedId = "T0";
-  viewRootId = "T0";
-  focusId = null;
-  clearCompose();
-  r.bootstrap = "proposed";
-  r.live = clone(data);
-  document.getElementById("session-name").textContent = "S-0823 "+t("sessionPending");
-  closeOverlay();
+  renderLensBar();
+}
+function layoutLensShelf(treeW, treeH, pad){
+  const shelf = document.getElementById("lens-shelf");
+  if(!shelf || !lensMode) return {w:treeW, h:treeH};
+  const groups = pad.groups || remainingLensGroups();
+  const sizes = pad.sizes || groups.map(g=>shelfClusterSize(g.cands.length));
+  const ox = pad.x||0, oy = pad.y||0;
+  /* 四个视角围住主图：左上 / 右上 / 左下 / 右下 */
+  const origins = [
+    {x:0, y:0},
+    {x: ox + treeW + 56, y:0},
+    {x:0, y: oy + treeH + 48},
+    {x: ox + treeW + 56, y: oy + treeH + 48}
+  ];
+  let maxX = ox + treeW, maxY = oy + treeH;
+  groups.forEach((g, gi)=>{
+    const origin = origins[gi] || origins[origins.length-1];
+    const sz = sizes[gi] || shelfClusterSize(g.cands.length);
+    const lab = shelf.querySelector(`.shelf-label[data-lens="${g.lens.id}"]`);
+    if(lab){ lab.style.left = origin.x+"px"; lab.style.top = origin.y+"px"; }
+    g.cands.forEach((c, i)=>{
+      const cols = sz.cols;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      /* 错位 + 抖动，避免组内再竖成一列 */
+      const jitterX = (hashStr(c.id+"x")%29) - 14;
+      const jitterY = (hashStr(c.title+"y")%21) - 10;
+      const stagger = (row%2 ? 26 : 0) + (col%2 ? 12 : -8);
+      const x = origin.x + col*(SHELF_CARD.w + SHELF_CARD.gx) + stagger + jitterX;
+      const y = origin.y + 20 + row*(SHELF_CARD.h + SHELF_CARD.gy) + ((i*13)%17) + jitterY;
+      const el = shelf.querySelector(`.shelf-card[data-cand="${c.id}"]`);
+      if(el){ el.style.left = x+"px"; el.style.top = y+"px"; }
+      maxX = Math.max(maxX, x + SHELF_CARD.w);
+      maxY = Math.max(maxY, y + SHELF_CARD.h);
+    });
+  });
+  const hint = shelf.querySelector('.shelf-label[data-lens="hint"]');
+  if(hint) hint.remove();
+  return {w:maxX, h:maxY};
+}
+function attachCandidate(lens, cand){
+  if((data.children||[]).some(c=>!isCancelled(c) && c.title===cand.title)) return;
+  const node = U("L"+(++NODE_SEQ), cand.title, cand.purpose||"", [], {owns:(cand.owns||[]).slice()});
+  node.proposal = "proposed"; node.isNew = true; node.origin = "agent";
+  data.children = (data.children||[]).concat([node]);
+  viewRootId = data.id;
+  selectedId = node.id;
+  renderLensShelf();
   renderAll();
   fitView();
   persist();
 }
+function detachLensNode(n){
+  const parentPath = findPath(n.id);
+  if(!parentPath || parentPath.length<2) return;
+  const parent = parentPath[parentPath.length-2];
+  parent.children = (parent.children||[]).filter(c=>c!==n);
+  selectedId = parent.id;
+  renderLensShelf();
+  renderAll();
+  fitView();
+  persist();
+}
+function lensValidate(){
+  const kids = (data.children||[]).filter(c=>!isCancelled(c));
+  const errs = [];
+  const n = kids.length;
+  if(n<4) errs.push({key:"lensNeedMin", vars:{n:4-n}});
+  if(n>8) errs.push({key:"lensTooMany", vars:{}});
+  if(kids.some(p=>!String(p.purpose||"").trim())) errs.push({key:"lensNoPurpose", vars:{}});
+  if(kids.some(p=>fileLikeTitle(p.title))) errs.push({key:"lensFileTitle", vars:{}});
+  return errs;
+}
+function renderLensBar(){
+  let bar = document.getElementById("lens-bar");
+  if(!lensMode){
+    if(bar) bar.remove();
+    return;
+  }
+  if(!bar){
+    bar = document.createElement("div");
+    bar.className = "lens-bar";
+    bar.id = "lens-bar";
+    document.getElementById("viewport").appendChild(bar);
+  }
+  const n = (data.children||[]).filter(c=>!isCancelled(c)).length;
+  const errs = lensValidate();
+  const warn = errs.length ? `<span class="warn">· ${esc(lensFmt(errs[0].key, errs[0].vars))}</span>` : "";
+  bar.innerHTML = `<span class="cnt">${esc(t("lensPick"))}: ${n}/4–8</span>${warn}
+    <span class="warn" style="color:var(--muted);font-weight:400">${esc(t("lensShelfHint"))}</span>
+    <button type="button" id="lens-exit">${esc(t("lensExitL1"))}</button>
+    <button type="button" class="primary" id="lens-finish-canvas" ${errs.length?"disabled":""}>${esc(t("lensFinishL1"))}</button>`;
+  bar.querySelector("#lens-exit").onclick = ()=>exitLensMode();
+  bar.querySelector("#lens-finish-canvas").onclick = ()=>{
+    if(lensValidate().length) return;
+    exitLensMode(false);
+  };
+}
+async function enterLensMode(){
+  const doc = await loadLensDoc();
+  if(!doc){
+    /* 没有候选文件时退回旧的弹窗候选池 */
+    showCuts();
+    return;
+  }
+  lensDoc = doc;
+  lensMode = true;
+  viewRootId = data.id;
+  selectedId = data.id;
+  const btn = document.getElementById("btn-lens");
+  if(btn){ btn.classList.add("on"); btn.setAttribute("aria-pressed","true"); }
+  renderLensShelf();
+  renderAll();
+  fitView();
+}
+function exitLensMode(keep=true){
+  lensMode = false;
+  const btn = document.getElementById("btn-lens");
+  if(btn){ btn.classList.remove("on"); btn.setAttribute("aria-pressed","false"); }
+  renderLensShelf();
+  renderAll();
+  fitView();
+}
+document.getElementById("btn-lens").onclick = ()=>{
+  if(lensMode){ exitLensMode(); return; }
+  if(bugPathMode) exitBugPath(true);
+  if(relationMode){ relationMode = false; relAnchorId = null;
+    const rb = document.getElementById("btn-rel");
+    rb.classList.remove("on"); rb.setAttribute("aria-pressed","false");
+    document.body.classList.remove("rel-mode");
+  }
+  enterLensMode();
+};
 function startRepoSplit(){
-  showCuts();
+  enterLensMode();
 }
 function reanalyzeRepo(id){
   closeRepoMenu();
@@ -2267,7 +2490,7 @@ function reanalyzeRepo(id){
     applyRepoChrome();
   }
   emptyFirstUse();
-  startRepoSplit();
+  enterLensMode();
 }
 
 /* ================= 树工具 ================= */
@@ -2679,7 +2902,7 @@ document.getElementById("btn-auth").onclick = ()=>{
 document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("tray").classList.toggle("open");
 };
-document.getElementById("first-use-go").onclick = ()=>showCuts();
+document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
   currentRepo().firstUseOpen = true;
@@ -2987,6 +3210,14 @@ function renderMap(){
   else subtreeLR(root, 0, 0);
 
   let maxX=0, maxY=0;
+  pos.forEach((p,id)=>{
+    const s = size.get(id); if(!p||!s) return;
+    maxX = Math.max(maxX, p.x+s.w); maxY = Math.max(maxY, p.y+s.h);
+  });
+  const lensPad = lensMode ? lensTreePad(maxX, maxY) : {x:0,y:0};
+  if(lensPad.x || lensPad.y){
+    pos.forEach(p=>{ p.x += lensPad.x; p.y += lensPad.y; });
+  }
   const catalogIds = spreadGrid ? new Set(visibleChildren(root).map(k=>k.id)) : null;
   els.forEach((el,id)=>{
     const p = pos.get(id), s = size.get(id);
@@ -2997,6 +3228,12 @@ function renderMap(){
     maxX = Math.max(maxX, p.x+s.w); maxY = Math.max(maxY, p.y+s.h);
   });
   extents = {w:maxX, h:maxY};
+  if(lensMode){
+    renderLensShelf();
+    const boxed = layoutLensShelf(maxX - (lensPad.x||0), maxY - (lensPad.y||0), lensPad);
+    extents = {w:Math.max(extents.w, boxed.w), h:Math.max(extents.h, boxed.h)};
+    maxX = extents.w; maxY = extents.h;
+  }
   linksEl.setAttribute("width", maxX+140);
   linksEl.setAttribute("height", maxY+140);
 
@@ -3123,6 +3360,11 @@ function renderMap(){
 function onNodeClick(e, n){
   if(!n) return;
   e.stopPropagation();
+  if(lensMode && n.id!==data.id){
+    /* 搁板模式：点头上的候选挂卡 = 退回搁板；点主节点不动 */
+    if(isProposed(n) && n.id!==viewRootId){ detachLensNode(n); return; }
+    selectedId = n.id; renderAll(); return;
+  }
   if(authMode){
     toggleAuth(n); return;
   }
@@ -3650,8 +3892,19 @@ async function boot(){
   await restoreRepoDir();
   if(!stored) await loadPrefsLang();
   applyStaticI18n();
-  if(repoFsOk) await loadMapFromRepo();
-  else await loadMapFromHttp();
+  const liveKids = ((currentRepo().live || data || {}).children || []).length;
+  /* 本地已有图时不要用磁盘/HTTP 旧文件盖掉。有仓库句柄则把画布写回去。 */
+  if(liveKids){
+    if(repoFsOk){
+      const ok = await writeMapToRepo();
+      setRepoStatus(ok ? "ok" : "fail");
+    }
+  }else if(repoFsOk){
+    const loaded = await loadMapFromRepo();
+    setRepoStatus(loaded ? "ok" : "fail");
+  }else{
+    await loadMapFromHttp();
+  }
   if(!(hasMap(currentRepo()) || currentRepo().live)){
     emptyFirstUse();
   }else{

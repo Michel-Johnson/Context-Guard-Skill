@@ -1,34 +1,75 @@
 {
   "owns": [
     {
-      "path": "SKILL.md",
-      "node": "N11",
-      "kind": "work",
-      "card": ".codex/context/cards/N11.md",
-      "chain": [
-        "T0",
-        "M1"
-      ]
-    },
-    {
       "path": "prototype/",
-      "node": "M21",
+      "node": "M1",
       "kind": "module",
-      "card": ".codex/context/cards/M21.md",
+      "card": ".codex/context/cards/M1.md",
       "chain": [
-        "T0",
-        "M2"
+        "T0"
       ]
     },
     {
-      "path": "prototype/workbench.html",
-      "node": "N21",
-      "kind": "work",
-      "card": ".codex/context/cards/N21.md",
+      "path": "docs/shots/",
+      "node": "M1",
+      "kind": "module",
+      "card": ".codex/context/cards/M1.md",
       "chain": [
-        "T0",
-        "M2",
-        "M21"
+        "T0"
+      ]
+    },
+    {
+      "path": "SKILL.md",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "bin/",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "package.json",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "scripts/context_guard.py",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "references/",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "agents/",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
       ]
     },
     {
@@ -41,67 +82,16 @@
       ]
     },
     {
-      "path": ".codex/context/index.md",
-      "node": "N31",
-      "kind": "work",
-      "card": ".codex/context/cards/N31.md",
+      "path": "scripts/map_owns.py",
+      "node": "M3",
+      "kind": "module",
+      "card": ".codex/context/cards/M3.md",
       "chain": [
-        "T0",
-        "M3"
+        "T0"
       ]
     },
     {
-      "path": ".codex/context/preferences.json",
-      "node": "N32",
-      "kind": "work",
-      "card": ".codex/context/cards/N32.md",
-      "chain": [
-        "T0",
-        "M3"
-      ]
-    },
-    {
-      "path": ".codex/context/architecture.md",
-      "node": "N33",
-      "kind": "work",
-      "card": ".codex/context/cards/N33.md",
-      "chain": [
-        "T0",
-        "M3"
-      ]
-    },
-    {
-      "path": ".codex/context/map.json",
-      "node": "N36",
-      "kind": "work",
-      "card": ".codex/context/cards/N36.md",
-      "chain": [
-        "T0",
-        "M3"
-      ]
-    },
-    {
-      "path": ".codex/context/user-messages.md",
-      "node": "N34",
-      "kind": "work",
-      "card": ".codex/context/cards/N34.md",
-      "chain": [
-        "T0",
-        "M3"
-      ]
-    },
-    {
-      "path": ".codex/context/private/",
-      "node": "N35",
-      "kind": "work",
-      "card": ".codex/context/cards/N35.md",
-      "chain": [
-        "T0",
-        "M3"
-      ]
-    },
-    {
-      "path": "scripts/",
+      "path": "hooks.json",
       "node": "M4",
       "kind": "module",
       "card": ".codex/context/cards/M4.md",
@@ -110,33 +100,39 @@
       ]
     },
     {
-      "path": "scripts/context_guard.py",
-      "node": "N41",
-      "kind": "work",
-      "card": ".codex/context/cards/N41.md",
-      "chain": [
-        "T0",
-        "M4"
-      ]
-    },
-    {
       "path": "scripts/context_guard_hook.py",
-      "node": "N43",
-      "kind": "work",
-      "card": ".codex/context/cards/N43.md",
+      "node": "M4",
+      "kind": "module",
+      "card": ".codex/context/cards/M4.md",
       "chain": [
-        "T0",
-        "M4"
+        "T0"
       ]
     },
     {
-      "path": "README.md",
-      "node": "N51",
-      "kind": "work",
-      "card": ".codex/context/cards/N51.md",
+      "path": "tests/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
       "chain": [
-        "T0",
-        "M5"
+        "T0"
+      ]
+    },
+    {
+      "path": "fixtures/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": ".github/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
+      "chain": [
+        "T0"
       ]
     }
   ],

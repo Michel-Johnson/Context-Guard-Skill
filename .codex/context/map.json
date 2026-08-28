@@ -2,127 +2,42 @@
   "v": 1,
   "project": "context-guard",
   "bootstrap": "ready",
-  "updated": "2026-08-27",
+  "updated": "2026-08-28",
   "flows": [
     {
-      "from": "M1",
-      "to": "M2",
-      "label": "合同约束工作台"
-    },
-    {
-      "from": "M1",
-      "to": "M4",
-      "label": "启动 CLI / Hook"
-    },
-    {
-      "from": "M1",
-      "to": "M5",
-      "label": "拆图粒度"
-    },
-    {
-      "from": "M5",
-      "to": "M3",
-      "label": "写 architecture.md"
-    },
-    {
-      "from": "M5",
-      "to": "M2",
-      "label": "投影地图"
-    },
-    {
-      "from": "M4",
-      "to": "M3",
-      "label": "init 骨架"
-    },
-    {
-      "from": "M3",
-      "to": "M2",
-      "label": "打开已有图"
+      "from": "M2",
+      "to": "M1",
+      "label": "建图在工作台点头"
     },
     {
       "from": "M2",
       "to": "M3",
-      "label": "确认后写回记忆"
+      "label": "init 写出骨架"
     },
     {
-      "from": "M6",
+      "from": "M2",
+      "to": "M4",
+      "label": "安装时可选 hooks"
+    },
+    {
+      "from": "M1",
+      "to": "M3",
+      "label": "确认后写回地图"
+    },
+    {
+      "from": "M3",
+      "to": "M1",
+      "label": "打开已有图"
+    },
+    {
+      "from": "M4",
       "to": "M2",
-      "label": "会话切片"
+      "label": "SessionStart 触发冷启动"
     },
     {
-      "from": "M21",
-      "to": "M22",
-      "label": "选中节点"
-    },
-    {
-      "from": "M23",
-      "to": "M21",
-      "label": "切仓重绘"
-    },
-    {
-      "from": "M24",
-      "to": "M21",
-      "label": "提议卡片"
-    },
-    {
-      "from": "N13",
-      "to": "N12",
-      "label": "先写笔记再投影"
-    },
-    {
-      "from": "N12",
-      "to": "N52",
-      "label": "无图才拆仓"
-    },
-    {
-      "from": "N11",
-      "to": "N43",
-      "label": "启动时机绑 hook"
-    },
-    {
-      "from": "N41",
-      "to": "N31",
-      "label": "init 写出 index"
-    },
-    {
-      "from": "N41",
-      "to": "N33",
-      "label": "init 写出 architecture"
-    },
-    {
-      "from": "N51",
-      "to": "N53",
-      "label": "信号写成笔记"
-    },
-    {
-      "from": "N53",
-      "to": "N52",
-      "label": "笔记投影 L1"
-    },
-    {
-      "from": "N52",
-      "to": "N54",
-      "label": "确认后再拆子模块"
-    },
-    {
-      "from": "N33",
-      "to": "N22",
-      "label": "卡片对齐笔记"
-    },
-    {
-      "from": "N22",
-      "to": "N23",
-      "label": "谁可见"
-    },
-    {
-      "from": "N23",
-      "to": "N24",
-      "label": "怎么排"
-    },
-    {
-      "from": "N61",
-      "to": "N22",
-      "label": "未授权节点变灰"
+      "from": "M5",
+      "to": "M3",
+      "label": "失败回到坏例"
     }
   ],
   "root": {
@@ -134,250 +49,68 @@
     "files": [],
     "memories": [
       {
-        "text": "定位：人与 Agent 共用的项目记忆，活在仓库里，而不是某一次聊天里",
-        "state": "success"
+        "text": "第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。安装并进冷启动。",
+        "state": "success",
+        "files": []
       },
       {
-        "text": "形态：Agent 记录，人在 HTML 工作台确认、改写、授权",
-        "state": "success"
-      },
-      {
-        "text": "第一次使用时从当前仓库拆第一层模块；之后会话打开这张图，不再重拆",
-        "state": "success"
+        "text": "SKILL.md 合同挂在根上：无图才商量；有图则打开；不贴整图。",
+        "state": "success",
+        "files": []
       }
     ],
     "bugs": [],
     "dormant": [],
     "flows": [
       {
-        "from": "M1",
-        "to": "M2",
-        "label": "合同约束工作台"
-      },
-      {
-        "from": "M1",
-        "to": "M4",
-        "label": "启动 CLI / Hook"
-      },
-      {
-        "from": "M1",
-        "to": "M5",
-        "label": "拆图粒度"
-      },
-      {
-        "from": "M5",
-        "to": "M3",
-        "label": "写 architecture.md"
-      },
-      {
-        "from": "M5",
-        "to": "M2",
-        "label": "投影地图"
-      },
-      {
-        "from": "M4",
-        "to": "M3",
-        "label": "init 骨架"
-      },
-      {
-        "from": "M3",
-        "to": "M2",
-        "label": "打开已有图"
+        "from": "M2",
+        "to": "M1",
+        "label": "建图在工作台点头"
       },
       {
         "from": "M2",
         "to": "M3",
-        "label": "确认后写回记忆"
+        "label": "init 写出骨架"
       },
       {
-        "from": "M6",
+        "from": "M2",
+        "to": "M4",
+        "label": "安装时可选 hooks"
+      },
+      {
+        "from": "M1",
+        "to": "M3",
+        "label": "确认后写回地图"
+      },
+      {
+        "from": "M3",
+        "to": "M1",
+        "label": "打开已有图"
+      },
+      {
+        "from": "M4",
         "to": "M2",
-        "label": "会话切片"
+        "label": "SessionStart 触发冷启动"
       },
       {
-        "from": "M21",
-        "to": "M22",
-        "label": "选中节点"
-      },
-      {
-        "from": "M23",
-        "to": "M21",
-        "label": "切仓重绘"
-      },
-      {
-        "from": "M24",
-        "to": "M21",
-        "label": "提议卡片"
-      },
-      {
-        "from": "N13",
-        "to": "N12",
-        "label": "先写笔记再投影"
-      },
-      {
-        "from": "N12",
-        "to": "N52",
-        "label": "无图才拆仓"
-      },
-      {
-        "from": "N11",
-        "to": "N43",
-        "label": "启动时机绑 hook"
-      },
-      {
-        "from": "N41",
-        "to": "N31",
-        "label": "init 写出 index"
-      },
-      {
-        "from": "N41",
-        "to": "N33",
-        "label": "init 写出 architecture"
-      },
-      {
-        "from": "N51",
-        "to": "N53",
-        "label": "信号写成笔记"
-      },
-      {
-        "from": "N53",
-        "to": "N52",
-        "label": "笔记投影 L1"
-      },
-      {
-        "from": "N52",
-        "to": "N54",
-        "label": "确认后再拆子模块"
-      },
-      {
-        "from": "N33",
-        "to": "N22",
-        "label": "卡片对齐笔记"
-      },
-      {
-        "from": "N22",
-        "to": "N23",
-        "label": "谁可见"
-      },
-      {
-        "from": "N23",
-        "to": "N24",
-        "label": "怎么排"
-      },
-      {
-        "from": "N61",
-        "to": "N22",
-        "label": "未授权节点变灰"
+        "from": "M5",
+        "to": "M3",
+        "label": "失败回到坏例"
       }
     ],
     "children": [
       {
         "id": "M1",
-        "title": "Skill 合同",
-        "kind": "module",
-        "purpose": "何时启动、记什么、什么必须等人确认",
-        "state": "dirty",
-        "memories": [
-          {
-            "text": "每个回复的开头和结尾都要碰 context；文件夹第一次使用时必须建图",
-            "state": "success"
-          }
-        ],
-        "bugs": [],
-        "dormant": [],
-        "children": [
-          {
-            "id": "N11",
-            "title": "SKILL.md 启动时机",
-            "kind": "work",
-            "purpose": "首次使用、看导图、改方向、park/resume、编码/调试/评审时启用",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              "SKILL.md"
-            ]
-          },
-          {
-            "id": "N12",
-            "title": "首次建图合同",
-            "kind": "work",
-            "purpose": "无图才建；先和人商量第一层怎么切，定了再拆下一层，不一次倒整棵树",
-            "state": "dirty",
-            "memories": [
-              {
-                "text": "首次建图要和人实时商量：先给第一层几种拆法或较多候选，定了再拆第二层、第三层。卡名和用途必须一眼能看懂。",
-                "state": "success"
-              }
-            ],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N13",
-            "title": "architecture.md 必须先写",
-            "kind": "work",
-            "purpose": "边商量边写笔记；卡名和那一句用途要让人几秒内知道这是啥",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N14",
-            "title": "简洁合同",
-            "kind": "work",
-            "purpose": "context 是导航不是逐字稿；只留能恢复工作、避开错路、防止坏例复发的信息",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          }
-        ],
-        "files": [],
-        "proposal": "accepted",
-        "isNew": false,
-        "origin": "agent"
-      },
-      {
-        "id": "M2",
         "title": "工作台",
         "kind": "module",
-        "purpose": "人在浏览器里看图、改记忆、确认提议、切换仓库",
+        "purpose": "人在浏览器看图、改记忆、确认提议、授权切片",
         "state": "dirty",
+        "files": [],
         "memories": [
           {
-            "text": "prototype/workbench.html 单文件原型；假数据，不弹原生对话框",
+            "text": "prototype/workbench.html 单文件原型；人点头不在 CLI。",
             "state": "success",
-            "files": [
-              {
-                "path": "prototype/workbench.html"
-              }
-            ],
-            "also": [
-              "N21"
-            ]
+            "files": []
           }
         ],
         "bugs": [
@@ -386,709 +119,854 @@
             "title": "原生 prompt 会打断看图",
             "desc": "检查器编辑和建图确认必须留在页面里",
             "status": "open",
-            "sessions": [
-              "S-0812"
-            ],
-            "files": [
-              {
-                "path": "workbench-global.png"
-              }
-            ],
-            "record": ".codex/context/bugs/B20.md",
-            "also": [
-              "N21"
-            ]
+            "files": [],
+            "sessions": [],
+            "record": ".codex/context/bugs/B20.md"
           }
         ],
         "dormant": [],
         "children": [
           {
-            "id": "M21",
-            "title": "画布",
+            "id": "N400",
+            "title": "前端设计",
             "kind": "module",
-            "purpose": "模块卡、可见孩子、进入模块；根上是网格目录",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
+            "files": [],
+            "owns": [],
             "children": [
               {
-                "id": "N21",
-                "title": "prototype/workbench.html",
+                "id": "N405",
+                "title": "顶栏",
                 "kind": "work",
-                "purpose": "单文件原型；假数据，不弹原生对话框",
+                "origin": "human",
                 "state": "dirty",
+                "purpose": "",
                 "memories": [],
+                "ideas": [],
                 "bugs": [],
                 "dormant": [],
-                "children": [],
                 "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent",
-                "_inbox": [
-                  {
-                    "id": "N22",
-                    "title": "renderNode 模块卡",
-                    "kind": "work",
-                    "purpose": "大方卡只露标题和一句用途，不印文件清单",
-                    "state": "dirty",
-                    "memories": [],
-                    "bugs": [
-                      {
-                        "id": "B22",
-                        "title": "根上铺开关系线会看不清",
-                        "desc": "生产/消费不能在正常视图和分级页面里一起画",
-                        "status": "open",
-                        "record": ".codex/context/bugs/B22.md",
-                        "also": [
-                          "N21",
-                          "M21"
-                        ]
-                      }
-                    ],
-                    "dormant": [],
-                    "children": [],
-                    "files": []
-                  },
-                  {
-                    "id": "N23",
-                    "title": "visibleChildren",
-                    "kind": "work",
-                    "purpose": "模块一次只露一层；开工节点若后面还有开工节点（最多两岔）则默认展开",
-                    "state": "dirty",
-                    "memories": [],
-                    "bugs": [],
-                    "dormant": [],
-                    "children": [],
-                    "files": []
-                  },
-                  {
-                    "id": "N24",
-                    "title": "layout 网格 / 左右 / 上下",
-                    "kind": "work",
-                    "purpose": "根和子模块目录用网格；开工单元才用左右或上下树",
-                    "state": "dirty",
-                    "memories": [],
-                    "bugs": [],
-                    "dormant": [],
-                    "children": [],
-                    "files": []
-                  }
-                ],
-                "owns": [
-                  "prototype/workbench.html"
-                ]
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N406",
+                "title": "右边栏",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N407",
+                "title": "按钮",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N409",
+                "title": "授权模式",
+                "kind": "module",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N410",
+                "title": "Bug",
+                "kind": "module",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N411",
+                "title": "已取消",
+                "kind": "module",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N412",
+                "title": "鼠标/移动",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
               }
-            ],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              "prototype/"
             ]
           },
           {
-            "id": "M22",
-            "title": "检查器",
+            "id": "N401",
+            "title": "session连接",
             "kind": "module",
-            "purpose": "标题、用途、记忆和 Bug 可点进编辑；附件只存仓库相对路径",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [
-              {
-                "id": "N25",
-                "title": "检查器 contenteditable",
-                "kind": "work",
-                "purpose": "标题、用途、本节点记忆可点进编辑",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N26",
-                "title": "Bug 区块 + 号",
-                "kind": "work",
-                "purpose": "Bug 是节点内容不是子节点",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N2f",
-                "title": "附件路径",
-                "kind": "work",
-                "purpose": "记忆、Bug、节点、休眠经验都可以附文件或图片；只记路径，不存二进制",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              }
-            ],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
+            "owns": [],
+            "children": []
           },
           {
-            "id": "M23",
-            "title": "仓库与首次分析",
+            "id": "N402",
+            "title": "模块授权",
             "kind": "module",
-            "purpose": "切仓、演示叠层、map.json；标明未调用 Agent",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [
-              {
-                "id": "N27",
-                "title": "架构笔记演示稿",
-                "kind": "work",
-                "purpose": "根检查器里的预置 markdown，标明未调用 Agent",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N28",
-                "title": "点标题切换仓库",
-                "kind": "work",
-                "purpose": "每个仓库自己的首次建图状态分开记",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N29",
-                "title": "首次分析叠层",
-                "kind": "work",
-                "purpose": "步骤日志 + 预置稿；不能用三秒动画冒充读仓",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N2a",
-                "title": "map.json 与本地缓存",
-                "kind": "work",
-                "purpose": "活地图写在 .codex/context/map.json；localStorage 只是没连仓库时的缓存",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              }
-            ],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
+            "owns": [],
+            "children": []
           },
           {
-            "id": "M24",
-            "title": "提议展开",
+            "id": "N403",
+            "title": "debug",
             "kind": "module",
-            "purpose": "子模块卡保持可见；只把开工单元的内部收进 inbox",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [
-              {
-                "id": "N2b",
-                "title": "asProposal 递归子模块",
-                "kind": "work",
-                "purpose": "模块卡保持可见；只把开工单元的内部收进 inbox",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              },
-              {
-                "id": "N2c",
-                "title": "unpackInbox",
-                "kind": "work",
-                "purpose": "进入开工节点后再展开文件内部，不把孙子再藏一层",
-                "state": "dirty",
-                "memories": [],
-                "bugs": [],
-                "dormant": [],
-                "children": [],
-                "files": [],
-                "proposal": "accepted",
-                "isNew": false,
-                "origin": "agent"
-              }
-            ],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
+            "owns": [],
+            "children": []
+          },
+          {
+            "id": "N404",
+            "title": "底层连接",
+            "kind": "module",
+            "origin": "human",
+            "state": "dirty",
+            "purpose": "",
+            "memories": [],
+            "ideas": [],
+            "bugs": [],
+            "dormant": [],
+            "files": [],
+            "owns": [],
+            "children": []
           }
         ],
-        "files": [],
         "proposal": "accepted",
         "isNew": false,
-        "origin": "agent"
+        "origin": "human",
+        "owns": [
+          "prototype/",
+          "docs/shots/"
+        ],
+        "ideas": []
+      },
+      {
+        "id": "M2",
+        "title": "冷启动",
+        "kind": "module",
+        "purpose": "skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量",
+        "state": "dirty",
+        "files": [],
+        "memories": [
+          {
+            "text": "npx/init/set-language 属于冷启动，不是 hook。",
+            "state": "success",
+            "files": []
+          }
+        ],
+        "bugs": [],
+        "dormant": [],
+        "children": [
+          {
+            "id": "N413",
+            "title": "多平台一键安装",
+            "kind": "module",
+            "origin": "human",
+            "state": "dirty",
+            "purpose": "",
+            "memories": [],
+            "ideas": [],
+            "bugs": [],
+            "dormant": [],
+            "files": [],
+            "owns": [],
+            "children": [
+              {
+                "id": "N414",
+                "title": "codex",
+                "kind": "module",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": [],
+                "proposal": "cancelled",
+                "isNew": false
+              },
+              {
+                "id": "N415",
+                "title": "codex",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N416",
+                "title": "claude code",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N417",
+                "title": "grok",
+                "kind": "module",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": [],
+                "proposal": "cancelled",
+                "isNew": false
+              },
+              {
+                "id": "N418",
+                "title": "grok",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": [
+                  {
+                    "id": "N419",
+                    "title": "cursor",
+                    "kind": "work",
+                    "origin": "human",
+                    "state": "dirty",
+                    "purpose": "",
+                    "memories": [],
+                    "ideas": [],
+                    "bugs": [],
+                    "dormant": [],
+                    "files": [],
+                    "owns": [],
+                    "children": [],
+                    "proposal": "cancelled",
+                    "isNew": false
+                  }
+                ]
+              },
+              {
+                "id": "N420",
+                "title": "cursor",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": [
+                  {
+                    "id": "N421",
+                    "title": "dsh",
+                    "kind": "work",
+                    "origin": "human",
+                    "state": "dirty",
+                    "purpose": "",
+                    "memories": [],
+                    "ideas": [],
+                    "bugs": [],
+                    "dormant": [],
+                    "files": [],
+                    "owns": [],
+                    "children": [],
+                    "proposal": "cancelled",
+                    "isNew": false
+                  }
+                ]
+              },
+              {
+                "id": "N422",
+                "title": "dsh",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N423",
+                "title": "kimi",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N424",
+                "title": "doubao",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "N425",
+            "title": "初次使用动画引导",
+            "kind": "module",
+            "origin": "human",
+            "state": "dirty",
+            "purpose": "",
+            "memories": [],
+            "ideas": [],
+            "bugs": [],
+            "dormant": [],
+            "files": [],
+            "owns": [],
+            "children": []
+          },
+          {
+            "id": "N426",
+            "title": "新仓库建图",
+            "kind": "module",
+            "origin": "human",
+            "state": "dirty",
+            "purpose": "",
+            "memories": [],
+            "ideas": [],
+            "bugs": [],
+            "dormant": [],
+            "files": [],
+            "owns": [],
+            "children": []
+          },
+          {
+            "id": "N427",
+            "title": "已有仓库建图",
+            "kind": "module",
+            "origin": "human",
+            "state": "dirty",
+            "purpose": "",
+            "memories": [],
+            "ideas": [],
+            "bugs": [],
+            "dormant": [],
+            "files": [],
+            "owns": [],
+            "children": []
+          }
+        ],
+        "proposal": "accepted",
+        "isNew": false,
+        "origin": "human",
+        "owns": [
+          "SKILL.md",
+          "bin/",
+          "package.json",
+          "scripts/context_guard.py",
+          "references/",
+          "agents/"
+        ],
+        "ideas": []
       },
       {
         "id": "M3",
-        "title": "skill文件结构",
+        "title": "底层文件系统",
         "kind": "module",
-        "purpose": "记忆落在仓库 .codex/context/，活地图是 map.json",
+        "purpose": "会话、坏例、任务、地图怎么写、怎么跳",
         "state": "dirty",
+        "files": [],
         "memories": [
           {
-            "text": "公开记录可进 git；密钥只留 private/，永远不进 HTML",
-            "state": "success"
-          },
-          {
-            "text": "记忆是 map.json 节点上的字段，不要另存一份平行的记忆清单",
-            "state": "success"
+            "text": "先读 FIND.md，再只打开命中的 1–2 个 Markdown。",
+            "state": "success",
+            "files": []
           }
         ],
         "bugs": [],
         "dormant": [],
         "children": [
           {
-            "id": "N31",
-            "title": "index.md",
-            "kind": "work",
-            "purpose": "四行速览：当前任务、最新节点、热坏例、可恢复项",
+            "id": "N428",
+            "title": "session",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/index.md"
+            "owns": [],
+            "children": [
+              {
+                "id": "N432",
+                "title": "user message",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              }
             ]
           },
           {
-            "id": "N32",
-            "title": "preferences.json",
-            "kind": "work",
-            "purpose": "record_language 与 map_bootstrap；未确认前保持 pending",
+            "id": "N429",
+            "title": "bad case",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/preferences.json"
-            ]
+            "owns": [],
+            "children": []
           },
           {
-            "id": "N33",
-            "title": "architecture.md",
-            "kind": "work",
-            "purpose": "首次分析笔记；活树不在这里，在 map.json",
+            "id": "N430",
+            "title": "map",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/architecture.md"
-            ]
+            "owns": [],
+            "children": []
           },
           {
-            "id": "N36",
-            "title": "map.json",
-            "kind": "work",
-            "purpose": "活地图：树、生产/消费、节点上的记忆和 Bug。人改和工作台写回都落这份文件",
+            "id": "N431",
+            "title": "index",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/map.json"
-            ]
+            "owns": [],
+            "children": []
           },
           {
-            "id": "N34",
-            "title": "user-messages.md",
+            "id": "N433",
+            "title": "Readme.md",
             "kind": "work",
-            "purpose": "用户原话与约束，指导下一轮怎么做",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/user-messages.md"
-            ]
+            "owns": [],
+            "children": []
           },
           {
-            "id": "N35",
-            "title": "private/",
-            "kind": "work",
-            "purpose": "gitignored；Agent 可读指针，不能把密钥投影到导图",
+            "id": "N434",
+            "title": "task",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              ".codex/context/private/"
-            ]
+            "owns": [],
+            "children": []
           }
         ],
-        "files": [],
         "proposal": "accepted",
         "isNew": false,
-        "origin": "agent",
+        "origin": "human",
         "owns": [
-          ".codex/context/"
-        ]
+          ".codex/context/",
+          "scripts/map_owns.py"
+        ],
+        "ideas": []
       },
       {
         "id": "M4",
-        "title": "CLI 与 Hook",
+        "title": "hook",
         "kind": "module",
-        "purpose": "init、语言、导图导出；SessionStart 时把 skill 绑到当前仓库",
+        "purpose": "当前开发进程的生命周期提醒，把 skill 挂到打开的仓库",
         "state": "dirty",
-        "memories": [
-          {
-            "text": "scripts/context_guard.py；禁止把 skill 安装目录当成项目根",
-            "state": "success"
-          }
-        ],
+        "files": [],
+        "memories": [],
         "bugs": [],
         "dormant": [],
         "children": [
           {
-            "id": "N41",
-            "title": "scripts/context_guard.py init",
-            "kind": "work",
-            "purpose": "第一次在文件夹工作时创建 .codex/context/ 骨架",
+            "id": "N435",
+            "title": "start hook",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              "scripts/context_guard.py"
+            "owns": [],
+            "children": [
+              {
+                "id": "N437",
+                "title": "User Prompt",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N438",
+                "title": "System Prompt",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N439",
+                "title": "Bad Case Check",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N440",
+                "title": "Task Check",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N444",
+                "title": "Ask User",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              }
             ]
           },
           {
-            "id": "N42",
-            "title": "show-roadmap",
-            "kind": "work",
-            "purpose": "打开工作台看图，不再生成 HTML 路线图",
+            "id": "N436",
+            "title": "stop hook",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N43",
-            "title": "SessionStart hook",
-            "kind": "work",
-            "purpose": "当前开发进程也应加载本 skill，而不是只给别人的仓库用",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              "scripts/context_guard_hook.py"
+            "owns": [],
+            "children": [
+              {
+                "id": "N441",
+                "title": "Summary",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N442",
+                "title": "Record Bad Case",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              },
+              {
+                "id": "N443",
+                "title": "Update Map",
+                "kind": "work",
+                "origin": "human",
+                "state": "dirty",
+                "purpose": "",
+                "memories": [],
+                "ideas": [],
+                "bugs": [],
+                "dormant": [],
+                "files": [],
+                "owns": [],
+                "children": []
+              }
             ]
-          },
-          {
-            "id": "N44",
-            "title": "禁止把 skill 安装目录当项目根",
-            "kind": "work",
-            "purpose": "context 跟被分析的仓库走",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
           }
         ],
-        "files": [],
         "proposal": "accepted",
         "isNew": false,
-        "origin": "agent",
+        "origin": "human",
         "owns": [
-          "scripts/"
-        ]
+          "hooks.json",
+          "scripts/context_guard_hook.py"
+        ],
+        "ideas": []
       },
       {
         "id": "M5",
-        "title": "仓库拆图",
+        "title": "CI/CD",
         "kind": "module",
-        "purpose": "已有项目变成地图：先商量第一层怎么切，定了再拆第二层、第三层",
+        "purpose": "以后怎么自动验；第一版不做测试中台，夹具和冒烟挂在这里",
         "state": "dirty",
+        "files": [],
         "memories": [
           {
-            "text": "读 README、包边界、已有架构文档；一文件一节点是错的",
-            "state": "success"
+            "text": "第一版不做 Test Hub / 功能链；人设计测试，Agent 只提草案。",
+            "state": "success",
+            "files": []
           }
         ],
         "bugs": [],
         "dormant": [],
         "children": [
           {
-            "id": "N51",
-            "title": "信号源",
-            "kind": "work",
-            "purpose": "README / SKILL / 包与插件边界 / docs / 运行时入口，不是每个源文件一张卡",
+            "id": "N445",
+            "title": "npm install smoke",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent",
-            "owns": [
-              "README.md"
-            ]
+            "owns": [],
+            "children": [],
+            "proposal": "cancelled",
+            "isNew": false
           },
           {
-            "id": "N52",
-            "title": "L1 确认门",
-            "kind": "work",
-            "purpose": "商量之后的定稿大约 4–8 张；未确认的第一层后续 Agent 读不到",
+            "id": "N446",
+            "title": "CI",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
+            "owns": [],
+            "children": []
           },
           {
-            "id": "N53",
-            "title": "architecture.md 产出",
-            "kind": "work",
-            "purpose": "整仓笔记是分析本身；地图是投影，不是用三张卡冒充分析",
+            "id": "N447",
+            "title": "CD",
+            "kind": "module",
+            "origin": "human",
             "state": "dirty",
+            "purpose": "",
             "memories": [],
+            "ideas": [],
             "bugs": [],
             "dormant": [],
-            "children": [],
             "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N54",
-            "title": "先建子模块再挂文件",
-            "kind": "work",
-            "purpose": "点进「控制面 UI」先看到 CLI/TUI/Control UI/远程 四张子模块卡，再进到 onboard.ts。既不要三张空壳，也不要一张卡下摊开全部文件",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N55",
-            "title": "以后会话打开已有图",
-            "kind": "work",
-            "purpose": "除非人要求重新分析",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
+            "owns": [],
+            "children": []
           }
         ],
-        "files": [],
         "proposal": "accepted",
         "isNew": false,
-        "origin": "agent"
-      },
-      {
-        "id": "M6",
-        "title": "会话授权与提议",
-        "kind": "module",
-        "purpose": "新会话默认很小；人决定 Agent 能读哪一段",
-        "state": "dirty",
-        "memories": [
-          {
-            "text": "点虚线提议两次加入；取消进托盘，可恢复或永久删除",
-            "state": "success"
-          }
+        "origin": "human",
+        "owns": [
+          "tests/",
+          "fixtures/",
+          ".github/"
         ],
-        "bugs": [],
-        "dormant": [],
-        "children": [
-          {
-            "id": "N61",
-            "title": "可读切片 sessionAuth",
-            "kind": "work",
-            "purpose": "默认只有根；模块要人点授权",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N62",
-            "title": "虚线提议点两次加入",
-            "kind": "work",
-            "purpose": "第一次选中，第二次确认",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          },
-          {
-            "id": "N63",
-            "title": "已取消托盘",
-            "kind": "work",
-            "purpose": "可恢复或永久删除",
-            "state": "dirty",
-            "memories": [],
-            "bugs": [],
-            "dormant": [],
-            "children": [],
-            "files": [],
-            "proposal": "accepted",
-            "isNew": false,
-            "origin": "agent"
-          }
-        ],
-        "files": [],
-        "proposal": "accepted",
-        "isNew": false,
-        "origin": "agent"
-      },
-      {
-        "id": "M7",
-        "title": "遗留测试中台",
-        "kind": "module",
-        "purpose": "仓库里仍有 Test Hub / 功能链代码，当前产品主线先不扩它",
-        "state": "dirty",
-        "memories": [
-          {
-            "text": "人设计测试、Agent 只提草案这一点仍成立；先把地图和工作台做对",
-            "state": "dirty"
-          }
-        ],
-        "bugs": [],
-        "dormant": [],
-        "children": [],
-        "files": [],
-        "proposal": "accepted",
-        "isNew": false,
-        "origin": "agent"
+        "ideas": []
       }
-    ]
+    ],
+    "owns": [],
+    "ideas": []
   }
 }

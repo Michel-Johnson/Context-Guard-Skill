@@ -9,3 +9,24 @@
 {"id":"2026-08-27-b","human":"首次建图要和人实时商量，先给第一层几种拆法或较多候选，定了再拆第二层、第三层；节点必须一眼能看懂","agent":"把这条写进 TODO、SKILL、README 和工作台叠层文案；4-8 张是商量之后的确认门，不是一上来倒出的终稿。真分析仍未做","files":["SKILL.md",".codex/context/TODO.md","prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-27-c","human":"这种开发环境下首次建图怎么测、怎么验收","agent":"锁成三层：脚本抓硬错、浏览器点工作台、人看卡点头。不要测试中台。写进 TODO.md 第一条","files":[".codex/context/TODO.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-27-d","human":"那些测法不能让我决定建图效果","agent":"承认脚本和云里点一遍都不能替人定效果。工作台改成先出几种第一层切法，人选了才上画布","files":["prototype/workbench.html",".codex/context/TODO.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-c","human":"拉另一个分支，找首次建图与人交互的方法","agent":"切到 cursor/first-use-interactive-f54e；确认层对层商量合同与工作台选切法演示","files":["SKILL.md",".codex/context/TODO.md","prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-d","human":"按这个分支的方法一起协作研究改进","agent":"读透 08a178e 选切法实现；列出真读仓/L2L3循环/混搭编辑/硬错lint 四个改进方向供人选","files":["prototype/workbench.html",".codex/context/TODO.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-e","human":"1，2都没问题，3，4没看懂","agent":"解释3=拼模块/改标题再定稿，4=机器先筛硬错；确认后按1→2顺序做","files":[],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-f","human":"建议多视角候选池：文件结构/功能/架构等，每视角多个候选，互不互斥，人自选拼第一层","agent":"确认设计：候选按视角分组+勾选池+重叠提示；等确认后实现","files":[],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-g","human":"开始","agent":"多视角候选池落地：l1-candidates.json（4视角24候选，真读仓）+ 工作台候选池交互（勾选/托盘改名/自定义卡/4-8校验/owns重叠提示/定稿投影）。Playwright 全流程验证通过。修复批量勾选重渲染丢状态 bug","files":[".codex/context/l1-candidates.json","prototype/workbench.html","docs/shots/workbench/lens-pool.png","docs/shots/workbench/lens-finished.png"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-h","human":"没看到候选池；候选应在画布上且与主节点无连线，选中后才挂接到对应位置","agent":"记录设计变更：候选上画布（无连线搁板），选中即挂到根下；准备重做交互","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-i","human":"候选应上画布、与主节点无连线，选中才挂接","agent":"重做为画布搁板模式：顶栏「第一层候选」随时可进；候选虚线卡无连线摆在画布左侧，按视角分组；点候选即挂到根下（带连线绿点提议）；点挂上的卡退回搁板；浮动条计数+校验+定稿。清空重测全流程通过","files":["prototype/workbench.html","docs/shots/workbench/lens-shelf.png","docs/shots/workbench/lens-shelf-finished.png"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-j","human":"候选不要全部竖着排，要分散排列","agent":"搁板改为四视角围住主图（左上/右上/左下/右下），组内 3–4 列错位+抖动，不再左侧一列竖排。选中仍无连线直到挂到根下","files":["prototype/workbench.html","docs/shots/workbench/lens-shelf.png"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-k","human":"自己分模块：工作台、冷启动、底层文件系统、hook、CI/CD，还缺什么","agent":"对照仓库：五张能盖住主线；Skill合同可挂根或并进冷启动；安装/CLI（npx、init）和 hook 不是同一件事，是唯一明显缺席","files":[],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-l","human":"安装属于冷启动","agent":"锁定 L1 五张写入 architecture.md 与 map.json（proposed）；B20 改挂工作台；未拆 L2","files":[".codex/context/architecture.md",".codex/context/map.json",".codex/context/bugs/B20.md"],"bugs":["B20"],"tasks":[]}
+{"id":"2026-08-28-m","human":"第一层没变","agent":"原因是 localStorage 旧图挡住 map.json。改为 HTTP 活图优先，缓存键升到 v13，内置蓝图改成五张 L1。浏览器验证已是新第一层","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-n","human":"工作台都包含哪些部分","agent":"按页面开工面列出画布/检查器/关系/授权/Bug面板/取消托盘/顶栏/仓库写回；候选搁板标成与冷启动交界，等人定 L2","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-o","human":"底层文件系统包含哪些部分","agent":"按四块+跳法+复印件列出；标出与工作台/冷启动交界","files":[".codex/context/FIND.md",".codex/context/FORMAT.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-p","human":"hook包含哪些部分","agent":"按 hooks.json 五个事件 + hook 脚本职责列出；安装合进冷启动","files":["hooks.json","scripts/context_guard_hook.py"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-q","human":"hook 图上只有 start/stop，还缺什么","agent":"指出缺 UserPromptSubmit（记原话）；认根可并进 start；子代理可并进 start/stop","files":["hooks.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-r","human":"CI/CD 这个模块怎么写","agent":"按仓库实况写：冒烟、夹具、发布工作流；明确不做测试中台；失败接坏例","files":["tests/npm-install-smoke.sh","fixtures/openclaw/README.md",".github/workflows/npm-publish.yml"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-s","human":"已经在 HTML 里更新了整个 map，你能看到改动吗","agent":"磁盘 map.json 仍是五张空 L1，无子节点。工作台未连仓库时改动只在浏览器缓存，Agent 读不到","files":[".codex/context/map.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-t","human":"确实在工作台写入了，能不能去读 html","agent":"已读 HTML：内置蓝图仍是五张空 L1。map.json 01:57 后再无写入。工作台改的是活图不是 HTML 源码，未连仓则只在浏览器","files":["prototype/workbench.html",".codex/context/map.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-u","human":"我点击连接了呀","agent":"连接仓库会用磁盘旧图覆盖画布，人改的图被冲掉。已改成画布有图则写回 map.json，并提示写成败、校验 SKILL.md 根目录","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-v","human":"你自己去找8877端口的Html文件去，别让我刚才写的丢掉","agent":"从 8877 Simple Browser 截图+UI 读到冷启动四张卡，写入 map.json，bootstrap ready。未覆盖浏览器画布。","files":[".codex/context/map.json",".codex/context/architecture.md","prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-w","human":"我其他部分还有很多，你为啥读不到","agent":"上次只看见点进的冷启动一屏。整棵活图在 Cursor Simple Browser localStorage，已写入 map.json 共 53 个节点","files":[".codex/context/map.json",".codex/context/architecture.md"],"bugs":[],"tasks":[]}

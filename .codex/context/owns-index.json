@@ -1,88 +1,94 @@
 {
   "owns": [
     {
-      "path": "SKILL.md",
-      "node": "N11",
-      "kind": "work",
-      "title": "SKILL.md 启动时机"
-    },
-    {
       "path": "prototype/",
-      "node": "M21",
+      "node": "M1",
       "kind": "module",
-      "title": "画布"
+      "title": "工作台"
     },
     {
-      "path": "prototype/workbench.html",
-      "node": "N21",
-      "kind": "work",
-      "title": "prototype/workbench.html"
+      "path": "docs/shots/",
+      "node": "M1",
+      "kind": "module",
+      "title": "工作台"
+    },
+    {
+      "path": "SKILL.md",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
+    },
+    {
+      "path": "bin/",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
+    },
+    {
+      "path": "package.json",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
+    },
+    {
+      "path": "scripts/context_guard.py",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
+    },
+    {
+      "path": "references/",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
+    },
+    {
+      "path": "agents/",
+      "node": "M2",
+      "kind": "module",
+      "title": "冷启动"
     },
     {
       "path": ".codex/context/",
       "node": "M3",
       "kind": "module",
-      "title": "skill文件结构"
+      "title": "底层文件系统"
     },
     {
-      "path": ".codex/context/index.md",
-      "node": "N31",
-      "kind": "work",
-      "title": "index.md"
+      "path": "scripts/map_owns.py",
+      "node": "M3",
+      "kind": "module",
+      "title": "底层文件系统"
     },
     {
-      "path": ".codex/context/preferences.json",
-      "node": "N32",
-      "kind": "work",
-      "title": "preferences.json"
-    },
-    {
-      "path": ".codex/context/architecture.md",
-      "node": "N33",
-      "kind": "work",
-      "title": "architecture.md"
-    },
-    {
-      "path": ".codex/context/map.json",
-      "node": "N36",
-      "kind": "work",
-      "title": "map.json"
-    },
-    {
-      "path": ".codex/context/user-messages.md",
-      "node": "N34",
-      "kind": "work",
-      "title": "user-messages.md"
-    },
-    {
-      "path": ".codex/context/private/",
-      "node": "N35",
-      "kind": "work",
-      "title": "private/"
-    },
-    {
-      "path": "scripts/",
+      "path": "hooks.json",
       "node": "M4",
       "kind": "module",
-      "title": "CLI 与 Hook"
-    },
-    {
-      "path": "scripts/context_guard.py",
-      "node": "N41",
-      "kind": "work",
-      "title": "scripts/context_guard.py init"
+      "title": "hook"
     },
     {
       "path": "scripts/context_guard_hook.py",
-      "node": "N43",
-      "kind": "work",
-      "title": "SessionStart hook"
+      "node": "M4",
+      "kind": "module",
+      "title": "hook"
     },
     {
-      "path": "README.md",
-      "node": "N51",
-      "kind": "work",
-      "title": "信号源"
+      "path": "tests/",
+      "node": "M5",
+      "kind": "module",
+      "title": "CI/CD"
+    },
+    {
+      "path": "fixtures/",
+      "node": "M5",
+      "kind": "module",
+      "title": "CI/CD"
+    },
+    {
+      "path": ".github/",
+      "node": "M5",
+      "kind": "module",
+      "title": "CI/CD"
     }
   ]
 }

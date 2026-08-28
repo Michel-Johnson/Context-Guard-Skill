@@ -2,6 +2,6 @@
   "record_language": "zh",
   "display_language": "zh",
   "map_bootstrap": "ready",
-  "last_updated": "2026-08-27",
+  "last_updated": "2026-08-28",
   "note": "Set with: context_guard.py set-language --language <language>"
 }
