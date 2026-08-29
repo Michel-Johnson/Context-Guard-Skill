@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-EVAL_ROOT = Path(__file__).resolve().parent
+EVAL_ROOT = Path(__file__).resolve().parents[1]
 HARBOR = EVAL_ROOT / "harbor"
 EVAL = EVAL_ROOT / "harbor-eval"
 sys.path.insert(0, str(REPO / "scripts"))

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-EVAL_ROOT = Path(__file__).resolve().parent
+EVAL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EVAL_ROOT))
 from score_openclaw_agent import resolve_openclaw_path, score_answer, store_sizes  # noqa: E402
 

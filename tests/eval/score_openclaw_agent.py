@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-OPENCLAW = Path(__file__).resolve().parent / "openclaw"
+OPENCLAW = Path(__file__).resolve().parents[1] / "openclaw"
 GOLD_PATH = OPENCLAW / "eval" / "gold.json"
 CTX = OPENCLAW / ".codex" / "context"
 
