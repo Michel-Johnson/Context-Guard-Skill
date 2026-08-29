@@ -3,3 +3,7 @@
 .codex/context/**/secrets*.json
 fixtures/harbor-eval/layouts/
 **/__pycache__/
+
+# Local-only test dumps from branch work. Never merge these files.
+tests/local/
+workbench-global.png
