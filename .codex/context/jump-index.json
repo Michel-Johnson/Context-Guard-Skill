@@ -118,6 +118,15 @@
       ]
     },
     {
+      "path": "fixtures/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
       "path": ".github/",
       "node": "M5",
       "kind": "module",

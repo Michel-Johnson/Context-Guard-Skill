@@ -7,18 +7,16 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-OPENCLAW = Path(__file__).resolve().parents[1] / "openclaw"
+ROOT = Path(__file__).resolve().parents[1]
+OPENCLAW = ROOT / "fixtures" / "openclaw"
 GOLD_PATH = OPENCLAW / "eval" / "gold.json"
 CTX = OPENCLAW / ".codex" / "context"
 
 
 def resolve_openclaw_path(rel: str) -> Path | None:
     text = str(rel or "").replace("\\", "/").strip()
-    for prefix in ("tests/eval/openclaw/", "fixtures/openclaw/"):
-        if prefix in text:
-            text = text.split(prefix, 1)[1]
-            break
+    if "fixtures/openclaw/" in text:
+        text = text.split("fixtures/openclaw/", 1)[1]
     if text.startswith("./"):
         text = text[2:]
     if text.startswith("/"):
@@ -69,10 +67,8 @@ def score_answer(answer: dict, files: list[str] | None = None) -> dict:
     opened_norm = []
     for item in opened:
         text = str(item).replace("\\", "/")
-        for prefix in ("tests/eval/openclaw/", "fixtures/openclaw/"):
-            if prefix in text:
-                text = text.split(prefix, 1)[1]
-                break
+        if "fixtures/openclaw/" in text:
+            text = text.split("fixtures/openclaw/", 1)[1]
         if text.startswith("./"):
             text = text[2:]
         opened_norm.append(text)

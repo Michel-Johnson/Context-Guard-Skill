@@ -56,9 +56,9 @@
         {
           "id": "s6",
           "title": "检索夹具",
-          "purpose": "tests/eval 里 harbor、openclaw 假仓，验证小索引跳法",
+          "purpose": "fixtures/harbor、openclaw 与配套脚本，验证小索引跳法",
           "owns": [
-            "tests/eval/"
+            "fixtures/"
           ]
         },
         {
@@ -127,7 +127,7 @@
           "title": "验证与对照",
           "purpose": "harbor/openclaw 夹具与检索计时，验证只靠索引是否干净",
           "owns": [
-            "tests/eval/"
+            "fixtures/"
           ]
         }
       ]
@@ -182,7 +182,7 @@
           "title": "验证层",
           "purpose": "夹具与检索对照，证明索引跳法可依赖",
           "owns": [
-            "tests/eval/"
+            "fixtures/"
           ]
         }
       ]

@@ -1,9 +1,5 @@
 .codex/context/private/
 .codex/context/**/*.local.json
 .codex/context/**/secrets*.json
-tests/eval/harbor-eval/layouts/
+fixtures/harbor-eval/layouts/
 **/__pycache__/
-
-# Local-only tests — never commit
-tests/local/**
-!tests/local/README.md

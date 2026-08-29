@@ -5,4 +5,4 @@
 3. 禁止 Grep 整个 context 目录。
 4. 禁止读 `map.json`、`jump-index.json`。
 5. 禁止跑 `python3 scripts/map_owns.py`。
-6. 禁止读 `tests/eval/openclaw/eval/gold.json`。
+6. 禁止读 `fixtures/openclaw/eval/gold.json`。

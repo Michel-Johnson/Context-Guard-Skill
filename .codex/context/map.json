@@ -1044,6 +1044,7 @@
         "origin": "human",
         "owns": [
           "tests/",
+          "fixtures/",
           ".github/"
         ],
         "ideas": []

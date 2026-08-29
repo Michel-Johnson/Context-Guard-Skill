@@ -1,6 +1,6 @@
 # OpenClaw jump 耗时
 
-夹具：`tests/eval/openclaw`。每条跑 5 次，看中位数。
+夹具：`fixtures/openclaw`。每条跑 5 次，看中位数。
 
 - 卡 53 张，坏例 25 条，任务 12 份，会话 30 行，路径归属 55 条。
 - `jump-index.json` 22231 字节；`map.json` 约 30KB。批量样例 13 条查询（6 条路径 + 3 条坏例 + 3 条任务 + last）。

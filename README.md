@@ -98,7 +98,7 @@ git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
 rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents references scripts tests/hands-on \
+  SKILL.md README.md README.zh-CN.md agents references scripts tests \
   ~/.codex/skills/context-guard/
 ```
 
@@ -160,26 +160,6 @@ Open `prototype/workbench.html` to see the map.
 ## Main Files
 
 ```text
-.
-|-- SKILL.md                 # skill contract (one page)
-|-- README.md / README.zh-CN.md
-|-- package.json / bin/      # npx install into ~/.codex/skills
-|-- hooks.json               # optional Codex lifecycle hooks
-|-- agents/ / references/
-|-- scripts/                 # product CLI: init, set-language, map_owns, hook
-|-- prototype/workbench.html # human canvas
-|-- docs/shots/              # README screenshots (not tests)
-|-- .codex/context/          # this repo's own memory
-|-- tests/
-|   |-- hands-on/            # smoke others can run; in the npm package
-|   |-- eval/                # fake repos for retrieval; optional on main
-|   `-- local/               # gitignored; your machine only
-`-- .github/                 # npm publish
-```
-
-`.codex/context/` (this project's memory):
-
-```text
 .codex/context/
 |-- FIND.md
 |-- sessions.jsonl
@@ -191,7 +171,5 @@ Open `prototype/workbench.html` to see the map.
 |-- user-messages.md
 `-- private/                     # gitignored
 ```
-
-Tests: see [`tests/README.md`](tests/README.md). When merging to the command branch you can drop all of `tests/`, or keep only `tests/hands-on/`.
 
 See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.

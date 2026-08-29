@@ -2,7 +2,7 @@
 """Build the Harbor fixture repo and compare record layouts for agent recall.
 
 Subcommands:
-  project  write tests/eval/harbor source + eval layouts
+  project  write fixtures/harbor source + eval layouts
   eval     run retrieval queries and write REPORT.md
 
 Layouts differ in where prose lives. owns stays on the map in every layout so
@@ -16,11 +16,10 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-EVAL_ROOT = Path(__file__).resolve().parents[1]
-HARBOR = EVAL_ROOT / "harbor"
-EVAL = EVAL_ROOT / "harbor-eval"
-sys.path.insert(0, str(REPO / "scripts"))
+ROOT = Path(__file__).resolve().parents[1]
+HARBOR = ROOT / "fixtures" / "harbor"
+EVAL = ROOT / "fixtures" / "harbor-eval"
+sys.path.insert(0, str(ROOT / "scripts"))
 from map_owns import lookup, norm_repo_path, own_score, walk_nodes  # noqa: E402
 
 
@@ -886,7 +885,7 @@ def project_sources(tree) -> None:
         "# Harbor fixture\n\n"
         "假仓，用来比较 Context Guard 记录怎么存、Agent 怎么找。"
         "活地图默认用 B 方案（桩 + `bugs/*.md`）。"
-        "对照布局在 `tests/eval/harbor-eval/layouts/`。\n",
+        "对照布局在 `fixtures/harbor-eval/layouts/`。\n",
     )
 
 
@@ -1428,7 +1427,7 @@ def summarize(result: dict) -> str:
         "",
         "同一份 Harbor 地图和坏例，投影成不同落盘，用同一组问题模拟 Agent 读盘。",
         "`index` 是为了找到答案扫过的字节（例如整份 map.json）；`payload` 是会进模型上下文的切片。",
-        "假仓在 `tests/eval/harbor/`，布局在 `tests/eval/harbor-eval/layouts/`。",
+        "假仓在 `fixtures/harbor/`，布局在 `fixtures/harbor-eval/layouts/`。",
         "",
         "## 问法",
         "",
@@ -1494,8 +1493,8 @@ def summarize(result: dict) -> str:
         "可复现：",
         "",
         "```bash",
-        "python3 tests/eval/harbor_recall.py project",
-        "python3 tests/eval/harbor_recall.py eval",
+        "python3 scripts/harbor_recall.py project",
+        "python3 scripts/harbor_recall.py eval",
         "```",
         "",
     ]
@@ -1586,8 +1585,8 @@ def summarize_graph(result: dict) -> str:
         "和讨论稿一致：关系线可以保留「谁给谁」这句话；Agent 加载时当能往返的邻居，而且先只打开**这张卡**的一跳，不要把祖先每一层都铺开。真正「牵到别的模块」以后可以再走下一跳，这次实验还没做按需第二跳。",
         "",
         "```bash",
-        "python3 tests/eval/harbor_recall.py project",
-        "python3 tests/eval/harbor_recall.py eval-graph",
+        "python3 scripts/harbor_recall.py project",
+        "python3 scripts/harbor_recall.py eval-graph",
         "```",
         "",
     ]
