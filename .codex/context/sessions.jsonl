@@ -33,3 +33,4 @@
 {"id":"2026-08-28-x","human":"把这些新图上传到dev分支","agent":"新建并推送 origin/dev，提交 10539fe：人画的活图 map.json 与卡片","files":[".codex/context/map.json"],"bugs":[],"tasks":[]}
 {"id":"2026-08-28-y","human":"不对呀，里面具体的细节你怎么没有拿下来上传？你到底拿的是什么缓存","agent":"缓存是 Cursor Simple Browser localStorage v13，有53个标题，子卡用途/记忆为空。HTML内置图已改成整棵树并推送 3dc9303","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-29-a","human":"基于main开分支继续开发，仍要map网页版","agent":"从 main 开 cursor/map-web-f54e，README 指向本分支 GitHack 工作台","files":["README.md","README.zh-CN.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-b","human":"为啥节点还有很多绿点？这些都是我自己放的","agent":"绿点被误标成 Agent 提议。人放的卡进模块时还会被重新标成提议。已改：人放的卡不显示绿点，进模块不再把子卡改成提议","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
