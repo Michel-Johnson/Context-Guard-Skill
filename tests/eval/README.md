@@ -12,4 +12,4 @@ python3 tests/eval/harbor_recall.py project
 python3 tests/eval/harbor_recall.py eval
 ```
 
-合并到命令分支时，这一夹可以整夹丢掉。
+只在测试分支。不要合进产品分支或 main。
