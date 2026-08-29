@@ -30,3 +30,5 @@
 {"id":"2026-08-28-u","human":"我点击连接了呀","agent":"连接仓库会用磁盘旧图覆盖画布，人改的图被冲掉。已改成画布有图则写回 map.json，并提示写成败、校验 SKILL.md 根目录","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-28-v","human":"你自己去找8877端口的Html文件去，别让我刚才写的丢掉","agent":"从 8877 Simple Browser 截图+UI 读到冷启动四张卡，写入 map.json，bootstrap ready。未覆盖浏览器画布。","files":[".codex/context/map.json",".codex/context/architecture.md","prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-28-w","human":"我其他部分还有很多，你为啥读不到","agent":"上次只看见点进的冷启动一屏。整棵活图在 Cursor Simple Browser localStorage，已写入 map.json 共 53 个节点","files":[".codex/context/map.json",".codex/context/architecture.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-x","human":"把这些新图上传到dev分支","agent":"新建并推送 origin/dev，提交 10539fe：人画的活图 map.json 与卡片","files":[".codex/context/map.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-28-y","human":"不对呀，里面具体的细节你怎么没有拿下来上传？你到底拿的是什么缓存","agent":"缓存是 Cursor Simple Browser localStorage v13，有53个标题，子卡用途/记忆为空。HTML内置图已改成整棵树并推送 3dc9303","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}

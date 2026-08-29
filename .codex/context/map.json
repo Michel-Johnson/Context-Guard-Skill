@@ -153,7 +153,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N406",
@@ -168,7 +170,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N407",
@@ -183,7 +187,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N409",
@@ -198,7 +204,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N410",
@@ -213,7 +221,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N411",
@@ -228,7 +238,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N412",
@@ -243,9 +255,13 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               }
-            ]
+            ],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N401",
@@ -260,7 +276,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N402",
@@ -275,7 +293,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N403",
@@ -290,7 +310,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N404",
@@ -305,7 +327,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           }
         ],
         "proposal": "accepted",
@@ -378,7 +402,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N416",
@@ -393,7 +419,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N417",
@@ -443,7 +471,9 @@
                     "proposal": "cancelled",
                     "isNew": false
                   }
-                ]
+                ],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N420",
@@ -476,7 +506,9 @@
                     "proposal": "cancelled",
                     "isNew": false
                   }
-                ]
+                ],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N422",
@@ -491,7 +523,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N423",
@@ -506,7 +540,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N424",
@@ -521,9 +557,13 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               }
-            ]
+            ],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N425",
@@ -538,7 +578,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N426",
@@ -553,7 +595,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N427",
@@ -568,7 +612,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           }
         ],
         "proposal": "accepted",
@@ -628,9 +674,13 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               }
-            ]
+            ],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N429",
@@ -645,7 +695,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N430",
@@ -660,7 +712,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N431",
@@ -675,7 +729,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N433",
@@ -690,7 +746,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N434",
@@ -705,7 +763,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           }
         ],
         "proposal": "accepted",
@@ -755,7 +815,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N438",
@@ -770,7 +832,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N439",
@@ -785,7 +849,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N440",
@@ -800,7 +866,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N444",
@@ -815,9 +883,13 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               }
-            ]
+            ],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N436",
@@ -846,7 +918,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N442",
@@ -861,7 +935,9 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               },
               {
                 "id": "N443",
@@ -876,9 +952,13 @@
                 "dormant": [],
                 "files": [],
                 "owns": [],
-                "children": []
+                "children": [],
+                "proposal": "accepted",
+                "isNew": false
               }
-            ]
+            ],
+            "proposal": "accepted",
+            "isNew": false
           }
         ],
         "proposal": "accepted",
@@ -937,7 +1017,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           },
           {
             "id": "N447",
@@ -952,7 +1034,9 @@
             "dormant": [],
             "files": [],
             "owns": [],
-            "children": []
+            "children": [],
+            "proposal": "accepted",
+            "isNew": false
           }
         ],
         "proposal": "accepted",
@@ -967,6 +1051,8 @@
       }
     ],
     "owns": [],
-    "ideas": []
+    "ideas": [],
+    "proposal": "accepted",
+    "isNew": false
   }
 }
