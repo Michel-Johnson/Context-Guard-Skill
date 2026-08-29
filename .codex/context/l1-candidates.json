@@ -56,10 +56,8 @@
         {
           "id": "s6",
           "title": "检索夹具",
-          "purpose": "fixtures/harbor、openclaw 与配套脚本，验证小索引跳法",
-          "owns": [
-            "fixtures/"
-          ]
+          "purpose": "评测夹具在测试分支 cursor/test-layout-f54e，产品仓不带",
+          "owns": []
         },
         {
           "id": "s7",
@@ -125,10 +123,8 @@
         {
           "id": "f6",
           "title": "验证与对照",
-          "purpose": "harbor/openclaw 夹具与检索计时，验证只靠索引是否干净",
-          "owns": [
-            "fixtures/"
-          ]
+          "purpose": "评测夹具在测试分支，产品仓不带",
+          "owns": []
         }
       ]
     },
@@ -180,10 +176,8 @@
         {
           "id": "a6",
           "title": "验证层",
-          "purpose": "夹具与检索对照，证明索引跳法可依赖",
-          "owns": [
-            "fixtures/"
-          ]
+          "purpose": "评测夹具在测试分支，产品仓不带",
+          "owns": []
         }
       ]
     },

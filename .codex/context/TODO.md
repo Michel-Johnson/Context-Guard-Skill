@@ -30,9 +30,9 @@
 
 已经做的：
 
-- 真 Agent 难任务对照见 `fixtures/openclaw/eval/REPORT.md`：**只靠索引最干净**（约 1 分钟、10 次 Read）。Grep / `jump --json` 都会额外扫盘；只跟链接会迷路。
+- 真 Agent 难任务对照见测试分支 `cursor/test-layout-f54e` 上的 OpenClaw 评测报告：**只靠索引最干净**（约 1 分钟、10 次 Read）。Grep / `jump --json` 都会额外扫盘；只跟链接会迷路。
 - Agent 主找法锁定为小索引：`owns-index.json` / `bugs-index.json` / `tasks-index.json` / `sessions.jsonl` 末尾，再打开命中的 Markdown。`jump` 留给脚本。
-- 计时见 `fixtures/openclaw/JUMP-SPEED.md`。
+- 计时也在测试分支，产品仓不带假仓。
 
 ## 3. CI/CD 测试（第五块）
 

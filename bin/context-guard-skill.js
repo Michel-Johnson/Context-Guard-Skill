@@ -16,8 +16,7 @@ const skillInstallEntries = [
   "README.zh-CN.md",
   "agents",
   "references",
-  "scripts",
-  "tests"
+  "scripts"
 ];
 
 function usage() {

@@ -22,12 +22,11 @@
     "agents/",
     "bin/",
     "references/",
-    "scripts/",
-    "tests/"
+    "scripts/"
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "bash tests/npm-install-smoke.sh && python3 -m py_compile scripts/context_guard.py scripts/context_guard_hook.py"
+    "test": "python3 -m py_compile scripts/context_guard.py scripts/context_guard_hook.py scripts/map_owns.py"
   },
   "engines": {
     "node": ">=18"

@@ -98,7 +98,7 @@ git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
 rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents references scripts tests \
+  SKILL.md README.md README.zh-CN.md agents references scripts \
   ~/.codex/skills/context-guard/
 ```
 
