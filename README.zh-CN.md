@@ -18,7 +18,7 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 
 人在 `prototype/workbench.html` 里看图、点头。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/first-use-interactive-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/first-use-interactive-f54e/prototype/workbench.html)
+**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/map-web-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)
 
 第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
 
