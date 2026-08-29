@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-FIX = Path(__file__).resolve().parents[1] / "openclaw"
+FIX = Path(__file__).resolve().parent / "openclaw"
 PY = sys.executable
 SCRIPT = REPO / "scripts" / "map_owns.py"
 

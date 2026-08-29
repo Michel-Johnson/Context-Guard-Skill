@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-FIX = Path(__file__).resolve().parents[1] / "openclaw"
+FIX = Path(__file__).resolve().parent / "openclaw"
 CTX = FIX / ".codex" / "context"
 
 
