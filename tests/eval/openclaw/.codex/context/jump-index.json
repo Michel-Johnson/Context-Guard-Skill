@@ -1,0 +1,1055 @@
+{
+  "owns": [
+    {
+      "path": "src/gateway/",
+      "node": "M1",
+      "kind": "module",
+      "card": ".codex/context/cards/M1.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/gateway/server.ts",
+      "node": "M11",
+      "kind": "module",
+      "card": ".codex/context/cards/M11.md",
+      "chain": [
+        "T0",
+        "M1"
+      ]
+    },
+    {
+      "path": "src/gateway/server.ts",
+      "node": "N11",
+      "kind": "work",
+      "card": ".codex/context/cards/N11.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M11"
+      ]
+    },
+    {
+      "path": "src/gateway/healthz.ts",
+      "node": "N11b",
+      "kind": "work",
+      "card": ".codex/context/cards/N11b.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M11"
+      ]
+    },
+    {
+      "path": "src/gateway/protocol/",
+      "node": "M12",
+      "kind": "module",
+      "card": ".codex/context/cards/M12.md",
+      "chain": [
+        "T0",
+        "M1"
+      ]
+    },
+    {
+      "path": "src/gateway/protocol/connect.ts",
+      "node": "N12",
+      "kind": "work",
+      "card": ".codex/context/cards/N12.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M12"
+      ]
+    },
+    {
+      "path": "src/gateway/protocol/frames.ts",
+      "node": "N13",
+      "kind": "work",
+      "card": ".codex/context/cards/N13.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M12"
+      ]
+    },
+    {
+      "path": "packages/gateway-protocol/",
+      "node": "N14",
+      "kind": "work",
+      "card": ".codex/context/cards/N14.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M12"
+      ]
+    },
+    {
+      "path": "src/auto-reply/",
+      "node": "M13",
+      "kind": "module",
+      "card": ".codex/context/cards/M13.md",
+      "chain": [
+        "T0",
+        "M1"
+      ]
+    },
+    {
+      "path": "src/auto-reply/agent-runner.ts",
+      "node": "N15",
+      "kind": "work",
+      "card": ".codex/context/cards/N15.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M13"
+      ]
+    },
+    {
+      "path": "src/routing/session-key.ts",
+      "node": "N16",
+      "kind": "work",
+      "card": ".codex/context/cards/N16.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M13"
+      ]
+    },
+    {
+      "path": "src/gateway/queue.ts",
+      "node": "N17",
+      "kind": "work",
+      "card": ".codex/context/cards/N17.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M13"
+      ]
+    },
+    {
+      "path": "packages/agent-core/",
+      "node": "M2",
+      "kind": "module",
+      "card": ".codex/context/cards/M2.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "packages/agent-core/loop.ts",
+      "node": "M21",
+      "kind": "module",
+      "card": ".codex/context/cards/M21.md",
+      "chain": [
+        "T0",
+        "M2"
+      ]
+    },
+    {
+      "path": "packages/agent-core/loop.ts",
+      "node": "N21",
+      "kind": "work",
+      "card": ".codex/context/cards/N21.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M21"
+      ]
+    },
+    {
+      "path": "packages/agent-core/compress.ts",
+      "node": "N23",
+      "kind": "work",
+      "card": ".codex/context/cards/N23.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M21"
+      ]
+    },
+    {
+      "path": "packages/agent-core/truncate.ts",
+      "node": "N24",
+      "kind": "work",
+      "card": ".codex/context/cards/N24.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M21"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/",
+      "node": "M22",
+      "kind": "module",
+      "card": ".codex/context/cards/M22.md",
+      "chain": [
+        "T0",
+        "M2"
+      ]
+    },
+    {
+      "path": "packages/memory-host-sdk/index.ts",
+      "node": "N27",
+      "kind": "work",
+      "card": ".codex/context/cards/N27.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M22"
+      ]
+    },
+    {
+      "path": "packages/tools/",
+      "node": "M23",
+      "kind": "module",
+      "card": ".codex/context/cards/M23.md",
+      "chain": [
+        "T0",
+        "M2"
+      ]
+    },
+    {
+      "path": "packages/tools/host.ts",
+      "node": "N29",
+      "kind": "work",
+      "card": ".codex/context/cards/N29.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M23"
+      ]
+    },
+    {
+      "path": "packages/tools/sandbox.ts",
+      "node": "N2a",
+      "kind": "work",
+      "card": ".codex/context/cards/N2a.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M23"
+      ]
+    },
+    {
+      "path": "src/channels/",
+      "node": "M3",
+      "kind": "module",
+      "card": ".codex/context/cards/M3.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/channels/whatsapp/baileys.ts",
+      "node": "N31",
+      "kind": "work",
+      "card": ".codex/context/cards/N31.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "src/channels/telegram/grammy.ts",
+      "node": "N32",
+      "kind": "work",
+      "card": ".codex/context/cards/N32.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "src/channels/allowlist.ts",
+      "node": "N38",
+      "kind": "work",
+      "card": ".codex/context/cards/N38.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "src/channels/pairing-queue.ts",
+      "node": "N39",
+      "kind": "work",
+      "card": ".codex/context/cards/N39.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "src/commands/pairing.ts",
+      "node": "N3a",
+      "kind": "work",
+      "card": ".codex/context/cards/N3a.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "src/channels/imessage.ts",
+      "node": "N37",
+      "kind": "work",
+      "card": ".codex/context/cards/N37.md",
+      "chain": [
+        "T0",
+        "M3"
+      ]
+    },
+    {
+      "path": "packages/plugin-sdk/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "skills/",
+      "node": "M5",
+      "kind": "module",
+      "card": ".codex/context/cards/M5.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "packages/plugin-sdk/lifecycle.ts",
+      "node": "N51",
+      "kind": "work",
+      "card": ".codex/context/cards/N51.md",
+      "chain": [
+        "T0",
+        "M5"
+      ]
+    },
+    {
+      "path": "packages/mcp/server.ts",
+      "node": "N56",
+      "kind": "work",
+      "card": ".codex/context/cards/N56.md",
+      "chain": [
+        "T0",
+        "M5"
+      ]
+    },
+    {
+      "path": "skills/",
+      "node": "N59",
+      "kind": "work",
+      "card": ".codex/context/cards/N59.md",
+      "chain": [
+        "T0",
+        "M5"
+      ]
+    },
+    {
+      "path": "src/models/",
+      "node": "M4",
+      "kind": "module",
+      "card": ".codex/context/cards/M4.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/models/catalog.ts",
+      "node": "N43",
+      "kind": "work",
+      "card": ".codex/context/cards/N43.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "src/models/scan.ts",
+      "node": "N44",
+      "kind": "work",
+      "card": ".codex/context/cards/N44.md",
+      "chain": [
+        "T0",
+        "M4"
+      ]
+    },
+    {
+      "path": "apps/",
+      "node": "M6",
+      "kind": "module",
+      "card": ".codex/context/cards/M6.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "apps/macos/GatewayClient.swift",
+      "node": "N61",
+      "kind": "work",
+      "card": ".codex/context/cards/N61.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "apps/macos/ProtocolModels.swift",
+      "node": "N62",
+      "kind": "work",
+      "card": ".codex/context/cards/N62.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "apps/android/Node.kt",
+      "node": "N65",
+      "kind": "work",
+      "card": ".codex/context/cards/N65.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "apps/android/Policy.kt",
+      "node": "N67",
+      "kind": "work",
+      "card": ".codex/context/cards/N67.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "apps/linux/headless.ts",
+      "node": "N68",
+      "kind": "work",
+      "card": ".codex/context/cards/N68.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "apps/linux/exec.ts",
+      "node": "N69",
+      "kind": "work",
+      "card": ".codex/context/cards/N69.md",
+      "chain": [
+        "T0",
+        "M6"
+      ]
+    },
+    {
+      "path": "src/commands/",
+      "node": "M7",
+      "kind": "module",
+      "card": ".codex/context/cards/M7.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/tui/",
+      "node": "M7",
+      "kind": "module",
+      "card": ".codex/context/cards/M7.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "apps/control/",
+      "node": "M7",
+      "kind": "module",
+      "card": ".codex/context/cards/M7.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/commands/onboard.ts",
+      "node": "N72",
+      "kind": "work",
+      "card": ".codex/context/cards/N72.md",
+      "chain": [
+        "T0",
+        "M7"
+      ]
+    },
+    {
+      "path": "src/commands/doctor.ts",
+      "node": "N78",
+      "kind": "work",
+      "card": ".codex/context/cards/N78.md",
+      "chain": [
+        "T0",
+        "M7"
+      ]
+    },
+    {
+      "path": "src/tui/tui.ts",
+      "node": "N7i",
+      "kind": "work",
+      "card": ".codex/context/cards/N7i.md",
+      "chain": [
+        "T0",
+        "M7"
+      ]
+    },
+    {
+      "path": "apps/control/webchat.ts",
+      "node": "N7p",
+      "kind": "work",
+      "card": ".codex/context/cards/N7p.md",
+      "chain": [
+        "T0",
+        "M7"
+      ]
+    },
+    {
+      "path": "src/commands/cron.ts",
+      "node": "N7e",
+      "kind": "work",
+      "card": ".codex/context/cards/N7e.md",
+      "chain": [
+        "T0",
+        "M7"
+      ]
+    },
+    {
+      "path": "src/security/",
+      "node": "M8",
+      "kind": "module",
+      "card": ".codex/context/cards/M8.md",
+      "chain": [
+        "T0"
+      ]
+    },
+    {
+      "path": "src/security/auth.ts",
+      "node": "N81",
+      "kind": "work",
+      "card": ".codex/context/cards/N81.md",
+      "chain": [
+        "T0",
+        "M8"
+      ]
+    },
+    {
+      "path": "src/security/tunnel.ts",
+      "node": "N82",
+      "kind": "work",
+      "card": ".codex/context/cards/N82.md",
+      "chain": [
+        "T0",
+        "M8"
+      ]
+    }
+  ],
+  "bugs": {
+    "B10": {
+      "title": "非 loopback 误开 auth.mode=none",
+      "keys": [
+        "loopback",
+        "auth",
+        "none",
+        "公网"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B10.md",
+      "fix": ".codex/context/fixes/B10.md",
+      "card": ".codex/context/cards/N11.md"
+    },
+    "B11": {
+      "title": "关闭时 active session 排空竞态",
+      "keys": [
+        "drain",
+        "shutdown",
+        "session",
+        "竞态"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B11.md",
+      "fix": ".codex/context/fixes/B11.md",
+      "card": ".codex/context/cards/N15.md"
+    },
+    "B12": {
+      "title": "connect 不是首帧仍保持连接",
+      "keys": [
+        "connect",
+        "握手",
+        "断开"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B12.md",
+      "fix": ".codex/context/fixes/B12.md",
+      "card": ".codex/context/cards/N12.md"
+    },
+    "B20": {
+      "title": "长会话上下文膨胀",
+      "keys": [
+        "transcript",
+        "超时",
+        "裁剪",
+        "上下文"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B20.md",
+      "fix": ".codex/context/fixes/B20.md",
+      "card": ".codex/context/cards/M2.md"
+    },
+    "B21": {
+      "title": "未沙箱时工具等同本机权限",
+      "keys": [
+        "sandbox",
+        "权限",
+        "暴露"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B21.md",
+      "fix": ".codex/context/fixes/B21.md",
+      "card": ".codex/context/cards/M2.md"
+    },
+    "B22": {
+      "title": "tool JSON 损坏直接炸 run",
+      "keys": [
+        "tool",
+        "JSON",
+        "重试"
+      ],
+      "status": "fixed",
+      "bug": ".codex/context/bugs/B22.md",
+      "fix": ".codex/context/fixes/B22.md",
+      "card": ".codex/context/cards/N21.md"
+    },
+    "B23": {
+      "title": "两种 memory 实现同时写入",
+      "keys": [
+        "memory",
+        "单槽",
+        "互斥"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B23.md",
+      "fix": ".codex/context/fixes/B23.md",
+      "card": ".codex/context/cards/N27.md"
+    },
+    "B30": {
+      "title": "DM 渠道默认配对提示易被忽略",
+      "keys": [
+        "pairing",
+        "DM",
+        "配对",
+        "队列"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B30.md",
+      "fix": ".codex/context/fixes/B30.md",
+      "card": ".codex/context/cards/M3.md"
+    },
+    "B31": {
+      "title": "第二台 Gateway 踢掉 Baileys 会话",
+      "keys": [
+        "whatsapp",
+        "baileys",
+        "多实例"
+      ],
+      "status": "fixed",
+      "bug": ".codex/context/bugs/B31.md",
+      "fix": ".codex/context/fixes/B31.md",
+      "card": ".codex/context/cards/N31.md"
+    },
+    "B32": {
+      "title": "pairing CLI 与 Control UI 改两份队列",
+      "keys": [
+        "pairing",
+        "CLI",
+        "队列"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B32.md",
+      "fix": ".codex/context/fixes/B32.md",
+      "card": ".codex/context/cards/N3a.md"
+    },
+    "B40": {
+      "title": "新 skill 被合进 core",
+      "keys": [
+        "skill",
+        "core",
+        "ClawHub"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B40.md",
+      "fix": ".codex/context/fixes/B40.md",
+      "card": ".codex/context/cards/N59.md"
+    },
+    "B41": {
+      "title": "MCP 工具复制了一套 agent 路径",
+      "keys": [
+        "MCP",
+        "tool",
+        "合流"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B41.md",
+      "fix": ".codex/context/fixes/B41.md",
+      "card": ".codex/context/cards/N56.md"
+    },
+    "B50": {
+      "title": "模型扫描把密钥打进日志",
+      "keys": [
+        "密钥",
+        "日志",
+        "scan",
+        "模型"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B50.md",
+      "fix": ".codex/context/fixes/B50.md",
+      "card": ".codex/context/cards/N44.md"
+    },
+    "B60": {
+      "title": "Android node caps 策略来源不一致",
+      "keys": [
+        "android",
+        "policy",
+        "caps"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B60.md",
+      "fix": ".codex/context/fixes/B60.md",
+      "card": ".codex/context/cards/M6.md"
+    },
+    "B61": {
+      "title": "Linux exec 取消杀不到子进程",
+      "keys": [
+        "linux",
+        "exec",
+        "abort",
+        "取消"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B61.md",
+      "fix": ".codex/context/fixes/B61.md",
+      "card": ".codex/context/cards/N69.md"
+    },
+    "B62": {
+      "title": "Swift 协议模型手写后和 schema 分叉",
+      "keys": [
+        "swift",
+        "schema",
+        "协议"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B62.md",
+      "fix": ".codex/context/fixes/B62.md",
+      "card": ".codex/context/cards/N62.md"
+    },
+    "B70": {
+      "title": "远程 Control UI 必须与 Gateway 同隧道",
+      "keys": [
+        "隧道",
+        "Control UI",
+        "远程",
+        "ssh"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B70.md",
+      "fix": ".codex/context/fixes/B70.md",
+      "card": ".codex/context/cards/N7p.md"
+    },
+    "B71": {
+      "title": "TUI --local 误当成第二个 Gateway",
+      "keys": [
+        "tui",
+        "local",
+        "Gateway"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B71.md",
+      "fix": ".codex/context/fixes/B71.md",
+      "card": ".codex/context/cards/N7i.md"
+    },
+    "B72": {
+      "title": "doctor --fix 被当成可选项跳过",
+      "keys": [
+        "doctor",
+        "迁移",
+        "config"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B72.md",
+      "fix": ".codex/context/fixes/B72.md",
+      "card": ".codex/context/cards/N78.md"
+    },
+    "B80": {
+      "title": "allowlist 空时私聊直进 agent",
+      "keys": [
+        "allowlist",
+        "私聊",
+        "配对"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B80.md",
+      "fix": ".codex/context/fixes/B80.md",
+      "card": ".codex/context/cards/N38.md"
+    },
+    "B81": {
+      "title": "healthz 在非 loopback 也 200",
+      "keys": [
+        "healthz",
+        "探活",
+        "暴露"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B81.md",
+      "fix": ".codex/context/fixes/B81.md",
+      "card": ".codex/context/cards/N11.md"
+    },
+    "B82": {
+      "title": "event 缺口客户端不刷新导致气泡乱序",
+      "keys": [
+        "event",
+        "序号",
+        "刷新"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B82.md",
+      "fix": ".codex/context/fixes/B82.md",
+      "card": ".codex/context/cards/N13.md"
+    },
+    "B83": {
+      "title": "cron 任务在 Gateway 停掉后仍打本机",
+      "keys": [
+        "cron",
+        "scheduler",
+        "Gateway"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B83.md",
+      "fix": ".codex/context/fixes/B83.md",
+      "card": ".codex/context/cards/N7e.md"
+    },
+    "B84": {
+      "title": "插件 dispose 不跑导致热更新泄漏",
+      "keys": [
+        "插件",
+        "dispose",
+        "热更新"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B84.md",
+      "fix": ".codex/context/fixes/B84.md",
+      "card": ".codex/context/cards/N51.md"
+    },
+    "B85": {
+      "title": "iMessage 桥多开抢同一身份",
+      "keys": [
+        "imessage",
+        "多开",
+        "身份"
+      ],
+      "status": "open",
+      "bug": ".codex/context/bugs/B85.md",
+      "fix": ".codex/context/fixes/B85.md",
+      "card": ".codex/context/cards/N37.md"
+    }
+  },
+  "tasks": {
+    "J1": {
+      "title": "本机第一次 onboard",
+      "keys": [
+        "onboard",
+        "安装",
+        "daemon",
+        "工作区"
+      ],
+      "task": ".codex/context/tasks/J1.md",
+      "chain": [
+        "T0",
+        "M7",
+        "N72"
+      ],
+      "card": ".codex/context/cards/N72.md"
+    },
+    "J10": {
+      "title": "WhatsApp 只开一个会话",
+      "keys": [
+        "whatsapp",
+        "baileys",
+        "单实例"
+      ],
+      "task": ".codex/context/tasks/J10.md",
+      "chain": [
+        "T0",
+        "M3",
+        "N31"
+      ],
+      "card": ".codex/context/cards/N31.md"
+    },
+    "J11": {
+      "title": "doctor 迁移旧配置",
+      "keys": [
+        "doctor",
+        "迁移",
+        "config"
+      ],
+      "task": ".codex/context/tasks/J11.md",
+      "chain": [
+        "T0",
+        "M7",
+        "N78"
+      ],
+      "card": ".codex/context/cards/N78.md"
+    },
+    "J12": {
+      "title": "取消 Linux 远程命令",
+      "keys": [
+        "linux",
+        "abort",
+        "exec"
+      ],
+      "task": ".codex/context/tasks/J12.md",
+      "chain": [
+        "T0",
+        "M6",
+        "N69"
+      ],
+      "card": ".codex/context/cards/N69.md"
+    },
+    "J2": {
+      "title": "批准未知发送者",
+      "keys": [
+        "pairing",
+        "批准",
+        "DM",
+        "队列"
+      ],
+      "task": ".codex/context/tasks/J2.md",
+      "chain": [
+        "T0",
+        "M3",
+        "N3a"
+      ],
+      "card": ".codex/context/cards/N3a.md"
+    },
+    "J3": {
+      "title": "暴露前打开沙箱",
+      "keys": [
+        "sandbox",
+        "暴露",
+        "权限"
+      ],
+      "task": ".codex/context/tasks/J3.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M23",
+        "N2a"
+      ],
+      "card": ".codex/context/cards/N2a.md"
+    },
+    "J4": {
+      "title": "Linux node 常驻",
+      "keys": [
+        "linux",
+        "node",
+        "systemd",
+        "常驻"
+      ],
+      "task": ".codex/context/tasks/J4.md",
+      "chain": [
+        "T0",
+        "M6",
+        "N68"
+      ],
+      "card": ".codex/context/cards/N68.md"
+    },
+    "J5": {
+      "title": "远程 Control UI 同隧道",
+      "keys": [
+        "隧道",
+        "ssh",
+        "Control UI",
+        "远程"
+      ],
+      "task": ".codex/context/tasks/J5.md",
+      "chain": [
+        "T0",
+        "M8",
+        "N82"
+      ],
+      "card": ".codex/context/cards/N82.md"
+    },
+    "J6": {
+      "title": "裁剪长会话后再跑 agent",
+      "keys": [
+        "裁剪",
+        "transcript",
+        "超时"
+      ],
+      "task": ".codex/context/tasks/J6.md",
+      "chain": [
+        "T0",
+        "M2",
+        "M21",
+        "N23"
+      ],
+      "card": ".codex/context/cards/N23.md"
+    },
+    "J7": {
+      "title": "从 schema 再生 Swift 模型",
+      "keys": [
+        "swift",
+        "schema",
+        "协议"
+      ],
+      "task": ".codex/context/tasks/J7.md",
+      "chain": [
+        "T0",
+        "M1",
+        "M12",
+        "N14"
+      ],
+      "card": ".codex/context/cards/N14.md"
+    },
+    "J8": {
+      "title": "热更新插件",
+      "keys": [
+        "插件",
+        "dispose",
+        "热更新"
+      ],
+      "task": ".codex/context/tasks/J8.md",
+      "chain": [
+        "T0",
+        "M5",
+        "N51"
+      ],
+      "card": ".codex/context/cards/N51.md"
+    },
+    "J9": {
+      "title": "扫模型供应商且不泄密",
+      "keys": [
+        "模型",
+        "scan",
+        "密钥"
+      ],
+      "task": ".codex/context/tasks/J9.md",
+      "chain": [
+        "T0",
+        "M4",
+        "N44"
+      ],
+      "card": ".codex/context/cards/N44.md"
+    }
+  }
+}

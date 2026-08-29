@@ -1,0 +1,30 @@
+{"id": "2026-08-01-a", "human": "装机", "agent": "写了 onboard 向导", "files": ["src/commands/onboard.ts"], "bugs": [], "tasks": ["J1"]}
+{"id": "2026-08-01-b", "human": "私聊没反应", "agent": "标了配对队列", "files": ["src/channels/pairing-queue.ts"], "bugs": ["B30"], "tasks": ["J2"]}
+{"id": "2026-08-01-c", "human": "Gateway 要给同事连", "agent": "提醒先开沙箱", "files": ["packages/tools/sandbox.ts"], "bugs": ["B21"], "tasks": ["J3"]}
+{"id": "2026-08-01-d", "human": "Linux 盒子挂上", "agent": "写了 node install", "files": ["apps/linux/headless.ts"], "bugs": [], "tasks": ["J4"]}
+{"id": "2026-08-01-e", "human": "远程 WebChat 连错", "agent": "记下同隧道", "files": ["apps/control/webchat.ts"], "bugs": ["B70"], "tasks": ["J5"]}
+{"id": "2026-08-01-f", "human": "长聊天超时", "agent": "去看裁剪", "files": ["packages/agent-core/compress.ts"], "bugs": ["B20"], "tasks": ["J6"]}
+{"id": "2026-08-01-g", "human": "iOS 字段对不上", "agent": "禁止手写 Swift 模型", "files": ["apps/macos/ProtocolModels.swift"], "bugs": ["B62"], "tasks": ["J7"]}
+{"id": "2026-08-01-h", "human": "插件重载还在跑旧代码", "agent": "补 dispose", "files": ["packages/plugin-sdk/lifecycle.ts"], "bugs": ["B84"], "tasks": ["J8"]}
+{"id": "2026-08-01-i", "human": "日志里看到 token", "agent": "scan 红acted", "files": ["src/models/scan.ts"], "bugs": ["B50"], "tasks": ["J9"]}
+{"id": "2026-08-01-j", "human": "两台电脑抢 WhatsApp", "agent": "锁单实例", "files": ["src/channels/whatsapp/baileys.ts"], "bugs": ["B31"], "tasks": ["J10"]}
+{"id": "2026-08-01-k", "human": "升级后配置失效", "agent": "走 doctor --fix", "files": ["src/commands/doctor.ts"], "bugs": ["B72"], "tasks": ["J11"]}
+{"id": "2026-08-01-l", "human": "取消远程命令没用", "agent": "abort 传到 exec", "files": ["apps/linux/exec.ts"], "bugs": ["B61"], "tasks": ["J12"]}
+{"id": "2026-08-01-m", "human": "公网误关 auth", "agent": "绑定时拒绝 none", "files": ["src/gateway/server.ts"], "bugs": ["B10"], "tasks": []}
+{"id": "2026-08-01-n", "human": "关掉还丢 final", "agent": "drain 加锁", "files": ["src/auto-reply/agent-runner.ts"], "bugs": ["B11"], "tasks": []}
+{"id": "2026-08-01-o", "human": "空 allowlist 放行", "agent": "空名单仍配对", "files": ["src/channels/allowlist.ts"], "bugs": ["B80"], "tasks": []}
+{"id": "2026-08-01-p", "human": "MCP 两套工具表", "agent": "合流进 host", "files": ["packages/mcp/server.ts"], "bugs": ["B41"], "tasks": []}
+{"id": "2026-08-01-q", "human": "cron 在 Gateway 停后还跑", "agent": "定时只挂 scheduler", "files": ["src/commands/cron.ts"], "bugs": ["B83"], "tasks": []}
+{"id": "2026-08-01-r", "human": "healthz 被当成鉴权", "agent": "探活不含配置", "files": ["src/gateway/healthz.ts"], "bugs": ["B81"], "tasks": []}
+{"id": "2026-08-01-s", "human": "TUI 又起一套存储", "agent": "--local 才嵌入", "files": ["src/tui/tui.ts"], "bugs": ["B71"], "tasks": []}
+{"id": "2026-08-01-t", "human": "skill 推进 core", "agent": "改回 ClawHub", "files": ["skills/"], "bugs": ["B40"], "tasks": []}
+{"id": "2026-08-01-u", "human": "气泡乱序", "agent": "缺口刷新", "files": ["src/gateway/protocol/frames.ts"], "bugs": ["B82"], "tasks": []}
+{"id": "2026-08-01-v", "human": "Android 策略分叉", "agent": "单一来源", "files": ["apps/android/Policy.kt"], "bugs": ["B60"], "tasks": []}
+{"id": "2026-08-01-w", "human": "iMessage 双开", "agent": "本机身份不能多开", "files": ["src/channels/imessage.ts"], "bugs": ["B85"], "tasks": []}
+{"id": "2026-08-01-x", "human": "两种 memory 对写", "agent": "单槽互斥", "files": ["packages/memory-host-sdk/index.ts"], "bugs": ["B23"], "tasks": []}
+{"id": "2026-08-01-y", "human": "坏 JSON 炸 run", "agent": "当 tool error", "files": ["packages/agent-core/loop.ts"], "bugs": ["B22"], "tasks": []}
+{"id": "2026-08-01-z", "human": "pairing UI 和 CLI 不一致", "agent": "同一份队列", "files": ["src/commands/pairing.ts"], "bugs": ["B32"], "tasks": ["J2"]}
+{"id": "2026-08-02-a", "human": "非 connect 还连着", "agent": "直接断开", "files": ["src/gateway/protocol/connect.ts"], "bugs": ["B12"], "tasks": []}
+{"id": "2026-08-02-b", "human": "远程命令 cwd 越界", "agent": "caps 根目录", "files": ["apps/linux/exec.ts"], "bugs": ["B61"], "tasks": ["J12"]}
+{"id": "2026-08-02-c", "human": "Control UI 静态资源和 WS 分端口", "agent": "同端口托管", "files": ["src/gateway/server.ts"], "bugs": [], "tasks": []}
+{"id": "2026-08-02-d", "human": "models 列表不含默认", "agent": "catalog 写回默认", "files": ["src/models/catalog.ts"], "bugs": [], "tasks": ["J9"]}

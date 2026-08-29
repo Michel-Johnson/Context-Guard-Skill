@@ -1,0 +1,19 @@
+{
+  "strategy": "index-only",
+  "root_cause": "UI 和 Gateway 走了两条隧道。",
+  "config": "claw.tunnel.share=gateway-18789",
+  "command": "ssh -L 18789:127.0.0.1:18789 user@host",
+  "card_rule": "远程页只许走 Gateway 已占用的那条跳",
+  "files_opened": [
+    "/workspace/fixtures/openclaw/.codex/context/bugs-index.json",
+    "/workspace/fixtures/openclaw/.codex/context/tasks-index.json",
+    "/workspace/fixtures/openclaw/.codex/context/sessions.jsonl",
+    "/workspace/fixtures/openclaw/.codex/context/bugs/B70.md",
+    "/workspace/fixtures/openclaw/.codex/context/fixes/B70.md",
+    "/workspace/fixtures/openclaw/.codex/context/cards/N7p.md",
+    "/workspace/fixtures/openclaw/.codex/context/tasks/J5.md",
+    "/workspace/fixtures/openclaw/.codex/context/cards/N82.md"
+  ],
+  "agent_id": "bc-26d51008-83de-566e-8aa7-1bef7f41f25e",
+  "elapsed_ms": 61412
+}
