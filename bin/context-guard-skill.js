@@ -17,7 +17,7 @@ const skillInstallEntries = [
   "agents",
   "references",
   "scripts",
-  "tests"
+  "tests/hands-on"
 ];
 
 function usage() {
@@ -179,6 +179,7 @@ function copySkill(target, dryRun) {
     const from = path.join(sourceSkillDir, entry);
     if (!fs.existsSync(from)) continue;
     const to = path.join(target, entry);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.cpSync(from, to, { recursive: true });
   }
   console.log(`[context-guard-skill] installed skill: ${target}`);

@@ -98,7 +98,7 @@ git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
 rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents references scripts tests \
+  SKILL.md README.md README.zh-CN.md agents references scripts tests/hands-on \
   ~/.codex/skills/context-guard/
 ```
 
@@ -160,6 +160,26 @@ python3 scripts/context_guard.py set-language --root /path/to/project --language
 ## 主要文件
 
 ```text
+.
+|-- SKILL.md                 # skill 合同（一页）
+|-- README.md / README.zh-CN.md
+|-- package.json / bin/      # npx 装进 ~/.codex/skills
+|-- hooks.json               # 可选的 Codex 生命周期 hook
+|-- agents/ / references/
+|-- scripts/                 # 产品命令：init、set-language、map_owns、hook
+|-- prototype/workbench.html # 人看的画布
+|-- docs/shots/              # README 截图，不是测试
+|-- .codex/context/          # 本仓自己的记忆
+|-- tests/
+|   |-- hands-on/            # 上手测试，别人能跑；进 npm 包
+|   |-- eval/                # 假仓、检索对照；合并命令分支时可丢掉
+|   `-- local/               # 已 gitignore，只留你电脑上
+`-- .github/                 # npm 发布
+```
+
+`.codex/context/`（本仓自己的记忆）：
+
+```text
 .codex/context/
 |-- FIND.md
 |-- sessions.jsonl
@@ -171,5 +191,7 @@ python3 scripts/context_guard.py set-language --root /path/to/project --language
 |-- user-messages.md
 `-- private/                     # gitignored
 ```
+
+测试怎么分、合并时交不交：见 [`tests/README.md`](tests/README.md)。合并到命令分支时，可以整夹不要 `tests/`，也可以只留 `tests/hands-on/`。
 
 见 [`SKILL.md`](SKILL.md)（一页）和 `.codex/context/FIND.md`。

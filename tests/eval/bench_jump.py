@@ -8,10 +8,10 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-FIX = ROOT / "fixtures" / "openclaw"
+REPO = Path(__file__).resolve().parents[2]
+FIX = Path(__file__).resolve().parents[1] / "openclaw"
 PY = sys.executable
-SCRIPT = ROOT / "scripts" / "map_owns.py"
+SCRIPT = REPO / "scripts" / "map_owns.py"
 
 BATCH = {
     "path": [
@@ -47,7 +47,7 @@ def timed_cmd(args: list[str], rounds: int = 5, label: str | None = None) -> dic
     last = ""
     for _ in range(rounds):
         t0 = time.perf_counter()
-        p = subprocess.run(args, cwd=ROOT, capture_output=True, text=True)
+        p = subprocess.run(args, cwd=REPO, capture_output=True, text=True)
         times.append(time.perf_counter() - t0)
         last = p.stdout
     times.sort()
@@ -67,7 +67,7 @@ def timed_sequential_jumps(rounds: int = 5) -> dict:
     for _ in range(rounds):
         t0 = time.perf_counter()
         for args in cmds:
-            subprocess.run(args, cwd=ROOT, capture_output=True, text=True)
+            subprocess.run(args, cwd=REPO, capture_output=True, text=True)
         times.append(time.perf_counter() - t0)
     times.sort()
     return {
@@ -82,7 +82,7 @@ def timed_sequential_jumps(rounds: int = 5) -> dict:
 
 
 def timed_import_jump(kwargs: dict, rounds: int = 5) -> dict:
-    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(REPO / "scripts"))
     import map_owns
 
     times = []
@@ -102,7 +102,7 @@ def timed_import_jump(kwargs: dict, rounds: int = 5) -> dict:
 
 
 def timed_import_jump_many(rounds: int = 5) -> dict:
-    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(REPO / "scripts"))
     import map_owns
 
     times = []
@@ -125,7 +125,7 @@ def timed_import_jump_many(rounds: int = 5) -> dict:
 
 
 def timed_read_jump_index(rounds: int = 5) -> dict:
-    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(REPO / "scripts"))
     import map_owns
 
     packed_path = FIX / ".codex" / "context" / "jump-index.json"
@@ -178,7 +178,7 @@ def hit_key(row: dict) -> tuple:
 
 
 def check_batch_hits() -> dict:
-    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(REPO / "scripts"))
     import map_owns
 
     sequential = []
@@ -222,7 +222,7 @@ def count_store() -> dict:
 
 def main() -> int:
     if not (FIX / ".codex" / "context" / "map.json").exists():
-        print("run python3 scripts/openclaw_fixture.py first", file=sys.stderr)
+        print("run python3 tests/eval/openclaw_fixture.py first", file=sys.stderr)
         return 2
     batch_json = json.dumps(BATCH, ensure_ascii=False)
     base = [PY, str(SCRIPT), "jump", "--root", str(FIX)]
@@ -252,7 +252,7 @@ def main() -> int:
     lines = [
         "# OpenClaw jump 耗时",
         "",
-        "夹具：`fixtures/openclaw`。每条跑 5 次，看中位数。",
+        "夹具：`tests/eval/openclaw`。每条跑 5 次，看中位数。",
         "",
         f"- 卡 {report['store']['cards']} 张，坏例 {report['store']['bugs']} 条，任务 {report['store']['tasks']} 份，会话 {report['store']['sessions']} 行，路径归属 {report['store']['owns']} 条。",
         f"- `jump-index.json` {report['store']['jump_index_bytes']} 字节；`map.json` 约 30KB。批量样例 {n_seq} 条查询（6 条路径 + 3 条坏例 + 3 条任务 + last）。",

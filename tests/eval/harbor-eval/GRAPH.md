@@ -51,7 +51,7 @@
 和讨论稿一致：关系线可以保留「谁给谁」这句话；Agent 加载时当能往返的邻居，而且先只打开**这张卡**的一跳，不要把祖先每一层都铺开。真正「牵到别的模块」以后可以再走下一跳，这次实验还没做按需第二跳。
 
 ```bash
-python3 scripts/harbor_recall.py project
-python3 scripts/harbor_recall.py eval-graph
+python3 tests/eval/harbor_recall.py project
+python3 tests/eval/harbor_recall.py eval-graph
 ```
 

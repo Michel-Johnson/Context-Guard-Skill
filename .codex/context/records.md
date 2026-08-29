@@ -163,14 +163,14 @@ OpenClaw 演示图里的 Bug 桩可以暂时只有标题，直到那条真是本
 
 我们用一个假仓库做过对照：里面有很多模块、记忆和坏例。有时假装要改某个文件，有时只记得用户报的一句话。地图只当目录用。一两句规矩写在对应那张卡上；坏例详情单独放小文件；页面上只显示标题。不要把整张地图读进脑子。改哪个文件，就看负责这文件的卡，以及上面几层的短规矩。用户在说现象，就去坏例文件夹里找，不要一次倒出所有坑。不要再维护一份把所有坏例写在一起的总清单，一搜整本都进来。
 
-假仓 `fixtures/harbor/`（约 59 个节点、42 个源文件、27 条记忆、12 条坏例），同一份语料投影到 `fixtures/harbor-eval/layouts/`。评测把 **index**（为了找到答案扫过的字节）和 **payload**（会进模型的切片）分开。复现：
+假仓 `tests/eval/harbor/`（约 59 个节点、42 个源文件、27 条记忆、12 条坏例），同一份语料投影到 `tests/eval/harbor-eval/layouts/`。评测把 **index**（为了找到答案扫过的字节）和 **payload**（会进模型的切片）分开。复现：
 
 ```bash
-python3 scripts/harbor_recall.py project
-python3 scripts/harbor_recall.py eval
+python3 tests/eval/harbor_recall.py project
+python3 tests/eval/harbor_recall.py eval
 ```
 
-完整表在 `fixtures/harbor-eval/REPORT.md`。跑出来的形状是：
+完整表在 `tests/eval/harbor-eval/REPORT.md`。跑出来的形状是：
 
 | 策略 | 改文件 | 按现象搜 | payload | index | 问题 |
 |---|---|---|---|---|---|
@@ -202,7 +202,7 @@ Agent 读本仓的约定因此收成两条：
 
 现在实际：点未修 Bug 只画出上下级链。关系线存的是「谁产出给谁」。人打开「关系」时已经把两边都高亮。Agent 改文件 / 修 bug 还不会顺着关系读。
 
-假仓上做过四种读法对照（`python3 scripts/harbor_recall.py eval-graph`，表在 `fixtures/harbor-eval/GRAPH.md`）：
+假仓上做过四种读法对照（`python3 tests/eval/harbor_recall.py eval-graph`，表在 `tests/eval/harbor-eval/GRAPH.md`）：
 
 - **只读这条链**：修 WebChat 的隧道问题、修沙箱逃逸，会漏掉隔壁卡上的规矩。
 - **只许顺着箭头离开**：箭头若是指过来的，同样漏。给人看的「谁给谁」不能当成 Agent 只许往一个方向走。

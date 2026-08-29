@@ -2,7 +2,7 @@
 
 同一份 Harbor 地图和坏例，投影成不同落盘，用同一组问题模拟 Agent 读盘。
 `index` 是为了找到答案扫过的字节（例如整份 map.json）；`payload` 是会进模型上下文的切片。
-假仓在 `fixtures/harbor/`，布局在 `fixtures/harbor-eval/layouts/`。
+假仓在 `tests/eval/harbor/`，布局在 `tests/eval/harbor-eval/layouts/`。
 
 ## 问法
 
@@ -213,7 +213,7 @@ inbox 里的 renderCard 没有 owns；改 canvas.ts 不应自动灌入子函数�
 可复现：
 
 ```bash
-python3 scripts/harbor_recall.py project
-python3 scripts/harbor_recall.py eval
+python3 tests/eval/harbor_recall.py project
+python3 tests/eval/harbor_recall.py eval
 ```
 

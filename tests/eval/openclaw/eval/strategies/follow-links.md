@@ -5,6 +5,6 @@
 3. 禁止 Grep 整个 context 目录。
 4. 禁止打开 `*-index.json`、`jump-index.json`、`map.json`。
 5. 禁止跑 `python3 scripts/map_owns.py`。
-6. 禁止读 `fixtures/openclaw/eval/gold.json`。
+6. 禁止读 `tests/eval/openclaw/eval/gold.json`。
 
 如果从索引以外找不到入口，可以读 `sessions.jsonl` 末尾几行当入口，然后继续跟链接。
