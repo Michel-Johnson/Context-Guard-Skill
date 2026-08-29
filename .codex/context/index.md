@@ -7,6 +7,7 @@
 - Hot bad-case tags: none
 - Resume candidate: none
 - Record layout: `.codex/context/` 四块（sessions / bugs / tasks / map）
+- 本仓分支：产品 vs 测试，见 `tasks/J2.md`
 
 ## Current
 

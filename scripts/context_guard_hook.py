@@ -106,7 +106,7 @@ def hook_log(message: str) -> None:
 
 
 def hook_response(**payload: object) -> int:
-    print(json.dumps(payload, ensure_ascii=False))
+    print(json.dumps(payload, ensure_ascii=False) if payload else "{}")
     return 0
 
 
@@ -162,7 +162,19 @@ def main() -> int:
         hook_log(
             f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})"
         )
-        return hook_response()
+        playbook = ctx / "tasks" / "J2.md"
+        extra = ""
+        if playbook.is_file():
+            extra = (
+                "本仓开发：产品分支改产品并合 main；"
+                "测试分支 cursor/test-layout-f54e 只改 tests/（可有假仓）；"
+                "测试里发现问题回产品分支修。见 .codex/context/tasks/J2.md。"
+            )
+            hook_log("[context-guard] " + extra)
+        payload: dict = {}
+        if extra:
+            payload["additionalContext"] = extra
+        return hook_response(**payload)
 
     if event == "user-prompt-submit":
         status = append_user_message(ctx, prompt_text(raw))

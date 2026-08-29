@@ -35,6 +35,7 @@
 - 改某个源码 → `owns-index.json` → `cards/卡号.md`
 - 人报了 bug → `bugs-index.json` 按 `keys` 对词 → `bugs/B20.md` → `fixes/B20.md`
 - 再做同类的活 → `tasks-index.json` 按 `keys` 对词 → `tasks/J1.md`
+- 本仓怎么开产品/测试分支 → `tasks/J2.md`
 - 问上次说过什么 → `sessions.jsonl` 末尾几行
 
 不要 Grep 整个 `.codex/context/`，不要把 `map.json`、`jump-index.json` 整份读进对话。OpenClaw 难任务对照里，只靠索引最快也最干净。

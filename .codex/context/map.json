@@ -57,6 +57,11 @@
         "text": "SKILL.md 合同挂在根上：无图才商量；有图则打开；不贴整图。",
         "state": "success",
         "files": []
+      },
+      {
+        "text": "本仓开发：产品分支改产品、合 main；测试分支只改 tests/（可有假仓）；测试里发现问题回产品分支修。见 tasks/J2.md。",
+        "state": "success",
+        "files": []
       }
     ],
     "bugs": [],

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Enforce product vs test branch. Enable once: git config core.hooksPath .githooks
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+exec python3 "$ROOT/scripts/branch_guard.py"

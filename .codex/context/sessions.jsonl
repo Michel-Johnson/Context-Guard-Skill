@@ -36,3 +36,4 @@
 {"id":"2026-08-29-b","human":"为啥节点还有很多绿点？这些都是我自己放的","agent":"绿点被误标成 Agent 提议。人放的卡进模块时还会被重新标成提议。已改：人放的卡不显示绿点，进模块不再把子卡改成提议","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-29-c","human":"PR里部分文件能不能不合进主分支？分支测试不要污染main","agent":"GitHub合PR不能勾选文件。测试整理放到 cursor/test-layout-f54e，不合main。本PR只留工作台改动。本地dump gitignore。","files":[".gitignore"],"bugs":[],"tasks":[]}
 {"id":"2026-08-29-d","human":"产品分支里面还是有很多测试文件","agent":"从产品分支删掉 fixtures/、安装冒烟、评测脚本。测试只留在 cursor/test-layout-f54e。合进 main 会删掉 main 上那摊旧测试。","files":["fixtures/","tests/npm-install-smoke.sh","scripts/bench_jump.py","package.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-e","human":"把产品/测试流程写到记忆或hook，确保后续都这样开发","agent":"写入 tasks/J2.md、user-messages、根卡记忆、AGENTS.md；git pre-commit 跑 branch_guard；SessionStart 提醒。测试分支只能改 tests/，产品不能提交假仓。","files":[".codex/context/tasks/J2.md","scripts/branch_guard.py",".githooks/pre-commit","AGENTS.md","scripts/context_guard_hook.py"],"bugs":[],"tasks":["J2"]}
