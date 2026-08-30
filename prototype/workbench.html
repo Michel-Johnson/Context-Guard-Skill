@@ -18,6 +18,8 @@
   --yellow:#ffe66d; --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
+  --drawer-width:340px;
+  --bug-panel-width:240px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -163,7 +165,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) 0 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -298,12 +300,13 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:240px;
+.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:var(--bug-panel-width);
   background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
-body.bugs-open #viewport{right:240px}
-body.bugs-open .drawer{display:none}
+body.bugs-open #viewport{right:var(--bug-panel-width)}
+body.bugs-open .drawer,
+body.bugs-open .drawer-split{display:none}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
@@ -342,8 +345,14 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
+.drawer-split{position:fixed;top:var(--chrome-top);right:var(--drawer-width);width:10px;margin-right:-5px;bottom:0;
+  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
+.drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
+  background:rgba(45,45,45,.12)}
+body.drawer-resizing{cursor:col-resize;user-select:none}
+body.drawer-resizing #viewport{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -550,6 +559,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <ul id="bug-panel-list"></ul>
 </aside>
 
+<div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
 <aside class="drawer" id="detail"></aside>
 
 <script>
@@ -567,6 +577,7 @@ const I18N = {
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
+    splitTitle:"拖动调整检查器宽度，双击恢复",
     lensMode:"第一层候选",
     lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
     lensShelfHint:"候选（无连线）· 点一个挂到根下",
@@ -640,6 +651,7 @@ const I18N = {
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
+    splitTitle:"Drag to resize the inspector. Double-click to reset.",
     lensMode:"L1 candidates",
     lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
     lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
@@ -4847,6 +4859,72 @@ function chromeTop(){
   const n = parseFloat(raw);
   return Number.isFinite(n) && n>0 ? n : 52;
 }
+const DRAWER_W_KEY = "cg-drawer-width";
+const DRAWER_W_DEFAULT = 340;
+function cssPx(name, fallback){
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(n) && n>0 ? n : fallback;
+}
+function drawerWidthPx(){ return cssPx("--drawer-width", DRAWER_W_DEFAULT); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function clampDrawerWidth(px){
+  const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
+  return Math.max(220, Math.min(max, Math.round(px)));
+}
+function applyDrawerWidth(px, save){
+  const w = clampDrawerWidth(px);
+  document.documentElement.style.setProperty("--drawer-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(DRAWER_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
+function restoreDrawerWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
+    if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function bindDrawerSplit(){
+  const el = document.getElementById("drawer-split");
+  if(!el) return;
+  let dragging = false;
+  el.addEventListener("pointerdown", e=>{
+    if(document.body.classList.contains("bugs-open")) return;
+    if(e.pointerType==="mouse" && e.button!==0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    document.body.classList.add("drawer-resizing");
+    try{ el.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  el.addEventListener("pointermove", e=>{
+    if(!dragging) return;
+    applyDrawerWidth(window.innerWidth - e.clientX, false);
+  });
+  function endDrag(){
+    if(!dragging) return;
+    dragging = false;
+    document.body.classList.remove("drawer-resizing");
+    applyDrawerWidth(drawerWidthPx(), true);
+    fitView();
+  }
+  el.addEventListener("pointerup", endDrag);
+  el.addEventListener("pointercancel", endDrag);
+  el.addEventListener("dblclick", e=>{
+    e.preventDefault();
+    applyDrawerWidth(DRAWER_W_DEFAULT, true);
+    fitView();
+  });
+  el.addEventListener("keydown", e=>{
+    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 32 : 16;
+    const next = drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step);
+    applyDrawerWidth(next, true);
+    fitView();
+  });
+}
 function syncChrome(){
   const h = document.querySelector("header.top");
   if(!h) return;
@@ -4855,7 +4933,7 @@ function syncChrome(){
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
-  const right = bugs ? 240 : 340;
+  const right = bugs ? bugPanelWidthPx() : drawerWidthPx();
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
@@ -4864,7 +4942,7 @@ function fitView(){
   view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
-window.addEventListener("resize", ()=>{ syncChrome(); fitView(); });
+window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
 const vp = document.getElementById("viewport");
 let dragging=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
@@ -4920,6 +4998,8 @@ async function boot(){
     applyRepoChrome();
   }
   renderAll();
+  restoreDrawerWidth();
+  bindDrawerSplit();
   syncChrome();
   fitView();
 }

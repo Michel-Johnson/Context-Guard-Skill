@@ -43,3 +43,4 @@
 {"id":"2026-08-30-b","human":"列三条 todo：工作台与 Agent 连接同步、hook 阶段设计、bug 快存快审","agent":"写进根目录 TODO.md，补上现在缺什么、做成什么样；旧的以后/别做仍保留","files":["TODO.md",".codex/context/index.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-c","human":"todo 要 md 那种可以打勾的格式","agent":"TODO.md 改成 Markdown 任务列表，现在/以后都能勾","files":["TODO.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-d","human":"环节设计可云端做；todo 分成云端/本地；然后开始开发；前端布局以后再优化","agent":"TODO 按云端/本地分类。Skill 和 README 写清 GitHack 只看、对话确认、本地才写盘。开始做云端 Skill，不改前端布局。","files":["TODO.md","SKILL.md","README.md","README.zh-CN.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-e","human":"检查器和画布之间那条线要支持调整","agent":"右侧检查器竖线可拖动改宽度，双击恢复默认，宽度记在浏览器里","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
