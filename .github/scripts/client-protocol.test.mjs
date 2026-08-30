@@ -135,3 +135,17 @@ test("cleanup rejects workspace root, parent and sibling paths", (t) => {
   assertInside(root, path.join(root, "child"));
   for (const target of [root, path.dirname(root), `${root}-sibling`]) assert.throws(() => assertInside(root, target), /inside/);
 });
+
+test("cleanup resolves temporary-directory aliases without allowing link escapes", (t) => {
+  const root = scratch(t), real = path.join(root, "real"), alias = path.join(root, "alias"), outside = path.join(root, "outside");
+  fs.mkdirSync(path.join(real, "child"), { recursive: true }); fs.mkdirSync(outside);
+  const kind = process.platform === "win32" ? "junction" : "dir";
+  fs.symlinkSync(real, alias, kind);
+  assertInside(alias, path.join(alias, "child"));
+  assertInside(alias, path.join(alias, "missing", "child"));
+  assert.throws(() => assertInside(real, alias), /linked target/);
+  assert.throws(() => assertInside(alias, outside), /inside/);
+  const escape = path.join(real, "escape"); fs.symlinkSync(outside, escape, kind);
+  assert.throws(() => assertInside(real, escape), /linked target/);
+  assert.throws(() => assertInside(real, path.join(escape, "missing")), /inside/);
+});

@@ -15,10 +15,24 @@ const events = { SessionStart: "sessionStart", UserPromptSubmit: "userPromptSubm
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const contextPath = (project) => path.join(project, ".codex", "context");
 
+function canonicalPath(target) {
+  try { return fs.realpathSync(target); }
+  catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    assert.ok(!fs.lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink(), "Refusing a dangling linked target");
+    const parent = path.dirname(target);
+    assert.notEqual(parent, target, "Cannot resolve the target directory");
+    return path.join(canonicalPath(parent), path.basename(target));
+  }
+}
+
 export function assertInside(root, target) {
-  const relative = path.relative(fs.realpathSync(root), path.resolve(target));
+  const absolute = path.resolve(target);
+  assert.ok(!fs.lstatSync(absolute, { throwIfNoEntry: false })?.isSymbolicLink(), "Refusing a linked target");
+  // macOS /var and /private/var can name the same temporary directory. Resolve
+  // both sides, including the nearest existing ancestor of a not-yet-made path.
+  const relative = path.relative(fs.realpathSync(root), canonicalPath(absolute));
   assert.ok(relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative), "Target must be inside the disposable directory");
-  if (fs.existsSync(target)) assert.equal(fs.lstatSync(target).isSymbolicLink(), false, "Refusing a linked target");
 }
 
 export function verifyInstalled(skill, config, client) {
