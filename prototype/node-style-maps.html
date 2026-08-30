@@ -304,19 +304,42 @@ function paint(world, svg, t, tree, mode){
   return {title: mod.title, purpose: mod.purpose, crumb: tree.title+" / "+mod.title};
 }
 
+function paintShot(wb, t, tree, mode){
+  applyTheme(wb, t);
+  const world = wb.querySelector(".world");
+  const svg = wb.querySelector("svg");
+  const info = paint(world, svg, t, tree, mode);
+  wb.querySelector("[data-crumb]").textContent = info.crumb;
+  wb.querySelector("[data-dtitle]").textContent = info.title;
+  wb.querySelector("[data-dlead]").textContent = info.purpose || "";
+}
+
 function drawTheme(t, tree){
   const stage = document.createElement("section");
   stage.className = "stage";
   stage.id = "s"+t.n;
   stage.innerHTML = `
     <h1>#${t.n} · ${t.name}</h1>
-    <p class="sub">左边是画布，右边是检查器（顶栏和检查器仍是现在这版，只换模块卡）。</p>
-    <div class="tabs">
-      <button type="button" data-mode="overview" class="on">总览 · 第一层五张</button>
-      <button type="button" data-mode="enter">点进工作台</button>
+    <p class="sub">上面是第一眼（根 + 五张），下面是点进「工作台」。顶栏和检查器仍是现在这版，只换模块卡。</p>
+    <p class="tabs" style="margin-bottom:12px">
       <a class="live" href="workbench.html?theme=${t.n}&preview=1">在真工作台里看 #${t.n}</a>
+    </p>
+    <h3 style="margin:0 0 8px;font-size:14px">总览 · 第一层</h3>
+    <div class="wb" data-shot="overview">
+      <div class="top">
+        <b>Context Guard</b>
+        <span class="crumb" data-crumb></span>
+        <span class="muted">左右 · 中 · 关系 · 授权模式</span>
+      </div>
+      <div class="vp"><div class="world"><svg class="wires"></svg></div></div>
+      <aside class="drawer">
+        <div class="k">总览</div>
+        <h2 data-dtitle></h2>
+        <p class="lead" data-dlead></p>
+      </aside>
     </div>
-    <div class="wb">
+    <h3 style="margin:0 0 8px;font-size:14px">点进工作台</h3>
+    <div class="wb" data-shot="enter">
       <div class="top">
         <b>Context Guard</b>
         <span class="crumb" data-crumb></span>
@@ -329,24 +352,10 @@ function drawTheme(t, tree){
         <p class="lead" data-dlead></p>
       </aside>
     </div>`;
-  const wb = stage.querySelector(".wb");
-  applyTheme(wb, t);
-  const world = stage.querySelector(".world");
-  const svg = stage.querySelector("svg");
-  const crumb = stage.querySelector("[data-crumb]");
-  const dtitle = stage.querySelector("[data-dtitle]");
-  const dlead = stage.querySelector("[data-dlead]");
-  function show(mode){
-    const info = paint(world, svg, t, tree, mode);
-    crumb.textContent = info.crumb;
-    dtitle.textContent = info.title;
-    dlead.textContent = info.purpose || "";
-    stage.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
-  }
-  stage.querySelectorAll(".tabs button").forEach(b=>{
-    b.onclick = ()=>show(b.dataset.mode);
-  });
-  show("overview");
+  stage._show = function(){
+    paintShot(stage.querySelector('[data-shot="overview"]'), t, tree, "overview");
+    paintShot(stage.querySelector('[data-shot="enter"]'), t, tree, "enter");
+  };
   return stage;
 }
 
@@ -360,8 +369,24 @@ async function boot(){
     }
   }catch(e){}
   const app = document.getElementById("app");
-  const only = new URLSearchParams(location.search).get("n");
-  THEMES.filter(t=>!only || String(t.n)===only).forEach(t=>app.appendChild(drawTheme(t, tree)));
+  const params = new URLSearchParams(location.search);
+  const only = params.get("n");
+  const stages = THEMES.filter(t=>!only || String(t.n)===only).map(t=>{
+    const s = drawTheme(t, tree);
+    app.appendChild(s);
+    return s;
+  });
+  document.querySelectorAll(".bar a[href^='#s']").forEach(a=>{
+    if(only && a.getAttribute("href")==="#s"+only) a.classList.add("on");
+  });
+  function layout(){
+    stages.forEach(s=>s._show());
+  }
+  layout();
+  requestAnimationFrame(()=>{
+    layout();
+    if(document.fonts && document.fonts.ready) document.fonts.ready.then(layout);
+  });
 }
 boot();
 </script>
