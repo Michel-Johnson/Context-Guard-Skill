@@ -41,3 +41,4 @@
 {"id":"2026-08-29-g","human":"无用的 context 文件先删掉","agent":"删了 records.md、record-protocol.md、roadmap.md、bad-cases.md、l1-candidates.json；指向改到 FIND.md / FORMAT.md","files":[".codex/context/user-messages.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-a","human":"把 todo 放到根目录，不要放在 .codex 下面，我要看","agent":"TODO.md 挪到仓库根。FIND、index、user-messages、停用命令的指向一并改了","files":["TODO.md",".codex/context/FIND.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-b","human":"列三条 todo：工作台与 Agent 连接同步、hook 阶段设计、bug 快存快审","agent":"写进根目录 TODO.md，补上现在缺什么、做成什么样；旧的以后/别做仍保留","files":["TODO.md",".codex/context/index.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-c","human":"todo 要 md 那种可以打勾的格式","agent":"TODO.md 改成 Markdown 任务列表，现在/以后都能勾","files":["TODO.md"],"bugs":[],"tasks":[]}
