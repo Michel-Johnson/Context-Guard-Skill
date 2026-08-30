@@ -33,13 +33,17 @@ The numbered labels describe dependencies, not scheduled intervals. New names ap
 
 ## Dependabot auto-merge / Dependabot 自动合并
 
-**依赖维护 | Dependabot 自动合并** is a separate maintenance workflow, not CI or CD. Dependabot checks GitHub Actions dependencies weekly. When it opens, reopens, updates, or marks a PR ready for review, the maintenance workflow reads verified Dependabot metadata. Only same-repository, non-draft PRs targeting `main` that update GitHub Actions dependencies by a patch or minor version are eligible. Major updates, unknown update types, other ecosystems, and ordinary feature PRs are not enrolled in auto-merge.
+**依赖维护 | Dependabot 自动合并** is a separate maintenance workflow, not CI or CD. Dependabot checks GitHub Actions dependencies weekly. When it opens, reopens, updates, or marks a PR ready for review, the maintenance workflow reads verified Dependabot metadata. Same-repository, non-draft Dependabot PRs targeting `main` that update GitHub Actions dependencies by a patch, minor, or major version are eligible. Unknown update types, other ecosystems, and ordinary feature PRs are not enrolled in auto-merge.
 
-**依赖维护 | Dependabot 自动合并** 是独立的维护工作流，不属于 CI 或 CD。Dependabot 每周检查 GitHub Actions 工具更新；它创建、重新打开、更新 PR 或把 PR 标为可审核时，维护工作流读取经过验证的 Dependabot 元数据。仅本仓库内、目标为 `main`、非草稿的 GitHub Actions 补丁/小版本更新可登记自动合并。大版本、未知更新类型、其他依赖生态和普通功能 PR 不会被自动登记。
+**依赖维护 | Dependabot 自动合并** 是独立的维护工作流，不属于 CI 或 CD。Dependabot 每周检查 GitHub Actions 工具更新；它创建、重新打开、更新 PR 或把 PR 标为可审核时，维护工作流读取经过验证的 Dependabot 元数据。本仓库内、目标为 `main`、非草稿的 Dependabot GitHub Actions 更新，无论补丁、小版本还是大版本，都可登记自动合并。未知更新类型、其他依赖生态和普通功能 PR 不会被自动登记。
 
-Version updates are grouped in `.github/dependabot.yml`: `actions-minor-patch` combines minor and patch upgrades into one PR, while `actions-major` combines major upgrades into a separate PR for manual review. A group is created only when matching updates exist. Group names are organizational labels, not authorization: the maintenance workflow still checks verified update metadata and all existing merge requirements. Security-update grouping is unchanged.
+Version updates are grouped in `.github/dependabot.yml`: the single `actions` group combines patch, minor, and major upgrades. `open-pull-requests-limit: 1` limits open version-update PRs to one. Dependabot performs the scheduled check; the PR branch is created only when updates exist, not kept as a permanent checking branch. Group names are organizational labels, not authorization: the maintenance workflow still checks verified update metadata and all existing merge requirements. Security-update grouping is unchanged, and security-update PRs are not covered by the version-update limit.
 
-`.github/dependabot.yml` 把版本更新分成两组：`actions-minor-patch` 将小版本和补丁集中到一个 PR；`actions-major` 将大版本集中到另一个 PR，保留人工审核。只有存在对应更新时才会生成该组 PR。组名只用于整理，不代表合并权限；维护工作流仍检查经过验证的更新类型，并要求原有合并条件全部满足。安全更新的分组方式不变。
+`.github/dependabot.yml` 只保留一个 `actions` 组，补丁、小版本、大版本集中到同一个 PR；`open-pull-requests-limit: 1` 将同时待合并的版本更新 PR 限为一个。每周检查由 Dependabot 服务执行，有更新才创建临时 PR 分支，不需要保留一个常驻检查分支。组名只用于整理，不代表合并权限；维护工作流仍验证更新元数据，并要求原有合并条件全部满足。安全更新分组不变，安全更新 PR 不受这个版本更新数量上限约束。
+
+Major-version auto-merge is an explicit maintainer policy: it can include breaking changes that the existing CI does not detect. All versions wait for `Required` and branch protection; a failed or cancelled check, stale base, or conflict must not be bypassed. No separate manual approval is added solely because an update is major. This replaces the former minor/patch-only policy.
+
+大版本自动合并是用户明确选择的策略：可能包含现有 CI 没有检测到的破坏性变更。所有版本都等待 `Required` 与分支保护满足，不能绕过失败/取消的检查、未同步主分支或冲突；不因更新为大版本额外要求人工确认。本规则替代原来的“仅补丁/小版本自动合并”。
 
 Enable **Settings → General → Pull Requests → Allow auto-merge** once. The workflow requests GitHub's native auto-merge for the exact PR head; it does not bypass branch protection or approve reviews. Keep `Required` mandatory and the branch up-to-date requirement enabled. CI failures, conflicts, or any unmet review/protection requirement prevent merging. The repository switch only allows auto-merge; it does not automatically enable it for every PR.
 
