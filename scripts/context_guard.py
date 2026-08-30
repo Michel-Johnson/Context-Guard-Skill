@@ -426,6 +426,7 @@ def record_bad_case(
     bug_id = next_bug_id(ctx)
     key_list = [item.strip() for item in keys.split(",") if item.strip()]
     bug_path = ctx / "bugs" / f"{bug_id}.md"
+    fix_path = ctx / "fixes" / f"{bug_id}.md"
     card_path = f".codex/context/cards/{node}.md" if node else ""
     lines = [
         f"# {bug_id} {title.strip()}",
@@ -433,14 +434,30 @@ def record_bad_case(
         f"- node: {node or 'unassigned'}",
         f"- status: {status}",
         f"- 现象: {phenomenon.strip()}",
-        f"- 触发: {trigger.strip()}",
-        f"- 原因: {cause.strip() or '待确认'}",
-        f"- guard: {guard.strip() or '待补充'}",
         f"- keys: {', '.join(key_list)}",
+        f"- fix: .codex/context/fixes/{bug_id}.md",
     ]
     if card_path:
         lines.append(f"- card: {card_path}")
     bug_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    fix_lines = [
+        f"# {bug_id} {title.strip()}",
+        "",
+        f"- bug: .codex/context/bugs/{bug_id}.md",
+        f"- node: {node or 'unassigned'}",
+        f"- status: {status}",
+    ]
+    if card_path:
+        fix_lines.append(f"- card: {card_path}")
+    fix_lines.extend([
+        "", "## 触发", trigger.strip() or "待补充",
+        "", "## 根因", cause.strip() or "待确认",
+        "", "## 怎么修", "待记录修复方法" if status == "fixed" else "未修",
+        "", "## 怎么防", guard.strip() or "待补充",
+        "", "## 代码", "待补充",
+        "", "## 证据", "待补充",
+    ])
+    fix_path.write_text("\n".join(fix_lines) + "\n", encoding="utf-8")
 
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict):

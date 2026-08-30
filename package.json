@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs && node tests/ci-smoke.mjs",
+    "test": "node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs .github/scripts/cli-python.test.mjs && node tests/ci-smoke.mjs",
     "test:clients": "node .github/scripts/smoke-clients.mjs",
     "test:cd": "node .github/scripts/rehearse-cd.mjs"
   },

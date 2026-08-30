@@ -84,6 +84,8 @@ def possible_workspace_paths(value: object) -> list[Path]:
 
 
 def parse_hook_payload(raw: str) -> object:
+    # Windows hook runners may prepend a UTF-8 BOM to otherwise valid JSON.
+    raw = raw.lstrip("\ufeff")
     if not raw.strip():
         return {}
     try:

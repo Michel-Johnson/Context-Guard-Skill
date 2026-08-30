@@ -351,13 +351,17 @@ function runPython(args) {
   if (!fs.existsSync(pythonScript)) {
     fail(`context_guard.py is missing: ${pythonScript}`);
   }
-  for (const command of ["python3", "python"]) {
-    const result = spawnSync(command, [pythonScript, ...args], { stdio: "inherit" });
-    if (result.error && result.error.code === "ENOENT") continue;
+  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+  for (const command of candidates) {
+    // Windows Store aliases can exist but exit 9009 instead of raising ENOENT.
+    // Probe before running the real command so a failed command is never retried.
+    const probe = spawnSync(command, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    if (probe.error || probe.status !== 0 || !/^Python 3\./m.test(`${probe.stdout || ""}\n${probe.stderr || ""}`)) continue;
+    const result = spawnSync(command, [pythonScript, ...args], { stdio: "inherit", windowsHide: true });
     if (result.error) fail(result.error.message);
     process.exit(result.status === null ? 1 : result.status);
   }
-  fail("Python 3 is required; neither `python3` nor `python` was found.");
+  fail("Python 3 is required; no working Python 3 interpreter was found (`python`, `python3`).");
 }
 
 const [command, ...rest] = process.argv.slice(2);

@@ -187,7 +187,7 @@ async function main() {
     {
       cwd: unrelatedCwd,
       env: hookEnvironment,
-      input: JSON.stringify({ cwd: project, session_id: "session-one" })
+      input: "\uFEFF" + JSON.stringify({ workspace_roots: [project], conversation_id: "session-one", session_id: "session-one" })
     }
   );
   const firstResponse = JSON.parse(firstStart.stdout);
@@ -195,6 +195,31 @@ async function main() {
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "index.md")));
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "payload root must beat process cwd");
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
+
+  // Cursor on Windows can prepend a UTF-8 BOM to every hook payload.
+  const cursorMessages = ["第一条 Cursor 消息", "第二条 Cursor 消息"];
+  for (const [index, prompt] of cursorMessages.entries()) {
+    run(python, [hookScript, "user-prompt-submit", "--platform", "cursor"], {
+      cwd: unrelatedCwd,
+      env: hookEnvironment,
+      input: "\uFEFF" + JSON.stringify({
+        workspace_roots: [project], conversation_id: "session-one", generation_id: `generation-${index}`, prompt
+      })
+    });
+  }
+  run(python, [hookScript, "stop", "--platform", "cursor"], {
+    cwd: unrelatedCwd,
+    env: hookEnvironment,
+    input: "\uFEFF" + JSON.stringify({ workspace_roots: [project], conversation_id: "session-one", generation_id: "generation-1" })
+  });
+  const cursorEvents = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
+    .trim().split(/\r?\n/).map(JSON.parse);
+  assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop"]);
+  assert.ok(cursorEvents.every(({ session_id }) => session_id === "session-one"), "turns must keep the client's conversation ID");
+  assert.ok(cursorEvents.filter(({ event }) => event === "user-prompt-submit").every(({ message_status }) => message_status === "recorded"));
+  const cursorMemory = fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8");
+  for (const message of cursorMessages) assert.ok(cursorMemory.includes(message));
+  assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "BOM payload root must beat process cwd");
 
   run(python, [contextScript, "set-language", "--root", project, "--language", "zh"]);
   const secondStart = run(
@@ -269,7 +294,17 @@ async function main() {
     "--keys", "install,hook"
   ]);
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "bugs", "B1.md")));
-  assert.equal(readJson(path.join(project, ".codex", "context", "bugs-index.json")).B1.status, "open");
+  const recordedBug = readJson(path.join(project, ".codex", "context", "bugs-index.json")).B1;
+  assert.equal(recordedBug.status, "open");
+  const bugCard = fs.readFileSync(path.join(project, recordedBug.bug), "utf8");
+  const bugFix = fs.readFileSync(path.join(project, recordedBug.fix), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(bugCard.includes(`- fix: ${recordedBug.fix}`));
+  assert.doesNotMatch(bugCard, /## 根因|跨平台安装冒烟/);
+  assert.ok(bugFix.includes(`- bug: ${recordedBug.bug}`));
+  assert.match(bugFix, /## 触发\n干净环境首次安装/);
+  assert.match(bugFix, /## 根因\n待确认/);
+  assert.match(bugFix, /## 怎么修\n未修/);
+  assert.match(bugFix, /## 怎么防\n跨平台安装冒烟/);
   assert.equal(readJson(mapPath).root.bugs[0].id, "B1");
 
   workbenchProject = project;
