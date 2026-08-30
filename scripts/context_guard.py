@@ -477,13 +477,15 @@ def workbench_state_path(root: Path) -> Path:
     return context_dir(root) / "private" / "workbench.json"
 
 
-def workbench_health(url: str, timeout: float = 0.5) -> dict[str, object] | None:
+def workbench_health(url: str, timeout: float = 0.5, report_error: bool = False) -> dict[str, object] | None:
     health_url = url.split("/prototype/", 1)[0].rstrip("/") + "/__context_guard/health"
     try:
         with urllib.request.urlopen(health_url, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
             return data if isinstance(data, dict) else None
-    except (OSError, ValueError, urllib.error.URLError):
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        if report_error:
+            print(f"[context-guard] health request failed: {exc}", file=sys.stderr)
         return None
 
 
@@ -575,6 +577,7 @@ def validate_workbench_host(host: str) -> None:
 def serve_workbench(root: Path, host: str, port: int) -> int:
     validate_workbench_host(host)
     init_context(root)
+    print(f"[context-guard] binding workbench at {host}:{port}", flush=True)
     server = WorkbenchServer((host, port), root)
     actual_port = int(server.server_address[1])
     url = workbench_url(host, actual_port)
@@ -646,6 +649,7 @@ def start_workbench(
     log_path = workbench_state_path(root).with_suffix(".log")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log_file:
+        kwargs["stdout"] = log_file
         kwargs["stderr"] = log_file
         process = subprocess.Popen(command, **kwargs)
     url = workbench_url(host, port)
@@ -660,12 +664,14 @@ def start_workbench(
             break
         time.sleep(0.1)
     exit_code = process.poll()
+    workbench_health(url, report_error=True)
     if exit_code is None:
         process.terminate()
     detail = log_path.read_text(encoding="utf-8", errors="replace").strip()
     print(
         f"[context-guard] workbench startup failed; exit={exit_code}; "
-        f"health={health!r}; expected_root={str(root.resolve())!r}; log: {log_path}"
+        f"health={health!r}; state={read_json(workbench_state_path(root), {})!r}; "
+        f"expected_root={str(root.resolve())!r}; log: {log_path}"
         + (f"\n{detail[-2000:]}" if detail else ""),
         file=sys.stderr,
     )
