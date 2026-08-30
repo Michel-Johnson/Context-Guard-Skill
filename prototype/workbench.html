@@ -6,7 +6,18 @@
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var t = q.get("theme");
+  if(t==="1"||t==="4"||t==="44"||t==="48"){
+    document.documentElement.setAttribute("data-node-theme", t);
+  }
+  window.__CG_NODE_THEME = t || "";
+  window.__CG_PREVIEW = q.has("preview");
+})();
+</script>
 <style>
 :root{
   --chrome-top:52px;
@@ -263,6 +274,99 @@ body.rel-mode .node .add-child{display:none}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
+/* 对照页预览：?theme=44|48|1|4 只换模块卡，不改顶栏结构 */
+html[data-node-theme="44"]{
+  --bg:#fffaf3; --ink:#4a3f32; --font-ui:"IBM Plex Sans","PingFang SC",sans-serif;
+  --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
+}
+html[data-node-theme="44"] .node{
+  border-color:#e6d3a8; border-radius:20px; color:#4a3f32;
+  box-shadow:0 6px 16px rgba(180,140,60,.1); font-family:var(--font-ui);
+}
+html[data-node-theme="44"] .node:hover{
+  transform:none; box-shadow:0 10px 28px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.module{
+  background:#fff; border-width:2px; border-color:#e6d3a8; border-radius:20px;
+  box-shadow:0 10px 28px rgba(180,140,60,.12);
+}
+html[data-node-theme="44"] .node.module:hover{
+  transform:none; box-shadow:0 12px 32px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.root:not(.module),
+html[data-node-theme="44"] .node.root.module{background:#fff6e5}
+html[data-node-theme="44"] .node.selected,
+html[data-node-theme="44"] .node.module.selected,
+html[data-node-theme="44"] .node.noauth.selected,
+html[data-node-theme="44"] .node.module.noauth.selected{background:#ffe9b8; color:#4a3f32; border-color:#e6d3a8; box-shadow:0 10px 28px rgba(180,140,60,.12)}
+html[data-node-theme="44"] .node.module .m-blurb,
+html[data-node-theme="44"] .node.module.noauth.selected .m-blurb{color:#9a8b78}
+html[data-node-theme="44"] .node.noauth,
+html[data-node-theme="44"] .node.noauth.module{
+  background:#eee9e0; border-color:#d9ccb4; color:#5c5c58;
+  box-shadow:0 6px 16px rgba(160,140,100,.08);
+}
+html[data-node-theme="44"] .dot.module{background:#d4a017}
+html[data-node-theme="44"] #links path.link,
+html[data-node-theme="44"] #links path.link.stem{stroke:#e6d3a8}
+
+html[data-node-theme="48"]{ --bg:#f8f4ea; }
+html[data-node-theme="48"] .node{
+  border-color:#cfc6b4; border-radius:10px; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node:hover{box-shadow:1px 1px 0 #cfc6b4}
+html[data-node-theme="48"] .node.module{
+  background:#e7eef8; border-width:1.5px; border-color:#cfc6b4; border-radius:10px;
+  box-shadow:3px 3px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node.module:hover{box-shadow:2px 2px 0 #cfc6b4}
+html[data-node-theme="48"] .node.root:not(.module),
+html[data-node-theme="48"] .node.root.module{background:#ffe08a}
+html[data-node-theme="48"] .node.selected,
+html[data-node-theme="48"] .node.module.selected,
+html[data-node-theme="48"] .node.noauth.selected,
+html[data-node-theme="48"] .node.module.noauth.selected{background:#fde2c8; border-color:#cfc6b4; box-shadow:3px 3px 0 #cfc6b4}
+html[data-node-theme="48"] .node.noauth,
+html[data-node-theme="48"] .node.noauth.module{
+  background:#e4e0d6; border-color:#cfc6b4; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] #links path.link,
+html[data-node-theme="48"] #links path.link.stem{stroke:#cfc6b4}
+
+html[data-node-theme="4"]{
+  --bg:#f5f5f2; --ink:#222; --font-ui:"IBM Plex Sans","PingFang SC",sans-serif;
+  --font-note:"IBM Plex Sans","PingFang SC",sans-serif; --shadow:none; --shadow-sm:none;
+}
+html[data-node-theme="4"] .node{
+  border:1px solid #bbb; border-radius:10px; box-shadow:none; color:#222;
+  font-family:var(--font-ui);
+}
+html[data-node-theme="4"] .node:hover,
+html[data-node-theme="4"] .node.module:hover{transform:none; box-shadow:none; border-color:#999}
+html[data-node-theme="4"] .node.module{
+  background:#eeeae2; border:1px solid #bbb; border-radius:10px; box-shadow:none;
+}
+html[data-node-theme="4"] .node.root:not(.module),
+html[data-node-theme="4"] .node.root.module{background:#fff4c2}
+html[data-node-theme="4"] .node.selected,
+html[data-node-theme="4"] .node.module.selected,
+html[data-node-theme="4"] .node.noauth.selected,
+html[data-node-theme="4"] .node.module.noauth.selected{background:#ffe9a8; border-color:#bbb; box-shadow:none}
+html[data-node-theme="4"] .node.module .m-blurb,
+html[data-node-theme="4"] .node.module.noauth.selected .m-blurb{color:#777; font-family:var(--font-note)}
+html[data-node-theme="4"] .node.noauth,
+html[data-node-theme="4"] .node.noauth.module{
+  background:#ddd; border-color:#ccc; box-shadow:none;
+}
+html[data-node-theme="4"] .dot.module{background:#4a7ab5}
+html[data-node-theme="4"] #links path.link,
+html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
+
+.theme-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
+  padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+html[data-node-theme] .theme-preview-banner{display:block}
+
 /* 授权模式 */
 body.auth-mode .node{cursor:cell}
 .node .auth-mark{display:none;width:15px;height:15px;border-radius:50%;border:2px solid #c9bfdd;
@@ -483,6 +587,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 </style>
 </head>
 <body>
+<div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <header class="top">
   <div class="brand">
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
@@ -2884,6 +2989,7 @@ function syncBootstrapFromTree(){
   }
 }
 function persist(){
+  if(window.__CG_PREVIEW) return;
   snapshotRepo();
   const dump = {repoId, repos:{}};
   Object.values(catalog).forEach(r=>{
@@ -5019,6 +5125,14 @@ async function boot(){
     emptyFirstUse();
   }else{
     applyRepoChrome();
+  }
+  if(window.__CG_PREVIEW){
+    closeOverlay();
+    currentRepo().firstUseOpen = false;
+  }
+  const themeBanner = document.getElementById("theme-preview-banner");
+  if(themeBanner && window.__CG_NODE_THEME){
+    themeBanner.textContent = "预览模块卡 #"+window.__CG_NODE_THEME+" · 还没写进默认工作台";
   }
   renderAll();
   restoreDrawerWidth();

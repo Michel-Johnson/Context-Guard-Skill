@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>完整图对照 · 44 / 48 / 1 / 4</title>
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#2d2d2d; --muted:#746c60; --paper:#fffdf8; --line-ink:#2d2d2d;
+  --chrome-top:48px; --drawer-width:280px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#efe8d8;color:var(--ink);
+  font-family:"IBM Plex Sans","PingFang SC","Microsoft YaHei",sans-serif}
+.bar{position:sticky;top:0;z-index:8;display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  padding:10px 16px;background:#fffdf8;border-bottom:2px solid #2d2d2d}
+.bar a{color:#2d5da1;font-weight:700;text-decoration:none;padding:4px 10px;border:2px solid #2d2d2d;border-radius:8px;background:#fff}
+.bar a:hover,.bar a.on{background:#ffe66d}
+.bar .hint{color:#746c60;font-size:13px}
+.stage{padding:18px 18px 8px}
+.stage h1{margin:0 0 6px;font-size:20px}
+.stage .sub{margin:0 0 12px;color:#746c60;font-size:13px}
+.tabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;align-items:center}
+.tabs button{font:inherit;font-weight:700;border:2px solid #2d2d2d;border-radius:8px;background:#fff;
+  padding:5px 12px;cursor:pointer}
+.tabs button.on{background:#ffe66d}
+.tabs a.live{margin-left:auto;font-size:13px;font-weight:700;color:#2d5da1}
+
+/* 假工作台窗口：顶栏和检查器保持现在这版，只换模块卡 */
+.wb{position:relative;height:640px;border:2px solid #2d2d2d;border-radius:12px;overflow:hidden;
+  background:var(--n-page,#fefaf2);box-shadow:4px 4px 0 #2d2d2d;margin-bottom:28px}
+.wb .top{position:absolute;inset:0 0 auto 0;height:var(--chrome-top);z-index:4;display:flex;align-items:center;gap:10px;
+  padding:0 14px;background:#fffdf8;border-bottom:2px solid #2d2d2d;font-family:"Comic Neue","PingFang SC",sans-serif}
+.wb .top b{font-size:15px}
+.wb .top .crumb{font-size:13px;padding:3px 9px;background:#f3ead6;border-radius:6px;color:#2d5da1;font-weight:700}
+.wb .top .muted{color:#746c60;font-size:12px;margin-left:auto}
+.wb .vp{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;overflow:auto;
+  background:var(--n-page,#fefaf2)}
+.wb .vp::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.42;
+  background-image:linear-gradient(rgba(45,45,45,.05) 1px, transparent 1px),
+    radial-gradient(rgba(45,45,45,.1) .7px, transparent 1px);
+  background-size:100% 34px, 18px 18px}
+.wb .world{position:relative;min-width:900px;min-height:520px;padding:28px 24px 40px}
+.wb svg.wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.wb .drawer{position:absolute;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);
+  background:#fffdf8;border-left:2px solid #2d2d2d;padding:14px 16px;overflow:auto;
+  font-family:"Comic Neue","PingFang SC",sans-serif}
+.wb .drawer .k{font-size:11px;color:#746c60;letter-spacing:.08em}
+.wb .drawer h2{margin:6px 0 0;font-size:17px}
+.wb .drawer .lead{margin:8px 0 0;color:#746c60;font-size:12px;line-height:1.45;font-family:Georgia,serif}
+
+.node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  width:max-content;max-width:280px;
+  background:#fff;border:2px solid var(--n-line,#2d2d2d);border-radius:16px;
+  padding:5px 13px 5px 11px;font-size:12.5px;line-height:1.45;cursor:default;user-select:none;
+  box-shadow:var(--n-shadow-sm,2px 2px 0 #2d2d2d);color:var(--n-ink,#2d2d2d);
+  font-family:var(--n-font,"Comic Neue","PingFang SC",sans-serif);font-weight:700}
+.node.module{display:flex;flex-direction:column;align-items:stretch;white-space:normal;
+  width:252px;max-width:252px;border-width:var(--n-bw,2px);border-color:var(--n-line,#2d2d2d);
+  background:var(--n-mod,#f3ead6);border-radius:var(--n-radius,8px);
+  padding:14px 16px 13px;box-shadow:var(--n-shadow,3px 3px 0 #2d2d2d);word-break:keep-all;font-weight:800}
+.node.root.module{font-size:18px}
+.node .m-head{display:flex;align-items:flex-start;gap:8px;font-weight:800;font-size:18px;line-height:1.3}
+.node .m-head span{flex:1;min-width:0;white-space:normal;word-break:keep-all;overflow-wrap:break-word}
+.node .dot{width:8px;height:8px;border-radius:2px;flex:0 0 auto;margin-top:6px;background:var(--n-dot,#2d5da1)}
+.node .lock{font-size:11px;margin-left:1px}
+.node .m-blurb{margin-top:6px;color:var(--n-mute,#8a8278);font-family:var(--n-note,Georgia,serif);
+  font-size:11px;font-weight:400;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.node.module.selected{background:var(--n-sel,#fff3bf)}
+.node.noauth.module{background:var(--n-lock,#d4d4d0);border-color:var(--n-lock-line,#a3a39c);color:#5c5c58;
+  box-shadow:var(--n-lock-shadow,2px 2px 0 #a3a39c)}
+.node.noauth.module .dot{background:#9a9a94}
+.node.noauth.module .m-head span{color:#5a5a56}
+.node.noauth.module .m-blurb{color:#8a8a84}
+.node.module.noauth.selected{background:var(--n-sel,#fff3bf);color:var(--n-ink,#2d2d2d);
+  border-color:var(--n-line,#2d2d2d);box-shadow:var(--n-shadow,3px 3px 0 #2d2d2d)}
+.node.module.noauth.selected .m-head span{color:var(--n-ink,#2d2d2d)}
+.node.module.noauth.selected .m-blurb{color:var(--n-mute,#8a8278)}
+.node.module.noauth.selected .dot{background:var(--n-dot,#2d5da1)}
+.node.root:not(.noauth){background:var(--n-root,#fff3bf)}
+</style>
+</head>
+<body>
+<header class="bar">
+  <b>完整图对照</b>
+  <a href="#s44">44 奶油描边</a>
+  <a href="#s48">48 淡彩分层</a>
+  <a href="#s1">1 现在这版</a>
+  <a href="#s4">4 无阴影扁平</a>
+  <a href="node-style-gallery.html">回 50 版</a>
+  <span class="hint">每套都画了工作台第一眼，和点进「工作台」之后。默认工作台还没改。</span>
+</header>
+<div id="app"></div>
+<script>
+const THEMES = [
+  {n:44, name:"奶油描边",
+    page:"#fffaf3", root:"#fff6e5", mod:"#fff", sel:"#ffe9b8", lock:"#eee9e0",
+    ink:"#4a3f32", mute:"#9a8b78", line:"#e6d3a8", lockLine:"#d9ccb4",
+    radius:"20px", shadow:"0 10px 28px rgba(180,140,60,.12)", shadowSm:"0 6px 16px rgba(180,140,60,.1)",
+    lockShadow:"0 6px 16px rgba(160,140,100,.08)", bw:"2px",
+    font:"IBM Plex Sans, PingFang SC, sans-serif", note:"Georgia, serif", dot:"#d4a017", wire:"#e6d3a8"},
+  {n:48, name:"淡彩分层",
+    page:"#f8f4ea", root:"#ffe08a", mod:"#e7eef8", sel:"#fde2c8", lock:"#e4e0d6",
+    ink:"#2d2d2d", mute:"#746c60", line:"#cfc6b4", lockLine:"#cfc6b4",
+    radius:"10px", shadow:"3px 3px 0 #cfc6b4", shadowSm:"2px 2px 0 #cfc6b4",
+    lockShadow:"2px 2px 0 #cfc6b4", bw:"1.5px",
+    font:"Comic Neue, PingFang SC, sans-serif", note:"Georgia, serif", dot:"#2d5da1", wire:"#cfc6b4"},
+  {n:1, name:"现在这版",
+    page:"#fefaf2", root:"#fff3bf", mod:"#f3ead6", sel:"#fff3bf", lock:"#d4d4d0",
+    ink:"#2d2d2d", mute:"#8a8278", line:"#2d2d2d", lockLine:"#a3a39c",
+    radius:"8px", shadow:"3px 3px 0 #2d2d2d", shadowSm:"2px 2px 0 #2d2d2d",
+    lockShadow:"2px 2px 0 #a3a39c", bw:"2px",
+    font:"Comic Neue, PingFang SC, sans-serif", note:"Georgia, serif", dot:"#2d5da1", wire:"#5c564c"},
+  {n:4, name:"无阴影扁平",
+    page:"#f5f5f2", root:"#fff4c2", mod:"#eeeae2", sel:"#ffe9a8", lock:"#ddd",
+    ink:"#222", mute:"#777", line:"#bbb", lockLine:"#ccc",
+    radius:"10px", shadow:"none", shadowSm:"none",
+    lockShadow:"none", bw:"1px",
+    font:"IBM Plex Sans, PingFang SC, sans-serif", note:"IBM Plex Sans, sans-serif", dot:"#4a7ab5", wire:"#bbb"},
+];
+
+const FALLBACK = {
+  title:"Context Guard",
+  purpose:"人与 Agent 共用的项目记忆，活在仓库里",
+  children:[
+    {title:"工作台", purpose:"人在浏览器看图、改记忆、确认提议、授权切片",
+      children:[
+        {title:"前端设计", purpose:"顶栏、右边栏、按钮、授权、Bug"},
+        {title:"session连接", purpose:"连上当前会话，确认后写回"},
+        {title:"模块授权", purpose:"人点头，Agent 才能动这块"},
+        {title:"debug", purpose:"坏例挂在模块上，人在图上看未修"},
+        {title:"底层连接", purpose:"工作台读盘、写盘、起本地服务"}
+      ]},
+    {title:"冷启动", purpose:"skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量",
+      children:[
+        {title:"多平台一键安装"},
+        {title:"初次使用动画引导"},
+        {title:"新仓库建图"},
+        {title:"已有仓库建图"}
+      ]},
+    {title:"底层文件系统", purpose:"会话、坏例、任务、地图怎么写、怎么跳",
+      children:[
+        {title:"session"},
+        {title:"bad case"},
+        {title:"map"},
+        {title:"index"},
+        {title:"task"}
+      ]},
+    {title:"hook", purpose:"当前开发进程的生命周期提醒，把 skill 挂到打开的仓库",
+      children:[{title:"start hook"},{title:"stop hook"}]},
+    {title:"CI/CD", purpose:"以后怎么自动验；第一版不做测试中台，夹具和冒烟挂在这里",
+      children:[{title:"CI"},{title:"CD"}]}
+  ]
+};
+
+function liveKids(n){
+  return (n.children||[]).filter(c=>c.proposal!=="cancelled" && c.kind!=="work");
+}
+function slim(n){
+  return {
+    title: n.title,
+    purpose: n.purpose||"",
+    children: liveKids(n).map(c=>({
+      title:c.title,
+      purpose:c.purpose||"",
+      children: liveKids(c).map(g=>({title:g.title, purpose:g.purpose||""}))
+    }))
+  };
+}
+
+function applyTheme(el, t){
+  const set = (k,v)=>el.style.setProperty(k,v);
+  set("--n-page", t.page); set("--n-root", t.root); set("--n-mod", t.mod);
+  set("--n-sel", t.sel); set("--n-lock", t.lock); set("--n-ink", t.ink);
+  set("--n-mute", t.mute); set("--n-line", t.line); set("--n-lock-line", t.lockLine);
+  set("--n-radius", t.radius); set("--n-shadow", t.shadow); set("--n-shadow-sm", t.shadowSm);
+  set("--n-lock-shadow", t.lockShadow); set("--n-bw", t.bw); set("--n-font", t.font);
+  set("--n-note", t.note); set("--n-dot", t.dot);
+}
+
+function card(node, role, extra){
+  const el = document.createElement("div");
+  el.className = "node module" + (role==="root" ? " root" : "") + (extra||"");
+  const lock = role==="root" ? "" : `<span class="lock">🔒</span>`;
+  el.innerHTML = `<div class="m-head"><i class="dot"></i><span></span>${lock}</div><div class="m-blurb"></div>`;
+  el.querySelector(".m-head span").textContent = node.title;
+  const blurb = el.querySelector(".m-blurb");
+  if(node.purpose) blurb.textContent = node.purpose;
+  else blurb.remove();
+  return el;
+}
+
+function curveTB(svg, a, b, color){
+  const x1 = a.x + a.w/2, y1 = a.y + a.h;
+  const x2 = b.x + b.w/2, y2 = b.y;
+  const mid = (y1+y2)/2;
+  const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("d", `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`);
+  p.setAttribute("fill","none"); p.setAttribute("stroke", color);
+  p.setAttribute("stroke-width","2"); p.setAttribute("stroke-linecap","round");
+  svg.appendChild(p);
+}
+function curveLR(svg, a, b, color){
+  const x1 = a.x + a.w, y1 = a.y + a.h/2;
+  const x2 = b.x, y2 = b.y + b.h/2;
+  const mid = (x1+x2)/2;
+  const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("d", `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`);
+  p.setAttribute("fill","none"); p.setAttribute("stroke", color);
+  p.setAttribute("stroke-width","2"); p.setAttribute("stroke-linecap","round");
+  svg.appendChild(p);
+}
+
+function boxOf(el){
+  return {el, x:parseFloat(el.style.left)||0, y:parseFloat(el.style.top)||0, w:el.offsetWidth, h:el.offsetHeight};
+}
+
+function layoutCatalog(rootEl, kidEls, pad){
+  const rs = {w:rootEl.offsetWidth, h:rootEl.offsetHeight};
+  const n = kidEls.length;
+  const cols = n<=2 ? n : Math.min(3, n);
+  const cellW = Math.max(...kidEls.map(el=>el.offsetWidth));
+  const GX = 44, GY = 36, STEM = 56;
+  const gridW = cols*cellW + (cols-1)*GX;
+  const rootX = pad + Math.max(0,(gridW-rs.w)/2);
+  rootEl.style.left = rootX+"px"; rootEl.style.top = pad+"px";
+  const rows = Math.ceil(n/cols);
+  let y = pad + rs.h + STEM;
+  const boxes = [boxOf(rootEl)];
+  for(let r=0;r<rows;r++){
+    const start = r*cols;
+    const inRow = Math.min(cols, n-start);
+    const rowW = inRow*cellW + (inRow-1)*GX;
+    const x0 = pad + (gridW-rowW)/2;
+    let rowH = 0;
+    for(let c=0;c<inRow;c++) rowH = Math.max(rowH, kidEls[start+c].offsetHeight);
+    for(let c=0;c<inRow;c++){
+      const el = kidEls[start+c];
+      const x = x0 + c*(cellW+GX) + (cellW-el.offsetWidth)/2;
+      el.style.left = x+"px"; el.style.top = y+"px";
+      boxes.push(boxOf(el));
+    }
+    y += rowH + GY;
+  }
+  return {boxes, w: pad*2+gridW, h: y+pad};
+}
+
+function layoutLR(rootEl, kidEls, pad){
+  const hopX = 70, gapY = 30;
+  const rs = {w:rootEl.offsetWidth, h:rootEl.offsetHeight};
+  let y = pad;
+  kidEls.forEach(el=>{
+    el.style.left = (pad + rs.w + hopX)+"px";
+    el.style.top = y+"px";
+    y += el.offsetHeight + gapY;
+  });
+  const boxesKids = kidEls.map(boxOf);
+  const first = boxesKids[0], last = boxesKids[boxesKids.length-1];
+  let ny = pad;
+  if(first && last){
+    const cy = (first.y + first.h/2 + last.y + last.h/2)/2;
+    ny = Math.max(pad, cy - rs.h/2);
+  }
+  rootEl.style.left = pad+"px";
+  rootEl.style.top = ny+"px";
+  const boxes = [boxOf(rootEl), ...kidEls.map(boxOf)];
+  const maxX = Math.max(...boxes.map(b=>b.x+b.w));
+  const maxY = Math.max(...boxes.map(b=>b.y+b.h));
+  return {boxes, w: maxX+pad, h: maxY+pad};
+}
+
+function paint(world, svg, t, tree, mode){
+  world.querySelectorAll(".node").forEach(n=>n.remove());
+  svg.innerHTML = "";
+  const pad = 8;
+  if(mode==="overview"){
+    const rootEl = card(tree, "root");
+    const kids = (tree.children||[]).map((n,i)=>card(n, "mod", i===0 ? " noauth selected" : " noauth"));
+    world.appendChild(rootEl);
+    kids.forEach(k=>world.appendChild(k));
+    const laid = layoutCatalog(rootEl, kids, pad);
+    const rootBox = laid.boxes[0];
+    laid.boxes.slice(1).forEach(b=>curveTB(svg, rootBox, b, t.wire));
+    svg.setAttribute("width", laid.w);
+    svg.setAttribute("height", laid.h);
+    world.style.minWidth = laid.w+"px";
+    world.style.minHeight = laid.h+"px";
+    return {title: tree.title, purpose: tree.purpose, crumb: tree.title};
+  }
+  const mod = (tree.children||[])[0] || tree;
+  const rootEl = card(mod, "root", " selected");
+  const kids = (mod.children||[]).map(n=>card(n, "mod", " noauth"));
+  world.appendChild(rootEl);
+  kids.forEach(k=>world.appendChild(k));
+  const laid = kids.length ? layoutLR(rootEl, kids, pad) : layoutCatalog(rootEl, [], pad);
+  const rootBox = laid.boxes[0];
+  laid.boxes.slice(1).forEach(b=>curveLR(svg, rootBox, b, t.wire));
+  svg.setAttribute("width", laid.w);
+  svg.setAttribute("height", laid.h);
+  world.style.minWidth = laid.w+"px";
+  world.style.minHeight = laid.h+"px";
+  return {title: mod.title, purpose: mod.purpose, crumb: tree.title+" / "+mod.title};
+}
+
+function drawTheme(t, tree){
+  const stage = document.createElement("section");
+  stage.className = "stage";
+  stage.id = "s"+t.n;
+  stage.innerHTML = `
+    <h1>#${t.n} · ${t.name}</h1>
+    <p class="sub">左边是画布，右边是检查器（顶栏和检查器仍是现在这版，只换模块卡）。</p>
+    <div class="tabs">
+      <button type="button" data-mode="overview" class="on">总览 · 第一层五张</button>
+      <button type="button" data-mode="enter">点进工作台</button>
+      <a class="live" href="workbench.html?theme=${t.n}&preview=1">在真工作台里看 #${t.n}</a>
+    </div>
+    <div class="wb">
+      <div class="top">
+        <b>Context Guard</b>
+        <span class="crumb" data-crumb></span>
+        <span class="muted">左右 · 中 · 关系 · 授权模式</span>
+      </div>
+      <div class="vp"><div class="world"><svg class="wires"></svg></div></div>
+      <aside class="drawer">
+        <div class="k">总览</div>
+        <h2 data-dtitle></h2>
+        <p class="lead" data-dlead></p>
+      </aside>
+    </div>`;
+  const wb = stage.querySelector(".wb");
+  applyTheme(wb, t);
+  const world = stage.querySelector(".world");
+  const svg = stage.querySelector("svg");
+  const crumb = stage.querySelector("[data-crumb]");
+  const dtitle = stage.querySelector("[data-dtitle]");
+  const dlead = stage.querySelector("[data-dlead]");
+  function show(mode){
+    const info = paint(world, svg, t, tree, mode);
+    crumb.textContent = info.crumb;
+    dtitle.textContent = info.title;
+    dlead.textContent = info.purpose || "";
+    stage.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on", b.dataset.mode===mode));
+  }
+  stage.querySelectorAll(".tabs button").forEach(b=>{
+    b.onclick = ()=>show(b.dataset.mode);
+  });
+  show("overview");
+  return stage;
+}
+
+async function boot(){
+  let tree = FALLBACK;
+  try{
+    const res = await fetch("../.codex/context/map.json", {cache:"no-store"});
+    if(res.ok){
+      const doc = await res.json();
+      if(doc && doc.root) tree = slim(doc.root);
+    }
+  }catch(e){}
+  const app = document.getElementById("app");
+  const only = new URLSearchParams(location.search).get("n");
+  THEMES.filter(t=>!only || String(t.n)===only).forEach(t=>app.appendChild(drawTheme(t, tree)));
+}
+boot();
+</script>
+</body>
+</html>
