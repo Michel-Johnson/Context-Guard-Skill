@@ -1,0 +1,61 @@
+name: 依赖维护 | Dependabot 自动合并
+run-name: 依赖维护 | PR #${{ github.event.pull_request.number }} | 检查自动合并资格
+
+# This privileged workflow reads verified metadata only. Never check out or run PR code.
+# CI remains a separate, required workflow; this workflow does not publish packages.
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions: {}
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    name: 依赖维护 | 仅登记补丁与小版本自动合并
+    if: >-
+      github.repository == 'Michel-Johnson/Context-Guard-Skill' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: 验证 Dependabot 提交并读取更新类型
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
+        with:
+          github-token: ${{ github.token }}
+          skip-verification: false
+          skip-commit-verification: false
+
+      - name: 登记自动合并，等待 Required 等分支保护条件
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-minor')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge --auto --merge --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+
+      - name: 大版本、未知类型或其他依赖保留人工处理
+        if: >-
+          steps.metadata.outputs.package-ecosystem != 'github_actions' ||
+          (steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
+           steps.metadata.outputs.update-type != 'version-update:semver-minor')
+        run: echo "This update is outside the auto-merge policy. Manual review and merge are required."

@@ -4,6 +4,57 @@ This package is delivered through npm. GitHub Releases are not used.
 
 本项目只通过 npm 交付，不使用 GitHub Release。
 
+## Finding CI and CD in Actions / 在 Actions 中区分 CI 与 CD
+
+The Actions sidebar lists **CI | 代码与功能检查** (code and behavior checks) and **CD | npm 发布** (npm delivery) separately. Run titles identify the branch, PR, or version tag instead of repeating the commit message. CI never publishes to npm; CD contains its own package acceptance checks before and after publication.
+
+Actions 左侧分别显示 **CI | 代码与功能检查** 和 **CD | npm 发布**。运行标题直接写明分支、PR 或版本标签，不再只显示提交说明。CI 不发布 npm；CD 自己包含发布前后的安装包验收，并非只有“发布到 npm”一步属于 CD。
+
+| Event / 操作 | CI | CD |
+| --- | --- | --- |
+| Local commit only / 仅本地提交 | No / 不运行 | No / 不运行 |
+| Push a branch, including main / 推送分支，包括合入 main | Yes / 运行 | No / 不运行 |
+| Open, update, or reopen a PR targeting main / 创建、更新代码或重新打开目标为 main 的 PR | Yes / 运行 | No / 不运行 |
+| Push a version tag such as v0.4.5 / 推送版本标签 | Yes / 运行 | Yes / 运行 |
+
+Tag-triggered CI and CD are separate runs, not a chained CI-to-CD workflow. This naming cleanup preserves the existing triggers and every test. A tag outside the stable `vX.Y.Z` format, a version mismatch, or a commit outside `main` is rejected by CD before publication.
+
+标签触发的 CI 和 CD 是独立运行，不是“本次 CI 完成后再启动 CD”。本次命名整理保留原触发规则和全部测试。CD 会在发布前拒绝非稳定 `vX.Y.Z` 标签、版本不一致或不属于 `main` 的提交。
+
+- **CI 1**: functionality and package-content checks; **CI 2**: parallel Ubuntu/macOS/Windows functionality and installation checks; **Required**: aggregate the CI results for the merge gate. The name `Required` stays unchanged because main branch protection uses it.
+- **CD 1**: validate release identity and package; **CD 2**: parallel Ubuntu/macOS/Windows package-install acceptance; **CD 3**: publish only after all acceptance jobs pass; **CD 4**: download and verify the published package.
+
+- **CI 1**：功能测试与包内容检查；**CI 2**：Ubuntu/macOS/Windows 并行功能与安装测试；**Required**：汇总 CI 结果，作为合并门槛。`Required` 名称保持不变，因为 main 分支保护绑定了它。
+- **CD 1**：发布校验与打包；**CD 2**：Ubuntu/macOS/Windows 并行安装包验收；**CD 3**：全部验收通过后发布；**CD 4**：从 npm 下载并验证已发布版本。
+
+The numbered labels describe dependencies, not scheduled intervals. New names apply to future runs; existing run titles and job records are not rewritten. `npm-publish.yml` keeps its filename so the npm Trusted Publisher binding remains valid.
+
+阶段编号表示依赖顺序，不是定时间隔。新名称用于后续运行，已有运行的标题和任务记录不会被重写。`npm-publish.yml` 文件名不变，保留现有 npm Trusted Publisher 绑定。
+
+## Dependabot auto-merge / Dependabot 自动合并
+
+**依赖维护 | Dependabot 自动合并** is a separate maintenance workflow, not CI or CD. Dependabot checks GitHub Actions dependencies weekly. When it opens, reopens, updates, or marks a PR ready for review, the maintenance workflow reads verified Dependabot metadata. Only same-repository, non-draft PRs targeting `main` that update GitHub Actions dependencies by a patch or minor version are eligible. Major updates, unknown update types, other ecosystems, and ordinary feature PRs are not enrolled in auto-merge.
+
+**依赖维护 | Dependabot 自动合并** 是独立的维护工作流，不属于 CI 或 CD。Dependabot 每周检查 GitHub Actions 工具更新；它创建、重新打开、更新 PR 或把 PR 标为可审核时，维护工作流读取经过验证的 Dependabot 元数据。仅本仓库内、目标为 `main`、非草稿的 GitHub Actions 补丁/小版本更新可登记自动合并。大版本、未知更新类型、其他依赖生态和普通功能 PR 不会被自动登记。
+
+Version updates are grouped in `.github/dependabot.yml`: `actions-minor-patch` combines minor and patch upgrades into one PR, while `actions-major` combines major upgrades into a separate PR for manual review. A group is created only when matching updates exist. Group names are organizational labels, not authorization: the maintenance workflow still checks verified update metadata and all existing merge requirements. Security-update grouping is unchanged.
+
+`.github/dependabot.yml` 把版本更新分成两组：`actions-minor-patch` 将小版本和补丁集中到一个 PR；`actions-major` 将大版本集中到另一个 PR，保留人工审核。只有存在对应更新时才会生成该组 PR。组名只用于整理，不代表合并权限；维护工作流仍检查经过验证的更新类型，并要求原有合并条件全部满足。安全更新的分组方式不变。
+
+Enable **Settings → General → Pull Requests → Allow auto-merge** once. The workflow requests GitHub's native auto-merge for the exact PR head; it does not bypass branch protection or approve reviews. Keep `Required` mandatory and the branch up-to-date requirement enabled. CI failures, conflicts, or any unmet review/protection requirement prevent merging. The repository switch only allows auto-merge; it does not automatically enable it for every PR.
+
+一次性开启 **Settings → General → Pull Requests → Allow auto-merge**。工作流针对 PR 的确切提交请求 GitHub 原生自动合并，不绕过分支保护、不代替人工批准。保留必需的 `Required` 检查以及分支必须同步 main 的要求；CI 失败、冲突或其他审核/保护条件未满足时不能合并。仓库开关只代表允许使用自动合并，并不意味着所有 PR 都自动合并。
+
+The privileged `pull_request_target` workflow never checks out PR code or downloads PR artifacts. It uses the built-in GitHub token, pins the metadata Action by commit SHA, and retains author/commit verification. No PAT, npm credential, automatic version tag, or npm publication is added. CI/CD triggers remain unchanged. Events caused by `GITHUB_TOKEN` may not start follow-up workflows; the required **PR CI** is the acceptance gate, not an assumed extra post-merge run.
+
+有写权限的 `pull_request_target` 工作流不检出 PR 代码、不下载 PR 产物；使用 GitHub 内置 Token，将元数据 Action 固定到完整提交 SHA，并保留作者及提交验证。不新增 PAT、npm 凭据、自动版本标签或 npm 发布。原 CI/CD 触发配置不变；`GITHUB_TOKEN` 产生的事件可能不会启动后续工作流，因此自动合并以必需的 **PR CI** 为验收门禁，不依赖合并后一定再运行一次 CI。
+
+To stop this automation, disable its workflow. Disabling the workflow does not cancel auto-merge already enabled on a PR; cancel those requests individually. The repository-wide Allow auto-merge switch can also be turned off. None of these actions requires disabling CI or CD.
+
+需要停止时，可禁用这个维护工作流；禁用工作流不会撤销已经登记的 PR 自动合并，需要逐个取消。也可以关闭仓库的 Allow auto-merge 开关，不必停用 CI 或 CD。
+
+References / 官方说明: [Dependabot automation](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions), [update groups](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#groups), [metadata verification](https://github.com/dependabot/fetch-metadata), [GITHUB_TOKEN-triggered events](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow).
+
 ## Release contract / 发布契约
 
 - A stable tag must use `vX.Y.Z` and match `package.json` exactly.
@@ -50,14 +101,14 @@ Protect `main` with the unique required check `Required`, require changes throug
 2. Update `package.json` to the next stable version through a pull request.
 3. Wait for the `Required` check and merge into `main`.
 4. Create `vX.Y.Z` on that exact `main` commit and push the tag.
-5. Wait for the `Publish npm package` workflow to finish.
+5. Wait for the `CD | npm 发布` workflow to finish.
 6. Verify `npm view @michelj/context-guard@X.Y.Z version` and `npm view @michelj/context-guard@latest version`.
 
 1. 本地运行 `npm run test:cd`。
 2. 通过 Pull Request 把 `package.json` 更新到下一个稳定版本。
 3. 等待 `Required` 通过并合入 `main`。
 4. 在该 `main` 提交上创建 `vX.Y.Z`，然后推送标签。
-5. 等待 `Publish npm package` workflow 完成。
+5. 等待 `CD | npm 发布` workflow 完成。
 6. 用 `npm view @michelj/context-guard@X.Y.Z version` 和 `npm view @michelj/context-guard@latest version` 复核。
 
 ## Failure and recovery / 失败与恢复

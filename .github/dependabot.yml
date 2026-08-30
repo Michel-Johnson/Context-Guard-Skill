@@ -4,6 +4,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
     labels:
       - dependencies
       - ci
