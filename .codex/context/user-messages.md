@@ -50,7 +50,7 @@
 ## Durable User Constraints
 
 - Agent 记录，人确认/置顶/丢弃。
-- 人在 HTML 里操作，不在 CLI。
+- 人在 HTML 里看图，不在 CLI。云端：GitHack 只看已经推上去的图，改法在对话里说，Agent 改文件再推。本地才能「连接仓库」写盘。
 - 不做 Test Hub / 功能链 / Stop-hook 门禁，直到工作台交互正确。
 - 2026-08-29: 本仓开发走产品/测试两条分支。产品分支改产品并合 main；测试分支只改 `tests/`（可有假仓）；测试发现问题回产品分支修。测试分支不合 main。见 `.codex/context/tasks/J2.md`。
 - 2026-08-26: 第一版 Context Guard 只分四块：会话、坏例、任务、地图。第五块 CI/CD 测试以后再加，现在不做。跳转见 `FIND.md`。

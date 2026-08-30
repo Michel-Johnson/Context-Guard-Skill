@@ -16,22 +16,18 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 ## Human workbench
 
-People confirm the architecture map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
+People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/map-web-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)
+**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
 
-The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
-
-To decide the first layer: click the repo name, switch to **OpenClaw** (first use), then **See first-layer cuts**. Picking one lands it on the canvas. Titles are still prepared; the cut is yours.
-
-The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
-
-Serve the repo root so the page can load `.codex/context/map.json`:
+**Local:** serve the repo root so the page loads your on-disk `map.json`. On the same machine, 「连接仓库」 can write the file back.
 
 ```bash
 python3 -m http.server 8877
 # then open http://127.0.0.1:8877/prototype/workbench.html
 ```
+
+The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
 
 ### Overview
 

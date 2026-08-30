@@ -16,22 +16,18 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 
 ## 工作台
 
-人在 `prototype/workbench.html` 里看图、点头。Agent 读 `.codex/context/` 里的小索引，不操作画布。
+人在 `prototype/workbench.html` 里看图。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/map-web-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)
+**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)）。在网页里改不会写回仓库。要改图：在对话里说，Agent 改文件再推，你再刷新页面。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
 
-第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
-
-要自己定第一层：顶栏点仓库名，切到 **OpenClaw**（首次使用），点「看几种第一层切法」，选一种才上画布。仍是演示卡名，但切法是你定的。
-
-顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
-
-本地从仓库根起一个静态服务，页面才能读到 `.codex/context/map.json`：
+**本地：** 从仓库根起静态服务，页面才能读到你磁盘上的 `map.json`。同一台电脑上也可以点「连接仓库」，把改动写回文件。
 
 ```bash
 python3 -m http.server 8877
 # 打开 http://127.0.0.1:8877/prototype/workbench.html
 ```
+
+顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
 
 ### 总览
 
