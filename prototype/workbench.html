@@ -6,7 +6,26 @@
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var preview = q.has("preview");
+  var t = q.get("theme");
+  if(!(t==="1"||t==="4"||t==="44"||t==="48")){
+    try{ t = localStorage.getItem("cg-workbench-node-theme")||""; }catch(e){ t=""; }
+  }
+  if(t==="4"||t==="44"||t==="48"){
+    document.documentElement.setAttribute("data-node-theme", t);
+  }else{
+    document.documentElement.removeAttribute("data-node-theme");
+    t = "1";
+  }
+  if(preview) document.documentElement.classList.add("theme-preview");
+  window.__CG_NODE_THEME = t;
+  window.__CG_PREVIEW = preview;
+})();
+</script>
 <style>
 :root{
   --chrome-top:52px;
@@ -18,6 +37,8 @@
   --yellow:#ffe66d; --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
+  --drawer-width:340px;
+  --bug-panel-width:240px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -163,7 +184,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) 0 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -261,6 +282,110 @@ body.rel-mode .node .add-child{display:none}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
+/* 对照页预览：?theme=44|48|1|4 只换模块卡，不改顶栏结构 */
+html[data-node-theme="44"]{ --bg:#fffaf3; }
+html[data-node-theme="44"] .node{
+  border-color:#e6d3a8; border-radius:20px; color:#4a3f32;
+  box-shadow:0 6px 16px rgba(180,140,60,.1);
+  font-family:"IBM Plex Sans","PingFang SC",sans-serif;
+}
+html[data-node-theme="44"] .node:hover{
+  transform:none; box-shadow:0 10px 28px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.module{
+  background:#fff; border-width:2px; border-color:#e6d3a8; border-radius:20px;
+  box-shadow:0 10px 28px rgba(180,140,60,.12);
+}
+html[data-node-theme="44"] .node.module:hover{
+  transform:none; box-shadow:0 12px 32px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.root:not(.module),
+html[data-node-theme="44"] .node.root.module{background:#fff6e5}
+html[data-node-theme="44"] .node.selected,
+html[data-node-theme="44"] .node.module.selected,
+html[data-node-theme="44"] .node.noauth.selected,
+html[data-node-theme="44"] .node.module.noauth.selected{background:#ffe9b8; color:#4a3f32; border-color:#e6d3a8; box-shadow:0 10px 28px rgba(180,140,60,.12)}
+html[data-node-theme="44"] .node.module .m-blurb,
+html[data-node-theme="44"] .node.module.noauth.selected .m-blurb{color:#9a8b78}
+html[data-node-theme="44"] .node.noauth,
+html[data-node-theme="44"] .node.noauth.module{
+  background:#eee9e0; border-color:#d9ccb4; color:#5c5c58;
+  box-shadow:0 6px 16px rgba(160,140,100,.08);
+}
+html[data-node-theme="44"] .dot.module{background:#d4a017}
+html[data-node-theme="44"] #links path.link,
+html[data-node-theme="44"] #links path.link.stem{stroke:#e6d3a8}
+
+html[data-node-theme="48"]{ --bg:#f8f4ea; }
+html[data-node-theme="48"] .node{
+  border-color:#cfc6b4; border-radius:10px; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node:hover{box-shadow:1px 1px 0 #cfc6b4}
+html[data-node-theme="48"] .node.module{
+  background:#e7eef8; border-width:1.5px; border-color:#cfc6b4; border-radius:10px;
+  box-shadow:3px 3px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node.module:hover{box-shadow:2px 2px 0 #cfc6b4}
+html[data-node-theme="48"] .node.root:not(.module),
+html[data-node-theme="48"] .node.root.module{background:#ffe08a}
+html[data-node-theme="48"] .node.selected,
+html[data-node-theme="48"] .node.module.selected,
+html[data-node-theme="48"] .node.noauth.selected,
+html[data-node-theme="48"] .node.module.noauth.selected{background:#fde2c8; border-color:#cfc6b4; box-shadow:3px 3px 0 #cfc6b4}
+html[data-node-theme="48"] .node.noauth,
+html[data-node-theme="48"] .node.noauth.module{
+  background:#e4e0d6; border-color:#cfc6b4; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] #links path.link,
+html[data-node-theme="48"] #links path.link.stem{stroke:#cfc6b4}
+
+html[data-node-theme="4"]{ --bg:#f5f5f2; }
+html[data-node-theme="4"] .node{
+  border:1px solid #bbb; border-radius:10px; box-shadow:none; color:#222;
+  font-family:"IBM Plex Sans","PingFang SC",sans-serif;
+}
+html[data-node-theme="4"] .node:hover,
+html[data-node-theme="4"] .node.module:hover{transform:none; box-shadow:none; border-color:#999}
+html[data-node-theme="4"] .node.module{
+  background:#eeeae2; border:1px solid #bbb; border-radius:10px; box-shadow:none;
+}
+html[data-node-theme="4"] .node.root:not(.module),
+html[data-node-theme="4"] .node.root.module{background:#fff4c2}
+html[data-node-theme="4"] .node.selected,
+html[data-node-theme="4"] .node.module.selected,
+html[data-node-theme="4"] .node.noauth.selected,
+html[data-node-theme="4"] .node.module.noauth.selected{background:#ffe9a8; border-color:#bbb; box-shadow:none}
+html[data-node-theme="4"] .node.module .m-blurb,
+html[data-node-theme="4"] .node.module.noauth.selected .m-blurb{color:#777; font-family:var(--font-note)}
+html[data-node-theme="4"] .node.noauth,
+html[data-node-theme="4"] .node.noauth.module{
+  background:#ddd; border-color:#ccc; box-shadow:none;
+}
+html[data-node-theme="4"] .dot.module{background:#4a7ab5}
+html[data-node-theme="4"] #links path.link,
+html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
+
+.theme-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
+  padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+html.theme-preview .theme-preview-banner{display:block}
+
+.settings-wrap{position:relative;flex:0 0 auto}
+.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
+  background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
+.settings-menu.open{display:block}
+.settings-menu .set-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 6px}
+.settings-menu .set-block + .set-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.theme-picks{display:flex;flex-direction:column;gap:4px}
+.theme-pick{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  border:2px solid transparent;background:transparent;box-shadow:none;border-radius:8px;
+  padding:6px 8px;font-size:13px;font-weight:700}
+.theme-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
+.theme-pick.on{border-color:var(--line-ink);background:var(--yellow);box-shadow:var(--shadow-sm)}
+.theme-pick .swatch{width:22px;height:14px;border-radius:4px;flex:0 0 auto;border:1.5px solid #2d2d2d}
+.settings-menu .lang-toggle{width:100%}
+.settings-menu .lang-toggle button{flex:1}
+
 /* 授权模式 */
 body.auth-mode .node{cursor:cell}
 .node .auth-mark{display:none;width:15px;height:15px;border-radius:50%;border:2px solid #c9bfdd;
@@ -298,12 +423,13 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:240px;
+.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:var(--bug-panel-width);
   background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
-body.bugs-open #viewport{right:240px}
-body.bugs-open .drawer{display:none}
+body.bugs-open #viewport{right:var(--bug-panel-width)}
+body.bugs-open .drawer,
+body.bugs-open .drawer-split{display:none}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
@@ -342,8 +468,18 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
+  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
+  background:var(--line-ink)}
+.drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
+  background:rgba(45,45,45,.08)}
+body.drawer-resizing{cursor:col-resize;user-select:none}
+body.drawer-resizing #viewport,
+body.drawer-resizing .drawer{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -470,6 +606,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 </style>
 </head>
 <body>
+<div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <header class="top">
   <div class="brand">
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
@@ -480,10 +617,6 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <div class="dir-toggle" id="dir-toggle">
       <button type="button" data-dir="lr" class="on" data-i18n="dirLr">左右</button>
       <button type="button" data-dir="tb" data-i18n="dirTb">上下</button>
-    </div>
-    <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
-      <button type="button" data-lang="zh" class="on">中</button>
-      <button type="button" data-lang="en">EN</button>
     </div>
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
@@ -500,6 +633,39 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
     <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+    <div class="settings-wrap" id="settings-wrap">
+      <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
+      <div class="settings-menu" id="settings-menu">
+        <div class="set-block">
+          <div class="set-label" data-i18n="themeLabel">主题</div>
+          <div class="theme-picks" id="theme-picks">
+            <button type="button" class="theme-pick" data-theme="1">
+              <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
+              <span data-i18n="themeNow">现在这版</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="44">
+              <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
+              <span data-i18n="themeCream">奶油描边</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="48">
+              <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
+              <span data-i18n="themeWash">淡彩分层</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="4">
+              <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
+              <span data-i18n="themeFlat">无阴影扁平</span>
+            </button>
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-label" data-i18n="langLabel">语言</div>
+          <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+            <button type="button" data-lang="zh" class="on">中</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 <div class="first-use" id="first-use">
@@ -550,6 +716,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <ul id="bug-panel-list"></ul>
 </aside>
 
+<div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
 <aside class="drawer" id="detail"></aside>
 
 <script>
@@ -567,6 +734,7 @@ const I18N = {
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
+    splitTitle:"拖动调整检查器宽度，双击恢复",
     lensMode:"第一层候选",
     lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
     lensShelfHint:"候选（无连线）· 点一个挂到根下",
@@ -579,6 +747,13 @@ const I18N = {
     lensEmptyShelf:"候选都在画布上了",
     authMode:"授权模式",
     cancelled:"已取消",
+    settings:"设置",
+    themeLabel:"主题",
+    langLabel:"语言",
+    themeNow:"现在这版",
+    themeCream:"奶油描边",
+    themeWash:"淡彩分层",
+    themeFlat:"无阴影扁平",
     firstKicker:"演示 · 第一次使用",
     firstHeading:"从 {name} 建立架构图",
     firstCopy:"这一步由当前会话的 Agent 真读 {name}，把多个视角的候选模块端到这里。你挑、改名、删减，拼出自己的第一层。",
@@ -640,6 +815,7 @@ const I18N = {
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
+    splitTitle:"Drag to resize the inspector. Double-click to reset.",
     lensMode:"L1 candidates",
     lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
     lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
@@ -652,6 +828,13 @@ const I18N = {
     lensEmptyShelf:"All candidates are on the canvas",
     authMode:"Auth mode",
     cancelled:"Cancelled",
+    settings:"Settings",
+    themeLabel:"Theme",
+    langLabel:"Language",
+    themeNow:"Current",
+    themeCream:"Cream stroke",
+    themeWash:"Wash layers",
+    themeFlat:"Flat",
     firstKicker:"Demo · first use",
     firstHeading:"Build a map from {name}",
     firstCopy:"The agent you are talking to actually reads {name} and brings candidates from several lenses here. You pick, rename, and trim to build your first layer.",
@@ -708,7 +891,33 @@ const I18N = {
   }
 };
 const LANG_KEY = "cg-workbench-ui-lang";
+const THEME_KEY = "cg-workbench-node-theme";
+const THEME_IDS = ["1","44","48","4"];
 let uiLang = "zh";
+function currentNodeTheme(){
+  const n = window.__CG_NODE_THEME;
+  return THEME_IDS.includes(n) ? n : "1";
+}
+function syncThemePicks(){
+  const on = currentNodeTheme();
+  document.querySelectorAll("#theme-picks [data-theme]").forEach(b=>{
+    b.classList.toggle("on", b.dataset.theme===on);
+  });
+}
+function applyNodeTheme(id, persist){
+  const n = THEME_IDS.includes(String(id)) ? String(id) : "1";
+  window.__CG_NODE_THEME = n;
+  if(n==="1") document.documentElement.removeAttribute("data-node-theme");
+  else document.documentElement.setAttribute("data-node-theme", n);
+  if(persist!==false && !window.__CG_PREVIEW){
+    try{ localStorage.setItem(THEME_KEY, n); }catch(e){}
+  }
+  syncThemePicks();
+  if(typeof renderAll==="function" && typeof data!=="undefined" && data){
+    renderAll();
+    if(typeof fitView==="function") fitView();
+  }
+}
 function t(key){
   const pack = I18N[uiLang] || I18N.zh;
   return pack[key] || I18N.zh[key] || key;
@@ -721,6 +930,7 @@ function applyStaticI18n(){
   document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
+  syncThemePicks();
   const titleEl = document.getElementById("repo-title");
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
@@ -2868,6 +3078,7 @@ function syncBootstrapFromTree(){
   }
 }
 function persist(){
+  if(window.__CG_PREVIEW) return;
   snapshotRepo();
   const dump = {repoId, repos:{}};
   Object.values(catalog).forEach(r=>{
@@ -3137,6 +3348,12 @@ function renderRepoMenu(){
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
+function closeSettings(){
+  const menu = document.getElementById("settings-menu");
+  const btn = document.getElementById("btn-settings");
+  if(menu) menu.classList.remove("open");
+  if(btn){ btn.classList.remove("on"); btn.setAttribute("aria-expanded","false"); }
+}
 function switchRepo(id){
   if(id===repoId){ closeRepoMenu(); return; }
   persist();
@@ -3919,10 +4136,26 @@ document.getElementById("first-use-cut-back").onclick = ()=>{
 };
 document.getElementById("repo-title").onclick = e=>{
   e.stopPropagation();
+  closeSettings();
   document.getElementById("repo-menu").classList.toggle("open");
 };
-document.addEventListener("click", ()=>closeRepoMenu());
+document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
+document.getElementById("settings-wrap").onclick = e=>e.stopPropagation();
+document.getElementById("btn-settings").onclick = e=>{
+  e.stopPropagation();
+  closeRepoMenu();
+  const menu = document.getElementById("settings-menu");
+  const open = !menu.classList.contains("open");
+  menu.classList.toggle("open", open);
+  e.currentTarget.classList.toggle("on", open);
+  e.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+};
+document.getElementById("theme-picks").onclick = e=>{
+  const b = e.target.closest("[data-theme]");
+  if(!b) return;
+  applyNodeTheme(b.dataset.theme, true);
+};
 function setLayoutDir(dir){
   layoutDir = dir;
   document.body.classList.toggle("layout-tb", dir==="tb");
@@ -4847,6 +5080,89 @@ function chromeTop(){
   const n = parseFloat(raw);
   return Number.isFinite(n) && n>0 ? n : 52;
 }
+const DRAWER_W_KEY = "cg-drawer-width";
+const DRAWER_W_DEFAULT = 340;
+function cssPx(name, fallback){
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(n) && n>0 ? n : fallback;
+}
+function drawerWidthPx(){ return cssPx("--drawer-width", DRAWER_W_DEFAULT); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function clampDrawerWidth(px){
+  const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
+  return Math.max(220, Math.min(max, Math.round(px)));
+}
+function applyDrawerWidth(px, save){
+  const w = clampDrawerWidth(px);
+  document.documentElement.style.setProperty("--drawer-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(DRAWER_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
+function restoreDrawerWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
+    if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function bindDrawerSplit(){
+  const el = document.getElementById("drawer-split");
+  if(!el) return;
+  let resizing = false;
+  function move(e){
+    if(!resizing) return;
+    const x = e.clientX;
+    if(!Number.isFinite(x)) return;
+    applyDrawerWidth(window.innerWidth - x, false);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
+    document.body.classList.remove("drawer-resizing");
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("mousemove", move, true);
+    window.removeEventListener("pointerup", stop, true);
+    window.removeEventListener("mouseup", stop, true);
+    window.removeEventListener("pointercancel", stop, true);
+    applyDrawerWidth(drawerWidthPx(), true);
+    fitView();
+  }
+  function start(e){
+    if(document.body.classList.contains("bugs-open")) return;
+    if(e.button!=null && e.button!==0) return;
+    if(resizing && e.type==="mousedown") return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizing = true;
+    panning = false;
+    vp.classList.remove("grabbing");
+    document.body.classList.add("drawer-resizing");
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("pointerup", stop, true);
+    window.addEventListener("mouseup", stop, true);
+    window.addEventListener("pointercancel", stop, true);
+    if(e.pointerId!=null){
+      try{ el.setPointerCapture(e.pointerId); }catch(err){}
+    }
+  }
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("mousedown", start);
+  el.addEventListener("dblclick", e=>{
+    e.preventDefault();
+    applyDrawerWidth(DRAWER_W_DEFAULT, true);
+    fitView();
+  });
+  el.addEventListener("keydown", e=>{
+    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 32 : 16;
+    const next = drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step);
+    applyDrawerWidth(next, true);
+    fitView();
+  });
+}
 function syncChrome(){
   const h = document.querySelector("header.top");
   if(!h) return;
@@ -4855,7 +5171,7 @@ function syncChrome(){
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
-  const right = bugs ? 240 : 340;
+  const right = bugs ? bugPanelWidthPx() : drawerWidthPx();
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
@@ -4864,19 +5180,21 @@ function fitView(){
   view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
-window.addEventListener("resize", ()=>{ syncChrome(); fitView(); });
+window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
 const vp = document.getElementById("viewport");
-let dragging=false, sx=0, sy=0;
+let panning=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
+  if(document.body.classList.contains("drawer-resizing")) return;
+  if(e.target.closest("#drawer-split")) return;
   if(e.target.closest(".node")) return;
-  dragging=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  panning=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
   vp.classList.add("grabbing");
 });
 window.addEventListener("mousemove", e=>{
-  if(!dragging) return;
+  if(!panning || document.body.classList.contains("drawer-resizing")) return;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
-window.addEventListener("mouseup", ()=>{ dragging=false; vp.classList.remove("grabbing"); });
+window.addEventListener("mouseup", ()=>{ panning=false; vp.classList.remove("grabbing"); });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
@@ -4919,9 +5237,26 @@ async function boot(){
   }else{
     applyRepoChrome();
   }
+  if(window.__CG_PREVIEW){
+    closeOverlay();
+    currentRepo().firstUseOpen = false;
+  }
+  const themeBanner = document.getElementById("theme-preview-banner");
+  if(themeBanner && window.__CG_PREVIEW){
+    themeBanner.textContent = "预览模块卡 #"+currentNodeTheme()+" · 还没写进默认工作台";
+  }
+  syncThemePicks();
   renderAll();
+  restoreDrawerWidth();
+  bindDrawerSplit();
   syncChrome();
   fitView();
+  if(new URLSearchParams(location.search).has("settings")){
+    const menu = document.getElementById("settings-menu");
+    const btn = document.getElementById("btn-settings");
+    if(menu) menu.classList.add("open");
+    if(btn){ btn.classList.add("on"); btn.setAttribute("aria-expanded","true"); }
+  }
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
