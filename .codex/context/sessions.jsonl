@@ -45,3 +45,4 @@
 {"id":"2026-08-30-d","human":"环节设计可云端做；todo 分成云端/本地；然后开始开发；前端布局以后再优化","agent":"TODO 按云端/本地分类。Skill 和 README 写清 GitHack 只看、对话确认、本地才写盘。开始做云端 Skill，不改前端布局。","files":["TODO.md","SKILL.md","README.md","README.zh-CN.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-e","human":"检查器和画布之间那条线要支持调整","agent":"右侧检查器竖线可拖动改宽度，双击恢复默认，宽度记在浏览器里","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
 {"id":"2026-08-30-f","human":"拖窄检查器时被画布抢走","agent":"拖动改成整窗捕获，加宽可点范围，拖的时候画布和检查器不抢鼠标","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-g","human":"先给模块卡 50 版配色样式让我选","agent":"加了 prototype/node-style-gallery.html，50 套可点选，未改工作台","files":["prototype/node-style-gallery.html"],"bugs":[],"tasks":[]}
