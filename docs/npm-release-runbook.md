@@ -4,6 +4,33 @@ This package is delivered through npm. GitHub Releases are not used.
 
 本项目只通过 npm 交付，不使用 GitHub Release。
 
+## Finding CI and CD in Actions / 在 Actions 中区分 CI 与 CD
+
+The Actions sidebar lists **CI | 代码与功能检查** (code and behavior checks) and **CD | npm 发布** (npm delivery) separately. Run titles identify the branch, PR, or version tag instead of repeating the commit message. CI never publishes to npm; CD contains its own package acceptance checks before and after publication.
+
+Actions 左侧分别显示 **CI | 代码与功能检查** 和 **CD | npm 发布**。运行标题直接写明分支、PR 或版本标签，不再只显示提交说明。CI 不发布 npm；CD 自己包含发布前后的安装包验收，并非只有“发布到 npm”一步属于 CD。
+
+| Event / 操作 | CI | CD |
+| --- | --- | --- |
+| Local commit only / 仅本地提交 | No / 不运行 | No / 不运行 |
+| Push a branch, including main / 推送分支，包括合入 main | Yes / 运行 | No / 不运行 |
+| Open, update, or reopen a PR targeting main / 创建、更新代码或重新打开目标为 main 的 PR | Yes / 运行 | No / 不运行 |
+| Push a version tag such as v0.4.5 / 推送版本标签 | Yes / 运行 | Yes / 运行 |
+
+Tag-triggered CI and CD are separate runs, not a chained CI-to-CD workflow. This naming cleanup preserves the existing triggers and every test. A tag outside the stable `vX.Y.Z` format, a version mismatch, or a commit outside `main` is rejected by CD before publication.
+
+标签触发的 CI 和 CD 是独立运行，不是“本次 CI 完成后再启动 CD”。本次命名整理保留原触发规则和全部测试。CD 会在发布前拒绝非稳定 `vX.Y.Z` 标签、版本不一致或不属于 `main` 的提交。
+
+- **CI 1**: functionality and package-content checks; **CI 2**: parallel Ubuntu/macOS/Windows functionality and installation checks; **Required**: aggregate the CI results for the merge gate. The name `Required` stays unchanged because main branch protection uses it.
+- **CD 1**: validate release identity and package; **CD 2**: parallel Ubuntu/macOS/Windows package-install acceptance; **CD 3**: publish only after all acceptance jobs pass; **CD 4**: download and verify the published package.
+
+- **CI 1**：功能测试与包内容检查；**CI 2**：Ubuntu/macOS/Windows 并行功能与安装测试；**Required**：汇总 CI 结果，作为合并门槛。`Required` 名称保持不变，因为 main 分支保护绑定了它。
+- **CD 1**：发布校验与打包；**CD 2**：Ubuntu/macOS/Windows 并行安装包验收；**CD 3**：全部验收通过后发布；**CD 4**：从 npm 下载并验证已发布版本。
+
+The numbered labels describe dependencies, not scheduled intervals. New names apply to future runs; existing run titles and job records are not rewritten. `npm-publish.yml` keeps its filename so the npm Trusted Publisher binding remains valid.
+
+阶段编号表示依赖顺序，不是定时间隔。新名称用于后续运行，已有运行的标题和任务记录不会被重写。`npm-publish.yml` 文件名不变，保留现有 npm Trusted Publisher 绑定。
+
 ## Release contract / 发布契约
 
 - A stable tag must use `vX.Y.Z` and match `package.json` exactly.
@@ -50,14 +77,14 @@ Protect `main` with the unique required check `Required`, require changes throug
 2. Update `package.json` to the next stable version through a pull request.
 3. Wait for the `Required` check and merge into `main`.
 4. Create `vX.Y.Z` on that exact `main` commit and push the tag.
-5. Wait for the `Publish npm package` workflow to finish.
+5. Wait for the `CD | npm 发布` workflow to finish.
 6. Verify `npm view @michelj/context-guard@X.Y.Z version` and `npm view @michelj/context-guard@latest version`.
 
 1. 本地运行 `npm run test:cd`。
 2. 通过 Pull Request 把 `package.json` 更新到下一个稳定版本。
 3. 等待 `Required` 通过并合入 `main`。
 4. 在该 `main` 提交上创建 `vX.Y.Z`，然后推送标签。
-5. 等待 `Publish npm package` workflow 完成。
+5. 等待 `CD | npm 发布` workflow 完成。
 6. 用 `npm view @michelj/context-guard@X.Y.Z version` 和 `npm view @michelj/context-guard@latest version` 复核。
 
 ## Failure and recovery / 失败与恢复
