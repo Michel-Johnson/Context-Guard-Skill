@@ -1,0 +1,112 @@
+name: CI | 三客户端无对话检查
+
+on:
+  push:
+    branches: [main, codex/CI]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# No AI credentials, model requests, npm publication, or hook-trust bypass.
+permissions:
+  contents: read
+
+concurrency:
+  group: client-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: 共享安装包与基础测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Test and pack the exact commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          mkdir -p dist
+          npm pack --json --pack-destination dist > "$RUNNER_TEMP/client-pack.json"
+          node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/client-pack.json"
+          node .github/scripts/verify-package-artifact.mjs dist --write-hash
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-client-package
+          path: |
+            dist/*.tgz
+            dist/package.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+  clients:
+    name: ${{ matrix.label }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - client: codex
+            label: Codex | Skill 与 Hook 发现
+          - client: claude
+            label: Claude | 原生初始化 Hook
+          - client: cursor
+            label: Cursor | ACP 启动与配置（不含会话）
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-client-package
+          path: dist
+      - name: Verify the shared package
+        run: node .github/scripts/verify-package-artifact.mjs dist
+      - name: Install the pinned client in an isolated directory
+        run: node .github/scripts/install-ci-client.mjs "${{ matrix.client }}" "${{ runner.temp }}/client-tools"
+      - name: Check without conversations or credentials
+        run: node .github/scripts/smoke-clients.mjs --client "${{ matrix.client }}" --tools "${{ runner.temp }}/client-tools" --tarball "$PACKAGE_TARBALL" --evidence "${{ runner.temp }}/client-evidence"
+      - name: Save scoped results, never client homes or credentials
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: client-${{ matrix.client }}-no-dialogue
+          path: ${{ runner.temp }}/client-evidence
+          if-no-files-found: warn
+          retention-days: 3
+
+  checked:
+    name: Client checks (no dialogue)
+    if: always()
+    needs: [package, clients]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every scoped check, not untested full lifecycle claims
+        env:
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          CLIENT_RESULT: ${{ needs.clients.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PACKAGE_RESULT" = success
+          test "$CLIENT_RESULT" = success

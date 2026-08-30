@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const ci = fs.readFileSync(".github/workflows/ci.yml", "utf8");
 const publish = fs.readFileSync(".github/workflows/npm-publish.yml", "utf8");
+const clients = fs.readFileSync(".github/workflows/client-compatibility.yml", "utf8");
 
 function requireMatch(content, pattern, message) {
   if (!pattern.test(content)) throw new Error(message);
@@ -13,8 +14,8 @@ function forbidMatch(content, pattern, message) {
   if (pattern.test(content)) throw new Error(message);
 }
 
-for (const [name, content] of [["CI", ci], ["publish", publish]]) {
-  const uses = [...content.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
+for (const [name, content] of [["CI", ci], ["publish", publish], ["clients", clients]]) {
+  const uses = [...content.matchAll(/^\s*(?:-\s*)?uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
   for (const action of uses) {
     if (action.startsWith("./")) continue;
     if (!/@[0-9a-f]{40}$/i.test(action)) {
@@ -37,4 +38,11 @@ if (oidcGrants.length !== 1) {
   throw new Error(`Only the publish job may receive id-token: write; found ${oidcGrants.length} grants.`);
 }
 
-console.log("Verified CI/CD workflow triggers, required check, OIDC scope, dependencies, and Action SHA pins.");
+forbidMatch(clients, /secrets\.|openai-api-key|--dangerously|--api-key|session\/prompt|turn\/start/, "No-dialogue client CI must not use AI credentials or generation.");
+forbidMatch(clients, /^\s*(?:pull_request_target|workflow_run):/m, "Client CI must not execute elevated untrusted workflows.");
+forbidMatch(clients, /^\s*(?:contents|id-token|pull-requests):\s*write/m, "Client CI must not receive write permissions.");
+for (const client of ["codex", "cursor", "claude"]) requireMatch(clients, new RegExp(`client: ${client}\\b`), `Missing real client: ${client}`);
+requireMatch(clients, /name: Client checks \(no dialogue\)/, "Client check must identify its limited scope.");
+requireMatch(clients, /test "\$CLIENT_RESULT" = success/, "Failed or skipped client jobs must not pass the aggregate.");
+forbidMatch(clients, /continue-on-error:\s*true/, "Client failures must propagate.");
+console.log("Verified CI/CD/client triggers, no-dialogue scope, permissions, and Action SHA pins.");
