@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Session start initializes the folder. Stop hooks do not run Test Hub."""
+"""Normalize Codex, Cursor, and Claude lifecycle hooks for Context Guard."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
-from pathlib import Path
+from datetime import datetime, timezone
+from pathlib import Path, PureWindowsPath
 
+from context_guard import append_session_event
 from context_guard import context_dir as context_folder
 from context_guard import folder_root, init_context, is_context_guard_skill_path
+from context_guard import read_preferences, start_workbench
 
 
 WORKSPACE_KEYS = {
@@ -20,6 +24,8 @@ WORKSPACE_KEYS = {
     "workspace_root",
     "workspaceFolder",
     "workspace_folder",
+    "workspace_roots",
+    "workspaceRoots",
     "project",
     "project_root",
     "projectRoot",
@@ -33,6 +39,10 @@ WORKSPACE_ENV_KEYS = [
     "CODEX_WORKSPACE_ROOT",
     "CODEX_PROJECT_ROOT",
     "CODEX_CWD",
+    "CURSOR_PROJECT_DIR",
+    "CURSOR_WORKSPACE_ROOT",
+    "CLAUDE_PROJECT_DIR",
+    "CLAUDE_WORKSPACE_ROOT",
     "WORKSPACE_ROOT",
     "PROJECT_ROOT",
     "PWD",
@@ -43,14 +53,21 @@ def possible_workspace_paths(value: object) -> list[Path]:
     paths: list[Path] = []
 
     def add_path(candidate: object) -> None:
+        if isinstance(candidate, list):
+            for item in candidate:
+                add_path(item)
+            return
         if not isinstance(candidate, str):
             return
-        text = candidate.strip()
-        if not text or not text.startswith("/"):
+        text = os.path.expandvars(os.path.expanduser(candidate.strip()))
+        if not text:
             return
-        path = Path(text).expanduser()
+        is_absolute = Path(text).is_absolute() or PureWindowsPath(text).is_absolute()
+        if not is_absolute:
+            return
+        path = Path(text)
         if path.exists():
-            paths.append(path)
+            paths.append(path if path.is_dir() else path.parent)
 
     def walk(obj: object) -> None:
         if isinstance(obj, dict):
@@ -82,10 +99,8 @@ def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
         candidates.append((path, "hook payload"))
     for key in WORKSPACE_ENV_KEYS:
         value = os.environ.get(key, "").strip()
-        if value.startswith("/"):
-            path = Path(value).expanduser()
-            if path.exists():
-                candidates.append((path, f"${key}"))
+        for path in possible_workspace_paths({"root": value}):
+            candidates.append((path, f"${key}"))
     candidates.append((cwd, "process cwd"))
     for path, source in candidates:
         root = folder_root(path)
@@ -96,28 +111,90 @@ def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
 
 def read_stdin() -> str:
     try:
-        return sys.stdin.read()
+        return sys.stdin.buffer.read().decode("utf-8", errors="replace")
     except Exception:
-        return ""
+        try:
+            return sys.stdin.read()
+        except Exception:
+            return ""
 
 
 def hook_log(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def hook_response(**payload: object) -> int:
+HOOK_EVENT_NAMES = {
+    "session-start": "SessionStart",
+    "subagent-start": "SubagentStart",
+    "user-prompt-submit": "UserPromptSubmit",
+    "stop": "Stop",
+    "subagent-stop": "SubagentStop",
+}
+
+
+def hook_response(platform: str, event: str, additional_context: str = "") -> int:
+    payload: dict[str, object] = {}
+    if additional_context:
+        if platform == "cursor":
+            payload["additional_context"] = additional_context
+        else:
+            payload["hookSpecificOutput"] = {
+                "hookEventName": HOOK_EVENT_NAMES.get(event, event),
+                "additionalContext": additional_context,
+            }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 
 
+def payload_value(payload: object, keys: tuple[str, ...]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def session_id(payload: object, platform: str) -> str:
+    value = payload_value(
+        payload,
+        ("session_id", "sessionId", "conversation_id", "conversationId", "generation_id"),
+    )
+    if value:
+        return value
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{platform}-{stamp}-{os.getpid()}"
+
+
+def language_setup_context(root: Path, ctx: Path) -> str:
+    language = str(read_preferences(ctx).get("record_language", "unset"))
+    if language and language != "unset":
+        return ""
+    quoted_root = '"' + str(root).replace('"', '\\"') + '"'
+    return (
+        "Context Guard first-session setup is incomplete. Before substantive project work, "
+        "ask the user whether project context should be recorded in 中文 or English; do not infer it. "
+        "After the user answers, run `context-guard set-language --root "
+        f"{quoted_root} --language <zh-or-en>` and then continue in that language."
+    )
+
+
+def lifecycle_context(root: Path, workbench_url: str | None) -> str:
+    quoted_root = '"' + str(root).replace('"', '\\"') + '"'
+    workbench = f" Workbench: {workbench_url}." if workbench_url else ""
+    return (
+        f"Context Guard is active for {root}.{workbench} "
+        "Record a credible bad case with `context-guard record-bad-case --root "
+        f"{quoted_root} --title <title> --phenomenon <what-failed> --trigger <trigger> "
+        "--cause <cause-or-pending> --guard <regression-guard> --keys <comma-separated>`; "
+        "never store secrets in project context."
+    )
+
+
 def prompt_text(raw: str) -> str:
     payload = parse_hook_payload(raw)
-    if isinstance(payload, dict):
-        for key in ("prompt", "user_prompt", "text", "content"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    return ""
+    return payload_value(payload, ("prompt", "user_prompt", "userPrompt", "text", "content"))
 
 
 def redact(text: str) -> str:
@@ -148,36 +225,70 @@ def append_user_message(ctx: Path, text: str) -> str:
 
 
 def main() -> int:
-    event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+    parser = argparse.ArgumentParser(description="Context Guard hook adapter")
+    parser.add_argument("event", nargs="?", default="unknown")
+    parser.add_argument("--platform", choices=["codex", "cursor", "claude"], default="codex")
+    args, _unknown = parser.parse_known_args()
+    event = args.event
+    platform = args.platform
     raw = read_stdin()
+    payload = parse_hook_payload(raw)
     root, root_source = event_root(raw, Path.cwd())
     ctx = context_folder(root)
+    current_session_id = session_id(payload, platform)
 
     if is_context_guard_skill_path(root):
         hook_log("[context-guard] apparent root is the skill directory; skipping writes.")
-        return hook_response()
+        return hook_response(platform, event)
 
     if event in {"session-start", "subagent-start"}:
         created = init_context(root)
+        append_session_event(
+            root,
+            event,
+            platform,
+            current_session_id,
+            {"root_source": root_source},
+        )
+        url = None
+        if event == "session-start" and not (
+            isinstance(payload, dict) and payload.get("is_background_agent") is True
+        ):
+            start_reason = payload_value(payload, ("source", "reason", "session_start_type")).lower()
+            url = start_workbench(
+                root,
+                open_browser=start_reason not in {"resume", "clear", "compact"},
+            )
         hook_log(
             f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})"
         )
-        return hook_response()
+        contexts = [language_setup_context(root, ctx), lifecycle_context(root, url)]
+        return hook_response(platform, event, "\n\n".join(item for item in contexts if item))
 
     if event == "user-prompt-submit":
+        init_context(root)
         status = append_user_message(ctx, prompt_text(raw))
+        append_session_event(
+            root,
+            event,
+            platform,
+            current_session_id,
+            {"message_status": status},
+        )
         hook_log(f"[context-guard] user-messages: {status}")
-        return hook_response()
+        return hook_response(platform, event)
 
     if event in {"stop", "subagent-stop"}:
+        init_context(root)
+        append_session_event(root, event, platform, current_session_id)
         hook_log(
             "[context-guard] if this turn mattered, append sessions.jsonl and update bugs/tasks. "
             "Do not run Test Hub or Roadmap HTML."
         )
-        return hook_response()
+        return hook_response(platform, event)
 
     hook_log(f"[context-guard] ignored event: {event}")
-    return hook_response()
+    return hook_response(platform, event)
 
 
 if __name__ == "__main__":

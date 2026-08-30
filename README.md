@@ -2,7 +2,7 @@
 
 Language: **English** | [中文](README.zh-CN.md)
 
-Context Guard is a Codex skill for durable project memory. It keeps the task route, branches, bad cases, and verification paths inside the project's own `.codex/context/` folder, so Codex can understand where the work is, what went wrong before, and how to avoid repeating fixed mistakes across sessions.
+Context Guard is a durable project-memory skill for Codex, Cursor, and Claude. It keeps the task route, branches, bad cases, and verification paths inside the project's own `.codex/context/` folder, so agents can understand where the work is, what went wrong before, and how to avoid repeating fixed mistakes across sessions.
 
 ## What It Does
 
@@ -11,26 +11,23 @@ Context Guard is a Codex skill for durable project memory. It keeps the task rou
 - **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
 - **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
 - **Record language**: Chinese or English per folder
+- **Lifecycle**: create session records, retain user messages, and persist agent-identified bad cases through one command
 
 v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 ## Human workbench
 
-People confirm the architecture map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
-
-**Current workbench (this branch):** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/first-use-interactive-f54e/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/first-use-interactive-f54e/prototype/workbench.html)
-
-The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
+People confirm the architecture map in the workbench. With hooks installed, a new session starts one local workbench instance and opens it in the browser. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
 To decide the first layer: click the repo name, switch to **OpenClaw** (first use), then **See first-layer cuts**. Picking one lands it on the canvas. Titles are still prepared; the cut is yours.
 
 The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
 
-Serve the repo root so the page can load `.codex/context/map.json`:
+Start or stop it manually when needed:
 
 ```bash
-python3 -m http.server 8877
-# then open http://127.0.0.1:8877/prototype/workbench.html
+context-guard workbench --root /path/to/project
+context-guard workbench --root /path/to/project --stop
 ```
 
 ### Overview
@@ -65,25 +62,31 @@ Click a bug with an assigned session. The path from the root to that node lights
 
 ## Install
 
-Install with npx:
+Install with npx. The installer detects Codex, Cursor, and Claude, then installs both the skill and lifecycle hooks while preserving existing configuration:
 
 ```bash
 npx @michelj/context-guard install
 ```
 
-Or install globally and let the package copy the skill into Codex's skill directory automatically:
+Or install globally and let the package configure detected clients automatically:
 
 ```bash
 npm install -g @michelj/context-guard --registry=https://registry.npmjs.org
 ```
 
-Install hooks only when you explicitly want Context Guard reminders at Codex lifecycle events:
+Force installation for all three clients:
 
 ```bash
-npx @michelj/context-guard install --with-hooks
+npx @michelj/context-guard install --platform all
 ```
 
-This also enables the current `[features] hooks = true` setting in `~/.codex/config.toml` and migrates the deprecated `codex_hooks` alias without changing other settings.
+Hooks are installed by default. To copy only the skill, opt out explicitly:
+
+```bash
+npx @michelj/context-guard install --no-hooks
+```
+
+Default skill paths are `~/.codex/skills/context-guard`, `~/.cursor/skills/context-guard`, and `~/.claude/skills/context-guard`. The installer backs up and merges existing hook/settings files. For Codex it also enables `[features] hooks = true` and migrates the deprecated `codex_hooks` alias.
 
 Use from GitHub before the npm package is published:
 
@@ -98,22 +101,24 @@ git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
 rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents references scripts tests \
+  SKILL.md README.md README.zh-CN.md agents prototype references scripts \
   ~/.codex/skills/context-guard/
 ```
 
-After installation, Codex should discover:
+After installation, the matching clients should discover:
 
 ```text
 ~/.codex/skills/context-guard/SKILL.md
+~/.cursor/skills/context-guard/SKILL.md
+~/.claude/skills/context-guard/SKILL.md
 ```
 
 ## Where Context Lives
 
-Context must be saved under the local project currently opened in Codex:
+Context stays under the opened local project, independent of the client:
 
 ```text
-<Codex project root>/.codex/context/
+<project root>/.codex/context/
 ```
 
 Do not write project context into:
@@ -126,13 +131,13 @@ Do not write project context into:
 Short user prompts that matter for future work are kept in:
 
 ```text
-<Codex project root>/.codex/context/user-messages.md
+<project root>/.codex/context/user-messages.md
 ```
 
-If the user provides a credential that future Codex turns need, Context Guard records only a redacted pointer in public context. Raw durable secrets must stay local-only under:
+If the user provides a credential that future turns need, Context Guard records only a redacted pointer in public context. Raw durable secrets must stay local-only under:
 
 ```text
-<Codex project root>/.codex/context/private/
+<project root>/.codex/context/private/
 ```
 
 When running scripts manually, pass the project root:
@@ -142,7 +147,7 @@ python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language English
 ```
 
-People look at `prototype/workbench.html`. `show-roadmap` only prints that path.
+On the first session, if `record_language` is still `unset`, the hook instructs the agent to ask “中文 or English?” and persist the answer. Later sessions do not ask again. The `workbench` command starts the local server and returns its browser URL.
 
 ## Common Usage
 
@@ -153,9 +158,10 @@ Use $context-guard. Four stores: sessions, bugs, tasks, map.
 ```bash
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language English
+python3 scripts/context_guard.py workbench --root /path/to/project
 ```
 
-Open `prototype/workbench.html` to see the map.
+Run `context-guard workbench --root /path/to/project` to see the map.
 
 ## Main Files
 
@@ -163,6 +169,8 @@ Open `prototype/workbench.html` to see the map.
 .codex/context/
 |-- FIND.md
 |-- sessions.jsonl
+|-- sessions/
+|-- bugs-index.json
 |-- bugs/ and fixes/
 |-- tasks/
 |-- map.json

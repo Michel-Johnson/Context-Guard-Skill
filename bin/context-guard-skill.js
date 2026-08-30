@@ -15,22 +15,23 @@ const skillInstallEntries = [
   "README.md",
   "README.zh-CN.md",
   "agents",
+  "prototype",
   "references",
-  "scripts",
-  "tests"
+  "scripts"
 ];
 
 function usage() {
   console.log(`Context Guard Skill
 
 Usage:
-  context-guard install [--target <dir>] [--with-hooks] [--hooks-target <file>] [--config-target <file>]
+  context-guard install [--platform auto|all|codex|cursor|claude] [--no-hooks]
+                        [--target <dir>] [--hooks-target <file>] [--config-target <file>]
   context-guard path
   context-guard <context_guard.py command> [args...]
 
 Examples:
   npx @michelj/context-guard install
-  npx @michelj/context-guard install --with-hooks
+  npx @michelj/context-guard install --platform all
   npx @michelj/context-guard init --root /path/to/project
 `);
 }
@@ -47,34 +48,54 @@ function expandHome(inputPath) {
   return inputPath;
 }
 
-function defaultSkillTarget() {
-  if (process.env.CONTEXT_GUARD_SKILL_TARGET) {
-    return path.resolve(expandHome(process.env.CONTEXT_GUARD_SKILL_TARGET));
-  }
-  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-  return path.join(codexHome, "skills", "context-guard");
+const PLATFORM_SPECS = {
+  codex: { env: "CODEX_HOME", folder: ".codex", hooksFile: "hooks.json", configFile: "config.toml" },
+  cursor: { env: "CURSOR_HOME", folder: ".cursor", hooksFile: "hooks.json" },
+  claude: { env: "CLAUDE_HOME", folder: ".claude", hooksFile: "settings.json" }
+};
+
+function platformHome(platform) {
+  const spec = PLATFORM_SPECS[platform];
+  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
 }
 
-function defaultHooksTarget() {
-  if (process.env.CONTEXT_GUARD_HOOKS_TARGET) {
-    return path.resolve(expandHome(process.env.CONTEXT_GUARD_HOOKS_TARGET));
-  }
-  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-  return path.join(codexHome, "hooks.json");
+function platformTargets(platform) {
+  const home = platformHome(platform);
+  return {
+    target: path.join(home, "skills", "context-guard"),
+    hooksTarget: path.join(home, PLATFORM_SPECS[platform].hooksFile),
+    configTarget: PLATFORM_SPECS[platform].configFile
+      ? path.join(home, PLATFORM_SPECS[platform].configFile)
+      : null
+  };
 }
 
-function defaultConfigTarget() {
-  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-  return path.join(codexHome, "config.toml");
+function selectedPlatforms(requested) {
+  if (requested === "all") return Object.keys(PLATFORM_SPECS);
+  if (requested !== "auto") return [requested];
+  const detected = Object.entries(PLATFORM_SPECS)
+    .filter(([, spec]) => Boolean(process.env[spec.env]) || fs.existsSync(platformHomeBySpec(spec)))
+    .map(([name]) => name);
+  return detected.length ? detected : ["codex"];
+}
+
+function platformHomeBySpec(spec) {
+  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
 }
 
 function parseInstallArgs(args) {
   const options = {
-    target: defaultSkillTarget(),
-    withHooks: false,
-    hooksTarget: defaultHooksTarget(),
-    configTarget: defaultConfigTarget(),
-    configTargetExplicit: false,
+    platform: "auto",
+    target: process.env.CONTEXT_GUARD_SKILL_TARGET
+      ? path.resolve(expandHome(process.env.CONTEXT_GUARD_SKILL_TARGET))
+      : null,
+    withHooks: true,
+    hooksTarget: process.env.CONTEXT_GUARD_HOOKS_TARGET
+      ? path.resolve(expandHome(process.env.CONTEXT_GUARD_HOOKS_TARGET))
+      : null,
+    configTarget: null,
+    targetExplicit: Boolean(process.env.CONTEXT_GUARD_SKILL_TARGET),
+    hooksTargetExplicit: Boolean(process.env.CONTEXT_GUARD_HOOKS_TARGET),
     dryRun: false
   };
 
@@ -84,20 +105,26 @@ function parseInstallArgs(args) {
       const value = args[++i];
       if (!value) fail("--target requires a directory");
       options.target = path.resolve(expandHome(value));
+      options.targetExplicit = true;
+    } else if (arg === "--platform") {
+      const value = String(args[++i] || "").toLowerCase();
+      if (!["auto", "all", ...Object.keys(PLATFORM_SPECS)].includes(value)) {
+        fail("--platform must be auto, all, codex, cursor, or claude");
+      }
+      options.platform = value;
     } else if (arg === "--with-hooks" || arg === "--hooks") {
       options.withHooks = true;
+    } else if (arg === "--no-hooks") {
+      options.withHooks = false;
     } else if (arg === "--hooks-target") {
       const value = args[++i];
       if (!value) fail("--hooks-target requires a file path");
       options.hooksTarget = path.resolve(expandHome(value));
-      if (!options.configTargetExplicit) {
-        options.configTarget = path.join(path.dirname(options.hooksTarget), "config.toml");
-      }
+      options.hooksTargetExplicit = true;
     } else if (arg === "--config-target") {
       const value = args[++i];
       if (!value) fail("--config-target requires a file path");
       options.configTarget = path.resolve(expandHome(value));
-      options.configTargetExplicit = true;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
     } else if (arg === "-h" || arg === "--help") {
@@ -106,6 +133,16 @@ function parseInstallArgs(args) {
     } else {
       fail(`unknown install option: ${arg}`);
     }
+  }
+  if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "all") {
+    fail("custom targets can only be used with one platform");
+  }
+  if (options.targetExplicit && !options.hooksTargetExplicit) {
+    const platform = options.platform === "auto" ? "codex" : options.platform;
+    options.hooksTarget = path.join(path.dirname(options.target), PLATFORM_SPECS[platform].hooksFile);
+  }
+  if (!options.configTarget && options.hooksTarget && (options.platform === "auto" || options.platform === "codex")) {
+    options.configTarget = path.join(path.dirname(options.hooksTarget), "config.toml");
   }
   return options;
 }
@@ -184,20 +221,46 @@ function copySkill(target, dryRun) {
   console.log(`[context-guard-skill] installed skill: ${target}`);
 }
 
-function rewriteHookCommands(hooksConfig, skillTarget) {
+function hookCommand(skillTarget, event, platform) {
   const hookScript = path.join(skillTarget, "scripts", "context_guard_hook.py");
   const encodedHookScript = JSON.stringify(hookScript);
+  const pythonCommand = process.platform === "win32" ? "python" : "python3";
+  return `${pythonCommand} ${encodedHookScript} ${event} --platform ${platform}`;
+}
+
+function rewriteGroupedHookCommands(hooksConfig, skillTarget, platform) {
   const next = JSON.parse(JSON.stringify(hooksConfig));
   for (const groups of Object.values(next.hooks || {})) {
     for (const group of groups || []) {
       for (const hook of group.hooks || []) {
         if (hook.type === "command" && typeof hook.command === "string" && hook.command.includes("context_guard_hook.py")) {
-          hook.command = `python3 ${encodedHookScript} ${hook.command.split(" ").pop()}`;
+          const match = hook.command.match(/context_guard_hook\.py["']?\s+([a-z-]+)/);
+          const event = match ? match[1] : "session-start";
+          hook.command = hookCommand(skillTarget, event, platform);
         }
       }
     }
   }
   return next;
+}
+
+function cursorHooks(skillTarget) {
+  const events = {
+    sessionStart: "session-start",
+    subagentStart: "subagent-start",
+    beforeSubmitPrompt: "user-prompt-submit",
+    subagentStop: "subagent-stop",
+    stop: "stop"
+  };
+  const hooks = {};
+  for (const [cursorEvent, normalizedEvent] of Object.entries(events)) {
+    hooks[cursorEvent] = [{
+      type: "command",
+      command: hookCommand(skillTarget, normalizedEvent, "cursor"),
+      timeout: 10
+    }];
+  }
+  return { version: 1, hooks };
 }
 
 function mergeHooks(existing, incoming) {
@@ -214,37 +277,73 @@ function mergeHooks(existing, incoming) {
   return merged;
 }
 
-function installHooks(skillTarget, hooksTarget, dryRun) {
+function mergeCursorHooks(existing, incoming) {
+  const merged = existing && typeof existing === "object" ? existing : {};
+  merged.version = merged.version || 1;
+  merged.hooks = merged.hooks && typeof merged.hooks === "object" ? merged.hooks : {};
+  for (const [event, hooks] of Object.entries(incoming.hooks || {})) {
+    const current = Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [];
+    merged.hooks[event] = current
+      .filter((hook) => !String(hook && hook.command || "").includes("context_guard_hook.py"))
+      .concat(hooks);
+  }
+  return merged;
+}
+
+function writeConfigFile(target, value, label, dryRun) {
+  if (dryRun) {
+    console.log(`[context-guard-skill] would install ${label} to ${target}`);
+    return;
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (fs.existsSync(target)) {
+    const backupPath = `${target}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    fs.copyFileSync(target, backupPath);
+    console.log(`[context-guard-skill] backed up ${label}: ${backupPath}`);
+  }
+  fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`);
+  console.log(`[context-guard-skill] installed ${label}: ${target}`);
+}
+
+function readObject(target) {
+  if (!fs.existsSync(target)) return {};
+  const value = JSON.parse(fs.readFileSync(target, "utf8"));
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function installHooks(platform, skillTarget, hooksTarget, dryRun) {
   if (!fs.existsSync(sourceHooksPath)) {
     fail(`source hooks file is missing: ${sourceHooksPath}`);
   }
-  const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
-  const incoming = rewriteHookCommands(rawIncoming, skillTarget);
-  let existing = {};
-  if (fs.existsSync(hooksTarget)) {
-    existing = JSON.parse(fs.readFileSync(hooksTarget, "utf8"));
-  }
-  const merged = mergeHooks(existing, incoming);
-  if (dryRun) {
-    console.log(`[context-guard-skill] would install hooks to ${hooksTarget}`);
+  const existing = readObject(hooksTarget);
+  if (platform === "cursor") {
+    writeConfigFile(hooksTarget, mergeCursorHooks(existing, cursorHooks(skillTarget)), "hooks", dryRun);
     return;
   }
-  fs.mkdirSync(path.dirname(hooksTarget), { recursive: true });
-  if (fs.existsSync(hooksTarget)) {
-    const backupPath = `${hooksTarget}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    fs.copyFileSync(hooksTarget, backupPath);
-    console.log(`[context-guard-skill] backed up hooks: ${backupPath}`);
-  }
-  fs.writeFileSync(hooksTarget, `${JSON.stringify(merged, null, 2)}\n`);
-  console.log(`[context-guard-skill] installed hooks: ${hooksTarget}`);
+  const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
+  const incoming = rewriteGroupedHookCommands(rawIncoming, skillTarget, platform);
+  const merged = mergeHooks(existing, incoming);
+  writeConfigFile(hooksTarget, merged, platform === "claude" ? "settings hooks" : "hooks", dryRun);
 }
 
 function install(args) {
   const options = parseInstallArgs(args);
-  copySkill(options.target, options.dryRun);
-  if (options.withHooks) {
-    migrateHooksFeatureConfig(options.configTarget, options.dryRun);
-    installHooks(options.target, options.hooksTarget, options.dryRun);
+  let platforms = selectedPlatforms(options.platform);
+  if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") {
+    platforms = ["codex"];
+  }
+  for (const platform of platforms) {
+    const defaults = platformTargets(platform);
+    const skillTarget = options.target || defaults.target;
+    const hooksTarget = options.hooksTarget || defaults.hooksTarget;
+    const configTarget = options.configTarget || defaults.configTarget;
+    copySkill(skillTarget, options.dryRun);
+    if (options.withHooks) {
+      if (platform === "codex" && configTarget) {
+        migrateHooksFeatureConfig(configTarget, options.dryRun);
+      }
+      installHooks(platform, skillTarget, hooksTarget, options.dryRun);
+    }
   }
 }
 
@@ -252,9 +351,13 @@ function runPython(args) {
   if (!fs.existsSync(pythonScript)) {
     fail(`context_guard.py is missing: ${pythonScript}`);
   }
-  const result = spawnSync("python3", [pythonScript, ...args], { stdio: "inherit" });
-  if (result.error) fail(result.error.message);
-  process.exit(result.status === null ? 1 : result.status);
+  for (const command of ["python3", "python"]) {
+    const result = spawnSync(command, [pythonScript, ...args], { stdio: "inherit" });
+    if (result.error && result.error.code === "ENOENT") continue;
+    if (result.error) fail(result.error.message);
+    process.exit(result.status === null ? 1 : result.status);
+  }
+  fail("Python 3 is required; neither `python3` nor `python` was found.");
 }
 
 const [command, ...rest] = process.argv.slice(2);

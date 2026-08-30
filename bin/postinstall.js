@@ -13,7 +13,7 @@ if (skipInstall) {
 }
 
 if (!isGlobalInstall && !autoInstall) {
-  console.log("[context-guard-skill] package installed. Run `npx @michelj/context-guard install` to install the Codex skill.");
+  console.log("[context-guard-skill] package installed. Run `npx @michelj/context-guard install` to install the skill and hooks for detected clients.");
   process.exit(0);
 }
 

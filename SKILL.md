@@ -5,11 +5,11 @@ description: "Keep folder-scoped project memory: sessions, bugs, tasks, and the 
 
 # Context Guard
 
-Human–agent project memory. The agent records. The human confirms in the HTML workbench, not the CLI.
+Human–agent project memory for Codex, Cursor, and Claude. Hooks activate it; the agent records; the human confirms in the HTML workbench.
 
 ## When to use
 
-- First time this folder is used (no live map yet)
+- First session in this folder, or no live map yet
 - The human asks to open or change the map
 - Direction changes, park/resume, coding, debugging, review
 
@@ -17,18 +17,22 @@ Human–agent project memory. The agent records. The human confirms in the HTML 
 
 Four stores only:
 
-1. **Sessions** — append `.codex/context/sessions.jsonl`
+1. **Sessions** — lifecycle hooks append `.codex/context/sessions.jsonl` and create `sessions/{id}.md`
 2. **Bugs** — thin card in `.codex/context/bugs/{id}.md` plus how-to in `fixes/{id}.md`; stub on the map node
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
 
 How to find a file: read `.codex/context/FIND.md`, then the small indexes (`owns-index.json`, `bugs-index.json`, `tasks-index.json`, last lines of `sessions.jsonl`). Open only the hit Markdown. After the map changes: `python3 scripts/map_owns.py cards`.
 
-Formats: `.codex/context/FORMAT.md`. Human canvas: `prototype/workbench.html`.
+Formats: `.codex/context/FORMAT.md`. The SessionStart hook starts the local human workbench and injects its URL.
+
+First session language: when `.codex/context/preferences.json` has `record_language: unset`, ask the user whether project context should be recorded in 中文 or English before substantive project work. Do not infer the answer. Persist it with `context-guard set-language --root <project> --language <zh-or-en>`. Do not ask again after it is set.
 
 First use (no map yet): talk with the human layer by layer. First offer several ways to cut L1, or a larger set of candidate modules whose titles a person can read in seconds. After they lock L1 (about 4–8), design L2, then L3. Write `architecture.md` as you go. Put the agreed L1 into `map.json` with `owns` paths and `map_bootstrap` proposed. Later sessions open that map. Do not dump a full tree, a directory listing, or one node per file.
 
-CLI: `python3 scripts/context_guard.py init --root <project>` and `set-language`. People look at the workbench, not a generated roadmap page.
+When a credible failure or user-reported bad case appears, record it immediately with `context-guard record-bad-case --root <project> --title <title> --phenomenon <what-failed> --trigger <trigger> --cause <cause-or-pending> --guard <regression-guard> --node <map-node> --keys <comma-separated>`. Do not create a bad case from a guess.
+
+CLI: `context-guard init`, `set-language`, `workbench`, and `record-bad-case`. People look at the workbench, not a generated roadmap page.
 
 ## What not to do
 
