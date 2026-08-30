@@ -21,6 +21,13 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 
+def configure_stdio() -> None:
+    """Use UTF-8 for client JSON and logs even on legacy Windows code pages."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 PARKED = (
     "export-roadmap",
     "create-branch-task",
@@ -636,9 +643,14 @@ def start_workbench(
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
-    process = subprocess.Popen(command, **kwargs)
+    log_path = workbench_state_path(root).with_suffix(".log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as log_file:
+        kwargs["stderr"] = log_file
+        process = subprocess.Popen(command, **kwargs)
     url = workbench_url(host, port)
-    for _ in range(30):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
         health = workbench_health(url, timeout=0.2)
         if health and health.get("root") == str(root.resolve()):
             maybe_open_browser(url, open_browser)
@@ -648,6 +660,12 @@ def start_workbench(
         time.sleep(0.1)
     if process.poll() is None:
         process.terminate()
+    detail = log_path.read_text(encoding="utf-8", errors="replace").strip()
+    print(
+        f"[context-guard] workbench startup failed; log: {log_path}"
+        + (f"\n{detail[-2000:]}" if detail else ""),
+        file=sys.stderr,
+    )
     return None
 
 
@@ -684,13 +702,14 @@ def show_roadmap(root: Path, should_open: bool) -> int:
 def parked_command(name: str) -> int:
     print(
         f"[context-guard] `{name}` is parked. v1 is sessions / bugs / tasks / map. "
-        "See .codex/context/TODO.md. Do not expand Test Hub or Roadmap HTML.",
+        "See TODO.md at the repo root. Do not expand Test Hub or Roadmap HTML.",
         file=sys.stderr,
     )
     return 2
 
 
 def main() -> int:
+    configure_stdio()
     parser = argparse.ArgumentParser(description="Context Guard v1 utilities")
     parser.add_argument(
         "command",

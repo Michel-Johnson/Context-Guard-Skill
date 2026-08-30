@@ -1169,6 +1169,11 @@ const CONTEXT_GUARD_MAP = {
       "text": "SKILL.md 合同挂在根上：无图才商量；有图则打开；不贴整图。",
       "state": "success",
       "files": []
+    },
+    {
+      "text": "本仓开发：产品分支改产品、合 main；测试分支只改 tests/（可有假仓）；测试里发现问题回产品分支修。见 tasks/J2.md。",
+      "state": "success",
+      "files": []
     }
   ],
   "bugs": [],
@@ -2155,8 +2160,6 @@ const CONTEXT_GUARD_MAP = {
       "isNew": false,
       "origin": "human",
       "owns": [
-        "tests/",
-        "fixtures/",
         ".github/"
       ],
       "ideas": []
@@ -2172,7 +2175,7 @@ const CG_OWNS = {
   M2:["SKILL.md","bin/","package.json","scripts/context_guard.py","references/","agents/"],
   M3:[".codex/context/","scripts/map_owns.py"],
   M4:["hooks.json","scripts/context_guard_hook.py"],
-  M5:["tests/","fixtures/",".github/"]
+  M5:[".github/"]
 };
 function stampOwns(n, table){
   if(!n) return;
@@ -2440,6 +2443,11 @@ function normalizeTree(n){
   if(!Array.isArray(n.ideas)) n.ideas = [];
   if(!Array.isArray(n.bugs)) n.bugs = [];
   if(!Array.isArray(n.dormant)) n.dormant = [];
+  /* 人自己放的卡不是提议。绿点只留给 Agent 生成、尚未点头的节点。 */
+  if(n.origin==="human"){
+    if(n.proposal==="proposed") n.proposal = "accepted";
+    n.isNew = false;
+  }
   (n.children||[]).forEach(normalizeTree);
   (n._inbox||[]).forEach(normalizeTree);
 }
@@ -2814,9 +2822,19 @@ function bindFileUi(el, node){
 }
 function unpackInbox(n){
   if(!n._inbox || !n._inbox.length) return;
+  const parentLocked = !isProposed(n);
   const next = n._inbox.map(c=>{
-    c.proposal = "proposed";
-    c.isNew = true;
+    if(c.proposal==="cancelled") return c;
+    const human = c.origin==="human" || c.proposal==="accepted" ||
+      (parentLocked && c.origin!=="agent");
+    if(human){
+      c.proposal = "accepted";
+      c.isNew = false;
+      if(!c.origin) c.origin = "human";
+      return c;
+    }
+    c.proposal = c.proposal || "proposed";
+    if(c.proposal==="proposed") c.isNew = true;
     c.origin = c.origin || "agent";
     return c;
   });
@@ -2824,7 +2842,7 @@ function unpackInbox(n){
   n.children = (n.children||[]).concat(next);
 }
 function currentRepo(){ return catalog[repoId]; }
-const STORE_KEY = "cg-workbench-maps-v14";
+const STORE_KEY = "cg-workbench-maps-v16";
 const L1_SOFT_MAX = 8;
 const L1_SOFT_MIN = 4;
 function hasMap(r){
@@ -3510,7 +3528,11 @@ function getNodeAny(id){
   return hit;
 }
 function isCancelled(n){ return n.proposal==="cancelled"; }
-function isProposed(n){ return n.proposal==="proposed"; }
+function isProposed(n){
+  if(!n || n.proposal!=="proposed") return false;
+  if(n.origin==="human") return false;
+  return true;
+}
 function isAuth(n){ return sessionAuth.has(n.id); }
 function depthFromView(n){
   const p = findPath(n.id);
@@ -4438,7 +4460,7 @@ function commitChild(node, title){
   if(!inTree(parent) || isCancelled(parent)) return;
   const kind = composingKind==="module" ? "module" : "work";
   clearCompose();
-  const child = {id:nextNodeId(), title:t, kind, origin:"human", state:"dirty",
+  const child = {id:nextNodeId(), title:t, kind, origin:"human", proposal:"accepted", isNew:false, state:"dirty",
     purpose:"", memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
   if(!Array.isArray(parent.children)) parent.children = [];
   parent.children.push(child);

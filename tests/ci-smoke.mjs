@@ -13,6 +13,7 @@ const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "context-guard-ci-")
 const npmCommand = process.env.npm_execpath ? process.execPath : "npm";
 const npmPrefix = process.env.npm_execpath ? [process.env.npm_execpath] : [];
 let workbenchProject = null;
+let passed = false;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -235,6 +236,7 @@ async function main() {
   assert.ok(sessionEvents.some((event) => event.event === "user-prompt-submit"));
   assert.ok(sessionEvents.some((event) => event.event === "stop"));
 
+  workbenchProject = project;
   const automaticWorkbenchStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -246,7 +248,7 @@ async function main() {
   );
   const automaticContext = JSON.parse(automaticWorkbenchStart.stdout).hookSpecificOutput.additionalContext;
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
-  assert.ok(automaticUrl, "SessionStart should inject the automatically started workbench URL");
+  assert.ok(automaticUrl, `SessionStart should inject the automatically started workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
 
@@ -303,6 +305,7 @@ async function main() {
 
 try {
   await main();
+  passed = true;
 } finally {
   if (workbenchProject) {
     const packageDirectory = path.join(temporaryRoot, "consumer", "node_modules", "@michelj", "context-guard");
@@ -315,7 +318,9 @@ try {
   }
   const resolvedTemporaryRoot = path.resolve(temporaryRoot);
   const resolvedSystemTemp = path.resolve(os.tmpdir());
-  if (resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}${path.sep}`)) {
+  if (passed && resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}${path.sep}`)) {
     fs.rmSync(resolvedTemporaryRoot, { recursive: true, force: true });
+  } else {
+    console.error(`Preserved failed CI artifacts: ${resolvedTemporaryRoot}`);
   }
 }

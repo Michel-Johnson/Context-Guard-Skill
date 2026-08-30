@@ -32,3 +32,13 @@
 {"id":"2026-08-28-w","human":"我其他部分还有很多，你为啥读不到","agent":"上次只看见点进的冷启动一屏。整棵活图在 Cursor Simple Browser localStorage，已写入 map.json 共 53 个节点","files":[".codex/context/map.json",".codex/context/architecture.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-28-x","human":"把这些新图上传到dev分支","agent":"新建并推送 origin/dev，提交 10539fe：人画的活图 map.json 与卡片","files":[".codex/context/map.json"],"bugs":[],"tasks":[]}
 {"id":"2026-08-28-y","human":"不对呀，里面具体的细节你怎么没有拿下来上传？你到底拿的是什么缓存","agent":"缓存是 Cursor Simple Browser localStorage v13，有53个标题，子卡用途/记忆为空。HTML内置图已改成整棵树并推送 3dc9303","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-a","human":"基于main开分支继续开发，仍要map网页版","agent":"从 main 开 cursor/map-web-f54e，README 指向本分支 GitHack 工作台","files":["README.md","README.zh-CN.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-b","human":"为啥节点还有很多绿点？这些都是我自己放的","agent":"绿点被误标成 Agent 提议。人放的卡进模块时还会被重新标成提议。已改：人放的卡不显示绿点，进模块不再把子卡改成提议","files":["prototype/workbench.html"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-c","human":"PR里部分文件能不能不合进主分支？分支测试不要污染main","agent":"GitHub合PR不能勾选文件。测试整理放到 cursor/test-layout-f54e，不合main。本PR只留工作台改动。本地dump gitignore。","files":[".gitignore"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-d","human":"产品分支里面还是有很多测试文件","agent":"从产品分支删掉 fixtures/、安装冒烟、评测脚本。测试只留在 cursor/test-layout-f54e。合进 main 会删掉 main 上那摊旧测试。","files":["fixtures/","tests/npm-install-smoke.sh","scripts/bench_jump.py","package.json"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-e","human":"把产品/测试流程写到记忆或hook，确保后续都这样开发","agent":"写入 tasks/J2.md、user-messages、根卡记忆、AGENTS.md；git pre-commit 跑 branch_guard；SessionStart 提醒。测试分支只能改 tests/，产品不能提交假仓。","files":[".codex/context/tasks/J2.md","scripts/branch_guard.py",".githooks/pre-commit","AGENTS.md","scripts/context_guard_hook.py"],"bugs":[],"tasks":["J2"]}
+{"id":"2026-08-29-f","human":"todo需要简洁一点，要我能看懂","agent":"TODO.md 和 index.md 收成短中文：现在做什么、以后再做、不要做什么","files":[".codex/context/TODO.md",".codex/context/index.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-29-g","human":"无用的 context 文件先删掉","agent":"删了 records.md、record-protocol.md、roadmap.md、bad-cases.md、l1-candidates.json；指向改到 FIND.md / FORMAT.md","files":[".codex/context/user-messages.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-a","human":"把 todo 放到根目录，不要放在 .codex 下面，我要看","agent":"TODO.md 挪到仓库根。FIND、index、user-messages、停用命令的指向一并改了","files":["TODO.md",".codex/context/FIND.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-b","human":"列三条 todo：工作台与 Agent 连接同步、hook 阶段设计、bug 快存快审","agent":"写进根目录 TODO.md，补上现在缺什么、做成什么样；旧的以后/别做仍保留","files":["TODO.md",".codex/context/index.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-c","human":"todo 要 md 那种可以打勾的格式","agent":"TODO.md 改成 Markdown 任务列表，现在/以后都能勾","files":["TODO.md"],"bugs":[],"tasks":[]}

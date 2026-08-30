@@ -1,6 +1,6 @@
 # 四跳：先打开小索引，再打开 1–2 个文件
 
-**第一版就这四块：会话、坏例、任务、地图。** 以后要做的三件事在 `TODO.md`：首次建图（最难也最要紧）、优化检索、CI/CD 测试。现在都不做。
+**第一版就这四块：会话、坏例、任务、地图。** 以后要做的三件事在仓库根目录 `TODO.md`。现在都不做。
 
 人改图仍写 `map.json`。Agent 不要把整份地图、全部会话、全部坏例、全部任务说明书一次读进来。
 
@@ -12,7 +12,6 @@
 .codex/context/
   FIND.md              本页（怎么跳）
   FORMAT.md            第一版每个文件怎么写
-  TODO.md              第一版之后要做的（首次建图、检索、CI/CD）
   sessions.jsonl       会话目录 · JSONL，每行一个 JSON
   sessions/某次.md     可选 · Markdown，只有这轮原文太长才建
   bugs-index.json      坏例关键词表 · JSON
@@ -35,6 +34,7 @@
 - 改某个源码 → `owns-index.json` → `cards/卡号.md`
 - 人报了 bug → `bugs-index.json` 按 `keys` 对词 → `bugs/B20.md` → `fixes/B20.md`
 - 再做同类的活 → `tasks-index.json` 按 `keys` 对词 → `tasks/J1.md`
+- 本仓怎么开产品/测试分支 → `tasks/J2.md`
 - 问上次说过什么 → `sessions.jsonl` 末尾几行
 
 不要 Grep 整个 `.codex/context/`，不要把 `map.json`、`jump-index.json` 整份读进对话。OpenClaw 难任务对照里，只靠索引最快也最干净。

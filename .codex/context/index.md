@@ -1,28 +1,5 @@
-# Context Index
+# 现在在干什么
 
-## Quick Scan
+三件正在做的：工作台和 Agent 连上并同步；Hook 每个阶段做什么；Bug 快存、人快审。
 
-- Current: CTX-20260823-workbench-map
-- Map bootstrap: ready（人已锁 5 张 L1，第二层已从工作台收回）
-- Hot bad-case tags: none
-- Resume candidate: none
-- Record layout: `.codex/context/` 四块（sessions / bugs / tasks / map）
-
-## Current
-
-- ID: CTX-20260823-workbench-map
-- Title: 工作台交互与首次建图
-- State: current
-- Last updated: 2026-08-28
-- Summary: 人自己定第一层：工作台、冷启动、底层文件系统、hook、CI/CD。整张活图已从 8877 工作台写入 map.json（ready）。
-- Next step: 按人画的第二层继续往下拆，不要重出第一层。
-
-## Parked / Resume Candidates
-
-None.
-
-## Archived
-
-None.
-
-Last updated: 2026-08-28
+细节在仓库根目录 `TODO.md`。怎么开分支写在 `tasks/J2.md`。

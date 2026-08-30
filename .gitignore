@@ -1,5 +1,9 @@
 .codex/context/private/
 .codex/context/**/*.local.json
 .codex/context/**/secrets*.json
-fixtures/harbor-eval/layouts/
 **/__pycache__/
+
+# Product branch does not carry test trees. Use cursor/test-layout-f54e.
+fixtures/
+tests/local/
+workbench-global.png

@@ -73,18 +73,6 @@
       "title": "hook"
     },
     {
-      "path": "tests/",
-      "node": "M5",
-      "kind": "module",
-      "title": "CI/CD"
-    },
-    {
-      "path": "fixtures/",
-      "node": "M5",
-      "kind": "module",
-      "title": "CI/CD"
-    },
-    {
       "path": ".github/",
       "node": "M5",
       "kind": "module",

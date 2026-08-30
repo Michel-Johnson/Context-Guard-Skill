@@ -19,6 +19,10 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 人在工作台里看图、点头。安装 Hook 后，新 Session 会自动启动本机单实例服务并打开页面；Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
+**当前工作台：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)
+
+第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
+
 要自己定第一层：顶栏点仓库名，切到 **OpenClaw**（首次使用），点「看几种第一层切法」，选一种才上画布。仍是演示卡名，但切法是你定的。
 
 顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。

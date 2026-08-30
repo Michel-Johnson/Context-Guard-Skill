@@ -109,24 +109,6 @@
       ]
     },
     {
-      "path": "tests/",
-      "node": "M5",
-      "kind": "module",
-      "card": ".codex/context/cards/M5.md",
-      "chain": [
-        "T0"
-      ]
-    },
-    {
-      "path": "fixtures/",
-      "node": "M5",
-      "kind": "module",
-      "card": ".codex/context/cards/M5.md",
-      "chain": [
-        "T0"
-      ]
-    },
-    {
       "path": ".github/",
       "node": "M5",
       "kind": "module",
@@ -182,6 +164,23 @@
         "N36"
       ],
       "card": ".codex/context/cards/N36.md"
+    },
+    "J2": {
+      "title": "本仓产品分支 vs 测试分支",
+      "keys": [
+        "产品分支",
+        "测试分支",
+        "假仓",
+        "合 main",
+        "test-layout",
+        "修 bug"
+      ],
+      "task": ".codex/context/tasks/J2.md",
+      "chain": [
+        "T0",
+        "M5"
+      ],
+      "card": ".codex/context/cards/M5.md"
     }
   }
 }

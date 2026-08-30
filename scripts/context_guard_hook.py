@@ -12,7 +12,7 @@ from pathlib import Path, PureWindowsPath
 
 from context_guard import append_session_event
 from context_guard import context_dir as context_folder
-from context_guard import folder_root, init_context, is_context_guard_skill_path
+from context_guard import configure_stdio, folder_root, init_context, is_context_guard_skill_path
 from context_guard import read_preferences, start_workbench
 
 
@@ -225,6 +225,7 @@ def append_user_message(ctx: Path, text: str) -> str:
 
 
 def main() -> int:
+    configure_stdio()
     parser = argparse.ArgumentParser(description="Context Guard hook adapter")
     parser.add_argument("event", nargs="?", default="unknown")
     parser.add_argument("--platform", choices=["codex", "cursor", "claude"], default="codex")
@@ -263,6 +264,12 @@ def main() -> int:
             f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})"
         )
         contexts = [language_setup_context(root, ctx), lifecycle_context(root, url)]
+        playbook = ctx / "tasks" / "J2.md"
+        if playbook.is_file():
+            contexts.append(
+                "Repository development playbook: read .codex/context/tasks/J2.md "
+                "for the current product and testing branch rules."
+            )
         return hook_response(platform, event, "\n\n".join(item for item in contexts if item))
 
     if event == "user-prompt-submit":
