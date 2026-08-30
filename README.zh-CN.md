@@ -2,7 +2,7 @@
 
 语言：[English](README.md) | **中文**
 
-Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线、支线、bad case 和验证链路保存在项目自己的 `.codex/context/` 里，让 Codex 在不同 session 之间也能知道“现在做到哪里、踩过哪些坑、下次怎么检查”。
+Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。它把任务主线、支线、bad case 和验证链路保存在项目自己的 `.codex/context/` 里，让 Agent 在不同 session 之间也能知道“现在做到哪里、踩过哪些坑、下次怎么检查”。
 
 ## 能做什么
 
@@ -11,14 +11,15 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 - **人看工作台**：`prototype/workbench.html`。Agent 读小索引，不读整张地图
 - **用户原话**：写进 `user-messages.md`；密钥只在 `private/`
 - **记录语言**：按文件夹选中文或英文
+- **生命周期**：首次 Session 自动建档、记录用户消息，并在识别到 bad case 后通过统一命令落盘
 
 第一版**没有** Roadmap HTML、测试中台、功能链。
 
 ## 工作台
 
-人在 `prototype/workbench.html` 里看图、点头。Agent 读 `.codex/context/` 里的小索引，不操作画布。
+人在工作台里看图、点头。安装 Hook 后，新 Session 会自动启动本机单实例服务并打开页面；Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**当前工作台（本分支）：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/cursor/map-web-f54e/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)
+**当前工作台：** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/prototype/workbench.html) · [浏览器打开](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)
 
 第一次打开可能会看到 GitHack 的提示页（它只是中转，没审过页面内容）。点 **Open the page** 就进工作台。
 
@@ -26,11 +27,11 @@ Context Guard 是一个给 Codex 用的项目记忆 skill。它把任务主线�
 
 顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
 
-本地从仓库根起一个静态服务，页面才能读到 `.codex/context/map.json`：
+也可以手动启动或停止工作台：
 
 ```bash
-python3 -m http.server 8877
-# 打开 http://127.0.0.1:8877/prototype/workbench.html
+context-guard workbench --root /path/to/project
+context-guard workbench --root /path/to/project --stop
 ```
 
 ### 总览
@@ -65,25 +66,31 @@ python3 -m http.server 8877
 
 ## 安装
 
-使用 npx 安装：
+使用 npx 安装。安装器会检测 Codex、Cursor 和 Claude，把 Skill 与生命周期 Hook 一起安装并安全合并现有配置：
 
 ```bash
 npx @michelj/context-guard install
 ```
 
-也可以全局安装，让 npm 包自动把 skill 复制到 Codex 的 skill 目录：
+也可以全局安装，让 npm 包自动安装到检测到的客户端：
 
 ```bash
 npm install -g @michelj/context-guard --registry=https://registry.npmjs.org
 ```
 
-只有当你明确希望安装 Codex 生命周期 hook 提醒时，才加 `--with-hooks`：
+强制安装到三类客户端：
 
 ```bash
-npx @michelj/context-guard install --with-hooks
+npx @michelj/context-guard install --platform all
 ```
 
-该命令也会在 `~/.codex/config.toml` 中启用当前的 `[features] hooks = true`，并把已弃用的 `codex_hooks` 别名安全迁移，同时保留其他配置。
+默认会安装 Hook；如果只想复制 Skill，可以显式关闭：
+
+```bash
+npx @michelj/context-guard install --no-hooks
+```
+
+默认目录分别是 `~/.codex/skills/context-guard`、`~/.cursor/skills/context-guard` 和 `~/.claude/skills/context-guard`。安装器会备份并合并现有 Hook/Settings；Codex 同时启用 `[features] hooks = true`，并迁移旧的 `codex_hooks` 别名。
 
 npm 包正式发布前，也可以直接从 GitHub 使用：
 
@@ -98,22 +105,34 @@ git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
 cd Context-Guard-Skill
 mkdir -p ~/.codex/skills/context-guard
 rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents references scripts \
+  SKILL.md README.md README.zh-CN.md agents prototype references scripts \
   ~/.codex/skills/context-guard/
 ```
 
-安装后 Codex 应该能发现：
+安装后相应客户端应该能发现：
 
 ```text
 ~/.codex/skills/context-guard/SKILL.md
+~/.cursor/skills/context-guard/SKILL.md
+~/.claude/skills/context-guard/SKILL.md
 ```
+
+## 发布
+
+这个 npm 包不使用 GitHub Release 作为交付入口。用户从 npm 安装 skill，因此正式发布由版本标签驱动：
+
+1. 把 `package.json` 更新到下一个稳定版本，并将该提交合入 `main`。
+2. 在该提交上创建完全匹配的 `vX.Y.Z` 标签。
+3. 推送标签；`.github/workflows/npm-publish.yml` 会校验、打包、安装冒烟，并把同一份 tarball 发布到 npm。
+
+该 workflow 没有手动触发入口。推送匹配的版本标签后，GitHub 会自动执行完整发布流水线；验证通过的 tarball 会作为 GitHub Actions Artifact 保留 14 天。它复用 `Michel-Johnson/Context-Guard-Skill` 已有的 npm Trusted Publisher，workflow 文件名保持 `npm-publish.yml`，允许 `npm publish` 操作；Actions 发布不需要本地登录 npm。完整步骤见 [npm 发布与恢复手册](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md)。
 
 ## Context 保存在哪里
 
-Context 必须保存在当前打开的本地项目里：
+Context 必须保存在当前打开的本地项目里（不随客户端改变）：
 
 ```text
-<Codex 打开的项目根目录>/.codex/context/
+<当前项目根目录>/.codex/context/
 ```
 
 不要把 context 写到：
@@ -126,13 +145,13 @@ Context 必须保存在当前打开的本地项目里：
 对后续工作有价值的短用户消息会保存在：
 
 ```text
-<Codex 打开的项目根目录>/.codex/context/user-messages.md
+<当前项目根目录>/.codex/context/user-messages.md
 ```
 
 如果用户提供了后续需要复用的凭据，Context Guard 只会在公开 context 中记录脱敏指针。原始凭据必须只保存在本地私有目录：
 
 ```text
-<Codex 打开的项目根目录>/.codex/context/private/
+<当前项目根目录>/.codex/context/private/
 ```
 
 如果手动运行脚本：
@@ -142,7 +161,7 @@ python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language 中文
 ```
 
-人看 `prototype/workbench.html`。`show-roadmap` 只打印这条路径。
+第一次 Session 若 `record_language` 仍为 `unset`，Hook 会要求 Agent 先询问“中文还是 English”，保存后后续 Session 不再重复询问。`workbench` 命令会启动本机服务并返回浏览器地址。
 
 ## 常用方式
 
@@ -153,9 +172,10 @@ Use $context-guard. 四块：会话、坏例、任务、地图。
 ```bash
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language 中文
+python3 scripts/context_guard.py workbench --root /path/to/project
 ```
 
-打开 `prototype/workbench.html` 看图。
+运行 `context-guard workbench --root /path/to/project` 看图。
 
 ## 主要文件
 
@@ -163,6 +183,8 @@ python3 scripts/context_guard.py set-language --root /path/to/project --language
 .codex/context/
 |-- FIND.md
 |-- sessions.jsonl
+|-- sessions/
+|-- bugs-index.json
 |-- bugs/ 和 fixes/
 |-- tasks/
 |-- map.json

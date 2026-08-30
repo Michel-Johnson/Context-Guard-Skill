@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Keep product commits off the test branch, and tests/fake repos off product/main."""
+"""Keep temporary tests/fake repos off main while retaining approved CI/CD checks."""
 from __future__ import annotations
 
 import subprocess
 import sys
 
 TEST_MARK = "test-layout"
+PRODUCT_TESTS = {"tests/ci-smoke.mjs"}
 PRODUCT_FORBIDDEN = (
     "tests/",
     "fixtures/",
@@ -54,11 +55,11 @@ def main() -> int:
     bad = [
         p
         for p in paths
-        if p.startswith(PRODUCT_FORBIDDEN) or p in EVAL_SCRIPTS
+        if (p.startswith(PRODUCT_FORBIDDEN) and p not in PRODUCT_TESTS) or p in EVAL_SCRIPTS
     ]
     if bad:
         print(
-            "产品/main 不要提交测试或假仓。去测试分支 cursor/test-layout-f54e。\n  "
+            "产品/main 只保留已批准的 CI/CD 测试；临时测试或假仓去 cursor/test-layout-f54e。\n  "
             + "\n  ".join(bad),
             file=sys.stderr,
         )

@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Run source checks
+        run: npm test
+
+      - name: Build and validate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          npm pack --json --pack-destination dist > "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/verify-package-artifact.mjs dist --write-hash
+
+      - name: Store validated package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-ci-package
+          path: |
+            dist/*.tgz
+            dist/package.sha256
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  install:
+    name: Install on ${{ matrix.name }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu / minimum Node
+            os: ubuntu-latest
+            node: "18"
+          - name: macOS
+            os: macos-latest
+            node: "24"
+          - name: Windows
+            os: windows-latest
+            node: "24"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-ci-package
+          path: dist
+
+      - name: Verify package artifact
+        run: node .github/scripts/verify-package-artifact.mjs dist
+
+      - name: Run cross-client lifecycle smoke
+        run: npm test
+
+      - name: Install through global npm and npx
+        run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-ci-smoke"
+
+  required:
+    name: Required
+    if: always()
+    needs:
+      - package
+      - install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI jobs
+        shell: bash
+        env:
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          INSTALL_RESULT: ${{ needs.install.result }}
+        run: |
+          set -euo pipefail
+          test "$PACKAGE_RESULT" = "success"
+          test "$INSTALL_RESULT" = "success"
