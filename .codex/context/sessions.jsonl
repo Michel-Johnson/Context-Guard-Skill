@@ -39,3 +39,4 @@
 {"id":"2026-08-29-e","human":"把产品/测试流程写到记忆或hook，确保后续都这样开发","agent":"写入 tasks/J2.md、user-messages、根卡记忆、AGENTS.md；git pre-commit 跑 branch_guard；SessionStart 提醒。测试分支只能改 tests/，产品不能提交假仓。","files":[".codex/context/tasks/J2.md","scripts/branch_guard.py",".githooks/pre-commit","AGENTS.md","scripts/context_guard_hook.py"],"bugs":[],"tasks":["J2"]}
 {"id":"2026-08-29-f","human":"todo需要简洁一点，要我能看懂","agent":"TODO.md 和 index.md 收成短中文：现在做什么、以后再做、不要做什么","files":[".codex/context/TODO.md",".codex/context/index.md"],"bugs":[],"tasks":[]}
 {"id":"2026-08-29-g","human":"无用的 context 文件先删掉","agent":"删了 records.md、record-protocol.md、roadmap.md、bad-cases.md、l1-candidates.json；指向改到 FIND.md / FORMAT.md","files":[".codex/context/user-messages.md"],"bugs":[],"tasks":[]}
+{"id":"2026-08-30-a","human":"把 todo 放到根目录，不要放在 .codex 下面，我要看","agent":"TODO.md 挪到仓库根。FIND、index、user-messages、停用命令的指向一并改了","files":["TODO.md",".codex/context/FIND.md"],"bugs":[],"tasks":[]}

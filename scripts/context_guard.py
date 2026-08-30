@@ -298,7 +298,7 @@ def show_roadmap(root: Path) -> None:
 def parked_command(name: str) -> int:
     print(
         f"[context-guard] `{name}` is parked. v1 is sessions / bugs / tasks / map. "
-        "See .codex/context/TODO.md. Do not expand Test Hub or Roadmap HTML.",
+        "See TODO.md at the repo root. Do not expand Test Hub or Roadmap HTML.",
         file=sys.stderr,
     )
     return 2
