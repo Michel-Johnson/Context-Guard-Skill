@@ -650,6 +650,7 @@ def start_workbench(
         process = subprocess.Popen(command, **kwargs)
     url = workbench_url(host, port)
     deadline = time.monotonic() + 10
+    health = None
     while time.monotonic() < deadline:
         health = workbench_health(url, timeout=0.2)
         if health and health.get("root") == str(root.resolve()):
@@ -658,11 +659,13 @@ def start_workbench(
         if process.poll() is not None:
             break
         time.sleep(0.1)
-    if process.poll() is None:
+    exit_code = process.poll()
+    if exit_code is None:
         process.terminate()
     detail = log_path.read_text(encoding="utf-8", errors="replace").strip()
     print(
-        f"[context-guard] workbench startup failed; log: {log_path}"
+        f"[context-guard] workbench startup failed; exit={exit_code}; "
+        f"health={health!r}; expected_root={str(root.resolve())!r}; log: {log_path}"
         + (f"\n{detail[-2000:]}" if detail else ""),
         file=sys.stderr,
     )
