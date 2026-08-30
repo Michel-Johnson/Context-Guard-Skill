@@ -113,6 +113,16 @@ rsync -a --delete \
 ~/.claude/skills/context-guard/SKILL.md
 ```
 
+## 发布
+
+这个 npm 包不使用 GitHub Release 作为交付入口。用户从 npm 安装 skill，因此正式发布由版本标签驱动：
+
+1. 把 `package.json` 更新到下一个稳定版本，并将该提交合入 `main`。
+2. 在该提交上创建完全匹配的 `vX.Y.Z` 标签。
+3. 推送标签；`.github/workflows/npm-publish.yml` 会校验、打包、安装冒烟，并把同一份 tarball 发布到 npm。
+
+该 workflow 没有手动触发入口。推送匹配的版本标签后，GitHub 会自动执行完整发布流水线；验证通过的 tarball 会作为 GitHub Actions Artifact 保留 14 天。它复用 `Michel-Johnson/Context-Guard-Skill` 已有的 npm Trusted Publisher，workflow 文件名保持 `npm-publish.yml`，允许 `npm publish` 操作；Actions 发布不需要本地登录 npm。完整步骤见 [npm 发布与恢复手册](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md)。
+
 ## Context 保存在哪里
 
 Context 必须保存在当前打开的本地项目里（不随客户端改变）：

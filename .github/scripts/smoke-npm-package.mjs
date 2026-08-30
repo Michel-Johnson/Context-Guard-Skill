@@ -95,8 +95,11 @@ const npmCache = path.join(workspace, "npm-cache");
 const npmPrefix = path.join(workspace, "npm-prefix");
 const testEnv = { ...process.env, npm_config_cache: npmCache };
 delete testEnv.CONTEXT_GUARD_SKILL_TARGET;
+delete testEnv.CONTEXT_GUARD_HOOKS_TARGET;
 delete testEnv.CONTEXT_GUARD_SKIP_AUTO_INSTALL;
 delete testEnv.CONTEXT_GUARD_AUTO_INSTALL;
+delete testEnv.CURSOR_HOME;
+delete testEnv.CLAUDE_HOME;
 
 let codexHome;
 if (options.codexHome) {
@@ -127,6 +130,13 @@ assertFile(cli);
 assertFile(skillCli);
 run(cli, ["--help"], testEnv);
 verifyInstalledSkill(skillTarget);
+
+// This exact directory was absent before this test created it. Start npx fresh
+// so a broken installer cannot pass by reusing the global install's files.
+if (fs.lstatSync(skillTarget).isSymbolicLink()) {
+  throw new Error(`Refusing to clean a linked Skill target: ${skillTarget}`);
+}
+fs.rmSync(skillTarget, { recursive: true });
 
 run(npm.command, [
   ...npm.args,

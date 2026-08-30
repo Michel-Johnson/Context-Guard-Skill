@@ -1,10 +1,10 @@
 {
   "name": "@michelj/context-guard",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Install and run Context Guard for Codex, Cursor, and Claude.",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/Michel-Johnson/Context-Guard-Skill.git"
+    "url": "git+https://github.com/Michel-Johnson/Context-Guard-Skill.git"
   },
   "publishConfig": {
     "access": "public",
@@ -29,7 +29,8 @@
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node tests/ci-smoke.mjs"
+    "test": "node tests/ci-smoke.mjs",
+    "test:cd": "node .github/scripts/rehearse-cd.mjs"
   },
   "engines": {
     "node": ">=18"
