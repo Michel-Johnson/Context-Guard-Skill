@@ -19,7 +19,7 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 人在 `prototype/workbench.html` 里看图。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html)）。在网页里改不会写回仓库。要改图：在对话里说，Agent 改文件再推，你再刷新页面。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
+**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)）。在网页里改不会写回仓库。要改图：在对话里说，Agent 改文件再推，你再刷新页面。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
 
 **本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。同一台电脑上可以点「连接仓库」，把改动写回文件。
 
@@ -28,7 +28,7 @@ context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop
 ```
 
-顶栏 **中 / EN** 切界面语言。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
+顶栏最右 **设置** 里切界面语言和主题。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
 
 ### 总览
 

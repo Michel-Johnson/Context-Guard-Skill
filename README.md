@@ -19,7 +19,7 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/cursor/map-web-f54e/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
+**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
 
 **Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. On the same machine, 「连接仓库」 can write `map.json` back to disk.
 
@@ -28,7 +28,7 @@ context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop
 ```
 
-The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
+The workbench chrome is Chinese or English. Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
 
 ### Overview
 
