@@ -37,6 +37,10 @@ The numbered labels describe dependencies, not scheduled intervals. New names ap
 
 **依赖维护 | Dependabot 自动合并** 是独立的维护工作流，不属于 CI 或 CD。Dependabot 每周检查 GitHub Actions 工具更新；它创建、重新打开、更新 PR 或把 PR 标为可审核时，维护工作流读取经过验证的 Dependabot 元数据。仅本仓库内、目标为 `main`、非草稿的 GitHub Actions 补丁/小版本更新可登记自动合并。大版本、未知更新类型、其他依赖生态和普通功能 PR 不会被自动登记。
 
+Version updates are grouped in `.github/dependabot.yml`: `actions-minor-patch` combines minor and patch upgrades into one PR, while `actions-major` combines major upgrades into a separate PR for manual review. A group is created only when matching updates exist. Group names are organizational labels, not authorization: the maintenance workflow still checks verified update metadata and all existing merge requirements. Security-update grouping is unchanged.
+
+`.github/dependabot.yml` 把版本更新分成两组：`actions-minor-patch` 将小版本和补丁集中到一个 PR；`actions-major` 将大版本集中到另一个 PR，保留人工审核。只有存在对应更新时才会生成该组 PR。组名只用于整理，不代表合并权限；维护工作流仍检查经过验证的更新类型，并要求原有合并条件全部满足。安全更新的分组方式不变。
+
 Enable **Settings → General → Pull Requests → Allow auto-merge** once. The workflow requests GitHub's native auto-merge for the exact PR head; it does not bypass branch protection or approve reviews. Keep `Required` mandatory and the branch up-to-date requirement enabled. CI failures, conflicts, or any unmet review/protection requirement prevent merging. The repository switch only allows auto-merge; it does not automatically enable it for every PR.
 
 一次性开启 **Settings → General → Pull Requests → Allow auto-merge**。工作流针对 PR 的确切提交请求 GitHub 原生自动合并，不绕过分支保护、不代替人工批准。保留必需的 `Required` 检查以及分支必须同步 main 的要求；CI 失败、冲突或其他审核/保护条件未满足时不能合并。仓库开关只代表允许使用自动合并，并不意味着所有 PR 都自动合并。
@@ -49,7 +53,7 @@ To stop this automation, disable its workflow. Disabling the workflow does not c
 
 需要停止时，可禁用这个维护工作流；禁用工作流不会撤销已经登记的 PR 自动合并，需要逐个取消。也可以关闭仓库的 Allow auto-merge 开关，不必停用 CI 或 CD。
 
-References / 官方说明: [Dependabot automation](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions), [metadata verification](https://github.com/dependabot/fetch-metadata), [GITHUB_TOKEN-triggered events](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow).
+References / 官方说明: [Dependabot automation](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions), [update groups](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#groups), [metadata verification](https://github.com/dependabot/fetch-metadata), [GITHUB_TOKEN-triggered events](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow).
 
 ## Release contract / 发布契约
 
