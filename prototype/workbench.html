@@ -347,12 +347,16 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
-.drawer-split{position:fixed;top:var(--chrome-top);right:var(--drawer-width);width:10px;margin-right:-5px;bottom:0;
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
   z-index:21;cursor:col-resize;touch-action:none;background:transparent}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
+  background:var(--line-ink)}
 .drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
-  background:rgba(45,45,45,.12)}
+  background:rgba(45,45,45,.08)}
 body.drawer-resizing{cursor:col-resize;user-select:none}
-body.drawer-resizing #viewport{pointer-events:none}
+body.drawer-resizing #viewport,
+body.drawer-resizing .drawer{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -4888,29 +4892,46 @@ function restoreDrawerWidth(){
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
   if(!el) return;
-  let dragging = false;
-  el.addEventListener("pointerdown", e=>{
-    if(document.body.classList.contains("bugs-open")) return;
-    if(e.pointerType==="mouse" && e.button!==0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    dragging = true;
-    document.body.classList.add("drawer-resizing");
-    try{ el.setPointerCapture(e.pointerId); }catch(err){}
-  });
-  el.addEventListener("pointermove", e=>{
-    if(!dragging) return;
-    applyDrawerWidth(window.innerWidth - e.clientX, false);
-  });
-  function endDrag(){
-    if(!dragging) return;
-    dragging = false;
+  let resizing = false;
+  function move(e){
+    if(!resizing) return;
+    const x = e.clientX;
+    if(!Number.isFinite(x)) return;
+    applyDrawerWidth(window.innerWidth - x, false);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
     document.body.classList.remove("drawer-resizing");
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("mousemove", move, true);
+    window.removeEventListener("pointerup", stop, true);
+    window.removeEventListener("mouseup", stop, true);
+    window.removeEventListener("pointercancel", stop, true);
     applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
-  el.addEventListener("pointerup", endDrag);
-  el.addEventListener("pointercancel", endDrag);
+  function start(e){
+    if(document.body.classList.contains("bugs-open")) return;
+    if(e.button!=null && e.button!==0) return;
+    if(resizing && e.type==="mousedown") return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizing = true;
+    panning = false;
+    vp.classList.remove("grabbing");
+    document.body.classList.add("drawer-resizing");
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("pointerup", stop, true);
+    window.addEventListener("mouseup", stop, true);
+    window.addEventListener("pointercancel", stop, true);
+    if(e.pointerId!=null){
+      try{ el.setPointerCapture(e.pointerId); }catch(err){}
+    }
+  }
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("mousedown", start);
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
     applyDrawerWidth(DRAWER_W_DEFAULT, true);
@@ -4944,17 +4965,19 @@ function fitView(){
 }
 window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
 const vp = document.getElementById("viewport");
-let dragging=false, sx=0, sy=0;
+let panning=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
+  if(document.body.classList.contains("drawer-resizing")) return;
+  if(e.target.closest("#drawer-split")) return;
   if(e.target.closest(".node")) return;
-  dragging=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  panning=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
   vp.classList.add("grabbing");
 });
 window.addEventListener("mousemove", e=>{
-  if(!dragging) return;
+  if(!panning || document.body.classList.contains("drawer-resizing")) return;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
-window.addEventListener("mouseup", ()=>{ dragging=false; vp.classList.remove("grabbing"); });
+window.addEventListener("mouseup", ()=>{ panning=false; vp.classList.remove("grabbing"); });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
