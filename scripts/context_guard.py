@@ -18,6 +18,7 @@ import webbrowser
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import unquote, urlsplit
 
 
@@ -558,6 +559,14 @@ class WorkbenchHandler(SimpleHTTPRequestHandler):
 
 class WorkbenchServer(ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self) -> None:
+        # HTTPServer performs reverse DNS here. A loopback-only workbench does
+        # not need it, and macOS DNS lookup can stall before serving requests.
+        TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
     def __init__(self, address: tuple[str, int], root: Path):
         self.project_root = root.resolve()
