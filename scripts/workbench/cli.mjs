@@ -30,8 +30,10 @@ async function initialize(root) {
 }
 export async function ensureServer(root, port = 8877) {
   await initialize(root);
+  root = await fs.realpath(root);
+  const sameRoot = async live => live?.root && await fs.realpath(live.root).catch(() => null) === root;
   let state = await readJSON(statePath(root), null), live = state && await health(state);
-  if (live && path.resolve(live.root) === path.resolve(root)) {
+  if (await sameRoot(live)) {
     if (live.protocol !== 2 || !state.adminToken) throw new MapError('LEGACY_SERVICE', 'Old read-only service is active. Export its cache before stopping it and starting the Node workbench.', 409);
     return state;
   }
@@ -41,7 +43,7 @@ export async function ensureServer(root, port = 8877) {
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
     await pause(60); state = await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
-    if (live?.protocol === 2 && path.resolve(live.root) === path.resolve(root)) return state;
+    if (live?.protocol === 2 && await sameRoot(live)) return state;
   }
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
@@ -50,6 +52,22 @@ export async function request(state, route, { token = state.adminToken, method =
   const result = await response.json();
   if (!response.ok) throw new MapError(result.error?.code || 'HTTP_ERROR', result.error?.message || response.statusText, response.status, result.error || {});
   return result;
+}
+export async function stopServer(root) {
+  const state = await readJSON(statePath(root), null);
+  if (!state || !await health(state)) return { stopped: false };
+  if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
+  await request(state, '/api/stop', { method: 'POST', body: {} });
+  const deadline = Date.now() + 12000;
+  // A stop acknowledgement is not a released project lock. Do not let the next
+  // command race the old process while it flushes writes and closes sockets.
+  for (;;) {
+    const current = await readJSON(statePath(root), null);
+    const lock = await readJSON(path.join(root, '.codex/context/private/node-workbench.lock'), null);
+    if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
+    if (Date.now() >= deadline) throw new MapError('STOP_FAILED', 'Workbench has not finished shutting down; project lock preserved', 503);
+    await pause(25);
+  }
 }
 async function inputJSON(file) {
   if (file && file !== '-') return JSON.parse(await fs.readFile(path.resolve(file), 'utf8'));
@@ -63,10 +81,7 @@ async function main(args) {
     console.log(JSON.stringify({ url: running.state.url, protocol: 2 })); return;
   }
   if (command === 'workbench' && opt.stop) {
-    const state = await readJSON(statePath(root), null);
-    if (!state || !await health(state)) return { stopped: false };
-    if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
-    return request(state, '/api/stop', { method: 'POST', body: {} });
+    return stopServer(root);
   }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') return { url: state.url, root, protocol: 2 };

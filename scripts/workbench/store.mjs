@@ -21,7 +21,8 @@ export class MapStore extends EventEmitter {
     this.events = (await fs.readFile(this.eventsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e))).split('\n').filter(Boolean).map(JSON.parse);
     this.cursor = this.events.at(-1)?.cursor || null;
     await this.recover(); await this.refresh();
-    this.watcher = watch(this.ctx, (_event, filename) => {
+    // libuv must receive the long, canonical path on Windows (TEMP may be 8.3).
+    this.watcher = watch(await fs.realpath(this.ctx), (_event, filename) => {
       // Generated indexes live in the same directory. Their events must neither
       // postpone map detection nor trigger repeated reads of a large map.
       if (filename && String(filename) !== 'map.json') return;

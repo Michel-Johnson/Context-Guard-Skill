@@ -26,8 +26,9 @@ Skill installation. Browser tests use bundled Chromium, not a signed-in browser.
 
 - `npm test`: existing client driver/runtime checks; transactional installation
   boundaries; actual npm package contents, lifecycle hooks, language setup,
-  session/message/bad-case persistence; 30 workbench/inbox checks including
-  interrupted writes, version conflicts and exact acknowledgements.
+  session/message/bad-case persistence; workbench/inbox checks including
+  interrupted writes, version conflicts, exact acknowledgements, project path
+  aliases, Windows short-path watchers and stop-then-restart behavior.
 - `npm run test:browser`: a real SessionStart hook creates a synthetic session in
   an outside-checkout temporary project. The real page and public CLI check
   bidirectional persistence, human-only proposal confirmation, inbox redelivery,
@@ -42,3 +43,8 @@ The npm file allowlist and exact package contract exclude all tests, development
 dependencies, CI files and reports. The browser job has no login/API secrets.
 It does not prove model comprehension, native client conversations, reading
 isolation, or background monitoring. Those are outside this CI's scope.
+
+Path watchers use canonical paths to avoid the Windows short-path assertion
+tracked in [libuv #5010](https://github.com/libuv/libuv/issues/5010).
+Shutdown explicitly closes idle connections for [Node 18 compatibility](https://nodejs.org/download/release/v18.20.3/docs/api/http.html#servercloseidleconnections)
+and waits for the project lock to be released before reporting CLI success.

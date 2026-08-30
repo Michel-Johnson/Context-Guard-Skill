@@ -132,8 +132,9 @@ export class AgentInbox {
     let changed = false, wake;
     const notify = () => { changed = true; wake?.(); };
     // Register before reading, so a write between read and wait cannot get lost.
-    const handles = [watch(this.ctx, (_, name) => { if (!name || String(name) === 'map.json') notify(); }),
-      watch(path.join(this.ctx, 'sessions'), (_, name) => { if (!name || String(name) === 'workbench-changes.jsonl') notify(); })];
+    const ctx = await fs.realpath(this.ctx);
+    const handles = [watch(ctx, (_, name) => { if (!name || String(name) === 'map.json') notify(); }),
+      watch(await fs.realpath(path.join(ctx, 'sessions')), (_, name) => { if (!name || String(name) === 'workbench-changes.jsonl') notify(); })];
     try {
       for (;;) {
         changed = false;

@@ -4,14 +4,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
-import { ensureServer } from '../scripts/workbench/cli.mjs';
+import { ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, diffTrees, validate } from '../prototype/map-model.mjs';
-import { encode, hash, pause } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 after(async () => {
@@ -67,7 +67,7 @@ test('concurrent submissions serialize, invalid JSON and external replacement re
     assert.equal(results.filter(x => x.status === 'fulfilled').length, 1);
     await fs.writeFile(store.file, '{'); await until(() => store.error); assert.ok(store.doc.root.children[0].title);
     const next = structuredClone(store.doc); next.root.children[0].title = '外部保存';
-    await fs.writeFile(store.file + '.replace', encode(next)); await fs.rename(store.file + '.replace', store.file);
+    await atomicWrite(store.file, encode(next));
     await until(() => store.doc.root.children[0].title === '外部保存' && !store.error);
     assert.ok(store.events.at(-1).nodeIds.includes('N1')); assert.ok(store.events.at(-1).fields.includes('title'));
     assert.equal(store.changes('lost-cursor').reset, true); assert.equal(store.changes(store.cursor).changes.length, 0);
@@ -201,4 +201,51 @@ test('legacy GET-only service is identified and preserved; a second Node owner i
   const running = await startServer({ root: f.root, port: 0 });
   try { await assert.rejects(startServer({ root: f.root, port: 0 }), { code: 'ALREADY_RUNNING' }); }
   finally { await running.close(); }
+});
+
+test('project path aliases reuse the same healthy service', async () => {
+  const f = await fixture(), alias = path.join(f.root, 'project-link');
+  await fs.symlink(f.root, alias, 'junction');
+  const running = await startServer({ root: f.root, port: 0 });
+  try { assert.equal((await ensureServer(alias)).instance, running.state.instance); }
+  finally { await running.close(); await fs.unlink(alias); }
+});
+
+test('stop waits for pending work and idle connections before immediate restart', async () => {
+  const f = await fixture(); let running = await startServer({ root: f.root, port: 0 });
+  const pool = new http.Agent({ keepAlive: true });
+  let release;
+  try {
+    await new Promise((resolve, reject) => http.get(new URL('/__context_guard/health', running.state.url), { agent: pool }, res => { res.resume(); res.on('end', resolve); }).on('error', reject));
+    running.store.serial(() => new Promise(resolve => { release = resolve; }));
+    let stopped = false;
+    const stopping = stopServer(f.root).then(result => { stopped = true; return result; });
+    await until(() => !!running.server.cgClose.promise);
+    assert.equal(stopped, false, 'stop must wait for pending work');
+    release();
+    assert.equal((await stopping).stopped, true);
+    await assert.rejects(fs.access(path.join(f.ctx, 'private/node-workbench.lock')), { code: 'ENOENT' });
+    await assert.rejects(fs.access(path.join(f.ctx, 'private/workbench.json')), { code: 'ENOENT' });
+    await running.close();
+    running = await startServer({ root: f.root, port: 0 });
+    assert.equal((await ensureServer(f.root)).instance, running.state.instance);
+  } finally { release?.(); pool.destroy(); await running.close(); }
+});
+
+if (process.platform === 'win32') test('Windows short paths support map and inbox file watching', async () => {
+  const f = await fixture();
+  // Exercise the path form returned by Windows TEMP on hosted runners.
+  const script = 'import ctypes, sys; b = ctypes.create_unicode_buffer(32768); n = ctypes.windll.kernel32.GetShortPathNameW(sys.argv[1], b, len(b)); assert n > 0; print(b.value)';
+  const shortRoot = execFileSync('python', ['-c', script, f.root], { encoding: 'utf8', windowsHide: true }).trim();
+  const store = await new MapStore(shortRoot).init();
+  const { AgentInbox } = await import('../scripts/workbench/inbox.mjs');
+  const inbox = new AgentInbox(shortRoot, agent.sessionId, async () => { await store.serial(() => store.refresh()); return store.changes(); });
+  try {
+    await inbox.read({ start: true });
+    const waiting = inbox.wait(3000);
+    const next = structuredClone(f.doc); next.root.children[0].title = 'Short path update';
+    await fs.writeFile(path.join(f.ctx, 'map.json'), encode(next));
+    assert.equal((await waiting).pending, true);
+    assert.equal(store.doc.root.children[0].title, 'Short path update');
+  } finally { await store.close(); }
 });

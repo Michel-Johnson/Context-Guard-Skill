@@ -9,7 +9,7 @@ import { AgentInbox, describeChanges } from '../scripts/workbench/inbox.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { encode, hash, pause } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
 
 const human = { kind: 'human', sessionId: 'workbench' };
 const agent = { kind: 'agent', sessionId: 'inbox-test' };
@@ -106,7 +106,7 @@ test('file event wakes a waiting Agent with actual local text', async t => {
   await pause(50);
   const next = structuredClone(f.store.doc); next.root.children[0].memories = [{ text: '来自磁盘的即时文本' }];
   const started = performance.now();
-  await fs.writeFile(f.store.file + '.incoming', encode(next)); await fs.rename(f.store.file + '.incoming', f.store.file);
+  await atomicWrite(f.store.file, encode(next));
   const batch = await waiting;
   const elapsedMs = performance.now() - started;
   assert.equal(batch.pending, true); assert.ok(elapsedMs < 2500);

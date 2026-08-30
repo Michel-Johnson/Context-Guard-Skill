@@ -86,7 +86,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         if (route === '/api/stop' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
-          await fence(); send(res, 200, { stopped: true }); setImmediate(() => close()); return;
+          await fence(); send(res, 202, { stopping: true }); setImmediate(() => close()); return;
         }
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
@@ -179,12 +179,23 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     await atomicWrite(statePath(root), encode(state));
     store.on('change', state => broadcast('state', state));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
-    async function close() {
-      if (close.called) return; close.called = true;
-      clearInterval(heartbeat); for (const p of peers.values()) p.res?.end();
-      await store.close(); await projectionQueue; await new Promise(resolve => server.close(resolve));
-      if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock);
-      if ((await readJSON(statePath(root), null))?.instance === instance) await fs.unlink(statePath(root));
+    function close() {
+      if (close.promise) return close.promise;
+      close.promise = (async () => {
+        clearInterval(heartbeat);
+        // Stop accepting reconnects before draining events or slow projections.
+        const disconnected = new Promise((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve());
+        });
+        for (const p of peers.values()) p.res?.end();
+        // Node 18 does not reap idle keep-alive sockets in server.close().
+        server.closeIdleConnections?.();
+        await disconnected;
+        await store.close(); await projectionQueue;
+        if ((await readJSON(statePath(root), null))?.instance === instance) await fs.unlink(statePath(root));
+        if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock);
+      })();
+      return close.promise;
     }
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
