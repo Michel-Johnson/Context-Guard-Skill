@@ -49,9 +49,9 @@ Enable **Settings → General → Pull Requests → Allow auto-merge** once. The
 
 一次性开启 **Settings → General → Pull Requests → Allow auto-merge**。工作流针对 PR 的确切提交请求 GitHub 原生自动合并，不绕过分支保护、不代替人工批准。保留必需的 `Required` 检查以及分支必须同步 main 的要求；CI 失败、冲突或其他审核/保护条件未满足时不能合并。仓库开关只代表允许使用自动合并，并不意味着所有 PR 都自动合并。
 
-The privileged `pull_request_target` workflow never checks out PR code or downloads PR artifacts. It uses the built-in GitHub token, pins the metadata Action by commit SHA, and retains author/commit verification. No PAT, npm credential, automatic version tag, or npm publication is added. CI/CD triggers remain unchanged. Events caused by `GITHUB_TOKEN` may not start follow-up workflows; the required **PR CI** is the acceptance gate, not an assumed extra post-merge run.
+The privileged `pull_request_target` workflow never checks out PR code or downloads PR artifacts. It uses the built-in GitHub token, pins the metadata Action by commit SHA, and retains author/commit verification. No PAT, npm credential, automatic version tag, or npm publication is added. CI/CD triggers remain unchanged. Events caused by `GITHUB_TOKEN` may not start follow-up workflows. The gate is the existing **Required** check: push and PR runs currently expose the same name, so this does not independently require both runs to finish. In the verified #26 timeline, push Required succeeded before auto-merge, while PR Required completed afterward; do not assume an extra post-merge run.
 
-有写权限的 `pull_request_target` 工作流不检出 PR 代码、不下载 PR 产物；使用 GitHub 内置 Token，将元数据 Action 固定到完整提交 SHA，并保留作者及提交验证。不新增 PAT、npm 凭据、自动版本标签或 npm 发布。原 CI/CD 触发配置不变；`GITHUB_TOKEN` 产生的事件可能不会启动后续工作流，因此自动合并以必需的 **PR CI** 为验收门禁，不依赖合并后一定再运行一次 CI。
+有写权限的 `pull_request_target` 工作流不检出 PR 代码、不下载 PR 产物；使用 GitHub 内置 Token，将元数据 Action 固定到完整提交 SHA，并保留作者及提交验证。不新增 PAT、npm 凭据、自动版本标签或 npm 发布。原 CI/CD 触发配置不变；`GITHUB_TOKEN` 产生的事件可能不会启动后续工作流。自动合并使用现有的 **Required** 门禁：分支和 PR 的检查目前同名，不代表必须分别等两轮全部结束。已核验的 #26 时间线中，分支 Required 先通过并触发自动合并，PR Required 随后完成；不能假设合并后还会额外再跑一次 CI。
 
 To stop this automation, disable its workflow. Disabling the workflow does not cancel auto-merge already enabled on a PR; cancel those requests individually. The repository-wide Allow auto-merge switch can also be turned off. None of these actions requires disabling CI or CD.
 
