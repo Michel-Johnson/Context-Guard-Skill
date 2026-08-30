@@ -1,33 +1,306 @@
-name: Publish to npm
+name: Publish npm package
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
-  release:
-    types: [published]
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: "@michelj/context-guard"
+  PACKAGE_REPOSITORY: "git+https://github.com/Michel-Johnson/Context-Guard-Skill.git"
+  NPM_REGISTRY: "https://registry.npmjs.org/"
 
 jobs:
-  publish:
+  package:
+    name: Validate and package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
-      - name: Check package
-        run: npm pack --dry-run
+      - name: Validate release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use the stable form vX.Y.Z: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
 
-      - name: Publish
-        run: npm publish --access public --provenance
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          package_repository="$(node -p "require('./package.json').repository.url")"
+          publish_access="$(node -p "require('./package.json').publishConfig.access")"
+          publish_registry="$(node -p "require('./package.json').publishConfig.registry")"
+          if [[ "$package_name" != "$PACKAGE_NAME" ]]; then
+            echo "Package name must remain $PACKAGE_NAME: $package_name" >&2
+            exit 1
+          fi
+          if [[ "$package_repository" != "$PACKAGE_REPOSITORY" ]]; then
+            echo "Package repository must remain $PACKAGE_REPOSITORY: $package_repository" >&2
+            exit 1
+          fi
+          if [[ "$publish_access" != "public" ]]; then
+            echo "Package access must remain public: $publish_access" >&2
+            exit 1
+          fi
+          if [[ "$publish_registry" != "$NPM_REGISTRY" ]]; then
+            echo "Package registry must remain $NPM_REGISTRY: $publish_registry" >&2
+            exit 1
+          fi
+
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [[ "$tag_version" != "$package_version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $package_version" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          tagged_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          if ! git merge-base --is-ancestor "$tagged_commit" origin/main; then
+            echo "The tagged commit must already belong to main." >&2
+            exit 1
+          fi
+
+          npm view "$package_name" versions --json > "$RUNNER_TEMP/published-versions.json"
+          if node -e '
+            const fs = require("fs");
+            const version = process.argv[1];
+            const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const versions = Array.isArray(value) ? value : [value];
+            process.exit(versions.includes(version) ? 0 : 1);
+          ' "$package_version" "$RUNNER_TEMP/published-versions.json"; then
+            echo "$package_name@$package_version is already published." >&2
+            exit 1
+          fi
+
+      - name: Build package tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          npm pack --json --pack-destination dist > "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/npm-pack.json"
+          node .github/scripts/verify-package-artifact.mjs dist --write-hash
+
+      - name: Store validated package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-npm-package
+          path: |
+            dist/*.tgz
+            dist/package.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  unix-smoke:
+    name: Install on ${{ matrix.name }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu / minimum Node
+            os: ubuntu-latest
+            node: "18"
+          - name: macOS
+            os: macos-latest
+            node: "24"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-npm-package
+          path: dist
+
+      - name: Verify package artifact
+        run: node .github/scripts/verify-package-artifact.mjs dist
+
+      - name: Install through global npm and npx
+        run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke"
+
+  windows-smoke:
+    name: Install on Windows
+    needs: package
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-npm-package
+          path: dist
+
+      - name: Verify package artifact
+        run: node .github/scripts/verify-package-artifact.mjs dist
+
+      - name: Install through global npm and npx
+        run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke" --with-hooks
+
+  publish:
+    name: Publish to npm
+    needs:
+      - package
+      - unix-smoke
+      - windows-smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-npm-package
+          path: dist
+
+      - name: Verify validated package
+        run: node .github/scripts/verify-package-artifact.mjs dist
+
+      - name: Require an OIDC-capable npm CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm_version="$(npm --version)"
+          node -e '
+            const actual = process.argv[1].split(".").map(Number);
+            const minimum = [11, 5, 1];
+            for (let index = 0; index < minimum.length; index += 1) {
+              if (actual[index] > minimum[index]) process.exit(0);
+              if (actual[index] < minimum[index]) process.exit(1);
+            }
+          ' "$npm_version" || {
+            echo "Trusted Publishing requires npm >= 11.5.1; runner has $npm_version." >&2
+            exit 1
+          }
+
+      - name: Publish validated package
+        run: npm publish "$PACKAGE_TARBALL" --access public
+
+  verify-published:
+    name: Verify published package
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Wait for npm and exercise exact and latest installs
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          package_spec="$PACKAGE_NAME@$version"
+          published_version=""
+          latest_version=""
+          for attempt in {1..18}; do
+            if value="$(npm view "$package_spec" version --json 2>/dev/null)"; then
+              published_version="$(printf '%s' "$value" | tr -d '"\r\n')"
+            fi
+            if value="$(npm view "$PACKAGE_NAME@latest" version --json 2>/dev/null)"; then
+              latest_version="$(printf '%s' "$value" | tr -d '"\r\n')"
+            fi
+            if [[ "$published_version" == "$version" && "$latest_version" == "$version" ]]; then
+              break
+            fi
+            if [[ "$attempt" -lt 18 ]]; then
+              sleep 10
+            fi
+          done
+          if [[ "$published_version" != "$version" ]]; then
+            echo "$package_spec was not visible on npm after 18 attempts." >&2
+            exit 1
+          fi
+          if [[ "$latest_version" != "$version" ]]; then
+            echo "$PACKAGE_NAME@latest resolves to $latest_version instead of $version." >&2
+            exit 1
+          fi
+
+          repository_url="$(npm view "$package_spec" repository.url --json | tr -d '"\r\n')"
+          if [[ "$repository_url" != "$PACKAGE_REPOSITORY" ]]; then
+            echo "$package_spec repository is $repository_url instead of $PACKAGE_REPOSITORY." >&2
+            exit 1
+          fi
+
+          export CODEX_HOME="$RUNNER_TEMP/exact-codex-home"
+          npm_prefix="$RUNNER_TEMP/exact-npm-prefix"
+          npm install --global --prefix "$npm_prefix" --prefer-online "$package_spec"
+          cli="$npm_prefix/bin/context-guard"
+          test -x "$cli"
+          "$cli" --help >/dev/null
+          test -f "$CODEX_HOME/skills/context-guard/SKILL.md"
+          project_target="$RUNNER_TEMP/context-guard-registry-project"
+          "$cli" init --root "$project_target"
+          test -f "$project_target/.codex/context/index.md"
+
+          unset CODEX_HOME
+          default_skill="$HOME/.codex/skills/context-guard/SKILL.md"
+          test ! -e "$default_skill"
+          npx --yes --prefer-online "$PACKAGE_NAME" install
+          test -f "$default_skill"

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/context_guard_hook.py session-start",
+            "command": "python3 ./scripts/context_guard_hook.py session-start --platform codex",
             "timeout": 10,
             "statusMessage": "Initializing context folder"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/context_guard_hook.py subagent-start",
+            "command": "python3 ./scripts/context_guard_hook.py subagent-start --platform codex",
             "timeout": 10,
             "statusMessage": "Initializing folder context"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/context_guard_hook.py user-prompt-submit",
+            "command": "python3 ./scripts/context_guard_hook.py user-prompt-submit --platform codex",
             "timeout": 10,
             "statusMessage": "Recording durable user wording"
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/context_guard_hook.py subagent-stop",
+            "command": "python3 ./scripts/context_guard_hook.py subagent-stop --platform codex",
             "timeout": 10,
             "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
           }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/context_guard_hook.py stop",
+            "command": "python3 ./scripts/context_guard_hook.py stop --platform codex",
             "timeout": 10,
             "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
           }

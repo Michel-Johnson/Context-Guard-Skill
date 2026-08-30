@@ -4901,9 +4901,9 @@ async function boot(){
   await restoreRepoDir();
   if(!stored) await loadPrefsLang();
   applyStaticI18n();
-  const liveKids = ((currentRepo().live || data || {}).children || []).length;
-  /* 本地已有图时不要用磁盘/HTTP 旧文件盖掉。有仓库句柄则把画布写回去。 */
-  if(liveKids){
+  const cachedLive = restoredFromLs && ((currentRepo().live || data || {}).children || []).length;
+  /* 只保护浏览器实际恢复出的活图；内置演示图不能阻止全新页面读取仓库 Map。 */
+  if(cachedLive){
     if(repoFsOk){
       const ok = await writeMapToRepo();
       setRepoStatus(ok ? "ok" : "fail");
