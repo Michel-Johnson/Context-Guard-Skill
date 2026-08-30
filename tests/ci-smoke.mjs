@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { checkInstallBoundaries } from "../.github/scripts/install-boundaries.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "context-guard-ci-"));
@@ -97,6 +98,7 @@ async function main() {
   const postinstall = path.join(packageDirectory, "bin", "postinstall.js");
   const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
   const hookScript = path.join(packageDirectory, "scripts", "context_guard_hook.py");
+  checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
   assert.equal(countSkillFiles(packageDirectory), 1, "published package must contain one skill");
   run(process.execPath, [cli, "--help"]);
   run(python, ["-c", [

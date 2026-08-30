@@ -28,6 +28,15 @@ requireMatch(ci, /^\s*pull_request:\s*$/m, "CI must run for pull requests.");
 requireMatch(ci, /^\s*push:\s*$/m, "CI must run after changes reach main.");
 requireMatch(ci, /^\s*name:\s*Required\s*$/m, "CI must expose the unique Required status check.");
 forbidMatch(ci, /^\s*id-token:\s*write\s*$/m, "CI must not receive an OIDC write token.");
+requireMatch(ci, /^  browser:\s*$/m, "CI must execute the approved browser flow.");
+requireMatch(ci, /run: npm ci --ignore-scripts/, "Browser dependencies must be locked and must not run the Skill installer.");
+requireMatch(ci, /run: npm run test:browser/, "Browser CI must run the real test entry.");
+const aggregate = ci.slice(ci.indexOf("  required:"));
+for (const job of ["package", "install", "browser"]) {
+  requireMatch(aggregate, new RegExp(`^      - ${job}\\s*$`, "m"), `Required must wait for ${job}.`);
+  requireMatch(aggregate, new RegExp(`test "\\$${job.toUpperCase()}_RESULT" = "success"`), `Required must reject failed/skipped ${job}.`);
+}
+forbidMatch(ci, /continue-on-error:\s*true/, "Required CI failures must propagate.");
 
 requireMatch(publish, /^\s*-\s*"v\*"\s*$/m, "Publishing must be triggered by version tags.");
 forbidMatch(publish, /^\s*workflow_dispatch:\s*$/m, "Publishing must not have a manual trigger.");

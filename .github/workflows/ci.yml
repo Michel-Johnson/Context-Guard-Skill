@@ -21,6 +21,7 @@ jobs:
   package:
     name: CI 1 | 功能测试与包内容检查
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -77,6 +78,7 @@ jobs:
             os: windows-latest
             node: "24"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -108,6 +110,46 @@ jobs:
       - name: CI | 验证 npm 全局安装与 npx 安装
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-ci-smoke"
 
+  browser:
+    name: CI 3 | 工作台与 Agent 浏览器协作
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install locked test dependencies without installing a personal Skill
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install isolated CI browser and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Exercise real workbench, public CLI and session inbox
+        run: npm run test:browser
+
+      - name: Store synthetic browser diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-browser-report
+          path: |
+            output/playwright/browser-ci/**/results.json
+            output/playwright/browser-ci/**/failure.txt
+            output/playwright/browser-ci/**/*.png
+          if-no-files-found: warn
+          retention-days: 3
+
   required:
     # Keep this check name stable: main branch protection requires Required.
     name: Required
@@ -115,14 +157,17 @@ jobs:
     needs:
       - package
       - install
+      - browser
     runs-on: ubuntu-latest
     steps:
-      - name: CI 3 | 汇总全部检查，决定是否允许合并
+      - name: CI 4 | 汇总全部检查，决定是否允许合并
         shell: bash
         env:
           PACKAGE_RESULT: ${{ needs.package.result }}
           INSTALL_RESULT: ${{ needs.install.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
         run: |
           set -euo pipefail
           test "$PACKAGE_RESULT" = "success"
           test "$INSTALL_RESULT" = "success"
+          test "$BROWSER_RESULT" = "success"

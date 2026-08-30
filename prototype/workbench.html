@@ -1,12 +1,32 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+<!-- CG_SERVER_BOOT -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var preview = q.has("preview");
+  var t = q.get("theme");
+  if(!(t==="1"||t==="4"||t==="44"||t==="48")){
+    try{ t = localStorage.getItem("cg-workbench-node-theme")||""; }catch(e){ t=""; }
+  }
+  if(t==="4"||t==="44"||t==="48"){
+    document.documentElement.setAttribute("data-node-theme", t);
+  }else{
+    document.documentElement.removeAttribute("data-node-theme");
+    t = "1";
+  }
+  if(preview) document.documentElement.classList.add("theme-preview");
+  window.__CG_NODE_THEME = t;
+  window.__CG_PREVIEW = preview;
+})();
+</script>
 <style>
 :root{
   --chrome-top:52px;
@@ -18,6 +38,8 @@
   --yellow:#ffe66d; --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
+  --drawer-width:340px;
+  --bug-panel-width:240px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -163,7 +185,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) 0 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -261,6 +283,119 @@ body.rel-mode .node .add-child{display:none}
 .node .lock{font-size:11px;margin-left:1px}
 .node .part-tag{font-size:10.5px;color:var(--auth);font-weight:600}
 
+/* 对照页预览：?theme=44|48|1|4 只换模块卡，不改顶栏结构 */
+html[data-node-theme="44"]{ --bg:#fffaf3; }
+html[data-node-theme="44"] .node{
+  border-color:#e6d3a8; border-radius:20px; color:#4a3f32;
+  box-shadow:0 6px 16px rgba(180,140,60,.1);
+  font-family:"IBM Plex Sans","PingFang SC",sans-serif;
+}
+html[data-node-theme="44"] .node:hover{
+  transform:none; box-shadow:0 10px 28px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.module{
+  background:#fff; border-width:2px; border-color:#e6d3a8; border-radius:20px;
+  box-shadow:0 10px 28px rgba(180,140,60,.12);
+}
+html[data-node-theme="44"] .node.module:hover{
+  transform:none; box-shadow:0 12px 32px rgba(180,140,60,.18);
+}
+html[data-node-theme="44"] .node.root:not(.module),
+html[data-node-theme="44"] .node.root.module{background:#fff6e5}
+html[data-node-theme="44"] .node.selected,
+html[data-node-theme="44"] .node.module.selected,
+html[data-node-theme="44"] .node.noauth.selected,
+html[data-node-theme="44"] .node.module.noauth.selected{background:#ffe9b8; color:#4a3f32; border-color:#e6d3a8; box-shadow:0 10px 28px rgba(180,140,60,.12)}
+html[data-node-theme="44"] .node.module .m-blurb,
+html[data-node-theme="44"] .node.module.noauth.selected .m-blurb{color:#9a8b78}
+html[data-node-theme="44"] .node.noauth,
+html[data-node-theme="44"] .node.noauth.module{
+  background:#eee9e0; border-color:#d9ccb4; color:#5c5c58;
+  box-shadow:0 6px 16px rgba(160,140,100,.08);
+}
+html[data-node-theme="44"] .dot.module{background:#d4a017}
+html[data-node-theme="44"] #links path.link,
+html[data-node-theme="44"] #links path.link.stem{stroke:#e6d3a8}
+
+html[data-node-theme="48"]{ --bg:#f8f4ea; }
+html[data-node-theme="48"] .node{
+  border-color:#cfc6b4; border-radius:10px; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node:hover{box-shadow:1px 1px 0 #cfc6b4}
+html[data-node-theme="48"] .node.module{
+  background:#e7eef8; border-width:1.5px; border-color:#cfc6b4; border-radius:10px;
+  box-shadow:3px 3px 0 #cfc6b4;
+}
+html[data-node-theme="48"] .node.module:hover{box-shadow:2px 2px 0 #cfc6b4}
+html[data-node-theme="48"] .node.root:not(.module),
+html[data-node-theme="48"] .node.root.module{background:#ffe08a}
+html[data-node-theme="48"] .node.selected,
+html[data-node-theme="48"] .node.module.selected,
+html[data-node-theme="48"] .node.noauth.selected,
+html[data-node-theme="48"] .node.module.noauth.selected{background:#fde2c8; border-color:#cfc6b4; box-shadow:3px 3px 0 #cfc6b4}
+html[data-node-theme="48"] .node.noauth,
+html[data-node-theme="48"] .node.noauth.module{
+  background:#e4e0d6; border-color:#cfc6b4; box-shadow:2px 2px 0 #cfc6b4;
+}
+html[data-node-theme="48"] #links path.link,
+html[data-node-theme="48"] #links path.link.stem{stroke:#cfc6b4}
+
+html[data-node-theme="4"]{ --bg:#f5f5f2; }
+html[data-node-theme="4"] .node{
+  border:1px solid #bbb; border-radius:10px; box-shadow:none; color:#222;
+  font-family:"IBM Plex Sans","PingFang SC",sans-serif;
+}
+html[data-node-theme="4"] .node:hover,
+html[data-node-theme="4"] .node.module:hover{transform:none; box-shadow:none; border-color:#999}
+html[data-node-theme="4"] .node.module{
+  background:#eeeae2; border:1px solid #bbb; border-radius:10px; box-shadow:none;
+}
+html[data-node-theme="4"] .node.root:not(.module),
+html[data-node-theme="4"] .node.root.module{background:#fff4c2}
+html[data-node-theme="4"] .node.selected,
+html[data-node-theme="4"] .node.module.selected,
+html[data-node-theme="4"] .node.noauth.selected,
+html[data-node-theme="4"] .node.module.noauth.selected{background:#ffe9a8; border-color:#bbb; box-shadow:none}
+html[data-node-theme="4"] .node.module .m-blurb,
+html[data-node-theme="4"] .node.module.noauth.selected .m-blurb{color:#777; font-family:var(--font-note)}
+html[data-node-theme="4"] .node.noauth,
+html[data-node-theme="4"] .node.noauth.module{
+  background:#ddd; border-color:#ccc; box-shadow:none;
+}
+html[data-node-theme="4"] .dot.module{background:#4a7ab5}
+html[data-node-theme="4"] #links path.link,
+html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
+
+.theme-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
+  padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+html.theme-preview .theme-preview-banner{display:block}
+
+.settings-wrap{position:relative;flex:0 0 auto}
+.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
+  background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
+.settings-menu.open{display:block}
+.settings-menu{max-height:calc(100dvh - 90px);overflow-y:auto}
+.settings-menu .set-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 6px}
+.settings-menu .set-block + .set-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.theme-picks{display:flex;flex-direction:column;gap:4px}
+.theme-pick{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  border:2px solid transparent;background:transparent;box-shadow:none;border-radius:8px;
+  padding:6px 8px;font-size:13px;font-weight:700}
+.theme-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
+.theme-pick.on{border-color:var(--line-ink);background:var(--yellow);box-shadow:var(--shadow-sm)}
+.theme-pick .swatch{width:22px;height:14px;border-radius:4px;flex:0 0 auto;border:1.5px solid #2d2d2d}
+.settings-menu .lang-toggle{width:100%}
+.settings-menu .lang-toggle button{flex:1}
+.sync-settings{font-size:12px}
+.sync-settings summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.sync-settings p{line-height:1.5;overflow-wrap:anywhere}
+.sync-actions{display:grid;gap:6px}
+.sync-actions button{font-size:12px;padding:6px 8px;text-align:left}
+.sync-settings label{display:block;margin-top:12px;color:var(--muted)}
+.sync-settings select{display:block;width:100%;min-width:0;margin-top:5px;font:inherit}
+.sync-notice{margin-left:8px;color:var(--red);font-size:12px;white-space:nowrap}
+
 /* 授权模式 */
 body.auth-mode .node{cursor:cell}
 .node .auth-mark{display:none;width:15px;height:15px;border-radius:50%;border:2px solid #c9bfdd;
@@ -298,12 +433,13 @@ body.auth-mode .node .add-child{display:none}
 
 /* ---------- 未修 Bug 面板 ---------- */
 #btn-bugs.on{background:var(--yellow);font-weight:800}
-.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:240px;
+.bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:var(--bug-panel-width);
   background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
-body.bugs-open #viewport{right:240px}
-body.bugs-open .drawer{display:none}
+body.bugs-open #viewport{right:var(--bug-panel-width)}
+body.bugs-open .drawer,
+body.bugs-open .drawer-split{display:none}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
@@ -342,8 +478,18 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:340px;z-index:20;background:var(--paper);
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
+  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
+  background:var(--line-ink)}
+.drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
+  background:rgba(45,45,45,.08)}
+body.drawer-resizing{cursor:col-resize;user-select:none}
+body.drawer-resizing #viewport,
+body.drawer-resizing .drawer{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -455,7 +601,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .dormant-list .exp{display:block;margin-top:3px}
 
 .files{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
-.files.is-drop{outline:2px dashed var(--module);outline-offset:3px;background:var(--module-soft);border-radius:8px}
+[data-drop-files].is-drop{outline:2px dashed var(--module);outline-offset:3px;background:var(--module-soft);border-radius:8px}
 .file-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;
   border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px 8px 3px 4px;font-size:11.5px}
 .file-thumb{width:36px;height:36px;object-fit:cover;border-radius:4px;background:#f4f1ea}
@@ -470,6 +616,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 </style>
 </head>
 <body>
+<div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <header class="top">
   <div class="brand">
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
@@ -480,10 +627,6 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <div class="dir-toggle" id="dir-toggle">
       <button type="button" data-dir="lr" class="on" data-i18n="dirLr">左右</button>
       <button type="button" data-dir="tb" data-i18n="dirTb">上下</button>
-    </div>
-    <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
-      <button type="button" data-lang="zh" class="on">中</button>
-      <button type="button" data-lang="en">EN</button>
     </div>
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
@@ -500,6 +643,39 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
     <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+    <div class="settings-wrap" id="settings-wrap">
+      <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
+      <div class="settings-menu" id="settings-menu">
+        <div class="set-block">
+          <div class="set-label" data-i18n="themeLabel">主题</div>
+          <div class="theme-picks" id="theme-picks">
+            <button type="button" class="theme-pick" data-theme="1">
+              <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
+              <span data-i18n="themeNow">现在这版</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="44">
+              <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
+              <span data-i18n="themeCream">奶油描边</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="48">
+              <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
+              <span data-i18n="themeWash">淡彩分层</span>
+            </button>
+            <button type="button" class="theme-pick" data-theme="4">
+              <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
+              <span data-i18n="themeFlat">无阴影扁平</span>
+            </button>
+          </div>
+        </div>
+        <div class="set-block">
+          <div class="set-label" data-i18n="langLabel">语言</div>
+          <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+            <button type="button" data-lang="zh" class="on">中</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 <div class="first-use" id="first-use">
@@ -550,6 +726,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <ul id="bug-panel-list"></ul>
 </aside>
 
+<div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
 <aside class="drawer" id="detail"></aside>
 
 <script>
@@ -567,6 +744,7 @@ const I18N = {
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
+    splitTitle:"拖动调整检查器宽度，双击恢复",
     lensMode:"第一层候选",
     lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
     lensShelfHint:"候选（无连线）· 点一个挂到根下",
@@ -579,6 +757,13 @@ const I18N = {
     lensEmptyShelf:"候选都在画布上了",
     authMode:"授权模式",
     cancelled:"已取消",
+    settings:"设置",
+    themeLabel:"主题",
+    langLabel:"语言",
+    themeNow:"现在这版",
+    themeCream:"奶油描边",
+    themeWash:"淡彩分层",
+    themeFlat:"无阴影扁平",
     firstKicker:"演示 · 第一次使用",
     firstHeading:"从 {name} 建立架构图",
     firstCopy:"这一步由当前会话的 Agent 真读 {name}，把多个视角的候选模块端到这里。你挑、改名、删减，拼出自己的第一层。",
@@ -609,7 +794,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"连接仓库", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"授权附件目录", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -640,6 +825,7 @@ const I18N = {
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
+    splitTitle:"Drag to resize the inspector. Double-click to reset.",
     lensMode:"L1 candidates",
     lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
     lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
@@ -652,6 +838,13 @@ const I18N = {
     lensEmptyShelf:"All candidates are on the canvas",
     authMode:"Auth mode",
     cancelled:"Cancelled",
+    settings:"Settings",
+    themeLabel:"Theme",
+    langLabel:"Language",
+    themeNow:"Current",
+    themeCream:"Cream stroke",
+    themeWash:"Wash layers",
+    themeFlat:"Flat",
     firstKicker:"Demo · first use",
     firstHeading:"Build a map from {name}",
     firstCopy:"The agent you are talking to actually reads {name} and brings candidates from several lenses here. You pick, rename, and trim to build your first layer.",
@@ -682,7 +875,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Link repo", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Allow attachment folder", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -708,7 +901,33 @@ const I18N = {
   }
 };
 const LANG_KEY = "cg-workbench-ui-lang";
+const THEME_KEY = "cg-workbench-node-theme";
+const THEME_IDS = ["1","44","48","4"];
 let uiLang = "zh";
+function currentNodeTheme(){
+  const n = window.__CG_NODE_THEME;
+  return THEME_IDS.includes(n) ? n : "1";
+}
+function syncThemePicks(){
+  const on = currentNodeTheme();
+  document.querySelectorAll("#theme-picks [data-theme]").forEach(b=>{
+    b.classList.toggle("on", b.dataset.theme===on);
+  });
+}
+function applyNodeTheme(id, persist){
+  const n = THEME_IDS.includes(String(id)) ? String(id) : "1";
+  window.__CG_NODE_THEME = n;
+  if(n==="1") document.documentElement.removeAttribute("data-node-theme");
+  else document.documentElement.setAttribute("data-node-theme", n);
+  if(persist!==false && !window.__CG_PREVIEW){
+    try{ localStorage.setItem(THEME_KEY, n); }catch(e){}
+  }
+  syncThemePicks();
+  if(typeof renderAll==="function" && typeof data!=="undefined" && data){
+    renderAll();
+    if(typeof fitView==="function") fitView();
+  }
+}
 function t(key){
   const pack = I18N[uiLang] || I18N.zh;
   return pack[key] || I18N.zh[key] || key;
@@ -721,6 +940,7 @@ function applyStaticI18n(){
   document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
+  syncThemePicks();
   const titleEl = document.getElementById("repo-title");
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
@@ -2347,7 +2567,8 @@ let authMode = false;
 let composingId = null;
 let composingKind = "work";
 let composeParent = null;
-function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
+function clearCompose(){
+  workbenchSync?.setInputDraft(null); composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
@@ -2421,7 +2642,7 @@ function filePathOf(f){
 function fileList(owner){
   if(!owner) return [];
   if(!Array.isArray(owner.files)) owner.files = [];
-  owner.files = owner.files.map(filePathOf).filter(Boolean).map(path=>({path}));
+  owner.files = owner.files.map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
   return owner.files;
 }
 function normRepoPath(p){
@@ -2553,42 +2774,21 @@ async function looksLikeRepoRoot(){
   }catch(e){ return false; }
 }
 async function linkRepo(){
-  if(!canFsAccess()) return false;
-  try{
-    repoRootHandle = await window.showDirectoryPicker({id:"context-guard-repo", mode:"readwrite"});
-    repoFsOk = await ensureRepoPerm();
-    if(!repoFsOk){ setRepoStatus("fail"); return false; }
-    await fsDbSet("repoDir", repoRootHandle);
-    if(!(await looksLikeRepoRoot())){
-      repoFsOk = false;
-      setRepoStatus("notRoot");
-      renderAll();
-      return false;
-    }
-    snapshotRepo();
-    diskProjectId = currentRepo().id;
-    const liveKids = ((currentRepo().live || data || {}).children || []).length;
-    /* 画布上已有图：写回仓库。空画布才从磁盘读。连接不是用旧文件覆盖人刚改的图。 */
-    if(liveKids){
-      const ok = await writeMapToRepo();
-      setRepoStatus(ok ? "ok" : "fail");
-    }else{
-      const loaded = await loadMapFromRepo();
-      setRepoStatus(loaded ? "ok" : "fail");
-    }
-    if(pendingWrite){
-      const pw = pendingWrite;
-      pendingWrite = null;
-      await saveBlobToOwner(pw.node, pw.kind, pw.key, pw.blob, pw.name);
-    }else{
-      renderAll();
-      fitView();
-    }
-    return repoFsOk;
-  }catch(e){
-    setRepoStatus("fail");
-    return false;
-  }
+  if(!workbenchSync?.ready || !canFsAccess()){ workbenchSync?.setStatus("readonly"); return false; }
+  try {
+    const picked=await window.showDirectoryPicker({id:"context-guard-attachments",mode:"readwrite"});
+    const cg=await picked.getDirectoryHandle(".codex"); const ctx=await cg.getDirectoryHandle("context");
+    const handle=await ctx.getFileHandle("map.json"); const file=await handle.getFile();
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await file.arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join("");
+    const current=await workbenchSync.call("/api/state");
+    if(digest!==current.version) throw new Error("所选目录的地图与当前服务不同，请选择服务显示的项目目录");
+    repoRootHandle=picked; repoFsOk=await ensureRepoPerm();
+    if(!repoFsOk) return false;
+    await fsDbSet("repoDir",repoRootHandle);
+    if(pendingWrite){ const pending=pendingWrite; pendingWrite=null; await saveBlobToOwner(pending.node,pending.kind,pending.key,pending.blob,pending.name); }
+    workbenchSync.setStatus(workbenchSync.status,"附件目录已连接；地图仍由 Node 保存");
+    return true;
+  } catch(e){ workbenchSync.setStatus(workbenchSync.status,e.message); return false; }
 }
 function safeFilePart(name){
   const raw = String(name||"paste").split(/[\\/]/).pop();
@@ -2618,6 +2818,7 @@ function shotRel(fileName, blob){
   return SHOT_DIR+"/"+stamp+"-"+name;
 }
 async function writeRepoPath(rel, blob){
+  if(String(rel).replace(/\\/g,"/") === ".codex/context/map.json") throw new Error("Map writes require the Node interface");
   if(!repoRootHandle) throw new Error("no repo");
   const parts = String(rel).split("/").filter(Boolean);
   if(parts.some(part=>part==="."||part==="..")) throw new Error("bad path");
@@ -2753,13 +2954,15 @@ function attachHtml(kind, key, owner, readonly){
     return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
+  if(!files.length && !isAttaching(kind, key)) return "";
   const add = isAttaching(kind, key)
     ? `<span class="file-add">
          <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="${escAttr(t("filePathPh"))}" autocomplete="off">
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
          <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
+         ${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}`;
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
@@ -2809,37 +3012,20 @@ function bindFileUi(el, node){
     box.addEventListener("dragover", e=>{
       if(!e.dataTransfer) return;
       e.preventDefault();
+      e.stopPropagation();
       e.dataTransfer.dropEffect = "copy";
       box.classList.add("is-drop");
     });
     box.addEventListener("dragleave", ()=>box.classList.remove("is-drop"));
     box.addEventListener("drop", e=>{
-      e.preventDefault();
+      e.stopPropagation();
       box.classList.remove("is-drop");
       takeAttach(node, box.dataset.fk, box.dataset.fi, e);
     });
   });
 }
 function unpackInbox(n){
-  if(!n._inbox || !n._inbox.length) return;
-  const parentLocked = !isProposed(n);
-  const next = n._inbox.map(c=>{
-    if(c.proposal==="cancelled") return c;
-    const human = c.origin==="human" || c.proposal==="accepted" ||
-      (parentLocked && c.origin!=="agent");
-    if(human){
-      c.proposal = "accepted";
-      c.isNew = false;
-      if(!c.origin) c.origin = "human";
-      return c;
-    }
-    c.proposal = c.proposal || "proposed";
-    if(c.proposal==="proposed") c.isNew = true;
-    c.origin = c.origin || "agent";
-    return c;
-  });
-  n._inbox = [];
-  n.children = (n.children||[]).concat(next);
+  if(n._inbox?.length){ n.children=(n.children||[]).concat(n._inbox); n._inbox=[]; }
 }
 function currentRepo(){ return catalog[repoId]; }
 const STORE_KEY = "cg-workbench-maps-v16";
@@ -2867,30 +3053,11 @@ function syncBootstrapFromTree(){
     r.bootstrap = "proposed";
   }
 }
+let workbenchSync = null;
+let applyingServerMap = false;
 function persist(){
-  snapshotRepo();
-  const dump = {repoId, repos:{}};
-  Object.values(catalog).forEach(r=>{
-    dump.repos[r.id] = {
-      bootstrap: r.bootstrap,
-      firstUseOpen: r.firstUseOpen,
-      live: r.live,
-      auth: r.auth,
-      selectedId: r.selectedId,
-      viewRootId: r.viewRootId,
-      focusId: r.focusId,
-      sessionName: r.sessionName
-    };
-  });
-  try{ localStorage.setItem(STORE_KEY, JSON.stringify(dump)); }catch(e){}
-  try{ localStorage.setItem(LANG_KEY, uiLang); }catch(e){}
-  try{
-    const light = {v:2, repoId, st:{}};
-    Object.values(catalog).forEach(r=>{ light.st[r.id] = r.bootstrap; });
-    const next = "#cg2="+encodeURIComponent(JSON.stringify(light));
-    if(location.hash!==next) history.replaceState(null, "", next);
-  }catch(e){}
-  scheduleMapWrite();
+  if(applyingServerMap) return;
+  workbenchSync?.changed();
 }
 const MAP_FILE = ".codex/context/map.json";
 const PREF_FILE = ".codex/context/preferences.json";
@@ -2912,45 +3079,22 @@ function mapDocFromRepo(r){
   };
 }
 function applyMapDoc(doc){
-  if(!doc || !doc.root || !doc.root.id) return false;
-  const id = (doc.project && catalog[doc.project]) ? doc.project : "context-guard";
-  if(!catalog[id]) return false;
-  diskProjectId = id;
-  const r = catalog[id];
-  const tree = clone(doc.root);
-  if(Array.isArray(doc.flows)) tree.flows = clone(doc.flows);
-  r.live = tree;
-  if(doc.bootstrap) r.bootstrap = doc.bootstrap;
-  r.firstUseOpen = false;
-  if(id===repoId){
-    loadLive(r);
-    applyRepoChrome();
-  }
-  return true;
+  if(!doc?.root?.id) return false;
+  const id = doc.project || "context-guard";
+  if(!Object.hasOwn(catalog,id)) Object.defineProperty(catalog,id,{value:{...catalog["context-guard"], id, name:id, source:window.__CG_SERVER?.root || id},writable:true,enumerable:true,configurable:true});
+  diskProjectId = id; repoId = id;
+  const r = catalog[id]; r.live=clone(doc.root); r.bootstrap=doc.bootstrap || "ready"; r.firstUseOpen=false;
+  adoptTree(doc.root);
+  if(Array.isArray(doc.flows)) data.flows=clone(doc.flows);
+  if(!getNode(selectedId)) selectedId=data.id;
+  if(!getNode(viewRootId)) viewRootId=data.id;
+  applyRepoChrome(); closeOverlay(); return true;
 }
-function scheduleMapWrite(){
-  if(!repoFsOk) return;
-  if(currentRepo().id !== diskProjectId) return;
-  clearTimeout(mapWriteTimer);
-  mapWriteTimer = setTimeout(()=>{ writeMapToRepo(); }, 450);
-}
+function scheduleMapWrite(){ workbenchSync?.changed(); }
 async function writeMapToRepo(){
-  if(!repoFsOk || mapWriteBusy) return false;
-  const r = currentRepo();
-  if(r.id !== diskProjectId) return false;
-  if(r.bootstrap!=="ready" && r.bootstrap!=="proposed") return false;
-  mapWriteBusy = true;
-  try{
-    snapshotRepo();
-    const json = JSON.stringify(mapDocFromRepo(r), null, 2) + "\n";
-    await writeRepoPath(MAP_FILE, new Blob([json], {type:"application/json"}));
-    await syncBootstrapFile(r.bootstrap);
-    mapWriteBusy = false;
-    return true;
-  }catch(e){
-    mapWriteBusy = false;
-    return false;
-  }
+  if(!workbenchSync?.ready) return false;
+  await workbenchSync.flush();
+  return workbenchSync.status === "synced";
 }
 async function syncBootstrapFile(st){
   try{
@@ -3080,21 +3224,13 @@ function restore(){
 }
 function adoptTree(tree){
   const src = clone(tree);
-  data.id = src.id;
-  data.title = src.title;
-  data.state = src.state;
-  data.kind = src.kind;
-  data.memories = src.memories||[];
-  data.ideas = src.ideas||[];
-  data.bugs = src.bugs||[];
-  data.dormant = src.dormant||[];
-  data.files = src.files||[];
-  data.owns = src.owns||[];
-  data.children = src.children||[];
-  data.flows = src.flows||[];
-  promoteFatWork(data);
-  uniquifyIds(data);
-  normalizeTree(data);
+  Object.keys(data).forEach(k=>delete data[k]);
+  Object.assign(data, src);
+  function defaults(n){
+    for(const k of ["memories","ideas","bugs","dormant","files","owns","children"]){ if(!n[k]) n[k]=[]; }
+    (n.children||[]).concat(n._inbox||[]).forEach(defaults);
+  }
+  defaults(data);
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -3114,7 +3250,7 @@ function renderFirstUseCopy(){
 }
 function applyRepoChrome(){
   const r = currentRepo();
-  document.getElementById("repo-title").innerHTML = r.name+" "+t("archMap")+' <span class="caret">▾</span>';
+  document.getElementById("repo-title").innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -3122,7 +3258,7 @@ function renderRepoMenu(){
   const el = document.getElementById("repo-menu");
   el.innerHTML = Object.values(catalog).map(r=>`
     <button type="button" data-repo="${r.id}" class="${r.id===repoId?"on":""}">
-      <b>${r.name}</b>
+      <b>${esc(r.name)}</b>
       <span class="src">${r.source}</span>
       <span class="tag${r.bootstrap==="pending"||r.bootstrap==="analyzing"?" wait":""}">${bootstrapLabel(r.bootstrap)}</span>
       ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">${t("reanalyze")}</span>`:""}
@@ -3137,6 +3273,12 @@ function renderRepoMenu(){
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
+function closeSettings(){
+  const menu = document.getElementById("settings-menu");
+  const btn = document.getElementById("btn-settings");
+  if(menu) menu.classList.remove("open");
+  if(btn){ btn.classList.remove("on"); btn.setAttribute("aria-expanded","false"); }
+}
 function switchRepo(id){
   if(id===repoId){ closeRepoMenu(); return; }
   persist();
@@ -3627,6 +3769,7 @@ function moduleAuthState(n){
   return "partial";
 }
 function toggleAuth(n){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(isProposed(n)||isCancelled(n)) return;
   if(n.kind==="module"){
     const ids = subtreeIds(n);
@@ -3634,15 +3777,16 @@ function toggleAuth(n){
     if(st==="all"){ ids.forEach(id=>sessionAuth.delete(id)); }
     else{
       ids.forEach(id=>sessionAuth.add(id));
-      findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+      /* Scope is explicit; granting a child does not grant its ancestors. */
     }
   }else{
     if(sessionAuth.has(n.id)) sessionAuth.delete(n.id);
     else{
       sessionAuth.add(n.id);
-      findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+      /* Scope is explicit; granting a child does not grant its ancestors. */
     }
   }
+  workbenchSync?.toggleAccess([...sessionAuth]);
   renderAll();
 }
 function cancelledList(){
@@ -3700,17 +3844,8 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){
-  const raw = String((currentRepo() && currentRepo().sessionName) || (document.getElementById("session-name")||{}).textContent || "S-0823").trim();
-  const m = raw.match(/^(\S+)/);
-  return m ? m[1] : "S-0823";
-}
-function sessionColor(name){
-  const pal = ["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
-  let h = 0;
-  String(name||"").split("").forEach(ch=>{ h = (h*33 + ch.charCodeAt(0))|0; });
-  return pal[Math.abs(h)%pal.length];
-}
+function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+
 function bugSessionsOf(bug){
   if(!bug) return [];
   if(!Array.isArray(bug.sessions)) bug.sessions = [];
@@ -3887,8 +4022,8 @@ function renderNav(){
   }
   const path = findPath(viewRootId);
   el.innerHTML = path.map((n,i)=> i===path.length-1
-    ? `<span class="here">${n.kind==="module"?"▣ ":""}${n.title}</span>`
-    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${n.title}</a><span class="sep">›</span>`
+    ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
+    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${esc(n.title)}</a><span class="sep">›</span>`
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
@@ -3919,10 +4054,26 @@ document.getElementById("first-use-cut-back").onclick = ()=>{
 };
 document.getElementById("repo-title").onclick = e=>{
   e.stopPropagation();
+  closeSettings();
   document.getElementById("repo-menu").classList.toggle("open");
 };
-document.addEventListener("click", ()=>closeRepoMenu());
+document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
+document.getElementById("settings-wrap").onclick = e=>e.stopPropagation();
+document.getElementById("btn-settings").onclick = e=>{
+  e.stopPropagation();
+  closeRepoMenu();
+  const menu = document.getElementById("settings-menu");
+  const open = !menu.classList.contains("open");
+  menu.classList.toggle("open", open);
+  e.currentTarget.classList.toggle("on", open);
+  e.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+};
+document.getElementById("theme-picks").onclick = e=>{
+  const b = e.target.closest("[data-theme]");
+  if(!b) return;
+  applyNodeTheme(b.dataset.theme, true);
+};
 function setLayoutDir(dir){
   layoutDir = dir;
   document.body.classList.toggle("layout-tb", dir==="tb");
@@ -3964,7 +4115,7 @@ function renderTray(){
   const ul = document.getElementById("tray-list");
   ul.innerHTML = list.length? list.map(({node,parent})=>`
     <li>
-      <div class="t-title">${node.title}<span style="font-size:11px"> · ${t("wasUnder")}${parent?parent.title:t("root")}</span></div>
+      <div class="t-title">${esc(node.title)}<span style="font-size:11px"> · ${t("wasUnder")}${parent?parent.title:t("root")}</span></div>
       <div class="t-actions">
         <button data-restore="${node.id}">${t("restoreMap")}</button>
         ${pendingDeleteId===node.id?"":`<button data-delete="${node.id}" class="danger">${t("forever")}</button>`}
@@ -3979,7 +4130,7 @@ function renderTray(){
     n.proposal="accepted"; n.isNew=false;
     unpackInbox(n);
     sessionAuth.add(n.id);
-    findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+    /* Scope is explicit; granting a child does not grant its ancestors. */
     renderAll();
   });
   ul.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{
@@ -4024,17 +4175,17 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
+    return pending+`<div class="m-head">${authMark}<i class="dot module"></i><span>${esc(n.title)}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
-      (n.purpose? `<div class="m-blurb">${n.purpose}</div>`:"")+
+      (n.purpose? `<div class="m-blurb">${esc(n.purpose)}</div>`:"")+
       add;
   }
   if(isProposed(n)){
-    return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
+    return pending+`<i class="dot proposed"></i><span>${esc(n.title)}</span>`;
   }
-  return authMark+`<i class="dot ${n.state}"></i><span>${n.title}</span>`+
+  return authMark+`<i class="dot ${escAttr(n.state)}"></i><span>${esc(n.title)}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4058,6 +4209,7 @@ function renderMap(){
       !(n.kind==="module" && moduleAuthState(n)!=="none");
     const relDim = !!(relationMode && relSet && !relSet.has(n.id));
     const div = document.createElement("div");
+    div.dataset.id = n.id;
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module"?" module":"") +
       (n.kind==="work" && n.kind!=="module"?" work":"") +
@@ -4403,6 +4555,7 @@ function onNodeClick(e, n){
 }
 
 function acceptProposal(n, silent){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   n.proposal = "accepted"; n.isNew = false;
   sessionAuth.add(n.id);
   const path = findPath(n.id);
@@ -4414,10 +4567,12 @@ function acceptProposal(n, silent){
   renderAll();
 }
 function acceptLayer(node){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   node.children.filter(isProposed).forEach(c=>acceptProposal(c, true));
   renderAll();
 }
 function cancelProposal(n){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(!n || n.id===data.id) return;
   clearCompose();
   const p = pathOf(n) || [];
@@ -4435,6 +4590,7 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
   composeParent = node;
   selectedId = node.id;
@@ -4446,6 +4602,7 @@ function startCompose(node, kind){
 }
 function addChild(node){ startCompose(node, "work"); }
 function addModule(from){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   const target = from || getNode(selectedId);
   /* 挂在点中的节点后。不要因为提议/找不到就改挂到当前页根（看起来像最开始那个模块）。 */
   if(!target || isCancelled(target)) return;
@@ -4453,6 +4610,7 @@ function addModule(from){
 }
 function inTree(n){ return !!(n && pathOf(n)); }
 function commitChild(node, title){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   const t = (title||"").trim();
   if(!t) return;
   let parent = composeParent;
@@ -4492,22 +4650,24 @@ const STATE_LABEL = ()=>({dirty:t("state_dirty"), success:t("state_success"), fa
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
-  el.contentEditable = "true";
-  el.spellcheck = false;
-  el.addEventListener("focus", ()=>{
-    if(el.classList.contains("ghost")){
-      const r = document.createRange(); r.selectNodeContents(el);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    }
-  });
-  el.addEventListener("keydown", e=>{
-    if(e.key==="Enter" && !multiline){ e.preventDefault(); el.blur(); }
-    if(e.key==="Escape"){ e.preventDefault(); el.blur(); }
-  });
-  el.addEventListener("blur", ()=>{
-    const v = multiline ? (el.innerText||"").replace(/\u00a0/g," ").trim() : textOf(el);
-    commit(v);
-  });
+  if(!window.__CG_SERVER){ el.contentEditable="false"; return; }
+  el.contentEditable="true"; el.spellcheck=false;
+  let composing=false;
+  function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
+  function save(blur=false){
+    if(composing) return;
+    const v=multiline?(el.innerText||"").replace(/\u00a0/g," ").trim():textOf(el);
+    if(!blur && !v){ workbenchSync?.setInputDraft(draft()); return; }
+    window.__CG_INPUT_COMMIT=!blur;
+    try { commit(v); } finally { window.__CG_INPUT_COMMIT=false; }
+    workbenchSync?.setInputDraft(el.dataset.ed==="compose-title" && composingId ? draft() : null); persist();
+    if(blur) workbenchSync?.flush();
+  }
+  el.addEventListener("compositionstart",()=>{ composing=true; if(workbenchSync) workbenchSync.composing=true; workbenchSync?.setInputDraft(draft()); });
+  el.addEventListener("compositionend",()=>{ composing=false; if(workbenchSync) workbenchSync.composing=false; save(); });
+  el.addEventListener("input",()=>{ workbenchSync?.setInputDraft(draft()); save(); });
+  el.addEventListener("keydown",e=>{ if(!composing && !e.isComposing && ((e.key==="Enter"&&!multiline)||e.key==="Escape")){ e.preventDefault();el.blur(); } });
+  el.addEventListener("blur",()=>save(true));
 }
 function bindSilent(el, fn){
   if(!el) return;
@@ -4551,10 +4711,10 @@ function renderDetail(){
   /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Idea/Bug/继承都先不出现。 */
   if(proposed){
     el.innerHTML = `
-      <h2>${node.title}
+      <h2>${esc(node.title)}
         <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
-      ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
+      ${node.purpose? `<p class="lead">${esc(node.purpose)}</p>`:""}
       <div class="actions">
         <button data-act="accept" class="primary">${t("join")}</button>
         <button data-act="cancel">${t("hide")}</button>
@@ -4567,7 +4727,7 @@ function renderDetail(){
   }
   if(cancelled){
     el.innerHTML = `
-      <h2>${node.title}</h2>
+      <h2>${esc(node.title)}</h2>
       <div class="actions">
         <button data-act="restore" class="primary">${t("restore")}</button>
       </div>`;
@@ -4586,12 +4746,12 @@ function renderDetail(){
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${attachHtml("mem", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${esc(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
   const ideaHtml = node.ideas.length
     ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="idea" data-i="${i}">${m.text||""}</span>${attachHtml("idea", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
 
@@ -4599,13 +4759,13 @@ function renderDetail(){
     ? `<ul class="bug-list">`+bugRows.map(row=>{
         const b = row.bug;
         const title = row.home
-          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>`
-          : `<div class="bug-title">${b.title}</div>`;
+          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
+          : `<div class="bug-title">${esc(b.title)}</div>`;
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
-          <div class="bug-main">
+          <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
             ${attach}
@@ -4621,16 +4781,16 @@ function renderDetail(){
   const states = STATE_LABEL();
   const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
     : isModule? `<span class="state-chip module">${t("module")}</span>`
-    : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
+    : node.badge? `<span class="state-chip ${escAttr(node.state)}">${esc(node.badge)}</span>`
     : (node.state==="success"||node.state==="failed")
-      ? `<span class="state-chip ${node.state}">${states[node.state]}</span>`
+      ? `<span class="state-chip ${escAttr(node.state)}">${states[node.state]}</span>`
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
 
   el.innerHTML = `
-    <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
-    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
+    <h2><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</h2>
+    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
@@ -4669,14 +4829,14 @@ function renderDetail(){
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
-        ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
-        ${alsoMems.map(m=>`<li><i class="dot ${m.mem.state||"success"}"></i><span class="txt">${m.mem.text||""}</span></li>`).join("")}
+        ${inherited.map((m,i)=>`<li><i class="dot ${escAttr(m.mem.state)}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${esc(m.mem.text)}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
+        ${alsoMems.map(m=>`<li><i class="dot ${escAttr(m.mem.state||"success")}"></i><span class="txt">${esc(m.mem.text||"")}</span></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
       <summary>${labels.dormant} ${node.dormant.length}</summary>
       <ul class="dormant-list">
-        ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b></li>`).join("")}
+        ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${esc(d.title)}</b></li>`).join("")}
       </ul>
     </details>`:""}`;
 
@@ -4803,8 +4963,10 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
+  // Keep a blur-triggered detail redraw from removing the button being clicked.
+  el.querySelectorAll("button").forEach(button=>button.addEventListener("mousedown",e=>e.preventDefault()));
   hydrateThumbs(el);
-  el.addEventListener("paste", e=>{
+  el.onpaste = e=>{
     const memEd = e.target.closest('[data-ed="mem"]');
     const ideaEd = e.target.closest('[data-ed="idea"]');
     const bugEd = e.target.closest('[data-ed="bug-title"]');
@@ -4813,7 +4975,7 @@ function renderDetail(){
     else if(ideaEd) takeAttach(node, "idea", ideaEd.dataset.i, e);
     else if(bugEd) takeAttach(node, "bug", bugEd.dataset.bug, e);
     else if(drop) takeAttach(node, drop.dataset.fk, drop.dataset.fi, e);
-  });
+  };
 }
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
@@ -4847,6 +5009,89 @@ function chromeTop(){
   const n = parseFloat(raw);
   return Number.isFinite(n) && n>0 ? n : 52;
 }
+const DRAWER_W_KEY = "cg-drawer-width";
+const DRAWER_W_DEFAULT = 340;
+function cssPx(name, fallback){
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(n) && n>0 ? n : fallback;
+}
+function drawerWidthPx(){ return cssPx("--drawer-width", DRAWER_W_DEFAULT); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function clampDrawerWidth(px){
+  const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
+  return Math.max(220, Math.min(max, Math.round(px)));
+}
+function applyDrawerWidth(px, save){
+  const w = clampDrawerWidth(px);
+  document.documentElement.style.setProperty("--drawer-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(DRAWER_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
+function restoreDrawerWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
+    if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function bindDrawerSplit(){
+  const el = document.getElementById("drawer-split");
+  if(!el) return;
+  let resizing = false;
+  function move(e){
+    if(!resizing) return;
+    const x = e.clientX;
+    if(!Number.isFinite(x)) return;
+    applyDrawerWidth(window.innerWidth - x, false);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
+    document.body.classList.remove("drawer-resizing");
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("mousemove", move, true);
+    window.removeEventListener("pointerup", stop, true);
+    window.removeEventListener("mouseup", stop, true);
+    window.removeEventListener("pointercancel", stop, true);
+    applyDrawerWidth(drawerWidthPx(), true);
+    fitView();
+  }
+  function start(e){
+    if(document.body.classList.contains("bugs-open")) return;
+    if(e.button!=null && e.button!==0) return;
+    if(resizing && e.type==="mousedown") return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizing = true;
+    panning = false;
+    vp.classList.remove("grabbing");
+    document.body.classList.add("drawer-resizing");
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("pointerup", stop, true);
+    window.addEventListener("mouseup", stop, true);
+    window.addEventListener("pointercancel", stop, true);
+    if(e.pointerId!=null){
+      try{ el.setPointerCapture(e.pointerId); }catch(err){}
+    }
+  }
+  el.addEventListener("pointerdown", start);
+  el.addEventListener("mousedown", start);
+  el.addEventListener("dblclick", e=>{
+    e.preventDefault();
+    applyDrawerWidth(DRAWER_W_DEFAULT, true);
+    fitView();
+  });
+  el.addEventListener("keydown", e=>{
+    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
+    e.preventDefault();
+    const step = e.shiftKey ? 32 : 16;
+    const next = drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step);
+    applyDrawerWidth(next, true);
+    fitView();
+  });
+}
 function syncChrome(){
   const h = document.querySelector("header.top");
   if(!h) return;
@@ -4855,7 +5100,7 @@ function syncChrome(){
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
-  const right = bugs ? 240 : 340;
+  const right = bugs ? bugPanelWidthPx() : drawerWidthPx();
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
@@ -4864,19 +5109,21 @@ function fitView(){
   view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
-window.addEventListener("resize", ()=>{ syncChrome(); fitView(); });
+window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
 const vp = document.getElementById("viewport");
-let dragging=false, sx=0, sy=0;
+let panning=false, sx=0, sy=0;
 vp.addEventListener("mousedown", e=>{
+  if(document.body.classList.contains("drawer-resizing")) return;
+  if(e.target.closest("#drawer-split")) return;
   if(e.target.closest(".node")) return;
-  dragging=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  panning=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
   vp.classList.add("grabbing");
 });
 window.addEventListener("mousemove", e=>{
-  if(!dragging) return;
+  if(!panning || document.body.classList.contains("drawer-resizing")) return;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
-window.addEventListener("mouseup", ()=>{ dragging=false; vp.classList.remove("grabbing"); });
+window.addEventListener("mouseup", ()=>{ panning=false; vp.classList.remove("grabbing"); });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
@@ -4889,39 +5136,35 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
-  const st = currentRepo().bootstrap;
-  if(st==="ready" || st==="proposed") persist(); }
+function renderAll(){
+  if(window.__CG_INPUT_COMMIT){ renderMap(); persist(); return; }
+  liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail(); persist();
+}
 async function boot(){
-  const stored = readStoredUiLang();
-  if(stored) uiLang = stored;
+  const stored=readStoredUiLang(); if(stored) uiLang=stored;
   applyStaticI18n();
-  applyRepoChrome();
-  restore();
-  await restoreRepoDir();
-  if(!stored) await loadPrefsLang();
-  applyStaticI18n();
-  const cachedLive = restoredFromLs && ((currentRepo().live || data || {}).children || []).length;
-  /* 只保护浏览器实际恢复出的活图；内置演示图不能阻止全新页面读取仓库 Map。 */
-  if(cachedLive){
-    if(repoFsOk){
-      const ok = await writeMapToRepo();
-      setRepoStatus(ok ? "ok" : "fail");
-    }
-  }else if(repoFsOk){
-    const loaded = await loadMapFromRepo();
-    setRepoStatus(loaded ? "ok" : "fail");
-  }else{
-    await loadMapFromHttp();
+  let WorkbenchSync;
+  try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }
+  catch(e){
+    const notice=document.createElement("div"); notice.id="cg-sync"; notice.dataset.status="readonly";
+    notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
+    notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
+    document.body.append(notice);
+    await loadMapFromHttp(); renderAll(); return;
   }
-  if(!(hasMap(currentRepo()) || currentRepo().live)){
-    emptyFirstUse();
-  }else{
-    applyRepoChrome();
+  workbenchSync=new WorkbenchSync({
+    getRoot:()=>data,
+    apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
+    setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+  });
+  const connected=await workbenchSync.start();
+  if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
+  // A local server owns exactly one project. Switching demo repositories is preview-only.
+  if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
+  if(!window.__CG_SERVER){
+    document.addEventListener("click",e=>{ const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel"); if(b){ e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly"); } },true);
   }
-  renderAll();
-  syncChrome();
-  fitView();
+  syncThemePicks(); restoreDrawerWidth(); bindDrawerSplit(); syncChrome(); fitView();
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){

@@ -25,15 +25,21 @@
     "references/",
     "scripts/context_guard.py",
     "scripts/context_guard_hook.py",
-    "scripts/map_owns.py"
+    "scripts/map_owns.py",
+    "scripts/workbench/"
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs .github/scripts/cli-python.test.mjs && node tests/ci-smoke.mjs",
+    "test": "node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs .github/scripts/cli-python.test.mjs tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs && node tests/ci-smoke.mjs",
     "test:clients": "node .github/scripts/smoke-clients.mjs",
-    "test:cd": "node .github/scripts/rehearse-cd.mjs"
+    "test:cd": "node .github/scripts/rehearse-cd.mjs",
+    "test:sync": "node --test tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs",
+    "test:browser": "node tests/workbench-browser.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
   }
 }

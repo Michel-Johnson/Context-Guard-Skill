@@ -17,22 +17,18 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 ## Human workbench
 
-People confirm the architecture map in the workbench. With hooks installed, a new session starts one local workbench instance and opens it in the browser. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
+People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Current workbench:** [prototype/workbench.html](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/prototype/workbench.html) · [open in browser](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)
+**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
 
-The first browser open may show GitHack’s “One more step” page (it is only a proxy and does not review the HTML). Click **Open the page**.
-
-To decide the first layer: click the repo name, switch to **OpenClaw** (first use), then **See first-layer cuts**. Picking one lands it on the canvas. Titles are still prepared; the cut is yours.
-
-The workbench chrome is Chinese or English. Use **中 / EN** in the top bar. Map titles, purposes, and memories stay in the language they were written.
-
-Start or stop it manually when needed:
+**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
 
 ```bash
 context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop
 ```
+
+The workbench chrome is Chinese or English. Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
 
 ### Overview
 
@@ -195,3 +191,7 @@ Run `context-guard workbench --root /path/to/project` to see the map.
 ```
 
 See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
+
+## Local workbench synchronization
+
+Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).

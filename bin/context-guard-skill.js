@@ -147,7 +147,7 @@ function parseInstallArgs(args) {
   return options;
 }
 
-function migrateHooksFeatureConfig(configTarget, dryRun) {
+function migratedHooksFeatureConfig(configTarget) {
   const original = fs.existsSync(configTarget) ? fs.readFileSync(configTarget, "utf8") : "";
   const lines = original ? original.replace(/\r\n/g, "\n").split("\n") : [];
   const sectionStart = lines.findIndex((line) => /^\s*\[features\]\s*(?:#.*)?$/.test(line));
@@ -186,31 +186,13 @@ function migrateHooksFeatureConfig(configTarget, dryRun) {
   }
 
   const next = `${nextLines.join("\n").replace(/\n*$/, "")}\n`;
-  if (next === original.replace(/\r\n/g, "\n")) return;
-  if (dryRun) {
-    console.log(`[context-guard-skill] would enable hooks in ${configTarget}`);
-    return;
-  }
-  fs.mkdirSync(path.dirname(configTarget), { recursive: true });
-  if (fs.existsSync(configTarget)) {
-    const backupPath = `${configTarget}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    fs.copyFileSync(configTarget, backupPath);
-    console.log(`[context-guard-skill] backed up config: ${backupPath}`);
-  }
-  fs.writeFileSync(configTarget, next);
-  console.log(`[context-guard-skill] enabled hooks: ${configTarget}`);
+  return next === original.replace(/\r\n/g, "\n") ? null : next;
 }
 
-function copySkill(target, dryRun) {
+function copySkill(target) {
   if (!fs.existsSync(path.join(sourceSkillDir, "SKILL.md"))) {
-    fail(`source skill folder is missing: ${sourceSkillDir}`);
+    throw new Error(`source skill folder is missing: ${sourceSkillDir}`);
   }
-  if (dryRun) {
-    console.log(`[context-guard-skill] would install skill to ${target}`);
-    return;
-  }
-  fs.rmSync(target, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.mkdirSync(target, { recursive: true });
   for (const entry of skillInstallEntries) {
     const from = path.join(sourceSkillDir, entry);
@@ -218,7 +200,6 @@ function copySkill(target, dryRun) {
     const to = path.join(target, entry);
     fs.cpSync(from, to, { recursive: true });
   }
-  console.log(`[context-guard-skill] installed skill: ${target}`);
 }
 
 function hookCommand(skillTarget, event, platform) {
@@ -268,9 +249,10 @@ function mergeHooks(existing, incoming) {
   merged.hooks = merged.hooks && typeof merged.hooks === "object" ? merged.hooks : {};
   for (const [event, groups] of Object.entries(incoming.hooks || {})) {
     const current = Array.isArray(merged.hooks[event]) ? merged.hooks[event] : [];
-    const withoutOldContextGuard = current.filter((group) => {
-      const hooks = Array.isArray(group && group.hooks) ? group.hooks : [];
-      return !hooks.some((hook) => String(hook.command || "").includes("context_guard_hook.py"));
+    const withoutOldContextGuard = current.flatMap((group) => {
+      const hooks = group.hooks.filter((hook) => !String(hook.command || "").includes("context_guard_hook.py"));
+      if (hooks.length === group.hooks.length) return [group];
+      return hooks.length ? [{ ...group, hooks }] : [];
     });
     merged.hooks[event] = withoutOldContextGuard.concat(groups);
   }
@@ -290,40 +272,117 @@ function mergeCursorHooks(existing, incoming) {
   return merged;
 }
 
-function writeConfigFile(target, value, label, dryRun) {
-  if (dryRun) {
-    console.log(`[context-guard-skill] would install ${label} to ${target}`);
-    return;
-  }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  if (fs.existsSync(target)) {
-    const backupPath = `${target}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    fs.copyFileSync(target, backupPath);
-    console.log(`[context-guard-skill] backed up ${label}: ${backupPath}`);
-  }
-  fs.writeFileSync(target, `${JSON.stringify(value, null, 2)}\n`);
-  console.log(`[context-guard-skill] installed ${label}: ${target}`);
-}
-
-function readObject(target) {
+function readObject(target, platform) {
   if (!fs.existsSync(target)) return {};
-  const value = JSON.parse(fs.readFileSync(target, "utf8"));
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
+  let value;
+  try {
+    value = JSON.parse(fs.readFileSync(target, "utf8").replace(/^\uFEFF/, ""));
+  } catch (error) {
+    throw new Error(`Cannot read JSON config ${target}: ${error.message}`);
+  }
+  if (!object(value) || (value.hooks !== undefined && !object(value.hooks))) {
+    throw new Error(`Invalid config object or hooks in ${target}; original file was not changed.`);
+  }
+  for (const [event, entries] of Object.entries(value.hooks || {})) {
+    if (!Array.isArray(entries) || entries.some(entry => !object(entry) ||
+      (platform !== "cursor" && (!Array.isArray(entry.hooks) || entry.hooks.some(hook => !object(hook)))))) {
+      throw new Error(`Invalid hook event ${event} in ${target}; original file was not changed.`);
+    }
+  }
+  return value;
 }
 
-function installHooks(platform, skillTarget, hooksTarget, dryRun) {
+function plannedHooks(platform, skillTarget, hooksTarget) {
   if (!fs.existsSync(sourceHooksPath)) {
-    fail(`source hooks file is missing: ${sourceHooksPath}`);
+    throw new Error(`source hooks file is missing: ${sourceHooksPath}`);
   }
-  const existing = readObject(hooksTarget);
+  const existing = readObject(hooksTarget, platform);
   if (platform === "cursor") {
-    writeConfigFile(hooksTarget, mergeCursorHooks(existing, cursorHooks(skillTarget)), "hooks", dryRun);
-    return;
+    return mergeCursorHooks(existing, cursorHooks(skillTarget));
   }
   const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
   const incoming = rewriteGroupedHookCommands(rawIncoming, skillTarget, platform);
-  const merged = mergeHooks(existing, incoming);
-  writeConfigFile(hooksTarget, merged, platform === "claude" ? "settings hooks" : "hooks", dryRun);
+  return mergeHooks(existing, incoming);
+}
+
+function containsPath(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function applyInstallPlan(plan, dryRun) {
+  for (const entry of plan) {
+    if (containsPath(entry.target, os.homedir())) {
+      throw new Error(`Install destination must not replace the user home or its parent: ${entry.target}`);
+    }
+    if (containsPath(entry.target, sourceSkillDir) || containsPath(sourceSkillDir, entry.target)) {
+      throw new Error(`Install destination overlaps its source package: ${entry.target}`);
+    }
+    const stat = fs.lstatSync(entry.target, { throwIfNoEntry: false });
+    if (stat && (stat.isSymbolicLink() || (entry.kind === "skill" ? !stat.isDirectory() : !stat.isFile()))) {
+      throw new Error(`Invalid install destination: ${entry.target}`);
+    }
+    entry.mode = stat ? stat.mode & 0o777 : 0o600;
+    for (const other of plan) if (entry !== other && containsPath(entry.target, other.target)) {
+      throw new Error(`Overlapping install destinations: ${entry.target} and ${other.target}`);
+    }
+  }
+  if (dryRun) {
+    for (const entry of plan) console.log(`[context-guard-skill] would install ${entry.kind}: ${entry.target}`);
+    return;
+  }
+
+  const staged = [];
+  try {
+    // Prepare every replacement before touching existing files. Temporary
+    // siblings allow renames on the same filesystem, including on Windows.
+    for (const entry of plan) {
+      fs.mkdirSync(path.dirname(entry.target), { recursive: true });
+      entry.temp = fs.mkdtempSync(path.join(path.dirname(entry.target), ".context-guard-install-"));
+      entry.next = path.join(entry.temp, "next");
+      entry.previous = path.join(entry.temp, "previous");
+      staged.push(entry);
+      if (entry.kind === "skill") copySkill(entry.next);
+      else fs.writeFileSync(entry.next, entry.content, { mode: entry.mode });
+    }
+    for (const entry of staged) {
+      if (fs.existsSync(entry.target)) {
+        fs.renameSync(entry.target, entry.previous);
+        entry.oldMoved = true;
+      }
+      fs.renameSync(entry.next, entry.target);
+      entry.newMoved = true;
+    }
+  } catch (error) {
+    for (const entry of staged.slice().reverse()) {
+      try {
+        if (entry.newMoved) fs.rmSync(entry.target, { recursive: entry.kind === "skill", force: true });
+        if (entry.oldMoved) fs.renameSync(entry.previous, entry.target);
+      } catch (rollbackError) {
+        entry.preserve = true;
+        console.error(`[context-guard-skill] Recovery needed; kept ${entry.temp}: ${rollbackError.message}`);
+      }
+    }
+    throw error;
+  } finally {
+    for (const entry of staged) {
+      if (entry.preserve) continue;
+      try {
+        // Keep original client configuration as a uniquely named backup only
+        // after a successful replacement. Failed installs restore it instead.
+        if (entry.kind !== "skill" && fs.existsSync(entry.previous)) {
+          const backup = `${entry.target}.bak-${path.basename(entry.temp)}`;
+          fs.renameSync(entry.previous, backup);
+          console.log(`[context-guard-skill] backed up config: ${backup}`);
+        }
+        fs.rmSync(entry.temp, { recursive: true, force: true });
+      } catch (error) {
+        console.warn(`[context-guard-skill] Kept recovery files at ${entry.temp}: ${error.message}`);
+      }
+    }
+  }
+  for (const entry of plan) console.log(`[context-guard-skill] installed ${entry.kind}: ${entry.target}`);
 }
 
 function install(args) {
@@ -332,19 +391,23 @@ function install(args) {
   if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") {
     platforms = ["codex"];
   }
+  const plan = [];
   for (const platform of platforms) {
     const defaults = platformTargets(platform);
     const skillTarget = options.target || defaults.target;
     const hooksTarget = options.hooksTarget || defaults.hooksTarget;
     const configTarget = options.configTarget || defaults.configTarget;
-    copySkill(skillTarget, options.dryRun);
+    plan.push({ target: skillTarget, kind: "skill" });
     if (options.withHooks) {
+      const hooks = plannedHooks(platform, skillTarget, hooksTarget);
       if (platform === "codex" && configTarget) {
-        migrateHooksFeatureConfig(configTarget, options.dryRun);
+        const content = migratedHooksFeatureConfig(configTarget);
+        if (content !== null) plan.push({ target: configTarget, kind: "config", content });
       }
-      installHooks(platform, skillTarget, hooksTarget, options.dryRun);
+      plan.push({ target: hooksTarget, kind: "hooks", content: `${JSON.stringify(hooks, null, 2)}\n` });
     }
   }
+  applyInstallPlan(plan, options.dryRun);
 }
 
 function runPython(args) {
@@ -369,9 +432,12 @@ const [command, ...rest] = process.argv.slice(2);
 if (!command || command === "-h" || command === "--help" || command === "help") {
   usage();
 } else if (command === "install") {
-  install(rest);
+  try { install(rest); } catch (error) { fail(error.message); }
 } else if (command === "path") {
   console.log(sourceSkillDir);
+} else if (command === "map" || command === "workbench") {
+  const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "workbench", "cli.mjs"), command, ...rest], { stdio: "inherit", windowsHide: true });
+  process.exit(result.status ?? 1);
 } else {
   runPython([command, ...rest]);
 }
