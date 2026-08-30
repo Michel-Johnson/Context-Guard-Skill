@@ -1,5 +1,9 @@
-name: CI
+name: CI | 代码与功能检查
+run-name: >-
+  CI | ${{ github.event_name == 'pull_request' && format('PR #{0} | {1} -> {2}', github.event.pull_request.number, github.head_ref, github.base_ref) || format('{0} | {1}', github.ref_type == 'tag' && '标签检查' || '分支检查', github.ref_name) }}
 
+# CI checks code and installation behavior; it never publishes to npm.
+# Keep existing push coverage, including tags, and PRs targeting main.
 on:
   pull_request:
     branches:
@@ -15,7 +19,7 @@ concurrency:
 
 jobs:
   package:
-    name: Package contract
+    name: CI 1 | 功能测试与包内容检查
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,10 +37,10 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Run source checks
+      - name: CI | 运行功能测试
         run: npm test
 
-      - name: Build and validate package
+      - name: CI | 打包并检查必需及禁止文件
         shell: bash
         run: |
           set -euo pipefail
@@ -57,7 +61,7 @@ jobs:
           compression-level: 0
 
   install:
-    name: Install on ${{ matrix.name }}
+    name: CI 2 | 功能与安装测试 - ${{ matrix.name }}
     needs: package
     strategy:
       fail-fast: false
@@ -98,13 +102,14 @@ jobs:
       - name: Verify package artifact
         run: node .github/scripts/verify-package-artifact.mjs dist
 
-      - name: Run cross-client lifecycle smoke
+      - name: CI | 验证三客户端生命周期
         run: npm test
 
-      - name: Install through global npm and npx
+      - name: CI | 验证 npm 全局安装与 npx 安装
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-ci-smoke"
 
   required:
+    # Keep this check name stable: main branch protection requires Required.
     name: Required
     if: always()
     needs:
@@ -112,7 +117,7 @@ jobs:
       - install
     runs-on: ubuntu-latest
     steps:
-      - name: Require all CI jobs
+      - name: CI 3 | 汇总全部检查，决定是否允许合并
         shell: bash
         env:
           PACKAGE_RESULT: ${{ needs.package.result }}

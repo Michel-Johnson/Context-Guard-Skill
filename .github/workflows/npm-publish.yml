@@ -1,5 +1,8 @@
-name: Publish npm package
+name: CD | npm 发布
+run-name: CD | npm 发布 ${{ github.ref_name }} | 标签推送
 
+# Keep this filename unchanged: npm Trusted Publishing is bound to it.
+# A version-tag push starts packaging, acceptance checks, and publication.
 on:
   push:
     tags:
@@ -19,7 +22,7 @@ env:
 
 jobs:
   package:
-    name: Validate and package
+    name: CD 1 | 发布校验与打包
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,7 +37,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
-      - name: Validate release identity
+      - name: CD | 校验标签、版本、main 归属与发布身份
         shell: bash
         run: |
           set -euo pipefail
@@ -90,7 +93,7 @@ jobs:
             exit 1
           fi
 
-      - name: Build package tarball
+      - name: CD | 打包并检查发布文件与 SHA-256
         shell: bash
         run: |
           set -euo pipefail
@@ -111,7 +114,7 @@ jobs:
           compression-level: 0
 
   unix-smoke:
-    name: Install on ${{ matrix.name }}
+    name: CD 2 | 发布包安装验收 - ${{ matrix.name }}
     needs: package
     strategy:
       fail-fast: false
@@ -146,14 +149,14 @@ jobs:
           name: context-guard-npm-package
           path: dist
 
-      - name: Verify package artifact
+      - name: CD | 校验待安装包的 SHA-256
         run: node .github/scripts/verify-package-artifact.mjs dist
 
-      - name: Install through global npm and npx
+      - name: CD | 验收 npm 全局安装与 npx 安装
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke"
 
   windows-smoke:
-    name: Install on Windows
+    name: CD 2 | 发布包安装验收 - Windows
     needs: package
     runs-on: windows-latest
     steps:
@@ -178,14 +181,14 @@ jobs:
           name: context-guard-npm-package
           path: dist
 
-      - name: Verify package artifact
+      - name: CD | 校验待安装包的 SHA-256
         run: node .github/scripts/verify-package-artifact.mjs dist
 
-      - name: Install through global npm and npx
+      - name: CD | 验收 npm、npx 安装与 Hook
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke" --with-hooks
 
   publish:
-    name: Publish to npm
+    name: CD 3 | 发布到 npm
     needs:
       - package
       - unix-smoke
@@ -211,10 +214,10 @@ jobs:
           name: context-guard-npm-package
           path: dist
 
-      - name: Verify validated package
+      - name: CD | 校验即将发布的同一份安装包
         run: node .github/scripts/verify-package-artifact.mjs dist
 
-      - name: Require an OIDC-capable npm CLI
+      - name: CD | 检查 npm 的 OIDC 发布支持
         shell: bash
         run: |
           set -euo pipefail
@@ -231,11 +234,11 @@ jobs:
             exit 1
           }
 
-      - name: Publish validated package
+      - name: CD | 通过 OIDC 发布已验收的安装包
         run: npm publish "$PACKAGE_TARBALL" --access public
 
   verify-published:
-    name: Verify published package
+    name: CD 4 | 发布后下载验收
     needs: publish
     runs-on: ubuntu-latest
     steps:
@@ -251,7 +254,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Wait for npm and exercise exact and latest installs
+      - name: CD | 从 npm 验证精确版本和 latest 安装
         shell: bash
         run: |
           set -euo pipefail
