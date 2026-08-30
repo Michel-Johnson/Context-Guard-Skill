@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   auto-merge:
-    name: 依赖维护 | 仅登记补丁与小版本自动合并
+    name: 依赖维护 | 登记所有 Actions 版本更新自动合并
     if: >-
       github.repository == 'Michel-Johnson/Context-Guard-Skill' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
@@ -46,16 +46,18 @@ jobs:
         if: >-
           steps.metadata.outputs.package-ecosystem == 'github_actions' &&
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-           steps.metadata.outputs.update-type == 'version-update:semver-minor')
+           steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-major')
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: gh pr merge --auto --merge --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
 
-      - name: 大版本、未知类型或其他依赖保留人工处理
+      - name: 未知类型或其他依赖不登记自动合并
         if: >-
           steps.metadata.outputs.package-ecosystem != 'github_actions' ||
           (steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
-           steps.metadata.outputs.update-type != 'version-update:semver-minor')
+           steps.metadata.outputs.update-type != 'version-update:semver-minor' &&
+           steps.metadata.outputs.update-type != 'version-update:semver-major')
         run: echo "This update is outside the auto-merge policy. Manual review and merge are required."
