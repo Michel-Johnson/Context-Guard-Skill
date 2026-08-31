@@ -34,6 +34,7 @@ function run(command, args, options = {}) {
 }
 
 try {
+  run(process.execPath, [".github/scripts/security-tool.mjs"]);
   run(npm.command, [...npm.args, "test"]);
   run(process.execPath, [".github/scripts/verify-workflows.mjs"]);
 
@@ -64,6 +65,7 @@ try {
   run(process.execPath, [".github/scripts/verify-package-artifact.mjs", dist]);
 
   const tarball = path.join(dist, packResult[0].filename);
+  run(process.execPath, [".github/scripts/security-scan.mjs", "package", tarball]);
   run(process.execPath, [
     ".github/scripts/smoke-npm-package.mjs",
     "--tarball", tarball,

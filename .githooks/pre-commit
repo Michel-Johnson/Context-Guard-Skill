@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce product vs test branch. Enable once: git config core.hooksPath .githooks
+# Security checks run before the existing product/test branch guard.
 set -euo pipefail
-ROOT="$(git rev-parse --show-toplevel)"
-exec python3 "$ROOT/scripts/branch_guard.py"
+HOOK_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+exec node "$HOOK_ROOT/.github/scripts/security-hooks.mjs" staged

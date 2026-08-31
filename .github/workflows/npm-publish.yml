@@ -37,6 +37,17 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
+      - name: Setup Python for safe archive inspection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: CD | 准备安全检查
+        run: npm run security:setup
+
+      - name: CD | 检查发布源码与提交中的敏感信息
+        run: node .github/scripts/security-scan.mjs ci
+
       - name: CD | 校验标签、版本、main 归属与发布身份
         shell: bash
         run: |
@@ -101,6 +112,10 @@ jobs:
           npm pack --json --pack-destination dist > "$RUNNER_TEMP/npm-pack.json"
           node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/npm-pack.json"
           node .github/scripts/verify-package-artifact.mjs dist --write-hash
+
+      - name: CD | 上传前检查最终制品的敏感内容
+        shell: bash
+        run: node .github/scripts/security-scan.mjs package "$PACKAGE_TARBALL"
 
       - name: Store validated package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

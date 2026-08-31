@@ -18,8 +18,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security:
+    name: CI | 敏感信息与禁入文件检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: CI | 安装并验证固定版本扫描器
+        run: npm run security:setup
+      - name: CI | 检查当前代码与新增提交
+        run: node .github/scripts/security-scan.mjs ci
+
   package:
     name: CI 1 | 功能测试与包内容检查
+    needs: security
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,6 +56,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: CI | 准备安全检查
+        run: npm run security:setup
+
       - name: CI | 运行功能测试
         run: npm test
 
@@ -48,6 +70,10 @@ jobs:
           npm pack --json --pack-destination dist > "$RUNNER_TEMP/npm-pack.json"
           node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/npm-pack.json"
           node .github/scripts/verify-package-artifact.mjs dist --write-hash
+
+      - name: CI | 上传前检查最终制品的敏感内容
+        shell: bash
+        run: node .github/scripts/security-scan.mjs package "$PACKAGE_TARBALL"
 
       - name: Store validated package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -102,6 +128,9 @@ jobs:
       - name: Verify package artifact
         run: node .github/scripts/verify-package-artifact.mjs dist
 
+      - name: CI | 准备跨平台安全检查
+        run: npm run security:setup
+
       - name: CI | 验证三客户端生命周期
         run: npm test
 
@@ -113,6 +142,7 @@ jobs:
     name: Required
     if: always()
     needs:
+      - security
       - package
       - install
     runs-on: ubuntu-latest
@@ -120,9 +150,11 @@ jobs:
       - name: CI 3 | 汇总全部检查，决定是否允许合并
         shell: bash
         env:
+          SECURITY_RESULT: ${{ needs.security.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
           INSTALL_RESULT: ${{ needs.install.result }}
         run: |
           set -euo pipefail
+          test "$SECURITY_RESULT" = "success"
           test "$PACKAGE_RESULT" = "success"
           test "$INSTALL_RESULT" = "success"

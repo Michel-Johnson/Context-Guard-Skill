@@ -26,7 +26,17 @@ for (const [name, content] of [["CI", ci], ["publish", publish]]) {
 requireMatch(ci, /^\s*pull_request:\s*$/m, "CI must run for pull requests.");
 requireMatch(ci, /^\s*push:\s*$/m, "CI must run after changes reach main.");
 requireMatch(ci, /^\s*name:\s*Required\s*$/m, "CI must expose the unique Required status check.");
+requireMatch(ci, /^\s*- security\s*$/m, "Required must depend on the security job.");
+requireMatch(ci, /test "\$SECURITY_RESULT" = "success"/, "Required must reject failed or skipped security checks.");
+requireMatch(ci, /security-scan\.mjs ci/, "CI must scan the event commit range.");
 forbidMatch(ci, /^\s*id-token:\s*write\s*$/m, "CI must not receive an OIDC write token.");
+
+for (const [name, content] of [["CI", ci], ["CD", publish]]) {
+  const gate = content.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');
+  const upload = content.indexOf("uses: actions/upload-artifact@");
+  if (gate < 0 || upload < gate) throw new Error(`${name} must scan the final package before uploading it.`);
+  requireMatch(content, /npm run security:setup/, `${name} must prepare the pinned scanner.`);
+}
 
 requireMatch(publish, /^\s*-\s*"v\*"\s*$/m, "Publishing must be triggered by version tags.");
 forbidMatch(publish, /^\s*workflow_dispatch:\s*$/m, "Publishing must not have a manual trigger.");
