@@ -24,20 +24,28 @@
   if(preview) document.documentElement.classList.add("theme-preview");
   window.__CG_NODE_THEME = t;
   window.__CG_PREVIEW = preview;
-  /* Safari「桌面网站」会把视口报成 ~980px，纯 max-width 媒体查询不会中。用屏幕短边 + 触控在首屏前打上 class。 */
+  /* ?phone=1 电脑上看手机布局；?phone=0 强制电脑布局。Safari「桌面网站」会把视口报成 ~980px。 */
+  var phoneQ = q.has("phone") ? q.get("phone") : null;
+  var phoneForce = phoneQ==null ? null : (phoneQ==="0" ? false : true);
+  window.__CG_PHONE_FORCE = phoneForce;
   var phone = false;
-  try{
-    phone = window.matchMedia("(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)").matches;
-  }catch(e){}
-  if(!phone){
-    var short = Math.min(screen.width||0, screen.height||0);
-    var tall = Math.max(screen.width||0, screen.height||0);
-    var portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
-    var touch = (navigator.maxTouchPoints||0) > 0;
-    try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
-    phone = touch && portrait && short > 0 && short <= 820;
+  if(phoneForce===true) phone = true;
+  else if(phoneForce===false) phone = false;
+  else {
+    try{
+      phone = window.matchMedia("(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)").matches;
+    }catch(e){}
+    if(!phone){
+      var short = Math.min(screen.width||0, screen.height||0);
+      var tall = Math.max(screen.width||0, screen.height||0);
+      var portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+      var touch = (navigator.maxTouchPoints||0) > 0;
+      try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+      phone = touch && portrait && short > 0 && short <= 820;
+    }
   }
   document.documentElement.classList.toggle("cg-phone", !!phone);
+  if(phoneForce!==null) document.documentElement.classList.add("phone-preview");
 })();
 </script>
 <style>
@@ -388,6 +396,11 @@ html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
   font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
 html.theme-preview .theme-preview-banner{display:block}
+.phone-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
+  padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+html.phone-preview .phone-preview-banner{display:block}
+html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
 .settings-wrap{position:relative;flex:0 0 auto}
 .settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
@@ -695,12 +708,16 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
-html.cg-phone .theme-preview-banner{left:8px;right:8px;bottom:auto;top:calc(var(--chrome-top) + 8px)}
+html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
+  left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
+}
+html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
 html.cg-phone .drawer h2{font-size:18px}
 </style>
 </head>
 <body>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
+<div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
 <header class="top">
   <div class="brand">
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
@@ -5184,6 +5201,8 @@ const DRAWER_H_KEY = "cg-drawer-height";
 const DRAWER_W_DEFAULT = 340;
 const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
 function isPhoneLayout(){
+  if(window.__CG_PHONE_FORCE===true) return true;
+  if(window.__CG_PHONE_FORCE===false) return false;
   try{
     if(window.matchMedia(PHONE_MQ).matches) return true;
   }catch(e){}
@@ -5489,6 +5508,10 @@ async function boot(){
   const themeBanner = document.getElementById("theme-preview-banner");
   if(themeBanner && window.__CG_PREVIEW){
     themeBanner.textContent = "预览模块卡 #"+currentNodeTheme()+" · 还没写进默认工作台";
+  }
+  const phoneBanner = document.getElementById("phone-preview-banner");
+  if(phoneBanner && window.__CG_PHONE_FORCE===false){
+    phoneBanner.textContent = "电脑预览 · 强制宽屏布局";
   }
   syncThemePicks();
   renderAll();
