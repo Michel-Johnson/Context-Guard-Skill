@@ -616,17 +616,17 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 /* ---------- 手机竖屏：顶栏换行、检查器改底栏 ---------- */
 @media (max-width: 720px){
   header.top{
-    flex-wrap:wrap;align-items:center;gap:8px 10px;
-    padding:calc(8px + var(--safe-top)) 10px 8px;
+    flex-wrap:wrap;align-items:center;gap:6px 8px;
+    padding:calc(6px + var(--safe-top)) 10px 6px;
   }
-  header.top .brand{order:1;flex:1 1 auto;min-width:0}
+  header.top .brand{order:1;flex:1 1 0;min-width:0}
   header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .settings-wrap{order:2;margin-left:0}
+  .settings-wrap{order:2;flex:0 0 auto;margin-left:0}
   .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
   .top-tools{
     order:4;flex:1 1 100%;margin-left:0;min-width:0;
     overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-    scrollbar-width:thin;padding:2px 0 4px;
+    scrollbar-width:thin;padding:2px 0 4px;gap:6px 8px;
   }
   .top-tools > *{flex:0 0 auto}
   .repo-status{max-width:42vw}
