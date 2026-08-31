@@ -429,14 +429,16 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node .bug-badge{background:var(--red);color:#fff;border-radius:9px;min-width:17px;height:17px;
   line-height:17px;text-align:center;font-size:11px;padding:0 5px}
 .node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
-.node .add-child{position:absolute;right:-11px;top:50%;transform:translateY(-50%);width:20px;height:20px;
-  border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px;
-  line-height:17px;text-align:center;opacity:1;transition:opacity .12s}
+.node .add-child{position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:18px;height:18px;
+  border-radius:50%;border:1px solid color-mix(in srgb, var(--line-ink) 22%, var(--line));
+  background:var(--paper);color:var(--muted);font-size:12px;font-weight:600;
+  line-height:16px;text-align:center;opacity:1;box-shadow:none;
+  transition:opacity .15s,border-color .15s,color .15s,background .15s}
 @media (hover:hover) and (pointer:fine){
   .node .add-child{opacity:0}
-  .node:hover .add-child{opacity:1}
+  .node:hover .add-child{opacity:.85}
 }
-.node .add-child:hover{border-color:var(--green);color:var(--green)}
+.node .add-child:hover{border-color:var(--green);color:var(--green);background:var(--paper);opacity:1}
 body.auth-mode .node .add-child{display:none}
 
 /* ---------- 已取消托盘 ---------- */
@@ -693,8 +695,11 @@ html.cg-phone .tray{
   z-index:32
 }
 html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
-html.cg-phone .node .add-child{width:28px;height:28px;line-height:26px;font-size:16px;right:-14px;opacity:1}
-html.cg-phone body.layout-tb .node .add-child{bottom:-14px}
+html.cg-phone .node .add-child{width:22px;height:22px;line-height:20px;font-size:13px;right:-11px;opacity:.28}
+html.cg-phone .node.selected .add-child{opacity:1;color:var(--ink);
+  border-color:color-mix(in srgb, var(--line-ink) 38%, var(--line))}
+html.cg-phone .node .add-child:after{content:"";position:absolute;inset:-12px}
+html.cg-phone body.layout-tb .node .add-child{bottom:-11px}
 html.cg-phone .node:hover,html.cg-phone .node.module:hover{transform:none}
 html.cg-phone .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
 html.cg-phone .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 16px 16px;margin:0 auto}
