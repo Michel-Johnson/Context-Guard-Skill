@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,12 +38,17 @@
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
   --drawer-width:340px;
+  --drawer-height:42vh;
   --bug-panel-width:240px;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box}
-html,body{height:100%}
+html,body{height:100%;height:100dvh}
+html{overflow:hidden}
 body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
-  font-family:var(--font-ui);font-size:14px}
+  font-family:var(--font-ui);font-size:14px;overscroll-behavior:none;
+  -webkit-tap-highlight-color:transparent}
 body.auth-mode{background:#f6f3fa}
 body::before{
   content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.42;
@@ -184,7 +189,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -399,8 +404,11 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
 .node .add-child{position:absolute;right:-11px;top:50%;transform:translateY(-50%);width:20px;height:20px;
   border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px;
-  line-height:17px;text-align:center;opacity:0;transition:opacity .12s}
-.node:hover .add-child{opacity:1}
+  line-height:17px;text-align:center;opacity:1;transition:opacity .12s}
+@media (hover:hover) and (pointer:fine){
+  .node .add-child{opacity:0}
+  .node:hover .add-child{opacity:1}
+}
 .node .add-child:hover{border-color:var(--green);color:var(--green)}
 body.auth-mode .node .add-child{display:none}
 
@@ -479,7 +487,8 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
   background:rgba(45,45,45,.08)}
 body.drawer-resizing{cursor:col-resize;user-select:none}
 body.drawer-resizing #viewport,
-body.drawer-resizing .drawer{pointer-events:none}
+body.drawer-resizing .drawer,
+body.drawer-resizing .bug-panel{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -603,6 +612,77 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
+
+/* ---------- 手机竖屏：顶栏换行、检查器改底栏 ---------- */
+@media (max-width: 720px){
+  header.top{
+    flex-wrap:wrap;align-items:center;gap:8px 10px;
+    padding:calc(8px + var(--safe-top)) 10px 8px;
+  }
+  header.top .brand{order:1;flex:1 1 auto;min-width:0}
+  header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .settings-wrap{order:2;margin-left:0}
+  .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
+  .top-tools{
+    order:4;flex:1 1 100%;margin-left:0;min-width:0;
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;padding:2px 0 4px;
+  }
+  .top-tools > *{flex:0 0 auto}
+  .repo-status{max-width:42vw}
+  .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-height:min(70vh,480px);overflow:auto}
+  .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
+  #rel-hint{white-space:nowrap}
+  .tray-btn,.auth-btn,.dir-toggle button,.rel-toggle button,.lang-toggle button{
+    min-height:36px;padding-top:7px;padding-bottom:7px
+  }
+  #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
+  body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
+  .drawer{
+    top:auto;left:0;right:0;bottom:0;width:100%;height:var(--drawer-height);
+    border-left:none;border-top:2px solid var(--line-ink);
+    padding:18px 14px calc(20px + var(--safe-bottom));
+  }
+  .drawer-split{
+    top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
+    cursor:row-resize;transform:translateY(8px);
+  }
+  .drawer-split:before{
+    top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
+    border-radius:2px;background:var(--line-ink);opacity:.35
+  }
+  .drawer-split:hover:before,.drawer-split:focus-visible:before,
+  body.drawer-resizing .drawer-split:before{opacity:.7}
+  body.drawer-resizing{cursor:row-resize}
+  body.bugs-open .drawer-split{display:block}
+  .bug-panel{
+    top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
+    border-left:none;border-top:2px solid var(--line-ink);
+    padding-bottom:calc(16px + var(--safe-bottom));
+  }
+  .tray{
+    left:8px;right:8px;width:auto;max-height:min(52vh,420px);overflow:auto;
+    z-index:32
+  }
+  .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
+  .node .add-child{width:28px;height:28px;line-height:26px;font-size:16px;right:-14px;opacity:1}
+  body.layout-tb .node .add-child{bottom:-14px}
+  .node:hover,.node.module:hover{transform:none}
+  .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
+  .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 16px 16px;margin:0 auto}
+  .first-use .card.wide{width:min(920px,calc(100% - 16px));max-height:none}
+  .first-use h2{font-size:17px}
+  .first-use .actions{flex-direction:column}
+  .first-use .actions button{width:100%;min-height:44px}
+  .lens-bar{left:8px;right:8px;bottom:8px;flex-wrap:wrap;gap:8px}
+  .lens-group .lens-items{grid-template-columns:1fr}
+  .ed,.file-path,.dormant-box input,.lens-tray li input[type=text]{font-size:16px}
+  .file-path{min-width:0}
+  .file-name{max-width:min(160px,46vw)}
+  .plus-btn{width:36px;height:36px}
+  .theme-preview-banner{left:8px;right:8px;bottom:auto;top:calc(var(--chrome-top) + 8px)}
+  .drawer h2{font-size:18px}
+}
 </style>
 </head>
 <body>
@@ -633,36 +713,36 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
     <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
-    <div class="settings-wrap" id="settings-wrap">
-      <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
-      <div class="settings-menu" id="settings-menu">
-        <div class="set-block">
-          <div class="set-label" data-i18n="themeLabel">主题</div>
-          <div class="theme-picks" id="theme-picks">
-            <button type="button" class="theme-pick" data-theme="1">
-              <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
-              <span data-i18n="themeNow">现在这版</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="44">
-              <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
-              <span data-i18n="themeCream">奶油描边</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="48">
-              <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
-              <span data-i18n="themeWash">淡彩分层</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="4">
-              <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
-              <span data-i18n="themeFlat">无阴影扁平</span>
-            </button>
-          </div>
+  </div>
+  <div class="settings-wrap" id="settings-wrap">
+    <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
+    <div class="settings-menu" id="settings-menu">
+      <div class="set-block">
+        <div class="set-label" data-i18n="themeLabel">主题</div>
+        <div class="theme-picks" id="theme-picks">
+          <button type="button" class="theme-pick" data-theme="1">
+            <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
+            <span data-i18n="themeNow">现在这版</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="44">
+            <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
+            <span data-i18n="themeCream">奶油描边</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="48">
+            <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
+            <span data-i18n="themeWash">淡彩分层</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="4">
+            <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
+            <span data-i18n="themeFlat">无阴影扁平</span>
+          </button>
         </div>
-        <div class="set-block">
-          <div class="set-label" data-i18n="langLabel">语言</div>
-          <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
-            <button type="button" data-lang="zh" class="on">中</button>
-            <button type="button" data-lang="en">EN</button>
-          </div>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="langLabel">语言</div>
+        <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+          <button type="button" data-lang="zh" class="on">中</button>
+          <button type="button" data-lang="en">EN</button>
         </div>
       </div>
     </div>
@@ -735,6 +815,7 @@ const I18N = {
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
     splitTitle:"拖动调整检查器宽度，双击恢复",
+    splitTitlePhone:"拖动调整检查器高度，双击恢复",
     lensMode:"第一层候选",
     lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
     lensShelfHint:"候选（无连线）· 点一个挂到根下",
@@ -816,6 +897,7 @@ const I18N = {
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
     splitTitle:"Drag to resize the inspector. Double-click to reset.",
+    splitTitlePhone:"Drag to resize the inspector height. Double-tap to reset.",
     lensMode:"L1 candidates",
     lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
     lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
@@ -935,6 +1017,7 @@ function applyStaticI18n(){
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
   }
+  if(typeof syncSplitChrome==="function") syncSplitChrome();
 }
 function readStoredUiLang(){
   try{
@@ -4411,9 +4494,11 @@ function renderMap(){
     if(!kids.length){ pos.set(root.id,{x:0,y:0}); return; }
     const cellW = Math.max(...kids.map(c=>size.get(c.id).w));
     const n = kids.length;
-    const cols = relationMode
-      ? (n<=2 ? n : 2)
-      : (n<=2 ? n : n<=6 ? Math.min(3,n) : 4);
+    const cols = isPhoneLayout()
+      ? Math.min(2, n)
+      : relationMode
+        ? (n<=2 ? n : 2)
+        : (n<=2 ? n : n<=6 ? Math.min(3,n) : 4);
     const GX = relationMode ? 168 : 44;
     const GY = relationMode ? 110 : 36;
     const STEM = relationMode ? 96 : 56;
@@ -5081,16 +5166,31 @@ function chromeTop(){
   return Number.isFinite(n) && n>0 ? n : 52;
 }
 const DRAWER_W_KEY = "cg-drawer-width";
+const DRAWER_H_KEY = "cg-drawer-height";
 const DRAWER_W_DEFAULT = 340;
+const PHONE_MQ = "(max-width: 720px)";
+function isPhoneLayout(){
+  return window.matchMedia(PHONE_MQ).matches;
+}
 function cssPx(name, fallback){
   const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
   return Number.isFinite(n) && n>0 ? n : fallback;
 }
 function drawerWidthPx(){ return cssPx("--drawer-width", DRAWER_W_DEFAULT); }
+function defaultDrawerHeight(){
+  return Math.round((window.innerHeight || 800) * 0.4);
+}
+function drawerHeightPx(){ return cssPx("--drawer-height", defaultDrawerHeight()); }
 function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
 function clampDrawerWidth(px){
   const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
   return Math.max(220, Math.min(max, Math.round(px)));
+}
+function clampDrawerHeight(px){
+  const top = chromeTop();
+  const room = Math.max(220, (window.innerHeight || 0) - top);
+  const max = Math.max(160, Math.min(Math.floor(room * 0.72), room - 72));
+  return Math.max(132, Math.min(max, Math.round(px)));
 }
 function applyDrawerWidth(px, save){
   const w = clampDrawerWidth(px);
@@ -5100,11 +5200,41 @@ function applyDrawerWidth(px, save){
   }
   return w;
 }
+function applyDrawerHeight(px, save){
+  const h = clampDrawerHeight(px);
+  document.documentElement.style.setProperty("--drawer-height", h+"px");
+  if(save){
+    try{ localStorage.setItem(DRAWER_H_KEY, String(h)); }catch(e){}
+  }
+  return h;
+}
 function restoreDrawerWidth(){
   try{
     const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
     if(Number.isFinite(n)) applyDrawerWidth(n, false);
   }catch(e){}
+}
+function restoreDrawerHeight(){
+  if(!isPhoneLayout()) return;
+  try{
+    const n = parseFloat(localStorage.getItem(DRAWER_H_KEY));
+    if(Number.isFinite(n)) applyDrawerHeight(n, false);
+    else applyDrawerHeight(defaultDrawerHeight(), false);
+  }catch(e){
+    applyDrawerHeight(defaultDrawerHeight(), false);
+  }
+}
+function applyDrawerLayout(){
+  if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), false);
+  else applyDrawerWidth(drawerWidthPx(), false);
+  syncSplitChrome();
+}
+function syncSplitChrome(){
+  const el = document.getElementById("drawer-split");
+  if(!el) return;
+  const phone = isPhoneLayout();
+  el.setAttribute("aria-orientation", phone ? "horizontal" : "vertical");
+  el.title = t(phone ? "splitTitlePhone" : "splitTitle");
 }
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
@@ -5112,9 +5242,15 @@ function bindDrawerSplit(){
   let resizing = false;
   function move(e){
     if(!resizing) return;
-    const x = e.clientX;
-    if(!Number.isFinite(x)) return;
-    applyDrawerWidth(window.innerWidth - x, false);
+    if(isPhoneLayout()){
+      const y = e.clientY;
+      if(!Number.isFinite(y)) return;
+      applyDrawerHeight(window.innerHeight - y, false);
+    }else{
+      const x = e.clientX;
+      if(!Number.isFinite(x)) return;
+      applyDrawerWidth(window.innerWidth - x, false);
+    }
   }
   function stop(){
     if(!resizing) return;
@@ -5125,11 +5261,12 @@ function bindDrawerSplit(){
     window.removeEventListener("pointerup", stop, true);
     window.removeEventListener("mouseup", stop, true);
     window.removeEventListener("pointercancel", stop, true);
-    applyDrawerWidth(drawerWidthPx(), true);
+    if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
+    else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
   function start(e){
-    if(document.body.classList.contains("bugs-open")) return;
+    if(document.body.classList.contains("bugs-open") && !isPhoneLayout()) return;
     if(e.button!=null && e.button!==0) return;
     if(resizing && e.type==="mousedown") return;
     e.preventDefault();
@@ -5151,15 +5288,22 @@ function bindDrawerSplit(){
   el.addEventListener("mousedown", start);
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
-    applyDrawerWidth(DRAWER_W_DEFAULT, true);
+    if(isPhoneLayout()) applyDrawerHeight(defaultDrawerHeight(), true);
+    else applyDrawerWidth(DRAWER_W_DEFAULT, true);
     fitView();
   });
   el.addEventListener("keydown", e=>{
+    const step = e.shiftKey ? 32 : 16;
+    if(isPhoneLayout()){
+      if(e.key!=="ArrowUp" && e.key!=="ArrowDown") return;
+      e.preventDefault();
+      applyDrawerHeight(drawerHeightPx() + (e.key==="ArrowUp" ? step : -step), true);
+      fitView();
+      return;
+    }
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     e.preventDefault();
-    const step = e.shiftKey ? 32 : 16;
-    const next = drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step);
-    applyDrawerWidth(next, true);
+    applyDrawerWidth(drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step), true);
     fitView();
   });
 }
@@ -5171,30 +5315,104 @@ function syncChrome(){
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
-  const right = bugs ? bugPanelWidthPx() : drawerWidthPx();
+  const phone = isPhoneLayout();
+  const right = phone ? 0 : (bugs ? bugPanelWidthPx() : drawerWidthPx());
+  const bottom = phone ? drawerHeightPx() : 0;
   const availW = window.innerWidth - right - 72;
-  const availH = window.innerHeight - chromeTop() - 36;
+  const availH = window.innerHeight - chromeTop() - bottom - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
   view.x = 36 + Math.max(0, (availW - extents.w*view.k)/2);
   view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
-window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
+function onChromeResize(){
+  const phone = isPhoneLayout();
+  const crossed = phone !== onChromeResize._phone;
+  onChromeResize._phone = phone;
+  if(crossed){
+    if(phone) restoreDrawerHeight();
+    else restoreDrawerWidth();
+    if(typeof data!=="undefined" && data) renderAll();
+  }else{
+    applyDrawerLayout();
+  }
+  syncSplitChrome();
+  syncChrome();
+  fitView();
+}
+onChromeResize._phone = isPhoneLayout();
+window.addEventListener("resize", onChromeResize);
+try{
+  window.matchMedia(PHONE_MQ).addEventListener("change", onChromeResize);
+}catch(e){
+  try{ window.matchMedia(PHONE_MQ).addListener(onChromeResize); }catch(err){}
+}
 const vp = document.getElementById("viewport");
 let panning=false, sx=0, sy=0;
-vp.addEventListener("mousedown", e=>{
+const pointers = new Map();
+let pinch = null;
+function panIgnore(el){
+  return !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
+}
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2) pinch = null;
+  if(pointers.size === 0){
+    panning = false;
+    vp.classList.remove("grabbing");
+  }else if(pointers.size === 1){
+    const p = [...pointers.values()][0];
+    panning = true;
+    sx = p.x - view.x;
+    sy = p.y - view.y;
+  }
+}
+vp.addEventListener("pointerdown", e=>{
   if(document.body.classList.contains("drawer-resizing")) return;
-  if(e.target.closest("#drawer-split")) return;
-  if(e.target.closest(".node")) return;
-  panning=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  if(panIgnore(e.target)) return;
+  if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  try{ vp.setPointerCapture(e.pointerId); }catch(err){}
+  if(pointers.size===2){
+    const pts = [...pointers.values()];
+    pinch = {
+      d: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y),
+      k: view.k
+    };
+    panning = false;
+    vp.classList.remove("grabbing");
+    return;
+  }
+  panning = true;
+  sx = e.clientX-view.x;
+  sy = e.clientY-view.y;
   vp.classList.add("grabbing");
 });
-window.addEventListener("mousemove", e=>{
+vp.addEventListener("pointermove", e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pinch && pointers.size===2){
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    if(pinch.d>8 && view.k>0){
+      const nk = Math.min(2.2, Math.max(.35, pinch.k * (d / pinch.d)));
+      const rect = vp.getBoundingClientRect();
+      const cx = (pts[0].x+pts[1].x)/2 - rect.left;
+      const cy = (pts[0].y+pts[1].y)/2 - rect.top;
+      view.x = cx - (cx-view.x)*(nk/view.k);
+      view.y = cy - (cy-view.y)*(nk/view.k);
+      view.k = nk;
+      applyView();
+    }
+    return;
+  }
   if(!panning || document.body.classList.contains("drawer-resizing")) return;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
-window.addEventListener("mouseup", ()=>{ panning=false; vp.classList.remove("grabbing"); });
+vp.addEventListener("pointerup", endPointer);
+vp.addEventListener("pointercancel", endPointer);
+window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
@@ -5248,7 +5466,9 @@ async function boot(){
   syncThemePicks();
   renderAll();
   restoreDrawerWidth();
+  restoreDrawerHeight();
   bindDrawerSplit();
+  applyDrawerLayout();
   syncChrome();
   fitView();
   if(new URLSearchParams(location.search).has("settings")){
@@ -5260,7 +5480,7 @@ async function boot(){
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
-  new ResizeObserver(()=>{ syncChrome(); }).observe(headerEl);
+  new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
 }
 boot();
 </script>
