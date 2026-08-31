@@ -1,0 +1,26 @@
+{
+  "name": "context-guard-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-workbench.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/prepare-workbench.mjs && tsc --noEmit && vite build",
+    "test:camera": "node --experimental-strip-types --test scripts/native-camera.test.mjs",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "motion": "13.1.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
