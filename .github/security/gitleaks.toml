@@ -1,0 +1,6 @@
+title = "Context Guard shared secret rules"
+
+[extend]
+useDefault = true
+
+# Do not add whole-directory exemptions or a baseline of unreviewed findings.

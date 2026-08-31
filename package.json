@@ -29,7 +29,14 @@
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node tests/ci-smoke.mjs",
+    "test": "node .github/scripts/security-checks.test.mjs && node tests/ci-smoke.mjs",
+    "security:setup": "node .github/scripts/security-tool.mjs",
+    "security:test": "node .github/scripts/security-checks.test.mjs",
+    "security:staged": "node .github/scripts/security-scan.mjs staged",
+    "security:audit": "node .github/scripts/security-scan.mjs audit",
+    "hooks:install": "node .github/scripts/security-hooks.mjs install",
+    "hooks:status": "node .github/scripts/security-hooks.mjs status",
+    "dev:setup": "npm run security:setup && npm run hooks:install",
     "test:cd": "node .github/scripts/rehearse-cd.mjs"
   },
   "engines": {

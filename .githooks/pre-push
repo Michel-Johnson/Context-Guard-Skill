@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+HOOK_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+exec node "$HOOK_ROOT/.github/scripts/security-hooks.mjs" push
