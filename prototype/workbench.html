@@ -24,6 +24,20 @@
   if(preview) document.documentElement.classList.add("theme-preview");
   window.__CG_NODE_THEME = t;
   window.__CG_PREVIEW = preview;
+  /* Safari「桌面网站」会把视口报成 ~980px，纯 max-width 媒体查询不会中。用屏幕短边 + 触控在首屏前打上 class。 */
+  var phone = false;
+  try{
+    phone = window.matchMedia("(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)").matches;
+  }catch(e){}
+  if(!phone){
+    var short = Math.min(screen.width||0, screen.height||0);
+    var tall = Math.max(screen.width||0, screen.height||0);
+    var portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+    var touch = (navigator.maxTouchPoints||0) > 0;
+    try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+    phone = touch && portrait && short > 0 && short <= 820;
+  }
+  document.documentElement.classList.toggle("cg-phone", !!phone);
 })();
 </script>
 <style>
@@ -614,75 +628,75 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
 
 /* ---------- 手机竖屏：顶栏换行、检查器改底栏 ---------- */
-@media (max-width: 720px){
-  header.top{
-    flex-wrap:wrap;align-items:center;gap:6px 8px;
-    padding:calc(6px + var(--safe-top)) 10px 6px;
-  }
-  header.top .brand{order:1;flex:1 1 0;min-width:0}
-  header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .settings-wrap{order:2;flex:0 0 auto;margin-left:0}
-  .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
-  .top-tools{
-    order:4;flex:1 1 100%;margin-left:0;min-width:0;
-    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-    scrollbar-width:thin;padding:2px 0 4px;gap:6px 8px;
-  }
-  .top-tools > *{flex:0 0 auto}
-  .repo-status{max-width:42vw}
-  .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-height:min(70vh,480px);overflow:auto}
-  .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
-  #rel-hint{white-space:nowrap}
-  .tray-btn,.auth-btn,.dir-toggle button,.rel-toggle button,.lang-toggle button{
-    min-height:36px;padding-top:7px;padding-bottom:7px
-  }
-  #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
-  body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
-  .drawer{
-    top:auto;left:0;right:0;bottom:0;width:100%;height:var(--drawer-height);
-    border-left:none;border-top:2px solid var(--line-ink);
-    padding:18px 14px calc(20px + var(--safe-bottom));
-  }
-  .drawer-split{
-    top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
-    cursor:row-resize;transform:translateY(8px);
-  }
-  .drawer-split:before{
-    top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
-    border-radius:2px;background:var(--line-ink);opacity:.35
-  }
-  .drawer-split:hover:before,.drawer-split:focus-visible:before,
-  body.drawer-resizing .drawer-split:before{opacity:.7}
-  body.drawer-resizing{cursor:row-resize}
-  body.bugs-open .drawer-split{display:block}
-  .bug-panel{
-    top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
-    border-left:none;border-top:2px solid var(--line-ink);
-    padding-bottom:calc(16px + var(--safe-bottom));
-  }
-  .tray{
-    left:8px;right:8px;width:auto;max-height:min(52vh,420px);overflow:auto;
-    z-index:32
-  }
-  .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
-  .node .add-child{width:28px;height:28px;line-height:26px;font-size:16px;right:-14px;opacity:1}
-  body.layout-tb .node .add-child{bottom:-14px}
-  .node:hover,.node.module:hover{transform:none}
-  .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
-  .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 16px 16px;margin:0 auto}
-  .first-use .card.wide{width:min(920px,calc(100% - 16px));max-height:none}
-  .first-use h2{font-size:17px}
-  .first-use .actions{flex-direction:column}
-  .first-use .actions button{width:100%;min-height:44px}
-  .lens-bar{left:8px;right:8px;bottom:8px;flex-wrap:wrap;gap:8px}
-  .lens-group .lens-items{grid-template-columns:1fr}
-  .ed,.file-path,.dormant-box input,.lens-tray li input[type=text]{font-size:16px}
-  .file-path{min-width:0}
-  .file-name{max-width:min(160px,46vw)}
-  .plus-btn{width:36px;height:36px}
-  .theme-preview-banner{left:8px;right:8px;bottom:auto;top:calc(var(--chrome-top) + 8px)}
-  .drawer h2{font-size:18px}
+/* 用 html.cg-phone，不靠 max-width。Safari「桌面网站」会把宽度报成 ~980，媒体查询不会中。 */
+html.cg-phone header.top{
+  flex-wrap:wrap;align-items:center;gap:6px 8px;
+  padding:calc(6px + var(--safe-top)) 10px 6px;
 }
+html.cg-phone header.top .brand{order:1;flex:1 1 0;min-width:0}
+html.cg-phone header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.cg-phone .settings-wrap{order:2;flex:0 0 auto;margin-left:0}
+html.cg-phone .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
+html.cg-phone .top-tools{
+  order:4;flex:1 1 100%;margin-left:0;min-width:0;
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;padding:2px 0 4px;gap:6px 8px;
+}
+html.cg-phone .top-tools > *{flex:0 0 auto}
+html.cg-phone .repo-status{max-width:42vw}
+html.cg-phone .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-height:min(70vh,480px);overflow:auto}
+html.cg-phone .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
+html.cg-phone #rel-hint{white-space:nowrap}
+html.cg-phone .tray-btn,html.cg-phone .auth-btn,
+html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
+  min-height:36px;padding-top:7px;padding-bottom:7px
+}
+html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
+html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
+html.cg-phone .drawer{
+  top:auto;left:0;right:0;bottom:0;width:100%;height:var(--drawer-height);
+  border-left:none;border-top:2px solid var(--line-ink);
+  padding:18px 14px calc(20px + var(--safe-bottom));
+}
+html.cg-phone .drawer-split{
+  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
+  cursor:row-resize;transform:translateY(8px);
+}
+html.cg-phone .drawer-split:before{
+  top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
+  border-radius:2px;background:var(--line-ink);opacity:.35
+}
+html.cg-phone .drawer-split:hover:before,html.cg-phone .drawer-split:focus-visible:before,
+html.cg-phone body.drawer-resizing .drawer-split:before{opacity:.7}
+html.cg-phone body.drawer-resizing{cursor:row-resize}
+html.cg-phone body.bugs-open .drawer-split{display:block}
+html.cg-phone .bug-panel{
+  top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
+  border-left:none;border-top:2px solid var(--line-ink);
+  padding-bottom:calc(16px + var(--safe-bottom));
+}
+html.cg-phone .tray{
+  left:8px;right:8px;width:auto;max-height:min(52vh,420px);overflow:auto;
+  z-index:32
+}
+html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
+html.cg-phone .node .add-child{width:28px;height:28px;line-height:26px;font-size:16px;right:-14px;opacity:1}
+html.cg-phone body.layout-tb .node .add-child{bottom:-14px}
+html.cg-phone .node:hover,html.cg-phone .node.module:hover{transform:none}
+html.cg-phone .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
+html.cg-phone .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 16px 16px;margin:0 auto}
+html.cg-phone .first-use .card.wide{width:min(920px,calc(100% - 16px));max-height:none}
+html.cg-phone .first-use h2{font-size:17px}
+html.cg-phone .first-use .actions{flex-direction:column}
+html.cg-phone .first-use .actions button{width:100%;min-height:44px}
+html.cg-phone .lens-bar{left:8px;right:8px;bottom:8px;flex-wrap:wrap;gap:8px}
+html.cg-phone .lens-group .lens-items{grid-template-columns:1fr}
+html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html.cg-phone .lens-tray li input[type=text]{font-size:16px}
+html.cg-phone .file-path{min-width:0}
+html.cg-phone .file-name{max-width:min(160px,46vw)}
+html.cg-phone .plus-btn{width:36px;height:36px}
+html.cg-phone .theme-preview-banner{left:8px;right:8px;bottom:auto;top:calc(var(--chrome-top) + 8px)}
+html.cg-phone .drawer h2{font-size:18px}
 </style>
 </head>
 <body>
@@ -5168,9 +5182,20 @@ function chromeTop(){
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
 const DRAWER_W_DEFAULT = 340;
-const PHONE_MQ = "(max-width: 720px)";
+const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
 function isPhoneLayout(){
-  return window.matchMedia(PHONE_MQ).matches;
+  try{
+    if(window.matchMedia(PHONE_MQ).matches) return true;
+  }catch(e){}
+  const short = Math.min(screen.width||0, screen.height||0);
+  const tall = Math.max(screen.width||0, screen.height||0);
+  const portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+  let touch = (navigator.maxTouchPoints||0) > 0;
+  try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+  return !!(touch && portrait && short > 0 && short <= 820);
+}
+function syncPhoneClass(){
+  document.documentElement.classList.toggle("cg-phone", isPhoneLayout());
 }
 function cssPx(name, fallback){
   const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
@@ -5327,6 +5352,7 @@ function fitView(){
   applyView();
 }
 function onChromeResize(){
+  syncPhoneClass();
   const phone = isPhoneLayout();
   const crossed = phone !== onChromeResize._phone;
   onChromeResize._phone = phone;
@@ -5343,6 +5369,7 @@ function onChromeResize(){
 }
 onChromeResize._phone = isPhoneLayout();
 window.addEventListener("resize", onChromeResize);
+window.addEventListener("orientationchange", ()=>{ setTimeout(onChromeResize, 300); });
 try{
   window.matchMedia(PHONE_MQ).addEventListener("change", onChromeResize);
 }catch(e){
