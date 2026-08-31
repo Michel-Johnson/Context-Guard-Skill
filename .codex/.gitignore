@@ -1,3 +1,0 @@
-context/private/
-context/**/*.local.json
-context/**/secrets*.json
