@@ -1,0 +1,135 @@
+.native-client-frame {
+  box-sizing: border-box;
+  width: 1280px;
+  height: 800px;
+  overflow: hidden;
+  color: #d6d6d6;
+  font: 12px / 1.5 "Segoe UI", Arial, sans-serif;
+  text-align: left;
+  letter-spacing: normal;
+}
+.native-client-frame *, .native-client-frame *::before, .native-client-frame *::after { box-sizing: border-box; }
+.native-client-frame svg { flex-shrink: 0; }
+.native-client-frame button, .native-client-frame input, .native-client-frame textarea { font: inherit; }
+.native-cursor { display: flex; flex-direction: column; background: #141414; color: #f0f0f0bd; font-size: 10.4px; line-height: 1.45; }
+.native-cursor-menubar { position: relative; display: flex; align-items: center; flex-shrink: 0; height: 28px; padding-left: 8px; border-bottom: 1px solid #f0f0f013; color: #a3a3a3; }
+.native-cursor-mark { margin-right: 6px; color: #eee; }
+.native-cursor-menu-items { display: flex; align-items: center; height: 100%; }
+.native-cursor-menu-items > span { padding: 0 7px; white-space: nowrap; }
+.native-cursor-title-navigation { position: absolute; left: 370px; display: flex; align-items: center; gap: 9px; }
+.native-cursor-title-navigation .is-muted { opacity: .3; }
+.native-cursor-window-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 9.6px; white-space: nowrap; color: #909090; }
+.native-cursor-title-tools { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+.native-cursor-agents-window { display: inline-flex; align-items: center; gap: 3px; height: 18px; margin-left: 2px; padding: 0 8px; border-radius: 10px; color: #203342; background: #91b4cc; font-size: 9.6px; }
+.native-cursor-window-actions { display: flex; align-items: center; justify-content: space-around; width: 138px; height: 100%; margin-left: 6px; }
+.native-cursor-window-actions svg { fill: none; stroke: currentColor; stroke-width: .7; }
+.native-cursor-panel-icon { position: relative; display: inline-flex; width: 14px; height: 14px; }
+.native-cursor-panel-fill { position: absolute; inset: 0; opacity: .65; }
+.native-cursor-body { display: grid; grid-template-columns: 176px minmax(0, 1fr) 464px; flex: 1; min-height: 0; }
+.native-cursor-explorer { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid #f0f0f013; background: #141414; }
+.native-cursor-activity { display: flex; align-items: center; flex-shrink: 0; gap: 4px; height: 30px; padding-left: 21px; color: #c0c0c0; }
+.native-cursor-activity > span { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 24px; border-radius: 5px; }
+.native-cursor-activity > .is-selected { color: #e4e4e4; background: #242424; }
+.native-cursor-project { display: flex; align-items: center; gap: 1px; height: 18px; padding: 0 3px; color: #8d8d8d; }
+.native-cursor-project strong { font-size: 9.2px; font-weight: 500; }
+.native-cursor-tree { display: flex; flex-direction: column; }
+.native-cursor-tree > span { display: flex; align-items: center; gap: 4px; height: 18px; padding-left: 10px; color: #c3c3c3; }
+.native-cursor-tree > span > svg { color: #aaa; }
+.native-cursor-tree > .native-cursor-file { gap: 2px; }
+.native-cursor-tree > .native-cursor-file > svg { color: #519aba; }
+.native-cursor-outline { display: flex; flex-direction: column; margin-top: auto; font-size: 9.2px; color: #8d8d8d; }
+.native-cursor-outline > span { display: flex; align-items: center; gap: 1px; height: 18px; padding: 0 3px; }
+.native-cursor-editor { display: grid; min-width: 0; place-items: center; background: #141414; }
+/* 对照实际空编辑区：标志与六条快捷入口共同居中，键帽为独立控件。 */
+.native-cursor-watermark { display: flex; flex-direction: column; align-items: center; color: #bfbfbf; opacity: .5; }
+.native-cursor-letterpress { margin-bottom: 16px; opacity: .5; }
+.native-cursor-shortcuts { width: 160px; }
+.native-cursor-shortcut { display: flex; align-items: center; justify-content: space-between; min-height: 22px; padding: 3.2px 3.2px 3.2px 6.4px; white-space: nowrap; }
+.native-cursor-keybinding { display: inline-flex; align-items: center; margin-left: 9.6px; font-size: 8.8px; }
+.native-cursor-keybinding > span { display: inline-flex; align-items: center; }
+.native-cursor-key-plus { margin: 0 2px; color: #777; }
+.native-cursor-keybinding kbd { display: inline-block; padding: 0 2px; border: 1px solid #f0f0f013; border-bottom-color: #f0f0f026; border-radius: 2px; background: #f0f0f009; font: 8.8px / 10px "Segoe UI", Arial, sans-serif; color: inherit; }
+.native-cursor-chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid #f0f0f013; background: #181818; }
+.native-cursor-chat-tabs { display: flex; align-items: center; height: 28px; flex-shrink: 0; border-bottom: 1px solid #f0f0f013; background: #141414; color: #8e8e8e; }
+.native-cursor-active-tab { display: inline-flex; align-items: center; gap: 6px; height: 100%; max-width: 290px; min-width: 0; padding: 0 8px; background: #181818; color: #ddd; }
+.native-cursor-active-tab > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.native-cursor-active-tab > svg:last-child { margin-left: 5px; }
+.native-cursor-chat-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; padding: 0 8px; }
+.native-cursor-status { display: flex; align-items: center; flex-shrink: 0; gap: 10px; height: 18px; padding: 0 7px; border-top: 1px solid #f0f0f013; color: #a0a0a0; font-size: 9.6px; }
+.native-cursor-problems { display: inline-flex; align-items: center; gap: 3px; margin-left: 1px; }
+.native-cursor-problems > svg:nth-of-type(2) { margin-left: 2px; }
+.native-cursor-status-right { margin-left: auto; }
+.native-claude { display: flex; flex-direction: column; width: 640px; background: #0b0b0b; }
+.native-claude-titlebar { display: flex; align-items: center; gap: 9px; flex-shrink: 0; height: 43px; padding: 0 19px; color: #b9b9b9; }
+.native-claude-sidebar-toggle { color: #949494; font-size: 14px; margin-right: 7px; }
+.native-claude-title-separator { color: #666; }
+.native-claude-session-title { color: #eee; }
+.native-claude-close { display: flex; margin-left: auto; color: #828282; }
+.native-chat-slot { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.native-conversation { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.native-chat-content { position: relative; overflow-anchor: none; scroll-behavior: auto; }
+.native-chat-flow { display: flow-root; }
+.native-conversation-turn { padding-bottom: 10px; }
+.native-workbench-link { position: relative; padding: 5px 0; text-align: left; }
+.native-link-pointer { position: absolute; right: 22px; top: 12px; pointer-events: none; filter: drop-shadow(0 2px 2px #0006); }
+.native-chat-content { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 18px 15px; scrollbar-width: thin; scrollbar-color: #404040 transparent; }
+.native-message-user { width: fit-content; max-width: 92%; margin: 0 0 22px auto; padding: 10px 12px; border-radius: 8px; background: #262626; color: #eee; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-message-assistant { margin: 16px 0; color: #d2d2d2; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-message-assistant p { margin: 0 0 12px; color: inherit; }
+.native-process-note { margin: 10px 0; color: #bdbdbd; font-size: 12px; }
+.native-tool-read { display: flex; align-items: center; gap: 6px; margin: 10px 0; color: #999; font-size: 11px; line-height: 1.7; }
+.native-tool-read code { padding: 1px 4px; border-radius: 3px; background: #ffffff07; font-family: Consolas, "Courier New", monospace; font-size: 10px; color: #bbb; }
+.native-composer { position: relative; flex-shrink: 0; margin: 12px; padding: 10px; border: 1px solid #3b3b3b; border-radius: 10px; background: #202020; }
+.native-input-area { min-height: 60px; padding: 2px 1px 12px; color: #ededed; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-input-area:empty::before { content: "Plan, Build, / for skills, @ for context"; color: #858585; }
+.native-composer-toolbar { display: flex; align-items: center; gap: 10px; min-height: 25px; color: #aaa; font-size: 11px; }
+.native-composer-toolbar > .native-composer-send { display: flex; align-items: center; justify-content: center; width: 25px; height: 25px; margin-left: auto; padding: 0; border: 0; border-radius: 50%; background: #ececec; color: #202020; }
+.native-composer-toolbar > .native-composer-send:disabled { background: #454545; color: #aaa; }
+.native-composer-toolbar > .native-composer-send:focus-visible { outline: 2px solid #aaa; outline-offset: 3px; }
+.native-skill-menu { position: absolute; z-index: 5; bottom: calc(100% + 6px); left: 10px; width: 310px; padding: 5px; border: 1px solid #414141; border-radius: 7px; background: #252525; box-shadow: 0 8px 25px #0006; color: #d5d5d5; font-size: 12px; }
+.native-skill-menu-heading { padding: 5px 8px; color: #929292; font-size: 10px; }
+.native-skill-menu-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: 4px; }
+.native-skill-menu-item.is-selected { background: #3b3b3b; color: #f0f0f0; }
+.native-skill-menu-item strong { display: block; font-size: 12px; font-weight: 400; }
+.native-skill-menu-item small { display: block; margin-top: 2px; color: #aaa; font-size: 10px; line-height: 1.5; }
+.native-skill-menu-divider { height: 1px; margin: 4px 2px; background: #3b3b3b; }
+.native-skill-token { color: #ccc; font: inherit; }
+.native-claude .native-chat-content { padding: 24px 20px; }
+.native-claude .native-message-user { max-width: 72%; padding: 7px 11px; background: #1e1e1e; }
+.native-claude .native-message-assistant { margin-top: 20px; }
+.native-claude .native-composer { margin: 12px 20px 17px; padding: 8px 12px; border-color: #2f2f2f; border-radius: 8px; }
+.native-claude .native-input-area { min-height: 35px; padding-bottom: 8px; }
+.native-claude .native-input-area:empty::before { content: "Type / for commands"; }
+.native-claude .native-composer-toolbar { min-height: 28px; margin: 4px -12px -42px; padding: 0 3px; }
+.native-claude .native-composer { margin-bottom: 48px; }
+.native-claude .native-skill-menu { left: 0; background: #1d1d1d; border-color: #343434; }
+.native-client-frame [data-shown="false"] { visibility: hidden; pointer-events: none; }
+.native-type-stack { display: grid; }
+.native-type-stack > span { grid-area: 1 / 1; }
+.native-type-stack > span:first-child { visibility: hidden; user-select: none; }
+.native-language-answer { margin-top: 22px; margin-bottom: 0; }
+.native-placeholder { color: #777; }
+.native-toolbar-spacer { margin-left: auto; }
+.native-mode { padding: 1px 7px; border-radius: 10px; background: #383838; color: #bbb; }
+.native-composer-toolbar > .native-composer-send { margin-left: 0; }
+.native-composer-send svg { transform: rotate(-90deg); }
+.native-skill-menu-item { width: 100%; text-align: left; }
+.native-workbench-link { color: #91b9e0; }
+.native-caret { display: inline-block; height: 1em; width: 1px; margin-left: 1px; background: #ddd; vertical-align: -2px; }
+.native-input-idle { display: grid; place-items: center; width: 25px; height: 25px; color: #aaa; }
+.native-claude .native-input-idle { color: #78a8e8; font-size: 20px; }
+
+/* Cursor 的字号与输入区密度按本机参考单独校正，不改变 Claude 会话区。 */
+.native-cursor .native-chat-content { padding: 10px 12px; }
+.native-cursor .native-message-user { max-width: 100%; margin-bottom: 12px; padding: 7px 8px; border: 1px solid #f0f0f022; border-radius: 10px; background: #202020; font-size: 11px; line-height: 1.65; }
+.native-cursor .native-message-assistant { margin: 10px 0; font-size: 11px; line-height: 1.7; }
+.native-cursor .native-process-note { font-size: 11px; }
+.native-cursor .native-tool-read { gap: 4px; margin: 12px 0; font-size: 10.4px; color: #999; }
+.native-cursor .native-tool-read > svg { display: none; }
+.native-cursor .native-tool-read code { padding: 0; background: none; font: inherit; color: inherit; }
+.native-cursor .native-composer { margin: 12px 12px 5px; padding: 8px; border-color: #414141; border-radius: 8px; }
+.native-cursor .native-input-area { min-height: 26px; padding: 1px 0 6px; font-size: 11px; line-height: 1.6; }
+.native-cursor .native-composer-toolbar { min-height: 20px; gap: 7px; font-size: 10px; }
+.native-cursor .native-composer-toolbar svg { width: 12px; height: 12px; }
+.native-cursor .native-mode { padding: 0 6px; }
+.native-cursor .native-input-idle, .native-cursor .native-composer-send { width: 20px; height: 20px; }

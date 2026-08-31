@@ -1,0 +1,90 @@
+.client-demo { min-width: 0; margin-bottom: 92px; scroll-margin-top: 88px; }
+.client-demo-heading { margin-bottom: 20px; }
+.client-demo-heading h2 { font-size: 25px; line-height: 1.45; letter-spacing: -.5px; }
+.client-demo-tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--line); }
+.client-demo-tabs button { min-height: 48px; padding: 12px 4px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 14px; white-space: nowrap; }
+.client-demo-tabs button:focus-visible { outline: 2px solid var(--amber); outline-offset: -5px; border-radius: 5px; }
+.client-demo [role="tabpanel"][hidden] { display: none; }
+.client-demo-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); }
+.client-demo-body { display: grid; grid-template-columns: 156px minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 20px; }
+.client-route { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.client-chapter-select { display: none; }
+.client-route-heading { display: flex; padding: 0; }
+.client-route-chapters, .client-route-followups { display: grid; gap: 3px; min-width: 0; }
+.client-route-chapters button, .client-route-followups button { display: flex; gap: 8px; align-items: center; min-width: 0; min-height: 44px; padding: 9px 10px; text-align: left; border-left: 2px solid transparent; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.client-route-chapters button > span { flex-shrink: 0; font: 10px var(--mono); color: #8e887c; }
+.client-route-chapters button.passed > span { color: var(--text); }
+.client-route button[aria-current="step"] { color: var(--text); border-left-color: var(--amber); background: var(--panel); }
+.client-route button[aria-current="step"] > span { color: var(--amber); }
+.client-route-chapters button:hover, .client-route-followups button:hover { color: var(--text); background: var(--panel); }
+.client-route-followups { padding-top: 13px; border-top: 1px solid var(--line); }
+.client-precondition { padding: 0 12px; font-size: 13px; line-height: 1.8; color: var(--muted); overflow-wrap: anywhere; }
+.client-precondition summary { min-height: 44px; cursor: pointer; padding: 10px 0; }
+.client-precondition p { margin-bottom: 9px; }
+.client-precondition a { display: flex; align-items: center; width: fit-content; min-height: 44px; color: var(--amber); }
+.client-reference-stage { min-width: 0; }
+.first-use-journey { min-width: 0; }
+.journey-mode { display: flex; flex-shrink: 0; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 6px; }
+.journey-mode button { min-height: 38px; padding: 6px; border-radius: 3px; font-size: 12px; color: var(--muted); }
+.journey-mode button[aria-pressed="true"] { color: var(--text); background: #ffffff0c; }
+.journey-stage { display: grid; min-width: 0; }
+.journey-screen { grid-area: 1 / 1; min-width: 0; }
+.journey-workbench-screen { position: relative; z-index: 1; }
+.journey-screen[aria-hidden="true"] { pointer-events: none; }
+.journey-screen .tour-shell { border-radius: 8px; }
+.journey-controls { gap: 10px; }
+.journey-caption { flex: 1; min-width: 0; }
+.journey-caption strong { display: block; font-size: 13px; font-weight: 450; }
+.journey-caption p { margin-top: 4px; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.journey-controls > .journey-next { display: flex; gap: 6px; font-size: 13px; white-space: nowrap; }
+.journey-controls > button:disabled { opacity: .3; cursor: default; }
+.journey-footer { display: flex; justify-content: flex-end; font-size: 13px; color: var(--muted); }
+.journey-footer button { min-height: 40px; padding: 8px 0 8px 12px; }
+.native-viewport { position: relative; width: 100%; min-width: 0; overflow: hidden; border: 1px solid #303030; border-radius: 8px; background: #101010; isolation: isolate; }
+/* 不固定 transform 合成位图：镜头放大时让文字与 SVG 按当前比例重新光栅化。 */
+.native-plane { position: absolute; top: 0; left: 0; width: 1280px; height: 800px; transform-origin: 0 0; }
+.client-demo-controls { display: flex; align-items: center; gap: 12px; min-height: 63px; padding: 8px 0; }
+.client-demo-controls > button { display: grid; place-items: center; flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 8px; color: var(--muted); }
+.client-demo-controls > button:first-child { border: 1px solid var(--line); border-radius: 50%; }
+.client-demo-controls > .lesson-view-toggle { display: block; margin-left: auto; font-size: 13px; white-space: nowrap; }
+.client-demo-progress { height: 2px; background: var(--line); }
+.client-demo-progress span { display: block; height: 100%; background: #baa489; }
+.lesson-result { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 80px; padding: 12px 0; }
+.lesson-exercise { min-width: 0; }
+.lesson-exercise[data-shown="false"] { visibility: hidden; }
+.lesson-exercise > a { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--amber); font-size: 13px; }
+.lesson-copy { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 7px; max-width: 170px; min-height: 44px; padding: 8px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.client-demo .is-paused *, .client-demo .is-paused *::before, .client-demo .is-paused *::after { animation-play-state: paused !important; transition: none !important; }
+.client-demo .is-reduced *, .client-demo .is-reduced *::before, .client-demo .is-reduced *::after { animation: none !important; transition: none !important; }
+@media (max-width: 950px) {
+  .client-demo-body { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .client-route { gap: 10px; }
+  .client-route-heading { padding: 0; }
+  .client-route-chapters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .client-route-followups { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 10px; }
+  .client-route-chapters button, .client-route-followups button { padding: 8px; gap: 8px; }
+  .client-precondition { margin: 0; padding: 0; }
+}
+@media (max-width: 620px) {
+  .client-route { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 8px 12px; }
+  .client-route-chapters { display: none; }
+  .client-chapter-select { display: block; min-width: 0; width: 100%; min-height: 46px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 13px; }
+  .client-route-followups, .client-precondition { grid-column: 1 / -1; }
+  .client-route-followups { padding-top: 0; border-top: 0; }
+  .client-precondition summary { padding: 6px 8px; min-height: 36px; }
+  .journey-controls { flex-wrap: wrap; }
+  .journey-caption { flex-basis: calc(100% - 62px); }
+  .journey-controls > .lesson-view-toggle { margin-left: 0; }
+  .journey-next { margin-left: auto; }
+  .client-demo { margin-bottom: 58px; }
+  .client-demo-heading h2 { font-size: 22px; margin-bottom: 8px; }
+  .client-demo-controls { gap: 4px; }
+  .client-demo-controls > .lesson-view-toggle { font-size: 13px; padding: 5px; }
+  .lesson-result { flex-wrap: wrap; gap: 5px 10px; }
+  .lesson-copy { margin-left: auto; }
+}
+@media (max-width: 420px) {
+  .client-demo-tabs { gap: 0; justify-content: space-between; }
+  .client-demo-tabs button { padding-inline: 2px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .client-demo *, .client-demo *::before, .client-demo *::after { animation: none !important; transition: none !important; } }

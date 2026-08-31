@@ -1,0 +1,259 @@
+.feature-workbench {
+  scroll-margin-top: 12px;
+  margin: 0 0 96px;
+}
+.tour-chapters {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  min-height: 57px;
+  border-bottom: 1px solid var(--line);
+  overflow: auto;
+  scrollbar-width: none;
+}
+.tour-chapters button {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 18px 0;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.tour-chapters button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+.tour-shell {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.feature-workbench .tour-shell {
+  margin-top: 20px;
+}
+.tour-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: #e9e3d6;
+  isolation: isolate;
+}
+.tour-plane {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transition: transform 850ms cubic-bezier(0.22, 0.68, 0, 1);
+  will-change: transform;
+}
+.tour-plane iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fffdf8;
+}
+.tour-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  background: #e9e3d6;
+  color: #766b59;
+  font-size: 12px;
+}
+.tour-loading span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tour-loading.has-error { flex-direction: column; padding: 24px; text-align: center; }
+.tour-loading.has-error p { max-width: 440px; line-height: 1.7; }
+.tour-loading.has-error button { min-height: 44px; padding: 8px 18px; border: 1px solid #a79b87; border-radius: 5px; }
+.tour-replay:disabled, .tour-explore:disabled, .tour-progress button:disabled { opacity: .35; cursor: wait; }
+.tour-transport {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  padding: 12px 20px;
+}
+.tour-play,
+.tour-replay {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.tour-replay {
+  border-color: transparent;
+  color: var(--muted);
+  margin-left: auto;
+}
+.tour-play:hover,
+.tour-replay:hover {
+  background: #ffffff0b;
+}
+.tour-play:disabled {
+  opacity: 0.35;
+  cursor: wait;
+}
+.tour-caption {
+  font-size: 13px;
+  line-height: 1.6;
+  min-width: 0;
+}
+.tour-explore {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+  font-size: 11px;
+  flex-shrink: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+.tour-progress {
+  display: flex;
+  gap: 3px;
+  padding: 0 20px 14px;
+}
+.tour-progress button {
+  flex: 1;
+  height: 10px;
+  padding: 4px 0;
+}
+.tour-progress button span {
+  display: block;
+  height: 2px;
+  background: #ffffff15;
+}
+.tour-progress button.passed span {
+  background: #8e8777;
+}
+.tour-progress button.current span {
+  background: #ece3d0;
+}
+.tour-error {
+  font-size: 12px;
+  padding: 18px 20px;
+  border-top: 1px solid #73533a;
+  color: #e0b794;
+}
+.tour-error button {
+  margin-left: 15px;
+  text-decoration: underline;
+}
+.exploring .tour-stage {
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.exploring .tour-plane {
+  position: relative;
+}
+.debug-feature {
+  scroll-margin-top: 12px;
+  display: grid;
+  grid-template-columns: 0.75fr 1.75fr;
+  gap: 65px;
+  align-items: center;
+  padding: 65px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.debug-feature-copy h2 {
+  font-size: 32px;
+  line-height: 1.35;
+  letter-spacing: -1px;
+  font-weight: 400;
+  margin: 0;
+}
+.debug-feature .tour-transport {
+  padding: 10px 13px;
+  gap: 10px;
+}
+.debug-feature .tour-explore {
+  font-size: 10px;
+}
+.debug-feature .tour-progress {
+  padding: 0 14px 10px;
+}
+@media (max-width: 900px) {
+  .tour-chapters {
+    gap: 23px;
+  }
+  .debug-feature {
+    gap: 30px;
+    grid-template-columns: 1fr;
+  }
+  .debug-feature-copy {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .debug-feature-copy h2 {
+    margin: 0;
+    font-size: 28px;
+  }
+}
+@media (max-width: 600px) {
+  .feature-workbench {
+    margin-bottom: 60px;
+  }
+  .tour-chapters {
+    gap: 22px;
+    min-height: 48px;
+  }
+  .tour-chapters button {
+    font-size: 12px;
+    padding: 15px 0;
+  }
+  .feature-workbench .tour-shell {
+    margin-top: 12px;
+  }
+  .tour-transport {
+    padding: 12px;
+    gap: 10px;
+  }
+  .tour-explore {
+    font-size: 10px;
+    padding-left: 9px;
+  }
+  .tour-explore svg {
+    display: none;
+  }
+  .tour-replay {
+    width: 23px;
+  }
+  .tour-play {
+    width: 27px;
+    height: 27px;
+  }
+  .tour-progress {
+    padding: 0 12px 10px;
+  }
+  .debug-feature {
+    padding: 42px 0;
+    gap: 24px;
+  }
+  .debug-feature-copy {
+    display: block;
+  }
+  .debug-feature-copy h2 {
+    font-size: 28px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-plane {
+    transition: none;
+  }
+}
