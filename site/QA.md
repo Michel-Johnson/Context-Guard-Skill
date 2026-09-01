@@ -1,5 +1,12 @@
 # 宣传页本轮验收记录
 
+## App 调用与工作台分屏（2026-09-02）
+
+- 用户截图显示客户端首用导航同时包含 App 调用和工作台建图章节，且同一舞台在客户端外壳与真实工作台之间切换。现在首用流程只保留“调用 Skill → 确认语言 → 准备工作台”三个 App 内动作；`FirstUseJourney` 不再导入 `TourStage`、`Workbench` 或工作台转场状态。
+- 整屏顺序调整为“首页 → App 调用 → 工作台 → 项目记忆 → Debug → 安装”。客户端对话里的“打开当前项目工作台”会进入独立 `#workbench` 页并选择真实“逐层建图”，不再在 `#clients` 内切换画面；鼠标滚轮从 `#clients` 向下也只翻到 `#workbench`。
+- Playwright 在1280×720中文页面测得 `.page-clients iframe` 与 `.page-clients .tour-shell` 均为0，页面顺序与URL正确；点击 App 内工作台入口后截图显示独立工作台整屏。英文1280×720无可见汉字，三个步骤与导航完整翻译；390×667页面文档尺寸等于视口，客户端和步骤选择框正常，仍无客户端 iframe。证据位于 `output/playwright/clients-separated-1280x720.png`、`workbench-page-after-app-link.png`、`clients-separated-en-1280x720.png` 和 `clients-separated-en-390x667.png`。
+- 普通构建451模块，资源`index-xI8lUzGH.js` / `index-BCi5ZiiT.css`；新增分屏结构断言后，11项客户端时序与镜头检查通过。演示仍只使用预设数据，不调用Agent/API；本轮未使用Computer Use或subagent。
+
 ## 侧栏控制与放大动画舞台（2026-09-02）
 
 - 按用户反馈统一工作台、客户端和 Debug 的演示构图。桌面端将工作台六个功能、客户端四端/七章/后续场景和 Debug 标题收进142px侧栏；删除客户端重复的底部重播入口，保留控制条已有的重播按钮。真实工作台 iframe、四客户端源画布、播放时钟和功能数据均未改写。

@@ -39,7 +39,8 @@ type ClientUsagePlayerProps = {
 
 export function ClientUsagePlayer(props: ClientUsagePlayerProps) {
   return props.usageId === "first"
-    ? <FirstUseJourney client={props.client} active={props.active} reduced={props.reduced} initialChapter={props.initialChapter} onUsageChange={props.onUsageChange} />
+    ? <FirstUseJourney client={props.client} active={props.active} reduced={props.reduced} initialChapter={props.initialChapter}
+      onUsageChange={props.onUsageChange} onOpenDemo={props.onOpenDemo} />
     : <StandaloneUsagePlayer {...props} />;
 }
 

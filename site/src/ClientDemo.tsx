@@ -27,6 +27,7 @@ export function ClientDemo({
     <section
       className="client-demo"
       id="clients"
+      data-demo-scope="app"
       aria-labelledby="clients-title"
     >
       <div className="client-demo-heading visually-hidden">

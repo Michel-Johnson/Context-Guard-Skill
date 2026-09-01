@@ -29,11 +29,6 @@
 .journey-mode { display: flex; flex-shrink: 0; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 6px; }
 .journey-mode button { min-height: 38px; padding: 6px; border-radius: 3px; font-size: 12px; color: var(--muted); }
 .journey-mode button[aria-pressed="true"] { color: var(--text); background: #ffffff0c; }
-.journey-stage { display: grid; min-width: 0; }
-.journey-screen { grid-area: 1 / 1; min-width: 0; }
-.journey-workbench-screen { position: relative; z-index: 1; }
-.journey-screen[aria-hidden="true"] { pointer-events: none; }
-.journey-screen .tour-shell { border-radius: 8px; }
 .journey-controls { gap: 10px; }
 .journey-caption { flex: 1; min-width: 0; }
 .journey-caption strong { display: block; font-size: 13px; font-weight: 450; }
