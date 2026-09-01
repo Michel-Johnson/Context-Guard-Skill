@@ -15,15 +15,21 @@
   --amber: #e0a164;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 14px;
-  scroll-behavior: smooth;
-  scroll-padding-top: 90px;
+  scroll-behavior: auto;
 }
 * {
   box-sizing: border-box;
 }
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
 body {
   margin: 0;
   min-width: 0;
+  overscroll-behavior: none;
 }
 button,
 input,
@@ -95,9 +101,14 @@ code,
   color: #14120b;
 }
 .site {
+  position: relative;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  height: 100dvh;
   max-width: 1352px;
   margin: 0 auto;
   padding: 0 36px;
+  overflow: hidden;
 }
 .site-header {
   height: 64px;
@@ -105,8 +116,7 @@ code,
   align-items: center;
   justify-content: space-between;
   gap: 32px;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
   background: #14120bf5;
 }
@@ -140,6 +150,9 @@ code,
 .header-github:hover,
 .footer-links > a:hover {
   color: #b9b1a1;
+}
+.site-header nav a[aria-current="page"] {
+  color: var(--amber);
 }
 .header-actions {
   display: flex;
@@ -182,7 +195,8 @@ code,
   transform: none;
 }
 .hero {
-  padding: 64px 0 36px;
+  width: 100%;
+  padding: 0;
 }
 .hero h1 {
   max-width: 900px;
@@ -413,6 +427,195 @@ code,
   transform: translateX(10px);
   background: var(--text);
 }
+
+.page-deck {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+.site-page {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(10px, 2.5vh, 24px) 0 72px;
+  overflow: hidden;
+}
+.site-page[hidden] {
+  display: none;
+}
+.site-page:not([hidden]) > * {
+  animation: page-enter 360ms cubic-bezier(.22, .68, 0, 1) both;
+}
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-home .hero {
+  align-self: center;
+}
+.page-workbench .feature-workbench {
+  width: min(100%, max(360px, calc((100dvh - 315px) * 1.684)));
+  min-width: 0;
+  margin: 0 auto;
+}
+.page-clients .client-demo {
+  width: min(100%, max(600px, calc((100dvh - 430px) * 1.6 + 172px)));
+  margin: 0 auto;
+}
+.page-client-fit {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.page-clients .client-demo-heading {
+  margin-bottom: 8px;
+}
+.page-clients .client-demo-tabs button {
+  min-height: 44px;
+  padding-block: 10px;
+}
+.page-clients .client-demo-body {
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+.page-clients .client-route {
+  gap: 8px;
+}
+.page-clients .client-route-chapters,
+.page-clients .client-route-followups {
+  gap: 2px;
+}
+.page-clients .client-route-followups {
+  padding-top: 8px;
+}
+.page-clients .client-precondition summary {
+  min-height: 36px;
+  padding-block: 6px;
+}
+.page-clients .client-demo-controls {
+  min-height: 52px;
+  padding: 4px 0;
+}
+.page-clients .lesson-result {
+  min-height: 52px;
+  padding: 4px 0;
+}
+.page-memory .memory-section {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+}
+.page-debug .debug-feature {
+  grid-template-columns: .55fr 1.45fr;
+  gap: clamp(24px, 4vw, 65px);
+  width: min(100%, max(540px, calc((100dvh - 238px) * 2.4 + 65px)));
+  margin: 0 auto;
+  padding: 0;
+}
+.page-debug .debug-feature-copy {
+  display: block;
+}
+.page-debug .debug-feature-copy h2 {
+  font-size: clamp(24px, 3vw, 32px);
+}
+.install-page-content {
+  display: grid;
+  align-content: center;
+  width: 100%;
+  max-height: 100%;
+}
+.page-install .install-section {
+  padding: 0 0 clamp(22px, 4vh, 38px);
+}
+.page-install .demo-boundary {
+  margin: 0 0 clamp(20px, 3vh, 30px);
+}
+.page-install .site-footer {
+  align-items: center;
+  padding: 0;
+}
+.page-install .footer-links {
+  width: auto;
+}
+.page-controls {
+  position: absolute;
+  z-index: 40;
+  left: 36px;
+  right: 36px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto minmax(110px, 1fr);
+  align-items: center;
+  pointer-events: none;
+}
+.page-controls button {
+  pointer-events: auto;
+}
+.page-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 108px;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: #14120be8;
+}
+.page-control:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #575246;
+}
+.page-control-previous {
+  justify-self: start;
+}
+.page-control-next {
+  justify-self: end;
+  justify-content: flex-end;
+}
+.page-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: #14120be8;
+  pointer-events: auto;
+}
+.page-dots button {
+  position: relative;
+  width: 30px;
+  height: 42px;
+  padding: 0;
+}
+.page-dots button span {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 20px;
+  height: 2px;
+  background: #575246;
+  transition: left 180ms, right 180ms, background 180ms;
+}
+.page-dots button:hover span {
+  background: var(--text);
+}
+.page-dots button.active span {
+  left: 3px;
+  right: 3px;
+  background: var(--amber);
+}
 .reduce-motion *,
 .reduce-motion *::before,
 .reduce-motion *::after {
@@ -444,6 +647,7 @@ code,
 }
 @media (max-width: 720px) {
   .site {
+    grid-template-rows: 60px minmax(0, 1fr);
     padding: 0 20px;
   }
   .site-header {
@@ -550,6 +754,15 @@ code,
     width: 100%;
     gap: 18px;
   }
+  .page-install .site-footer {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+  .page-install .footer-links {
+    justify-content: flex-end;
+    width: auto;
+  }
 }
 @media (max-width: 960px) {
   .site-header nav { display: none; }
@@ -557,6 +770,38 @@ code,
 @media (max-width: 560px) {
   .header-install { display: none; }
   .site-header, .header-actions { gap: 12px; }
+  .site-page { padding-bottom: 66px; }
+  .page-controls { left: 20px; right: 20px; bottom: 8px; grid-template-columns: 44px 1fr 44px; }
+  .page-control { min-width: 44px; width: 44px; padding: 0; justify-content: center; }
+  .page-control span { display: none; }
+  .page-dots { justify-self: center; padding: 0 4px; }
+  .page-dots button { width: 24px; }
+  .page-dots button span { left: 6px; right: 6px; }
+  .page-dots button.active span { left: 3px; right: 3px; }
+  .page-clients .client-demo-heading { margin-bottom: 4px; }
+  .page-clients .client-demo-heading h2 { font-size: 20px; }
+  .page-clients .client-demo-tabs button { min-height: 40px; padding-block: 6px; }
+  .page-clients .client-demo-body { grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 2px; }
+  .page-clients .client-route { grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; }
+  .page-clients .client-route-followups { display: none; }
+  .page-clients .client-demo-controls { min-height: 44px; }
+  .page-clients .lesson-result { min-height: 44px; }
+  .page-debug .debug-feature { grid-template-columns: 1fr; gap: 14px; }
+  .page-debug .debug-feature-copy { display: block; }
+  .page-debug .debug-feature-copy h2 { font-size: 22px; }
+  .page-debug .debug-feature-copy br { display: none; }
+  .page-install .install-section { gap: 18px; }
+  .page-install .demo-boundary { margin-bottom: 16px; }
+  .page-install .footer-brand { display: none; }
+  .page-install .footer-links { justify-content: space-between; width: 100%; }
+}
+@media (max-width: 560px) and (max-height: 620px) {
+  .page-client-fit .client-demo {
+    width: 125%;
+    max-width: none;
+    transform: scale(.8) translate(-12.5%, -15px);
+    transform-origin: top center;
+  }
 }
 @media (max-width: 380px) {
   .site {

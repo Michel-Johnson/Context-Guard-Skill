@@ -18,10 +18,19 @@ export function UsageNavigation({ client, usageId, chapter = 0, onChapterSelect,
   const usages = getUsages(language);
   return <nav className="client-route" aria-label={t("演示流程")}>
     {playbackMode && <div className="client-route-heading">{playbackMode}</div>}
-    <select className="client-chapter-select" aria-label={t("选择演示章节")} value={usageId === "first" ? String(chapter) : ""}
-      onChange={(event) => onChapterSelect(Number(event.target.value))}>
-      {usageId !== "first" && <option value="" disabled>{t("选择首用章节")}</option>}
-      {chapters.map((item, index) => <option key={item.id} value={index}>{String(index + 1).padStart(2, "0")}　{item.title}</option>)}
+    <select className="client-chapter-select" aria-label={t("选择演示章节")}
+      value={usageId === "first" ? `chapter:${chapter}` : `usage:${usageId}`}
+      onChange={(event) => {
+        const [kind, value] = event.target.value.split(":");
+        if (kind === "usage") onUsageChange(value as Usage["id"]);
+        else onChapterSelect(Number(value));
+      }}>
+      <optgroup label={t("第一次使用")}>
+        {chapters.map((item, index) => <option key={item.id} value={`chapter:${index}`}>{String(index + 1).padStart(2, "0")}　{item.title}</option>)}
+      </optgroup>
+      <optgroup label={t("更多场景")}>
+        {usages.filter((item) => item.id !== "first").map((item) => <option key={item.id} value={`usage:${item.id}`}>{item.title}</option>)}
+      </optgroup>
     </select>
     <div className="client-route-chapters">
       {chapters.map((item, index) => <button type="button" key={item.id}

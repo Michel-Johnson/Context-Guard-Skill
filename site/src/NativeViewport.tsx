@@ -14,7 +14,7 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   turnKey?: string;
 }) {
   const [width, setWidth] = useState(900);
-  const height = Math.min(620, Math.max(350, width * .625));
+  const height = Math.min(620, Math.max(width < 600 ? 220 : 350, width * .625));
   const viewport = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const boxes = useRef<{ composer: Box | null; reply: Box | null }>({ composer: null, reply: null });
