@@ -3373,8 +3373,7 @@ function loadLive(r){
   const tree = r.live || proposedTree(r);
   adoptTree(tree);
   r.live = clone(data);
-  sessionAuth.clear();
-  (r.auth||["T0"]).forEach(x=>sessionAuth.add(x));
+  authUnlockAll();
   selectedId = r.selectedId || "T0";
   viewRootId = r.viewRootId || "T0";
   focusId = r.focusId || null;
@@ -3515,8 +3514,7 @@ function closeOverlay(){
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
   adoptTree({...next, memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
-  sessionAuth.clear();
-  sessionAuth.add("T0");
+  authUnlockAll();
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
@@ -3570,8 +3568,7 @@ function proposedTree(r){
 function applyProposedMap(){
   const r = currentRepo();
   adoptTree(proposedTree(r));
-  sessionAuth.clear();
-  sessionAuth.add("T0");
+  authUnlockAll();
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
@@ -3879,6 +3876,10 @@ function isProposed(n){
   return true;
 }
 function isAuth(n){ return sessionAuth.has(n.id); }
+function authUnlockAll(){
+  sessionAuth.clear();
+  walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
+}
 function depthFromView(n){
   const p = findPath(n.id);
   if(!p) return 99;
