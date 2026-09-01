@@ -10,13 +10,13 @@ import type { ClientId } from "./clients";
 import { repository, type WorkbenchChapterId, type ChapterId } from "./storyboard";
 import { useLanguage } from "./i18n";
 
-const pageIds = ["home", "workbench", "clients", "memory", "debug", "install"] as const;
+const pageIds = ["home", "clients", "workbench", "memory", "debug", "install"] as const;
 type PageId = (typeof pageIds)[number];
 
 const pageLabels: Record<PageId, string> = {
   home: "首页",
   workbench: "工作台",
-  clients: "使用演示",
+  clients: "App 调用",
   memory: "项目记忆",
   debug: "Debug",
   install: "开始使用",
@@ -181,13 +181,14 @@ export function App() {
       requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-page="${page}"]`)?.focus());
   }
 
-  function openDemo(chapter: ChapterId) {
+  const openDemo = useCallback((chapter: ChapterId) => {
     if (chapter === "debug") setDebugRevision((value) => value + 1);
     else {
       setWorkbenchChapter(chapter);
       setWorkbenchRevision((value) => value + 1);
     }
-  }
+    goToPage(chapter === "debug" ? "debug" : "workbench");
+  }, [goToPage]);
 
   return (
     <MotionConfig
@@ -204,8 +205,8 @@ export function App() {
             <strong>Context Guard</strong>
           </a>
           <nav aria-label={t("主导航")}>
+            <a href="#clients" aria-current={activePage === "clients" ? "page" : undefined}>{t("App 调用")}</a>
             <a href="#workbench" aria-current={activePage === "workbench" ? "page" : undefined}>{t("工作台")}</a>
-            <a href="#clients" aria-current={activePage === "clients" ? "page" : undefined}>{t("使用演示")}</a>
             <a href="#memory" aria-current={activePage === "memory" ? "page" : undefined}>{t("项目记忆")}</a>
             <a href="#debug" aria-current={activePage === "debug" ? "page" : undefined}>Debug</a>
           </nav>
@@ -248,9 +249,6 @@ export function App() {
               </div>
             </section>
           </Page>
-          <Page id="workbench" active={activePage === "workbench"}>
-            <Workbench restartToken={workbenchRevision} reduced={reduced} selected={workbenchChapter} onSelect={setWorkbenchChapter} />
-          </Page>
           <Page id="clients" active={activePage === "clients"}>
             <div className="page-client-fit">
               <ClientDemo
@@ -261,6 +259,9 @@ export function App() {
                 onOpenDemo={openDemo}
               />
             </div>
+          </Page>
+          <Page id="workbench" active={activePage === "workbench"}>
+            <Workbench restartToken={workbenchRevision} reduced={reduced} selected={workbenchChapter} onSelect={setWorkbenchChapter} />
           </Page>
           <Page id="memory" active={activePage === "memory"}>
             <RecordGuide />
