@@ -69,7 +69,7 @@ function StandaloneUsagePlayer({ client, usageId, onUsageChange, reduced, active
       onSeek={player.seek} onOpen={openDemo} />
   </NativeClientFrame>, [client, usage, player.clock, player.seek, openDemo, reduced, replay]);
 
-  return <div className={(usageId === "first" || player.active ? "" : "is-paused ") + (reduced ? "is-reduced" : "")}>
+  return <div className={"client-usage-state " + (usageId === "first" || player.active ? "" : "is-paused ") + (reduced ? "is-reduced" : "")}>
     <div className="client-demo-body">
       <UsageNavigation client={client} usageId={usageId} onPause={player.pause}
         onChapterSelect={(index) => usageId === "first" ? restart() : onUsageChange("first", index)}

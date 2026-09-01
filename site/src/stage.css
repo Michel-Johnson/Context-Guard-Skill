@@ -1,26 +1,45 @@
 .feature-workbench {
   scroll-margin-top: 12px;
-  margin: 0 0 96px;
+  min-width: 0;
+  margin: 0;
+}
+.workbench-demo-layout {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.tour-chapter-select {
+  display: none;
 }
 .tour-chapters {
   display: flex;
-  gap: 28px;
-  align-items: center;
-  min-height: 57px;
-  border-bottom: 1px solid var(--line);
-  overflow: auto;
-  scrollbar-width: none;
+  flex-direction: column;
+  gap: 2px;
+  align-items: stretch;
+  min-width: 0;
+  padding: 4px 0;
+  border-right: 1px solid var(--line);
 }
 .tour-chapters button {
+  min-height: 46px;
+  padding: 10px 12px;
   color: var(--muted);
   font-size: 13px;
-  padding: 18px 0;
+  line-height: 1.5;
+  text-align: left;
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
 }
 .tour-chapters button[aria-selected="true"] {
   color: var(--text);
-  border-bottom-color: var(--text);
+  border-left-color: var(--amber);
+  background: var(--panel);
+}
+.tour-chapters button:hover {
+  color: var(--text);
+  background: var(--panel);
 }
 .tour-shell {
   min-width: 0;
@@ -30,7 +49,7 @@
   overflow: hidden;
 }
 .feature-workbench .tour-shell {
-  margin-top: 20px;
+  margin-top: 0;
 }
 .tour-stage {
   position: relative;
@@ -162,19 +181,26 @@
 .debug-feature {
   scroll-margin-top: 12px;
   display: grid;
-  grid-template-columns: 0.75fr 1.75fr;
-  gap: 65px;
-  align-items: center;
-  padding: 65px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  grid-template-columns: 142px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 0;
 }
 .debug-feature-copy h2 {
-  font-size: 32px;
-  line-height: 1.35;
-  letter-spacing: -1px;
+  padding: 13px 12px;
+  font-size: 20px;
+  line-height: 1.45;
+  letter-spacing: -.5px;
   font-weight: 400;
   margin: 0;
+}
+.debug-feature-copy {
+  min-height: 100%;
+  border-right: 1px solid var(--line);
+}
+.debug-feature-copy h2 {
+  border-left: 2px solid var(--amber);
+  background: var(--panel);
 }
 .debug-feature .tour-transport {
   padding: 10px 13px;
@@ -186,40 +212,37 @@
 .debug-feature .tour-progress {
   padding: 0 14px 10px;
 }
-@media (max-width: 900px) {
+@media (max-width: 720px), (max-height: 600px) {
+  .workbench-demo-layout {
+    display: block;
+  }
   .tour-chapters {
-    gap: 23px;
+    display: none;
+  }
+  .tour-chapter-select {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--bg);
+    font: inherit;
+  }
+  .feature-workbench .tour-shell {
+    margin-top: 0;
   }
   .debug-feature {
-    gap: 30px;
-    grid-template-columns: 1fr;
+    display: block;
   }
   .debug-feature-copy {
-    display: flex;
-    gap: 40px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .debug-feature-copy h2 {
-    margin: 0;
-    font-size: 28px;
+    display: none;
+    border-right: 0;
   }
 }
 @media (max-width: 600px) {
-  .feature-workbench {
-    margin-bottom: 60px;
-  }
-  .tour-chapters {
-    gap: 22px;
-    min-height: 48px;
-  }
-  .tour-chapters button {
-    font-size: 12px;
-    padding: 15px 0;
-  }
-  .feature-workbench .tour-shell {
-    margin-top: 12px;
-  }
   .tour-transport {
     padding: 12px;
     gap: 10px;
@@ -240,16 +263,6 @@
   }
   .tour-progress {
     padding: 0 12px 10px;
-  }
-  .debug-feature {
-    padding: 42px 0;
-    gap: 24px;
-  }
-  .debug-feature-copy {
-    display: block;
-  }
-  .debug-feature-copy h2 {
-    font-size: 28px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -149,7 +149,6 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
       <button type="button" className="journey-next" disabled={position.index === chapters.length - 1} onClick={() => select(position.index + 1)}>{t("下一章")} <Icon name="arrow" size={14} /></button>
     </div>
     <div className="client-demo-progress" aria-hidden="true"><motion.span style={{ width: "100%", scaleX: progress, transformOrigin: "0 50%" }} /></div>
-    <div className="journey-footer"><button type="button" onClick={restart}>{t(mode === "all" ? "从头重播" : "重播本章")} ↺</button></div>
     </div>
   </div>;
 }
