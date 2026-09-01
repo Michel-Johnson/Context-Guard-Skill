@@ -56,7 +56,8 @@
   --blue:#2d5da1; --blue-soft:#e4ebf4; --gray:#9a9084;
   --focus:#8a6d1f; --focus-soft:#f5eeda; --module:#2d5da1; --module-soft:#f3ead6;
   --auth:#7a5ca8; --auth-soft:#f0eaf8;
-  --yellow:#ffe66d; --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
+  --yellow:#ffe66d; --gold:#d4a017;
+  --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
   --drawer-width:340px;
@@ -207,8 +208,16 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
-.dot.failed{background:var(--red)} .dot.module{background:var(--module);border-radius:2px}
+.dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
+.dot.module{background:var(--module);border-radius:2px}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
+.dot-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 0}
+.dot-pick{display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  padding:7px 9px;font-size:12px;font-weight:700;line-height:1.25;
+  border:2px solid transparent;background:transparent;box-shadow:none}
+.dot-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
+.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:var(--shadow-sm)}
+.dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
 #viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none}
@@ -532,6 +541,7 @@ body.drawer-resizing .bug-panel{pointer-events:none}
 .state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
 .state-chip.failed{background:var(--red-soft);color:var(--red)}
+.state-chip.untested{background:#fff3bf;color:var(--focus)}
 .state-chip.module{background:var(--module-soft);color:var(--module)}
 .state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
@@ -719,6 +729,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
+html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
 }
@@ -935,7 +946,12 @@ const I18N = {
     memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
     addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
     module:"模块", cancelledChip:"已取消",
-    state_dirty:"探索中", state_success:"成功", state_failed:"失败",
+    state_dirty:"未开发", state_untested:"已做未测", state_success:"测试通过", state_failed:"测试未过",
+    stateHint_dirty:"还没开始开发",
+    stateHint_untested:"开发完了，还没有给这个节点生成测试",
+    stateHint_success:"开发完成，测试通过",
+    stateHint_failed:"开发完成，测试不通过",
+    workState:"开发进度",
     pendingChip:"待批",
     summarizing:"沉淀中…",
     dormantExp:"（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
@@ -1018,7 +1034,12 @@ const I18N = {
     memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
     module:"Module", cancelledChip:"Cancelled",
-    state_dirty:"Exploring", state_success:"Done", state_failed:"Failed",
+    state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
+    stateHint_dirty:"Development has not started",
+    stateHint_untested:"Built, but this node has no tests yet",
+    stateHint_success:"Built, and tests passed",
+    stateHint_failed:"Built, but tests failed",
+    workState:"Build status",
     pendingChip:"Pending",
     summarizing:"Settling…",
     dormantExp:"(Demo) The agent summarized the cause and fix. This lesson is dormant until a similar bug returns.",
@@ -3893,6 +3914,14 @@ function authUnlockAll(){
   sessionAuth.clear();
   walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
 }
+const WORK_STATES = ["dirty","untested","success","failed"];
+function workDotState(n){
+  const s = n && n.state;
+  return WORK_STATES.indexOf(s)>=0 ? s : "dirty";
+}
+function workStateHint(s){
+  return t("stateHint_"+s) || t("state_"+s);
+}
 function depthFromView(n){
   const p = findPath(n.id);
   if(!p) return 99;
@@ -4413,7 +4442,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(isProposed(n)){
     return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
   }
-  return authMark+`<i class="dot ${n.state}"></i><span>${n.title}</span>`+
+  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4869,7 +4898,12 @@ function commitChild(node, title){
 }
 
 /* ================= 抽屉 ================= */
-const STATE_LABEL = ()=>({dirty:t("state_dirty"), success:t("state_success"), failed:t("state_failed")});
+const STATE_LABEL = ()=>({
+  dirty:t("state_dirty"),
+  untested:t("state_untested"),
+  success:t("state_success"),
+  failed:t("state_failed")
+});
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
@@ -4997,21 +5031,28 @@ function renderDetail(){
 
   const pendingKids = node.children.filter(isProposed).length;
   const canDelete = node.id!==data.id;
-  /* dirty/探索中是缺省，不是要人改的活状态；只在有结论或自定义标签时才露芯片。 */
+  /* 蓝点是还没开工；有进度才在标题旁露芯片。 */
   const labels = uiLabels();
   const states = STATE_LABEL();
+  const workSt = workDotState(node);
   const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
     : isModule? ""
     : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
-    : (node.state==="success"||node.state==="failed")
-      ? `<span class="state-chip ${node.state}">${states[node.state]}</span>`
+    : (workSt==="success"||workSt==="failed"||workSt==="untested")
+      ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
+  const statePick = (!cancelled && !isModule)
+    ? `<div class="dot-picks" role="radiogroup" aria-label="${escAttr(t("workState"))}">`+
+      WORK_STATES.map(s=>`<button type="button" class="dot-pick${workSt===s?" on":""}" data-work-state="${s}" title="${escAttr(workStateHint(s))}" aria-pressed="${workSt===s?"true":"false"}"><i class="dot ${s}"></i><span>${states[s]}</span></button>`).join("")+
+      `</div>`
+    : "";
 
   el.innerHTML = `
     <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
+    ${statePick}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
@@ -5100,6 +5141,12 @@ function renderDetail(){
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
     node.memories.push({text:t("doneMem"), state:"success", files:[]}); renderAll(); };
+  el.querySelectorAll("[data-work-state]").forEach(b=>{
+    b.onclick = ()=>{
+      node.state = b.dataset.workState;
+      renderAll();
+    };
+  });
 
   el.querySelectorAll("details.fold").forEach(d=>{
     d.addEventListener("toggle", ()=>{
