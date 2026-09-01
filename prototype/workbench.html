@@ -210,6 +210,10 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
 .dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
 .dot.module{background:var(--module);border-radius:2px}
+.dot.module.dirty{background:var(--blue)}
+.dot.module.untested{background:var(--gold)}
+.dot.module.success{background:var(--green)}
+.dot.module.failed{background:var(--red)}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 .dot-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 0}
 .dot-pick{display:flex;align-items:center;gap:7px;width:100%;text-align:left;
@@ -348,7 +352,7 @@ html[data-node-theme="44"] .node.noauth.module{
   background:#eee9e0; border-color:#d9ccb4; color:#5c5c58;
   box-shadow:0 6px 16px rgba(160,140,100,.08);
 }
-html[data-node-theme="44"] .dot.module{background:#d4a017}
+html[data-node-theme="44"] .dot.module:not(.untested):not(.success):not(.failed){background:#d4a017}
 html[data-node-theme="44"] #links path.link,
 html[data-node-theme="44"] #links path.link.stem{stroke:#e6d3a8}
 
@@ -397,7 +401,7 @@ html[data-node-theme="4"] .node.noauth,
 html[data-node-theme="4"] .node.noauth.module{
   background:#ddd; border-color:#ccc; box-shadow:none;
 }
-html[data-node-theme="4"] .dot.module{background:#4a7ab5}
+html[data-node-theme="4"] .dot.module:not(.untested):not(.success):not(.failed){background:#4a7ab5}
 html[data-node-theme="4"] #links path.link,
 html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
 
@@ -1528,7 +1532,7 @@ const CONTEXT_GUARD_MAP = {
   "title": "Context Guard",
   "kind": "module",
   "purpose": "人与 Agent 共用的项目记忆，活在仓库里",
-  "state": "dirty",
+  "state": "untested",
   "files": [],
   "memories": [
     {
@@ -1592,7 +1596,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "工作台",
       "kind": "module",
       "purpose": "人在浏览器看图、改记忆、确认提议、授权切片",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -1619,7 +1623,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "前端设计",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1684,7 +1688,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "授权模式",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1701,7 +1705,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "Bug",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1718,7 +1722,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "已取消",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1735,7 +1739,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "鼠标/移动",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1756,7 +1760,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "session连接",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1773,7 +1777,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "模块授权",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1807,7 +1811,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "底层连接",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1834,7 +1838,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "冷启动",
       "kind": "module",
       "purpose": "skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -1851,7 +1855,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "多平台一键安装",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1882,7 +1886,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "codex",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1899,7 +1903,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "claude code",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1968,7 +1972,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "cursor",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2058,7 +2062,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "初次使用动画引导",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2092,7 +2096,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "已有仓库建图",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2123,7 +2127,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "底层文件系统",
       "kind": "module",
       "purpose": "会话、坏例、任务、地图怎么写、怎么跳",
-      "state": "dirty",
+      "state": "success",
       "files": [],
       "memories": [
         {
@@ -2140,7 +2144,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "session",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2154,7 +2158,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "user message",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2175,7 +2179,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "bad case",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2192,7 +2196,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "map",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2209,7 +2213,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "index",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2226,7 +2230,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "Readme.md",
           "kind": "work",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2243,7 +2247,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "task",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2270,7 +2274,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "hook",
       "kind": "module",
       "purpose": "当前开发进程的生命周期提醒，把 skill 挂到打开的仓库",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [],
       "bugs": [],
@@ -2281,7 +2285,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "start hook",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2295,7 +2299,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "User Prompt",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2312,7 +2316,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "System Prompt",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2363,7 +2367,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "Ask User",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2384,7 +2388,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "stop hook",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2463,7 +2467,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "CI/CD",
       "kind": "module",
       "purpose": "以后怎么自动验；第一版不做测试中台，夹具和冒烟挂在这里",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -2497,7 +2501,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "CI",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2514,7 +2518,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "CD",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -3405,7 +3409,6 @@ function readHashState(){
 function loadLive(r){
   const tree = r.live || proposedTree(r);
   adoptTree(tree);
-  stampBuiltWorkbenchChrome();
   r.live = clone(data);
   authUnlockAll();
   selectedId = r.selectedId || "T0";
@@ -3467,6 +3470,7 @@ function adoptTree(tree){
   promoteFatWork(data);
   uniquifyIds(data);
   normalizeTree(data);
+  stampMapCompletion();
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -3923,11 +3927,28 @@ function workDotState(n){
 function workStateHint(s){
   return t("stateHint_"+s) || t("state_"+s);
 }
-/* 图上还写着没开工，但工作台这三块已经做了；没有按节点写测试，所以只升到黄点。旧缓存若仍是蓝点也跟着改。 */
-const BUILT_UNTESTED_IDS = {N405:1, N406:1, N407:1};
-function stampBuiltWorkbenchChrome(){
+/* 按仓库里实际有没有做、有没有测，给节点上色。旧缓存若还是蓝点，只升不降。 */
+const MAP_COMPLETION = {
+  T0:"untested",
+  M1:"untested", N400:"untested", N405:"untested", N406:"untested", N407:"untested",
+  N409:"untested", N410:"untested", N411:"untested", N412:"untested",
+  N401:"untested", N402:"untested", N403:"dirty", N404:"untested",
+  M2:"untested", N413:"success", N415:"success", N416:"success", N418:"dirty",
+  N420:"success", N422:"dirty", N423:"dirty", N424:"dirty",
+  N425:"untested", N426:"dirty", N427:"untested",
+  M3:"success", N428:"success", N432:"success", N429:"success", N430:"success",
+  N431:"success", N433:"success", N434:"untested",
+  M4:"untested", N435:"success", N437:"success", N438:"success",
+  N439:"dirty", N440:"dirty", N444:"success",
+  N436:"untested", N441:"dirty", N442:"dirty", N443:"dirty",
+  M5:"untested", N446:"success", N447:"untested"
+};
+function stampMapCompletion(){
   walkAll(data, n=>{
-    if(n && n.kind==="work" && BUILT_UNTESTED_IDS[n.id] && workDotState(n)==="dirty") n.state = "untested";
+    if(!n || isCancelled(n)) return;
+    const want = MAP_COMPLETION[n.id];
+    if(!want || want==="dirty") return;
+    if(workDotState(n)==="dirty") n.state = want;
   });
 }
 function depthFromView(n){
@@ -4440,7 +4461,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
+    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
@@ -5044,14 +5065,13 @@ function renderDetail(){
   const states = STATE_LABEL();
   const workSt = workDotState(node);
   const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
-    : isModule? ""
     : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
     : (workSt==="success"||workSt==="failed"||workSt==="untested")
       ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
-  const statePick = (!cancelled && !isModule)
+  const statePick = !cancelled
     ? `<div class="dot-picks" role="radiogroup" aria-label="${escAttr(t("workState"))}">`+
       WORK_STATES.map(s=>`<button type="button" class="dot-pick${workSt===s?" on":""}" data-work-state="${s}" title="${escAttr(workStateHint(s))}" aria-pressed="${workSt===s?"true":"false"}"><i class="dot ${s}"></i><span>${states[s]}</span></button>`).join("")+
       `</div>`
