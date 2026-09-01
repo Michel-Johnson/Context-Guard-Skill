@@ -10,11 +10,13 @@ export function ClientDemo({
   clientId,
   onClientChange,
   reduced,
+  active = true,
   onOpenDemo,
 }: {
   clientId: ClientId;
   onClientChange: (id: ClientId) => void;
   reduced: boolean;
+  active?: boolean;
   onOpenDemo: (chapter: ChapterId) => void;
 }) {
   const { language, t } = useLanguage();
@@ -74,7 +76,7 @@ export function ClientDemo({
       {clients.map((client) => <div key={client.id} role="tabpanel" id={"client-panel-" + client.id}
         aria-labelledby={"client-tab-" + client.id} hidden={client.id !== clientId} inert={client.id !== clientId}>
         {(visited.includes(client.id) || client.id === clientId) && <ClientSession client={client}
-          active={client.id === clientId} reduced={reduced} onOpenDemo={onOpenDemo} />}
+          active={active && client.id === clientId} reduced={reduced} onOpenDemo={onOpenDemo} />}
       </div>)}
     </section>
   );

@@ -247,7 +247,9 @@ export function TourStage({
     setScene((value) => ({ chapter, restartToken, start: 0, revision: value.revision + 1 }));
     setLoadAttempt((value) => value + 1);
   }
-  const height = playback ? Math.min(620, Math.max(350, width * 0.625)) : Math.max(370, (width * FRAME_HEIGHT) / FRAME_WIDTH);
+  const minimumHeight = width < 600 ? 220 : playback ? 350 : 370;
+  const height = playback ? Math.min(620, Math.max(minimumHeight, width * 0.625))
+    : Math.max(minimumHeight, (width * FRAME_HEIGHT) / FRAME_WIDTH);
   const base = Math.min(width / FRAME_WIDTH, height / FRAME_HEIGHT);
   let scale = base;
   let x = (width - FRAME_WIDTH * scale) / 2;
