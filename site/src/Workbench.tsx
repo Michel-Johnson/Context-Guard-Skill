@@ -211,6 +211,9 @@ export function TourStage({
     if (ready) send({ type: "motion", reduced });
     if (reduced) setPlaying(false);
   }, [ready, reduced]);
+  useEffect(() => {
+    if (ready) send({ type: "page-wheel", enabled: !manual && !exploring });
+  }, [ready, manual, exploring, send]);
 
   function jump(next: number, play = false) {
     if (!ready) return;

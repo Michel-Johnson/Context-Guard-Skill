@@ -433,25 +433,38 @@ code,
   min-height: 0;
   overflow: hidden;
 }
+.page-track {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  transition: transform 760ms cubic-bezier(.77, 0, .175, 1);
+}
 .site-page {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 0 0 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
-  padding: clamp(10px, 2.5vh, 24px) 0 72px;
+  padding: clamp(10px, 2.5vh, 24px) 0 34px;
   overflow: hidden;
 }
-.site-page[hidden] {
-  display: none;
+.site-page[data-active="true"] > * {
+  animation: page-content-enter 680ms cubic-bezier(.22, .68, 0, 1) both;
 }
-.site-page:not([hidden]) > * {
-  animation: page-enter 360ms cubic-bezier(.22, .68, 0, 1) both;
+.page-track[data-direction="down"] {
+  --page-enter-y: 34px;
 }
-@keyframes page-enter {
-  from { opacity: 0; transform: translateY(12px); }
+.page-track[data-direction="up"] {
+  --page-enter-y: -34px;
+}
+@keyframes page-content-enter {
+  from { opacity: .35; transform: translateY(var(--page-enter-y)); }
   to { opacity: 1; transform: translateY(0); }
 }
 .page-home .hero {
@@ -546,75 +559,33 @@ code,
 .page-install .footer-links {
   width: auto;
 }
-.page-controls {
+.page-position {
   position: absolute;
   z-index: 40;
   left: 36px;
   right: 36px;
-  bottom: 12px;
-  display: grid;
-  grid-template-columns: minmax(110px, 1fr) auto minmax(110px, 1fr);
-  align-items: center;
+  bottom: 16px;
+  height: 2px;
+  overflow: hidden;
+  background: var(--line);
   pointer-events: none;
 }
-.page-controls button {
-  pointer-events: auto;
-}
-.page-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 108px;
-  min-height: 44px;
-  padding: 8px 12px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: #14120be8;
-}
-.page-control:hover:not(:disabled) {
-  color: var(--text);
-  border-color: #575246;
-}
-.page-control-previous {
-  justify-self: start;
-}
-.page-control-next {
-  justify-self: end;
-  justify-content: flex-end;
-}
-.page-dots {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  background: #14120be8;
-  pointer-events: auto;
-}
-.page-dots button {
-  position: relative;
-  width: 30px;
-  height: 42px;
-  padding: 0;
-}
-.page-dots button span {
-  position: absolute;
-  left: 7px;
-  right: 7px;
-  top: 20px;
-  height: 2px;
-  background: #575246;
-  transition: left 180ms, right 180ms, background 180ms;
-}
-.page-dots button:hover span {
-  background: var(--text);
-}
-.page-dots button.active span {
-  left: 3px;
-  right: 3px;
+.page-position span {
+  display: block;
+  height: 100%;
   background: var(--amber);
+  transition: width 760ms cubic-bezier(.77, 0, .175, 1);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .reduce-motion *,
 .reduce-motion *::before,
@@ -770,14 +741,8 @@ code,
 @media (max-width: 560px) {
   .header-install { display: none; }
   .site-header, .header-actions { gap: 12px; }
-  .site-page { padding-bottom: 66px; }
-  .page-controls { left: 20px; right: 20px; bottom: 8px; grid-template-columns: 44px 1fr 44px; }
-  .page-control { min-width: 44px; width: 44px; padding: 0; justify-content: center; }
-  .page-control span { display: none; }
-  .page-dots { justify-self: center; padding: 0 4px; }
-  .page-dots button { width: 24px; }
-  .page-dots button span { left: 6px; right: 6px; }
-  .page-dots button.active span { left: 3px; right: 3px; }
+  .site-page { padding-bottom: 28px; }
+  .page-position { left: 20px; right: 20px; bottom: 10px; }
   .page-clients .client-demo-heading { margin-bottom: 4px; }
   .page-clients .client-demo-heading h2 { font-size: 20px; }
   .page-clients .client-demo-tabs button { min-height: 40px; padding-block: 6px; }
