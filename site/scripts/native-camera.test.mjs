@@ -19,7 +19,7 @@ test("客户端保持 800px 原高；取景只有等比缩放，回复增长不�
   assert.doesNotMatch(css + viewport, /--native-window-height/);
   assert.match(viewport, /width: sourceWidth, height: nativeHeight/);
   for (const width of [280, 320, 620, 930, 1280]) {
-    const height = Math.min(620, Math.max(350, width * .625));
+    const height = Math.min(700, Math.max(350, width * .625));
     for (const { sourceWidth, pane } of [
       { sourceWidth: 640 },
       { sourceWidth: 1280 },

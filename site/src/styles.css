@@ -476,7 +476,7 @@ code,
   margin: 0 auto;
 }
 .page-clients .client-demo {
-  width: min(100%, max(720px, calc((100dvh - 228px) * 1.6 + 158px)));
+  width: min(100%, max(720px, calc((100dvh - 172px) * 1.6 + 158px)));
   margin: 0 auto;
 }
 .page-client-fit {
@@ -733,6 +733,11 @@ code,
   .page-install .footer-links {
     justify-content: flex-end;
     width: auto;
+  }
+}
+@media (max-height: 600px) {
+  .page-clients .client-demo {
+    width: min(100%, max(540px, calc((100dvh - 270px) * 1.6 + 172px)));
   }
 }
 @media (max-width: 960px) {
