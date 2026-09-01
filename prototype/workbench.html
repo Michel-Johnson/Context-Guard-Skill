@@ -1633,7 +1633,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "顶栏",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1650,7 +1650,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "右边栏",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1667,7 +1667,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "按钮",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -3405,6 +3405,7 @@ function readHashState(){
 function loadLive(r){
   const tree = r.live || proposedTree(r);
   adoptTree(tree);
+  stampBuiltWorkbenchChrome();
   r.live = clone(data);
   authUnlockAll();
   selectedId = r.selectedId || "T0";
@@ -3921,6 +3922,13 @@ function workDotState(n){
 }
 function workStateHint(s){
   return t("stateHint_"+s) || t("state_"+s);
+}
+/* 图上还写着没开工，但工作台这三块已经做了；没有按节点写测试，所以只升到黄点。旧缓存若仍是蓝点也跟着改。 */
+const BUILT_UNTESTED_IDS = {N405:1, N406:1, N407:1};
+function stampBuiltWorkbenchChrome(){
+  walkAll(data, n=>{
+    if(n && n.kind==="work" && BUILT_UNTESTED_IDS[n.id] && workDotState(n)==="dirty") n.state = "untested";
+  });
 }
 function depthFromView(n){
   const p = findPath(n.id);
