@@ -9,6 +9,7 @@
   let activeScene = "";
   let initialized = false;
   let loadError = "";
+  let pageWheelEnabled = true;
   let completedThrough = -1;
   let cursorPosition = { x: 480, y: 270 };
   let simulatedTimers = [];
@@ -497,9 +498,34 @@
       reduced = Boolean(message.reduced);
       document.documentElement.classList.toggle("cg-tour-reduced", reduced);
     }
+    if (message.type === "page-wheel")
+      pageWheelEnabled = Boolean(message.enabled);
     if (message.type === "overview") camera(null, true);
   });
-  for (const name of ["pointerdown", "keydown", "wheel"])
+  document.addEventListener(
+    "wheel",
+    (event) => {
+      if (pageWheelEnabled) {
+        event.preventDefault();
+        send("page-wheel", {
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaMode: event.deltaMode,
+          ctrlKey: event.ctrlKey,
+        });
+        return;
+      }
+      if (!event.isTrusted) return;
+      ++generation;
+      completedThrough = -1;
+      setPlaying(false);
+      clearTarget();
+      cursor.style.opacity = "0";
+      send("interaction");
+    },
+    { capture: true, passive: false },
+  );
+  for (const name of ["pointerdown", "keydown"])
     document.addEventListener(
       name,
       (event) => {
