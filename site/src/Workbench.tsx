@@ -408,26 +408,36 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
       className="feature-workbench"
       aria-label={t("工作台交互演示")}
     >
-      <div className="tour-chapters" role="tablist" aria-label={t("演示功能")}>
-        {chapters.map((item) => (
-          <button
-            role="tab"
-            key={item.id}
-            aria-selected={selected === item.id}
-            onClick={() => onSelect(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
+      <select
+        className="tour-chapter-select"
+        aria-label={t("演示功能")}
+        value={selected}
+        onChange={(event) => onSelect(event.target.value as WorkbenchChapterId)}
+      >
+        {chapters.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select>
+      <div className="workbench-demo-layout">
+        <div className="tour-chapters" role="tablist" aria-label={t("演示功能")}>
+          {chapters.map((item) => (
+            <button
+              role="tab"
+              key={item.id}
+              aria-selected={selected === item.id}
+              onClick={() => onSelect(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <TourStage
+          chapter={selected}
+          steps={scene.steps}
+          captions={scene.captions}
+          label={t("工作台")}
+          reduced={reduced}
+          restartToken={restartToken}
+        />
       </div>
-      <TourStage
-        chapter={selected}
-        steps={scene.steps}
-        captions={scene.captions}
-        label={t("工作台")}
-        reduced={reduced}
-        restartToken={restartToken}
-      />
     </section>
   );
 }

@@ -29,9 +29,17 @@ export function ClientDemo({
       id="clients"
       aria-labelledby="clients-title"
     >
-      <div className="client-demo-heading">
+      <div className="client-demo-heading visually-hidden">
         <h2 id="clients-title">{t("在你熟悉的工具里，接着做。")}</h2>
       </div>
+      <select
+        className="client-demo-select"
+        aria-label={t("使用演示客户端")}
+        value={clientId}
+        onChange={(event) => onClientChange(event.target.value as ClientId)}
+      >
+        {clients.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select>
       <div
         className="client-demo-tabs"
         role="tablist"
@@ -87,7 +95,7 @@ function ClientSession({ client, active, reduced, onOpenDemo }: {
   client: Client; active: boolean; reduced: boolean; onOpenDemo: (chapter: ChapterId) => void;
 }) {
   const [selection, setSelection] = useState<{ usageId: Usage["id"]; chapter: number }>({ usageId: "first", chapter: 0 });
-  return <ClientUsagePlayer key={selection.usageId} client={client} active={active} usageId={selection.usageId}
+  return <div className="client-session"><ClientUsagePlayer key={selection.usageId} client={client} active={active} usageId={selection.usageId}
     initialChapter={selection.chapter} onUsageChange={(usageId, chapter = 0) => setSelection({ usageId, chapter })}
-    reduced={reduced} onOpenDemo={onOpenDemo} />;
+    reduced={reduced} onOpenDemo={onOpenDemo} /></div>;
 }
