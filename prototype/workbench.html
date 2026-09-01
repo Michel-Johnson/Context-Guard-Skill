@@ -403,6 +403,8 @@ html.phone-preview .phone-preview-banner{display:block}
 html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
 .settings-wrap{position:relative;flex:0 0 auto}
+#btn-settings{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto}
+#btn-settings .gear-icon{width:18px;height:18px;display:block}
 .settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
 .settings-menu.open{display:block}
@@ -665,6 +667,7 @@ html.cg-phone .tray-btn,html.cg-phone .auth-btn,
 html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
   min-height:36px;padding-top:7px;padding-bottom:7px
 }
+html.cg-phone #btn-settings{width:36px;height:36px;min-height:36px;padding:0}
 html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
 html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
 html.cg-phone .drawer{
@@ -749,7 +752,11 @@ html.cg-phone .drawer h2{font-size:18px}
     <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
   </div>
   <div class="settings-wrap" id="settings-wrap">
-    <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
+    <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n-title="settings" title="设置" aria-label="设置">
+      <svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.25.12.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>
+      </svg>
+    </button>
     <div class="settings-menu" id="settings-menu">
       <div class="set-block">
         <div class="set-label" data-i18n="themeLabel">主题</div>
@@ -1042,7 +1049,11 @@ function applyStaticI18n(){
   document.documentElement.lang = uiLang==="en" ? "en" : "zh-CN";
   document.title = t("docTitle");
   document.querySelectorAll("[data-i18n]").forEach(el=>{ el.textContent = t(el.dataset.i18n); });
-  document.querySelectorAll("[data-i18n-title]").forEach(el=>{ el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el=>{
+    const v = t(el.dataset.i18nTitle);
+    el.title = v;
+    if(el.hasAttribute("aria-label")) el.setAttribute("aria-label", v);
+  });
   document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
