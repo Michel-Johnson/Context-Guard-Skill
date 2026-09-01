@@ -405,11 +405,16 @@ html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 .settings-wrap{position:relative;flex:0 0 auto}
 #btn-settings{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto}
 #btn-settings .gear-icon{width:18px;height:18px;display:block}
-.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
+.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:248px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
 .settings-menu.open{display:block}
 .settings-menu .set-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 6px}
 .settings-menu .set-block + .set-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.settings-menu .set-tools{display:flex;flex-direction:column;gap:6px}
+.settings-menu .set-tools .rel-toggle,
+.settings-menu .set-tools .tray-btn{width:100%;box-sizing:border-box}
+.settings-menu .set-tools .rel-toggle button{width:100%}
+#btn-tray.on{background:var(--yellow);font-weight:800}
 .theme-picks{display:flex;flex-direction:column;gap:4px}
 .theme-pick{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   border:2px solid transparent;background:transparent;box-shadow:none;border-radius:8px;
@@ -738,9 +743,6 @@ html.cg-phone .drawer h2{font-size:18px}
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
-    <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
-      <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
-    </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
     <div class="session-chip" aria-hidden="true">
       <b id="session-name">S-0823</b>
@@ -749,7 +751,6 @@ html.cg-phone .drawer h2{font-size:18px}
     <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
-    <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
   </div>
   <div class="settings-wrap" id="settings-wrap">
     <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n-title="settings" title="设置" aria-label="设置">
@@ -758,6 +759,15 @@ html.cg-phone .drawer h2{font-size:18px}
       </svg>
     </button>
     <div class="settings-menu" id="settings-menu">
+      <div class="set-block">
+        <div class="set-label" data-i18n="toolsLabel">工具</div>
+        <div class="set-tools">
+          <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
+            <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
+          </div>
+          <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+        </div>
+      </div>
       <div class="set-block">
         <div class="set-label" data-i18n="themeLabel">主题</div>
         <div class="theme-picks" id="theme-picks">
@@ -803,7 +813,7 @@ html.cg-phone .drawer h2{font-size:18px}
   <div class="card wide" id="first-use-cuts" hidden>
     <div class="kicker" data-i18n="cutKicker">Agent 已读仓 · 请你定第一层</div>
     <h2 data-i18n="cutHeading">候选池不可用</h2>
-    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在顶栏用「第一层候选」进入画布搁板模式。</p>
+    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在设置里用「第一层候选」进入画布搁板模式。</p>
     <div class="actions">
       <button class="quiet" id="first-use-cut-back" data-i18n="cutBack">返回</button>
     </div>
@@ -870,6 +880,7 @@ const I18N = {
     authMode:"授权模式",
     cancelled:"已取消",
     settings:"设置",
+    toolsLabel:"工具",
     themeLabel:"主题",
     langLabel:"语言",
     themeNow:"现在这版",
@@ -952,6 +963,7 @@ const I18N = {
     authMode:"Auth mode",
     cancelled:"Cancelled",
     settings:"Settings",
+    toolsLabel:"Tools",
     themeLabel:"Theme",
     langLabel:"Language",
     themeNow:"Current",
@@ -3817,6 +3829,7 @@ function exitLensMode(keep=true){
   fitView();
 }
 document.getElementById("btn-lens").onclick = ()=>{
+  closeSettings();
   if(lensMode){ exitLensMode(); return; }
   if(bugPathMode) exitBugPath(true);
   if(relationMode){ relationMode = false; relAnchorId = null;
@@ -4255,7 +4268,11 @@ document.getElementById("btn-auth").onclick = ()=>{
 
 /* ================= 已取消托盘 ================= */
 document.getElementById("btn-tray").onclick = ()=>{
-  document.getElementById("tray").classList.toggle("open");
+  const tray = document.getElementById("tray");
+  const open = !tray.classList.contains("open");
+  tray.classList.toggle("open", open);
+  document.getElementById("btn-tray").classList.toggle("on", open);
+  if(open) closeSettings();
 };
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
@@ -4984,7 +5001,7 @@ function renderDetail(){
   const labels = uiLabels();
   const states = STATE_LABEL();
   const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
-    : isModule? `<span class="state-chip module">${t("module")}</span>`
+    : isModule? ""
     : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
     : (node.state==="success"||node.state==="failed")
       ? `<span class="state-chip ${node.state}">${states[node.state]}</span>`
