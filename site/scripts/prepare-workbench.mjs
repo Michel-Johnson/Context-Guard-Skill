@@ -78,6 +78,7 @@ const isolation = (language) => `<meta http-equiv="Content-Security-Policy" cont
 <script>
 // 页面运行在无同源权限的 iframe 中。只提供产品格式的内置示例，不读取实际项目。
 window.__CG_TOUR_LANG__ = ${JSON.stringify(language)};
+if (new URLSearchParams(location.search).has("embedded")) document.documentElement.classList.add("cg-embedded");
 window.__CG_TOUR_EN__ = ${JSON.stringify(language === "en" ? english : {}).replace(/</g, "\\u003c")};
 window.__CG_TOUR_TEXT__ = (text) => window.__CG_TOUR_EN__[text] || text;
 window.__CG_TOUR_LOCALIZE__ = function(value) {
@@ -122,7 +123,7 @@ for (const id of Object.keys(catalog)) {
 function buildWorkbench(language) {
   let html = source
   .replace(/<link[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g, "")
-  .replace(charset, (meta) => `${meta}\n${isolation(language)}<style>${fontCss}\n#cg-sync{display:none!important}</style>`)
+  .replace(charset, (meta) => `${meta}\n${isolation(language)}<style>${fontCss}\n#cg-sync{display:none!important}html.cg-embedded .phone-preview-banner{display:none!important}</style>`)
   // GitHub Pages 演示始终使用内置数据；避免尝试加载不存在且被 CSP 禁止的本地同步模块。
   .replace(syncImport, 'try { throw new Error("static promotion preview"); }')
   // 仅记录产品已有初始化的返回值，导览不能再执行第二次 boot。

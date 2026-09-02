@@ -64,6 +64,15 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.match(visualSource, /sourceHeight = 900/);
   assert.match(visualSource, /workbench-en\.html/);
   assert.match(visualSource, /workbench\.html/);
+  assert.match(visualSource, /\?embedded=1&phone=0&hero=1/);
+  assert.match(visualSource, /type: "scene"[\s\S]*chapter: "map"/);
+  assert.match(visualSource, /IntersectionObserver/);
+  const prepareSource = readFileSync(new URL("./prepare-workbench.mjs", import.meta.url), "utf8");
+  assert.match(prepareSource, /cg-embedded/);
+  assert.match(prepareSource, /cg-embedded \.phone-preview-banner\{display:none!important\}/);
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /matchMedia\("\(max-width: 820px\)"\)/);
+  assert.match(workbenchSource, /embedded=1&phone=\$\{phoneMode \? 1 : 0\}/);
 
   const navigationSource = readFileSync(new URL("../src/UsageNavigation.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
