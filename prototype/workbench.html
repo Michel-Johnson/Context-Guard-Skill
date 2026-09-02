@@ -546,7 +546,7 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:#f3ead6;
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--bg);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 12px);width:24px;bottom:0;
@@ -618,12 +618,11 @@ section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(
 .mem-list li.dirty-item{color:var(--muted)}
 .mem-body,.bug-main{flex:1;min-width:0}
 .mem-body .txt{display:block;width:100%;box-sizing:border-box;line-height:1.5;
-  min-height:1.5em;padding:2px 4px;overflow:hidden}
+  min-height:1.5em;padding:0;overflow:hidden;border:0;background:transparent;border-radius:0}
 .mem-body .txt:not(:focus):not(:empty){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .mem-body .txt:empty,
-.mem-body .txt:focus{min-height:6em;padding:8px 10px;border:2px solid var(--line-ink);
-  border-radius:8px;background:#fff;overflow:auto;-webkit-line-clamp:unset}
-.mem-body .txt:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
+.mem-body .txt:focus{min-height:1.5em;padding:0;border:0;background:transparent;overflow:visible;
+  -webkit-line-clamp:unset;display:block;box-shadow:none}
 .mem-body .txt:empty:before{content:"写一条记忆";color:var(--muted)}
 .mem-body .txt[data-ed="idea"]:empty:before{content:"写一条 Idea"}
 html[lang="en"] .mem-body .txt:empty:before{content:"Write a memory"}
@@ -638,11 +637,16 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
 .note-stack{display:flex;flex-direction:column;gap:10px;margin-top:14px}
 .note-card{background:#fff;border-radius:12px;padding:12px 12px 10px}
-.note-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+.note-head{display:flex;align-items:center;justify-content:flex-start;gap:0;margin:0 0 6px}
 .note-head b{font-size:13px;font-weight:800}
+.note-head .plus-btn{width:1.35em;height:1.35em;font-size:16px;color:var(--ink);font-weight:800}
 .note-card .mem-list,.note-card .bug-list{margin:0}
 .note-card .mem-list li,.note-card .bug-list li{border-top:0;padding:7px 0}
 .note-card .empty{margin:0;padding:2px 0 4px;font-size:12.5px}
+.note-card .ed:hover,.note-card .ed:focus{background:transparent;box-shadow:none}
+.note-card .bug-title{min-height:0;padding:0}
+.note-card .bug-title.ed:empty,
+.note-card .bug-title.ed:focus{min-height:1.4em;padding:0;border:0;background:transparent;box-shadow:none}
 .note-more{display:block;width:auto;margin:4px 0 0;padding:4px 0;border:0;background:transparent;
   box-shadow:none;color:var(--muted);font-size:12.5px;font-weight:700;text-align:left}
 .note-more:hover{transform:none;box-shadow:none;background:transparent;color:var(--ink);border:0}
@@ -771,7 +775,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
-html.cg-phone .sec-add{min-height:36px}
+html.cg-phone .note-head .plus-btn{width:36px;height:36px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
