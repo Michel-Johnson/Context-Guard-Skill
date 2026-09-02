@@ -200,8 +200,10 @@ export class WorkbenchSync {
     const apply = document.createElement('button'); apply.textContent = '提交已选差异';
     apply.onclick = async () => {
       const operations = selected.filter(x => x.checkbox.checked).map(x => x.op); if (!operations.length) return;
+      apply.disabled = true;
+      this.setStatus('saving');
       try { await this.call('/api/commit', { baseVersion: preview.baseVersion, operationId: crypto.randomUUID(), operations }); dialog.close(); dialog.remove(); await this.reload(); }
-      catch (e) { note.textContent = e.message; }
+      catch (e) { note.textContent = e.message; apply.disabled = false; this.setStatus('error', e.message); }
     };
     const cancel = document.createElement('button'); cancel.textContent = '取消'; cancel.onclick = () => { dialog.close(); dialog.remove(); };
     dialog.append(apply, cancel); document.body.append(dialog); dialog.showModal();
