@@ -8,7 +8,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
-import { startServer } from '../scripts/workbench/server.mjs';
+import { bugSessionMessage, startServer } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, diffTrees, validate } from '../prototype/map-model.mjs';
@@ -72,6 +72,16 @@ test('rollout lifecycle parser maps work to spinner state and completion to chec
   const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
   assert.equal(rolloutTaskStatus(started).status, 'active');
   assert.equal(rolloutTaskStatus(`${started}\n${completed}`).status, 'stopped');
+});
+
+test('Bug handoff message carries the actionable Bug and node context', () => {
+  const message = bugSessionMessage(
+    { id: 'N1', title: '工作台同步' },
+    { id: 'B7', title: '认领状态不真实', desc: '投递成功前不得显示处理中', record: '用户点击认领' },
+  );
+  assert.match(message, /B7 · 认领状态不真实/);
+  assert.match(message, /N1 · 工作台同步/);
+  assert.match(message, /投递成功前不得显示处理中/);
 });
 
 test('write, preserve unknown data, reject stale update, persist idempotency across restart', async () => {
@@ -165,6 +175,7 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.equal((await call('/api/state', credential, null, { Origin: 'https://evil.invalid' })).status, 403);
     assert.equal((await call('/package.json', credential)).status, 404);
     assert.equal((await call('/api/access', credential, { sessionId: agent.sessionId, nodes: ['N1'], actor: 'human' })).status, 403);
+    assert.equal((await call('/api/session-message', credential, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 403);
     assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: ['N1'] })).status, 200);
     assert.equal((await call('/api/commit', credential, edit(running.store, 'CLI权限'))).status, 200);
     await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] });

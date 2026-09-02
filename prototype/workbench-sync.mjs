@@ -252,6 +252,16 @@ export class WorkbenchSync {
     const active = sessions.find(item => item.id === this.activeSession) || null;
     this.a.setAccess(data.grants?.[this.activeSession]?.nodes || [], this.activeSession, active);
   }
+  async selectSession(sessionId) {
+    if (!this.sessions.some(item => item.id === sessionId)) return false;
+    this.activeSession = sessionId;
+    this.manualSession = true;
+    await this.refreshAccess();
+    return true;
+  }
+  async sendBug(sessionId, nodeId, bugId) {
+    return this.call('/api/session-message', { sessionId, nodeId, bugId });
+  }
   async toggleAccess(ids) {
     if (!this.activeSession) { this.setStatus(this.status, '尚无真实 Agent 会话，请先启动会话'); return; }
     try { await this.call('/api/access', { sessionId: this.activeSession, nodes: ids }); await this.refreshAccess(); }
