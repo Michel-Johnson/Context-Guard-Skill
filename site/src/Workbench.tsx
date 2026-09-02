@@ -20,6 +20,16 @@ const overview: Camera = {
   height: FRAME_HEIGHT,
   overview: true,
 };
+const CAMERA_DURATION = 850;
+const CAMERA_EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
+
+type CameraPose = { x: number; y: number; scale: number };
+
+function applyCameraPose(node: HTMLDivElement, pose: CameraPose) {
+  node.style.transition = "none";
+  node.style.zoom = String(pose.scale);
+  node.style.transform = `translate(${pose.x / pose.scale}px,${pose.y / pose.scale}px) scale(1)`;
+}
 
 export type TourPlayback = {
   from: number;
@@ -55,6 +65,10 @@ export function TourStage({
   const frame = useRef<HTMLIFrameElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLDivElement>(null);
+  const plane = useRef<HTMLDivElement>(null);
+  const cameraTimer = useRef(0);
+  const bakedScale = useRef(1);
+  const cameraReady = useRef(false);
   const lastScene = useRef("");
   const bootReady = useRef(false);
   const playbackRef = useRef(playback);
@@ -282,6 +296,32 @@ export function TourStage({
       ),
     );
   }
+  // 整个 iframe 在镜头移动时会被合成。把最终位移落在设备像素上，
+  // 避免停稳后仍因半像素采样让文字和边框一起发虚。
+  const deviceScale = window.devicePixelRatio || 1;
+  x = Math.round(x * deviceScale) / deviceScale;
+  y = Math.round(y * deviceScale) / deviceScale;
+  useLayoutEffect(() => {
+    const node = plane.current;
+    if (!node) return;
+    window.clearTimeout(cameraTimer.current);
+    const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
+    if (!cameraReady.current || reduced || exploring) {
+      cameraReady.current = true;
+      bakedScale.current = target.scale;
+      applyCameraPose(node, target);
+      return;
+    }
+    const rasterScale = bakedScale.current;
+    node.style.transition = `transform ${CAMERA_DURATION}ms ${CAMERA_EASING}`;
+    node.style.zoom = String(rasterScale);
+    node.style.transform = `translate(${target.x / rasterScale}px,${target.y / rasterScale}px) scale(${target.scale / rasterScale})`;
+    cameraTimer.current = window.setTimeout(() => {
+      bakedScale.current = target.scale;
+      applyCameraPose(node, target);
+    }, CAMERA_DURATION);
+    return () => window.clearTimeout(cameraTimer.current);
+  }, [x, y, scale, reduced, exploring]);
   return (
     <div
       className={"tour-shell" + (exploring ? " exploring" : "")}
@@ -294,13 +334,10 @@ export function TourStage({
       >
         <div
           className="tour-plane"
+          ref={plane}
           style={{
             width: FRAME_WIDTH,
             height: FRAME_HEIGHT,
-            transform: exploring
-              ? "none"
-              : "translate(" + x + "px," + y + "px) scale(" + scale + ")",
-            transitionDuration: reduced || exploring ? "0ms" : undefined,
           }}
         >
           <iframe

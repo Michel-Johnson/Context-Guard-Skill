@@ -78,6 +78,23 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
 });
 
+test("工作台镜头按目标倍率重绘iframe，停稳位移对齐设备像素", () => {
+  const stageSource = readFileSync(new URL("../src/stage.css", import.meta.url), "utf8");
+  const planeRule = stageSource.match(/\.tour-plane\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(planeRule, /will-change\s*:\s*transform/);
+  assert.doesNotMatch(planeRule, /transition/);
+
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
+  assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
+  assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
+  assert.match(workbenchSource, /node\.style\.zoom = String\(pose\.scale\)/);
+  assert.match(workbenchSource, /const rasterScale = bakedScale\.current/);
+  assert.match(workbenchSource, /target\.scale \/ rasterScale/);
+  assert.match(workbenchSource, /window\.setTimeout\(\(\) =>/);
+  assert.doesNotMatch(workbenchSource, /requestAnimationFrame\(animate\)/);
+});
+
 test("文字逐字增长，不产生半个Unicode字符", () => {
   const text = "A中文😀B";
   for (let i = 0; i <= 5; i++) assert.equal(typedText(text, i * 24, 0), Array.from(text).slice(0, i).join(""));
