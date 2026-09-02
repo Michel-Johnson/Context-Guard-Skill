@@ -11,6 +11,9 @@
 (function(){
   var q = new URLSearchParams(location.search);
   var preview = q.has("preview");
+  var gallery = q.has("gallery");
+  window.__CG_GALLERY = gallery;
+  if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
   if(!(t==="1"||t==="4"||t==="44"||t==="48")){
     try{ t = localStorage.getItem("cg-workbench-node-theme")||""; }catch(e){ t=""; }
@@ -748,9 +751,97 @@ html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
 }
 html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
 html.cg-phone .drawer h2{font-size:18px}
+
+html.design-gallery,html.design-gallery body{overflow:auto;height:auto;min-height:100dvh}
+html.design-gallery header.top,
+html.design-gallery #viewport,
+html.design-gallery .drawer,
+html.design-gallery .drawer-split,
+html.design-gallery .bug-panel,
+html.design-gallery .tray,
+html.design-gallery .first-use,
+html.design-gallery .theme-preview-banner,
+html.design-gallery .phone-preview-banner{display:none !important}
+#design-gallery{display:none}
+html.design-gallery #design-gallery{display:block;padding:18px 18px 48px}
+.g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;
+  margin:0 -18px 18px;padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
+.g-bar b{font-size:15px}
+.g-bar .pick{font-size:13px;font-weight:800}
+.g-bar .hint{color:var(--muted);font-size:12.5px;font-weight:700}
+.g-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+.g-preview{position:sticky;top:68px}
+.g-preview .g-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 8px}
+html.design-gallery .g-preview .drawer{display:block !important;position:relative;top:auto;right:auto;bottom:auto;width:340px;height:auto;
+  border-left:2px solid var(--line-ink);padding:16px 16px 20px;background:var(--paper)}
+.g-stage{position:relative;min-height:120px;margin:0 0 12px;padding:18px 12px 28px;
+  background:var(--bg);border:2px solid var(--line-ink);border-radius:10px}
+html.design-gallery .g-stage .node.module{display:flex !important}
+.g-tip{position:absolute;z-index:2;font-size:12px;font-weight:800;line-height:1.35;pointer-events:none;max-width:220px}
+.g-tip.a{padding:6px 9px;background:var(--paper);border:2px solid var(--line-ink);border-radius:8px}
+.g-tip.b{padding:0;border:0;background:transparent}
+.g-tip.c{padding:6px 9px;background:var(--yellow);border:2px solid var(--line-ink);border-radius:8px}
+.g-tip.d{padding:0;border:0;background:transparent;font-size:11px;color:var(--muted)}
+.g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.g-card{text-align:left;padding:10px 12px 8px;border:2px solid var(--line-ink);border-radius:10px;
+  background:var(--paper);box-shadow:none;cursor:pointer;width:100%}
+.g-card:hover{background:#fff;transform:none;box-shadow:none}
+.g-card.on{background:var(--yellow)}
+.g-card .n{display:block;font-size:11px;font-weight:800;color:var(--muted);margin:0 0 8px;letter-spacing:.04em}
+.g-mini .row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);
+  font-size:13px;font-weight:800;color:var(--muted)}
+.g-mini .row:first-child{border-top:0}
+.g-mini .plus,.g-mini .ghost,.g-mini .link,.g-mini .circle,.g-mini .tiny{display:inline-grid;place-items:center;margin-left:auto}
+.g-mini .plus{width:28px;height:28px;padding:0;box-shadow:none;border:2px solid var(--line-ink);border-radius:8px;background:var(--paper);font-size:20px;font-weight:800}
+.g-mini .ghost{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--muted);font-size:18px;padding:0}
+.g-mini .link{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--module);font-size:12px;padding:0}
+.g-mini .circle{margin-left:auto;width:22px;height:22px;padding:0;border-radius:50%;box-shadow:none;font-size:14px;border:1.5px solid var(--line-ink);background:var(--paper);font-weight:800}
+.g-mini .tiny{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--muted);font-size:12px;padding:0}
+.g-mini .pill{display:inline-flex;align-items:center;padding:2px 8px;border:1.5px solid var(--line-ink);border-radius:999px;font-size:12px}
+.g-mini .tabs{display:flex;border-bottom:2px solid var(--line-ink);margin-bottom:8px}
+.g-mini .tabs b{padding:6px 8px;font-size:12px;color:var(--muted)}
+.g-mini .tabs b.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--line-ink)}
+.g-mini .bar{display:flex;align-items:center;gap:8px;padding:7px 0 7px 8px;border-left:3px solid var(--line-ink);
+  font-size:13px;font-weight:800;color:var(--muted)}
+.g-mini .dash{margin-top:6px;border:1.5px dashed var(--line);border-radius:8px;padding:6px 8px;color:var(--muted);font-size:12px;font-weight:700}
+.g-mini .pills{display:flex;gap:6px;flex-wrap:wrap}
+.g-mini .pills i{border:1.5px solid var(--line-ink);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:800;font-style:normal}
+.g-mini .pills i.on{background:var(--yellow)}
+.g-mini .sub{display:block;font-size:11px;color:var(--muted);font-weight:700;margin:-2px 0 6px}
+.g-mini .chip{font-size:11px;font-weight:800;border:1.5px solid var(--line-ink);border-radius:999px;padding:1px 7px}
+.g-mini .tri{color:var(--muted);font-size:11px}
+.g-h{font-size:16px;margin:22px 0 8px}
+.g-copy{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
+@media (max-width:980px){
+  .g-layout{grid-template-columns:1fr}
+  .g-preview{position:relative;top:auto}
+  .g-preview .drawer{width:100%}
+}
 </style>
 </head>
 <body>
+<div id="design-gallery">
+  <div class="g-bar">
+    <b>设计稿</b>
+    <span class="pick" id="g-pick">还没选</span>
+    <span class="hint">点卡片就能选。选好后把编号发我，例如「记忆 02，说明 B」。</span>
+  </div>
+  <div class="g-layout">
+    <div>
+      <h2 class="g-h" style="margin-top:0">记忆 / Idea / Bug</h2>
+      <p class="g-copy">都没有阴影。点一张，右边按检查器真实宽度预览。</p>
+      <div class="g-grid" id="g-fold-grid"></div>
+      <h2 class="g-h">色块说明</h2>
+      <p class="g-copy">鼠标停在左边色块上时的样子。四宫格已经从检查器拿掉。</p>
+      <div class="g-grid" id="g-tip-grid"></div>
+    </div>
+    <aside class="g-preview">
+      <div class="g-label">预览 · 检查器 340px</div>
+      <div class="g-stage" id="g-stage"></div>
+      <aside class="drawer" id="g-drawer"></aside>
+    </aside>
+  </div>
+</div>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
 <header class="top">
@@ -5657,7 +5748,92 @@ vp.addEventListener("wheel", e=>{
 function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
+function bootDesignGallery(){
+  document.title = "设计稿 · 记忆 / Idea / Bug";
+  const FOLDS = [
+    {id:"01", name:"现况去阴影", html:`<div class="g-mini"><div class="row">记忆 1 <span class="plus plus-btn">+</span></div><div class="row">Idea <span class="plus plus-btn">+</span></div><div class="row">Bug <span class="plus plus-btn">+</span></div></div>`},
+    {id:"02", name:"无边框灰 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="ghost">+</span></div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug <span class="ghost">+</span></div></div>`},
+    {id:"03", name:"文字「添加」", html:`<div class="g-mini"><div class="row">记忆 1 <span class="link">添加</span></div><div class="row">Idea <span class="link">添加</span></div><div class="row">Bug <span class="link">添加</span></div></div>`},
+    {id:"04", name:"细线圈 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="circle">+</span></div><div class="row">Idea <span class="circle">+</span></div><div class="row">Bug <span class="circle">+</span></div></div>`},
+    {id:"05", name:"标题后直接 +", html:`<div class="g-mini"><div class="row">记忆 1 +</div><div class="row">Idea +</div><div class="row">Bug +</div></div>`},
+    {id:"06", name:"计数胶囊", html:`<div class="g-mini"><div class="row"><span class="pill">记忆 1</span><span class="ghost">+</span></div><div class="row"><span class="pill">Idea</span><span class="ghost">+</span></div><div class="row"><span class="pill">Bug</span><span class="ghost">+</span></div></div>`},
+    {id:"07", name:"一行 tab", html:`<div class="g-mini"><div class="tabs"><b class="on">记忆 1</b><b>Idea</b><b>Bug</b></div><div class="row" style="border:0;font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
+    {id:"08", name:"悬停才出 +", html:`<div class="g-mini"><div class="row">记忆 1</div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug</div></div>`},
+    {id:"09", name:"左侧细线", html:`<div class="g-mini"><div class="bar">记忆 1 <span class="ghost">+</span></div><div class="bar">Idea <span class="ghost">+</span></div><div class="bar">Bug <span class="ghost">+</span></div></div>`},
+    {id:"10", name:"副标题条数", html:`<div class="g-mini"><div class="row">记忆 <span class="ghost">+</span></div><span class="sub">1 条</span><div class="row">Idea <span class="ghost">+</span></div><span class="sub">没有</span><div class="row">Bug <span class="ghost">+</span></div></div>`},
+    {id:"11", name:"虚线添加行", html:`<div class="g-mini"><div class="row">记忆 1</div><div class="dash">＋ 添加记忆</div><div class="row">Idea</div><div class="dash">＋ 添加 Idea</div></div>`},
+    {id:"12", name:"空心圆 22px", html:`<div class="g-mini"><div class="row">记忆 1 <span class="circle">+</span></div><div class="row">Idea <span class="circle">+</span></div><div class="row">Bug <span class="circle">+</span></div></div>`},
+    {id:"13", name:"下划线标题", html:`<div class="g-mini"><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">记忆 1 <span class="tiny">+</span></div><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">Idea <span class="tiny">+</span></div><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">Bug <span class="tiny">+</span></div></div>`},
+    {id:"14", name:"极紧凑", html:`<div class="g-mini"><div class="row" style="padding:4px 0;font-size:12px">记忆 1 <span class="tiny">+</span></div><div class="row" style="padding:4px 0;font-size:12px">Idea <span class="tiny">+</span></div><div class="row" style="padding:4px 0;font-size:12px">Bug <span class="tiny">+</span></div></div>`},
+    {id:"15", name:"合成「记录」", html:`<div class="g-mini"><div class="row" style="flex-wrap:wrap">记录 <span class="chip">记忆 1</span> <span class="chip">Idea</span> <span class="chip">Bug</span> <span class="ghost">+</span></div><div class="row" style="font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
+    {id:"16", name:"三个 pill 切换", html:`<div class="g-mini"><div class="pills"><i class="on">记忆 1</i><i>Idea</i><i>Bug</i></div><div class="row" style="border:0;padding-top:10px;font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
+    {id:"17", name:"计数右对齐", html:`<div class="g-mini"><div class="row">记忆 <span style="margin-left:auto;font-size:12px">1</span> <span class="ghost">+</span></div><div class="row">Idea <span style="margin-left:auto;font-size:12px">0</span> <span class="ghost">+</span></div><div class="row">Bug <span style="margin-left:auto;font-size:12px">0</span> <span class="ghost">+</span></div></div>`},
+    {id:"18", name:"12px 灰字 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="tiny">+</span></div><div class="row">Idea <span class="tiny">+</span></div><div class="row">Bug <span class="tiny">+</span></div></div>`},
+    {id:"19", name:"一体 记忆(1)", html:`<div class="g-mini"><div class="row">记忆(1) <span class="ghost">+</span></div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug <span class="ghost">+</span></div></div>`},
+    {id:"20", name:"三角折叠", html:`<div class="g-mini"><div class="row"><span class="tri">▾</span> 记忆 1 <span class="tiny">+</span></div><div class="row"><span class="tri">▸</span> Idea <span class="tiny">+</span></div><div class="row"><span class="tri">▸</span> Bug <span class="tiny">+</span></div></div>`}
+  ];
+  const TIPS = [
+    {id:"A", name:"描边白底", sample:"开发完了，还没有给这个节点生成测试"},
+    {id:"B", name:"无框短字", sample:"已做未测"},
+    {id:"C", name:"选中黄底", sample:"已做未测"},
+    {id:"D", name:"写在色块下", sample:"已做未测"}
+  ];
+  const q = new URLSearchParams(location.search);
+  let foldId = q.get("fold") || "01";
+  let tipId = q.get("tip") || "A";
+  const foldGrid = document.getElementById("g-fold-grid");
+  const tipGrid = document.getElementById("g-tip-grid");
+  foldGrid.innerHTML = FOLDS.map(f=>`<button type="button" class="g-card${f.id===foldId?" on":""}" data-fold="${f.id}"><span class="n">${f.id} ${f.name}</span>${f.html}</button>`).join("");
+  tipGrid.innerHTML = TIPS.map(t=>`<button type="button" class="g-card${t.id===tipId?" on":""}" data-tip="${t.id}"><span class="n">${t.id} ${t.name}</span>
+    <div style="display:flex;align-items:flex-start;gap:8px;min-height:36px">
+      <i class="dot module untested" style="margin-top:4px"></i>
+      <span class="g-tip ${t.id.toLowerCase()}">${t.sample}</span>
+    </div></button>`).join("");
+
+  function paint(){
+    const fold = FOLDS.find(f=>f.id===foldId) || FOLDS[0];
+    const tip = TIPS.find(t=>t.id===tipId) || TIPS[0];
+    document.getElementById("g-pick").textContent = "记忆 "+fold.id+" · 说明 "+tip.id;
+    foldGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.fold===foldId));
+    tipGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.tip===tipId));
+    const tipCls = "g-tip "+tip.id.toLowerCase();
+    const below = tip.id==="D";
+    document.getElementById("g-stage").innerHTML = `
+      <div class="node module" style="position:relative">
+        <div class="m-head"><i class="dot module untested"></i><span>初次使用动画引导</span></div>
+        ${below
+          ? `<div class="${tipCls}" style="position:static;margin:6px 0 0 18px">${tip.sample}</div>`
+          : `<div class="${tipCls}" style="left:22px;top:-8px">${tip.sample}</div>`}
+      </div>`;
+    document.getElementById("g-drawer").innerHTML = `
+      <h2>初次使用动画引导 <span class="state-chip untested">已做未测</span></h2>
+      <p class="lead">第一次打开工作台时，用动画把人领进图里。</p>
+      ${fold.html}`;
+    const url = new URL(location.href);
+    url.searchParams.set("gallery","1");
+    url.searchParams.set("fold", foldId);
+    url.searchParams.set("tip", tipId);
+    history.replaceState(null, "", url);
+  }
+  foldGrid.onclick = e=>{
+    const b = e.target.closest("[data-fold]");
+    if(!b) return;
+    foldId = b.dataset.fold;
+    paint();
+  };
+  tipGrid.onclick = e=>{
+    const b = e.target.closest("[data-tip]");
+    if(!b) return;
+    tipId = b.dataset.tip;
+    paint();
+  };
+  paint();
+}
 async function boot(){
+  if(window.__CG_GALLERY){
+    bootDesignGallery();
+    return;
+  }
   const stored = readStoredUiLang();
   if(stored) uiLang = stored;
   applyStaticI18n();
