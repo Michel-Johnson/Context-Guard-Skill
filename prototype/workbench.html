@@ -3591,6 +3591,9 @@ function syncBootstrapFromTree(){
 }
 let workbenchSync = null;
 let applyingServerMap = false;
+function canMutate(){
+  return !!(workbenchSync?.ready || !window.__CG_SERVER);
+}
 function persist(){
   if(window.__CG_PREVIEW || applyingServerMap) return;
   snapshotRepo();
@@ -5241,7 +5244,7 @@ function onNodeClick(e, n){
 }
 
 function acceptProposal(n, silent){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   n.proposal = "accepted"; n.isNew = false;
   sessionAuth.add(n.id);
   const path = findPath(n.id);
@@ -5253,12 +5256,12 @@ function acceptProposal(n, silent){
   renderAll();
 }
 function acceptLayer(node){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   node.children.filter(isProposed).forEach(c=>acceptProposal(c, true));
   renderAll();
 }
 function cancelProposal(n){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!n || n.id===data.id) return;
   clearCompose();
   const p = pathOf(n) || [];
@@ -5276,7 +5279,7 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
   composeParent = node;
   selectedId = node.id;
@@ -5288,7 +5291,7 @@ function startCompose(node, kind){
 }
 function addChild(node){ startCompose(node, "work"); }
 function addModule(from){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   const target = from || getNode(selectedId);
   /* 挂在点中的节点后。不要因为提议/找不到就改挂到当前页根（看起来像最开始那个模块）。 */
   if(!target || isCancelled(target)) return;
@@ -5296,7 +5299,7 @@ function addModule(from){
 }
 function inTree(n){ return !!(n && pathOf(n)); }
 function commitChild(node, title){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   const t = (title||"").trim();
   if(!t) return;
   let parent = composeParent;
@@ -5341,7 +5344,7 @@ const STATE_LABEL = ()=>({
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
-  if(!window.__CG_SERVER){ el.contentEditable="false"; return; }
+  if(window.__CG_SERVER && !workbenchSync?.ready){ el.contentEditable="false"; return; }
   el.contentEditable="true"; el.spellcheck=false;
   let composing=false;
   function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
@@ -6185,15 +6188,6 @@ async function boot(){
   if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
   // A local server owns exactly one project. Switching demo repositories is preview-only.
   if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
-  if(!window.__CG_SERVER){
-    document.addEventListener("click",e=>{
-      const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel");
-      if(!b) return;
-      const act=b.getAttribute && b.getAttribute("data-act");
-      if(act && act.startsWith("expand-")) return;
-      e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly");
-    },true);
-  }
   if(window.__CG_PREVIEW){
     closeOverlay();
     currentRepo().firstUseOpen = false;

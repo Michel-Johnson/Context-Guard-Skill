@@ -1,5 +1,5 @@
 import { copy, diffTrees, entries, same } from './map-model.mjs';
-const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
+const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', playground: '本页可改 · 不会写回仓库', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
 export class WorkbenchSync {
   constructor(adapter) {
@@ -25,7 +25,7 @@ export class WorkbenchSync {
       if (!this.config || this.dirty()) return;
       fetch('/api/presence', { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
     });
-    this.setStatus(this.config ? 'loading' : 'readonly');
+    this.setStatus(this.config ? 'loading' : 'playground');
   }
   async call(route, body, method = body === undefined ? 'GET' : 'POST') {
     const response = await fetch(route, { method, headers: { Authorization: `Bearer ${this.config.token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
