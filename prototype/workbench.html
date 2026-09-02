@@ -125,16 +125,34 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repo-status.ok{color:var(--green)}
 .repo-status.err{color:var(--red)}
-.dir-toggle,.lang-toggle,.rel-toggle{
+.lang-toggle,.rel-toggle{
   display:flex;align-items:stretch;height:var(--chrome-btn-h);border:2px solid var(--line-ink);border-radius:8px;
   overflow:hidden;flex:0 0 auto;box-sizing:border-box;box-shadow:var(--shadow-sm)}
-.dir-toggle button,.lang-toggle button,.rel-toggle button{
+.lang-toggle button,.rel-toggle button{
   border:0;border-radius:0;height:auto;min-height:0;padding:0 12px;font-size:12.5px;line-height:1;
   display:inline-flex;align-items:center;justify-content:center;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
 .lang-toggle button{padding:0 10px;min-width:36px}
-.dir-toggle button + button,.lang-toggle button + button{border-left:2px solid var(--line-ink)}
-.dir-toggle button:hover,.lang-toggle button:hover,.rel-toggle button:hover{color:var(--ink)}
-.dir-toggle button.on,.lang-toggle button.on,.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+.lang-toggle button + button{border-left:2px solid var(--line-ink)}
+.lang-toggle button:hover,.rel-toggle button:hover{color:var(--ink)}
+.lang-toggle button.on,.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+button.dir-toggle{
+  position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:stretch;
+  height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);min-width:108px;padding:3px;gap:0;
+  border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;
+  box-sizing:border-box;box-shadow:var(--shadow-sm);background:var(--paper);color:var(--ink);
+  cursor:pointer;user-select:none;-webkit-user-select:none}
+html[lang="en"] button.dir-toggle{min-width:152px}
+button.dir-toggle:hover,button.dir-toggle:focus,button.dir-toggle:active{
+  background:var(--paper);color:var(--ink);transform:none;box-shadow:var(--shadow-sm)}
+.dir-toggle .dir-thumb{
+  position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/2);
+  background:var(--yellow);border-radius:5px;pointer-events:none;
+  transition:transform .18s ease}
+.dir-toggle.is-tb .dir-thumb{transform:translateX(100%)}
+.dir-toggle .dir-opt{
+  position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
+  padding:0 8px;font-size:12.5px;font-weight:700;line-height:1;color:var(--muted);white-space:nowrap}
+.dir-toggle .dir-opt.on{color:var(--ink);font-weight:800}
 .dir-toggle.is-catalog{display:none}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
@@ -739,10 +757,10 @@ html.cg-phone .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(
 html.cg-phone #rel-hint{white-space:nowrap}
 html.cg-phone .tray-btn,html.cg-phone .auth-btn,
 html.cg-phone .dir-toggle,html.cg-phone .rel-toggle,html.cg-phone .lang-toggle,
-html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
+html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
   height:var(--chrome-btn-h);min-height:var(--chrome-btn-h)
 }
-html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
+html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
   padding-top:0;padding-bottom:0
 }
 html.cg-phone #btn-settings,html.cg-phone #btn-auth{width:var(--chrome-btn-h);height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0}
@@ -1145,10 +1163,11 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
   </div>
   <nav class="nav-crumbs" id="nav-crumbs"></nav>
   <div class="top-tools">
-    <div class="dir-toggle" id="dir-toggle">
-      <button type="button" data-dir="lr" class="on" data-i18n="dirLr">左右</button>
-      <button type="button" data-dir="tb" data-i18n="dirTb">上下</button>
-    </div>
+    <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
+      <span class="dir-thumb" aria-hidden="true"></span>
+      <span class="dir-opt on" data-dir="lr" data-i18n="dirLr">左右</span>
+      <span class="dir-opt" data-dir="tb" data-i18n="dirTb">上下</span>
+    </button>
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
@@ -1273,6 +1292,7 @@ const I18N = {
     docTitle:"Context Guard · 工作台原型",
     archMap:"架构导图",
     dirLr:"左右", dirTb:"上下",
+    dirTitle:"布局：点一下切换左右 / 上下",
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
@@ -1364,6 +1384,7 @@ const I18N = {
     docTitle:"Context Guard · workbench",
     archMap:"architecture map",
     dirLr:"Left–right", dirTb:"Top–down",
+    dirTitle:"Layout: tap to switch left–right / top–down",
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
@@ -4778,17 +4799,24 @@ document.getElementById("theme-picks").onclick = e=>{
   applyNodeTheme(b.dataset.theme, true);
 };
 function setLayoutDir(dir){
-  layoutDir = dir;
-  document.body.classList.toggle("layout-tb", dir==="tb");
-  document.querySelectorAll("#dir-toggle [data-dir]").forEach(b=>{
-    b.classList.toggle("on", b.dataset.dir===dir);
-  });
+  layoutDir = dir==="tb" ? "tb" : "lr";
+  document.body.classList.toggle("layout-tb", layoutDir==="tb");
+  const el = document.getElementById("dir-toggle");
+  if(el){
+    el.dataset.dir = layoutDir;
+    el.classList.toggle("is-tb", layoutDir==="tb");
+    el.setAttribute("aria-pressed", layoutDir==="tb" ? "true" : "false");
+    el.querySelectorAll(".dir-opt").forEach(opt=>{
+      opt.classList.toggle("on", opt.dataset.dir===layoutDir);
+    });
+  }
   renderAll();
   fitView();
 }
 document.getElementById("dir-toggle").onclick = e=>{
-  const b = e.target.closest("[data-dir]");
-  if(b) setLayoutDir(b.dataset.dir);
+  const opt = e.target.closest(".dir-opt");
+  if(opt && opt.dataset.dir) setLayoutDir(opt.dataset.dir);
+  else setLayoutDir(layoutDir==="tb" ? "lr" : "tb");
 };
 document.getElementById("lang-toggle").onclick = e=>{
   e.stopPropagation();

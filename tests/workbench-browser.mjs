@@ -49,11 +49,12 @@ async function chromeHeights(target) {
     const els = [
       document.querySelector('header.top h1.repo-switch'),
       document.querySelector('.nav-crumbs .here'),
+      document.getElementById('dir-toggle'),
       document.getElementById('rel-toggle'),
       document.getElementById('btn-auth'),
       document.getElementById('btn-bugs'),
       document.getElementById('btn-settings'),
-    ].filter(Boolean);
+    ].filter(el => el && el.offsetParent);
     return els.map(el => Math.round(el.getBoundingClientRect().height));
   });
 }
@@ -297,6 +298,17 @@ try {
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
     await child.click();
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
+    const dirToggle = preview.locator('#dir-toggle');
+    await dirToggle.waitFor({ state: 'visible' });
+    assert.equal(await preview.locator('#dir-toggle button').count(), 0);
+    assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
+    await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
+    assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
+    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), false);
+    assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), false);
+    recordCheck('layout-dir-slide');
     await preview.locator('#btn-auth').click();
     await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
