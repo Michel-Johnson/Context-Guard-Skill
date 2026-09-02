@@ -1,0 +1,236 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { startServer } from '../scripts/workbench/server.mjs';
+import { encode, pause, hash } from '../scripts/workbench/io.mjs';
+import { isolatedEnvironment, run } from '../.github/scripts/client-protocol.mjs';
+import { chromium } from 'playwright';
+const workspace = fileURLToPath(new URL('../', import.meta.url));
+const output = path.resolve(process.argv[2] || `output/playwright/browser-ci/${Date.now()}-${randomUUID()}`);
+await fs.mkdir(output, { recursive: true });
+// Keep fixtures outside the checkout: init resolves a nested directory to its Git root.
+const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-browser-ci-'));
+const root = path.join(sandbox, 'project'), ctx = path.join(root, '.codex/context');
+const env = isolatedEnvironment(sandbox);
+const session = 'browser-test-agent';
+const mapPath = path.join(ctx, 'map.json');
+const node = { id: 'N1', title: '原始节点', purpose: '用于正式画布验证', kind: 'work', proposal: 'accepted', state: 'dirty', memories: [], ideas: [], bugs: [], dormant: [], files: [], owns: [], children: [] };
+const doc = { v: 1, project: 'browser-test', bootstrap: 'ready', extra: { preserved: true }, root: { ...node, id: 'T0', title: '浏览器验收', kind: 'module', children: [node] } };
+let running, browser, page, passed = false, stage = 'isolated-hook-bootstrap';
+const errors = [], checks = [];
+function recordCheck(name) { checks.push(name); console.log(`Browser check passed: ${name}`); }
+const read = async () => JSON.parse(await fs.readFile(mapPath, 'utf8'));
+async function until(fn, timeout = 6000) { const end = Date.now() + timeout; while (!await fn()) { if (Date.now() >= end) throw new Error('condition timed out'); await pause(25); } }
+const synchronized = () => page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+async function openSyncSettings() {
+  if (await page.locator('#btn-settings').getAttribute('aria-expanded') !== 'true') await page.locator('#btn-settings').click();
+  if (await page.locator('#cg-sync').getAttribute('open') === null) await page.locator('#cg-sync summary').click();
+}
+async function cli(action, input, extra = [], expectedError) {
+  // Exercise the installed/public command routing, not a direct store call.
+  const args = [path.join(workspace, 'bin/context-guard-skill.js'), 'map', action, '--root', root, '--session', session, ...extra];
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { cwd: root, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); let out = '', err = '';
+    const timer = setTimeout(() => { child.kill(); reject(new Error(`CLI ${action} timed out`)); }, 25000);
+    child.stdout.setEncoding('utf8').on('data', x => out += x); child.stderr.setEncoding('utf8').on('data', x => err += x);
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+    child.stdin.on('error', () => {});
+    child.on('close', code => {
+      clearTimeout(timer);
+      try {
+        const result = JSON.parse(out);
+        assert.equal(code, expectedError ? 1 : 0, `CLI ${action}: ${err || out}`);
+        if (expectedError) assert.equal(result.error?.code, expectedError);
+        else assert.equal(result.error ?? undefined, undefined, `CLI ${action} returned an error`);
+        resolve({ code, ...result });
+      } catch (error) { reject(error); }
+    });
+    child.stdin.end(input ? JSON.stringify(input) : undefined);
+  });
+}
+try {
+  await fs.mkdir(root);
+  const python = (process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']).find(command => {
+    const result = spawnSync(command, ['--version'], { env, encoding: 'utf8', windowsHide: true, timeout: 5000 });
+    return result.status === 0 && /^Python 3\./m.test(`${result.stdout}\n${result.stderr}`);
+  });
+  assert.ok(python, 'Python 3 is required for the real SessionStart hook');
+  await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+    cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, is_background_agent: true }), timeout: 20000,
+  });
+  const sessions = (await fs.readFile(path.join(ctx, 'sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+  assert.ok(sessions.some(event => event.session_id === session && event.event === 'session-start'));
+  assert.ok((await fs.stat(path.join(ctx, 'sessions', `${session}.md`))).isFile());
+  await run(process.execPath, [path.join(workspace, 'bin/context-guard-skill.js'), 'set-language', '--root', root, '--language', 'zh'], { cwd: root, env });
+  await fs.writeFile(mapPath, encode(doc));
+  running = await startServer({ root, port: 0 });
+  browser = await chromium.launch({ headless: true, env });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(15000);
+  page.on('pageerror', error => errors.push(error.message));
+  recordCheck('real-hook-session-bootstrap');
+  stage = 'bidirectional-sync';
+  const legacy = { repos: { 'browser-test': { live: { ...doc.root, title: '旧缓存绝不能回盖' } } }, repoId: 'browser-test' };
+  await page.addInitScript(value => localStorage.setItem('cg-workbench-maps-v16', JSON.stringify(value)), legacy);
+  await page.goto(running.state.url); await synchronized();
+  assert.equal((await read()).root.title, '浏览器验收'); recordCheck('legacy-cache-not-written');
+  await page.locator('.node[data-id="N1"]').click();
+  const title = page.locator('#detail [data-ed="title"]');
+  await title.fill('人类中文改名'); await title.press('Tab');
+  await until(async () => (await read()).root.children[0].title === '人类中文改名'); await synchronized(); recordCheck('browser-to-map');
+  assert.deepEqual((await read()).extra, { preserved: true });
+  const external = await read(); external.root.children[0].title = '外部文件更新'; await fs.writeFile(mapPath, encode(external));
+  await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent === '外部文件更新'); await synchronized(); recordCheck('file-to-browser');
+  await title.fill('连续输入一'); await title.fill('连续输入二'); await title.fill('连续输入最终值'); await title.press('Tab');
+  await until(async () => (await read()).root.children[0].title === '连续输入最终值'); await synchronized(); recordCheck('rapid-input');
+  await title.focus();
+  await title.dispatchEvent('compositionstart'); await title.fill('中文组合输入');
+  const beforeComposition = (await read()).root.children[0].title; await pause(250); assert.equal((await read()).root.children[0].title, beforeComposition);
+  await title.dispatchEvent('compositionend'); await title.press('Tab');
+  await until(async () => (await read()).root.children[0].title === '中文组合输入'); await synchronized(); recordCheck('ime');
+  const version = hash(await fs.readFile(mapPath));
+  await page.locator('#viewport').hover(); await page.mouse.wheel(0, 120); await pause(250);
+  assert.equal(hash(await fs.readFile(mapPath)), version); recordCheck('view-does-not-write');
+  await page.locator('#detail [data-act="grant"]').click();
+  await until(() => running.access.grants('browser-test-agent').includes('N1'));
+  let current = await cli('read'); assert.equal(current.code, 0); assert.equal(current.version, hash(await fs.readFile(mapPath))); recordCheck('human-to-agent-fence');
+  assert.equal((await cli('inbox', undefined, ['--start'])).initialized, true);
+  const staleVersion = current.version;
+  let result = await cli('apply', { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title: 'Agent CLI 更新' } }] });
+  assert.equal(result.committed, true); await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent === 'Agent CLI 更新'); recordCheck('agent-cli-to-page');
+  assert.equal((await cli('inbox')).pending, false, 'Own commits must not create a feedback loop');
+  await cli('apply', { baseVersion: staleVersion, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title: '旧版本不能覆盖' } }] }, [], 'VERSION_CONFLICT');
+  assert.equal((await read()).root.children[0].title, 'Agent CLI 更新'); recordCheck('stale-version-rejected');
+  stage = 'human-confirmation';
+  current = await cli('read');
+  const create = { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: 'Agent 提议' } }] };
+  result = await cli('apply', create); assert.equal(result.committed, true); assert.equal((await cli('apply', create)).duplicate, true);
+  assert.equal((await read()).root.children.filter(x => x.id === 'N2').length, 1);
+  assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
+  current = await cli('read');
+  await cli('apply', { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N2', fields: { proposal: 'accepted' } }] }, [], 'FORBIDDEN');
+  assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
+  assert.equal((await cli('inbox')).pending, false); recordCheck('retry-deduplication-and-no-self-confirmation');
+  await page.locator('.node[data-id="N2"]').click(); await page.locator('#detail [data-act="accept"]').click(); await synchronized();
+  await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.proposal === 'accepted'); recordCheck('proposal-human-confirmation');
+  stage = 'inbox-ack';
+  const confirmation = await cli('inbox');
+  assert.equal(confirmation.pending, true);
+  assert.equal(confirmation.changes.find(x => x.id === 'N2').fields.proposal.after.value, 'accepted');
+  assert.ok(confirmation.events.some(event => event.actor.kind === 'human'));
+  assert.equal((await cli('inbox')).receipt, confirmation.receipt);
+  await cli('ack', undefined, ['--receipt', 'invalid-receipt'], 'RECEIPT_MISMATCH');
+  await page.locator('#detail [data-act="child"]').click(); await page.locator('[data-ed="compose-title"]').fill('人类新增子节点'); await page.locator('[data-act="compose-ok"]').click(); await synchronized();
+  await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.children.some(x => x.title === '人类新增子节点')); recordCheck('human-create');
+  assert.equal((await cli('inbox')).receipt, confirmation.receipt, 'Unacknowledged delivery must survive a later edit');
+  assert.equal((await cli('ack', undefined, ['--receipt', confirmation.receipt])).acknowledged, true);
+  assert.equal((await cli('ack', undefined, ['--receipt', confirmation.receipt])).duplicate, true);
+  const later = await cli('inbox');
+  assert.equal(later.pending, true); assert.notEqual(later.receipt, confirmation.receipt);
+  assert.ok(later.changes.some(change => change.type === 'created' && change.title === '人类新增子节点'));
+  await cli('ack', undefined, ['--receipt', later.receipt]);
+  assert.equal((await cli('inbox')).pending, false); recordCheck('durable-inbox-exact-ack-later-edit-preserved');
+  const savedVersion = (await cli('read')).version;
+  await page.reload(); await synchronized();
+  assert.equal((await cli('read')).version, savedVersion);
+  await page.locator('.node[data-id="N2"]').click();
+  assert.equal(await page.locator('#detail [data-ed="title"]').textContent(), 'Agent 提议');
+  assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'accepted'); recordCheck('refresh-preserves-committed-state');
+  stage = 'conflict-and-recovery';
+  await page.locator('.node[data-id="N1"]').click();
+  const second = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); second.on('pageerror', e => errors.push(e.message));
+  await second.goto(running.state.url); await second.waitForSelector('#cg-sync[data-status="synced"]', { state: 'attached' }); await second.locator('.node[data-id="N1"]').click();
+  await title.dispatchEvent('compositionstart'); await title.fill('保留的输入法草稿');
+  await second.locator('#detail [data-ed="title"]').fill('另一个页面先保存'); await second.locator('#detail [data-ed="title"]').press('Tab');
+  await until(async () => (await read()).root.children[0].title === '另一个页面先保存');
+  await page.waitForSelector('#cg-sync[data-status="conflict"]', { state: 'attached' }); assert.equal(await title.textContent(), '保留的输入法草稿');
+  result = await cli('read', undefined, [], 'UI_PENDING'); recordCheck('multi-page-conflict-and-agent-fence');
+  await title.dispatchEvent('compositionend'); await openSyncSettings(); await page.locator('#cg-sync-reload').click(); await synchronized();
+  await second.close();
+  // A network failure retains the same request; retry saves it without duplication.
+  await page.route('**/api/commit', route => route.abort('connectionfailed'));
+  await title.fill('断线期间的草稿'); await title.press('Tab'); await page.waitForSelector('#cg-sync[data-status="offline"]', { state: 'attached' });
+  assert.notEqual((await read()).root.children[0].title, '断线期间的草稿');
+  await page.unroute('**/api/commit'); await openSyncSettings(); await page.locator('#cg-sync-retry').click(); await synchronized();
+  assert.equal((await read()).root.children[0].title, '断线期间的草稿'); recordCheck('network-retry');
+  const xss = await read(); xss.root.children[0].title = '<img src=x onerror="window.injected=true">'; await fs.writeFile(mapPath, encode(xss));
+  await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent?.startsWith('<img'));
+  assert.equal(await page.evaluate(() => !!window.injected), false); recordCheck('map-text-not-html');
+  // An existing page reconnects after server restart without losing its local draft.
+  const port = new URL(running.state.url).port; await running.close();
+  await page.waitForSelector('#cg-sync[data-status="offline"]', { state: 'attached' });
+  running = await startServer({ root, port: Number(port) });
+  await synchronized();
+  await title.fill('服务重启后保存'); await title.press('Tab'); await synchronized();
+  assert.equal((await read()).root.children[0].title, '服务重启后保存'); recordCheck('server-reconnect');
+  // Recovery import previews before writing, then applies only explicitly selected fields.
+  stage = 'migration-preview';
+  const migration = await read(); migration.root.children[0].purpose = '迁移已选择的用途';
+  const imported = path.join(sandbox, 'import.json'); await fs.writeFile(imported, encode(migration));
+  await page.locator('#cg-sync-file').setInputFiles(imported); await page.waitForSelector('dialog[open]');
+  assert.equal((await read()).root.children[0].purpose, '用于正式画布验证');
+  await page.locator('dialog input[type="checkbox"]').check(); await page.getByRole('button', { name: '提交已选差异' }).click();
+  await until(async () => (await read()).root.children[0].purpose === '迁移已选择的用途'); await synchronized();
+  await page.locator('#cg-sync-file').setInputFiles(imported); await page.waitForSelector('dialog[open]');
+  assert.equal(await page.locator('dialog input[type="checkbox"]').count(), 0); await page.getByRole('button', { name: '取消', exact: true }).click(); recordCheck('migration-preview-and-idempotence');
+  if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
+  // First attachments remain reachable without an always-visible attachment button.
+  stage = 'attachment-editing';
+  const attachmentFixture = await read();
+  attachmentFixture.root.children[0].memories = [{ text: '附件回归记忆', state: 'dirty', files: [] }];
+  attachmentFixture.root.children[0].ideas = [{ text: '附件回归想法', state: 'dirty', files: [] }];
+  await fs.mkdir(path.join(root, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(root, 'docs/attachment.txt'), 'Attachment fixture');
+  await fs.writeFile(mapPath, encode(attachmentFixture));
+  await page.waitForFunction(() => document.querySelector('#detail [data-ed="mem"]')?.textContent === '附件回归记忆'); await synchronized();
+  for (const kind of ['mem', 'idea']) {
+    if (await page.locator(`[data-fold="${kind}"]`).getAttribute('open') === null) await page.locator(`[data-fold="${kind}"] > summary`).click();
+  }
+  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  const transfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.setData('text/plain', 'docs/attachment.txt'); return data; });
+  await page.locator('#detail [data-ed="mem"]').dispatchEvent('drop', { dataTransfer: transfer });
+  await until(async () => (await read()).root.children[0].memories[0].files.length === 1); await synchronized();
+  assert.equal(await page.locator('#detail [data-act="ask-file"]').count(), 1);
+  assert.deepEqual((await read()).root.children[0].ideas[0].files, []);
+  await page.locator('#detail [data-act="rm-file"]').click();
+  await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
+  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await page.locator('.node[data-id="N2"]').click(); await page.locator('.node[data-id="N1"]').click();
+  await page.locator('#detail [data-ed="idea"]').evaluate(el => {
+    const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', 'docs/attachment.txt');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  });
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 1); await synchronized();
+  assert.deepEqual((await read()).root.children[0].memories[0].files, []);
+  assert.deepEqual((await read()).root.children.find(x => x.id === 'N2').ideas, []);
+  await page.locator('#detail [data-act="rm-file"]').click();
+  await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
+  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await transfer.dispose(); recordCheck('attachments-only-after-first-file');
+  await page.screenshot({ path: path.join(output, 'synced.png'), fullPage: true });
+  assert.deepEqual(errors, []);
+  passed = true;
+  console.log(JSON.stringify({ output, checks, errors }));
+} catch (e) {
+  if (page) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
+  // Only synthetic fixture text/errors; no HTTP headers, tokens, or user directories.
+  await fs.writeFile(path.join(output, 'failure.txt'), `stage=${stage}\n${e.stack}\n${JSON.stringify(errors)}`);
+  console.error(`Browser CI failed at ${stage}; fixture retained at ${sandbox}`);
+  throw e;
+} finally {
+  try { if (browser) await browser.close(); }
+  finally {
+    if (running) await running.close();
+    await fs.writeFile(path.join(output, 'results.json'), encode({ passed, stage, checks, errors }));
+    if (passed) {
+      const resolved = await fs.realpath(sandbox), temporary = await fs.realpath(os.tmpdir());
+      assert.equal(path.dirname(resolved), temporary);
+      assert.ok(path.basename(resolved).startsWith('cg-browser-ci-'));
+      await fs.rm(resolved, { recursive: true, force: true });
+    }
+  }
+}

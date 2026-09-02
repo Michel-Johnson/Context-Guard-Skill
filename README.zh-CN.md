@@ -21,9 +21,9 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 人在 `prototype/workbench.html` 里看图。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)）。在网页里改不会写回仓库。要改图：在对话里说，Agent 改文件再推，你再刷新页面。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
+**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)）。在网页里改不会写回仓库。需要改图时，在本地 Node 工作台确认提议。静态网页不承担保存；推送仍须明确授权。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
 
-**本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。同一台电脑上可以点「连接仓库」，把改动写回文件。
+**本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。Node 服务会自动把编辑保存到本地 map.json，也会把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
 
 ```bash
 context-guard workbench --root /path/to/project
@@ -193,3 +193,7 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 ```
 
 见 [`SKILL.md`](SKILL.md)（一页）和 `.codex/context/FIND.md`。
+
+## 本地工作台同步
+
+使用 `context-guard map read` 读取权威节点，`map apply` 提交操作。请求关联真实会话、基准内容版本和稳定操作编号。浏览器缓存只保存恢复草稿，静态页面只读。Hook 和上下文初始化仍需要 Python。详细命令、错误语义与旧缓存迁移见 [接口说明](references/workbench-interface.md)。

@@ -1,4 +1,15 @@
 export const packedFiles = [
+  "prototype/map-model.mjs",
+  "prototype/workbench-sync.mjs",
+  "references/workbench-interface.md",
+  "scripts/workbench/access.mjs",
+  "scripts/workbench/cli.mjs",
+  "scripts/workbench/inbox.mjs",
+  "scripts/workbench/io.mjs",
+  "scripts/workbench/projections.mjs",
+  "scripts/workbench/server.mjs",
+  "scripts/workbench/store.mjs",
+
   "README.md",
   "README.zh-CN.md",
   "SKILL.md",
@@ -16,6 +27,17 @@ export const packedFiles = [
 ];
 
 export const installedFiles = [
+  "prototype/map-model.mjs",
+  "prototype/workbench-sync.mjs",
+  "references/workbench-interface.md",
+  "scripts/workbench/access.mjs",
+  "scripts/workbench/cli.mjs",
+  "scripts/workbench/inbox.mjs",
+  "scripts/workbench/io.mjs",
+  "scripts/workbench/projections.mjs",
+  "scripts/workbench/server.mjs",
+  "scripts/workbench/store.mjs",
+
   "SKILL.md",
   "README.md",
   "README.zh-CN.md",
