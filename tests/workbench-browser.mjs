@@ -188,7 +188,10 @@ try {
   await fs.writeFile(mapPath, encode(attachmentFixture));
   await page.waitForFunction(() => document.querySelector('#detail [data-ed="mem"]')?.textContent === '附件回归记忆'); await synchronized();
   for (const kind of ['mem', 'idea']) {
-    if (await page.locator(`[data-fold="${kind}"]`).getAttribute('open') === null) await page.locator(`[data-fold="${kind}"] > summary`).click();
+    const fold = page.locator(`[data-fold="${kind}"]`);
+    if (await fold.evaluate(el => el.tagName === 'DETAILS') && await fold.getAttribute('open') === null) {
+      await fold.locator(':scope > summary').click();
+    }
   }
   assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
   const transfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.setData('text/plain', 'docs/attachment.txt'); return data; });

@@ -3545,8 +3545,10 @@ function adoptTree(tree){
   promoteFatWork(data);
   uniquifyIds(data);
   normalizeTree(data);
-  if(!window.__CG_SERVER) stampMapCompletion();
-  ensureDemoBugs(data);
+  if(!window.__CG_SERVER){
+    stampMapCompletion();
+    ensureDemoBugs(data);
+  }
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -4233,6 +4235,12 @@ function walkAll(node, fn, parents=[]){
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
 function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+function sessionColor(name){
+  const pal=["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
+  let h=0;
+  String(name||"").split("").forEach(ch=>{ h=(h*33+ch.charCodeAt(0))|0; });
+  return pal[Math.abs(h)%pal.length];
+}
 
 function bugSessionsOf(bug){
   if(!bug) return [];
