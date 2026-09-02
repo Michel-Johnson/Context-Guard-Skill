@@ -29,15 +29,16 @@ export async function generateProjections(root, doc, version, isCurrent = () => 
     const chain = [id]; let ancestor = parent;
     while (ancestor) { chain.unshift(ancestor.id); ancestor = index.get(ancestor.id).parent; }
     for (const owned of node.owns || []) owns.push({ path: owned, node: id, title: node.title, kind: node.kind, card: `.codex/context/cards/${id}.md`, chain });
-    const memories = [], ideas = [], nodeBugs = [];
+    const memories = [], ideas = [], nodeTodos = [], nodeBugs = [];
     for (const { node: source } of index.values()) {
       if (source.proposal === 'cancelled') continue;
       const applies = item => source.id === id || (Array.isArray(item.also) ? item.also : String(item.also || '').split(/[,，]/).map(x => x.trim())).includes(id);
       for (const item of source.memories || []) if (applies(item)) memories.push(`- ${item.text || ''}${source.id === id ? '' : ` (from ${source.id})`}`);
+      for (const item of source.todos || []) if (applies(item)) nodeTodos.push(`- ${item.id}: ${item.title || ''} [${item.status || 'pending'}]${source.id === id ? '' : ` (from ${source.id})`}`);
       for (const item of source.bugs || []) if (applies(item)) nodeBugs.push(`- ${item.id}: ${item.title || ''} [${item.status || 'open'}] → .codex/context/bugs/${item.id}.md`);
     }
     for (const item of node.ideas || []) ideas.push(`- ${item.text || ''}`);
-    const body = `${start}\n# ${id} ${node.title}\n\n- sourceVersion: ${version}\n- kind: ${node.kind || ''}\n- state: ${node.state || ''}\n- proposal: ${node.proposal || ''}\n- origin: ${node.origin || ''}\n- parent: ${parent?.id || '(root)'}\n- chain: ${chain.join(' > ')}\n- purpose: ${node.purpose || ''}\n- owns: ${(node.owns || []).join(', ')}\n\n## 记忆\n${memories.join('\n')}\n\n## Idea\n${ideas.join('\n')}\n\n## Bug\n${nodeBugs.join('\n')}\n\n## 孩子\n${[...(node.children || []), ...(node._inbox || [])].filter(x => x.proposal !== 'cancelled').map(x => `- ${x.id} ${x.title}`).join('\n')}\n${end}`;
+    const body = `${start}\n# ${id} ${node.title}\n\n- sourceVersion: ${version}\n- kind: ${node.kind || ''}\n- state: ${node.state || ''}\n- proposal: ${node.proposal || ''}\n- origin: ${node.origin || ''}\n- parent: ${parent?.id || '(root)'}\n- chain: ${chain.join(' > ')}\n- purpose: ${node.purpose || ''}\n- owns: ${(node.owns || []).join(', ')}\n\n## 记忆\n${memories.join('\n')}\n\n## Idea\n${ideas.join('\n')}\n\n## TODO\n${nodeTodos.join('\n')}\n\n## Bug\n${nodeBugs.join('\n')}\n\n## 孩子\n${[...(node.children || []), ...(node._inbox || [])].filter(x => x.proposal !== 'cancelled').map(x => `- ${x.id} ${x.title}`).join('\n')}\n${end}`;
     const file = path.join(cards, id + '.md');
     const old = await fs.readFile(file, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
     const a = old.indexOf(start), b = old.indexOf(end);

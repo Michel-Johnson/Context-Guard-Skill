@@ -22,9 +22,11 @@ session. Only IDs actually recorded by a lifecycle hook can register as an Agent
 Do not substitute the visible demo session label or invent a human identity.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
-page or unsaved draft returns `UI_PENDING`. It is not safe to proceed by reading a
-stale card. A read describes that moment, not a lock held throughout the model's
-reasoning. Always pass its `version` when submitting the next change.
+connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
+from the fence; their browser recovery copy does not block the authoritative map. It
+is not safe to proceed by reading a stale card. A read describes that moment, not a
+lock held throughout the model's reasoning. Always pass its `version` when submitting
+the next change.
 
 ## Submit operations
 
@@ -74,6 +76,28 @@ Human scope grants are explicit node IDs. Granting a child does not implicitly
 grant ancestors. The workbench can grant a module's current descendants; future
 children do not silently acquire permission. Revocation applies to queued writes
 before they commit. Confirmation and scope grant are distinct actions.
+
+## Archive-to-Map reconciliation
+
+`archive-session` is the normal Agent completion path. Its `--files` values must be
+repo-relative files actually changed by that Agent. Before writing the Session archive,
+it performs one versioned Map reconciliation:
+
+- Files covered by `owns` add the archive summary as one memory on the longest-matching
+  node. Exact-file ownership wins over directory ownership.
+- Files with no owner create one deterministic `proposed` work node under the root with
+  the files in `owns`. The Agent cannot accept that proposal.
+- The Session ID, normalized file set, and archive content form the idempotency key, so
+  retrying the same archive cannot duplicate memories or nodes. Later work in the same
+  Session may add another memory for the same files when its archive content differs.
+- Existing-node memories require that Session's normal node grant. Missing grants,
+  pending page edits, invalid paths, and version conflicts fail visibly and leave the
+  Session archive unwritten so the same command can be retried.
+
+The underlying command is `context-guard map reconcile --root <project> --session
+<actual-session-id> --input <json>`. Agents normally use `archive-session` instead of
+calling it directly. It derives operations from the current Map and commits them through
+the same local protocol; it never reads or updates a legacy roadmap file.
 
 ## States, errors and recovery
 

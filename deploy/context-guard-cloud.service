@@ -1,0 +1,20 @@
+[Unit]
+Description=Context Guard multi-project cloud workbench
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/context-guard-cloud
+Environment=NODE_ENV=production
+Environment=CONTEXT_GUARD_CLOUD_HOST=0.0.0.0
+Environment=CONTEXT_GUARD_CLOUD_PORT=8788
+Environment=CONTEXT_GUARD_CLOUD_DATA=%h/context-guard-cloud-data
+EnvironmentFile=-%h/.config/context-guard-cloud.env
+ExecStart=/usr/bin/env node %h/context-guard-cloud/scripts/cloud/server.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

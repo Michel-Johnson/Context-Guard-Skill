@@ -157,6 +157,8 @@ async function main() {
   const claudeSettings = readJson(path.join(homes.claude, "settings.json"));
   assert.deepEqual(claudeSettings.permissions, { allow: ["Read"] });
   assert.match(claudeSettings.hooks.SessionStart[0].hooks[0].command, /--platform claude/);
+  assert.equal(codexHooks.hooks.SessionStart[0].hooks[0].timeout, 20);
+  assert.equal(cursorHooks.hooks.sessionStart[0].timeout, 20);
 
   const globalHomes = {
     CODEX_HOME: path.join(temporaryRoot, "global-codex"),
@@ -177,9 +179,20 @@ async function main() {
 
   const project = path.join(temporaryRoot, "project");
   const unrelatedCwd = path.join(temporaryRoot, "hook-cwd");
+  const hookCodexHome = path.join(temporaryRoot, "hook-codex-home");
   fs.mkdirSync(project, { recursive: true });
   fs.mkdirSync(unrelatedCwd, { recursive: true });
+  fs.mkdirSync(hookCodexHome, { recursive: true });
+  run(python, ["-c", [
+    "import sqlite3,sys",
+    "db=sqlite3.connect(sys.argv[1])",
+    "db.execute('CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, title TEXT, name TEXT)')",
+    "db.execute('INSERT INTO threads VALUES (?, ?, ?, ?)', ('session-two', sys.argv[2], 'first prompt', 'basic'))",
+    "db.commit()",
+    "db.close()"
+  ].join(";"), path.join(hookCodexHome, "state_5.sqlite"), project]);
   const hookEnvironment = {
+    CODEX_HOME: hookCodexHome,
     CONTEXT_GUARD_DISABLE_WORKBENCH: "1",
     CONTEXT_GUARD_HEADLESS: "1"
   };
@@ -236,6 +249,9 @@ async function main() {
   const secondResponse = JSON.parse(secondStart.stdout);
   assert.doesNotMatch(JSON.stringify(secondResponse), /ask the user whether/);
   assert.equal(readJson(path.join(project, ".codex", "context", "preferences.json")).record_language, "zh");
+  const namedSession = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
+    .trim().split(/\r?\n/).map(JSON.parse).findLast((event) => event.session_id === "session-two");
+  assert.equal(namedSession.thread_name, "basic", "Codex lifecycle records should include the real thread name");
 
   const userMessage = "请记住：CI 第一版只保护已经实现的安装流程。";
   run(
@@ -263,6 +279,16 @@ async function main() {
   assert.ok(sessionEvents.some((event) => event.event === "user-prompt-submit"));
   assert.ok(sessionEvents.some((event) => event.event === "stop"));
 
+  const fallbackProject = path.join(temporaryRoot, "fallback-project");
+  fs.mkdirSync(fallbackProject);
+  for (const [event, input] of [
+    ["session-start", { project_root: fallbackProject, is_background_agent: true }],
+    ["user-prompt-submit", { project_root: fallbackProject, prompt: "fallback session" }],
+    ["stop", { project_root: fallbackProject }]
+  ]) run(python, [hookScript, event, "--platform", "codex"], { env: hookEnvironment, input: JSON.stringify(input) });
+  const fallbackEvents = fs.readFileSync(path.join(fallbackProject, ".codex/context/sessions.jsonl"), "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(new Set(fallbackEvents.map(event => event.session_id)).size, 1, "hook processes without a client ID must share the current project session");
+
   workbenchProject = project;
   const automaticWorkbenchStart = run(
     python,
@@ -277,7 +303,22 @@ async function main() {
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
   assert.ok(automaticUrl, `SessionStart should inject the automatically started workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
+  const archivedMap = readJson(path.join(project, ".codex/context/map.json"));
+  const archiveProposal = archivedMap.root.children.find(node => node.proposal === "proposed" && node.owns?.includes("scripts/context_guard.py"));
+  assert.ok(archiveProposal, "archive-session should propose a node for files missing from the Map");
+  assert.equal(archiveProposal.proposedBy, "session-three");
+  assert.match(archiveProposal.memories[0].text, /CI 主链路通过/);
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.filter(node => node.id === archiveProposal.id).length, 1);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
+
+  const candidatesInput = path.join(temporaryRoot, "l1-candidates.json");
+  fs.writeFileSync(candidatesInput, JSON.stringify({ lenses: [{ id: "runtime", title: "运行视角", why: "按运行链路", candidates: [{ id: "hooks", title: "Hooks", purpose: "接入生命周期", owns: ["scripts/context_guard_hook.py"] }] }] }));
+  run(python, [contextScript, "write-candidates", "--root", project, "--input", candidatesInput]);
+  const candidates = readJson(path.join(project, ".codex/context/l1-candidates.json"));
+  assert.equal(candidates.v, 1); assert.equal(candidates.lenses[0].candidates[0].id, "hooks");
 
   const mapPath = path.join(project, ".codex", "context", "map.json");
   const map = readJson(mapPath);
@@ -293,6 +334,7 @@ async function main() {
     "--cause", "待确认",
     "--guard", "跨平台安装冒烟",
     "--node", "N1",
+    "--session", "session-three",
     "--keys", "install,hook"
   ]);
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "bugs", "B1.md")));
@@ -308,6 +350,19 @@ async function main() {
   assert.match(bugFix, /## 怎么修\n未修/);
   assert.match(bugFix, /## 怎么防\n跨平台安装冒烟/);
   assert.equal(readJson(mapPath).root.bugs[0].id, "B1");
+  assert.deepEqual(readJson(mapPath).root.bugs[0].sessions, ["session-three"]);
+  const invalidNode = spawnSync(python, [contextScript, "record-bad-case", "--root", project, "--title", "错误节点", "--phenomenon", "不能静默挂载", "--node", "missing", "--session", "session-three"], { encoding: "utf8", windowsHide: true });
+  assert.equal(invalidNode.status, 1); assert.match(invalidNode.stderr, /unknown map node/);
+  run(python, [contextScript, "record-bad-case-fix", "--root", project, "--case", "B1", "--method", "安装并校验生命周期 Hook", "--evidence", "三平台打包冒烟通过", "--status", "resolved", "--session", "session-three"]);
+  assert.equal(readJson(path.join(project, ".codex/context/bugs-index.json")).B1.status, "resolved");
+  assert.equal(readJson(mapPath).root.bugs[0].status, "resolved");
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/fixes/B1.md"), "utf8").replace(/\r\n/g, "\n"), /## 怎么修\n安装并校验生命周期 Hook/);
+  assert.equal(readJson(path.join(project, ".codex/context/bad-case-events.json")).at(-1).event, "fix");
+
+  for (const platform of ["codex", "cursor", "claude"]) {
+    const doctor = run(process.execPath, [cli, "doctor", "--platform", platform, "--root", project, "--json"], { env: clientEnvironment });
+    assert.equal(JSON.parse(doctor.stdout).ok, true);
+  }
 
   workbenchProject = project;
   const port = await freePort();

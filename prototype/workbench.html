@@ -112,7 +112,31 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
-.session-chip{display:none}
+.session-switch{position:relative;flex:0 0 auto}
+.session-chip{display:flex;align-items:center;gap:7px;max-width:260px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;box-shadow:none}
+.session-chip:hover,.session-chip[aria-expanded="true"]{background:var(--module-soft);transform:none;box-shadow:none}
+.session-chip #session-name{overflow:hidden;text-overflow:ellipsis}
+.session-status{width:15px;height:15px;display:inline-grid;place-items:center;flex:0 0 auto}
+.session-status.active{border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
+.session-status.stopped::before{content:"✓";color:var(--green);font-size:15px;font-weight:900;line-height:1}
+.session-status.empty{display:none}
+.session-menu{position:fixed;z-index:70;width:max-content;min-width:210px;max-width:min(360px,calc(100vw - 16px));padding:5px;background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow)}
+.session-menu[hidden]{display:none}
+.session-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:340px;padding:8px 10px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--ink);text-align:left;white-space:nowrap}
+.session-menu button:hover{background:var(--module-soft);transform:none;box-shadow:none}
+.session-menu button[aria-selected="true"]{background:var(--module-soft)}
+.session-menu .session-option-name{overflow:hidden;text-overflow:ellipsis}
+.bug-assign-dialog{width:min(520px,calc(100vw - 28px));padding:0;border:2px solid var(--line-ink);border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow)}
+.bug-assign-dialog::backdrop{background:rgba(35,31,25,.28)}
+.bug-assign-dialog form{display:grid;gap:14px;padding:20px}
+.bug-assign-dialog h3{margin:0;font-size:18px}
+.bug-assign-dialog label{display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--muted)}
+.bug-assign-dialog input,.bug-assign-dialog textarea,.bug-assign-dialog select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:9px 10px;font:inherit}
+.bug-assign-dialog textarea{min-height:84px;resize:vertical}
+.bug-assign-dialog .scope-warning{padding:10px 12px;border:1px solid #e0b84f;border-radius:8px;background:var(--yellow);font-size:12px;font-weight:700;line-height:1.45}
+.bug-assign-dialog .scope-warning[hidden]{display:none}
+.bug-assign-dialog .dialog-actions{display:flex;justify-content:flex-end;gap:8px}
+@keyframes session-spin{to{transform:rotate(360deg)}}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
 #btn-auth{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto;font-size:16px;line-height:1}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -505,15 +529,16 @@ body.auth-mode .node .add-child{display:none}
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
 body.bugs-open #viewport{right:var(--bug-panel-width)}
-body.bugs-open .drawer,
-body.bugs-open .drawer-split{display:none}
+body.bugs-open .drawer{display:none}
+body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
   padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;cursor:pointer;margin:0}
 .bug-panel li:hover{background:#fff}
 .bug-panel li.on{background:#fff3bf;box-shadow:inset 3px 0 0 var(--line-ink)}
-.bug-panel .bug-title{flex:1;min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
+.bug-panel .bug-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bug-panel .bug-title{min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bug-panel .bug-row{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;flex:0 0 auto;margin:0}
 .bug-panel .sess-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
@@ -521,6 +546,14 @@ body.bugs-open .drawer-split{display:none}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
 .bug-panel li:not(.on) .claim{pointer-events:none;text-decoration:none}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
+.bug-status{display:inline-flex;align-items:center;align-self:flex-start;max-width:100%;padding:2px 7px;border-radius:999px;
+  font-size:10.5px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bug-status.waiting{background:#fff3bf;color:var(--focus)}
+.bug-status.processing{background:var(--blue-soft);color:var(--module)}
+.bug-status.handoff{background:var(--red-soft);color:var(--red)}
+.bug-status.settling,.bug-status.fixed,.bug-status.resolved{background:var(--green-soft);color:var(--green)}
+.bug-status.deferred,.bug-status.wontfix{background:#eeeeec;color:var(--muted)}
+.bug-main>.bug-status{margin:3px 0 0 8px}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:#f7f1e6}
 body.bug-path-mode .node .add-child{display:none}
@@ -549,9 +582,9 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
-  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
-.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 12px);width:24px;bottom:0;
+  z-index:25;cursor:col-resize;touch-action:none;background:rgba(45,45,45,.001)}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:11px;width:2px;background:transparent}
 .drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
   background:var(--line-ink)}
 .drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
@@ -667,6 +700,22 @@ html[lang="en"] .bug-title.ed:empty:before{content:"Bug title"}
 html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .bug-pending .bug-title{text-decoration:line-through;color:var(--muted)}
 .summarizing{color:var(--green);font-size:12px;margin-top:3px}
+.todo-list{list-style:none;margin:8px 0 0;padding:0}
+.todo-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.todo-list li:first-child{border-top:0}
+.todo-check{width:18px;height:18px;padding:0;border:2px solid var(--module);border-radius:5px;box-shadow:none;
+  flex:0 0 auto;margin-top:5px;display:grid;place-items:center;background:#fff;color:#fff;font-size:12px}
+.todo-check:hover{transform:none;box-shadow:none;background:var(--blue-soft)}
+.todo-check.done{background:var(--green);border-color:var(--green)}
+.todo-main{flex:1;min-width:0}
+.todo-text{display:block;min-height:1.6em;padding:4px 6px;font-weight:700;font-size:13px;line-height:1.45}
+.todo-text.ed:empty,.todo-text.ed:focus{min-height:5em;padding:8px 10px;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
+.todo-text.ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
+.todo-text.ed:empty:before{content:"写一条 TODO";color:var(--muted);font-weight:600}
+html[lang="en"] .todo-text.ed:empty:before{content:"Write a TODO"}
+.todo-done .todo-text{text-decoration:line-through;color:var(--muted)}
+.todo-main>.bug-status{margin:3px 0 0 6px}
+.todo-inline-action{margin:5px 0 0 6px;padding:2px 7px;border-width:1px;box-shadow:none;font-size:11.5px}
 
 .dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);
   border-radius:6px;background:#fff;margin:8px 0}
@@ -723,8 +772,8 @@ html.cg-phone .drawer{
   padding:18px 14px calc(20px + var(--safe-bottom));
 }
 html.cg-phone .drawer-split{
-  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
-  cursor:row-resize;transform:translateY(8px);
+  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:24px;
+  cursor:row-resize;transform:translateY(12px);
 }
 html.cg-phone .drawer-split:before{
   top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
@@ -733,7 +782,7 @@ html.cg-phone .drawer-split:before{
 html.cg-phone .drawer-split:hover:before,html.cg-phone .drawer-split:focus-visible:before,
 html.cg-phone body.drawer-resizing .drawer-split:before{opacity:.7}
 html.cg-phone body.drawer-resizing{cursor:row-resize}
-html.cg-phone body.bugs-open .drawer-split{display:block}
+html.cg-phone body.bugs-open .drawer-split{display:block;right:0;width:100%}
 html.cg-phone .bug-panel{
   top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
   border-left:none;border-top:2px solid var(--line-ink);
@@ -864,9 +913,12 @@ html.design-gallery .g-mock{display:block !important;position:relative;top:auto;
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
-    <div class="session-chip" aria-hidden="true">
-      <b id="session-name">S-0823</b>
-      <b id="auth-count">0</b>
+    <div class="session-switch" id="session-switch">
+      <button type="button" class="session-chip" id="session-chip" aria-label="切换 Agent 会话" aria-haspopup="listbox" aria-expanded="false" aria-controls="session-menu">
+        <b id="session-name">暂无 Agent 会话</b>
+        <span id="session-status" class="session-status empty" aria-label="未挂载会话"></span>
+      </button>
+      <div class="session-menu" id="session-menu" role="listbox" aria-label="Agent 会话" hidden></div>
     </div>
     <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
     <span id="repo-status" class="repo-status" hidden></span>
@@ -1035,7 +1087,7 @@ const I18N = {
     workCopy2:"下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。",
     trayTitle:"已取消的提议",
     trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
-    openBugs:"未修的 Bug",
+    openBugs:"Bug 处理状态",
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
@@ -1044,7 +1096,12 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
-    leave:"离开", claim:"本会话在修",
+    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败",
+    allSessions:"全部 Session", globalSessionView:"全局视角", targetSession:"处理 Session", chooseSession:"请选择 Session",
+    bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
+    scopeRequired:"该 Session 尚未获得当前节点权限。确认后将授权当前节点、所有上级和直接关联节点，共 {n} 个新节点。",
+    bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
+    bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugDeferred:"已延期", bugWontFix:"不处理",
     exitChain:"退出链路",
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
@@ -1054,8 +1111,9 @@ const I18N = {
     acceptLayer:"本层全部加入", grant:"授权", enter:"进入",
     plusModule:"＋ 模块", plusChild:"＋ 子节点",
     moduleName:"模块名称", childName:"子节点名称",
-    memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
-    addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
+    memory:"记忆", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
+    addMem:"添加记忆", addIdea:"添加 Idea", addTodo:"添加 TODO", addBug:"添加 Bug",
+    todoPending:"待处理", todoProcessing:"处理中", todoDone:"已完成", todoScopeRequired:"需要授权", todoAuthorizeAndSend:"授权并发送", todoRetry:"重新发送",
     module:"模块", cancelledChip:"已取消",
     state_dirty:"未开发", state_untested:"已做未测", state_success:"测试通过", state_failed:"测试未过",
     stateHint_dirty:"还没开始开发",
@@ -1123,7 +1181,7 @@ const I18N = {
     workCopy2:"The notes below are a prepared demo. Real first-use decides L1 with you, then goes deeper; titles must be instantly readable. This demo still shows the agreed 4–8 trunk cards. This is not a live read of the repo.",
     trayTitle:"Cancelled proposals",
     trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
-    openBugs:"Open bugs",
+    openBugs:"Bug status",
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
@@ -1132,7 +1190,12 @@ const I18N = {
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
-    leave:"Leave", claim:"This session is fixing it",
+    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed",
+    allSessions:"All sessions", globalSessionView:"Global view", targetSession:"Target session", chooseSession:"Choose a session",
+    bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
+    scopeRequired:"This session cannot access the current node. Confirm to authorize the node, its ancestors, and direct relations ({n} new nodes).",
+    bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
+    bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugDeferred:"Deferred", bugWontFix:"Won't fix",
     exitChain:"Exit chain",
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
@@ -1142,8 +1205,9 @@ const I18N = {
     acceptLayer:"Add all in this layer", grant:"Authorize", enter:"Enter",
     plusModule:"＋ Module", plusChild:"＋ Child",
     moduleName:"Module name", childName:"Child name",
-    memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
-    addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
+    memory:"Memory", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
+    addMem:"Add memory", addIdea:"Add idea", addTodo:"Add TODO", addBug:"Add bug",
+    todoDescLabel:"TODO description", todoPending:"Pending", todoProcessing:"In progress", todoDone:"Completed", todoScopeRequired:"Authorization required", todoAuthorizeAndSend:"Authorize and send", todoRetry:"Retry",
     module:"Module", cancelledChip:"Cancelled",
     state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
     stateHint_dirty:"Development has not started",
@@ -1229,6 +1293,7 @@ function setUiLang(lang, persistPref){
 
 let NODE_SEQ = 400;
 let BUG_SEQ = 40;
+let TODO_SEQ = 1;
 function bumpNodeSeq(n){
   if(!n) return;
   const m = /^N(\d+)$/.exec(String(n.id||""));
@@ -1280,6 +1345,7 @@ function U(id, title, purpose, children, extra){
     state: extra.state || "dirty",
     memories: extra.memories || [],
     ideas: extra.ideas || [],
+    todos: extra.todos || [],
     bugs: extra.bugs || [],
     dormant: extra.dormant || [],
     children: children || [],
@@ -2842,8 +2908,9 @@ let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
 let foldIdea = false;
+let foldTodo = false;
 let foldBug = false;
-const uiLabels = ()=>({memory:t("memory"), ideas:t("ideas"), bugs:t("bugs"), inherited:t("inherited"), dormant:t("dormant")});
+const uiLabels = ()=>({memory:t("memory"), ideas:t("ideas"), todos:t("todos"), bugs:t("bugs"), inherited:t("inherited"), dormant:t("dormant")});
 const sessionAuth = new Set(["T0"]);
 
 function parkChildren(n){
@@ -2924,6 +2991,7 @@ function normalizeTree(n){
   fileList(n);
   if(!Array.isArray(n.memories)) n.memories = [];
   if(!Array.isArray(n.ideas)) n.ideas = [];
+  if(!Array.isArray(n.todos)) n.todos = [];
   if(!Array.isArray(n.bugs)) n.bugs = [];
   if(!Array.isArray(n.dormant)) n.dormant = [];
   /* 人自己放的卡不是提议。绿点只留给 Agent 生成、尚未点头的节点。 */
@@ -2946,6 +3014,7 @@ function ownerOf(node, kind, key){
   if(kind==="node") return node;
   if(kind==="mem") return node.memories[+key];
   if(kind==="idea") return node.ideas[+key];
+  if(kind==="todo") return (node.todos||[]).find(todo=>todo.id===key);
   if(kind==="bug") return (node.bugs||[]).find(b=>b.id===key);
   if(kind==="dorm") return node.dormant[+key];
   return null;
@@ -3538,7 +3607,7 @@ function adoptTree(tree){
   Object.keys(data).forEach(k=>delete data[k]);
   Object.assign(data, src);
   function defaults(n){
-    for(const k of ["memories","ideas","bugs","dormant","files","owns","children"]){ if(!n[k]) n[k]=[]; }
+    for(const k of ["memories","ideas","todos","bugs","dormant","files","owns","children"]){ if(!n[k]) n[k]=[]; }
     (n.children||[]).concat(n._inbox||[]).forEach(defaults);
   }
   defaults(data);
@@ -3591,6 +3660,50 @@ function renderRepoMenu(){
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
+function sessionMetaLabel(meta){
+  if(!meta) return "暂无 Agent 会话";
+  const raw = String(meta.id||"");
+  const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
+  return `${meta.platform}-${meta.name||short}`;
+}
+function positionSessionMenu(){
+  const chip = document.getElementById("session-chip");
+  const menu = document.getElementById("session-menu");
+  if(!chip || !menu || menu.hidden) return;
+  const rect = chip.getBoundingClientRect();
+  const width = Math.max(210, menu.offsetWidth||0);
+  menu.style.left = `${Math.max(8,Math.min(innerWidth-width-8,rect.right-width))}px`;
+  menu.style.top = `${Math.min(innerHeight-(menu.offsetHeight||0)-8,rect.bottom+6)}px`;
+}
+function closeSessionMenu(){
+  const menu = document.getElementById("session-menu");
+  const chip = document.getElementById("session-chip");
+  if(menu) menu.hidden = true;
+  if(chip) chip.setAttribute("aria-expanded","false");
+}
+function renderSessionMenu(){
+  const menu = document.getElementById("session-menu");
+  if(!menu) return;
+  const sessions = workbenchSync?.sessions||[];
+  const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(t("globalSessionView"))}">
+    <span class="session-option-name">${esc(t("allSessions"))}</span>
+  </button>`;
+  menu.innerHTML = all + sessions.map(meta=>{
+    const state = meta.status==="active" ? "active" : "stopped";
+    const stateLabel = state==="active" ? "工作中" : "已完成";
+    return `<button type="button" role="option" data-session="${escAttr(meta.id)}" aria-selected="${meta.id===workbenchSync.activeSession}" title="${escAttr(stateLabel)}">
+      <span class="session-option-name">${esc(sessionMetaLabel(meta))}</span>
+      <span class="session-status ${state}" aria-label="${stateLabel}"></span>
+    </button>`;
+  }).join("");
+  menu.querySelectorAll("[data-session]").forEach(button=>{
+    button.onclick = async ()=>{
+      await workbenchSync?.selectSession(button.dataset.session);
+      closeSessionMenu();
+    };
+  });
+  positionSessionMenu();
+}
 function closeSettings(){
   const menu = document.getElementById("settings-menu");
   const btn = document.getElementById("btn-settings");
@@ -3629,7 +3742,7 @@ function closeOverlay(){
 }
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
-  adoptTree({...next, memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
+  adoptTree({...next, memories:[], ideas:[], todos:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
   authUnlockAll();
   selectedId = "T0";
   viewRootId = "T0";
@@ -3677,6 +3790,7 @@ function proposedTree(r){
     owns: next.owns||[],
     memories: next.memories||[],
     ideas: next.ideas||[],
+    todos: next.todos||[],
     children: (next.children||[]).map(c=>asProposal(clone(c))),
     flows: clone(next.flows||[])
   };
@@ -3992,7 +4106,8 @@ function isProposed(n){
   if(n.origin==="human") return false;
   return true;
 }
-function isAuth(n){ return sessionAuth.has(n.id); }
+function isAllSessionsView(){ return workbenchSync?.isAllSessions?.()===true; }
+function isAuth(n){ return isAllSessionsView() || sessionAuth.has(n.id); }
 function authUnlockAll(){
   sessionAuth.clear();
   walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
@@ -4152,6 +4267,7 @@ function subtreeIds(n){
   return ids;
 }
 function moduleAuthState(n){
+  if(isAllSessionsView()) return "all";
   const ids = subtreeIds(n);
   const inCount = ids.filter(id=>sessionAuth.has(id)).length;
   if(inCount===0) return "none";
@@ -4160,6 +4276,7 @@ function moduleAuthState(n){
 }
 function toggleAuth(n){
   if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(isAllSessionsView()){ workbenchSync?.setStatus(workbenchSync.status,"请先选择具体 Session 再调整授权"); return; }
   if(isProposed(n)||isCancelled(n)) return;
   if(n.kind==="module"){
     const ids = subtreeIds(n);
@@ -4234,7 +4351,9 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+function currentSessionId(){ return isAllSessionsView() ? null : workbenchSync?.activeSession || null; }
+const bugDispatching = new Set();
+const todoDispatching = new Set();
 function sessionColor(name){
   const pal=["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
   let h=0;
@@ -4254,6 +4373,65 @@ function bugSessionsOf(bug){
   });
   return bug.sessions;
 }
+function sessionMetaOf(sessionId){
+  return (workbenchSync?.sessions||[]).find(item=>item.id===sessionId) || null;
+}
+function sessionDisplayName(sessionId){
+  const meta = sessionMetaOf(sessionId);
+  const raw = String(sessionId||"");
+  const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
+  return meta ? `${meta.platform}-${meta.name||short}` : short;
+}
+function bugProgress(bug){
+  const status = String(bug?.status||"open");
+  if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
+  if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
+  if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
+  if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
+  if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
+  const sessions = bugSessionsOf(bug);
+  if(!sessions.length){
+    if(bugDispatching.has(bug?.id)) return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSending")}`, detail:""};
+    if(bug?.dispatch?.status==="failed") return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSendFailed")}`, detail:""};
+    return {kind:"waiting", label:t("bugWaiting"), detail:""};
+  }
+  const sentAt = Date.parse(bug?.dispatch?.at||"");
+  const recentlySent = bug?.dispatch?.status==="sent" && Number.isFinite(sentAt) && Date.now()-sentAt<30000
+    ? bug.dispatch.session_id
+    : null;
+  const active = sessions.filter(id=>sessionMetaOf(id)?.status!=="stopped" || id===recentlySent);
+  const handling = active.length ? active : sessions;
+  const names = handling.map(sessionDisplayName);
+  const detail = names.join("、");
+  const compact = names.length>1 ? `${names[0]} +${names.length-1}` : names[0];
+  return {
+    kind:active.length?"processing":"handoff",
+    label:`${t(active.length?"bugProcessing":"bugHandoff")} · ${compact}`,
+    detail
+  };
+}
+function bugProgressHtml(bug){
+  const state = bugProgress(bug);
+  return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
+}
+function todoSessionsOf(todo){ return bugSessionsOf(todo); }
+function todoProgress(todo){
+  const status = String(todo?.status||"pending");
+  if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
+  if(status==="pending"){
+    if(todoDispatching.has(todo?.id)) return {kind:"waiting",label:`${t("todoPending")} · ${t("bugSending")}`,detail:""};
+    if(todo?.dispatch?.status==="scope-required") return {kind:"waiting",label:`${t("todoPending")} · ${t("todoScopeRequired")}`,detail:""};
+    if(todo?.dispatch?.status==="failed") return {kind:"waiting",label:`${t("todoPending")} · ${t("bugSendFailed")}`,detail:""};
+    return {kind:"waiting",label:t("todoPending"),detail:""};
+  }
+  const sessions = todoSessionsOf(todo);
+  const names = sessions.map(sessionDisplayName);
+  return {kind:"processing",label:names.length?`${t("todoProcessing")} · ${names[0]}${names.length>1?` +${names.length-1}`:""}`:t("todoProcessing"),detail:names.join("、")};
+}
+function todoProgressHtml(todo){
+  const state = todoProgress(todo);
+  return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
+}
 function openBugList(){
   const out=[];
   walkAll(data,(n,ps)=>{
@@ -4262,6 +4440,9 @@ function openBugList(){
       if(!b || b.status==="dormant") return;
       out.push({bug:b, node:n, path:[...ps, n]});
     });
+  });
+  ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(b=>{
+    if(b && b.status!=="dormant") out.push({bug:b, node:data, path:[data], unassigned:true});
   });
   return out;
 }
@@ -4278,7 +4459,9 @@ function focusedBug(){
   const n = getNode(bugFocus.nodeId);
   if(!n) return null;
   const b = (n.bugs||[]).find(x=>x.id===bugFocus.bugId);
-  return b ? {node:n, bug:b} : null;
+  if(b) return {node:n, bug:b, unassigned:false};
+  const loose = ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===bugFocus.bugId);
+  return loose ? {node:n, bug:loose, unassigned:true} : null;
 }
 function clearRelationMode(){
   if(!relationMode) return;
@@ -4334,14 +4517,236 @@ function openBugPanel(open){
   document.getElementById("bug-panel").classList.toggle("open", !!open);
   document.getElementById("btn-bugs").classList.toggle("on", !!open);
 }
-function toggleBugSession(node, bug){
-  if(!node || !bug) return;
-  const sid = currentSessionId();
-  const list = bugSessionsOf(bug);
-  const i = list.indexOf(sid);
-  if(i>=0) list.splice(i,1);
-  else list.push(sid);
+
+function sessionOptionsHtml(selected, requireChoice){
+  const empty = requireChoice ? `<option value="">${esc(t("chooseSession"))}</option>` : "";
+  return empty + (workbenchSync?.sessions||[]).map(meta=>
+    `<option value="${escAttr(meta.id)}" ${meta.id===selected?"selected":""}>${esc(sessionMetaLabel(meta))}</option>`
+  ).join("");
+}
+
+function scopePreview(plan){
+  const labels = (plan?.missing||[]).map(id=>getNodeAny(id)?.title||id);
+  const shown = labels.slice(0,8).join("、");
+  return shown + (labels.length>8?` 等 ${labels.length} 个节点`:"");
+}
+
+async function promptWorkAssignment(node, item=null, kind="bug"){
+  const fixedSession = currentSessionId();
+  const creating = !item;
+  const todo = kind==="todo";
+  const dialog = document.createElement("dialog");
+  dialog.className = "bug-assign-dialog";
+  dialog.innerHTML = `<form>
+    ${creating?`<label>${esc(t(todo?"todoDescLabel":"bugDescLabel"))}<textarea name="desc" required maxlength="10000"></textarea></label>`:""}
+    ${fixedSession
+      ? `<input type="hidden" name="session" value="${escAttr(fixedSession)}">`
+      : `<label>${esc(t("targetSession"))}<select name="session" required>${sessionOptionsHtml("",true)}</select></label>`}
+    <div class="scope-warning" data-scope hidden></div>
+    <div class="dialog-actions">
+      <button type="button" data-cancel>${esc(t("cancel"))}</button>
+      <button type="submit" class="primary" data-submit disabled>${esc(t("createAndSend"))}</button>
+    </div>
+  </form>`;
+  document.body.append(dialog);
+  const form = dialog.querySelector("form");
+  const select = form.elements.session;
+  const warning = dialog.querySelector("[data-scope]");
+  const submit = dialog.querySelector("[data-submit]");
+  let plan = null, generation = 0, settled = false;
+  const finish = value=>{
+    if(settled) return;
+    settled = true;
+    dialog.close();
+    dialog.remove();
+    resolveDialog(value);
+  };
+  let resolveDialog;
+  const result = new Promise(resolve=>{ resolveDialog=resolve; });
+  async function updatePlan(){
+    const sid = select.value;
+    const turn = ++generation;
+    plan = null; submit.disabled = true; warning.hidden = true;
+    if(!sid) return;
+    try{
+      const next = await workbenchSync.accessPlan(sid,node.id);
+      if(turn!==generation) return;
+      plan = next;
+      const count = next.missing?.length||0;
+      warning.hidden = count===0;
+      warning.textContent = count ? `${t("scopeRequired").replace("{n}",count)} ${scopePreview(next)}` : "";
+      submit.textContent = count?t("authorizeAndSend"):t("createAndSend");
+      submit.disabled = false;
+    }catch(error){
+      if(turn!==generation) return;
+      workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message);
+    }
+  }
+  select.onchange = updatePlan;
+  dialog.querySelector("[data-cancel]").onclick = ()=>finish(null);
+  dialog.addEventListener("cancel",e=>{ e.preventDefault(); finish(null); });
+  form.onsubmit = e=>{
+    e.preventDefault();
+    if(!plan || plan.sessionId!==select.value) return;
+    const desc = creating ? String(form.elements.desc.value||"").trim() : "";
+    const title = desc.split(/\r?\n/)[0].trim().slice(0,120);
+    if(creating && !desc){ form.elements.desc.focus(); return; }
+    finish({sessionId:select.value, plan, title, desc});
+  };
+  dialog.showModal();
+  if(creating) form.elements.desc.focus();
+  void updatePlan();
+  return result;
+}
+
+function promptBugAssignment(node,bug=null){ return promptWorkAssignment(node,bug,"bug"); }
+function promptTodoAssignment(node,todo=null){ return promptWorkAssignment(node,todo,"todo"); }
+
+async function dispatchBugToSession(node,bug,sessionId,plan){
+  if(!node || !bug || !sessionId || bugDispatching.has(bug.id)) return false;
+  bugDispatching.add(bug.id);
   renderAll();
+  try{
+    await workbenchSync.flush();
+    if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
+    await workbenchSync.sendBug(sessionId,node.id,bug.id);
+    const sessions = bugSessionsOf(bug);
+    if(!sessions.includes(sessionId)) sessions.push(sessionId);
+    bug.dispatch = {status:"sent",session_id:sessionId,at:new Date().toISOString()};
+    return true;
+  }catch(error){
+    bug.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    workbenchSync?.setStatus(workbenchSync.status,"Bug 信息发送失败");
+    return false;
+  }finally{
+    bugDispatching.delete(bug.id);
+    renderAll();
+    await workbenchSync?.flush();
+  }
+}
+
+async function createAssignedBug(node){
+  const assignment = await promptBugAssignment(node);
+  if(!assignment) return;
+  foldBug = true;
+  const bid = "B"+(BUG_SEQ++);
+  const bug = {id:bid,title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
+  node.bugs.push(bug);
+  await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
+}
+
+function nextTodoId(){
+  const used = new Set();
+  walkAll(data,n=>(n.todos||[]).forEach(todo=>used.add(todo.id)));
+  let id;
+  do { id = "TD"+(TODO_SEQ++); } while(used.has(id));
+  return id;
+}
+
+async function dispatchTodoToSession(node,todo,sessionId,plan){
+  if(!node || !todo || !sessionId || todoDispatching.has(todo.id)) return false;
+  todoDispatching.add(todo.id);
+  renderAll();
+  try{
+    await workbenchSync.flush();
+    if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
+    await workbenchSync.sendTodo(sessionId,node.id,todo.id);
+    const sessions = todoSessionsOf(todo);
+    if(!sessions.includes(sessionId)) sessions.push(sessionId);
+    todo.status = "processing";
+    todo.dispatch = {status:"sent",session_id:sessionId,at:new Date().toISOString()};
+    return true;
+  }catch(error){
+    todo.status = "pending";
+    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    workbenchSync?.setStatus(workbenchSync.status,"TODO 信息发送失败");
+    return false;
+  }finally{
+    todoDispatching.delete(todo.id);
+    renderAll();
+    await workbenchSync?.flush();
+  }
+}
+
+async function createAssignedTodo(node){
+  const assignment = await promptTodoAssignment(node);
+  if(!assignment) return;
+  foldTodo = true;
+  const todo = {id:nextTodoId(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
+  node.todos.push(todo);
+  await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
+}
+
+async function finalizeInlineTodo(node,todo){
+  const sessionId = todo?.target_session;
+  if(!node || !todo || !sessionId || !todo.desc) return;
+  try{
+    const plan = await workbenchSync.accessPlan(sessionId,node.id);
+    if(plan.missing?.length){
+      todo.dispatch = {status:"scope-required",session_id:sessionId,at:new Date().toISOString()};
+      renderAll();
+      await workbenchSync?.flush();
+      return;
+    }
+    await dispatchTodoToSession(node,todo,sessionId,plan);
+  }catch(error){
+    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    renderAll();
+    await workbenchSync?.flush();
+  }
+}
+
+async function sendPendingTodo(node,todo){
+  const sessionId = todo?.target_session || currentSessionId();
+  if(!sessionId) return;
+  try{
+    const plan = await workbenchSync.accessPlan(sessionId,node.id);
+    await dispatchTodoToSession(node,todo,sessionId,plan);
+  }catch(error){
+    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    renderAll();
+    await workbenchSync?.flush();
+  }
+}
+
+async function advanceTodo(node,todo){
+  if(!node || !todo || todo.draft || todoDispatching.has(todo.id)) return;
+  if(todo.status==="done"){
+    todo.status = todo.sessions?.length ? "processing" : "pending";
+    renderAll();
+    return;
+  }
+  if(todo.status==="processing"){
+    todo.status = "done";
+    renderAll();
+    return;
+  }
+  const assignment = await promptTodoAssignment(node,todo);
+  if(assignment) await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
+}
+
+async function toggleBugSession(node, bug){
+  if(!node || !bug) return;
+  let sid = currentSessionId();
+  const list = bugSessionsOf(bug);
+  const i = sid ? list.indexOf(sid) : -1;
+  if(i>=0){
+    list.splice(i,1);
+    if(bug.dispatch?.session_id===sid) delete bug.dispatch;
+    renderAll();
+    return;
+  }
+  let plan;
+  if(sid){
+    try{ plan = await workbenchSync.accessPlan(sid,node.id); }
+    catch(error){ workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message); return; }
+  }
+  if(!sid || plan?.missing?.length){
+    const assignment = await promptBugAssignment(node,bug);
+    if(!assignment) return;
+    sid = assignment.sessionId; plan = assignment.plan;
+  }
+  await dispatchBugToSession(node,bug,sid,plan);
 }
 function renderBugPanel(){
   const list = openBugList();
@@ -4359,28 +4764,26 @@ function renderBugPanel(){
     const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
+    const sending = bugDispatching.has(item.bug.id);
     const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
-    const claim = on
-      ? `<button type="button" class="claim" data-claim>${mine?t("leave"):t("claim")}</button>`
+    const claim = on && !item.unassigned
+      ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`
       : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
-      <span class="bug-title">${esc(title)}</span>
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
       ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
     </li>`;
   }).join("");
-  ul.querySelectorAll("li[data-node]").forEach(li=>{
+  ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
+    const item = list[index];
     li.onclick = e=>{
       if(e.target.closest("[data-claim]")) return;
-      enterBugPath(li.dataset.node, li.dataset.bug);
+      enterBugPath(item.node.id, item.bug.id);
     };
-  });
-  ul.querySelectorAll("[data-claim]").forEach(btn=>{
-    btn.onclick = e=>{
+    const claim = li.querySelector("[data-claim]");
+    if(claim) claim.onclick = async e=>{
       e.preventDefault(); e.stopPropagation();
-      const li = btn.closest("li");
-      const n = getNodeAny(li.dataset.node);
-      const b = n && (n.bugs||[]).find(x=>x.id===li.dataset.bug);
-      toggleBugSession(n, b);
+      await toggleBugSession(item.node, item.bug);
     };
   });
 }
@@ -4409,7 +4812,6 @@ function renderNav(){
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
-    document.getElementById("auth-count").textContent = sessionAuth.size;
     document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
@@ -4423,7 +4825,6 @@ function renderNav(){
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
-  document.getElementById("auth-count").textContent = sessionAuth.size;
   document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
@@ -4459,14 +4860,29 @@ document.getElementById("first-use-cut-back").onclick = ()=>{
 document.getElementById("repo-title").onclick = e=>{
   e.stopPropagation();
   closeSettings();
+  closeSessionMenu();
   document.getElementById("repo-menu").classList.toggle("open");
 };
-document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
+document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); closeSessionMenu(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
 document.getElementById("settings-wrap").onclick = e=>e.stopPropagation();
+document.getElementById("session-switch").onclick = e=>e.stopPropagation();
+document.getElementById("session-chip").onclick = e=>{
+  e.stopPropagation();
+  closeRepoMenu(); closeSettings();
+  const menu = document.getElementById("session-menu");
+  const open = menu.hidden;
+  if(!open){ closeSessionMenu(); return; }
+  renderSessionMenu();
+  menu.hidden = false;
+  e.currentTarget.setAttribute("aria-expanded","true");
+  positionSessionMenu();
+};
+window.addEventListener("resize",positionSessionMenu);
 document.getElementById("btn-settings").onclick = e=>{
   e.stopPropagation();
   closeRepoMenu();
+  closeSessionMenu();
   const menu = document.getElementById("settings-menu");
   const open = !menu.classList.contains("open");
   menu.classList.toggle("open", open);
@@ -5027,7 +5443,7 @@ function commitChild(node, title){
   const kind = composingKind==="module" ? "module" : "work";
   clearCompose();
   const child = {id:nextNodeId(), title:t, kind, origin:"human", proposal:"accepted", isNew:false, state:"dirty",
-    purpose:"", memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
+    purpose:"", memories:[], ideas:[], todos:[], bugs:[], dormant:[], files:[], owns:[], children:[]};
   if(!Array.isArray(parent.children)) parent.children = [];
   parent.children.push(child);
   sessionAuth.add(child.id);
@@ -5072,7 +5488,7 @@ function bindEdit(el, commit, multiline){
     const v=multiline?(el.innerText||"").replace(/\u00a0/g," ").trim():textOf(el);
     if(!blur && !v){ workbenchSync?.setInputDraft(draft()); return; }
     window.__CG_INPUT_COMMIT=!blur;
-    try { commit(v); } finally { window.__CG_INPUT_COMMIT=false; }
+    try { commit(v, blur); } finally { window.__CG_INPUT_COMMIT=false; }
     workbenchSync?.setInputDraft(el.dataset.ed==="compose-title" && composingId ? draft() : null); persist();
     if(blur) workbenchSync?.flush();
   }
@@ -5108,16 +5524,17 @@ function renderDetail(){
     const sid = currentSessionId();
     const sessions = bugSessionsOf(bug);
     const mine = bug && sessions.indexOf(sid)>=0;
+    const sending = bug && bugDispatching.has(bug.id);
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
-      <h2>${esc(bug && bug.title ? bug.title : "Bug")}</h2>
+      <h2>${esc(bug && bug.title ? bug.title : "Bug")}${bugProgressHtml(bug)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        <button type="button" class="quiet" data-act="claim">${mine?t("leave"):t("claim")}</button>
+        ${hit && hit.unassigned ? `<span class="muted">未挂节点</span>` : `<button type="button" class="quiet" data-act="claim" ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`}
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
-    if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
+    if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await toggleBugSession(hit && hit.node, bug); };
     return;
   }
 
@@ -5156,6 +5573,7 @@ function renderDetail(){
   const inhCount = PINNED.length + inherited.length + alsoMems.length;
   const bugRows = bugsFor(node);
   const openBugs = bugRows.map(r=>r.bug);
+  const nodeTodos = node.todos || (node.todos = []);
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
@@ -5167,20 +5585,36 @@ function renderDetail(){
         `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
+  const todoHtml = nodeTodos.length
+    ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
+        const done = todo.status==="done";
+        const needsAction = todo.dispatch?.status==="scope-required" || todo.dispatch?.status==="failed";
+        return `<li class="${done?"todo-done":""}">
+          <button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>
+          <div class="todo-main">
+            <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${esc(todo.desc||todo.title||"")}</div>
+            ${todo.draft?"":todoProgressHtml(todo)}
+            ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
+          </div>
+        </li>`;
+      }).join("")+`</ul>`
+    : "";
 
   const bugHtml = bugRows.length
     ? `<ul class="bug-list">`+bugRows.map(row=>{
         const b = row.bug;
+        const settled = ["pending","fixed","resolved","dormant"].includes(b.status);
         const title = row.home
           ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
           : `<div class="bug-title">${esc(b.title)}</div>`;
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
-        <li class="${b.status==='pending'?'bug-pending':''}">
-          <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
+        <li class="${settled?'bug-pending':''}">
+          <div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
+            ${bugProgressHtml(b)}
             ${attach}
           </div>
         </li>`;
@@ -5219,13 +5653,17 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
-    <section class="sec-block" data-fold="mem">
-      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} ＋</button>
+    <details class="fold" data-fold="mem" ${foldMem?"open":""}>
+      <summary><span>${labels.memory}${node.memories.length?" "+node.memories.length:""}</span><button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">＋</button></summary>
       ${memHtml}
-    </section>
+    </details>
     <section class="sec-block" data-fold="idea">
       <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} ＋</button>
       ${ideaHtml}
+    </section>
+    <section class="sec-block" data-fold="todo">
+      <button type="button" class="sec-add" data-act="add-todo" title="${escAttr(t("addTodo"))}">${labels.todos}${nodeTodos.length?" "+nodeTodos.length:""} ＋</button>
+      ${todoHtml}
     </section>
     <section class="sec-block" data-fold="bug">
       <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} ＋</button>
@@ -5247,6 +5685,8 @@ function renderDetail(){
     </details>`:""}`;
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
+  el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
+  el.querySelectorAll("[data-todo-send]").forEach(button=>button.onclick=()=>sendPendingTodo(node,node.todos.find(todo=>todo.id===button.dataset.todoSend)));
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
   bindSilent(q('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
@@ -5272,14 +5712,19 @@ function renderDetail(){
     const last = el.querySelector('[data-fold="idea"] .mem-list li:last-child .ed');
     if(last) last.focus();
   };
-  if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = (e)=>{
+  if(q('[data-act="add-todo"]')) q('[data-act="add-todo"]').onclick = async (e)=>{
     e.preventDefault(); e.stopPropagation();
-    foldBug = true;
-    const bid = "B"+(BUG_SEQ++);
-    node.bugs.push({id:bid, title:"", desc:"", status:"open", files:[], record:".codex/context/bugs/"+bid+".md"});
+    const sessionId = currentSessionId();
+    if(!sessionId){ await createAssignedTodo(node); return; }
+    foldTodo = true;
+    node.todos.push({id:nextTodoId(),title:"",desc:"",status:"pending",sessions:[],target_session:sessionId,draft:true});
     renderAll();
-    const last = document.querySelector(".bug-list .bug-title.ed:last-of-type, .bug-list li:last-child .bug-title");
+    const last = el.querySelector('[data-fold="todo"] .todo-list li:last-child .todo-text');
     if(last) last.focus();
+  };
+  if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = async (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    await createAssignedBug(node);
   };
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
@@ -5293,11 +5738,22 @@ function renderDetail(){
   });
 
   el.querySelectorAll("details.fold").forEach(d=>{
+    d.querySelector(":scope > summary")?.addEventListener("click",e=>{
+      if(e.target.closest("button")) return;
+      const next = !d.open;
+      if(d.dataset.fold==="inherited") foldInherited = next;
+      if(d.dataset.fold==="dormant") foldDormant = next;
+      if(d.dataset.fold==="mem") foldMem = next;
+      if(d.dataset.fold==="idea") foldIdea = next;
+      if(d.dataset.fold==="todo") foldTodo = next;
+      if(d.dataset.fold==="bug") foldBug = next;
+    });
     d.addEventListener("toggle", ()=>{
       if(d.dataset.fold==="inherited") foldInherited = d.open;
       if(d.dataset.fold==="dormant") foldDormant = d.open;
       if(d.dataset.fold==="mem") foldMem = d.open;
       if(d.dataset.fold==="idea") foldIdea = d.open;
+      if(d.dataset.fold==="todo") foldTodo = d.open;
       if(d.dataset.fold==="bug") foldBug = d.open;
     });
   });
@@ -5307,8 +5763,8 @@ function renderDetail(){
   };
   el.querySelectorAll("[data-ed]").forEach(ed=>{
     const kind = ed.dataset.ed;
-    const multiline = kind==="purpose" || kind==="dorm-exp" || kind==="idea";
-    bindEdit(ed, v=>{
+    const multiline = kind==="purpose" || kind==="dorm-exp" || kind==="idea" || kind==="todo-text";
+    bindEdit(ed, (v,blur)=>{
       if(kind==="title"){
         if(!v || v===node.title) return;
         node.title = v; renderAll(); return;
@@ -5325,6 +5781,18 @@ function renderDetail(){
         if(!v){ node.ideas.splice(i,1); renderAll(); return; }
         if(node.ideas[i].text===v) return;
         node.ideas[i].text = v; persist(); return;
+      }
+      if(kind==="todo-text"){
+        const todo = node.todos.find(item=>item.id===ed.dataset.todo);
+        if(!todo) return;
+        if(!v){ node.todos = node.todos.filter(item=>item.id!==todo.id); renderAll(); return; }
+        todo.desc = v;
+        todo.title = v.split(/\r?\n/)[0].trim().slice(0,120);
+        if(blur && todo.draft){
+          delete todo.draft;
+          setTimeout(()=>finalizeInlineTodo(node,todo),0);
+        }
+        persist(); return;
       }
       if(kind==="pinned"){
         const i = +ed.dataset.i;
@@ -5423,7 +5891,9 @@ function chromeTop(){
 }
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
+const BUG_W_KEY = "cg-bug-panel-width";
 const DRAWER_W_DEFAULT = 340;
+const BUG_W_DEFAULT = 240;
 const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
 function isPhoneLayout(){
   if(window.__CG_PHONE_FORCE===true) return true;
@@ -5450,10 +5920,15 @@ function defaultDrawerHeight(){
   return Math.round((window.innerHeight || 800) * 0.4);
 }
 function drawerHeightPx(){ return cssPx("--drawer-height", defaultDrawerHeight()); }
-function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", BUG_W_DEFAULT); }
+function bugsPanelOpen(){ return document.body.classList.contains("bugs-open") && !isPhoneLayout(); }
 function clampDrawerWidth(px){
   const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
   return Math.max(220, Math.min(max, Math.round(px)));
+}
+function clampBugPanelWidth(px){
+  const max = Math.max(220, Math.min(560, Math.floor(window.innerWidth * 0.55)));
+  return Math.max(180, Math.min(max, Math.round(px)));
 }
 function clampDrawerHeight(px){
   const top = chromeTop();
@@ -5477,10 +5952,24 @@ function applyDrawerHeight(px, save){
   }
   return h;
 }
+function applyBugPanelWidth(px, save){
+  const w = clampBugPanelWidth(px);
+  document.documentElement.style.setProperty("--bug-panel-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(BUG_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
 function restoreDrawerWidth(){
   try{
     const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
     if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function restoreBugPanelWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(BUG_W_KEY));
+    if(Number.isFinite(n)) applyBugPanelWidth(n, false);
   }catch(e){}
 }
 function restoreDrawerHeight(){
@@ -5505,9 +5994,18 @@ function syncSplitChrome(){
   el.setAttribute("aria-orientation", phone ? "horizontal" : "vertical");
   el.title = t(phone ? "splitTitlePhone" : "splitTitle");
 }
+function finishDrawerChrome(){
+  restoreDrawerWidth();
+  restoreDrawerHeight();
+  restoreBugPanelWidth();
+  bindDrawerSplit();
+  applyDrawerLayout();
+  syncChrome();
+}
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
-  if(!el) return;
+  if(!el || el.dataset.bound==="1") return;
+  el.dataset.bound = "1";
   let resizing = false;
   function move(e){
     if(!resizing) return;
@@ -5518,24 +6016,32 @@ function bindDrawerSplit(){
     }else{
       const x = e.clientX;
       if(!Number.isFinite(x)) return;
-      applyDrawerWidth(window.innerWidth - x, false);
+      if(bugsPanelOpen()) applyBugPanelWidth(window.innerWidth - x, false);
+      else applyDrawerWidth(window.innerWidth - x, false);
     }
   }
-  function stop(){
-    if(!resizing) return;
-    resizing = false;
-    document.body.classList.remove("drawer-resizing");
+  function unbindMove(){
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("mousemove", move, true);
     window.removeEventListener("pointerup", stop, true);
     window.removeEventListener("mouseup", stop, true);
     window.removeEventListener("pointercancel", stop, true);
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", stop);
+    el.removeEventListener("pointercancel", stop);
+    el.removeEventListener("lostpointercapture", stop);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
+    document.body.classList.remove("drawer-resizing");
+    unbindMove();
     if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx(), true);
     else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
   function start(e){
-    if(document.body.classList.contains("bugs-open") && !isPhoneLayout()) return;
     if(e.button!=null && e.button!==0) return;
     if(resizing && e.type==="mousedown") return;
     e.preventDefault();
@@ -5549,6 +6055,10 @@ function bindDrawerSplit(){
     window.addEventListener("pointerup", stop, true);
     window.addEventListener("mouseup", stop, true);
     window.addEventListener("pointercancel", stop, true);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", stop);
+    el.addEventListener("pointercancel", stop);
+    el.addEventListener("lostpointercapture", stop);
     if(e.pointerId!=null){
       try{ el.setPointerCapture(e.pointerId); }catch(err){}
     }
@@ -5558,6 +6068,7 @@ function bindDrawerSplit(){
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
     if(isPhoneLayout()) applyDrawerHeight(defaultDrawerHeight(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(BUG_W_DEFAULT, true);
     else applyDrawerWidth(DRAWER_W_DEFAULT, true);
     fitView();
   });
@@ -5572,7 +6083,9 @@ function bindDrawerSplit(){
     }
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     e.preventDefault();
-    applyDrawerWidth(drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step), true);
+    const delta = e.key==="ArrowLeft" ? step : -step;
+    if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx() + delta, true);
+    else applyDrawerWidth(drawerWidthPx() + delta, true);
     fitView();
   });
 }
@@ -5802,17 +6315,17 @@ async function boot(){
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
     notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
     document.body.append(notice);
-    await loadMapFromHttp(); renderAll(); return;
+    await loadMapFromHttp(); renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:(ids,session,meta,global)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?"stopped":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":"未挂载会话"; label.textContent=displayName; label.title=global?t("globalSessionView"):meta?.name||session||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
   const connected=await workbenchSync.start();
   if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
   // A local server owns exactly one project. Switching demo repositories is preview-only.
-  if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
+  if(window.__CG_SERVER || window.__CG_CLOUD_READONLY){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
   if(!window.__CG_SERVER){
     document.addEventListener("click",e=>{ const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel"); if(b){ e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly"); } },true);
   }
@@ -5830,11 +6343,7 @@ async function boot(){
   }
   syncThemePicks();
   renderAll();
-  restoreDrawerWidth();
-  restoreDrawerHeight();
-  bindDrawerSplit();
-  applyDrawerLayout();
-  syncChrome();
+  finishDrawerChrome();
   fitView();
   if(new URLSearchParams(location.search).has("settings")){
     const menu = document.getElementById("settings-menu");
@@ -5847,6 +6356,7 @@ const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
   new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
 }
+finishDrawerChrome();
 boot();
 </script>
 </body>

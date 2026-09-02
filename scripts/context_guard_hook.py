@@ -7,6 +7,7 @@ import argparse
 import json
 import hashlib
 import os
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -14,7 +15,7 @@ from pathlib import Path, PureWindowsPath
 from context_guard import append_session_event
 from context_guard import context_dir as context_folder
 from context_guard import configure_stdio, folder_root, init_context, is_context_guard_skill_path
-from context_guard import read_preferences, start_workbench
+from context_guard import read_json, read_preferences, start_workbench, write_json
 
 
 WORKSPACE_KEYS = {
@@ -159,15 +160,91 @@ def payload_value(payload: object, keys: tuple[str, ...]) -> str:
     return ""
 
 
-def session_id(payload: object, platform: str) -> str:
+def session_id(payload: object, platform: str, ctx: Path, event: str) -> str:
     value = payload_value(
         payload,
         ("session_id", "sessionId", "conversation_id", "conversationId", "generation_id"),
     )
-    if value:
-        return value
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{platform}-{stamp}-{os.getpid()}"
+    state_path = ctx / "private" / "hook-sessions.json"
+    state = read_json(state_path, {})
+    if not isinstance(state, dict):
+        state = {}
+    if not value and event not in {"session-start", "subagent-start"}:
+        stored = state.get(platform)
+        if isinstance(stored, str) and stored.strip():
+            value = stored.strip()
+    if not value:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        value = f"{platform}-{stamp}-{os.getpid()}"
+    if state.get(platform) != value:
+        state[platform] = value
+        write_json(state_path, state)
+    return value
+
+
+def normalized_path(value: str) -> str:
+    try:
+        return os.path.normcase(os.path.normpath(str(Path(value).expanduser().resolve())))
+    except (OSError, RuntimeError, ValueError):
+        return ""
+
+
+def codex_thread_name(root: Path, current_session_id: str) -> str:
+    """Read only the matching local Codex thread metadata, if available."""
+    codex_home = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
+    databases = [codex_home / "state_5.sqlite", codex_home / "sqlite" / "state_5.sqlite"]
+    expected_root = normalized_path(str(root))
+    for database in databases:
+        if not database.is_file():
+            continue
+        connection = None
+        try:
+            connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.5)
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(threads)")
+                if len(row) > 1
+            }
+            if not {"id", "cwd"}.issubset(columns):
+                continue
+            selected = [column for column in ("name", "title", "cwd") if column in columns]
+            row = connection.execute(
+                f"SELECT {', '.join(selected)} FROM threads WHERE id = ? LIMIT 1",
+                (current_session_id,),
+            ).fetchone()
+            if not row:
+                continue
+            values = dict(zip(selected, row))
+            if normalized_path(str(values.get("cwd") or "")) != expected_root:
+                continue
+            for field in ("name", "title"):
+                value = values.get(field)
+                if isinstance(value, str) and value.strip():
+                    return " ".join(value.strip().split())[:240]
+        except (OSError, sqlite3.Error):
+            continue
+        finally:
+            if connection is not None:
+                connection.close()
+    return ""
+
+
+def session_display_name(payload: object, platform: str, root: Path, current_session_id: str) -> str:
+    if platform == "codex":
+        value = codex_thread_name(root, current_session_id)
+        if value:
+            return value
+    return payload_value(
+        payload,
+        (
+            "thread_name",
+            "threadName",
+            "session_name",
+            "sessionName",
+            "conversation_title",
+            "conversationTitle",
+        ),
+    )[:240]
 
 
 def language_setup_context(root: Path, ctx: Path) -> str:
@@ -190,8 +267,12 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
         f"Context Guard is active for {root}.{workbench} "
         "Record a credible bad case with `context-guard record-bad-case --root "
         f"{quoted_root} --title <title> --phenomenon <what-failed> --trigger <trigger> "
-        "--cause <cause-or-pending> --guard <regression-guard> --keys <comma-separated>`; "
+        f"--cause <cause-or-pending> --guard <regression-guard> --keys <comma-separated> --session {json.dumps(current_session_id)}`; "
         "never store secrets in project context. "
+        "Before the final response, archive durable progress once with `context-guard archive-session --root "
+        f"{quoted_root} --session {json.dumps(current_session_id)} --summary <summary> --decisions <decisions> --next <next-steps> --files <comma-separated>`; "
+        "pass every repo-relative file changed by this Agent. Archive automatically records the summary on owning Map nodes and proposes a new node for uncovered files; "
+        "if authorization, UI synchronization, or version checks fail, report the failure and do not claim the Map was updated. Do not read or update legacy roadmap.md. "
         f"Before map work, run `context-guard map read --root {quoted_root} --session {json.dumps(current_session_id)} --node <id>`; "
         "this checks page drafts and returns the current version. For ongoing observation initialize `map inbox --start` once, "
         "then use `map inbox` or `map watch --wait-ms 40000`; report/process a pending receipt before `map ack --receipt <receipt>`. "
@@ -246,11 +327,18 @@ def main() -> int:
     payload = parse_hook_payload(raw)
     root, root_source = event_root(raw, Path.cwd())
     ctx = context_folder(root)
-    current_session_id = session_id(payload, platform)
 
     if is_context_guard_skill_path(root):
         hook_log("[context-guard] apparent root is the skill directory; skipping writes.")
         return hook_response(platform, event)
+    current_session_id = session_id(payload, platform, ctx, event)
+    current_session_name = session_display_name(payload, platform, root, current_session_id)
+
+    def session_details(details: dict[str, object] | None = None) -> dict[str, object]:
+        result = dict(details or {})
+        if current_session_name:
+            result["thread_name"] = current_session_name
+        return result
 
     if event in {"session-start", "subagent-start"}:
         created = init_context(root)
@@ -259,7 +347,7 @@ def main() -> int:
             event,
             platform,
             current_session_id,
-            {"root_source": root_source},
+            session_details({"root_source": root_source}),
         )
         url = None
         if event == "session-start" and not (
@@ -290,7 +378,7 @@ def main() -> int:
             event,
             platform,
             current_session_id,
-            {"message_status": status},
+            session_details({"message_status": status}),
         )
         hook_log(f"[context-guard] user-messages: {status}")
         map_file = ctx / "map.json"
@@ -300,7 +388,7 @@ def main() -> int:
 
     if event in {"stop", "subagent-stop"}:
         init_context(root)
-        append_session_event(root, event, platform, current_session_id)
+        append_session_event(root, event, platform, current_session_id, session_details())
         hook_log(
             "[context-guard] if this turn mattered, append sessions.jsonl and update bugs/tasks. "
             "Do not run Test Hub or Roadmap HTML."

@@ -120,6 +120,18 @@ def lookup(doc: dict, file: str) -> dict | None:
             if isinstance(b, dict) and b.get("status") != "dormant"
         ]
 
+    def todo_rows(n):
+        return [
+            {
+                "id": item.get("id"),
+                "title": item.get("title"),
+                "status": item.get("status") or "pending",
+                "sessions": item.get("sessions") or [],
+            }
+            for item in (n.get("todos") or [])
+            if isinstance(item, dict)
+        ]
+
     extra_bugs = []
     nid = node.get("id")
     for n, _ in walk_nodes(root):
@@ -166,6 +178,7 @@ def lookup(doc: dict, file: str) -> dict | None:
         "tie_ids": [n.get("id") for n in ties] if len(ties) > 1 else [],
         "memories": mem_rows(node),
         "also_memories": extra_mems,
+        "todos": todo_rows(node),
         "bugs": bug_rows(node),
         "also_bugs": extra_bugs,
         "ancestors": [
@@ -173,6 +186,7 @@ def lookup(doc: dict, file: str) -> dict | None:
                 "id": a.get("id"),
                 "title": a.get("title"),
                 "memories": mem_rows(a),
+                "todos": todo_rows(a),
                 "bugs": bug_rows(a),
             }
             for a in chain[:-1]
@@ -275,6 +289,15 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
     for m in node.get("ideas") or []:
         if isinstance(m, dict) and m.get("text"):
             ideas.append(f"- {m.get('text')}")
+    todos = []
+    for item in node.get("todos") or []:
+        if not isinstance(item, dict):
+            continue
+        extra = also_ids(item)
+        tag = f" · 也挂 {', '.join(extra)}" if extra else ""
+        todos.append(
+            f"- {item.get('id')}: {item.get('title') or ''} [{item.get('status') or 'pending'}]{tag}"
+        )
     bugs = []
     for b in node.get("bugs") or []:
         if not isinstance(b, dict) or b.get("status") == "dormant":
@@ -300,6 +323,11 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
                 bugs.append(
                     f"- [{bid}](../bugs/{bid}.md) → [经验](../fixes/{bid}.md) {b.get('title') or ''} · 主卡 {n.get('id')}"
                 )
+        for item in n.get("todos") or []:
+            if isinstance(item, dict) and nid in also_ids(item):
+                todos.append(
+                    f"- {item.get('id')}: {item.get('title') or ''} [{item.get('status') or 'pending'}] · 主卡 {n.get('id')}"
+                )
     rel_s = ", ".join(
         f"{r['id']}（{r['label']}）" if r.get("label") else r["id"] for r in related
     ) or "(none)"
@@ -320,6 +348,7 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
     ]
     if ideas:
         lines.extend(["## Idea", "", "\n".join(ideas), ""])
+    lines.extend(["## TODO", "", "\n".join(todos) if todos else "（无）", ""])
     lines.extend([
         "## Bug",
         "",
