@@ -69,16 +69,18 @@ export const getUsages = (language: Language) => localizedUsages[language];
 
 const conversationPace = {
   cameraStart: 150,
-  cameraDuration: 800,
+  cameraFrequency: 10,
+  replyCameraDelay: 1000,
+  replyCameraFrequency: 6,
+  replyContentDelay: 600,
   command: 280,
   commandInterval: 28,
   textInterval: 24,
-  replyCameraDuration: 750,
   activityInterval: 180,
 } as const;
 
 export type ConversationTiming = { [K in keyof typeof conversationPace]: number } & {
-  selected: number; typing: number; sent: number; reading: number;
+  selected: number; typing: number; inputComplete: number; sent: number; replyCameraAt: number; reading: number;
   response: number; result: number; end: number;
 };
 
@@ -89,12 +91,15 @@ export function conversationTiming(usage: Usage, client?: Client): ConversationT
   const selected = usage.continuation ? 0 : command + (client?.invocation ?? "/context-guard").length * conversationPace.commandInterval + 100;
   const typing = usage.continuation ? command : selected + 100;
   // 动作跟随文字完成时间，不让短回复也等待固定的长片段结束。
-  const sent = typing + (Array.from(usage.request).length + (usage.continuation ? 0 : 1)) * textInterval + 180;
-  const reading = sent + 150;
+  const inputComplete = typing + (Array.from(usage.request).length + (usage.continuation ? 0 : 1)) * textInterval;
+  const sent = inputComplete + 180;
+  // 最后一个字符出现后保留完整一秒，再缓慢从输入区移向回复区。
+  const replyCameraAt = inputComplete + conversationPace.replyCameraDelay;
+  const reading = replyCameraAt + conversationPace.replyContentDelay;
   const response = reading + Math.max(0, usage.activity.length - 1) * conversationPace.activityInterval + 180;
   const result = response + Array.from(usage.response).length * textInterval + 120;
   const hold = usage.opensWorkbench ? 1000 : Math.max(700, Math.min(1200, usage.response.length * 8));
-  return { ...conversationPace, textInterval, command, selected, typing, sent, reading, response, result, end: result + hold };
+  return { ...conversationPace, textInterval, command, selected, typing, inputComplete, sent, replyCameraAt, reading, response, result, end: result + hold };
 }
 
 export const usageTiming = conversationTiming(usages[0]);

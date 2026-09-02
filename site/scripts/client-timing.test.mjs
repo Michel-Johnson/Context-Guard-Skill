@@ -21,6 +21,8 @@ test("中英文四客户端在发送前打完命令和正文，反馈在章末�
           + typedText(invocationPrompt(client, usage.request).slice(client.invocation.length), at, t.typing, t.textInterval);
       assert.equal(text, usage.continuation ? usage.request : invocationPrompt(client, usage.request), client.id);
       assert.equal(typedText(usage.response, t.result, t.response, t.textInterval), usage.response);
+      assert.equal(t.replyCameraAt - t.inputComplete, 1000, client.id);
+      assert.ok(t.sent < t.replyCameraAt && t.replyCameraAt < t.reading, client.id);
       assert.ok(t.end - t.result >= 600);
       assert.ok(t.selected < t.typing && t.typing < t.sent && t.sent < t.response && t.result < t.end);
     }

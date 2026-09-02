@@ -6,8 +6,8 @@ import { advanceCamera, cameraSettled, frameCamera, nativeHeight, stillCamera } 
 const input = { x: 828, y: 650, width: 440, height: 118 };
 const reply = { x: 832, y: 90, width: 432, height: 240 };
 const near = (actual, expected, tolerance = 1e-8) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
-const progress = (state, target, ms, step = 16) => {
-  for (let elapsed = 0; elapsed < ms; elapsed += step) state = advanceCamera(state, target, Math.min(step, ms - elapsed));
+const progress = (state, target, ms, step = 16, frequency = 10) => {
+  for (let elapsed = 0; elapsed < ms; elapsed += step) state = advanceCamera(state, target, Math.min(step, ms - elapsed), frequency);
   return state;
 };
 
@@ -18,6 +18,8 @@ test("客户端保持 800px 原高；取景只有等比缩放，回复增长不�
   assert.match(css, /\.native-client-frame\s*\{[^}]*height: 800px;/);
   assert.doesNotMatch(css + viewport, /--native-window-height/);
   assert.match(viewport, /width: sourceWidth, height: nativeHeight/);
+  assert.match(viewport, /elapsed < timing\.replyCameraAt/);
+  assert.match(viewport, /timing\.replyCameraFrequency/);
   for (const width of [280, 320, 620, 930, 1280]) {
     const height = Math.min(700, Math.max(350, width * .625));
     for (const { sourceWidth, pane } of [
@@ -42,6 +44,16 @@ test("客户端保持 800px 原高；取景只有等比缩放，回复增长不�
       }
     }
   }
+});
+
+test("输入完成后停一秒，再用较慢速度移向回复", () => {
+  const typing = frameCamera(930, 580, 1280, input);
+  const reading = frameCamera(930, 580, 1280, reply);
+  const start = stillCamera(typing);
+  const regular = progress(start, reading, 700);
+  const slower = progress(start, reading, 700, 16, 6);
+  assert.ok(Math.abs(slower.pose.y - reading.y) > Math.abs(regular.pose.y - reading.y));
+  assert.ok(cameraSettled(progress(slower, reading, 3000, 16, 6), reading));
 });
 
 test("发送后连续向上取景，无瞬移或越过目标", () => {
