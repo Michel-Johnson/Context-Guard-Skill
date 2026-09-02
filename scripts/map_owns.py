@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
+import uuid
+from context_guard import run_node_workbench
 import sys
 from pathlib import Path
 
@@ -214,21 +217,22 @@ def build_owns_index(doc: dict) -> dict:
 
 
 def write_owns_index(root: Path) -> Path:
-    dest = root / ".codex" / "context" / "owns-index.json"
-    dest.write_text(
-        json.dumps(build_owns_index(load_map(root)), ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    return dest
+    write_cards(root)
+    return root / ".codex" / "context" / "owns-index.json"
 
 
 def stamp_map(root: Path) -> Path:
-    path = root / ".codex" / "context" / "map.json"
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    if doc.get("root"):
-        stamp_owns(doc["root"], CG_OWNS)
-    path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return path
+    snapshot = run_node_workbench(["map", "read", "--root", str(root)])
+    doc = snapshot["doc"]
+    operations = []
+    for node, _ in walk_nodes(doc["root"]):
+        owns = CG_OWNS.get(node["id"])
+        if owns is not None and owns != node.get("owns"):
+            operations.append({"type": "update", "id": node["id"], "fields": {"owns": owns}})
+    if operations:
+        run_node_workbench(["map", "apply", "--root", str(root)], {
+            "baseVersion": snapshot["version"], "operationId": str(uuid.uuid4()), "operations": operations})
+    return root / ".codex" / "context" / "map.json"
 
 
 def flow_neighbors(doc: dict, nid: str) -> list[dict]:
@@ -330,24 +334,8 @@ def card_markdown(node: dict, chain: list, doc: dict) -> str:
 
 
 def write_cards(root: Path) -> Path:
-    ctx = root / ".codex" / "context"
-    dest = ctx / "cards"
-    dest.mkdir(parents=True, exist_ok=True)
-    for old in dest.glob("*.md"):
-        old.unlink()
-    doc = load_map(root)
-    tree = doc.get("root") or doc
-    for node, chain in walk_nodes(tree):
-        if node.get("proposal") == "cancelled" or not node.get("id"):
-            continue
-        (dest / f"{node['id']}.md").write_text(
-            card_markdown(node, chain, doc), encoding="utf-8"
-        )
-    write_owns_index(root)
-    write_bugs_index(root)
-    write_tasks_index(root)
-    write_jump_index(root)
-    return dest
+    run_node_workbench(["map", "projections", "--root", str(root), "--wait"])
+    return root / ".codex" / "context" / "cards"
 
 
 def parse_md_fields(text: str) -> dict:
@@ -363,122 +351,31 @@ def parse_md_fields(text: str) -> dict:
 
 
 def write_bugs_index(root: Path) -> Path:
-    ctx = root / ".codex" / "context"
-    bugs_dir = ctx / "bugs"
-    index: dict = {}
-    if bugs_dir.is_dir():
-        for path in sorted(bugs_dir.glob("B*.md")):
-            fields = parse_md_fields(path.read_text(encoding="utf-8"))
-            bid = path.stem
-            title = fields.get("_title") or bid
-            if title.startswith(bid + " "):
-                title = title[len(bid) + 1 :]
-            keys = [k.strip() for k in (fields.get("keys") or "").split(",") if k.strip()]
-            index[bid] = {
-                "title": title,
-                "keys": keys,
-                "status": fields.get("status") or "",
-                "bug": f".codex/context/bugs/{bid}.md",
-                "fix": fields.get("fix") or f".codex/context/fixes/{bid}.md",
-                "card": fields.get("card") or "",
-            }
-    dest = ctx / "bugs-index.json"
-    dest.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return dest
+    write_cards(root)
+    return root / ".codex" / "context" / "bugs-index.json"
 
 
 def write_tasks_index(root: Path) -> Path:
-    ctx = root / ".codex" / "context"
-    tasks_dir = ctx / "tasks"
-    index: dict = {}
-    if tasks_dir.is_dir():
-        for path in sorted(tasks_dir.glob("J*.md")):
-            fields = parse_md_fields(path.read_text(encoding="utf-8"))
-            jid = path.stem
-            title = fields.get("_title") or jid
-            if title.startswith(jid + " "):
-                title = title[len(jid) + 1 :]
-            keys = [k.strip() for k in (fields.get("keys") or "").split(",") if k.strip()]
-            chain = [p.strip() for p in (fields.get("chain") or "").replace(">", " ").split() if p.strip()]
-            index[jid] = {
-                "title": title,
-                "keys": keys,
-                "task": f".codex/context/tasks/{jid}.md",
-                "chain": chain,
-                "card": fields.get("card") or "",
-            }
-    dest = ctx / "tasks-index.json"
-    dest.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return dest
+    write_cards(root)
+    return root / ".codex" / "context" / "tasks-index.json"
 
 
 def write_jump_index(root: Path) -> Path:
-    ctx = ctx_dir(root)
-    owns = []
-    map_path = ctx / "map.json"
-    if map_path.is_file():
-        doc = load_map(root)
-        tree = doc.get("root") or doc
-        for node, chain in walk_nodes(tree):
-            if node.get("proposal") == "cancelled" or not node.get("id"):
-                continue
-            ancestors = [n.get("id") for n in chain[:-1] if n.get("id")]
-            for owned in node.get("owns") or []:
-                owns.append(
-                    {
-                        "path": owned,
-                        "node": node.get("id"),
-                        "kind": node.get("kind"),
-                        "card": f".codex/context/cards/{node['id']}.md",
-                        "chain": ancestors,
-                    }
-                )
-    else:
-        for r in read_json(ctx / "owns-index.json", {"owns": []}).get("owns") or []:
-            if not r.get("path") or not r.get("node"):
-                continue
-            owns.append(
-                {
-                    "path": r.get("path"),
-                    "node": r.get("node"),
-                    "kind": r.get("kind"),
-                    "card": f".codex/context/cards/{r.get('node')}.md",
-                    "chain": r.get("chain") or [],
-                }
-            )
-    packed = {
-        "owns": owns,
-        "bugs": read_json(ctx / "bugs-index.json", {}),
-        "tasks": read_json(ctx / "tasks-index.json", {}),
-    }
-    dest = ctx / "jump-index.json"
-    dest.write_text(json.dumps(packed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return dest
+    write_cards(root)
+    return root / ".codex" / "context" / "jump-index.json"
 
 
 def load_packed(root: Path) -> dict:
     ctx = ctx_dir(root)
-    dest = ctx / "jump-index.json"
-    if dest.is_file():
-        return read_json(dest, {"owns": [], "bugs": {}, "tasks": {}})
-    owns = []
-    for r in read_json(ctx / "owns-index.json", {"owns": []}).get("owns") or []:
-        if not r.get("path") or not r.get("node"):
-            continue
-        owns.append(
-            {
-                "path": r["path"],
-                "node": r["node"],
-                "kind": r.get("kind"),
-                "card": f".codex/context/cards/{r['node']}.md",
-                "chain": r.get("chain") or [],
-            }
-        )
-    return {
-        "owns": owns,
-        "bugs": read_json(ctx / "bugs-index.json", {}),
-        "tasks": read_json(ctx / "tasks-index.json", {}),
-    }
+    version = hashlib.sha256((ctx / "map.json").read_bytes()).hexdigest()
+    status = read_json(ctx / "projection-status.json", {})
+    if status.get("status") != "ready" or status.get("sourceVersion") != version:
+        write_cards(root)
+    packed = read_json(ctx / "jump-index.json", {})
+    current = hashlib.sha256((ctx / "map.json").read_bytes()).hexdigest()
+    if packed.get("sourceVersion") != current:
+        raise ValueError("Map changed while reading indexes; read the current node with context-guard map read")
+    return packed
 
 
 def lookup_owns(rows: list, file: str) -> dict | None:
@@ -614,7 +511,7 @@ def jump(root: Path, *, path="", bug="", task="", last=False, packed=None) -> di
             lines = [ln for ln in sess.read_text(encoding="utf-8").splitlines() if ln.strip()]
         if not lines:
             return {"kind": "session", "open": [], "then": []}
-        row = json.loads(lines[-1])
+        row = next((value for value in (json.loads(line) for line in reversed(lines)) if value.get("event") != "maintenance"), {})
         open_files: list[str] = []
         then: list[str] = []
         for tid in row.get("tasks") or []:
@@ -626,9 +523,13 @@ def jump(root: Path, *, path="", bug="", task="", last=False, packed=None) -> di
         if not open_files:
             open_files = then[:2]
             then = then[2:]
+        if not open_files and row.get("session_id"):
+            session_file = ctx / "sessions" / f"{row['session_id']}.md"
+            if session_file.is_file():
+                open_files = [f".codex/context/sessions/{row['session_id']}.md"]
         return {
             "kind": "session",
-            "id": row.get("id"),
+            "id": row.get("session_id") or row.get("id"),
             "open": open_files[:3],
             "then": then[:6],
         }

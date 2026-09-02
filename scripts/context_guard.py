@@ -16,9 +16,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from datetime import datetime, timezone
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from socketserver import TCPServer
 from urllib.parse import unquote, urlsplit
 
 
@@ -95,16 +93,16 @@ FIND_MD = """# Four stores — jump small, then open one file
 1. Sessions — `sessions.jsonl` (append-only) and `sessions/{id}.md`
 2. Bugs — `bugs-index.json`, then `bugs/{id}.md` and `fixes/{id}.md`
 3. Tasks — `tasks/{id}.md`
-4. Map — workbench writes `map.json`; agent uses `owns-index.json` and `cards/`
+4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint.
 
 Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder.
-After the map changes: `python3 scripts/map_owns.py cards`.
+Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/workbench-interface.md.
 """
 
 ARCHITECTURE_MD = """# Architecture Map
 
 Status: pending
-Later sessions: open `.codex/context/map.json`. Do not re-analyze unless asked.
+Later sessions: use `context-guard map read --root <project> --session <actual-session-id> --node <id>`. Do not re-analyze unless asked.
 
 Last initialized: {today}
 """
@@ -278,7 +276,8 @@ def init_context(root: Path) -> list[Path]:
                 "bootstrap": "pending",
                 "updated": today,
                 "flows": [],
-                "root": None,
+                "project": root.name,
+                "root": {"id": "T0", "title": root.name, "kind": "module", "state": "dirty", "children": [], "memories": [], "ideas": [], "bugs": [], "dormant": [], "files": [], "owns": []},
             },
             ensure_ascii=False,
             indent=2,
@@ -385,29 +384,22 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+def run_node_workbench(args: list[str], payload: object = None) -> dict:
+    command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"), *args]
+    completed = subprocess.run(command, input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
+        text=True, encoding="utf-8", capture_output=True, timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    try:
+        result = json.loads(completed.stdout)
+    except ValueError as exc:
+        raise RuntimeError(completed.stderr or completed.stdout or "Node interface failed") from exc
+    if completed.returncode or result.get("error"):
+        raise RuntimeError(json.dumps(result, ensure_ascii=False))
+    return result
+
+
 def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str) -> None:
-    path = ctx / "map.json"
-    document = read_json(path, {})
-    if not isinstance(document, dict):
-        return
-    root = document.get("root")
-    target = find_map_node(root, node_id) if node_id else (root if isinstance(root, dict) else None)
-    if not isinstance(target, dict):
-        unassigned = document.get("unassigned_bugs")
-        if not isinstance(unassigned, list):
-            unassigned = []
-            document["unassigned_bugs"] = unassigned
-        unassigned[:] = [item for item in unassigned if not isinstance(item, dict) or item.get("id") != bug["id"]]
-        unassigned.append(bug)
-    else:
-        bugs = target.get("bugs")
-        if not isinstance(bugs, list):
-            bugs = []
-            target["bugs"] = bugs
-        bugs[:] = [item for item in bugs if not isinstance(item, dict) or item.get("id") != bug["id"]]
-        bugs.append(bug)
-    document["updated"] = datetime.now().strftime("%Y-%m-%d")
-    write_json(path, document)
+    run_node_workbench(["attach-bug", "--root", str(ctx.parent.parent)], {"node": node_id, "bug": bug})
 
 
 def record_bad_case(
@@ -426,6 +418,7 @@ def record_bad_case(
     bug_id = next_bug_id(ctx)
     key_list = [item.strip() for item in keys.split(",") if item.strip()]
     bug_path = ctx / "bugs" / f"{bug_id}.md"
+    fix_path = ctx / "fixes" / f"{bug_id}.md"
     card_path = f".codex/context/cards/{node}.md" if node else ""
     lines = [
         f"# {bug_id} {title.strip()}",
@@ -433,14 +426,30 @@ def record_bad_case(
         f"- node: {node or 'unassigned'}",
         f"- status: {status}",
         f"- 现象: {phenomenon.strip()}",
-        f"- 触发: {trigger.strip()}",
-        f"- 原因: {cause.strip() or '待确认'}",
-        f"- guard: {guard.strip() or '待补充'}",
         f"- keys: {', '.join(key_list)}",
+        f"- fix: .codex/context/fixes/{bug_id}.md",
     ]
     if card_path:
         lines.append(f"- card: {card_path}")
     bug_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    fix_lines = [
+        f"# {bug_id} {title.strip()}",
+        "",
+        f"- bug: .codex/context/bugs/{bug_id}.md",
+        f"- node: {node or 'unassigned'}",
+        f"- status: {status}",
+    ]
+    if card_path:
+        fix_lines.append(f"- card: {card_path}")
+    fix_lines.extend([
+        "", "## 触发", trigger.strip() or "待补充",
+        "", "## 根因", cause.strip() or "待确认",
+        "", "## 怎么修", "待记录修复方法" if status == "fixed" else "未修",
+        "", "## 怎么防", guard.strip() or "待补充",
+        "", "## 代码", "待补充",
+        "", "## 证据", "待补充",
+    ])
+    fix_path.write_text("\n".join(fix_lines) + "\n", encoding="utf-8")
 
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict):
@@ -511,69 +520,6 @@ def first_available_port(host: str, preferred: int) -> int:
     raise OSError(f"no available port from {preferred} to {preferred + 20}")
 
 
-class WorkbenchHandler(SimpleHTTPRequestHandler):
-    server_version = "ContextGuardWorkbench/1.0"
-
-    def log_message(self, _format: str, *_args: object) -> None:
-        return
-
-    def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
-        if urlsplit(self.path).path == "/__context_guard/health":
-            body = json.dumps(
-                {"ok": True, "root": str(self.server.project_root), "pid": os.getpid()},
-                ensure_ascii=False,
-            ).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        if urlsplit(self.path).path == "/":
-            self.send_response(302)
-            self.send_header("Location", "/prototype/workbench.html")
-            self.end_headers()
-            return
-        super().do_GET()
-
-    def translate_path(self, request_path: str) -> str:
-        raw_path = unquote(urlsplit(request_path).path).replace("\\", "/")
-        parts = [part for part in raw_path.split("/") if part not in {"", ".", ".."}]
-        if parts and parts[0] == "prototype":
-            base = self.server.skill_root.resolve()
-        elif parts[:2] == [".codex", "context"] and parts[2:] in [
-            ["map.json"],
-            ["preferences.json"],
-            ["l1-candidates.json"],
-        ]:
-            base = self.server.project_root.resolve()
-        else:
-            return str(self.server.project_root / ".codex" / "context" / "__not_found__")
-        candidate = base.joinpath(*parts).resolve()
-        try:
-            candidate.relative_to(base)
-        except ValueError:
-            return str(base / "__not_found__")
-        return str(candidate)
-
-
-class WorkbenchServer(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def server_bind(self) -> None:
-        # HTTPServer performs reverse DNS here. A loopback-only workbench does
-        # not need it, and macOS DNS lookup can stall before serving requests.
-        TCPServer.server_bind(self)
-        host, port = self.server_address[:2]
-        self.server_name = host
-        self.server_port = port
-
-    def __init__(self, address: tuple[str, int], root: Path):
-        self.project_root = root.resolve()
-        self.skill_root = context_guard_skill_root()
-        super().__init__(address, WorkbenchHandler)
-
-
 def workbench_url(host: str, port: int) -> str:
     return f"http://{host}:{port}/prototype/workbench.html"
 
@@ -586,23 +532,8 @@ def validate_workbench_host(host: str) -> None:
 def serve_workbench(root: Path, host: str, port: int) -> int:
     validate_workbench_host(host)
     init_context(root)
-    print(f"[context-guard] binding workbench at {host}:{port}", flush=True)
-    server = WorkbenchServer((host, port), root)
-    actual_port = int(server.server_address[1])
-    url = workbench_url(host, actual_port)
-    state = {"pid": os.getpid(), "root": str(root.resolve()), "url": url, "started": utc_now()}
-    write_json(workbench_state_path(root), state)
-    print(f"[context-guard] workbench: {url}", flush=True)
-    try:
-        server.serve_forever(poll_interval=0.2)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
-        current = read_json(workbench_state_path(root), {})
-        if isinstance(current, dict) and current.get("pid") == os.getpid():
-            workbench_state_path(root).unlink(missing_ok=True)
-    return 0
+    return subprocess.call(["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"),
+        "serve", "--root", str(root), "--host", host, "--port", str(port)])
 
 
 def maybe_open_browser(url: str, enabled: bool) -> None:
@@ -614,97 +545,24 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
         pass
 
 
-def start_workbench(
-    root: Path,
-    host: str = "127.0.0.1",
-    port: int = 8877,
-    open_browser: bool = True,
-) -> str | None:
+def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True) -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
     init_context(root)
-    current = running_workbench(root)
-    if current:
-        url = str(current["url"])
+    try:
+        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port)])
+        url = result["url"]
         maybe_open_browser(url, open_browser)
         return url
-
-    port = first_available_port(host, port)
-    command = [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "workbench",
-        "--root",
-        str(root.resolve()),
-        "--host",
-        host,
-        "--port",
-        str(port),
-        "--foreground",
-        "--no-open",
-    ]
-    kwargs: dict[str, object] = {
-        "cwd": str(root),
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "close_fds": True,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-    else:
-        kwargs["start_new_session"] = True
-    log_path = workbench_state_path(root).with_suffix(".log")
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    with log_path.open("w", encoding="utf-8") as log_file:
-        kwargs["stdout"] = log_file
-        kwargs["stderr"] = log_file
-        process = subprocess.Popen(command, **kwargs)
-    url = workbench_url(host, port)
-    deadline = time.monotonic() + 10
-    health = None
-    while time.monotonic() < deadline:
-        health = workbench_health(url, timeout=0.2)
-        if health and health.get("root") == str(root.resolve()):
-            maybe_open_browser(url, open_browser)
-            return url
-        if process.poll() is not None:
-            break
-        time.sleep(0.1)
-    exit_code = process.poll()
-    workbench_health(url, report_error=True)
-    if exit_code is None:
-        process.terminate()
-    detail = log_path.read_text(encoding="utf-8", errors="replace").strip()
-    print(
-        f"[context-guard] workbench startup failed; exit={exit_code}; "
-        f"health={health!r}; state={read_json(workbench_state_path(root), {})!r}; "
-        f"expected_root={str(root.resolve())!r}; log: {log_path}"
-        + (f"\n{detail[-2000:]}" if detail else ""),
-        file=sys.stderr,
-    )
-    return None
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        print(f"[context-guard] Node workbench: {exc}", file=sys.stderr)
+        return None
 
 
 def stop_workbench(root: Path) -> bool:
-    state = running_workbench(root)
-    if not state:
-        workbench_state_path(root).unlink(missing_ok=True)
-        return False
-    pid = state.get("pid")
-    if not isinstance(pid, int) or pid == os.getpid():
-        return False
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError:
-        return False
-    for _ in range(20):
-        if not workbench_health(str(state["url"]), timeout=0.1):
-            break
-        time.sleep(0.1)
-    workbench_state_path(root).unlink(missing_ok=True)
-    return True
+    result = run_node_workbench(["workbench", "--root", str(root), "--stop"])
+    return bool(result.get("stopped"))
 
 
 def show_roadmap(root: Path, should_open: bool) -> int:

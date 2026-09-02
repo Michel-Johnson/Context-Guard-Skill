@@ -6,7 +6,14 @@ import subprocess
 import sys
 
 TEST_MARK = "test-layout"
-PRODUCT_TESTS = {"tests/ci-smoke.mjs"}
+PRODUCT_TESTS = {
+    "tests/ci-smoke.mjs",
+    "tests/workbench-sync.test.mjs",
+    "tests/workbench-inbox.test.mjs",
+    "tests/workbench-browser.mjs",
+    "tests/crash-worker.mjs",
+    "tests/win-file-lock.py",
+}
 PRODUCT_FORBIDDEN = (
     "tests/",
     "fixtures/",

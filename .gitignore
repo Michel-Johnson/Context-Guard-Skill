@@ -27,3 +27,7 @@ coverage/
 fixtures/
 tests/local/
 workbench-global.png
+
+# Local dependencies and generated CI evidence never ship.
+node_modules/
+output/
