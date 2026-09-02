@@ -5260,15 +5260,15 @@ function renderDetail(){
       </div>`:""}
     ${filesHtml}
     <section class="sec-block" data-fold="mem">
-      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} +</button>
+      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} ＋</button>
       ${memHtml}
     </section>
     <section class="sec-block" data-fold="idea">
-      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} +</button>
+      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} ＋</button>
       ${ideaHtml}
     </section>
     <section class="sec-block" data-fold="bug">
-      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} +</button>
+      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} ＋</button>
       ${bugHtml}
     </section>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
