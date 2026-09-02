@@ -18,7 +18,7 @@ const root = path.join(sandbox, 'project'), ctx = path.join(root, '.codex/contex
 const env = isolatedEnvironment(sandbox);
 const session = 'browser-test-agent';
 const mapPath = path.join(ctx, 'map.json');
-const node = { id: 'N1', title: '原始节点', purpose: '用于正式画布验证', kind: 'work', proposal: 'accepted', state: 'dirty', memories: [], ideas: [], bugs: [], dormant: [], files: [], owns: [], children: [] };
+const node = { id: 'N1', title: '原始节点', purpose: '用于正式画布验证', kind: 'work', proposal: 'accepted', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] };
 const doc = { v: 1, project: 'browser-test', bootstrap: 'ready', extra: { preserved: true }, root: { ...node, id: 'T0', title: '浏览器验收', kind: 'module', children: [node] } };
 let running, browser, page, passed = false, stage = 'isolated-hook-bootstrap';
 const errors = [], checks = [], queuedMessages = [];
@@ -26,8 +26,8 @@ let releaseBugQueue;
 const bugQueueGate = new Promise(resolve => { releaseBugQueue = resolve; });
 const messageQueue = async payload => {
   queuedMessages.push(payload);
-  if (payload.bug.title === '处理状态测试') await bugQueueGate;
-  if (payload.bug.title === '发送失败测试') throw new Error('injected delivery failure');
+  if (payload.bug?.title === '处理状态测试') await bugQueueGate;
+  if (payload.bug?.title === '发送失败测试') throw new Error('injected delivery failure');
 };
 function recordCheck(name) { checks.push(name); console.log(`Browser check passed: ${name}`); }
 const read = async () => JSON.parse(await fs.readFile(mapPath, 'utf8'));
@@ -78,7 +78,7 @@ try {
   browser = await chromium.launch({ headless: true, env });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(15000);
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => errors.push(error.stack || error.message));
   recordCheck('real-hook-session-bootstrap');
   stage = 'bidirectional-sync';
   const legacy = { repos: { 'browser-test': { live: { ...doc.root, title: '旧缓存绝不能回盖' } } }, repoId: 'browser-test' };
@@ -94,22 +94,24 @@ try {
   await synchronized();
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
   assert.equal(await page.locator('.session-chip').isVisible(), true);
-  assert.equal(await page.locator('#cg-sync-session').inputValue(), session);
-  assert.equal(await page.locator('#session-name').textContent(), 'codex-basic-browser');
-  assert.equal(await page.locator('#session-status').evaluate(el => el.classList.contains('active')), true);
+  assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
+  assert.equal(await page.locator('#session-name').textContent(), '全部 Session');
+  assert.equal(await page.locator('#session-status').evaluate(el => el.classList.contains('empty')), true);
+  assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   assert.equal(await page.locator('#auth-count').count(), 0);
-  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), 'codex-basic-browser');
+  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '全部 Session');
   await page.locator('#session-chip').click();
-  assert.equal(await page.locator('#session-menu [data-session]').count(), 1);
+  assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
   await page.locator('#session-chip').click();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 500).toISOString(), event: 'maintenance', platform: 'cli', session_id: 'maintenance-browser' })}\n`);
   const liveSession = 'browser-live-agent';
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 1000).toISOString(), event: 'session-start', platform: 'cursor', session_id: liveSession })}\n`);
-  await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, liveSession);
+  await page.waitForFunction(() => document.querySelectorAll('#session-menu [data-session]').length === 3);
+  assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
   await running.access.grant(liveSession, ['N1'], running.store.version);
   await page.locator('#session-chip').click();
-  assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
+  assert.equal(await page.locator('#session-menu [data-session]').count(), 3);
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), true);
@@ -122,21 +124,29 @@ try {
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   recordCheck('top-session-switch-and-scope');
+  await page.locator('#session-chip').click();
+  await page.locator('#session-menu [data-session="__all__"]').click();
+  await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === '__all__');
+  assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
+  recordCheck('all-session-global-scope');
   await page.locator('.node[data-id="N1"]').click();
+  assert.equal(await page.locator('#detail [data-fold="mem"]').getAttribute('open'), null);
   await page.locator('#detail [data-act="add-bug"]').click();
-  const bugTitle = page.locator('#detail [data-ed="bug-title"]').last();
-  await bugTitle.fill('处理状态测试'); await bugTitle.press('Tab');
-  await until(async () => (await read()).root.children[0].bugs.some(bug => bug.title === '处理状态测试'));
-  await synchronized();
+  const createDialog = page.locator('.bug-assign-dialog');
+  assert.equal(await createDialog.locator('h3').count(), 0);
+  assert.equal(await createDialog.getByLabel('Bug 标题').count(), 0);
+  await createDialog.getByLabel('Bug 描述').fill('处理状态测试\n全局视角分配');
+  await createDialog.getByLabel('处理 Session').selectOption(session);
+  await createDialog.locator('[data-scope]').waitFor();
+  assert.match(await createDialog.locator('[data-scope]').textContent(), /2 个新节点/);
+  await createDialog.getByRole('button', { name: '确认授权并发送' }).click();
   await page.locator('#btn-bugs').click();
   const bugRow = page.locator('#bug-panel-list li').filter({ hasText: '处理状态测试' });
   await bugRow.waitFor();
-  assert.match(await bugRow.textContent(), /待处理/);
-  await bugRow.click();
-  await bugRow.locator('[data-claim]').click();
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('待处理 · 发送中'));
   await until(() => queuedMessages.length === 1);
   assert.equal((await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.length, 0);
+  assert.deepEqual(new Set(running.access.grants(session)), new Set(['T0', 'N1']));
   assert.equal(queuedMessages[0].sessionId, session);
   assert.match(queuedMessages[0].message, /处理状态测试/);
   assert.match(queuedMessages[0].message, /N1/);
@@ -144,7 +154,6 @@ try {
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('处理中 · codex-basic-browser'));
   await until(async () => (await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.includes(session));
   await synchronized();
-  await page.locator('#btn-bug-exit').click();
   const resolvedBug = await read();
   resolvedBug.root.children[0].bugs.find(bug => bug.title === '处理状态测试').status = 'resolved';
   await fs.writeFile(mapPath, encode(resolvedBug));
@@ -161,6 +170,9 @@ try {
   const failedRow = page.locator('#bug-panel-list li').filter({ hasText: '发送失败测试' });
   await failedRow.click();
   await failedRow.locator('[data-claim]').click();
+  const assignDialog = page.locator('.bug-assign-dialog');
+  await assignDialog.getByLabel('处理 Session').selectOption(session);
+  await assignDialog.getByRole('button', { name: '创建并发送' }).click();
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('待处理 · 发送失败'));
   await until(async () => (await read()).root.children[0].bugs.find(bug => bug.id === 'B99')?.dispatch?.status === 'failed');
   await synchronized();
@@ -174,6 +186,38 @@ try {
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
   await page.locator('#btn-bugs').click();
   recordCheck('bug-message-delivery-gates-handling-status');
+  await page.locator('#session-chip').click();
+  await page.locator(`#session-menu [data-session="${session}"]`).click();
+  await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
+  await page.locator('.node[data-id="N1"]').click();
+  await page.locator('#detail [data-act="add-bug"]').click();
+  const scopedDialog = page.locator('.bug-assign-dialog');
+  assert.equal(await scopedDialog.getByLabel('Bug 标题').count(), 0);
+  await scopedDialog.getByLabel('Bug 描述').fill('单会话自动分配');
+  assert.equal(await scopedDialog.getByLabel('处理 Session').count(), 0);
+  assert.equal(await scopedDialog.locator('input[name="session"]').inputValue(), session);
+  await scopedDialog.getByRole('button', { name: '创建并发送' }).click();
+  await until(() => queuedMessages.length === 3);
+  await until(async () => (await read()).root.children[0].bugs.some(bug => bug.title === '单会话自动分配' && bug.sessions.includes(session)));
+  const scopedClean = await read(); scopedClean.root.children[0].bugs = [];
+  await fs.writeFile(mapPath, encode(scopedClean));
+  await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
+  recordCheck('single-session-bug-auto-assignment');
+  await page.locator('#detail [data-act="add-todo"]').click();
+  assert.equal(await page.locator('.bug-assign-dialog').count(), 0);
+  const inlineTodo = page.locator('#detail .todo-list li:last-child [data-ed="todo-text"]');
+  await inlineTodo.fill('开发新的需求入口\n节点级 TODO 自动发送到当前 Session');
+  await inlineTodo.press('Tab');
+  await until(() => queuedMessages.length === 4);
+  await until(async () => (await read()).root.children[0].todos.some(todo => todo.title === '开发新的需求入口' && todo.status === 'processing' && todo.sessions.includes(session)));
+  assert.match(queuedMessages[3].message, /TODO: TD\d+ · 开发新的需求入口/);
+  const todoRow = page.locator('#detail .todo-list li').filter({ hasText: '开发新的需求入口' });
+  await todoRow.waitFor();
+  assert.match(await todoRow.textContent(), /处理中/);
+  await todoRow.locator('.todo-check').click();
+  await until(async () => (await read()).root.children[0].todos.some(todo => todo.title === '开发新的需求入口' && todo.status === 'done'));
+  assert.match(await todoRow.textContent(), /已完成/);
+  recordCheck('todo-session-assignment-and-completion');
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 1500).toISOString(), event: 'stop', platform: 'codex', session_id: session, thread_name: 'basic-browser' })}\n`);
   await page.waitForFunction(() => document.querySelector('#session-status')?.classList.contains('stopped'));
   assert.equal(await page.locator('#session-status').getAttribute('aria-label'), '已完成');
@@ -221,7 +265,6 @@ try {
   const version = hash(await fs.readFile(mapPath));
   await page.locator('#viewport').hover(); await page.mouse.wheel(0, 120); await pause(250);
   assert.equal(hash(await fs.readFile(mapPath)), version); recordCheck('view-does-not-write');
-  await page.locator('#detail [data-act="grant"]').click();
   await until(() => running.access.grants('browser-test-agent').includes('N1'));
   let current = await cli('read'); assert.equal(current.code, 0); assert.equal(current.version, hash(await fs.readFile(mapPath))); recordCheck('human-to-agent-fence');
   assert.equal((await cli('inbox', undefined, ['--start'])).initialized, true);
@@ -268,7 +311,7 @@ try {
   assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'accepted'); recordCheck('refresh-preserves-committed-state');
   stage = 'conflict-and-recovery';
   await page.locator('.node[data-id="N1"]').click();
-  const second = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); second.on('pageerror', e => errors.push(e.message));
+  const second = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); second.on('pageerror', e => errors.push(e.stack || e.message));
   await second.goto(running.state.url); await second.waitForSelector('#cg-sync[data-status="synced"]', { state: 'attached' }); await second.locator('.node[data-id="N1"]').click();
   await title.dispatchEvent('compositionstart'); await title.fill('保留的输入法草稿');
   await second.locator('#detail [data-ed="title"]').fill('另一个页面先保存'); await second.locator('#detail [data-ed="title"]').press('Tab');
@@ -283,6 +326,46 @@ try {
   assert.notEqual((await read()).root.children[0].title, '断线期间的草稿');
   await page.unroute('**/api/commit'); await openSyncSettings(); await page.locator('#cg-sync-retry').click(); await synchronized();
   assert.equal((await read()).root.children[0].title, '断线期间的草稿'); recordCheck('network-retry');
+  // Five simultaneously open frontends share one authoritative map. Only the
+  // connected pages with unsaved edits may fence Agent reads; closed tabs must
+  // disappear from the live peer set even when their browser draft is dirty.
+  stage = 'five-page-concurrency';
+  const frontends = [page];
+  for (let index = 1; index < 5; index++) {
+    const frontend = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    frontend.on('pageerror', error => errors.push(error.stack || error.message));
+    await frontend.goto(running.state.url);
+    await frontend.waitForSelector('#cg-sync[data-status="synced"]', { state: 'attached' });
+    frontends.push(frontend);
+  }
+  const humanState = async () => {
+    const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  await until(async () => (await humanState()).peers.length === 5);
+  assert.equal(new Set((await humanState()).peers.map(peer => peer.id)).size, 5);
+  const concurrentTitles = frontends.map((_, index) => `五页面并发草稿-${index + 1}`);
+  for (let index = 0; index < frontends.length; index++) {
+    const frontend = frontends[index];
+    await frontend.locator('.node[data-id="N1"]').click();
+    const editor = frontend.locator('#detail [data-ed="title"]');
+    await editor.dispatchEvent('compositionstart');
+    await editor.fill(concurrentTitles[index]);
+  }
+  await cli('read', undefined, [], 'UI_PENDING');
+  const winner = frontends[0].locator('#detail [data-ed="title"]');
+  await winner.dispatchEvent('compositionend'); await winner.press('Tab');
+  await until(async () => (await read()).root.children[0].title === concurrentTitles[0]);
+  await frontends[0].waitForSelector('#cg-sync[data-status="synced"]', { state: 'attached' });
+  for (const frontend of frontends.slice(1)) {
+    await frontend.waitForSelector('#cg-sync[data-status="conflict"]', { state: 'attached' });
+  }
+  assert.deepEqual(await Promise.all(frontends.map(frontend => frontend.locator('#cg-sync').getAttribute('data-status'))), ['synced', 'conflict', 'conflict', 'conflict', 'conflict']);
+  for (const frontend of frontends.slice(1)) await frontend.close();
+  await until(async () => (await humanState()).peers.length === 1);
+  assert.equal((await cli('read')).version, hash(await fs.readFile(mapPath)));
+  recordCheck('five-page-conflict-and-closed-peer-cleanup');
   const xss = await read(); xss.root.children[0].title = '<img src=x onerror="window.injected=true">'; await fs.writeFile(mapPath, encode(xss));
   await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent?.startsWith('<img'));
   assert.equal(await page.evaluate(() => !!window.injected), false); recordCheck('map-text-not-html');

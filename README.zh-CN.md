@@ -174,7 +174,7 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选，用 `archive-session` 保存本 Session 的耐久结果。
+运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果：已覆盖文件的摘要写入对应 Map 节点，没有节点覆盖的修改会自动生成待用户确认的新节点提案。
 
 ## 主要文件
 

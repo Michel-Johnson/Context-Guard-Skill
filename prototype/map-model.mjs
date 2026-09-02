@@ -1,5 +1,5 @@
 // Shared by the workbench and Node service. Unknown stored fields are retained.
-export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'bugs', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
+export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
 export class MapError extends Error {
   constructor(code, message, status = 400, details = {}) { super(message); Object.assign(this, { code, status, details }); }
 }
@@ -29,22 +29,64 @@ export function validate(doc) {
   for (const { node } of index.values()) {
     if (typeof node.title !== 'string' || node.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid title`);
     if (node.purpose !== undefined && typeof node.purpose !== 'string') throw new MapError('INVALID_MAP', 'purpose must be text');
-    for (const key of ['memories', 'ideas', 'bugs', 'dormant', 'files', 'owns']) {
+    for (const key of ['memories', 'ideas', 'todos', 'bugs', 'dormant', 'files', 'owns']) {
       if (node[key] !== undefined && !Array.isArray(node[key])) throw new MapError('INVALID_MAP', `${key} must be an array`);
     }
     if (node.kind && !['module', 'work'].includes(node.kind)) throw new MapError('INVALID_MAP', 'Invalid kind');
     if (node.state && !['dirty', 'untested', 'success', 'failed'].includes(node.state)) throw new MapError('INVALID_MAP', 'Invalid state');
     if (node.proposal && !['proposed', 'accepted', 'cancelled'].includes(node.proposal)) throw new MapError('INVALID_MAP', 'Invalid proposal');
-    for (const item of [...(node.memories || []), ...(node.ideas || []), ...(node.bugs || [])]) {
-      if (!object(item)) throw new MapError('INVALID_MAP', 'Memory/idea/bug must be an object');
+    for (const item of [...(node.memories || []), ...(node.ideas || []), ...(node.todos || []), ...(node.bugs || [])]) {
+      if (!object(item)) throw new MapError('INVALID_MAP', 'Memory/idea/todo/bug must be an object');
       const refs = Array.isArray(item.also) ? item.also : typeof item.also === 'string' ? item.also.split(/[,，]/).map(x => x.trim()).filter(Boolean) : [];
       if (refs.some(id => !index.has(id))) throw new MapError('INVALID_REFERENCE', `${node.id}: missing also reference`);
+    }
+    for (const todo of node.todos || []) {
+      if (typeof todo.title !== 'string' || todo.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO title`);
+      if (todo.status && !['pending', 'processing', 'done'].includes(todo.status)) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO status`);
     }
   }
   for (const flow of doc.flows || []) {
     if (!index.has(flow.from) || !index.has(flow.to)) throw new MapError('INVALID_REFERENCE', 'Flow endpoint is missing');
   }
   return index;
+}
+
+function relatedIds(node) {
+  const out = new Set();
+  const values = [node, ...(node.memories || []), ...(node.ideas || []), ...(node.todos || []), ...(node.bugs || [])];
+  for (const value of values) {
+    const refs = Array.isArray(value?.also)
+      ? value.also
+      : typeof value?.also === 'string'
+        ? value.also.split(/[,，]/).map(id => id.trim()).filter(Boolean)
+        : [];
+    refs.forEach(id => out.add(id));
+  }
+  return out;
+}
+
+export function assignmentScope(doc, nodeId) {
+  const index = validate(doc);
+  if (!index.has(nodeId)) throw new MapError('NOT_FOUND', `Node ${nodeId} is missing`, 404);
+  const related = new Set([nodeId]);
+  for (const flow of doc.flows || []) {
+    if (flow.from === nodeId) related.add(flow.to);
+    if (flow.to === nodeId) related.add(flow.from);
+  }
+  for (const [id, { node }] of index) {
+    const refs = relatedIds(node);
+    if (id === nodeId) refs.forEach(ref => related.add(ref));
+    if (refs.has(nodeId)) related.add(id);
+  }
+  const scope = new Set();
+  for (const id of related) {
+    let entry = index.get(id);
+    while (entry) {
+      if (!['cancelled', 'proposed'].includes(entry.node.proposal)) scope.add(entry.node.id);
+      entry = entry.parent ? index.get(entry.parent.id) : null;
+    }
+  }
+  return [...scope];
 }
 function checkFields(fields, allowed = editableFields) {
   if (!object(fields) || Object.keys(fields).some(key => !allowed.includes(key))) throw new MapError('INVALID_FIELDS', 'Unsupported field');
@@ -72,7 +114,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       checkFields(op.node, ['id', ...editableFields]);
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
-      const node = { title: '', kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], bugs: [], dormant: [], files: [], owns: [], children: [], ...copy(op.node), origin: actor.kind, proposedBy: actor.sessionId };
+      const node = { title: '', kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], ...copy(op.node), origin: actor.kind, proposedBy: actor.sessionId };
       if (!human) { node.proposal = 'proposed'; node.isNew = true; }
       else { node.proposal ||= 'accepted'; node.isNew = node.proposal === 'proposed'; }
       (parent.children ||= []).push(node); resultIds.push(id);

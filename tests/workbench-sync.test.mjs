@@ -8,11 +8,12 @@ import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
-import { bugSessionMessage, startServer } from '../scripts/workbench/server.mjs';
+import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
-import { applyOperations, diffTrees, validate } from '../prototype/map-model.mjs';
+import { applyOperations, assignmentScope, diffTrees, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
+import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 after(async () => {
@@ -84,6 +85,35 @@ test('Bug handoff message carries the actionable Bug and node context', () => {
   assert.match(message, /投递成功前不得显示处理中/);
 });
 
+test('TODO handoff message carries the development item and node context', () => {
+  const message = todoSessionMessage(
+    { id: 'N1', title: '工作台同步' },
+    { id: 'TD7', title: '增加需求入口', desc: '复用 Session 授权和消息发送' },
+  );
+  assert.match(message, /TD7 · 增加需求入口/);
+  assert.match(message, /N1 · 工作台同步/);
+  assert.match(message, /复用 Session 授权和消息发送/);
+});
+
+test('assignment scope includes the node, ancestors and direct flow/also relations', () => {
+  const doc = {
+    v: 1,
+    project: 'scope',
+    flows: [{ from: 'N2', to: 'N3' }],
+    root: {
+      id: 'T0', title: '项目', proposal: 'accepted', children: [
+        { id: 'N1', title: '父级', proposal: 'accepted', children: [
+          { id: 'N2', title: '目标', proposal: 'accepted', memories: [{ text: '关联', also: ['N4'] }], children: [] },
+        ] },
+        { id: 'N3', title: '流程关联', proposal: 'accepted', children: [] },
+        { id: 'N4', title: '内容关联', proposal: 'accepted', children: [] },
+      ],
+    },
+  };
+  assert.deepEqual(new Set(assignmentScope(doc, 'N2')), new Set(['T0', 'N1', 'N2', 'N3', 'N4']));
+  assert.throws(() => assignmentScope(doc, 'missing'), { code: 'NOT_FOUND' });
+});
+
 test('write, preserve unknown data, reject stale update, persist idempotency across restart', async () => {
   const f = await fixture(); let store = await new MapStore(f.root).init();
   try {
@@ -138,6 +168,54 @@ test('permissions, field validation, cycles and missing references', async () =>
   } finally { await store.close(); }
 });
 
+test('archive reconciliation updates owned nodes, proposes uncovered work, and is idempotent', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: {
+      id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', memories: [], children: [
+        { id: 'M1', title: '运行时', kind: 'module', proposal: 'accepted', memories: [], owns: ['src/'], children: [
+          { id: 'N1', title: '入口', kind: 'work', proposal: 'accepted', memories: [], owns: ['src/index.js'], children: [] },
+        ] },
+      ],
+    },
+  };
+  assert.equal(ownerForPath(doc, 'src/index.js').id, 'N1');
+  assert.equal(ownerForPath(doc, 'src/worker.js').id, 'M1');
+  assert.equal(ownerForPath(doc, 'feature/new.js'), null);
+  const input = { summary: '实现新的自动记录功能', files: ['src/index.js', 'src/worker.js', 'feature/new.js'] };
+  const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
+  assert.deepEqual(reconciliation.mapped, { N1: ['src/index.js'], M1: ['src/worker.js'] });
+  assert.deepEqual(reconciliation.uncovered, ['feature/new.js']);
+  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['update', 'update', 'create']);
+  assert.throws(() => applyOperations(doc, reconciliation.operations, agent), { code: 'FORBIDDEN' });
+  const updated = applyOperations(doc, reconciliation.operations, agent, ['M1', 'N1']).doc;
+  const proposed = updated.root.children.find(node => node.id === reconciliation.proposedId);
+  assert.equal(proposed.proposal, 'proposed');
+  assert.equal(proposed.proposedBy, agent.sessionId);
+  assert.deepEqual(proposed.owns, ['feature/new.js']);
+  assert.equal(updated.root.children[0].children[0].memories[0].session, agent.sessionId);
+  assert.equal(buildArchiveReconciliation(updated, agent.sessionId, input).operations.length, 0);
+  const later = buildArchiveReconciliation(updated, agent.sessionId, { ...input, summary: '继续完善自动记录功能' });
+  assert.deepEqual(later.operations.map(operation => operation.type), ['update', 'update', 'update']);
+  const laterDoc = applyOperations(updated, later.operations, agent, ['M1', 'N1']).doc;
+  assert.equal(laterDoc.root.children.filter(node => node.id === reconciliation.proposedId).length, 1);
+  assert.equal(laterDoc.root.children.find(node => node.id === reconciliation.proposedId).memories.length, 2);
+});
+
+test('archive reconciliation keeps optimistic version conflicts visible', async () => {
+  const f = await fixture(), store = await new MapStore(f.root).init();
+  try {
+    store.doc.root.children[0].owns = ['src/'];
+    await atomicWrite(store.file, encode(store.doc));
+    await store.refresh();
+    const reconciliation = buildArchiveReconciliation(store.doc, agent.sessionId, { summary: '完成归档', files: ['src/index.js'] });
+    const request = { baseVersion: store.version, operationId: reconciliation.operationId, operations: reconciliation.operations };
+    await store.commit(edit(store, '并发的人类修改'), human);
+    await assert.rejects(store.commit(request, agent, ['N1']), { code: 'VERSION_CONFLICT' });
+  } finally { await store.close(); }
+});
+
 test('bad-case compatibility operations attach unassigned cases and resolve them', async () => {
   const f = await fixture();
   const attached = applyOperations(f.doc, [{ type: 'attach-bug', id: '', bug: { id: 'B1', title: '未挂节点', status: 'open', sessions: [agent.sessionId] } }], agent).doc;
@@ -150,14 +228,19 @@ test('bad-case compatibility operations attach unassigned cases and resolve them
 test('projection retains legacy/manual content, includes state and bugs, detects pending versions', async () => {
   const f = await fixture(); await fs.mkdir(path.join(f.ctx, 'cards')); await fs.writeFile(path.join(f.ctx, 'cards/N1.md'), '人工笔记不能丢失\n');
   f.doc.root.children[0].bugs.push({ id: 'B32', title: '回归坏例', status: 'open' });
+  f.doc.root.children[0].todos = [{ id: 'TD1', title: '开发新需求', status: 'processing' }];
   await generateProjections(f.root, f.doc, 'version-one');
-  let card = await fs.readFile(path.join(f.ctx, 'cards/N1.md'), 'utf8'); assert.match(card, /人工笔记不能丢失/); assert.match(card, /B32/); assert.match(card, /sourceVersion: version-one/);
+  let card = await fs.readFile(path.join(f.ctx, 'cards/N1.md'), 'utf8'); assert.match(card, /人工笔记不能丢失/); assert.match(card, /B32/); assert.match(card, /TD1: 开发新需求 \[processing\]/); assert.match(card, /sourceVersion: version-one/);
   await fs.appendFile(path.join(f.ctx, 'cards/N1.md'), '\n后续人工补充\n'); await generateProjections(f.root, f.doc, 'version-two');
   card = await fs.readFile(path.join(f.ctx, 'cards/N1.md'), 'utf8'); assert.match(card, /后续人工补充/); assert.equal(card.split('人工笔记不能丢失').length, 2); assert.doesNotMatch(card, /version-one/);
 });
 
 test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation and migration preview', async () => {
-  const f = await fixture(), running = await startServer({ root: f.root, port: 0 });
+  const f = await fixture(), delivered = [];
+  f.doc.root.children[0].bugs.push({ id: 'B1', title: '待分配', status: 'open', sessions: [] });
+  f.doc.root.children[0].todos = [{ id: 'TD1', title: '新需求', status: 'pending', sessions: [] }];
+  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(f.doc));
+  const running = await startServer({ root: f.root, port: 0, messageQueue: async payload => delivered.push(payload) });
   const base = new URL(running.state.url).origin;
   const call = async (route, credential, data, headers = {}) => {
     const response = await fetch(base + route, { method: data ? 'POST' : 'GET', headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', ...headers }, body: data ? JSON.stringify(data) : undefined });
@@ -174,9 +257,33 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.equal((await call('/api/session', running.state.adminToken, { sessionId: 'fake-session' })).status, 403);
     assert.equal((await call('/api/state', credential, null, { Origin: 'https://evil.invalid' })).status, 403);
     assert.equal((await call('/package.json', credential)).status, 404);
+    const cleanPage = await new Promise((resolve, reject) => {
+      const request = http.get(`${base}/api/events?token=${encodeURIComponent(running.humanToken)}&clientId=clean-reload`, resolve);
+      request.on('error', reject);
+    });
+    cleanPage.destroy(); await pause(30);
+    assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected clean page must not block Agent checkpoints');
+    const dirtyPage = await new Promise((resolve, reject) => {
+      const request = http.get(`${base}/api/events?token=${encodeURIComponent(running.humanToken)}&clientId=dirty-reload`, resolve);
+      request.on('error', reject);
+    });
+    assert.equal((await call('/api/presence', running.humanToken, { clientId: 'dirty-reload', dirty: true, version: running.store.version })).status, 200);
+    assert.equal((await call('/api/state', credential)).status, 409, 'a connected dirty page must block Agent checkpoints');
+    dirtyPage.destroy(); await pause(30);
+    assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected dirty page must not remain as a phantom checkpoint peer');
     assert.equal((await call('/api/access', credential, { sessionId: agent.sessionId, nodes: ['N1'], actor: 'human' })).status, 403);
     assert.equal((await call('/api/session-message', credential, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 403);
-    assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: ['N1'] })).status, 200);
+    const plan = await call('/api/access-plan', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1' });
+    assert.equal(plan.status, 200);
+    assert.deepEqual(new Set(plan.data.nodes), new Set(['T0', 'N1']));
+    const deniedMessage = await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' });
+    assert.equal(deniedMessage.status, 403); assert.equal(deniedMessage.data.error.code, 'SESSION_SCOPE_REQUIRED');
+    assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, addNodes: plan.data.nodes })).status, 200);
+    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 200);
+    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', todoId: 'TD1' })).status, 200);
+    assert.equal(delivered.length, 2);
+    assert.equal(delivered[1].todo.id, 'TD1');
+    assert.match(delivered[1].message, /TODO: TD1 · 新需求/);
     assert.equal((await call('/api/commit', credential, edit(running.store, 'CLI权限'))).status, 200);
     await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] });
     assert.equal((await call('/api/commit', credential, edit(running.store, '已撤权'))).status, 403);

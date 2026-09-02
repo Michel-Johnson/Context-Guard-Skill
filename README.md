@@ -174,7 +174,7 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop, `write-candidates --input ...` for validated first-use L1 candidates, and `archive-session` to save durable session results.
+Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results, adds the summary to existing owning Map nodes, and creates a human-confirmed proposal for changed files not yet covered by the Map.
 
 ## Main Files
 

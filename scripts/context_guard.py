@@ -93,9 +93,9 @@ FIND_MD = """# Four stores — jump small, then open one file
 1. Sessions — `sessions.jsonl` (append-only) and `sessions/{id}.md`
 2. Bugs — `bugs-index.json`, then `bugs/{id}.md` and `fixes/{id}.md`
 3. Tasks — `tasks/{id}.md`
-4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint.
+4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint. `archive-session --files ...` records completed work on owning nodes and proposes nodes for uncovered files.
 
-Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder.
+Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder. Do not read or update a legacy `roadmap.md`.
 Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/workbench-interface.md.
 """
 
@@ -411,14 +411,40 @@ def archive_session(
     known = {str(item.get("session_id")) for item in session_records(root)}
     if not session_id or session_id not in known:
         raise ValueError("archive-session needs a session previously recorded by a lifecycle hook")
+    file_list = list(dict.fromkeys(item.strip() for item in files.split(",") if item.strip()))
+    map_result: dict[str, object] = {
+        "committed": True,
+        "reconciliation": {"files": [], "mapped": {}, "uncovered": [], "operations": []},
+    }
+    if file_list:
+        map_result = run_node_workbench(
+            ["map", "reconcile", "--root", str(root), "--session", session_id],
+            {
+                "summary": summary.strip(),
+                "decisions": decisions.strip(),
+                "next": next_steps.strip(),
+                "files": file_list,
+            },
+        )
+    reconciliation = map_result.get("reconciliation", {})
+    if not isinstance(reconciliation, dict):
+        reconciliation = {}
+    node_ids = list((reconciliation.get("mapped") or {}).keys())
+    proposed_id = str(reconciliation.get("proposedId") or "")
+    if proposed_id:
+        node_ids.append(proposed_id)
     path = append_session_event(
         root,
         "archive",
         session_platform(root, session_id),
         session_id,
-        {"has_summary": bool(summary.strip())},
+        {
+            "has_summary": bool(summary.strip()),
+            "map_sync": "synced",
+            "map_nodes": node_ids,
+            "map_version": map_result.get("version"),
+        },
     )
-    file_list = [item.strip() for item in files.split(",") if item.strip()]
     lines = ["", f"## Archive {utc_now()}", ""]
     for heading, value in (
         ("Summary", summary),
@@ -429,9 +455,26 @@ def archive_session(
             lines.extend([f"### {heading}", "", value.strip(), ""])
     if file_list:
         lines.extend(["### Files", "", *[f"- {item}" for item in file_list], ""])
+        mapped = reconciliation.get("mapped") or {}
+        uncovered = reconciliation.get("uncovered") or []
+        lines.extend([
+            "### Map",
+            "",
+            "- status: synced",
+            f"- existing nodes: {', '.join(mapped) if isinstance(mapped, dict) and mapped else 'none'}",
+            f"- proposed node: {proposed_id or 'none'}",
+            f"- version: {map_result.get('version') or 'unchanged'}",
+            "",
+        ])
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines).rstrip() + "\n")
     print(f"[context-guard] archived session: {session_id} ({path})")
+    if file_list:
+        print(
+            "[context-guard] map synchronized: "
+            f"{len(reconciliation.get('mapped') or {})} existing node(s), "
+            f"{len(reconciliation.get('uncovered') or [])} uncovered file(s)"
+        )
     return path
 
 
