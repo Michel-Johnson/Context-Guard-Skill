@@ -62,6 +62,7 @@ export function TourStage({
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
   const completedScene = useRef("");
+  const phoneMode = useRef(window.matchMedia("(max-width: 820px)").matches).current;
   const [ready, setReady] = useState(false);
   const [scenePrepared, setScenePrepared] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -306,7 +307,7 @@ export function TourStage({
             key={loadAttempt}
             ref={frame}
             title={label + ": " + t("真实 Context Guard 工作台")}
-            src={import.meta.env.BASE_URL + `generated/workbench${language === "en" ? "-en" : ""}.html?protocol=4&attempt=` + loadAttempt}
+            src={import.meta.env.BASE_URL + `generated/workbench${language === "en" ? "-en" : ""}.html?protocol=4&embedded=1&phone=${phoneMode ? 1 : 0}&attempt=` + loadAttempt}
             sandbox="allow-scripts"
             referrerPolicy="same-origin"
             loading="lazy"
