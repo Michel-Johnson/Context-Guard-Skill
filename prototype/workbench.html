@@ -536,7 +536,8 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
-  border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
+  border-left:2px solid var(--line-ink);overflow:auto;padding:10px 12px 24px;cursor:default;
+  font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
   z-index:21;cursor:col-resize;touch-action:none;background:transparent}
 .drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
@@ -551,7 +552,7 @@ body.drawer-resizing .bug-panel{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
-.drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700}
 .state-chip{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;flex:0 0 auto}
 .state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
@@ -581,7 +582,6 @@ html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
   display:block;box-sizing:border-box;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
 .compose .ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
-.drawer h2{margin:4px 0 0;font-size:22px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:800}
 button{font:inherit;font-size:13px;font-weight:700;padding:6px 12px;border:2px solid var(--line-ink);background:var(--paper);
   border-radius:8px;cursor:pointer;color:var(--ink);box-shadow:var(--shadow-sm)}
 button:hover{background:var(--yellow);color:var(--ink);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--line-ink)}
@@ -593,8 +593,9 @@ button.warn:hover{border-color:var(--line-ink);background:var(--red-soft);color:
 button.quiet{border-color:transparent;color:var(--muted);padding:6px 8px;box-shadow:none}
 button.quiet:hover{border-color:var(--line-ink);color:var(--ink);box-shadow:var(--shadow-sm);background:var(--paper)}
 .plus-btn{width:28px;height:28px;padding:0;display:inline-grid;place-items:center;
-  font-size:20px;line-height:1;font-weight:800;border-radius:8px;box-shadow:none}
-.plus-btn:hover{transform:none;box-shadow:none;background:var(--module-soft)}
+  font-size:18px;line-height:1;font-weight:700;border-radius:8px;border:0;background:transparent;
+  color:var(--muted);box-shadow:none}
+.plus-btn:hover{transform:none;box-shadow:none;background:transparent;color:var(--ink)}
 section.block{margin-top:14px}
 section.block .block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px}
 section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(--ink);letter-spacing:0;font-weight:800}
@@ -755,7 +756,7 @@ html.cg-phone .drawer h2{font-size:18px}
 html.design-gallery,html.design-gallery body{overflow:auto;height:auto;min-height:100dvh}
 html.design-gallery header.top,
 html.design-gallery #viewport,
-html.design-gallery .drawer,
+html.design-gallery #detail,
 html.design-gallery .drawer-split,
 html.design-gallery .bug-panel,
 html.design-gallery .tray,
@@ -772,12 +773,23 @@ html.design-gallery #design-gallery{display:block;padding:18px 18px 48px}
 .g-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;max-width:720px}
 .g-preview{position:sticky;top:68px;justify-self:start}
 .g-preview .g-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 8px}
-html.design-gallery .g-preview .drawer{display:block !important;position:relative;top:auto;right:auto;bottom:auto;width:340px;height:auto;
-  border:2px solid var(--line-ink);border-left:2px solid var(--line-ink);padding:16px 16px 20px;background:var(--paper);border-radius:10px}
+html.design-gallery .g-preview #detail{display:block !important;position:relative;top:auto;right:auto;bottom:auto;left:auto;
+  width:340px;height:auto;max-height:calc(100dvh - 88px);border:2px solid var(--line-ink);border-radius:10px;
+  z-index:1}
+html.design-gallery[data-g-tab="tip"] .g-preview #detail{display:none !important}
+.drawer[data-plus="box"] .plus-btn{border:2px solid var(--line-ink);background:var(--paper);color:var(--ink)}
+.drawer[data-plus="ghost"] .plus-btn{border:0;background:transparent;color:var(--muted)}
+.drawer[data-plus="link"] .plus-btn{border:0;width:auto;height:auto;padding:0;background:transparent;color:var(--module);font-size:0}
+.drawer[data-plus="link"] .plus-btn:before{content:"添加";font-size:12px;font-weight:700}
+.drawer[data-plus="circle"] .plus-btn{border:1.5px solid var(--line-ink);border-radius:50%;background:var(--paper);color:var(--ink);font-size:14px}
+.drawer[data-plus="tiny"] .plus-btn{border:0;width:auto;height:auto;background:transparent;font-size:12px;color:var(--muted)}
+.drawer[data-plus="none"] .plus-btn{display:none}
+.drawer[data-layout="rail"] details.fold{border-top:0;border-left:3px solid var(--line-ink);padding:6px 0 6px 10px;margin-top:8px}
+.drawer[data-cards="1"] details.fold{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px;border-top:1.5px solid var(--line)}
+.drawer[data-gap="space"] details.fold{border-top:0}
 .g-stage{display:none;position:relative;min-height:88px;margin:0 0 12px;padding:16px 12px 20px;
   background:var(--bg);border:2px solid var(--line-ink);border-radius:10px}
 html.design-gallery[data-g-tab="tip"] .g-stage{display:block}
-html.design-gallery[data-g-tab="tip"] #g-drawer{display:none !important}
 html.design-gallery .g-stage .node.module{display:flex !important}
 .g-tip{position:absolute;z-index:2;font-size:12px;font-weight:800;line-height:1.35;pointer-events:none;max-width:220px}
 .g-tip.a{padding:6px 9px;background:var(--paper);border:2px solid var(--line-ink);border-radius:8px}
@@ -878,7 +890,7 @@ html.design-gallery .g-stage .node.module{display:flex !important}
   <div class="g-bar">
     <b>设计稿</b>
     <span class="pick" id="g-pick">还没选</span>
-    <span class="hint">左边点名字，右边只出一栏。选好后把顶栏编号发我。</span>
+    <span class="hint">右边是工作台真实检查器。点名字换字体和疏密。选好把顶栏编号发我。</span>
   </div>
   <div class="g-layout">
     <div>
@@ -908,9 +920,8 @@ html.design-gallery .g-stage .node.module{display:flex !important}
       </div>
     </div>
     <aside class="g-preview">
-      <div class="g-label" id="g-label">预览</div>
+      <div class="g-label" id="g-label">预览 · 真实检查器</div>
       <div class="g-stage" id="g-stage"></div>
-      <aside class="drawer" id="g-drawer"></aside>
     </aside>
   </div>
 </div>
@@ -5949,7 +5960,7 @@ function bootDesignGallery(){
     return "mix";
   }
   const q = new URLSearchParams(location.search);
-  let skinId = q.get("skin") || "01";
+  let skinId = q.get("skin") || "02";
   let foldId = q.get("fold") || "";
   let tipId = q.get("tip") || "A";
   let tab = q.get("tab") || "skin";
@@ -5958,6 +5969,10 @@ function bootDesignGallery(){
   const foldGrid = document.getElementById("g-fold-grid");
   const tipGrid = document.getElementById("g-tip-grid");
   const countEl = document.getElementById("g-count");
+  const previewHost = document.querySelector(".g-preview");
+  const liveDrawer = document.getElementById("detail");
+  if(previewHost && liveDrawer && liveDrawer.parentNode!==previewHost) previewHost.appendChild(liveDrawer);
+  const FOLD_PLUS = { "01":"box","02":"ghost","03":"link","04":"circle","05":"tiny","12":"circle","18":"tiny" };
   function renderSkinList(){
     const rows = SKINS.filter(s=>skinGroup(s)===group);
     if(countEl) countEl.textContent = rows.length+" 条，点名字看右边。";
@@ -5983,7 +5998,7 @@ function bootDesignGallery(){
     document.getElementById("g-pick").textContent = "整体 "+skin.id+(fold?" · 记忆 "+fold.id:"")+" · 说明 "+tip.id;
     const label = document.getElementById("g-label");
     if(label){
-      label.textContent = tab==="tip" ? "预览 · 色块说明" : "预览 · "+(skin.width||340)+"px";
+      label.textContent = tab==="tip" ? "预览 · 色块说明" : "真实检查器 · "+(skin.width||340)+"px";
     }
     document.querySelectorAll("#g-filters [data-group]").forEach(b=>b.classList.toggle("on", b.dataset.group===group));
     skinGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.skin===skinId));
@@ -5998,15 +6013,16 @@ function bootDesignGallery(){
           ? `<div class="${tipCls}" style="position:static;margin:6px 0 0 18px">${tip.sample}</div>`
           : `<div class="${tipCls}" style="left:22px;top:-8px">${tip.sample}</div>`}
       </div>`;
-    const drawer = document.getElementById("g-drawer");
-    drawer.className = "drawer g-skin";
-    ["font","title","tw","dense","layout","plus","chip","actions","head","ls","lh","gap","cards"].forEach(k=>{
-      const v = skin[k];
-      if(v) drawer.setAttribute("data-"+k, v);
-      else drawer.removeAttribute("data-"+k);
-    });
-    drawer.style.width = (skin.width||340)+"px";
-    drawer.innerHTML = inspectorHtml(skin, fold && fold.html);
+    const drawer = liveDrawer || document.getElementById("detail");
+    if(drawer){
+      drawer.classList.add("g-skin");
+      ["font","title","tw","dense","layout","plus","chip","actions","head","ls","lh","gap","cards"].forEach(k=>{
+        const v = (k==="plus" && fold && FOLD_PLUS[fold.id]) ? FOLD_PLUS[fold.id] : skin[k];
+        if(v) drawer.setAttribute("data-"+k, v);
+        else drawer.removeAttribute("data-"+k);
+      });
+      drawer.style.width = (skin.width||340)+"px";
+    }
     const url = new URL(location.href);
     url.searchParams.set("gallery","1");
     url.searchParams.set("skin", skinId);
@@ -6054,6 +6070,18 @@ function bootDesignGallery(){
 }
 async function boot(){
   if(window.__CG_GALLERY){
+    window.__CG_PREVIEW = true;
+    applyStaticI18n();
+    ensureDemoBugs(data);
+    selectedId = "M1";
+    viewRootId = "T0";
+    foldMem = true;
+    foldIdea = true;
+    foldBug = true;
+    foldInherited = true;
+    applyRepoChrome();
+    closeOverlay();
+    renderAll();
     bootDesignGallery();
     return;
   }
