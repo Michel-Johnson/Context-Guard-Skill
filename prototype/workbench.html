@@ -109,6 +109,7 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
+#btn-auth{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto;font-size:16px;line-height:1}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repo-status.ok{color:var(--green)}
 .repo-status.err{color:var(--red)}
@@ -687,7 +688,7 @@ html.cg-phone .tray-btn,html.cg-phone .auth-btn,
 html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
   min-height:36px;padding-top:7px;padding-bottom:7px
 }
-html.cg-phone #btn-settings{width:36px;height:36px;min-height:36px;padding:0}
+html.cg-phone #btn-settings,html.cg-phone #btn-auth{width:36px;height:36px;min-height:36px;padding:0}
 html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
 html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
 html.cg-phone .drawer{
@@ -764,7 +765,7 @@ html.cg-phone .drawer h2{font-size:18px}
       <b id="session-name">S-0823</b>
       <b id="auth-count">0</b>
     </div>
-    <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
+    <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
   </div>
