@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +24,28 @@
   if(preview) document.documentElement.classList.add("theme-preview");
   window.__CG_NODE_THEME = t;
   window.__CG_PREVIEW = preview;
+  /* ?phone=1 电脑上看手机布局；?phone=0 强制电脑布局。Safari「桌面网站」会把视口报成 ~980px。 */
+  var phoneQ = q.has("phone") ? q.get("phone") : null;
+  var phoneForce = phoneQ==null ? null : (phoneQ==="0" ? false : true);
+  window.__CG_PHONE_FORCE = phoneForce;
+  var phone = false;
+  if(phoneForce===true) phone = true;
+  else if(phoneForce===false) phone = false;
+  else {
+    try{
+      phone = window.matchMedia("(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)").matches;
+    }catch(e){}
+    if(!phone){
+      var short = Math.min(screen.width||0, screen.height||0);
+      var tall = Math.max(screen.width||0, screen.height||0);
+      var portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+      var touch = (navigator.maxTouchPoints||0) > 0;
+      try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+      phone = touch && portrait && short > 0 && short <= 820;
+    }
+  }
+  document.documentElement.classList.toggle("cg-phone", !!phone);
+  if(phoneForce!==null) document.documentElement.classList.add("phone-preview");
 })();
 </script>
 <style>
@@ -34,16 +56,22 @@
   --blue:#2d5da1; --blue-soft:#e4ebf4; --gray:#9a9084;
   --focus:#8a6d1f; --focus-soft:#f5eeda; --module:#2d5da1; --module-soft:#f3ead6;
   --auth:#7a5ca8; --auth-soft:#f0eaf8;
-  --yellow:#ffe66d; --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
+  --yellow:#ffe66d; --gold:#d4a017;
+  --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
   --drawer-width:340px;
+  --drawer-height:42vh;
   --bug-panel-width:240px;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box}
-html,body{height:100%}
+html,body{height:100%;height:100dvh}
+html{overflow:hidden}
 body{margin:0;background:var(--bg);color:var(--ink);overflow:hidden;
-  font-family:var(--font-ui);font-size:14px}
+  font-family:var(--font-ui);font-size:14px;overscroll-behavior:none;
+  -webkit-tap-highlight-color:transparent}
 body.auth-mode{background:#f6f3fa}
 body::before{
   content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.42;
@@ -180,11 +208,23 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
-.dot.failed{background:var(--red)} .dot.module{background:var(--module);border-radius:2px}
+.dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
+.dot.module{background:var(--module);border-radius:2px}
+.dot.module.dirty{background:var(--blue)}
+.dot.module.untested{background:var(--gold)}
+.dot.module.success{background:var(--green)}
+.dot.module.failed{background:var(--red)}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
+.dot-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 0}
+.dot-pick{display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  padding:7px 9px;font-size:12px;font-weight:700;line-height:1.25;
+  border:2px solid transparent;background:transparent;box-shadow:none}
+.dot-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
+.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:var(--shadow-sm)}
+.dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
@@ -312,7 +352,7 @@ html[data-node-theme="44"] .node.noauth.module{
   background:#eee9e0; border-color:#d9ccb4; color:#5c5c58;
   box-shadow:0 6px 16px rgba(160,140,100,.08);
 }
-html[data-node-theme="44"] .dot.module{background:#d4a017}
+html[data-node-theme="44"] .dot.module:not(.untested):not(.success):not(.failed){background:#d4a017}
 html[data-node-theme="44"] #links path.link,
 html[data-node-theme="44"] #links path.link.stem{stroke:#e6d3a8}
 
@@ -361,7 +401,7 @@ html[data-node-theme="4"] .node.noauth,
 html[data-node-theme="4"] .node.noauth.module{
   background:#ddd; border-color:#ccc; box-shadow:none;
 }
-html[data-node-theme="4"] .dot.module{background:#4a7ab5}
+html[data-node-theme="4"] .dot.module:not(.untested):not(.success):not(.failed){background:#4a7ab5}
 html[data-node-theme="4"] #links path.link,
 html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
 
@@ -369,13 +409,25 @@ html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
   font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
 html.theme-preview .theme-preview-banner{display:block}
+.phone-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
+  padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+html.phone-preview .phone-preview-banner{display:block}
+html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
 .settings-wrap{position:relative;flex:0 0 auto}
-.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:232px;
+#btn-settings{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto}
+#btn-settings .gear-icon{width:18px;height:18px;display:block}
+.settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:248px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
 .settings-menu.open{display:block}
 .settings-menu .set-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 6px}
 .settings-menu .set-block + .set-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.settings-menu .set-tools{display:flex;flex-direction:column;gap:6px}
+.settings-menu .set-tools .rel-toggle,
+.settings-menu .set-tools .tray-btn{width:100%;box-sizing:border-box}
+.settings-menu .set-tools .rel-toggle button{width:100%}
+#btn-tray.on{background:var(--yellow);font-weight:800}
 .theme-picks{display:flex;flex-direction:column;gap:4px}
 .theme-pick{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   border:2px solid transparent;background:transparent;box-shadow:none;border-radius:8px;
@@ -397,11 +449,15 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node .bug-badge{background:var(--red);color:#fff;border-radius:9px;min-width:17px;height:17px;
   line-height:17px;text-align:center;font-size:11px;padding:0 5px}
 .node .focus-mark{color:var(--focus);font-weight:700;font-size:11px}
-.node .add-child{position:absolute;right:-11px;top:50%;transform:translateY(-50%);width:20px;height:20px;
-  border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px;
-  line-height:17px;text-align:center;opacity:0;transition:opacity .12s}
-.node:hover .add-child{opacity:1}
-.node .add-child:hover{border-color:var(--green);color:var(--green)}
+.node .add-child{position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:18px;height:18px;
+  border-radius:50%;border:2px solid;border-color:inherit;background:inherit;color:inherit;
+  font-size:12px;font-weight:600;line-height:14px;text-align:center;opacity:1;box-shadow:none;
+  transition:opacity .15s}
+@media (hover:hover) and (pointer:fine){
+  .node .add-child{opacity:0}
+  .node:hover .add-child{opacity:.9}
+}
+.node .add-child:hover{opacity:1}
 body.auth-mode .node .add-child{display:none}
 
 /* ---------- 已取消托盘 ---------- */
@@ -479,7 +535,8 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
   background:rgba(45,45,45,.08)}
 body.drawer-resizing{cursor:col-resize;user-select:none}
 body.drawer-resizing #viewport,
-body.drawer-resizing .drawer{pointer-events:none}
+body.drawer-resizing .drawer,
+body.drawer-resizing .bug-panel{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
@@ -488,6 +545,7 @@ body.drawer-resizing .drawer{pointer-events:none}
 .state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
 .state-chip.failed{background:var(--red-soft);color:var(--red)}
+.state-chip.untested{background:#fff3bf;color:var(--focus)}
 .state-chip.module{background:var(--module-soft);color:var(--module)}
 .state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
 .state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
@@ -603,10 +661,89 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .file-path{flex:1;min-width:140px;font:inherit;font-size:13px;padding:8px 10px;min-height:36px;
   border:2px solid var(--line-ink);border-radius:8px;background:#fff;box-sizing:border-box}
 .file-path:focus{border-color:var(--green);background:var(--green-soft);outline:none}
+
+/* ---------- 手机竖屏：顶栏换行、检查器改底栏 ---------- */
+/* 用 html.cg-phone，不靠 max-width。Safari「桌面网站」会把宽度报成 ~980，媒体查询不会中。 */
+html.cg-phone header.top{
+  flex-wrap:wrap;align-items:center;gap:6px 8px;
+  padding:calc(6px + var(--safe-top)) 10px 6px;
+}
+html.cg-phone header.top .brand{order:1;flex:1 1 0;min-width:0}
+html.cg-phone header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.cg-phone .settings-wrap{order:2;flex:0 0 auto;margin-left:0}
+html.cg-phone .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
+html.cg-phone .top-tools{
+  order:4;flex:1 1 100%;margin-left:0;min-width:0;
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;padding:2px 0 4px;gap:6px 8px;
+}
+html.cg-phone .top-tools > *{flex:0 0 auto}
+html.cg-phone .repo-status{max-width:42vw}
+html.cg-phone .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-height:min(70vh,480px);overflow:auto}
+html.cg-phone .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
+html.cg-phone #rel-hint{white-space:nowrap}
+html.cg-phone .tray-btn,html.cg-phone .auth-btn,
+html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
+  min-height:36px;padding-top:7px;padding-bottom:7px
+}
+html.cg-phone #btn-settings{width:36px;height:36px;min-height:36px;padding:0}
+html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
+html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
+html.cg-phone .drawer{
+  top:auto;left:0;right:0;bottom:0;width:100%;height:var(--drawer-height);
+  border-left:none;border-top:2px solid var(--line-ink);
+  padding:18px 14px calc(20px + var(--safe-bottom));
+}
+html.cg-phone .drawer-split{
+  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
+  cursor:row-resize;transform:translateY(8px);
+}
+html.cg-phone .drawer-split:before{
+  top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
+  border-radius:2px;background:var(--line-ink);opacity:.35
+}
+html.cg-phone .drawer-split:hover:before,html.cg-phone .drawer-split:focus-visible:before,
+html.cg-phone body.drawer-resizing .drawer-split:before{opacity:.7}
+html.cg-phone body.drawer-resizing{cursor:row-resize}
+html.cg-phone body.bugs-open .drawer-split{display:block}
+html.cg-phone .bug-panel{
+  top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
+  border-left:none;border-top:2px solid var(--line-ink);
+  padding-bottom:calc(16px + var(--safe-bottom));
+}
+html.cg-phone .tray{
+  left:8px;right:8px;width:auto;max-height:min(52vh,420px);overflow:auto;
+  z-index:32
+}
+html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
+html.cg-phone .node .add-child{width:22px;height:22px;line-height:18px;font-size:13px;right:-11px;opacity:.34}
+html.cg-phone .node.selected .add-child{opacity:1}
+html.cg-phone .node .add-child:after{content:"";position:absolute;inset:-12px}
+html.cg-phone body.layout-tb .node .add-child{bottom:-11px}
+html.cg-phone .node:hover,html.cg-phone .node.module:hover{transform:none}
+html.cg-phone .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
+html.cg-phone .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 16px 16px;margin:0 auto}
+html.cg-phone .first-use .card.wide{width:min(920px,calc(100% - 16px));max-height:none}
+html.cg-phone .first-use h2{font-size:17px}
+html.cg-phone .first-use .actions{flex-direction:column}
+html.cg-phone .first-use .actions button{width:100%;min-height:44px}
+html.cg-phone .lens-bar{left:8px;right:8px;bottom:8px;flex-wrap:wrap;gap:8px}
+html.cg-phone .lens-group .lens-items{grid-template-columns:1fr}
+html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html.cg-phone .lens-tray li input[type=text]{font-size:16px}
+html.cg-phone .file-path{min-width:0}
+html.cg-phone .file-name{max-width:min(160px,46vw)}
+html.cg-phone .plus-btn{width:36px;height:36px}
+html.cg-phone .dot-pick{min-height:40px}
+html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
+  left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
+}
+html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
+html.cg-phone .drawer h2{font-size:18px}
 </style>
 </head>
 <body>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
+<div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
 <header class="top">
   <div class="brand">
     <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
@@ -621,9 +758,6 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
-    <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
-      <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
-    </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
     <div class="session-chip" aria-hidden="true">
       <b id="session-name">S-0823</b>
@@ -632,37 +766,49 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
     <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
-    <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
-    <div class="settings-wrap" id="settings-wrap">
-      <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n="settings">设置</button>
-      <div class="settings-menu" id="settings-menu">
-        <div class="set-block">
-          <div class="set-label" data-i18n="themeLabel">主题</div>
-          <div class="theme-picks" id="theme-picks">
-            <button type="button" class="theme-pick" data-theme="1">
-              <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
-              <span data-i18n="themeNow">现在这版</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="44">
-              <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
-              <span data-i18n="themeCream">奶油描边</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="48">
-              <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
-              <span data-i18n="themeWash">淡彩分层</span>
-            </button>
-            <button type="button" class="theme-pick" data-theme="4">
-              <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
-              <span data-i18n="themeFlat">无阴影扁平</span>
-            </button>
+  </div>
+  <div class="settings-wrap" id="settings-wrap">
+    <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n-title="settings" title="设置" aria-label="设置">
+      <svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.25.12.54.02.68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>
+      </svg>
+    </button>
+    <div class="settings-menu" id="settings-menu">
+      <div class="set-block">
+        <div class="set-label" data-i18n="toolsLabel">工具</div>
+        <div class="set-tools">
+          <div class="rel-toggle" id="lens-toggle" data-i18n-title="lensTitle" title="首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。">
+            <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
           </div>
+          <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
         </div>
-        <div class="set-block">
-          <div class="set-label" data-i18n="langLabel">语言</div>
-          <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
-            <button type="button" data-lang="zh" class="on">中</button>
-            <button type="button" data-lang="en">EN</button>
-          </div>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="themeLabel">主题</div>
+        <div class="theme-picks" id="theme-picks">
+          <button type="button" class="theme-pick" data-theme="1">
+            <i class="swatch" style="background:#fff3bf;border-color:#2d2d2d"></i>
+            <span data-i18n="themeNow">现在这版</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="44">
+            <i class="swatch" style="background:#fff6e5;border-color:#e6d3a8"></i>
+            <span data-i18n="themeCream">奶油描边</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="48">
+            <i class="swatch" style="background:#ffe08a;border-color:#cfc6b4"></i>
+            <span data-i18n="themeWash">淡彩分层</span>
+          </button>
+          <button type="button" class="theme-pick" data-theme="4">
+            <i class="swatch" style="background:#fff4c2;border-color:#bbb"></i>
+            <span data-i18n="themeFlat">无阴影扁平</span>
+          </button>
+        </div>
+      </div>
+      <div class="set-block">
+        <div class="set-label" data-i18n="langLabel">语言</div>
+        <div class="lang-toggle" id="lang-toggle" title="界面语言 / UI language">
+          <button type="button" data-lang="zh" class="on">中</button>
+          <button type="button" data-lang="en">EN</button>
         </div>
       </div>
     </div>
@@ -682,7 +828,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
   <div class="card wide" id="first-use-cuts" hidden>
     <div class="kicker" data-i18n="cutKicker">Agent 已读仓 · 请你定第一层</div>
     <h2 data-i18n="cutHeading">候选池不可用</h2>
-    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在顶栏用「第一层候选」进入画布搁板模式。</p>
+    <p data-i18n="cutCopy">没有读到 .codex/context/l1-candidates.json。请让 Agent 先真读仓生成候选文件，或在设置里用「第一层候选」进入画布搁板模式。</p>
     <div class="actions">
       <button class="quiet" id="first-use-cut-back" data-i18n="cutBack">返回</button>
     </div>
@@ -735,6 +881,7 @@ const I18N = {
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
     splitTitle:"拖动调整检查器宽度，双击恢复",
+    splitTitlePhone:"拖动调整检查器高度，双击恢复",
     lensMode:"第一层候选",
     lensTitle:"首次建图：候选模块摆在画布上，与主节点无连线；选中一个，它才挂到主节点下。",
     lensShelfHint:"候选（无连线）· 点一个挂到根下",
@@ -748,6 +895,7 @@ const I18N = {
     authMode:"授权模式",
     cancelled:"已取消",
     settings:"设置",
+    toolsLabel:"工具",
     themeLabel:"主题",
     langLabel:"语言",
     themeNow:"现在这版",
@@ -802,7 +950,12 @@ const I18N = {
     memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
     addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
     module:"模块", cancelledChip:"已取消",
-    state_dirty:"探索中", state_success:"成功", state_failed:"失败",
+    state_dirty:"未开发", state_untested:"已做未测", state_success:"测试通过", state_failed:"测试未过",
+    stateHint_dirty:"还没开始开发",
+    stateHint_untested:"开发完了，还没有给这个节点生成测试",
+    stateHint_success:"开发完成，测试通过",
+    stateHint_failed:"开发完成，测试不通过",
+    workState:"开发进度",
     pendingChip:"待批",
     summarizing:"沉淀中…",
     dormantExp:"（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
@@ -816,6 +969,7 @@ const I18N = {
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
     splitTitle:"Drag to resize the inspector. Double-click to reset.",
+    splitTitlePhone:"Drag to resize the inspector height. Double-tap to reset.",
     lensMode:"L1 candidates",
     lensTitle:"First-use mapping: candidates sit on the canvas with no line to the root; picking one attaches it under the root.",
     lensShelfHint:"Candidates (no lines) · click one to attach it under the root",
@@ -829,6 +983,7 @@ const I18N = {
     authMode:"Auth mode",
     cancelled:"Cancelled",
     settings:"Settings",
+    toolsLabel:"Tools",
     themeLabel:"Theme",
     langLabel:"Language",
     themeNow:"Current",
@@ -883,7 +1038,12 @@ const I18N = {
     memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
     module:"Module", cancelledChip:"Cancelled",
-    state_dirty:"Exploring", state_success:"Done", state_failed:"Failed",
+    state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
+    stateHint_dirty:"Development has not started",
+    stateHint_untested:"Built, but this node has no tests yet",
+    stateHint_success:"Built, and tests passed",
+    stateHint_failed:"Built, but tests failed",
+    workState:"Build status",
     pendingChip:"Pending",
     summarizing:"Settling…",
     dormantExp:"(Demo) The agent summarized the cause and fix. This lesson is dormant until a similar bug returns.",
@@ -926,7 +1086,11 @@ function applyStaticI18n(){
   document.documentElement.lang = uiLang==="en" ? "en" : "zh-CN";
   document.title = t("docTitle");
   document.querySelectorAll("[data-i18n]").forEach(el=>{ el.textContent = t(el.dataset.i18n); });
-  document.querySelectorAll("[data-i18n-title]").forEach(el=>{ el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-title]").forEach(el=>{
+    const v = t(el.dataset.i18nTitle);
+    el.title = v;
+    if(el.hasAttribute("aria-label")) el.setAttribute("aria-label", v);
+  });
   document.querySelectorAll("#lang-toggle [data-lang]").forEach(b=>{
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
@@ -935,6 +1099,7 @@ function applyStaticI18n(){
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
   }
+  if(typeof syncSplitChrome==="function") syncSplitChrome();
 }
 function readStoredUiLang(){
   try{
@@ -1367,7 +1532,7 @@ const CONTEXT_GUARD_MAP = {
   "title": "Context Guard",
   "kind": "module",
   "purpose": "人与 Agent 共用的项目记忆，活在仓库里",
-  "state": "dirty",
+  "state": "untested",
   "files": [],
   "memories": [
     {
@@ -1431,7 +1596,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "工作台",
       "kind": "module",
       "purpose": "人在浏览器看图、改记忆、确认提议、授权切片",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -1458,7 +1623,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "前端设计",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1472,7 +1637,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "顶栏",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1489,7 +1654,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "右边栏",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1506,7 +1671,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "按钮",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1523,7 +1688,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "授权模式",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1540,7 +1705,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "Bug",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1557,7 +1722,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "已取消",
               "kind": "module",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1574,7 +1739,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "鼠标/移动",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "untested",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1595,7 +1760,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "session连接",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1612,7 +1777,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "模块授权",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1646,7 +1811,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "底层连接",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1673,7 +1838,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "冷启动",
       "kind": "module",
       "purpose": "skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -1690,7 +1855,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "多平台一键安装",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1721,7 +1886,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "codex",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1738,7 +1903,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "claude code",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1807,7 +1972,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "cursor",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -1897,7 +2062,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "初次使用动画引导",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1931,7 +2096,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "已有仓库建图",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1962,7 +2127,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "底层文件系统",
       "kind": "module",
       "purpose": "会话、坏例、任务、地图怎么写、怎么跳",
-      "state": "dirty",
+      "state": "success",
       "files": [],
       "memories": [
         {
@@ -1979,7 +2144,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "session",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -1993,7 +2158,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "user message",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2014,7 +2179,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "bad case",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2031,7 +2196,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "map",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2048,7 +2213,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "index",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2065,7 +2230,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "Readme.md",
           "kind": "work",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2082,7 +2247,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "task",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2109,7 +2274,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "hook",
       "kind": "module",
       "purpose": "当前开发进程的生命周期提醒，把 skill 挂到打开的仓库",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [],
       "bugs": [],
@@ -2120,7 +2285,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "start hook",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2134,7 +2299,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "User Prompt",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2151,7 +2316,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "System Prompt",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2202,7 +2367,7 @@ const CONTEXT_GUARD_MAP = {
               "title": "Ask User",
               "kind": "work",
               "origin": "human",
-              "state": "dirty",
+              "state": "success",
               "purpose": "",
               "memories": [],
               "ideas": [],
@@ -2223,7 +2388,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "stop hook",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2302,7 +2467,7 @@ const CONTEXT_GUARD_MAP = {
       "title": "CI/CD",
       "kind": "module",
       "purpose": "以后怎么自动验；第一版不做测试中台，夹具和冒烟挂在这里",
-      "state": "dirty",
+      "state": "untested",
       "files": [],
       "memories": [
         {
@@ -2336,7 +2501,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "CI",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "success",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -2353,7 +2518,7 @@ const CONTEXT_GUARD_MAP = {
           "title": "CD",
           "kind": "module",
           "origin": "human",
-          "state": "dirty",
+          "state": "untested",
           "purpose": "",
           "memories": [],
           "ideas": [],
@@ -3245,8 +3410,7 @@ function loadLive(r){
   const tree = r.live || proposedTree(r);
   adoptTree(tree);
   r.live = clone(data);
-  sessionAuth.clear();
-  (r.auth||["T0"]).forEach(x=>sessionAuth.add(x));
+  authUnlockAll();
   selectedId = r.selectedId || "T0";
   viewRootId = r.viewRootId || "T0";
   focusId = r.focusId || null;
@@ -3306,6 +3470,7 @@ function adoptTree(tree){
   promoteFatWork(data);
   uniquifyIds(data);
   normalizeTree(data);
+  stampMapCompletion();
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -3387,8 +3552,7 @@ function closeOverlay(){
 function emptyFirstUse(){
   const next = clone(currentRepo().blueprint);
   adoptTree({...next, memories:[], ideas:[], bugs:[], dormant:[], files:[], owns:[], children:[]});
-  sessionAuth.clear();
-  sessionAuth.add("T0");
+  authUnlockAll();
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
@@ -3442,8 +3606,7 @@ function proposedTree(r){
 function applyProposedMap(){
   const r = currentRepo();
   adoptTree(proposedTree(r));
-  sessionAuth.clear();
-  sessionAuth.add("T0");
+  authUnlockAll();
   selectedId = "T0";
   viewRootId = "T0";
   focusId = null;
@@ -3692,6 +3855,7 @@ function exitLensMode(keep=true){
   fitView();
 }
 document.getElementById("btn-lens").onclick = ()=>{
+  closeSettings();
   if(lensMode){ exitLensMode(); return; }
   if(bugPathMode) exitBugPath(true);
   if(relationMode){ relationMode = false; relAnchorId = null;
@@ -3751,6 +3915,42 @@ function isProposed(n){
   return true;
 }
 function isAuth(n){ return sessionAuth.has(n.id); }
+function authUnlockAll(){
+  sessionAuth.clear();
+  walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
+}
+const WORK_STATES = ["dirty","untested","success","failed"];
+function workDotState(n){
+  const s = n && n.state;
+  return WORK_STATES.indexOf(s)>=0 ? s : "dirty";
+}
+function workStateHint(s){
+  return t("stateHint_"+s) || t("state_"+s);
+}
+/* 按仓库里实际有没有做、有没有测，给节点上色。旧缓存若还是蓝点，只升不降。 */
+const MAP_COMPLETION = {
+  T0:"untested",
+  M1:"untested", N400:"untested", N405:"untested", N406:"untested", N407:"untested",
+  N409:"untested", N410:"untested", N411:"untested", N412:"untested",
+  N401:"untested", N402:"untested", N403:"dirty", N404:"untested",
+  M2:"untested", N413:"success", N415:"success", N416:"success", N418:"dirty",
+  N420:"success", N422:"dirty", N423:"dirty", N424:"dirty",
+  N425:"untested", N426:"dirty", N427:"untested",
+  M3:"success", N428:"success", N432:"success", N429:"success", N430:"success",
+  N431:"success", N433:"success", N434:"untested",
+  M4:"untested", N435:"success", N437:"success", N438:"success",
+  N439:"dirty", N440:"dirty", N444:"success",
+  N436:"untested", N441:"dirty", N442:"dirty", N443:"dirty",
+  M5:"untested", N446:"success", N447:"untested"
+};
+function stampMapCompletion(){
+  walkAll(data, n=>{
+    if(!n || isCancelled(n)) return;
+    const want = MAP_COMPLETION[n.id];
+    if(!want || want==="dirty") return;
+    if(workDotState(n)==="dirty") n.state = want;
+  });
+}
 function depthFromView(n){
   const p = findPath(n.id);
   if(!p) return 99;
@@ -4126,7 +4326,11 @@ document.getElementById("btn-auth").onclick = ()=>{
 
 /* ================= 已取消托盘 ================= */
 document.getElementById("btn-tray").onclick = ()=>{
-  document.getElementById("tray").classList.toggle("open");
+  const tray = document.getElementById("tray");
+  const open = !tray.classList.contains("open");
+  tray.classList.toggle("open", open);
+  document.getElementById("btn-tray").classList.toggle("on", open);
+  if(open) closeSettings();
 };
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
@@ -4257,7 +4461,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module"></i><span>${n.title}</span>
+    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
@@ -4267,7 +4471,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(isProposed(n)){
     return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
   }
-  return authMark+`<i class="dot ${n.state}"></i><span>${n.title}</span>`+
+  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4411,9 +4615,11 @@ function renderMap(){
     if(!kids.length){ pos.set(root.id,{x:0,y:0}); return; }
     const cellW = Math.max(...kids.map(c=>size.get(c.id).w));
     const n = kids.length;
-    const cols = relationMode
-      ? (n<=2 ? n : 2)
-      : (n<=2 ? n : n<=6 ? Math.min(3,n) : 4);
+    const cols = isPhoneLayout()
+      ? Math.min(2, n)
+      : relationMode
+        ? (n<=2 ? n : 2)
+        : (n<=2 ? n : n<=6 ? Math.min(3,n) : 4);
     const GX = relationMode ? 168 : 44;
     const GY = relationMode ? 110 : 36;
     const STEM = relationMode ? 96 : 56;
@@ -4721,7 +4927,12 @@ function commitChild(node, title){
 }
 
 /* ================= 抽屉 ================= */
-const STATE_LABEL = ()=>({dirty:t("state_dirty"), success:t("state_success"), failed:t("state_failed")});
+const STATE_LABEL = ()=>({
+  dirty:t("state_dirty"),
+  untested:t("state_untested"),
+  success:t("state_success"),
+  failed:t("state_failed")
+});
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
@@ -4849,21 +5060,27 @@ function renderDetail(){
 
   const pendingKids = node.children.filter(isProposed).length;
   const canDelete = node.id!==data.id;
-  /* dirty/探索中是缺省，不是要人改的活状态；只在有结论或自定义标签时才露芯片。 */
+  /* 蓝点是还没开工；有进度才在标题旁露芯片。 */
   const labels = uiLabels();
   const states = STATE_LABEL();
+  const workSt = workDotState(node);
   const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
-    : isModule? `<span class="state-chip module">${t("module")}</span>`
     : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
-    : (node.state==="success"||node.state==="failed")
-      ? `<span class="state-chip ${node.state}">${states[node.state]}</span>`
+    : (workSt==="success"||workSt==="failed"||workSt==="untested")
+      ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
+  const statePick = !cancelled
+    ? `<div class="dot-picks" role="radiogroup" aria-label="${escAttr(t("workState"))}">`+
+      WORK_STATES.map(s=>`<button type="button" class="dot-pick${workSt===s?" on":""}" data-work-state="${s}" title="${escAttr(workStateHint(s))}" aria-pressed="${workSt===s?"true":"false"}"><i class="dot ${s}"></i><span>${states[s]}</span></button>`).join("")+
+      `</div>`
+    : "";
 
   el.innerHTML = `
     <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
+    ${statePick}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
@@ -4952,6 +5169,12 @@ function renderDetail(){
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
     node.memories.push({text:t("doneMem"), state:"success", files:[]}); renderAll(); };
+  el.querySelectorAll("[data-work-state]").forEach(b=>{
+    b.onclick = ()=>{
+      node.state = b.dataset.workState;
+      renderAll();
+    };
+  });
 
   el.querySelectorAll("details.fold").forEach(d=>{
     d.addEventListener("toggle", ()=>{
@@ -5081,16 +5304,44 @@ function chromeTop(){
   return Number.isFinite(n) && n>0 ? n : 52;
 }
 const DRAWER_W_KEY = "cg-drawer-width";
+const DRAWER_H_KEY = "cg-drawer-height";
 const DRAWER_W_DEFAULT = 340;
+const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
+function isPhoneLayout(){
+  if(window.__CG_PHONE_FORCE===true) return true;
+  if(window.__CG_PHONE_FORCE===false) return false;
+  try{
+    if(window.matchMedia(PHONE_MQ).matches) return true;
+  }catch(e){}
+  const short = Math.min(screen.width||0, screen.height||0);
+  const tall = Math.max(screen.width||0, screen.height||0);
+  const portrait = (window.innerHeight||0) >= (window.innerWidth||0) || tall >= short;
+  let touch = (navigator.maxTouchPoints||0) > 0;
+  try{ touch = touch || window.matchMedia("(pointer: coarse)").matches; }catch(e){}
+  return !!(touch && portrait && short > 0 && short <= 820);
+}
+function syncPhoneClass(){
+  document.documentElement.classList.toggle("cg-phone", isPhoneLayout());
+}
 function cssPx(name, fallback){
   const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
   return Number.isFinite(n) && n>0 ? n : fallback;
 }
 function drawerWidthPx(){ return cssPx("--drawer-width", DRAWER_W_DEFAULT); }
+function defaultDrawerHeight(){
+  return Math.round((window.innerHeight || 800) * 0.4);
+}
+function drawerHeightPx(){ return cssPx("--drawer-height", defaultDrawerHeight()); }
 function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
 function clampDrawerWidth(px){
   const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
   return Math.max(220, Math.min(max, Math.round(px)));
+}
+function clampDrawerHeight(px){
+  const top = chromeTop();
+  const room = Math.max(220, (window.innerHeight || 0) - top);
+  const max = Math.max(160, Math.min(Math.floor(room * 0.72), room - 72));
+  return Math.max(132, Math.min(max, Math.round(px)));
 }
 function applyDrawerWidth(px, save){
   const w = clampDrawerWidth(px);
@@ -5100,11 +5351,41 @@ function applyDrawerWidth(px, save){
   }
   return w;
 }
+function applyDrawerHeight(px, save){
+  const h = clampDrawerHeight(px);
+  document.documentElement.style.setProperty("--drawer-height", h+"px");
+  if(save){
+    try{ localStorage.setItem(DRAWER_H_KEY, String(h)); }catch(e){}
+  }
+  return h;
+}
 function restoreDrawerWidth(){
   try{
     const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
     if(Number.isFinite(n)) applyDrawerWidth(n, false);
   }catch(e){}
+}
+function restoreDrawerHeight(){
+  if(!isPhoneLayout()) return;
+  try{
+    const n = parseFloat(localStorage.getItem(DRAWER_H_KEY));
+    if(Number.isFinite(n)) applyDrawerHeight(n, false);
+    else applyDrawerHeight(defaultDrawerHeight(), false);
+  }catch(e){
+    applyDrawerHeight(defaultDrawerHeight(), false);
+  }
+}
+function applyDrawerLayout(){
+  if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), false);
+  else applyDrawerWidth(drawerWidthPx(), false);
+  syncSplitChrome();
+}
+function syncSplitChrome(){
+  const el = document.getElementById("drawer-split");
+  if(!el) return;
+  const phone = isPhoneLayout();
+  el.setAttribute("aria-orientation", phone ? "horizontal" : "vertical");
+  el.title = t(phone ? "splitTitlePhone" : "splitTitle");
 }
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
@@ -5112,9 +5393,15 @@ function bindDrawerSplit(){
   let resizing = false;
   function move(e){
     if(!resizing) return;
-    const x = e.clientX;
-    if(!Number.isFinite(x)) return;
-    applyDrawerWidth(window.innerWidth - x, false);
+    if(isPhoneLayout()){
+      const y = e.clientY;
+      if(!Number.isFinite(y)) return;
+      applyDrawerHeight(window.innerHeight - y, false);
+    }else{
+      const x = e.clientX;
+      if(!Number.isFinite(x)) return;
+      applyDrawerWidth(window.innerWidth - x, false);
+    }
   }
   function stop(){
     if(!resizing) return;
@@ -5125,11 +5412,12 @@ function bindDrawerSplit(){
     window.removeEventListener("pointerup", stop, true);
     window.removeEventListener("mouseup", stop, true);
     window.removeEventListener("pointercancel", stop, true);
-    applyDrawerWidth(drawerWidthPx(), true);
+    if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
+    else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
   function start(e){
-    if(document.body.classList.contains("bugs-open")) return;
+    if(document.body.classList.contains("bugs-open") && !isPhoneLayout()) return;
     if(e.button!=null && e.button!==0) return;
     if(resizing && e.type==="mousedown") return;
     e.preventDefault();
@@ -5151,15 +5439,22 @@ function bindDrawerSplit(){
   el.addEventListener("mousedown", start);
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
-    applyDrawerWidth(DRAWER_W_DEFAULT, true);
+    if(isPhoneLayout()) applyDrawerHeight(defaultDrawerHeight(), true);
+    else applyDrawerWidth(DRAWER_W_DEFAULT, true);
     fitView();
   });
   el.addEventListener("keydown", e=>{
+    const step = e.shiftKey ? 32 : 16;
+    if(isPhoneLayout()){
+      if(e.key!=="ArrowUp" && e.key!=="ArrowDown") return;
+      e.preventDefault();
+      applyDrawerHeight(drawerHeightPx() + (e.key==="ArrowUp" ? step : -step), true);
+      fitView();
+      return;
+    }
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     e.preventDefault();
-    const step = e.shiftKey ? 32 : 16;
-    const next = drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step);
-    applyDrawerWidth(next, true);
+    applyDrawerWidth(drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step), true);
     fitView();
   });
 }
@@ -5171,30 +5466,106 @@ function syncChrome(){
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
-  const right = bugs ? bugPanelWidthPx() : drawerWidthPx();
+  const phone = isPhoneLayout();
+  const right = phone ? 0 : (bugs ? bugPanelWidthPx() : drawerWidthPx());
+  const bottom = phone ? drawerHeightPx() : 0;
   const availW = window.innerWidth - right - 72;
-  const availH = window.innerHeight - chromeTop() - 36;
+  const availH = window.innerHeight - chromeTop() - bottom - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
   view.k = Math.max(k, .35);
   view.x = 36 + Math.max(0, (availW - extents.w*view.k)/2);
   view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
   applyView();
 }
-window.addEventListener("resize", ()=>{ applyDrawerWidth(drawerWidthPx(), false); syncChrome(); fitView(); });
+function onChromeResize(){
+  syncPhoneClass();
+  const phone = isPhoneLayout();
+  const crossed = phone !== onChromeResize._phone;
+  onChromeResize._phone = phone;
+  if(crossed){
+    if(phone) restoreDrawerHeight();
+    else restoreDrawerWidth();
+    if(typeof data!=="undefined" && data) renderAll();
+  }else{
+    applyDrawerLayout();
+  }
+  syncSplitChrome();
+  syncChrome();
+  fitView();
+}
+onChromeResize._phone = isPhoneLayout();
+window.addEventListener("resize", onChromeResize);
+window.addEventListener("orientationchange", ()=>{ setTimeout(onChromeResize, 300); });
+try{
+  window.matchMedia(PHONE_MQ).addEventListener("change", onChromeResize);
+}catch(e){
+  try{ window.matchMedia(PHONE_MQ).addListener(onChromeResize); }catch(err){}
+}
 const vp = document.getElementById("viewport");
 let panning=false, sx=0, sy=0;
-vp.addEventListener("mousedown", e=>{
+const pointers = new Map();
+let pinch = null;
+function panIgnore(el){
+  return !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
+}
+function endPointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size < 2) pinch = null;
+  if(pointers.size === 0){
+    panning = false;
+    vp.classList.remove("grabbing");
+  }else if(pointers.size === 1){
+    const p = [...pointers.values()][0];
+    panning = true;
+    sx = p.x - view.x;
+    sy = p.y - view.y;
+  }
+}
+vp.addEventListener("pointerdown", e=>{
   if(document.body.classList.contains("drawer-resizing")) return;
-  if(e.target.closest("#drawer-split")) return;
-  if(e.target.closest(".node")) return;
-  panning=true; sx=e.clientX-view.x; sy=e.clientY-view.y;
+  if(panIgnore(e.target)) return;
+  if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  try{ vp.setPointerCapture(e.pointerId); }catch(err){}
+  if(pointers.size===2){
+    const pts = [...pointers.values()];
+    pinch = {
+      d: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y),
+      k: view.k
+    };
+    panning = false;
+    vp.classList.remove("grabbing");
+    return;
+  }
+  panning = true;
+  sx = e.clientX-view.x;
+  sy = e.clientY-view.y;
   vp.classList.add("grabbing");
 });
-window.addEventListener("mousemove", e=>{
+vp.addEventListener("pointermove", e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(pinch && pointers.size===2){
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    if(pinch.d>8 && view.k>0){
+      const nk = Math.min(2.2, Math.max(.35, pinch.k * (d / pinch.d)));
+      const rect = vp.getBoundingClientRect();
+      const cx = (pts[0].x+pts[1].x)/2 - rect.left;
+      const cy = (pts[0].y+pts[1].y)/2 - rect.top;
+      view.x = cx - (cx-view.x)*(nk/view.k);
+      view.y = cy - (cy-view.y)*(nk/view.k);
+      view.k = nk;
+      applyView();
+    }
+    return;
+  }
   if(!panning || document.body.classList.contains("drawer-resizing")) return;
   view.x=e.clientX-sx; view.y=e.clientY-sy; applyView();
 });
-window.addEventListener("mouseup", ()=>{ panning=false; vp.classList.remove("grabbing"); });
+vp.addEventListener("pointerup", endPointer);
+vp.addEventListener("pointercancel", endPointer);
+window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
@@ -5245,10 +5616,16 @@ async function boot(){
   if(themeBanner && window.__CG_PREVIEW){
     themeBanner.textContent = "预览模块卡 #"+currentNodeTheme()+" · 还没写进默认工作台";
   }
+  const phoneBanner = document.getElementById("phone-preview-banner");
+  if(phoneBanner && window.__CG_PHONE_FORCE===false){
+    phoneBanner.textContent = "电脑预览 · 强制宽屏布局";
+  }
   syncThemePicks();
   renderAll();
   restoreDrawerWidth();
+  restoreDrawerHeight();
   bindDrawerSplit();
+  applyDrawerLayout();
   syncChrome();
   fitView();
   if(new URLSearchParams(location.search).has("settings")){
@@ -5260,7 +5637,7 @@ async function boot(){
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
-  new ResizeObserver(()=>{ syncChrome(); }).observe(headerEl);
+  new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
 }
 boot();
 </script>
