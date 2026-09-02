@@ -6,6 +6,7 @@ import { DebugDemo } from "./DebugDemo";
 import { Install } from "./Install";
 import { RecordGuide } from "./RecordGuide";
 import { ClientDemo } from "./ClientDemo";
+import { HeroWorkbenchVisual } from "./HeroWorkbenchVisual";
 import type { ClientId } from "./clients";
 import { repository, type WorkbenchChapterId, type ChapterId } from "./storyboard";
 import { useLanguage } from "./i18n";
@@ -236,17 +237,22 @@ export function App() {
           >
           <Page id="home" active={activePage === "home"}>
             <section className="hero" id="home" aria-labelledby="hero-title">
-              <h1 id="hero-title">
-                {t("让每一次协作，都接得上一次。")}
-              </h1>
-              <div className="hero-actions">
-                <a className="primary" href="#install">
-                  {t("安装 Context Guard")} <span>↓</span>
-                </a>
-                <a className="hero-demo-link" href="#workbench">
-                  {t("看完整使用过程")} <Icon name="arrow" size={16} />
-                </a>
+              <div className="hero-copy">
+                <h1 id="hero-title">
+                  {t("让每一次协作，都接得上一次。")}
+                </h1>
+                <div className="hero-actions">
+                  <a className="primary" href="#install">
+                    {t("安装 Context Guard")} <span>↓</span>
+                  </a>
+                  <a className="hero-demo-link" href="#workbench">
+                    {t("看完整使用过程")} <Icon name="arrow" size={16} />
+                  </a>
+                </div>
               </div>
+              <a className="hero-visual-link" href="#workbench" aria-label={t("查看工作台宣传图")}>
+                <HeroWorkbenchVisual language={language} title={t("工作台宣传图")} />
+              </a>
             </section>
           </Page>
           <Page id="workbench" active={activePage === "workbench"}>
@@ -322,9 +328,6 @@ export function App() {
           </Page>
           </div>
         </main>
-        <div className="page-position" aria-hidden="true">
-          <span style={{ width: `${((activeIndex + 1) / pageIds.length) * 100}%` }} />
-        </div>
         <div className="visually-hidden" aria-live="polite">
           {t("当前页面")}：{t(pageLabels[activePage])}
         </div>

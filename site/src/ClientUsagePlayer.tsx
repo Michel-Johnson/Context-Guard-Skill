@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { motion, useTransform } from "motion/react";
 import { Icon } from "./components";
 import { clientViewport, invocationPrompt, type Client } from "./clients";
 import { conversationTiming, getUsages, type Usage } from "./app-usage";
@@ -55,7 +54,6 @@ function StandaloneUsagePlayer({ client, usageId, onUsageChange, reduced, active
   const [fullWindow, setFullWindow] = useState(false);
   const ready = player.elapsed >= timing.result;
   const prompt = invocationPrompt(client, usage.request);
-  const progress = useTransform(player.clock, (value) => value / timing.end);
   function restart() {
     setReplay((value) => value + 1);
     setFullWindow(false);
@@ -72,7 +70,7 @@ function StandaloneUsagePlayer({ client, usageId, onUsageChange, reduced, active
 
   return <div className={"client-usage-state " + (usageId === "first" || player.active ? "" : "is-paused ") + (reduced ? "is-reduced" : "")}>
     <div className="client-demo-body">
-      <UsageNavigation client={client} usageId={usageId} onPause={player.pause}
+      <UsageNavigation usageId={usageId}
         onChapterSelect={(index) => usageId === "first" ? restart() : onUsageChange("first", index)}
         onUsageChange={(id) => id === usageId ? restart() : onUsageChange(id)} />
       <div className="client-reference-stage" ref={player.region}>
@@ -87,7 +85,6 @@ function StandaloneUsagePlayer({ client, usageId, onUsageChange, reduced, active
             <button type="button" className="lesson-view-toggle" aria-pressed={fullWindow} onClick={() => setFullWindow((value) => !value)}>{t(fullWindow ? "聚焦操作" : "查看全窗")}</button>
             <button type="button" aria-label={t("重播当前场景")} onClick={restart}><Icon name="reset" size={16} /></button>
           </div>
-          <div className="client-demo-progress" role="progressbar" aria-label={t("演示进度")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(player.elapsed / timing.end * 100)}><motion.span style={{ width: "100%", scaleX: progress, transformOrigin: "0 50%" }} /></div>
           <div className="lesson-result">
             <div className="lesson-exercise" data-shown={ready}>
               <a href={usage.target} onClick={openDemo}>{usage.linkLabel}<Icon name="arrow" size={15} /></a>

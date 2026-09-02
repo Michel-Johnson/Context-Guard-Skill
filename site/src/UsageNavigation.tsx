@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
-import type { Client } from "./clients";
 import { getUsages, type Usage } from "./app-usage";
 import { getFirstUseStory } from "./first-use-story";
 import { useLanguage } from "./i18n";
 
-export function UsageNavigation({ client, usageId, chapter = 0, onChapterSelect, onUsageChange, onPause, playbackMode }: {
-  client: Client;
+export function UsageNavigation({ usageId, chapter = 0, onChapterSelect, onUsageChange, playbackMode }: {
   usageId: Usage["id"];
   chapter?: number;
   onChapterSelect: (index: number) => void;
   onUsageChange: (id: Usage["id"]) => void;
-  onPause: () => void;
   playbackMode?: ReactNode;
 }) {
   const { language, t } = useLanguage();
@@ -46,10 +43,5 @@ export function UsageNavigation({ client, usageId, chapter = 0, onChapterSelect,
         {item.title}
       </button>)}
     </div>
-    <details className="client-precondition" onToggle={(event) => { if (event.currentTarget.open) onPause(); }}>
-      <summary>{t("使用前提")}</summary><p>{client.precondition}</p>
-      <a href="#install" onClick={onPause}>{t("安装方式")} ↗</a>
-      <a href={client.source} target="_blank" rel="noreferrer">{client.label} {t("使用说明")} ↗</a>
-    </details>
   </nav>;
 }

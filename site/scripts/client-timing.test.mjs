@@ -47,12 +47,26 @@ test("App调用与工作台演示保持为两个独立整屏页", () => {
   assert.ok(story.chapters.every(chapter => chapter.kind === "app"));
   const journeySource = readFileSync(new URL("../src/FirstUseJourney.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(journeySource, /TourStage|journey-workbench-screen|usePaneTransition/);
+  assert.match(journeySource, /state\.position\.index === chapters\.length - 1\)\s*openWorkbench\(\)/);
+  assert.doesNotMatch(journeySource, /client-demo-progress/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "debug", "install"\]/);
   assert.ok(appSource.indexOf('<Page id="workbench"') < appSource.indexOf('<Page id="clients"'));
   assert.ok(appSource.indexOf('href="#workbench" aria-current') < appSource.indexOf('href="#clients" aria-current'));
   assert.match(appSource, /className="hero-demo-link" href="#workbench"/);
   assert.match(appSource, /goToPage\(chapter === "debug" \? "debug" : "workbench"\)/);
+  assert.doesNotMatch(appSource, /page-position/);
+});
+
+test("首页使用真实双语工作台宣传图并移除重复辅助项", () => {
+  const visualSource = readFileSync(new URL("../src/HeroWorkbenchVisual.tsx", import.meta.url), "utf8");
+  assert.match(visualSource, /sourceWidth = 1440/);
+  assert.match(visualSource, /sourceHeight = 900/);
+  assert.match(visualSource, /workbench-en\.html/);
+  assert.match(visualSource, /workbench\.html/);
+
+  const navigationSource = readFileSync(new URL("../src/UsageNavigation.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
 });
 
 test("文字逐字增长，不产生半个Unicode字符", () => {

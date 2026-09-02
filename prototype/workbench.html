@@ -7,11 +7,14 @@
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
   var preview = q.has("preview");
+  var gallery = q.has("gallery");
+  window.__CG_GALLERY = gallery;
+  if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
   if(!(t==="1"||t==="4"||t==="44"||t==="48")){
     try{ t = localStorage.getItem("cg-workbench-node-theme")||""; }catch(e){ t=""; }
@@ -656,14 +659,17 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
-details.fold{margin-top:8px;border-top:1px solid var(--line);padding:20px 0 16px}
+.sec-block{margin-top:0;padding:16px 0 12px;border-top:1px solid var(--line)}
+.sec-add{display:inline-flex;align-items:center;gap:6px}
+.sec-block .mem-list,.sec-block .bug-list{margin-top:8px}
+details.fold{margin-top:0;border-top:1px solid var(--line);padding:16px 0 12px}
 details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
-  display:flex;align-items:center;gap:8px;min-height:36px;line-height:1.4;padding:4px 0 10px}
+  display:flex;align-items:center;gap:8px;min-height:28px;line-height:1.4;padding:4px 0}
 details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
 details.fold .mem-list,details.fold .bug-list,details.fold .dormant-list{margin-top:2px}
-details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{border-top:0;padding:10px 0 8px}
+details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{padding:10px 0 8px}
 
 .bug-list{list-style:none;margin:0;padding:0}
 .bug-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
@@ -778,16 +784,92 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
-html.cg-phone details.fold>summary{min-height:40px;padding:4px 0 10px}
+html.cg-phone .sec-add{min-height:36px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
 }
 html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
 html.cg-phone .drawer h2{font-size:18px}
+
+html.design-gallery,html.design-gallery body{
+  overflow:auto !important;height:auto !important;max-height:none;min-height:100dvh;
+  overscroll-behavior:auto;touch-action:auto
+}
+html.design-gallery #viewport{pointer-events:none !important}
+html.design-gallery header.top,
+html.design-gallery #viewport,
+html.design-gallery #detail,
+html.design-gallery .drawer-split,
+html.design-gallery .bug-panel,
+html.design-gallery .tray,
+html.design-gallery .first-use,
+html.design-gallery .theme-preview-banner,
+html.design-gallery .phone-preview-banner{display:none !important}
+#design-gallery{display:none}
+html.design-gallery #design-gallery{display:block;padding:0 0 64px;position:relative;z-index:40}
+.g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;
+  padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
+.g-bar b{font-size:15px}
+.g-bar .hint{color:var(--muted);font-size:12.5px;font-weight:700}
+.g-scroll{display:flex;flex-direction:column;gap:52px;max-width:380px;margin:22px auto 0;padding:0 16px}
+.g-num{font-size:13px;font-weight:800;margin:0 0 10px;color:var(--muted);letter-spacing:.04em}
+html.design-gallery .g-mock{display:block !important;position:relative;top:auto;right:auto;bottom:auto;left:auto;
+  width:340px;height:auto;pointer-events:none;border:2px solid var(--line-ink);border-radius:10px;
+  padding:16px 16px 22px;font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+.g-mock h2{font-size:18px;font-weight:700}
+.g-mock .lead{margin:8px 0 0;font-family:var(--font-note)}
+.g-mock .sec header{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;font-weight:700;min-height:36px}
+.g-mock .sec header .add{margin-left:auto;font-size:18px;font-weight:700;color:var(--muted)}
+.g-mock .hit{display:flex;gap:8px;align-items:flex-start;margin-top:4px;font-size:12.5px;font-family:var(--font-note);line-height:1.5}
+.g-mock .hit p{margin:0}
+.g-mock[data-sep="pinch"] .sec{border-top:1px solid var(--line);padding:4px 0 2px}
+.g-mock[data-sep="pinch"] .sec header{min-height:0;font-size:12px}
+.g-mock[data-sep="line"] .sec{border-top:1px solid var(--line);padding:20px 0 16px}
+.g-mock[data-sep="far"] .sec{border-top:1px solid var(--line);padding:28px 0 22px}
+.g-mock[data-sep="none"] .sec{border:0;padding:16px 0}
+.g-mock[data-sep="wide"] .sec{border:0;padding:26px 0}
+.g-mock[data-sep="dash"] .sec{border-top:1.5px dashed var(--line);padding:20px 0 16px}
+.g-mock[data-sep="short"] .sec{border:0;padding:16px 0 12px}
+.g-mock[data-sep="short"] .sec header{border-bottom:2px solid var(--line-ink);padding-bottom:8px;margin-bottom:8px}
+.g-mock[data-sep="cards"] .sec{border:1.5px solid var(--line);border-radius:10px;padding:14px 12px;margin:10px 0 0}
+.g-mock[data-sep="soft"] .sec{border:0;border-radius:10px;padding:14px 12px;margin:8px 0 0;background:#f6f1e6}
+.g-mock[data-sep="rail"] .sec{border:0;border-left:3px solid var(--line-ink);padding:12px 0 12px 12px;margin-top:12px}
+.g-mock[data-sep="gap"] .sec{border:0;padding:8px 0 20px;margin-top:8px}
+.g-mock[data-tint="mem"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="zebra"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="zebra"] .sec.bug,.g-mock[data-tint="zebra"] .sec.inh{background:#e7eefc;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="rail"] .sec.mem{border-left-color:#6ed08a}
+.g-mock[data-tint="rail"] .sec.idea{border-left-color:#c8c2b6}
+.g-mock[data-tint="rail"] .sec.bug,.g-mock[data-tint="rail"] .sec.inh{border-left-color:#3d7ee8}
+.g-mock[data-tint="pills"] .sec header{align-self:flex-start}
+.g-mock[data-tint="pills"] .sec.mem header{background:#e7f6ec;color:#2d6b45;border-radius:999px;padding:4px 10px;min-height:0}
+.g-mock[data-tint="pills"] .sec.bug header,.g-mock[data-tint="pills"] .sec.inh header{background:#e7eefc;color:#2d5da1;border-radius:999px;padding:4px 10px;min-height:0}
+.g-mock[data-plus="hide"] .sec header .add{display:none}
+.g-mock[data-plus="text"] .sec header .add{font-size:0}
+.g-mock[data-plus="text"] .sec header .add:before{content:"添加";font-size:12px;font-weight:700;color:var(--module)}
+.g-mock[data-plus="left"] .sec header{flex-direction:row}
+.g-mock[data-plus="left"] .sec header .add{margin-left:0;margin-right:6px;order:-1}
+.g-mock[data-note="1"] .sec.idea .body:before{content:"还没有 Idea";display:block;color:var(--muted);font-size:12px;padding:6px 0 4px;font-family:var(--font-note)}
+.g-mock[data-indent="1"] .sec .body{padding-left:12px}
+.g-mock[data-indent="2"] .sec .body{padding-left:20px}
+.g-mock[data-head="lg"] .sec header{font-size:15px;min-height:42px}
+.g-mock[data-head="xl"] .sec header{font-size:16px;min-height:48px;font-weight:800}
+.g-mock[data-head="space"] .sec header{letter-spacing:.08em;font-size:12px}
+.g-mock[data-head="rule"] .sec header{border-bottom:2px solid #6ed08a;padding-bottom:8px;margin-bottom:8px;display:inline-flex;min-height:0}
+.g-mock[data-head="rule"] .sec.bug header,.g-mock[data-head="rule"] .sec.inh header{border-bottom-color:#3d7ee8}
+.g-mock[data-stack="1"] .sec + .sec{margin-top:18px}
+.g-mock[data-quiet="1"] .sec.inh header{color:#b5aea2;font-weight:600}
 </style>
 </head>
 <body>
+<div id="design-gallery">
+  <div class="g-bar">
+    <b>检查器分区 · 50 版</b>
+    <span class="hint">往下滑动看。看中了把编号发我，例如「分区 17」。不用点按钮。</span>
+  </div>
+  <div class="g-scroll" id="g-scroll"></div>
+</div>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
 <header class="top">
@@ -830,6 +912,7 @@ html.cg-phone .drawer h2{font-size:18px}
             <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
           </div>
           <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+          <button type="button" class="tray-btn" id="btn-link-repo" hidden data-i18n="linkRepo" data-i18n-title="linkRepoTitle" title="选带 SKILL.md 的仓库根，改图可以写回 map.json">连接仓库</button>
         </div>
       </div>
       <div class="set-block">
@@ -982,7 +1065,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"授权附件目录", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"连接仓库", linkRepoTitle:"选带 SKILL.md 的仓库根，改图可以写回 map.json", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -1072,7 +1155,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Allow attachment folder", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Link repo", linkRepoTitle:"Pick the repo root with SKILL.md so edits can write map.json", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -1666,7 +1749,7 @@ const CONTEXT_GUARD_MAP = {
           "desc": "检查器编辑和建图确认必须留在页面里",
           "status": "open",
           "files": [],
-          "sessions": [],
+          "sessions": ["S-0823"],
           "record": ".codex/context/bugs/B20.md"
         }
       ],
@@ -3169,7 +3252,6 @@ function attachHtml(kind, key, owner, readonly){
          <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="${escAttr(t("filePathPh"))}" autocomplete="off">
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
          <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
-         ${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}
        </span>`
     : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
@@ -3190,9 +3272,6 @@ function bindFileUi(el, node){
       }
       beginAttach(b.dataset.fk, b.dataset.fi, "");
     };
-  });
-  el.querySelectorAll('[data-act="link-repo"]').forEach(b=>{
-    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); linkRepo(); };
   });
   el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
     b.onclick = ()=>saveFrom(b);
@@ -3452,6 +3531,38 @@ function restore(){
   }
   return false;
 }
+function demoOpenBug(id, title, desc, sessions){
+  return {
+    id,
+    title,
+    desc,
+    status: "open",
+    files: [],
+    sessions: sessions ? sessions.slice() : [],
+    record: ".codex/context/bugs/"+id+".md"
+  };
+}
+const DEMO_OPEN_BUGS = [
+  { parentId:"M1", bug: demoOpenBug("B20", "原生 prompt 会打断看图", "检查器编辑和建图确认必须留在页面里", ["S-0823"]) },
+  { parentId:"N405", bug: demoOpenBug("B22", "齿轮挤", "顶栏设置按钮和旁边控件贴在一起，不好点", []) },
+  { parentId:"N406", bug: demoOpenBug("B23", "手机竖屏时抽屉把手被底栏挡住，拖不到最低", "底栏升起后把手落在安全区下面", ["S-0823"]) },
+  { parentId:"N407", bug: demoOpenBug("B24", "主题 44 完成度黄点看不清", "金色状态点叠在深色卡片上对比不够", ["S-0819"]) },
+  { parentId:"N409", bug: demoOpenBug("B25", "锁点太小", "授权锁点击热区只有圆点本身", ["S-0823"]) },
+  { parentId:"N410", bug: demoOpenBug("B26", "已取消托盘从设置打开后点空白关不掉", "托盘没有点外面关闭的路径", []) },
+  { parentId:"N411", bug: demoOpenBug("B27", "GitHack 斜杠分支打不开", "带 cursor/ 的预览地址被截断", ["S-0819","S-0821"]) },
+  { parentId:"N400", bug: demoOpenBug("B28", "检查器去掉模块芯片后空一截", "类型标签删了，标题上方还留着空白", ["S-0823","S-0819"]) }
+];
+function ensureDemoBugs(tree){
+  if(!tree) return;
+  DEMO_OPEN_BUGS.forEach(seed=>{
+    let parent = null;
+    walkAll(tree, n=>{ if(n && n.id===seed.parentId) parent = n; });
+    if(!parent) return;
+    parent.bugs = parent.bugs || [];
+    if(parent.bugs.some(b=>b && b.id===seed.bug.id)) return;
+    parent.bugs.push(clone(seed.bug));
+  });
+}
 function adoptTree(tree){
   const src = clone(tree);
   Object.keys(data).forEach(k=>delete data[k]);
@@ -3464,7 +3575,10 @@ function adoptTree(tree){
   promoteFatWork(data);
   uniquifyIds(data);
   normalizeTree(data);
-  if(!window.__CG_SERVER) stampMapCompletion();
+  if(!window.__CG_SERVER){
+    stampMapCompletion();
+    ensureDemoBugs(data);
+  }
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -4193,10 +4307,11 @@ function walkAll(node, fn, parents=[]){
 }
 function currentSessionId(){ return workbenchSync?.activeSession || null; }
 const bugDispatching = new Set();
-function sessionColor(sessionId){
-  let hash = 0;
-  for(const ch of String(sessionId||"")) hash = (hash*31 + ch.codePointAt(0)) >>> 0;
-  return `hsl(${hash%360} 68% 45%)`;
+function sessionColor(name){
+  const pal=["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
+  let h=0;
+  String(name||"").split("").forEach(ch=>{ h=(h*33+ch.charCodeAt(0))|0; });
+  return pal[Math.abs(h)%pal.length];
 }
 
 function bugSessionsOf(bug){
@@ -4387,10 +4502,10 @@ function renderBugPanel(){
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
     const sending = bugDispatching.has(item.bug.id);
-    const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
+    const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
     const claim = on && sid && !item.unassigned
       ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):mine?t("leave"):t("claim")}</button>`
-      : "";
+      : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
       ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
@@ -4468,6 +4583,10 @@ document.getElementById("btn-tray").onclick = ()=>{
   tray.classList.toggle("open", open);
   document.getElementById("btn-tray").classList.toggle("on", open);
   if(open) closeSettings();
+};
+document.getElementById("btn-link-repo").onclick = async ()=>{
+  await linkRepo();
+  closeSettings();
 };
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
@@ -5238,16 +5357,9 @@ function renderDetail(){
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
-  const statePick = !cancelled
-    ? `<div class="dot-picks" role="radiogroup" aria-label="${escAttr(t("workState"))}">`+
-      WORK_STATES.map(s=>`<button type="button" class="dot-pick${workSt===s?" on":""}" data-work-state="${s}" title="${escAttr(workStateHint(s))}" aria-pressed="${workSt===s?"true":"false"}"><i class="dot ${s}"></i><span>${states[s]}</span></button>`).join("")+
-      `</div>`
-    : "";
-
   el.innerHTML = `
     <h2><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
-    ${statePick}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
@@ -5264,24 +5376,18 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
-    <details class="fold" data-fold="mem" ${foldMem?"open":""}>
-      <summary>${labels.memory} ${node.memories.length||""}
-        <button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">+</button>
-      </summary>
+    <section class="sec-block" data-fold="mem">
+      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} ＋</button>
       ${memHtml}
-    </details>
-    <details class="fold" data-fold="idea" ${foldIdea?"open":""}>
-      <summary>${labels.ideas} ${node.ideas.length||""}
-        <button type="button" class="plus-btn" data-act="add-idea" title="${escAttr(t("addIdea"))}">+</button>
-      </summary>
+    </section>
+    <section class="sec-block" data-fold="idea">
+      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} ＋</button>
       ${ideaHtml}
-    </details>
-    <details class="fold" data-fold="bug" ${foldBug?"open":""}>
-      <summary>${labels.bugs} ${openBugs.length||""}
-        <button type="button" class="plus-btn" data-act="add-bug" title="${escAttr(t("addBug"))}">+</button>
-      </summary>
+    </section>
+    <section class="sec-block" data-fold="bug">
+      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} ＋</button>
       ${bugHtml}
-    </details>
+    </section>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
@@ -5691,6 +5797,7 @@ function endPointer(e){
   }
 }
 vp.addEventListener("pointerdown", e=>{
+  if(window.__CG_GALLERY) return;
   hideDotHint();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
@@ -5737,6 +5844,7 @@ vp.addEventListener("pointerup", endPointer);
 vp.addEventListener("pointercancel", endPointer);
 window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
+  if(window.__CG_GALLERY) return;
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
   const nk = Math.min(2.2, Math.max(.35, view.k*factor));
@@ -5748,12 +5856,101 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
+function syncLinkRepoBtn(){
+  const b = document.getElementById("btn-link-repo");
+  if(!b) return;
+  b.hidden = !canFsAccess();
+}
 function renderAll(){
   if(window.__CG_INPUT_COMMIT){ renderMap(); persist(); return; }
-  liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail(); persist();
+  liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
+  syncLinkRepoBtn();
+  persist();
+}
+function bootDesignGallery(){
+  document.title = "检查器分区 · 50 版";
+  const VARIANTS = [
+    {id:"01", name:"现况：字贴横线", sep:"pinch"},
+    {id:"02", name:"横线拉开", sep:"line"},
+    {id:"03", name:"横线再拉开", sep:"far"},
+    {id:"04", name:"不要横线", sep:"none"},
+    {id:"05", name:"更大留白、不要横线", sep:"wide"},
+    {id:"06", name:"虚线分隔", sep:"dash"},
+    {id:"07", name:"标题下一截短线", sep:"short"},
+    {id:"08", name:"每块一张卡", sep:"cards"},
+    {id:"09", name:"浅底圆角块", sep:"soft"},
+    {id:"10", name:"左侧细线", sep:"rail"},
+    {id:"11", name:"只靠间距", sep:"gap"},
+    {id:"12", name:"记忆浅绿底", sep:"line", tint:"mem"},
+    {id:"13", name:"记忆绿 / Bug蓝 淡底", sep:"none", tint:"zebra"},
+    {id:"14", name:"左条：绿和蓝", sep:"rail", tint:"rail"},
+    {id:"15", name:"标题做成绿蓝胶囊", sep:"none", tint:"pills"},
+    {id:"16", name:"卡片 + 绿蓝底", sep:"cards", tint:"zebra"},
+    {id:"17", name:"浅底块 + 绿记忆", sep:"soft", tint:"mem"},
+    {id:"18", name:"无横线 + 绿记忆", sep:"wide", tint:"mem"},
+    {id:"19", name:"拉开的线 + 绿记忆", sep:"far", tint:"mem"},
+    {id:"20", name:"短线改成绿和蓝", sep:"short", head:"rule"},
+    {id:"21", name:"标题下彩线、不要横线", sep:"none", head:"rule"},
+    {id:"22", name:"大标题行", sep:"line", head:"lg"},
+    {id:"23", name:"更大标题、无横线", sep:"none", head:"xl"},
+    {id:"24", name:"字距拉开的小标题", sep:"far", head:"space"},
+    {id:"25", name:"卡片 + 大标题", sep:"cards", head:"lg"},
+    {id:"26", name:"Idea 写出「还没有」", sep:"line", note:"1"},
+    {id:"27", name:"无横线，空项也写一句", sep:"none", note:"1"},
+    {id:"28", name:"卡片里写出空项", sep:"cards", note:"1"},
+    {id:"29", name:"内容往右缩一格", sep:"line", indent:"1"},
+    {id:"30", name:"无横线，内容再缩进", sep:"none", indent:"2"},
+    {id:"31", name:"卡片 + 缩进", sep:"cards", indent:"1"},
+    {id:"32", name:"加号改成「添加」", sep:"line", plus:"text"},
+    {id:"33", name:"无横线，「添加」", sep:"wide", plus:"text"},
+    {id:"34", name:"加号放到标题左边", sep:"none", plus:"left"},
+    {id:"35", name:"不要加号", sep:"far", plus:"hide"},
+    {id:"36", name:"卡片不要加号", sep:"cards", plus:"hide"},
+    {id:"37", name:"区块之间再空一截", sep:"none", stack:"1"},
+    {id:"38", name:"卡片拉开", sep:"cards", stack:"1"},
+    {id:"39", name:"左条拉开", sep:"rail", stack:"1", tint:"rail"},
+    {id:"40", name:"继承写淡一点", sep:"line", quiet:"1"},
+    {id:"41", name:"无横线，继承淡", sep:"wide", quiet:"1"},
+    {id:"42", name:"绿底记忆 + 继承淡", sep:"none", tint:"mem", quiet:"1"},
+    {id:"43", name:"绿蓝胶囊 + 空项说明", sep:"none", tint:"pills", note:"1"},
+    {id:"44", name:"绿蓝淡底 + 大标题", sep:"soft", tint:"zebra", head:"lg"},
+    {id:"45", name:"左条彩线 + 添加", sep:"rail", tint:"rail", plus:"text"},
+    {id:"46", name:"无横线 + 缩进 + 空项", sep:"wide", indent:"2", note:"1"},
+    {id:"47", name:"卡片 + 彩线标题", sep:"cards", head:"rule"},
+    {id:"48", name:"只靠间距 + 大标题", sep:"gap", head:"xl"},
+    {id:"49", name:"浅底 + 不要加号 + 空项", sep:"soft", plus:"hide", note:"1"},
+    {id:"50", name:"无横线、绿记忆、蓝继承、大留白", sep:"wide", tint:"zebra", quiet:"1", stack:"1"}
+  ];
+  const body = `<div class="hit"><i class="dot success"></i><div><p>npx/init/set-language 属于冷启动，不是 hook。</p></div></div>`;
+  const root = document.getElementById("g-scroll");
+  root.innerHTML = VARIANTS.map(v=>{
+    const attrs = ["sep","tint","plus","note","indent","head","stack","quiet"]
+      .filter(k=>v[k]).map(k=>`data-${k}="${v[k]}"`).join(" ");
+    return `<article class="g-item" id="v${v.id}">
+      <div class="g-num">${v.id} · ${v.name}</div>
+      <aside class="drawer g-mock" data-v="${v.id}" ${attrs}>
+        <h2>冷启动 <span class="state-chip untested">已做未测</span></h2>
+        <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
+        <div class="actions">
+          <button type="button">＋ 模块</button>
+          <button type="button">＋ 子节点</button>
+          <button type="button" class="quiet">删除</button>
+        </div>
+        <section class="sec mem"><header>记忆 1 <span class="add">+</span></header><div class="body">${body}</div></section>
+        <section class="sec idea"><header>Idea <span class="add">+</span></header><div class="body"></div></section>
+        <section class="sec bug"><header>Bug <span class="add">+</span></header><div class="body"></div></section>
+        <section class="sec inh"><header>继承的 5</header><div class="body"></div></section>
+      </aside>
+    </article>`;
+  }).join("");
 }
 async function boot(){
-  const stored=readStoredUiLang(); if(stored) uiLang=stored;
+  if(window.__CG_GALLERY){
+    bootDesignGallery();
+    return;
+  }
+  const stored = readStoredUiLang();
+  if(stored) uiLang = stored;
   applyStaticI18n();
   let WorkbenchSync;
   try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { motion, useTransform } from "motion/react";
 import { clientViewport, type Client } from "./clients";
 import { conversationTiming, type Usage } from "./app-usage";
 import { getFirstUseStory } from "./first-use-story";
@@ -43,10 +42,11 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
     onComplete: () => finishChapter(),
   });
   useLayoutEffect(() => { player.seek(0); }, [position.revision, reduced]);
-  const progress = useTransform(player.clock, (value) => {
-    const local = Math.min(1, value / timing.end);
-    return mode === "all" ? (position.index + local) / chapters.length : local;
-  });
+  const openWorkbench = useCallback(() => {
+    player.pause();
+    setFinished(true);
+    onOpenDemo("map");
+  }, [player.pause, onOpenDemo]);
 
   function select(index: number, resume = false) {
     setFinished(false);
@@ -58,6 +58,8 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
     const state = current.current;
     if (!state.reduced && state.mode === "all" && state.position.index < chapters.length - 1)
       select(state.position.index + 1, true);
+    else if (!state.reduced && state.position.index === chapters.length - 1)
+      openWorkbench();
     else {
       player.pause();
       setFinished(true);
@@ -71,10 +73,6 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
     }
   }, [reduced]);
   function restart() { select(mode === "all" ? 0 : position.index); }
-  const openWorkbench = useCallback(() => {
-    player.pause();
-    onOpenDemo("map");
-  }, [player.pause, onOpenDemo]);
   const clientWindow = useMemo(() => <NativeClientFrame client={client} title={t("一起建立项目地图")}>
     <AnimatedNativeConversation resetToken={position.revision} reduced={reduced} client={client} usage={turn}
       history={history} workbenchLink={Boolean(turn.opensWorkbench)} clock={player.clock}
@@ -82,8 +80,8 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
   </NativeClientFrame>, [client, turn, history, player.clock, player.seek, openWorkbench, position.revision, reduced, t]);
 
   return <div className={`client-demo-body first-use-journey ${!player.active ? "is-paused" : ""} ${reduced ? "is-reduced" : ""}`} data-demo-scope="app">
-    <UsageNavigation client={client} usageId="first" chapter={position.index} onChapterSelect={select}
-      onUsageChange={onUsageChange} onPause={player.pause} playbackMode={<div className="journey-mode" role="group" aria-label={t("播放方式")}>
+    <UsageNavigation usageId="first" chapter={position.index} onChapterSelect={select}
+      onUsageChange={onUsageChange} playbackMode={<div className="journey-mode" role="group" aria-label={t("播放方式")}>
         <button type="button" aria-pressed={mode === "all"} onClick={() => { setMode("all"); select(0); }}>{t("完整播放")}</button>
         <button type="button" aria-pressed={mode === "chapter"} onClick={() => { setMode("chapter"); select(position.index); }}>{t("单章播放")}</button>
       </div>} />
@@ -98,7 +96,6 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
         <button type="button" aria-label={t("重播当前章节")} onClick={() => select(position.index)}><Icon name="reset" size={16} /></button>
         <button type="button" className="journey-next" disabled={position.index === chapters.length - 1} onClick={() => select(position.index + 1)}>{t("下一章")} <Icon name="arrow" size={14} /></button>
       </div>
-      <div className="client-demo-progress" aria-hidden="true"><motion.span style={{ width: "100%", scaleX: progress, transformOrigin: "0 50%" }} /></div>
     </div>
   </div>;
 }
