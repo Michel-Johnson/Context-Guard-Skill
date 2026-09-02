@@ -1,14 +1,24 @@
 import { copy, diffTrees, entries, same } from './map-model.mjs';
+export const ALL_SESSIONS = '__all__';
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
+function uniqueId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 export class WorkbenchSync {
   constructor(adapter) {
     this.a = adapter; this.config = window.__CG_SERVER;
-    this.id = crypto.randomUUID();
+    this.id = uniqueId();
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
     this.revision = 0; this.cachedDiff = null;
-    this.composing = false; this.inputDraft = null; this.activeSession = null; this.sessions = []; this.captureKey = null;
+    this.composing = false; this.inputDraft = null; this.activeSession = ALL_SESSIONS; this.sessions = []; this.grants = {}; this.captureKey = null;
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
@@ -20,16 +30,18 @@ export class WorkbenchSync {
     this.panel.querySelector('#cg-sync-import').onclick = () => this.panel.querySelector('#cg-sync-file').click();
     this.panel.querySelector('#cg-sync-file').onchange = async e => { try { await this.preview(JSON.parse(await e.target.files[0].text())); } catch (err) { this.setStatus(this.status, '导入失败：' + err.message); } e.target.value = ''; };
     this.panel.querySelector('#cg-sync-reload').onclick = () => this.reload();
-    this.panel.querySelector('#cg-sync-session').onchange = e => { this.activeSession = e.target.value || null; this.manualSession = true; this.refreshAccess(); };
+    this.panel.querySelector('#cg-sync-session').onchange = e => { this.selectSession(e.target.value); };
     window.addEventListener('beforeunload', e => { if (this.dirty()) { this.saveDraft(); e.preventDefault(); e.returnValue = ''; } });
     window.addEventListener('pagehide', () => {
       if (!this.config || this.dirty()) return;
-      fetch('/api/presence', { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
+      fetch(this.endpoint('/api/presence'), { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
     });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
+  endpoint(route) { return `${this.config?.apiBase || ''}${route}`; }
+  bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST') {
-    const response = await fetch(route, { method, headers: { Authorization: `Bearer ${this.config.token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const response = await fetch(this.endpoint(route), { method, headers: { Authorization: `Bearer ${this.config.token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
     const result = await response.json();
     if (!response.ok) { const e = new Error(result.error?.message || 'Request failed'); Object.assign(e, result.error); throw e; }
     return result;
@@ -99,7 +111,7 @@ export class WorkbenchSync {
   }
   connect() {
     this.events?.close();
-    this.events = new EventSource(`/api/events?token=${encodeURIComponent(this.config.token)}&clientId=${this.id}`);
+    this.events = new EventSource(`${this.endpoint('/api/events')}?token=${encodeURIComponent(this.config.token)}&clientId=${this.id}`);
     this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
     this.events.addEventListener('access', () => this.refreshAccess());
     this.events.addEventListener('checkpoint', async e => {
@@ -110,7 +122,7 @@ export class WorkbenchSync {
     });
     this.events.onerror = async () => {
       if (this.dirty()) this.saveDraft(); this.setStatus('offline');
-      try { const response = await fetch('/__context_guard/bootstrap', { cache: 'no-store' }); const config = await response.json(); if (config.token !== this.config.token) { this.config = config; this.connect(); } } catch {}
+      try { const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store' }); const config = await response.json(); if (config.token !== this.config.token) { this.config = config; this.connect(); } } catch {}
     };
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
@@ -137,7 +149,7 @@ export class WorkbenchSync {
     if (this.inflight) { await this.inflight; if (!this.inflight && !['conflict', 'offline', 'error'].includes(this.status) && this.operations().length) return this.flush(); return; }
     const operations = this.operations(); if (!operations.length) { await this.presence(); return; }
     const sentTree = copy(this.a.getRoot());
-    this.pendingRequest ||= { baseVersion: this.version, operationId: crypto.randomUUID(), operations };
+    this.pendingRequest ||= { baseVersion: this.version, operationId: uniqueId(), operations };
     const request = this.pendingRequest; this.saveDraft(); this.setStatus('saving');
     this.inflight = (async () => {
       try {
@@ -190,7 +202,7 @@ export class WorkbenchSync {
     try {
       const operations = [{ type: 'initialize', project: this.doc?.project || node.title, node }];
       if (flows.length) operations.push({ type: 'document', fields: { flows } });
-      const result = await this.call('/api/commit', { baseVersion: this.version, operationId: crypto.randomUUID(), operations });
+      const result = await this.call('/api/commit', { baseVersion: this.version, operationId: uniqueId(), operations });
       if (!result.committed) throw new Error('地图初始化未提交');
       this.initializationRequired = false;
       this.panel.querySelector('#cg-sync-initialize').hidden = true;
@@ -228,7 +240,7 @@ export class WorkbenchSync {
       const operations = selected.filter(x => x.checkbox.checked).map(x => x.op); if (!operations.length) return;
       apply.disabled = true;
       this.setStatus('saving');
-      try { await this.call('/api/commit', { baseVersion: preview.baseVersion, operationId: crypto.randomUUID(), operations }); dialog.close(); dialog.remove(); await this.reload(); }
+      try { await this.call('/api/commit', { baseVersion: preview.baseVersion, operationId: uniqueId(), operations }); dialog.close(); dialog.remove(); await this.reload(); }
       catch (e) { note.textContent = e.message; apply.disabled = false; this.setStatus('error', e.message); }
     };
     const cancel = document.createElement('button'); cancel.textContent = '取消'; cancel.onclick = () => { dialog.close(); dialog.remove(); };
@@ -238,33 +250,44 @@ export class WorkbenchSync {
     if (!this.config) return;
     const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
     const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
-    this.sessions = sessions;
+    this.sessions = sessions; this.grants = data.grants || {};
     const current = sessions.find(item => item.id === this.activeSession);
     const recommended = sessions.find(item => item.id === data.currentSessionId) || sessions[0] || null;
-    if (!current) { this.activeSession = recommended?.id || null; this.manualSession = false; }
-    else if (!this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
-    const options = sessions.map(item => {
+    if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = recommended?.id || ALL_SESSIONS; this.manualSession = false; }
+    else if (this.activeSession !== ALL_SESSIONS && current && !this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
+    const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '全部 Session';
+    const options = [all, ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
       const short = item.id.length > 28 ? `${item.id.slice(0, 12)}…${item.id.slice(-8)}` : item.id;
       const displayName = `${item.platform}-${item.name || short}`;
       option.textContent = displayName; option.title = item.name || item.id; return option;
-    });
-    if (!options.length) { const empty = document.createElement('option'); empty.value = ''; empty.textContent = '暂无真实 Agent 会话'; options.push(empty); }
-    select.replaceChildren(...options); select.disabled = !sessions.length; select.value = this.activeSession || '';
+    })];
+    select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
-    this.a.setAccess(data.grants?.[this.activeSession]?.nodes || [], this.activeSession, active);
+    this.a.setAccess(this.grants?.[this.activeSession]?.nodes || [], this.activeSession, active, this.activeSession === ALL_SESSIONS);
   }
   async selectSession(sessionId) {
-    if (!this.sessions.some(item => item.id === sessionId)) return false;
+    if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId)) return false;
     this.activeSession = sessionId;
     this.manualSession = true;
     await this.refreshAccess();
     return true;
   }
+  isAllSessions() { return this.activeSession === ALL_SESSIONS; }
+  grantsFor(sessionId) { return this.grants?.[sessionId]?.nodes || []; }
+  async accessPlan(sessionId, nodeId) { return this.call('/api/access-plan', { sessionId, nodeId }); }
+  async grantSessionScope(sessionId, nodes) {
+    await this.call('/api/access', { sessionId, addNodes: nodes });
+    await this.refreshAccess();
+  }
   async sendBug(sessionId, nodeId, bugId) {
     return this.call('/api/session-message', { sessionId, nodeId, bugId });
   }
+  async sendTodo(sessionId, nodeId, todoId) {
+    return this.call('/api/session-message', { sessionId, nodeId, todoId });
+  }
   async toggleAccess(ids) {
+    if (this.activeSession === ALL_SESSIONS) { this.setStatus(this.status, '请先选择具体 Session 再调整授权'); return; }
     if (!this.activeSession) { this.setStatus(this.status, '尚无真实 Agent 会话，请先启动会话'); return; }
     try { await this.call('/api/access', { sessionId: this.activeSession, nodes: ids }); await this.refreshAccess(); }
     catch (e) { this.setStatus(this.status, '授权失败：' + e.message); }
