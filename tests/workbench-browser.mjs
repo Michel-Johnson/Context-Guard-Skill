@@ -293,6 +293,30 @@ try {
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
     assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    await preview.locator('#btn-rel').click();
+    await preview.locator('.node[data-id="M2"]').click();
+    await preview.locator('.flow-lab').first().waitFor({ state: 'visible' });
+    const flowLabs = await preview.evaluate(() => {
+      const labs = [...document.querySelectorAll('.flow-lab')].map(el => {
+        const r = el.getBoundingClientRect();
+        return { text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      });
+      const hits = [];
+      for (let i = 0; i < labs.length; i++) {
+        for (let j = i + 1; j < labs.length; j++) {
+          const a = labs[i], b = labs[j];
+          if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
+            hits.push([a.text, b.text]);
+          }
+        }
+      }
+      return { texts: labs.map(l => l.text), hits };
+    });
+    assert.ok(flowLabs.texts.includes('安装时可选 hooks'), 'hook install label');
+    assert.ok(flowLabs.texts.includes('SessionStart 触发冷启动'), 'hook start label');
+    assert.deepEqual(flowLabs.hits, [], `overlapping relation labels ${JSON.stringify(flowLabs.hits)}`);
+    await preview.locator('#btn-rel').click();
+    recordCheck('relation-flow-labels');
     const child = preview.locator('#nodes .node.module').nth(1);
     const childId = await child.getAttribute('data-id');
     const childTitle = (await child.locator('.m-head span').innerText()).trim();

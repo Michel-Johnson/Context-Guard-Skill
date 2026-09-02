@@ -272,7 +272,12 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #links path.flow{fill:none;stroke:#5a7a62;stroke-width:1.7;stroke-dasharray:6 5;stroke-linecap:round;stroke-linejoin:round;opacity:.82}
 #links path.flow.dim{opacity:.1}
 #links path.flow.hot{stroke:#2f6f4e;stroke-width:2.15;opacity:1;stroke-dasharray:7 5}
-#links text.flow-lab{font-size:10px;fill:#4a6454;font-family:var(--font-ui, inherit);pointer-events:none}
+#flow-labs{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible}
+.flow-lab{
+  position:absolute;transform:translate(-50%,-50%);
+  font-size:11px;font-weight:700;line-height:1.25;color:#2f6f4e;
+  font-family:var(--font-ui, inherit);background:var(--bg);padding:1px 6px;
+  border-radius:4px;white-space:nowrap;pointer-events:none;box-sizing:border-box}
 .node.ghost{opacity:.8;border-style:dashed;box-shadow:none}
 .node.ghost.module{background:#f4f1ea}
 .node.ghost .add-child{display:none}
@@ -1262,6 +1267,7 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
     <svg id="links"></svg>
     <div id="nodes"></div>
     <div id="currents"></div>
+    <div id="flow-labs"></div>
   </div>
 </div>
 <div id="dot-hint" hidden role="tooltip"></div>
@@ -4888,6 +4894,7 @@ const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
 const currentsEl = document.getElementById("currents");
+const flowLabsEl = document.getElementById("flow-labs");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
@@ -4934,6 +4941,7 @@ function renderMap(){
 
   nodesEl.innerHTML = "";
   if(currentsEl) currentsEl.innerHTML = "";
+  if(flowLabsEl) flowLabsEl.innerHTML = "";
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
@@ -5232,24 +5240,114 @@ function renderMap(){
       const b = port(p2,s2,p1.x+s1.w/2,p1.y+s1.h/2);
       const dx=b.x-a.x, dy=b.y-a.y;
       const dist = Math.hypot(dx,dy)||1;
-      const bulge = Math.min(150, Math.max(56, dist*0.4));
-      const cx = (a.x+b.x)/2 - (dy/dist)*bulge;
-      const cy = (a.y+b.y)/2 + (dx/dist)*bulge;
-      const lx = 0.25*a.x + 0.5*cx + 0.25*b.x;
-      const ly = 0.25*a.y + 0.5*cy + 0.25*b.y;
-      return {d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`, lx, ly};
+      const bulge = Math.min(160, Math.max(64, dist*0.42));
+      const c = {x:(a.x+b.x)/2 - (dy/dist)*bulge, y:(a.y+b.y)/2 + (dx/dist)*bulge};
+      return {d:`M${a.x},${a.y} Q${c.x},${c.y} ${b.x},${b.y}`, a, b, c};
+    }
+    function quadAt(a,c,b,t){
+      const u=1-t;
+      return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y};
+    }
+    function labOverlap(a,b,pad){
+      return Math.abs(a.x-b.x)*2 < a.w+b.w+pad*2 && Math.abs(a.y-b.y)*2 < a.h+b.h+pad*2;
+    }
+    function labBlocked(box, placed){
+      if(placed.some(p=>labOverlap(box,p,8))) return true;
+      for(const [id,p] of pos){
+        const s = size.get(id);
+        if(!p||!s) continue;
+        if(labOverlap(box, {x:p.x+s.w/2, y:p.y+s.h/2, w:s.w, h:s.h}, 10)) return true;
+      }
+      return false;
+    }
+    function settleLab(x,y,w,h,placed,out){
+      const ring = [[0,0]];
+      if(out){ ring.push([out.x,out.y],[-out.x,-out.y]); }
+      ring.push([0,-1],[0,1],[1,0],[-1,0],[1,-1],[-1,-1],[1,1],[-1,1]);
+      for(let dist=0; dist<=140; dist+=5){
+        for(const [dx,dy] of ring){
+          if(dist===0 && (dx||dy)) continue;
+          const box = {x:x+dx*dist, y:y+dy*dist, w, h};
+          if(!labBlocked(box, placed)) return box;
+        }
+      }
+      return {x,y,w,h};
+    }
+    function measureLab(text){
+      if(!flowLabsEl) return {w: Math.max(24, text.length*7), h:16};
+      const probe = document.createElement("span");
+      probe.className = "flow-lab";
+      probe.textContent = text;
+      probe.style.left = "-9999px";
+      probe.style.top = "0";
+      flowLabsEl.appendChild(probe);
+      const w = Math.max(probe.offsetWidth, 12);
+      const h = Math.max(probe.offsetHeight, 14);
+      probe.remove();
+      return {w, h};
     }
     paths = `<defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#5a7a62" stroke-width="1.2"/></marker></defs>` + paths;
-    (data.flows||[]).forEach(f=>{
-      if(f.from!==relFocus && f.to!==relFocus) return;
-      if(!pos.has(f.from) || !pos.has(f.to)) return;
+    const relFlows = (data.flows||[]).filter(f=>
+      (f.from===relFocus || f.to===relFocus) && pos.has(f.from) && pos.has(f.to)
+    );
+    const pairN = new Map();
+    relFlows.forEach(f=>{
+      const k = f.from<f.to ? f.from+"|"+f.to : f.to+"|"+f.from;
+      pairN.set(k, (pairN.get(k)||0)+1);
+    });
+    const pairSeen = new Map();
+    const pendingLabs = [];
+    relFlows.forEach(f=>{
       const curve = flowCurve(f.from, f.to);
       if(!curve) return;
       paths += `<path class="flow hot" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
-      if(f.label){
-        paths += `<text class="flow-lab" text-anchor="middle" x="${curve.lx.toFixed(1)}" y="${(curve.ly-4).toFixed(1)}">${esc(f.label)}</text>`;
-      }
+      if(!f.label) return;
+      const k = f.from<f.to ? f.from+"|"+f.to : f.to+"|"+f.from;
+      const total = pairN.get(k)||1;
+      const idx = pairSeen.get(k)||0;
+      pairSeen.set(k, idx+1);
+      const t = total>1 ? 0.3 : 0.5;
+      pendingLabs.push({text:f.label, curve, t, from:f.from});
     });
+    if(flowLabsEl){
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+      const placed = [];
+      pendingLabs.forEach(item=>{
+        const {w,h} = measureLab(item.text);
+        let t = item.t;
+        const p = pos.get(item.from), s = size.get(item.from);
+        if(p && s){
+          const nbox = {x:p.x+s.w/2, y:p.y+s.h/2, w:s.w, h:s.h};
+          for(let cand=item.t; cand<=0.55; cand+=0.04){
+            const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, cand);
+            if(!labOverlap({x:pt.x,y:pt.y,w,h}, nbox, 10)){ t = cand; break; }
+          }
+        }
+        const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, t);
+        const mid = {x:(item.curve.a.x+item.curve.b.x)/2, y:(item.curve.a.y+item.curve.b.y)/2};
+        const ox = item.curve.c.x-mid.x, oy = item.curve.c.y-mid.y;
+        const olen = Math.hypot(ox,oy)||1;
+        const out = {x:ox/olen, y:oy/olen};
+        pt.x += out.x*12;
+        pt.y += out.y*12;
+        const box = settleLab(pt.x, pt.y, w, h, placed, out);
+        placed.push(box);
+        const el = document.createElement("span");
+        el.className = "flow-lab";
+        el.textContent = item.text;
+        el.style.left = box.x+"px";
+        el.style.top = box.y+"px";
+        flowLabsEl.appendChild(el);
+        maxX = Math.max(maxX, box.x+w/2);
+        maxY = Math.max(maxY, box.y+h/2);
+      });
+      extents = {w:maxX, h:maxY};
+      linksEl.setAttribute("width", maxX+140);
+      linksEl.setAttribute("height", maxY+140);
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+    }
   }
   linksEl.innerHTML = paths;
 }
