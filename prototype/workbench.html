@@ -771,7 +771,7 @@ html.cg-phone .drawer h2{font-size:18px}
 
 html.design-gallery,html.design-gallery body{
   overflow:auto !important;height:auto !important;max-height:none;min-height:100dvh;
-  overscroll-behavior:auto;touch-action:auto
+  overscroll-behavior:auto;touch-action:auto;background:#efe8d8
 }
 html.design-gallery #viewport{pointer-events:none !important}
 html.design-gallery header.top,
@@ -784,66 +784,324 @@ html.design-gallery .first-use,
 html.design-gallery .theme-preview-banner,
 html.design-gallery .phone-preview-banner{display:none !important}
 #design-gallery{display:none}
-html.design-gallery #design-gallery{display:block;padding:0 0 64px;position:relative;z-index:40}
+html.design-gallery #design-gallery{display:block;padding:0 0 80px;position:relative;z-index:40}
 .g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;
-  padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
+  padding:12px 18px;background:#fffdf8;border-bottom:2px solid #2d2d2d}
 .g-bar b{font-size:15px}
-.g-bar .hint{color:var(--muted);font-size:12.5px;font-weight:700}
-.g-scroll{display:flex;flex-direction:column;gap:52px;max-width:380px;margin:22px auto 0;padding:0 16px}
-.g-num{font-size:13px;font-weight:800;margin:0 0 10px;color:var(--muted);letter-spacing:.04em}
-html.design-gallery .g-mock{display:block !important;position:relative;top:auto;right:auto;bottom:auto;left:auto;
-  width:340px;height:auto;pointer-events:none;border:2px solid var(--line-ink);border-radius:10px;
-  padding:16px 16px 22px;font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.g-mock h2{font-size:18px;font-weight:700}
-.g-mock .lead{margin:8px 0 0;font-family:var(--font-note)}
-.g-mock .sec header{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;font-weight:700;min-height:36px}
-.g-mock .sec header .add{margin-left:auto;font-size:18px;font-weight:700;color:var(--muted)}
-.g-mock .hit{display:flex;gap:8px;align-items:flex-start;margin-top:4px;font-size:12.5px;font-family:var(--font-note);line-height:1.5}
-.g-mock .hit p{margin:0}
-.g-mock[data-sep="pinch"] .sec{border-top:1px solid var(--line);padding:4px 0 2px}
-.g-mock[data-sep="pinch"] .sec header{min-height:0;font-size:12px}
-.g-mock[data-sep="line"] .sec{border-top:1px solid var(--line);padding:20px 0 16px}
-.g-mock[data-sep="far"] .sec{border-top:1px solid var(--line);padding:28px 0 22px}
-.g-mock[data-sep="none"] .sec{border:0;padding:16px 0}
-.g-mock[data-sep="wide"] .sec{border:0;padding:26px 0}
-.g-mock[data-sep="dash"] .sec{border-top:1.5px dashed var(--line);padding:20px 0 16px}
-.g-mock[data-sep="short"] .sec{border:0;padding:16px 0 12px}
-.g-mock[data-sep="short"] .sec header{border-bottom:2px solid var(--line-ink);padding-bottom:8px;margin-bottom:8px}
-.g-mock[data-sep="cards"] .sec{border:1.5px solid var(--line);border-radius:10px;padding:14px 12px;margin:10px 0 0}
-.g-mock[data-sep="soft"] .sec{border:0;border-radius:10px;padding:14px 12px;margin:8px 0 0;background:#f6f1e6}
-.g-mock[data-sep="rail"] .sec{border:0;border-left:3px solid var(--line-ink);padding:12px 0 12px 12px;margin-top:12px}
-.g-mock[data-sep="gap"] .sec{border:0;padding:8px 0 20px;margin-top:8px}
-.g-mock[data-tint="mem"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
-.g-mock[data-tint="zebra"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
-.g-mock[data-tint="zebra"] .sec.bug,.g-mock[data-tint="zebra"] .sec.inh{background:#e7eefc;border-radius:10px;padding-left:12px;padding-right:12px}
-.g-mock[data-tint="rail"] .sec.mem{border-left-color:#6ed08a}
-.g-mock[data-tint="rail"] .sec.idea{border-left-color:#c8c2b6}
-.g-mock[data-tint="rail"] .sec.bug,.g-mock[data-tint="rail"] .sec.inh{border-left-color:#3d7ee8}
-.g-mock[data-tint="pills"] .sec header{align-self:flex-start}
-.g-mock[data-tint="pills"] .sec.mem header{background:#e7f6ec;color:#2d6b45;border-radius:999px;padding:4px 10px;min-height:0}
-.g-mock[data-tint="pills"] .sec.bug header,.g-mock[data-tint="pills"] .sec.inh header{background:#e7eefc;color:#2d5da1;border-radius:999px;padding:4px 10px;min-height:0}
-.g-mock[data-plus="hide"] .sec header .add{display:none}
-.g-mock[data-plus="text"] .sec header .add{font-size:0}
-.g-mock[data-plus="text"] .sec header .add:before{content:"添加";font-size:12px;font-weight:700;color:var(--module)}
-.g-mock[data-plus="left"] .sec header{flex-direction:row}
-.g-mock[data-plus="left"] .sec header .add{margin-left:0;margin-right:6px;order:-1}
-.g-mock[data-note="1"] .sec.idea .body:before{content:"还没有 Idea";display:block;color:var(--muted);font-size:12px;padding:6px 0 4px;font-family:var(--font-note)}
-.g-mock[data-indent="1"] .sec .body{padding-left:12px}
-.g-mock[data-indent="2"] .sec .body{padding-left:20px}
-.g-mock[data-head="lg"] .sec header{font-size:15px;min-height:42px}
-.g-mock[data-head="xl"] .sec header{font-size:16px;min-height:48px;font-weight:800}
-.g-mock[data-head="space"] .sec header{letter-spacing:.08em;font-size:12px}
-.g-mock[data-head="rule"] .sec header{border-bottom:2px solid #6ed08a;padding-bottom:8px;margin-bottom:8px;display:inline-flex;min-height:0}
-.g-mock[data-head="rule"] .sec.bug header,.g-mock[data-head="rule"] .sec.inh header{border-bottom-color:#3d7ee8}
-.g-mock[data-stack="1"] .sec + .sec{margin-top:18px}
-.g-mock[data-quiet="1"] .sec.inh header{color:#b5aea2;font-weight:600}
+.g-bar .hint{color:#746c60;font-size:12.5px;font-weight:700}
+.g-scroll{display:flex;flex-direction:column;gap:64px;max-width:720px;margin:28px auto 0;padding:0 16px}
+.g-num{font-size:13px;font-weight:800;margin:0 0 12px;color:#746c60;letter-spacing:.04em}
+html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;left:auto;
+  pointer-events:none;overflow:hidden;box-sizing:border-box}
+.g-mock.w-s{width:340px}.g-mock.w-m{width:420px}.g-mock.w-l{width:640px}
+.g-mock.h{height:520px}
+.g-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.g-row > .dot{margin-top:6px}
+.g-chip{display:inline-block;font-size:11px;padding:1px 8px;border-radius:10px;background:#fff3bf;color:#8a6d1f;font-weight:700}
+.g-btn{display:inline-block;font-size:13px;font-weight:700;padding:6px 12px;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;box-shadow:2px 2px 0 #2d2d2d}
+.g-row{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.5;font-family:Georgia,"Songti SC",serif}
+.g-row p{margin:0}
+.g-row + .g-row{margin-top:8px}
+.g-mock h2{margin:0;font-size:18px}
+.g-lead{margin:8px 0 0;color:#746c60;font-size:12px;line-height:1.45;font-family:Georgia,"Songti SC",serif}
+
+/* 01 现况 */
+.g-lay-01{background:#fffdf8;border:2px solid #2d2d2d;border-radius:10px;padding:16px}
+.g-lay-01 .g-acts{display:flex;gap:6px;margin:10px 0 0}
+.g-lay-01 .sec{border-top:1px solid #d7ccb8;padding:16px 0 8px}
+.g-lay-01 .sec b{display:block;font-size:13px;margin:0 0 8px}
+
+/* 02 两块 */
+.g-lay-02{background:#fffdf8;border:2px solid #2d2d2d;padding:0}
+.g-lay-02 .who{padding:18px 16px 14px}
+.g-lay-02 .notes{padding:16px;border-top:3px solid #2d2d2d}
+.g-lay-02 .g-acts{display:flex;gap:6px;margin-top:10px}
+
+/* 03 身份钉住 */
+.g-lay-03{background:#fff;border:1px solid #ccc;display:flex;flex-direction:column}
+.g-lay-03 .who{padding:12px 14px;border-bottom:1px solid #ddd;background:#fafafa;flex:0 0 auto}
+.g-lay-03 .notes{padding:12px 14px;overflow:hidden;flex:1}
+.g-lay-03 .g-acts{margin-top:8px}
+
+/* 04 页签 */
+.g-lay-04{background:#fff;border:1px solid #bbb;display:flex;flex-direction:column}
+.g-lay-04 .who{padding:14px 14px 8px}
+.g-lay-04 .tabs{display:flex;border-bottom:1px solid #ccc;padding:0 8px}
+.g-lay-04 .tabs span{padding:8px 12px;font-size:13px;font-weight:700;border-bottom:2px solid transparent}
+.g-lay-04 .tabs .on{border-bottom-color:#2d2d2d}
+.g-lay-04 .pane{padding:12px 14px;flex:1}
+
+/* 05 左轨 */
+.g-lay-05{background:#f4f1ea;display:flex;border:1px solid #2d2d2d}
+.g-lay-05 .rail{width:48px;background:#2d2d2d;color:#fff;display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0;font-size:16px}
+.g-lay-05 .rail .on{background:#ffe66d;color:#2d2d2d;width:32px;height:32px;display:grid;place-items:center;border-radius:8px}
+.g-lay-05 .main{flex:1;padding:14px;min-width:0}
+
+/* 06 手风琴 */
+.g-lay-06{background:#fffdf8;border:2px solid #2d2d2d}
+.g-lay-06 .who{padding:14px}
+.g-lay-06 details{border-top:1px solid #d7ccb8;padding:0}
+.g-lay-06 summary{padding:10px 14px;font-weight:800;font-size:13px}
+.g-lay-06 .open-body{padding:0 14px 12px}
+
+/* 07 记忆当家 */
+.g-lay-07{background:#fff;padding:12px 14px;border-left:8px solid #3a6e55}
+.g-lay-07 .tiny{font-size:11px;color:#888;font-weight:700}
+.g-lay-07 h2{font-size:14px;margin:2px 0 12px}
+.g-lay-07 .g-row{font-size:14px;margin-top:12px}
+
+/* 08 用途当标题 */
+.g-lay-08{background:#1c1a17;color:#f3ead6;padding:20px 18px}
+.g-lay-08 .g-chip{background:#5a4a20;color:#ffe66d}
+.g-lay-08 h2{font-size:13px;font-weight:600;opacity:.7;margin-top:8px}
+.g-lay-08 .quote{font-family:Georgia,serif;font-size:20px;line-height:1.35;margin:12px 0 16px}
+.g-lay-08 .g-row{color:#d9d0c0}
+
+/* 09 动作沉底 */
+.g-lay-09{background:#fffdf8;border:2px solid #2d2d2d;display:flex;flex-direction:column}
+.g-lay-09 .top{padding:16px;flex:1}
+.g-lay-09 .foot{padding:10px 16px;border-top:2px solid #2d2d2d;background:#f6f1e6;display:flex;gap:6px}
+
+/* 10 底栏 */
+.g-lay-10{background:#eef1f4;display:flex;flex-direction:column;border:1px solid #9aa3ad}
+.g-lay-10 .top{padding:14px;flex:1}
+.g-lay-10 .dock{height:44px;background:#2d2d2d;color:#fff;display:flex;align-items:center;justify-content:space-around;font-size:12px;font-weight:700}
+
+/* 11 报纸 */
+.g-lay-11{background:#f7f3e8;padding:18px 16px;border:1px solid #c9c0a8;font-family:"Libre Baskerville",Georgia,serif}
+.g-lay-11 h2{font-size:28px;line-height:1.1;border-bottom:3px double #2d2d2d;padding-bottom:8px}
+.g-lay-11 .kicker{font-size:10px;letter-spacing:.2em;text-transform:uppercase}
+.g-lay-11 .cols{column-count:2;column-gap:16px;margin-top:12px;font-size:12px}
+
+/* 12 栏内目录 */
+.g-lay-12{background:#fff;display:flex;border:1px solid #ddd}
+.g-lay-12 .toc{width:92px;background:#f3f3f3;padding:10px 8px;font-size:11px;font-weight:700;line-height:2.1}
+.g-lay-12 .toc .on{background:#fff;margin:0 -8px;padding:0 8px}
+.g-lay-12 .main{flex:1;padding:12px}
+
+/* 13 卡叠 */
+.g-lay-13{background:#ece6d8;padding:12px}
+.g-lay-13 .card{background:#fff;border-radius:12px;padding:12px;margin-bottom:10px;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+.g-lay-13 .card b{display:block;margin-bottom:6px}
+
+/* 14 时间线 */
+.g-lay-14{background:#fff;padding:16px 16px 16px 28px;border:1px solid #e5e5e5}
+.g-lay-14 .tl{border-left:2px solid #d7ccb8;padding:0 0 0 16px}
+.g-lay-14 .tl p{margin:0 0 14px;position:relative;font-size:12.5px;font-family:Georgia,serif}
+.g-lay-14 .tl p:before{content:"";position:absolute;left:-21px;top:6px;width:8px;height:8px;border-radius:50%;background:#6ed08a}
+
+/* 15 气泡 */
+.g-lay-15{background:#dbe7dc;padding:12px;display:flex;flex-direction:column}
+.g-lay-15 .me{align-self:flex-end;background:#fff;border-radius:16px 16px 4px 16px;padding:8px 12px;max-width:86%;font-size:12.5px;margin:0 0 8px}
+.g-lay-15 .you{align-self:flex-start;background:#cfe8d4;border-radius:16px 16px 16px 4px;padding:8px 12px;max-width:86%;font-size:12.5px;margin:0 0 8px}
+.g-lay-15 .who{font-size:11px;color:#4a5;font-weight:800;margin-bottom:8px}
+
+/* 16 表 */
+.g-lay-16{background:#fff;border:1px solid #bbb;font-size:12px}
+.g-lay-16 table{width:100%;border-collapse:collapse}
+.g-lay-16 th,.g-lay-16 td{border-bottom:1px solid #e5e5e5;padding:7px 8px;text-align:left}
+.g-lay-16 th{background:#f6f6f6;font-size:11px}
+
+/* 17 文件夹 */
+.g-lay-17{background:#f0f0f0;font-family:"IBM Plex Sans",sans-serif;font-size:13px;padding:8px 0}
+.g-lay-17 .dir{padding:6px 12px}
+.g-lay-17 .dir.open{background:#fff}
+.g-lay-17 .file{padding:4px 12px 4px 28px;color:#444}
+
+/* 18 大字 */
+.g-lay-18{background:#fffef7;padding:24px 20px}
+.g-lay-18 h2{font-size:32px;font-weight:800;letter-spacing:-.03em}
+.g-lay-18 .g-lead{font-size:16px;color:#2d2d2d}
+.g-lay-18 .g-row{font-size:15px;margin-top:16px}
+
+/* 19 瓷砖 */
+.g-lay-19{background:#f5f5f7;padding:12px}
+.g-lay-19 .tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.g-lay-19 .tile{background:#fff;border-radius:10px;padding:10px;text-align:center}
+.g-lay-19 .tile b{display:block;font-size:22px}
+.g-lay-19 .tile span{font-size:11px;color:#888}
+
+/* 20 搜索头 */
+.g-lay-20{background:#fff;border:1px solid #ddd;display:flex;flex-direction:column}
+.g-lay-20 .find{margin:10px;padding:8px 12px;border-radius:8px;background:#f2f2f2;color:#888;font-size:13px}
+.g-lay-20 .list{padding:0 12px 12px;flex:1}
+
+/* 21 一个写作框 */
+.g-lay-21{background:#111;color:#eee;padding:16px;font-family:ui-monospace,Menlo,monospace}
+.g-lay-21 .prompt{color:#6ed08a;font-size:12px}
+.g-lay-21 textarea{display:block;width:100%;height:220px;margin-top:10px;background:#1b1b1b;border:1px solid #333;color:#ddd;padding:10px;font:inherit}
+
+/* 22 上下窗 */
+.g-lay-22{background:#fff;border:1px solid #999;display:flex;flex-direction:column}
+.g-lay-22 .a{padding:12px;height:38%;border-bottom:4px solid #2d2d2d;background:#faf7f0}
+.g-lay-22 .b{padding:12px;flex:1}
+
+/* 23 三栏 */
+.g-lay-23{background:#e8e4da;display:flex;gap:1px;border:1px solid #2d2d2d}
+.g-lay-23 .col{flex:1;background:#fffdf8;padding:10px;min-width:0}
+.g-lay-23 .col b{display:block;font-size:12px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #d7ccb8}
+.g-lay-23 p{margin:0 0 8px;font-size:11.5px;font-family:Georgia,serif}
+
+/* 24 文件夹页签 */
+.g-lay-24{background:transparent}
+.g-lay-24 .tabs{display:flex;gap:4px;padding-left:8px}
+.g-lay-24 .tabs span{background:#ddd;padding:6px 10px;border-radius:8px 8px 0 0;font-size:12px;font-weight:700}
+.g-lay-24 .tabs .on{background:#fff}
+.g-lay-24 .sheet{background:#fff;border:1px solid #ccc;padding:14px;min-height:360px}
+
+/* 25 大纲 */
+.g-lay-25{background:#fff;padding:16px;font-family:Georgia,serif}
+.g-lay-25 ol{margin:12px 0 0;padding-left:18px}
+.g-lay-25 li{margin:0 0 10px;font-size:13px}
+
+/* 26 便签墙 */
+.g-lay-26{background:#cfc8b6;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g-lay-26 .note{padding:12px 10px;min-height:110px;font-size:12px;font-family:"Comic Neue",cursive;box-shadow:2px 3px 0 rgba(0,0,0,.15);transform:rotate(-1.5deg)}
+.g-lay-26 .n1{background:#fff3bf;transform:rotate(1deg)}
+.g-lay-26 .n2{background:#e7f6ec}
+.g-lay-26 .n3{background:#e7eefc;transform:rotate(-2deg)}
+.g-lay-26 .n4{background:#f8e4dc}
+
+/* 27 终端 */
+.g-lay-27{background:#0d1117;color:#8be9a4;font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:14px;border-radius:8px}
+.g-lay-27 .bar{color:#8b949e;margin-bottom:10px}
+.g-lay-27 .cmd{color:#79c0ff}
+
+/* 28 书页 */
+.g-lay-28{background:linear-gradient(90deg,#e8dcc8 0 12px,#fffdf6 12px);padding:20px 18px 20px 28px;min-height:480px;box-shadow:inset 8px 0 12px rgba(80,50,20,.08)}
+.g-lay-28 h2{font-family:Georgia,serif;font-style:italic}
+.g-lay-28 p{font-family:Georgia,serif;font-size:13px;line-height:1.7}
+
+/* 29 资料卡 */
+.g-lay-29{background:#f2f2f7;padding:12px}
+.g-lay-29 .hero{background:#fff;border-radius:16px;padding:16px;text-align:center;margin-bottom:10px}
+.g-lay-29 .avatar{width:56px;height:56px;border-radius:50%;background:#ffe66d;margin:0 auto 8px;display:grid;place-items:center;font-weight:800}
+.g-lay-29 .cell{background:#fff;border-radius:12px;padding:12px;margin-top:8px;font-size:13px}
+
+/* 30 词条 */
+.g-lay-30{background:#fff;padding:14px;border:1px solid #a2a9b1}
+.g-lay-30 .box{float:right;width:42%;border:1px solid #a2a9b1;background:#f8f9fa;padding:8px;margin:0 0 8px 8px;font-size:11px}
+.g-lay-30 h2{font-family:Georgia,serif;border-bottom:1px solid #a2a9b1;font-weight:400}
+
+/* 31 邮件 */
+.g-lay-31{background:#fff;border:1px solid #dadce0}
+.g-lay-31 .meta{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666}
+.g-lay-31 .meta b{color:#111;font-size:16px;display:block;margin-bottom:6px}
+.g-lay-31 .body{padding:14px 12px;font-size:13px;line-height:1.6}
+
+/* 32 看板 */
+.g-lay-32{background:#decdc3;display:flex;gap:8px;padding:10px}
+.g-lay-32 .col{flex:1;background:#0001;border-radius:8px;padding:8px}
+.g-lay-32 .col b{display:block;font-size:11px;margin-bottom:8px}
+.g-lay-32 .card{background:#fff;border-radius:6px;padding:8px;margin-bottom:8px;font-size:11.5px}
+
+/* 33 层叠 */
+.g-lay-33{background:#ddd;padding:20px 16px}
+.g-lay-33 .sheet{background:#fff;border-radius:16px 16px 0 0;padding:16px;box-shadow:0 -4px 16px #0002}
+.g-lay-33 .sheet + .sheet{margin-top:-8px}
+
+/* 34 几乎只有记忆 */
+.g-lay-34{background:#fffdf8;padding:16px}
+.g-lay-34 .ghost{font-size:11px;color:#bbb}
+.g-lay-34 h2{font-size:13px;color:#999;font-weight:600}
+.g-lay-34 .g-row{margin-top:14px}
+
+/* 35 全摊开 */
+.g-lay-35{background:#fff;padding:12px;font-size:12px;column-count:2;column-gap:14px}
+.g-lay-35 h2{column-span:all;font-size:16px;margin-bottom:8px}
+.g-lay-35 b{display:block;margin:10px 0 4px}
+
+/* 36 深色条 */
+.g-lay-36{background:#fff}
+.g-lay-36 .mast{background:#2d2d2d;color:#fff;padding:16px}
+.g-lay-36 .mast .g-chip{background:#ffe66d;color:#2d2d2d}
+.g-lay-36 .body{padding:14px}
+
+/* 37 拍纸 */
+.g-lay-37{background:#fffceb;background-image:repeating-linear-gradient(#fffceb,#fffceb 27px,#e7d8a8 28px);padding:36px 16px 16px;border-top:12px solid #d23d3d}
+.g-lay-37 h2,.g-lay-37 p,.g-lay-37 .g-row{font-family:"Comic Neue",cursive}
+
+/* 38 左右 */
+.g-lay-38{background:#fff;display:flex;border:1px solid #2d2d2d}
+.g-lay-38 .meta{width:38%;padding:12px;background:#f6f1e6;border-right:1px solid #2d2d2d}
+.g-lay-38 .notes{flex:1;padding:12px}
+
+/* 39 正文流 */
+.g-lay-39{background:#fff;padding:16px 16px 48px;position:relative}
+.g-lay-39 .fab{position:absolute;right:14px;bottom:14px;width:44px;height:44px;border-radius:50%;background:#2d2d2d;color:#fff;display:grid;place-items:center;font-size:24px}
+.g-lay-39 p{margin:0 0 10px;font-size:13px;line-height:1.55}
+
+/* 40 时间河 */
+.g-lay-40{background:#111;color:#eee;padding:12px}
+.g-lay-40 .ev{display:flex;gap:10px;margin:0 0 12px;font-size:12px}
+.g-lay-40 time{color:#888;width:36px;flex:0 0 auto}
+.g-lay-40 .ev p{margin:0;flex:1;padding-bottom:12px;border-bottom:1px solid #333}
+
+/* 41 分段 */
+.g-lay-41{background:#f2f2f7;padding:12px}
+.g-lay-41 .seg{display:flex;background:#e5e5ea;border-radius:8px;padding:2px;margin-bottom:12px}
+.g-lay-41 .seg span{flex:1;text-align:center;font-size:12px;font-weight:700;padding:6px 0;border-radius:6px}
+.g-lay-41 .seg .on{background:#fff}
+.g-lay-41 .panel{background:#fff;border-radius:10px;padding:12px}
+
+/* 42 属性 */
+.g-lay-42{background:#fff;font-size:12px;border:1px solid #ddd}
+.g-lay-42 .kv{display:grid;grid-template-columns:72px 1fr;gap:0;border-bottom:1px solid #eee}
+.g-lay-42 .kv span{padding:8px;color:#888}
+.g-lay-42 .kv b{padding:8px;font-weight:600}
+
+/* 43 IDE */
+.g-lay-43{background:#252526;color:#ccc;font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+.g-lay-43 .cap{background:#333;padding:6px 10px;color:#fff}
+.g-lay-43 .f{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #333}
+
+/* 44 帖子串 */
+.g-lay-44{background:#fff;padding:0}
+.g-lay-44 .op{padding:12px;border-bottom:1px solid #eee}
+.g-lay-44 .re{padding:10px 12px 10px 28px;border-bottom:1px solid #f3f3f3;font-size:12.5px}
+
+/* 45 黄拍纸 */
+.g-lay-45{background:#fff1a8;padding:16px;box-shadow:4px 6px 0 rgba(0,0,0,.12);font-family:"Comic Neue",cursive}
+.g-lay-45 h2{border-bottom:1px solid #e0c84a;padding-bottom:8px}
+
+/* 46 索引卡 */
+.g-lay-46{background:#fff;width:340px;height:210px;border:1px solid #ccc;box-shadow:3px 3px 0 #0002;padding:10px 14px;background-image:linear-gradient(#c45 28px,#c45 30px,transparent 30px)}
+.g-lay-46 h2{margin-top:8px;font-size:16px}
+
+/* 47 展签 */
+.g-lay-47{background:#fafafa;padding:24px 20px;border-left:10px solid #2d2d2d}
+.g-lay-47 .k{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#888}
+.g-lay-47 h2{font-size:22px;margin:6px 0 14px}
+.g-lay-47 p{font-size:13px;max-width:28em}
+
+/* 48 流水账 */
+.g-lay-48{background:#f8f8f8;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;padding:10px}
+.g-lay-48 .ln{display:flex;gap:8px;padding:4px 0;border-bottom:1px dashed #ddd}
+.g-lay-48 .ln span{color:#888;width:54px}
+
+/* 49 图例 */
+.g-lay-49{background:#fffdf8;padding:14px;border:2px solid #2d2d2d}
+.g-lay-49 .map{height:90px;background:repeating-linear-gradient(90deg,#f3ead6,#f3ead6 20px,#efe6d2 20px 22px);margin-bottom:12px;border:1px solid #d7ccb8}
+.g-lay-49 .leg{font-size:12px}
+
+/* 50 留白 */
+.g-lay-50{background:#fff;min-height:480px;padding:28px 20px;border:0}
+.g-lay-50 h2{font-weight:500;font-size:16px}
+.g-lay-50 .g-lead{margin-top:40px;max-width:16em}
+.g-lay-50 .hint{position:absolute;bottom:16px;left:20px;font-size:11px;color:#ccc}
+.g-empty{color:#9a9080;font-size:12px}
+.g-lay-06 summary{list-style:none;cursor:default}
+.g-lay-06 summary::-webkit-details-marker{display:none}
+.g-lay-21 textarea{resize:none}
+.g-lay-27 p{margin:0 0 6px;line-height:1.45}
+.g-lay-27 .dim{color:#6e7681}
 </style>
 </head>
 <body>
 <div id="design-gallery">
   <div class="g-bar">
-    <b>检查器分区 · 50 版</b>
-    <span class="hint">往下滑动看。看中了把编号发我，例如「分区 17」。不用点按钮。</span>
+    <b>右边栏布局 · 50 版</b>
+    <span class="hint">往下滑动。每一张结构都不一样。看中了把编号发我，例如「布局 17」。不用点。</span>
   </div>
   <div class="g-scroll" id="g-scroll"></div>
 </div>
@@ -5756,81 +6014,122 @@ function renderAll(){
   persist();
 }
 function bootDesignGallery(){
-  document.title = "检查器分区 · 50 版";
-  const VARIANTS = [
-    {id:"01", name:"现况：字贴横线", sep:"pinch"},
-    {id:"02", name:"横线拉开", sep:"line"},
-    {id:"03", name:"横线再拉开", sep:"far"},
-    {id:"04", name:"不要横线", sep:"none"},
-    {id:"05", name:"更大留白、不要横线", sep:"wide"},
-    {id:"06", name:"虚线分隔", sep:"dash"},
-    {id:"07", name:"标题下一截短线", sep:"short"},
-    {id:"08", name:"每块一张卡", sep:"cards"},
-    {id:"09", name:"浅底圆角块", sep:"soft"},
-    {id:"10", name:"左侧细线", sep:"rail"},
-    {id:"11", name:"只靠间距", sep:"gap"},
-    {id:"12", name:"记忆浅绿底", sep:"line", tint:"mem"},
-    {id:"13", name:"记忆绿 / Bug蓝 淡底", sep:"none", tint:"zebra"},
-    {id:"14", name:"左条：绿和蓝", sep:"rail", tint:"rail"},
-    {id:"15", name:"标题做成绿蓝胶囊", sep:"none", tint:"pills"},
-    {id:"16", name:"卡片 + 绿蓝底", sep:"cards", tint:"zebra"},
-    {id:"17", name:"浅底块 + 绿记忆", sep:"soft", tint:"mem"},
-    {id:"18", name:"无横线 + 绿记忆", sep:"wide", tint:"mem"},
-    {id:"19", name:"拉开的线 + 绿记忆", sep:"far", tint:"mem"},
-    {id:"20", name:"短线改成绿和蓝", sep:"short", head:"rule"},
-    {id:"21", name:"标题下彩线、不要横线", sep:"none", head:"rule"},
-    {id:"22", name:"大标题行", sep:"line", head:"lg"},
-    {id:"23", name:"更大标题、无横线", sep:"none", head:"xl"},
-    {id:"24", name:"字距拉开的小标题", sep:"far", head:"space"},
-    {id:"25", name:"卡片 + 大标题", sep:"cards", head:"lg"},
-    {id:"26", name:"Idea 写出「还没有」", sep:"line", note:"1"},
-    {id:"27", name:"无横线，空项也写一句", sep:"none", note:"1"},
-    {id:"28", name:"卡片里写出空项", sep:"cards", note:"1"},
-    {id:"29", name:"内容往右缩一格", sep:"line", indent:"1"},
-    {id:"30", name:"无横线，内容再缩进", sep:"none", indent:"2"},
-    {id:"31", name:"卡片 + 缩进", sep:"cards", indent:"1"},
-    {id:"32", name:"加号改成「添加」", sep:"line", plus:"text"},
-    {id:"33", name:"无横线，「添加」", sep:"wide", plus:"text"},
-    {id:"34", name:"加号放到标题左边", sep:"none", plus:"left"},
-    {id:"35", name:"不要加号", sep:"far", plus:"hide"},
-    {id:"36", name:"卡片不要加号", sep:"cards", plus:"hide"},
-    {id:"37", name:"区块之间再空一截", sep:"none", stack:"1"},
-    {id:"38", name:"卡片拉开", sep:"cards", stack:"1"},
-    {id:"39", name:"左条拉开", sep:"rail", stack:"1", tint:"rail"},
-    {id:"40", name:"继承写淡一点", sep:"line", quiet:"1"},
-    {id:"41", name:"无横线，继承淡", sep:"wide", quiet:"1"},
-    {id:"42", name:"绿底记忆 + 继承淡", sep:"none", tint:"mem", quiet:"1"},
-    {id:"43", name:"绿蓝胶囊 + 空项说明", sep:"none", tint:"pills", note:"1"},
-    {id:"44", name:"绿蓝淡底 + 大标题", sep:"soft", tint:"zebra", head:"lg"},
-    {id:"45", name:"左条彩线 + 添加", sep:"rail", tint:"rail", plus:"text"},
-    {id:"46", name:"无横线 + 缩进 + 空项", sep:"wide", indent:"2", note:"1"},
-    {id:"47", name:"卡片 + 彩线标题", sep:"cards", head:"rule"},
-    {id:"48", name:"只靠间距 + 大标题", sep:"gap", head:"xl"},
-    {id:"49", name:"浅底 + 不要加号 + 空项", sep:"soft", plus:"hide", note:"1"},
-    {id:"50", name:"无横线、绿记忆、蓝继承、大留白", sep:"wide", tint:"zebra", quiet:"1", stack:"1"}
-  ];
-  const body = `<div class="hit"><i class="dot success"></i><div><p>npx/init/set-language 属于冷启动，不是 hook。</p></div></div>`;
-  const root = document.getElementById("g-scroll");
-  root.innerHTML = VARIANTS.map(v=>{
-    const attrs = ["sep","tint","plus","note","indent","head","stack","quiet"]
-      .filter(k=>v[k]).map(k=>`data-${k}="${v[k]}"`).join(" ");
-    return `<article class="g-item" id="v${v.id}">
-      <div class="g-num">${v.id} · ${v.name}</div>
-      <aside class="drawer g-mock" data-v="${v.id}" ${attrs}>
-        <h2>冷启动 <span class="state-chip untested">已做未测</span></h2>
-        <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
-        <div class="actions">
-          <button type="button">＋ 模块</button>
-          <button type="button">＋ 子节点</button>
-          <button type="button" class="quiet">删除</button>
-        </div>
-        <section class="sec mem"><header>记忆 1 <span class="add">+</span></header><div class="body">${body}</div></section>
-        <section class="sec idea"><header>Idea <span class="add">+</span></header><div class="body"></div></section>
-        <section class="sec bug"><header>Bug <span class="add">+</span></header><div class="body"></div></section>
-        <section class="sec inh"><header>继承的 5</header><div class="body"></div></section>
-      </aside>
-    </article>`;
-  }).join("");
+  document.title = "右边栏布局 · 50 版";
+  const chip = `<span class="g-chip">已做未测</span>`;
+  const m1 = "npx/init/set-language 属于冷启动，不是 hook。";
+  const m2 = "成品只活在 main。";
+  const m3 = "回复用人话，不要术语墙。";
+  const lead = "人与 Agent 共用的项目记忆。Agent 记，人在这页确认。";
+  const rows = `<div class="g-row"><i class="dot success"></i><p>${m1}</p></div><div class="g-row"><i class="dot success"></i><p>${m2}</p></div><div class="g-row"><i class="dot success"></i><p>${m3}</p></div>`;
+  const who = `<h2>Context Guard ${chip}</h2><p class="g-lead">${lead}</p>`;
+  const acts = `<div class="g-acts"><span class="g-btn">＋ 模块</span><span class="g-btn">＋ 子节点</span></div>`;
+  const L = [];
+  const add = (id, name, cls, html) => L.push({id, name, cls, html});
+
+  add("01", "现况：切成横条", "w-s",
+    `${who}${acts}<section class="sec"><b>记忆 3 ＋</b>${rows}</section><section class="sec"><b>Idea ＋</b></section><section class="sec"><b>Bug ＋</b></section><section class="sec"><b>继承的 5</b></section>`);
+  add("02", "身份一块、笔记一块", "w-s",
+    `<div class="who">${who}${acts}</div><div class="notes">${rows}</div>`);
+  add("03", "身份钉在顶上，下面滚", "w-s h",
+    `<div class="who">${who}</div><div class="notes">${rows}<p class="g-empty" style="margin-top:16px">Idea、Bug 空着，不占一整条。</p></div>`);
+  add("04", "顶上页签", "w-s h",
+    `<div class="who">${who}</div><div class="tabs"><span class="on">记忆</span><span>Idea</span><span>Bug</span></div><div class="pane">${rows}</div>`);
+  add("05", "左边一条图标轨", "w-s h",
+    `<div class="rail"><span class="on">记</span><span>想</span><span>虫</span><span>继</span></div><div class="main">${who}${rows}</div>`);
+  add("06", "手风琴折叠", "w-s",
+    `<div class="who">${who}</div><details open><summary>记忆 3</summary><div class="open-body">${rows}</div></details><details><summary>Idea</summary></details><details><summary>Bug</summary></details>`);
+  add("07", "记忆当家，身份缩成一行", "w-s",
+    `<div class="tiny">Context Guard · 已做未测</div><h2>${lead}</h2>${rows}`);
+  add("08", "用途当大标题（深色）", "w-s",
+    `${chip}<h2>Context Guard</h2><div class="quote">${lead}</div>${rows}`);
+  add("09", "动作沉到底", "w-s h",
+    `<div class="top">${who}${rows}</div><div class="foot"><span class="g-btn">＋ 模块</span><span class="g-btn">＋ 子节点</span></div>`);
+  add("10", "底栏 dock", "w-s h",
+    `<div class="top">${who}${rows}</div><div class="dock"><span>记忆</span><span>Idea</span><span>Bug</span><span>＋</span></div>`);
+  add("11", "报纸双栏", "w-m",
+    `<div class="kicker">节点 · 已做未测</div><h2>Context Guard</h2><div class="cols"><p>${lead}</p><p>${m1}</p><p>${m2}</p><p>${m3}</p></div>`);
+  add("12", "栏内小目录", "w-s h",
+    `<div class="toc"><div class="on">记忆</div><div>Idea</div><div>Bug</div><div>继承</div></div><div class="main">${who}${rows}</div>`);
+  add("13", "一张张卡叠起来", "w-s",
+    `<div class="card">${who}</div><div class="card"><b>记忆</b>${rows}</div><div class="card"><b>Idea</b><span class="g-empty">还没有</span></div>`);
+  add("14", "时间线", "w-s",
+    `${who}<div class="tl"><p>${m1}</p><p>${m2}</p><p>${m3}</p></div>`);
+  add("15", "聊天气泡", "w-s h",
+    `<div class="who">Context Guard</div><div class="you">${lead}</div><div class="me">${m1}</div><div class="you">${m2}</div><div class="me">${m3}</div>`);
+  add("16", "一张表", "w-s",
+    `<table><thead><tr><th>栏</th><th>值</th></tr></thead><tbody><tr><td>名称</td><td>Context Guard</td></tr><tr><td>状态</td><td>已做未测</td></tr><tr><td>用途</td><td>${lead}</td></tr><tr><td>记忆</td><td>${m1}</td></tr><tr><td></td><td>${m2}</td></tr><tr><td></td><td>${m3}</td></tr><tr><td>Idea</td><td class="g-empty">空</td></tr><tr><td>Bug</td><td class="g-empty">空</td></tr></tbody></table>`);
+  add("17", "文件夹树", "w-s",
+    `<div class="dir">▾ Context Guard ${chip}</div><div class="dir open">▾ 记忆</div><div class="file">${m1}</div><div class="file">${m2}</div><div class="file">${m3}</div><div class="dir">▸ Idea</div><div class="dir">▸ Bug</div><div class="dir">▸ 继承的 5</div>`);
+  add("18", "大字稿纸", "w-m",
+    `<h2>Context Guard</h2><p class="g-lead">${lead}</p>${rows}`);
+  add("19", "三个数字瓷砖", "w-s",
+    `<div class="tiles"><div class="tile"><b>3</b><span>记忆</span></div><div class="tile"><b>0</b><span>Idea</span></div><div class="tile"><b>0</b><span>Bug</span></div></div>${who}${rows}`);
+  add("20", "顶上搜索", "w-s h",
+    `<div class="find">搜索这条上的字…</div><div class="list">${who}${rows}</div>`);
+  add("21", "一个写作框", "w-s h",
+    `<div class="prompt">context-guard › Context Guard</div><textarea readonly># ${lead}\n\n- ${m1}\n- ${m2}\n- ${m3}</textarea>`);
+  add("22", "上下两个窗", "w-s h",
+    `<div class="a">${who}</div><div class="b"><b style="display:block;margin-bottom:8px;font-size:12px">写在它身上的字</b>${rows}</div>`);
+  add("23", "三栏并排", "w-l h",
+    `<div class="col"><b>记忆</b><p>${m1}</p><p>${m2}</p><p>${m3}</p></div><div class="col"><b>Idea</b><p class="g-empty">空</p></div><div class="col"><b>Bug</b><p class="g-empty">空</p></div>`);
+  add("24", "文件夹页签", "w-s",
+    `<div class="tabs"><span class="on">记忆</span><span>Idea</span><span>Bug</span></div><div class="sheet">${who}${rows}</div>`);
+  add("25", "大纲编号", "w-s",
+    `${who}<ol><li>${m1}</li><li>${m2}</li><li>${m3}</li></ol>`);
+  add("26", "便签墙", "w-m h",
+    `<div class="note n1"><b>Context Guard</b><br>${lead}</div><div class="note n2">${m1}</div><div class="note n3">${m2}</div><div class="note n4">${m3}</div>`);
+  add("27", "终端绿字", "w-s h",
+    `<div class="bar">inspector — zsh</div><p><span class="cmd">$</span> cg show</p><p>node: Context Guard</p><p>state: done-untested</p><p class="dim"># ${lead}</p><p>mem[0] ${m1}</p><p>mem[1] ${m2}</p><p>mem[2] ${m3}</p><p class="dim">idea: none</p><p class="dim">bug: none</p><p><span class="cmd">$</span> <span style="opacity:.5">█</span></p>`);
+  add("28", "书页", "w-s h",
+    `<h2>Context Guard</h2><p>${lead}</p><p>${m1}</p><p>${m2}</p><p>${m3}</p>`);
+  add("29", "手机资料卡", "w-s",
+    `<div class="hero"><div class="avatar">C</div><h2>Context Guard</h2>${chip}<p class="g-lead">${lead}</p></div><div class="cell">${m1}</div><div class="cell">${m2}</div><div class="cell">${m3}</div>`);
+  add("30", "词条信息盒", "w-m",
+    `<h2>Context Guard</h2><div class="box"><b>状态</b><br>已做未测<br><br><b>记忆</b> 3<br><b>Idea</b> 0<br><b>Bug</b> 0</div><p>${lead}</p><p>${m1}</p><p>${m2}</p><p>${m3}</p>`);
+  add("31", "一封邮件", "w-s",
+    `<div class="meta"><b>${lead}</b>来自 Agent · 到 人 · Context Guard</div><div class="body"><p>${m1}</p><p>${m2}</p><p>${m3}</p></div>`);
+  add("32", "看板三列", "w-l h",
+    `<div class="col"><b>记忆</b><div class="card">${m1}</div><div class="card">${m2}</div><div class="card">${m3}</div></div><div class="col"><b>Idea</b></div><div class="col"><b>Bug</b></div>`);
+  add("33", "层叠 sheet", "w-s h",
+    `<div style="padding:0 8px 8px">${who}</div><div class="sheet"><b>记忆</b>${rows}</div><div class="sheet"><b>Idea</b> <span class="g-empty">空</span></div>`);
+  add("34", "几乎只有记忆", "w-s",
+    `<h2>Context Guard</h2><p class="ghost">已做未测 · Idea 空 · Bug 空</p>${rows}`);
+  add("35", "全摊开双栏", "w-l",
+    `<h2>Context Guard ${chip}</h2><p>${lead}</p><b>记忆</b><p>${m1}</p><p>${m2}</p><p>${m3}</p><b>Idea</b><p class="g-empty">还没有</p><b>Bug</b><p class="g-empty">还没有</p>`);
+  add("36", "深色身份条", "w-s",
+    `<div class="mast">${chip}<h2>Context Guard</h2><p class="g-lead" style="color:#ccc">${lead}</p></div><div class="body">${rows}</div>`);
+  add("37", "红头拍纸", "w-s h",
+    `<h2>Context Guard</h2><p>${lead}</p>${rows}`);
+  add("38", "左信息右笔记", "w-m h",
+    `<div class="meta">${who}${acts}</div><div class="notes">${rows}</div>`);
+  add("39", "正文流 + 悬浮加号", "w-s h",
+    `<h2>Context Guard</h2><p>${lead}</p><p>${m1}</p><p>${m2}</p><p>${m3}</p><div class="fab">＋</div>`);
+  add("40", "深色时间河", "w-s h",
+    `<h2 style="font-size:14px;margin-bottom:12px">Context Guard</h2><div class="ev"><time>01</time><p>${m1}</p></div><div class="ev"><time>02</time><p>${m2}</p></div><div class="ev"><time>03</time><p>${m3}</p></div>`);
+  add("41", "iOS 分段控件", "w-s",
+    `${who}<div class="seg"><span class="on">记忆</span><span>Idea</span><span>Bug</span></div><div class="panel">${rows}</div>`);
+  add("42", "属性键值表", "w-s",
+    `<div class="kv"><span>名称</span><b>Context Guard</b></div><div class="kv"><span>状态</span><b>已做未测</b></div><div class="kv"><span>用途</span><b>${lead}</b></div><div class="kv"><span>记忆 1</span><b>${m1}</b></div><div class="kv"><span>记忆 2</span><b>${m2}</b></div><div class="kv"><span>记忆 3</span><b>${m3}</b></div><div class="kv"><span>Idea</span><b class="g-empty">空</b></div><div class="kv"><span>Bug</span><b class="g-empty">空</b></div>`);
+  add("43", "IDE 侧栏", "w-s h",
+    `<div class="cap">OUTLINE · Context Guard</div><div class="f"><span>记忆</span><span>3</span></div><div class="f"><span>　 ${m1.slice(0,18)}…</span></div><div class="f"><span>　 ${m2}</span></div><div class="f"><span>　 ${m3}</span></div><div class="f"><span>Idea</span><span>0</span></div><div class="f"><span>Bug</span><span>0</span></div>`);
+  add("44", "帖子串", "w-s",
+    `<div class="op"><h2>Context Guard</h2><p class="g-lead">${lead}</p></div><div class="re">${m1}</div><div class="re">${m2}</div><div class="re">${m3}</div>`);
+  add("45", "黄便签", "w-s",
+    `<h2>Context Guard</h2><p>${lead}</p>${rows}`);
+  add("46", "索引卡", "w-s",
+    `<h2>Context Guard</h2><p class="g-lead">${lead}</p><p style="font-size:12px;margin-top:10px">${m1}</p>`);
+  add("47", "展签", "w-s h",
+    `<div class="k">Node · 已做未测</div><h2>Context Guard</h2><p>${lead}</p><p>${m1}</p><p>${m2}</p><p>${m3}</p>`);
+  add("48", "等宽流水账", "w-s",
+    `<div class="ln"><span>NAME</span>Context Guard</div><div class="ln"><span>STATE</span>已做未测</div><div class="ln"><span>USE</span>${lead}</div><div class="ln"><span>MEM 1</span>${m1}</div><div class="ln"><span>MEM 2</span>${m2}</div><div class="ln"><span>MEM 3</span>${m3}</div><div class="ln"><span>IDEA</span>—</div><div class="ln"><span>BUG</span>—</div>`);
+  add("49", "上图下图例", "w-s",
+    `<div class="map"></div><div class="leg"><b>Context Guard</b> ${chip}<p class="g-lead">${lead}</p>${rows}</div>`);
+  add("50", "大量留白", "w-s h",
+    `<h2>Context Guard</h2><p class="g-lead">${lead}</p><p class="hint">记忆在人开口之前不占地方</p>`);
+
+  document.getElementById("g-scroll").innerHTML = L.map(v =>
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock ${v.cls} g-lay-${v.id}">${v.html}</aside></article>`
+  ).join("");
 }
 async function boot(){
   if(window.__CG_GALLERY){
