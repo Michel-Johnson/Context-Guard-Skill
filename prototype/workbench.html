@@ -60,6 +60,7 @@
   --focus:#8a6d1f; --focus-soft:#f5eeda; --module:#2d5da1; --module-soft:#f3ead6;
   --auth:#7a5ca8; --auth-soft:#f0eaf8;
   --yellow:#ffe66d; --gold:#d4a017;
+  --dot-success:#6ed08a; --dot-dirty:#3d7ee8;
   --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
@@ -213,12 +214,12 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .node .dot[data-hint]{position:relative;cursor:help;z-index:1}
 .node .dot[data-hint]:before{content:"";position:absolute;inset:-7px}
-.dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
+.dot.dirty{background:var(--dot-dirty)} .dot.success{background:var(--dot-success)}
 .dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
 .dot.module{background:var(--module);border-radius:2px}
-.dot.module.dirty{background:var(--blue)}
+.dot.module.dirty{background:var(--dot-dirty)}
 .dot.module.untested{background:var(--gold)}
-.dot.module.success{background:var(--green)}
+.dot.module.success{background:var(--dot-success)}
 .dot.module.failed{background:var(--red)}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 .dot-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 0}
