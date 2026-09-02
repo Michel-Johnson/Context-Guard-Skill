@@ -46,7 +46,10 @@ test("App调用与工作台演示保持为两个独立整屏页", () => {
   const journeySource = readFileSync(new URL("../src/FirstUseJourney.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(journeySource, /TourStage|journey-workbench-screen|usePaneTransition/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  assert.match(appSource, /const pageIds = \["home", "clients", "workbench", "memory", "debug", "install"\]/);
+  assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "debug", "install"\]/);
+  assert.ok(appSource.indexOf('<Page id="workbench"') < appSource.indexOf('<Page id="clients"'));
+  assert.ok(appSource.indexOf('href="#workbench" aria-current') < appSource.indexOf('href="#clients" aria-current'));
+  assert.match(appSource, /className="hero-demo-link" href="#workbench"/);
   assert.match(appSource, /goToPage\(chapter === "debug" \? "debug" : "workbench"\)/);
 });
 

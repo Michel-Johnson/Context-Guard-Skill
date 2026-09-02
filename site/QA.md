@@ -7,10 +7,17 @@
 - 自检发现1280×600会因短屏布局切换而裁掉控制条，新增仅针对`max-height: 600px`的宽度预算；1280×600和1024×600动画均为328.75px，390×667保持220px，三种尺寸都无页面溢出或控件裁切。
 - TypeScript/Vite构建451模块，11项客户端时序/镜头检查通过；Playwright五种桌面/手机尺寸的DOM边界与截图检查通过，控制台0 error、0 warning。证据位于`output/playwright/taller-client-*.png`，未调用Agent/API或修改真实工作台。
 
+## 工作台与 App 调用顺序（2026-09-02）
+
+- 两个独立整屏调整为“首页 → 工作台 → App 调用 → 项目记忆 → Debug → 安装”。页头导航和首页“看完整使用过程”同步从工作台开始；App 对话中的工作台入口仍可反向直达 `#workbench`，没有交换两屏内容。
+- 结构测试同时锁定轨道数组、DOM 页面、页头导航与首页入口的顺序，防止只改其中一处造成滚轮、锚点和视觉顺序不一致。
+- Playwright 在1440×900中文页以两次真实滚轮依次得到 `#workbench`、`#clients`，App 对话按钮再反向进入 `#workbench`；390×667英文页在工作台 iframe 画面内部滚轮也进入 `#clients`。两种尺寸的document均与视口相等，控制台0 error、0 warning；证据位于 `output/playwright/swap-order-*.png`。
+- TypeScript/Vite构建451模块，资源为`index-BvaBIX3a.js` / `index-Dlm5HjxI.css`；11项客户端时序/镜头测试、根目录35项安全验收与CI smoke通过，npm包仍为14个文件且不包含站点。本轮未调用Computer Use、subagent、Agent或API。
+
 ## App 调用与工作台分屏（2026-09-02）
 
 - 用户截图显示客户端首用导航同时包含 App 调用和工作台建图章节，且同一舞台在客户端外壳与真实工作台之间切换。现在首用流程只保留“调用 Skill → 确认语言 → 准备工作台”三个 App 内动作；`FirstUseJourney` 不再导入 `TourStage`、`Workbench` 或工作台转场状态。
-- 整屏顺序调整为“首页 → App 调用 → 工作台 → 项目记忆 → Debug → 安装”。客户端对话里的“打开当前项目工作台”会进入独立 `#workbench` 页并选择真实“逐层建图”，不再在 `#clients` 内切换画面；鼠标滚轮从 `#clients` 向下也只翻到 `#workbench`。
+- 当时整屏顺序为“首页 → App 调用 → 工作台 → 项目记忆 → Debug → 安装”；最新顺序见上方记录。客户端对话里的“打开当前项目工作台”会进入独立 `#workbench` 页并选择真实“逐层建图”，不再在 `#clients` 内切换画面。
 - Playwright 在1280×720中文页面测得 `.page-clients iframe` 与 `.page-clients .tour-shell` 均为0，页面顺序与URL正确；点击 App 内工作台入口后截图显示独立工作台整屏。英文1280×720无可见汉字，三个步骤与导航完整翻译；390×667页面文档尺寸等于视口，客户端和步骤选择框正常，仍无客户端 iframe。证据位于 `output/playwright/clients-separated-1280x720.png`、`workbench-page-after-app-link.png`、`clients-separated-en-1280x720.png` 和 `clients-separated-en-390x667.png`。
 - 普通构建451模块，资源`index-xI8lUzGH.js` / `index-BCi5ZiiT.css`；新增分屏结构断言后，11项客户端时序与镜头检查通过。演示仍只使用预设数据，不调用Agent/API；本轮未使用Computer Use或subagent。
 
