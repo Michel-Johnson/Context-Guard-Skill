@@ -31,11 +31,10 @@ export function cameraSettled(state: CameraMotion, target: Camera) {
 }
 
 // 临界阻尼保留位置和速度。新轮次、滚动或目标变化时不重启补间，也不会跳到预设起点。
-export function advanceCamera(state: CameraMotion, target: Camera, delta: number): CameraMotion {
+export function advanceCamera(state: CameraMotion, target: Camera, delta: number, frequency = 10): CameraMotion {
   if (delta <= 0) return state;
   if (cameraSettled(state, target)) return stillCamera(target);
   const seconds = delta / 1000;
-  const frequency = 10;
   const decay = Math.exp(-frequency * seconds);
   const pose = { ...state.pose };
   const velocity = { ...state.velocity };
