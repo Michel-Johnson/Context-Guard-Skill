@@ -91,7 +91,8 @@ header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:c
   padding:10px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink);flex-wrap:nowrap;cursor:default}
 header.top .brand{position:relative;flex:0 0 auto}
 header.top h1{margin:0;font-size:16px}
-header.top h1.repo-switch{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+header.top h1.repo-switch{cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  height:var(--chrome-btn-h);padding:0 2px;box-sizing:border-box;line-height:1}
 header.top h1.repo-switch:hover{color:var(--module)}
 header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-menu{display:none;position:absolute;left:0;top:100%;margin-top:8px;z-index:40;min-width:280px;
@@ -105,13 +106,16 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-menu .tag.wait{color:var(--red)}
 .repo-menu .reanalyze{margin-top:4px;font-size:11px;color:var(--red);text-decoration:underline;cursor:pointer}
 .nav-crumbs{display:flex;align-items:center;gap:7px;font-size:13px;flex-wrap:nowrap;flex:1 1 auto;min-width:0;
-  overflow-x:auto;white-space:nowrap;scrollbar-width:thin}
-.top-tools{display:flex;align-items:center;gap:10px 13px;flex:0 0 auto;margin-left:auto;flex-wrap:nowrap}
+  overflow-x:auto;white-space:nowrap;scrollbar-width:thin;height:var(--chrome-btn-h)}
+.top-tools{display:flex;align-items:center;gap:10px 13px;flex:0 0 auto;margin-left:auto;flex-wrap:nowrap;height:var(--chrome-btn-h)}
 .nav-crumbs a,.nav-crumbs .here,.nav-crumbs .sep,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{flex:0 0 auto;white-space:nowrap}
-.nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;padding:3px 9px;
-  border:1px solid transparent;border-radius:6px}
+.nav-crumbs a,.nav-crumbs .here,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{
+  display:inline-flex;align-items:center;height:var(--chrome-btn-h);padding:0 12px;box-sizing:border-box;line-height:1}
+.nav-crumbs a{color:var(--module);cursor:pointer;text-decoration:none;
+  border:2px solid transparent;border-radius:8px}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
-.nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
+.nav-crumbs .here{font-weight:700;background:var(--module-soft);border-radius:8px;color:var(--module);
+  border:2px solid transparent}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
 .tray-btn,.auth-btn{
@@ -235,7 +239,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #nodes{position:absolute;left:0;top:0;z-index:2}
@@ -537,8 +541,8 @@ body.bug-path-mode .drawer .lead{min-height:0;-webkit-line-clamp:2}
 body.bug-path-mode .drawer .actions{margin-top:8px}
 body.bug-path-mode .drawer h2{font-size:18px}
 body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;display:inline-block;align-self:center}
-.nav-crumbs .bug-exit{font-size:12px;padding:3px 9px;margin-right:4px}
-.nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;padding:3px 9px;border-radius:6px}
+.nav-crumbs .bug-exit{font-size:12px;margin-right:4px}
+.nav-crumbs .bug-tag{background:var(--red-soft);color:var(--red);font-weight:800;border-radius:8px}
 #links path.link.bug-path{stroke:#8a5348;stroke-width:2.4}
 #links path.current-flow{fill:none;stroke-width:4.6;stroke-dasharray:7 16;stroke-linecap:round;
   opacity:1;filter:drop-shadow(0 0 5px #fff8) drop-shadow(0 0 7px);animation:current-run .65s linear infinite}
@@ -6228,6 +6232,9 @@ async function boot(){
     const btn = document.getElementById("btn-settings");
     if(menu) menu.classList.add("open");
     if(btn){ btn.classList.add("on"); btn.setAttribute("aria-expanded","true"); }
+  }
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(()=>{ syncChrome(); renderAll(); fitView(); }).catch(()=>{});
   }
 }
 const headerEl = document.querySelector("header.top");

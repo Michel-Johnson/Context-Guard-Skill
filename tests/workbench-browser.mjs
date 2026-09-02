@@ -46,10 +46,15 @@ async function servePrototype() {
 }
 async function chromeHeights(target) {
   return target.evaluate(() => {
-    const rel = document.getElementById('rel-toggle');
-    const ids = ['btn-auth', 'btn-bugs', 'btn-settings'];
-    const boxes = [rel, ...ids.map(id => document.getElementById(id))].filter(Boolean);
-    return boxes.map(el => Math.round(el.getBoundingClientRect().height));
+    const els = [
+      document.querySelector('header.top h1.repo-switch'),
+      document.querySelector('.nav-crumbs .here'),
+      document.getElementById('rel-toggle'),
+      document.getElementById('btn-auth'),
+      document.getElementById('btn-bugs'),
+      document.getElementById('btn-settings'),
+    ].filter(Boolean);
+    return els.map(el => Math.round(el.getBoundingClientRect().height));
   });
 }
 async function openSyncSettings() {
@@ -296,6 +301,19 @@ try {
     await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
     await preview.locator('#btn-auth').click();
+    await preview.mouse.move(420, 280);
+    await preview.mouse.down();
+    await preview.mouse.move(420, 720, { steps: 12 });
+    await preview.mouse.up();
+    const headerCutsNode = await preview.evaluate(() => {
+      const bottom = document.querySelector('header.top').getBoundingClientRect().bottom;
+      for (let x = 40; x <= 520; x += 40) {
+        const el = document.elementFromPoint(x, bottom - 3);
+        if (el && el.closest && el.closest('.node')) return true;
+      }
+      return false;
+    });
+    assert.equal(headerCutsNode, false, 'panning a node under the header must clip, not slice a dead pill');
     recordCheck('static-preview-node-click');
   } finally {
     await preview.close();
