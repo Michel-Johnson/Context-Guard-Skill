@@ -208,6 +208,8 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .analyze-log li.done .find{color:var(--green)}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.node .dot[data-hint]{position:relative;cursor:help;z-index:1}
+.node .dot[data-hint]:before{content:"";position:absolute;inset:-7px}
 .dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
 .dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
 .dot.module{background:var(--module);border-radius:2px}
@@ -246,6 +248,10 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.rel-dim{opacity:.16;filter:grayscale(.55) brightness(.82)}
 .node.rel-dim.selected,.node.rel-hot.selected{opacity:1;filter:none}
 .node.rel-hot{opacity:1;filter:none}
+#dot-hint{position:fixed;z-index:28;max-width:220px;padding:6px 9px;
+  background:var(--paper);color:var(--ink);border:2px solid var(--line-ink);border-radius:8px;
+  box-shadow:var(--shadow-sm);font-size:12px;font-weight:700;line-height:1.35;pointer-events:none}
+#dot-hint[hidden]{display:none}
 body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
 body.rel-mode .node .add-child{display:none}
 /* ===== 节点：小圆角胶囊 ===== */
@@ -852,6 +858,7 @@ html.cg-phone .drawer h2{font-size:18px}
     <div id="currents"></div>
   </div>
 </div>
+<div id="dot-hint" hidden role="tooltip"></div>
 
 <div class="tray" id="tray">
   <h3 data-i18n="trayTitle">已取消的提议</h3>
@@ -3962,6 +3969,43 @@ function workDotState(n){
 function workStateHint(s){
   return t("stateHint_"+s) || t("state_"+s);
 }
+function prefersFineHover(){
+  try{ return window.matchMedia("(hover: hover) and (pointer: fine)").matches; }catch(e){ return true; }
+}
+function nodeDotHtml(n, extraClass){
+  const st = workDotState(n);
+  const hint = workStateHint(st);
+  const native = prefersFineHover() ? "" : ` title="${escAttr(hint)}"`;
+  return `<i class="dot ${extraClass||""} ${st}" data-hint="${escAttr(hint)}" aria-label="${escAttr(hint)}"${native}></i>`;
+}
+let dotHintEl = null;
+function hideDotHint(){
+  if(!dotHintEl) dotHintEl = document.getElementById("dot-hint");
+  if(dotHintEl) dotHintEl.hidden = true;
+}
+function showDotHint(dot){
+  const text = dot && dot.getAttribute("data-hint");
+  if(!text) return;
+  if(!dotHintEl) dotHintEl = document.getElementById("dot-hint");
+  if(!dotHintEl) return;
+  dotHintEl.textContent = text;
+  dotHintEl.hidden = false;
+  const r = dot.getBoundingClientRect();
+  const tw = dotHintEl.offsetWidth;
+  const th = dotHintEl.offsetHeight;
+  let left = r.left + r.width/2 - tw/2;
+  let top = r.top - th - 8;
+  if(top < 52) top = r.bottom + 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  dotHintEl.style.left = left+"px";
+  dotHintEl.style.top = top+"px";
+}
+function bindNodeDotHint(div){
+  const dot = div.querySelector(".dot[data-hint]");
+  if(!dot) return;
+  dot.addEventListener("pointerenter", ()=>showDotHint(dot));
+  dot.addEventListener("pointerleave", hideDotHint);
+}
 /* 按仓库里实际有没有做、有没有测，给节点上色。旧缓存若还是蓝点，只升不降。 */
 const MAP_COMPLETION = {
   T0:"untested",
@@ -4496,7 +4540,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>
+    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${n.title}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
@@ -4506,7 +4550,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(isProposed(n)){
     return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
   }
-  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>`+
+  return authMark+nodeDotHtml(n)+`<span>${n.title}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4514,6 +4558,7 @@ function nodeHtml(n, isViewRoot, ghost){
 }
 
 function renderMap(){
+  hideDotHint();
   if(!(data.flows && data.flows.length) && currentRepo().blueprint && currentRepo().blueprint.flows){
     data.flows = clone(currentRepo().blueprint.flows);
   }
@@ -4540,6 +4585,7 @@ function renderMap(){
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
+    bindNodeDotHint(div);
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
     els.set(n.id, div);
@@ -5557,6 +5603,7 @@ function endPointer(e){
   }
 }
 vp.addEventListener("pointerdown", e=>{
+  hideDotHint();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
   if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
