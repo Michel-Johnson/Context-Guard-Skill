@@ -60,6 +60,7 @@ if (oidcGrants.length !== 1) {
 forbidMatch(clients, /secrets\.|openai-api-key|--dangerously|--api-key|session\/prompt|turn\/start/, "No-dialogue client CI must not use AI credentials or generation.");
 forbidMatch(clients, /^\s*(?:pull_request_target|workflow_run):/m, "Client CI must not execute elevated untrusted workflows.");
 forbidMatch(clients, /^\s*(?:contents|id-token|pull-requests):\s*write/m, "Client CI must not receive write permissions.");
+requireMatch(clients, /npm run security:setup/, "Client CI must prepare the pinned scanner before npm test.");
 for (const client of ["codex", "cursor", "claude"]) requireMatch(clients, new RegExp(`client: ${client}\\b`), `Missing real client: ${client}`);
 requireMatch(clients, /name: Client checks \(no dialogue\)/, "Client check must identify its limited scope.");
 requireMatch(clients, /test "\$CLIENT_RESULT" = success/, "Failed or skipped client jobs must not pass the aggregate.");
