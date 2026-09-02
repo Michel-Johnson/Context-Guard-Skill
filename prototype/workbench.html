@@ -6,7 +6,7 @@
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
@@ -812,6 +812,52 @@ html.design-gallery .g-stage .node.module{display:flex !important}
 .g-mini .tri{color:var(--muted);font-size:11px}
 .g-h{font-size:16px;margin:22px 0 8px}
 .g-copy{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
+.g-grid-skins{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.g-thumb{max-height:150px;overflow:hidden;pointer-events:none}
+.g-kicker{display:none;font-size:10px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:0 0 4px}
+.g-skin{background:var(--paper);color:var(--ink)}
+.g-skin h2{margin:4px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.25;
+  font-size:var(--g-title,22px);font-weight:var(--g-tw,800);font-family:inherit}
+.g-skin .lead{font-family:var(--g-note, Georgia,"Libre Baskerville","Songti SC",serif)}
+.g-skin[data-font="comic"]{font-family:"Comic Neue","PingFang SC","Microsoft YaHei",sans-serif}
+.g-skin[data-font="plex"]{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+.g-skin[data-font="plex-serif"]{font-family:"IBM Plex Serif","Noto Serif SC","Songti SC",serif}
+.g-skin[data-font="noto"]{font-family:"Noto Sans SC","PingFang SC",sans-serif}
+.g-skin[data-font="noto-serif"]{font-family:"Noto Serif SC","Songti SC",serif}
+.g-skin[data-font="mix-plex"]{font-family:"IBM Plex Sans","Noto Sans SC",sans-serif}
+.g-skin[data-font="mix-plex"] .lead{font-family:"Libre Baskerville","Noto Serif SC",serif}
+.g-skin[data-font="mix-noto"]{font-family:"Noto Sans SC","PingFang SC",sans-serif}
+.g-skin[data-font="mix-noto"] .lead,.g-skin[data-font="mix-noto"] .g-mem{font-family:"Noto Serif SC","Songti SC",serif}
+.g-skin[data-font="mix-comic"]{font-family:"Comic Neue","PingFang SC",sans-serif}
+.g-skin[data-font="mix-comic"] .lead{font-family:Georgia,"Libre Baskerville","Songti SC",serif}
+.g-skin[data-title="16"]{--g-title:16px}
+.g-skin[data-title="18"]{--g-title:18px}
+.g-skin[data-title="20"]{--g-title:20px}
+.g-skin[data-title="22"]{--g-title:22px}
+.g-skin[data-title="26"]{--g-title:26px}
+.g-skin[data-tw="500"]{--g-tw:500}
+.g-skin[data-tw="600"]{--g-tw:600}
+.g-skin[data-tw="700"]{--g-tw:700}
+.g-skin[data-tw="800"]{--g-tw:800}
+.g-skin[data-dense="tight"]{padding:10px 12px !important}
+.g-skin[data-dense="tight"] .lead{margin-top:4px;font-size:12px}
+.g-skin[data-dense="normal"]{padding:16px 16px 20px !important}
+.g-skin[data-dense="airy"]{padding:24px 20px 28px !important}
+.g-skin[data-dense="airy"] .lead{margin-top:10px;font-size:14px;line-height:1.65}
+.g-skin[data-ls="wide"] h2{letter-spacing:.06em;font-size:15px;font-weight:700}
+.g-skin[data-lh="loose"] .lead,.g-skin[data-lh="loose"] .g-mem{line-height:1.75}
+.g-skin[data-lh="tight"] .lead{line-height:1.25;font-size:12px}
+.g-skin[data-head="yellow"] h2{background:var(--yellow);margin:0 -8px 10px;padding:8px 10px;border-radius:6px}
+.g-skin[data-head="rule"] h2{border-bottom:2px solid var(--line-ink);padding-bottom:10px;margin-bottom:8px}
+.g-skin[data-head="kicker"] .g-kicker{display:block}
+.g-skin[data-chip="hide"] .state-chip{display:none}
+.g-skin[data-chip="text"] .state-chip{background:transparent;padding:0;color:var(--muted);border-radius:0}
+.g-skin[data-actions="hide"] .actions{display:none}
+.g-skin[data-actions="text"] .actions button{border:0;box-shadow:none;background:transparent;padding:0 8px 0 0;color:var(--module)}
+.g-skin[data-actions="text"] .actions button:hover{transform:none;box-shadow:none;text-decoration:underline;background:transparent}
+.g-skin .g-mem{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink)}
+.g-skin[data-gap="space"] .g-mini .row{border-top:0;padding:10px 0}
+.g-skin[data-cards="1"] .g-mini .row{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 6px;border-top:1.5px solid var(--line)}
 @media (max-width:980px){
   .g-layout{grid-template-columns:1fr}
   .g-preview{position:relative;top:auto}
@@ -824,12 +870,15 @@ html.design-gallery .g-stage .node.module{display:flex !important}
   <div class="g-bar">
     <b>设计稿</b>
     <span class="pick" id="g-pick">还没选</span>
-    <span class="hint">点卡片就能选。选好后把编号发我，例如「记忆 02，说明 B」。</span>
+    <span class="hint">点卡片就能选。选好后把顶栏编号发我，例如「整体 23，说明 B」。</span>
   </div>
   <div class="g-layout">
     <div>
-      <h2 class="g-h" style="margin-top:0">记忆 / Idea / Bug</h2>
-      <p class="g-copy">都没有阴影。点一张，右边按检查器真实宽度预览。</p>
+      <h2 class="g-h" style="margin-top:0">右边栏整体 · 50 版</h2>
+      <p class="g-copy">字体、字号、疏密、标题和分区一起换。点一张，右边按真实宽度预览。</p>
+      <div class="g-grid g-grid-skins" id="g-skin-grid"></div>
+      <h2 class="g-h">记忆 / Idea / Bug 细部</h2>
+      <p class="g-copy">可叠加在整体之上。都没有阴影。</p>
       <div class="g-grid" id="g-fold-grid"></div>
       <h2 class="g-h">色块说明</h2>
       <p class="g-copy">鼠标停在左边色块上时的样子。四宫格已经从检查器拿掉。</p>
@@ -5749,7 +5798,87 @@ function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 function bootDesignGallery(){
-  document.title = "设计稿 · 记忆 / Idea / Bug";
+  document.title = "设计稿 · 右边栏";
+  function foldBlock(plus, layout){
+    const add = plus==="box" ? `<span class="plus plus-btn">+</span>`
+      : plus==="circle" ? `<span class="circle">+</span>`
+      : plus==="link" ? `<span class="link">添加</span>`
+      : plus==="none" ? ``
+      : plus==="tiny" ? `<span class="tiny">+</span>`
+      : `<span class="ghost">+</span>`;
+    if(layout==="tabs") return `<div class="g-mini"><div class="tabs"><b class="on">记忆 1</b><b>Idea</b><b>Bug</b></div><div class="g-mem">prototype/workbench.html 单文件原型</div></div>`;
+    if(layout==="pills") return `<div class="g-mini"><div class="pills"><i class="on">记忆 1</i><i>Idea</i><i>Bug</i></div><div class="g-mem">prototype/workbench.html 单文件原型</div></div>`;
+    if(layout==="rail") return `<div class="g-mini"><div class="bar">记忆 1 ${add}</div><div class="bar">Idea ${add}</div><div class="bar">Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
+    if(layout==="record") return `<div class="g-mini"><div class="row" style="flex-wrap:wrap">记录 <span class="chip">记忆 1</span> <span class="chip">Idea</span> <span class="chip">Bug</span> ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
+    if(layout==="tri") return `<div class="g-mini"><div class="row"><span class="tri">▾</span> 记忆 1 ${add}</div><div class="row"><span class="tri">▸</span> Idea ${add}</div><div class="row"><span class="tri">▸</span> Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
+    if(layout==="count") return `<div class="g-mini"><div class="row">记忆 <span class="tiny">1</span>${add}</div><div class="row">Idea <span class="tiny">0</span>${add}</div><div class="row">Bug <span class="tiny">0</span>${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
+    return `<div class="g-mini"><div class="row">记忆 1 ${add}</div><div class="row">Idea ${add}</div><div class="row">Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
+  }
+  function skinAttrs(s){
+    return `data-font="${s.font}" data-title="${s.title}" data-tw="${s.tw}" data-dense="${s.dense}" data-layout="${s.layout}" data-plus="${s.plus}" data-chip="${s.chip||"pill"}" data-actions="${s.actions||"row"}" data-head="${s.head||""}" data-ls="${s.ls||""}" data-lh="${s.lh||""}" data-gap="${s.gap||""}" data-cards="${s.cards||""}"`;
+  }
+  function inspectorHtml(s, foldOverride){
+    const folds = foldOverride || foldBlock(s.plus, s.layout);
+    const chip = `<span class="state-chip untested">已做未测</span>`;
+    const acts = `<div class="actions"><button type="button">加模块</button><button type="button">加子项</button></div>`;
+    return `<p class="g-kicker">模块</p>
+      <h2>初次使用动画引导 ${chip}</h2>
+      <p class="lead">第一次打开工作台时，用动画把人领进图里。</p>
+      ${acts}
+      ${folds}`;
+  }
+  const SKINS = [
+    {id:"01", name:"现况 Comic", font:"mix-comic", title:"22", tw:"800", dense:"normal", layout:"folds", plus:"box"},
+    {id:"02", name:"Plex 紧凑", font:"plex", title:"18", tw:"700", dense:"tight", layout:"folds", plus:"ghost"},
+    {id:"03", name:"思源黑体", font:"noto", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
+    {id:"04", name:"思源宋体大标题", font:"noto-serif", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"link"},
+    {id:"05", name:"Plex + 衬线用途", font:"mix-plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
+    {id:"06", name:"黑体标题宋体正文", font:"mix-noto", title:"22", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
+    {id:"07", name:"大留白 26", font:"plex", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"none", actions:"hide"},
+    {id:"08", name:"密排 16", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"tiny", lh:"tight"},
+    {id:"09", name:"用途先行", font:"mix-plex", title:"18", tw:"600", dense:"airy", layout:"folds", plus:"ghost", head:"kicker"},
+    {id:"10", name:"无芯片", font:"plex", title:"22", tw:"700", dense:"normal", layout:"folds", plus:"ghost", chip:"hide"},
+    {id:"11", name:"Tab + Plex", font:"plex", title:"20", tw:"700", dense:"normal", layout:"tabs", plus:"ghost"},
+    {id:"12", name:"Tab + 思源黑", font:"noto", title:"18", tw:"700", dense:"tight", layout:"tabs", plus:"ghost"},
+    {id:"13", name:"Pill + 宋体", font:"noto-serif", title:"22", tw:"600", dense:"normal", layout:"pills", plus:"link"},
+    {id:"14", name:"左侧细线 Plex", font:"plex", title:"18", tw:"600", dense:"normal", layout:"rail", plus:"ghost"},
+    {id:"15", name:"合成记录 紧凑", font:"noto", title:"16", tw:"700", dense:"tight", layout:"record", plus:"ghost"},
+    {id:"16", name:"三角折叠 大字", font:"mix-comic", title:"26", tw:"800", dense:"airy", layout:"tri", plus:"tiny"},
+    {id:"17", name:"计数右齐 黑体", font:"noto", title:"20", tw:"700", dense:"normal", layout:"count", plus:"ghost"},
+    {id:"18", name:"文字添加 衬线", font:"plex-serif", title:"22", tw:"600", dense:"normal", layout:"folds", plus:"link", actions:"text"},
+    {id:"19", name:"无按钮密排", font:"plex", title:"18", tw:"600", dense:"tight", layout:"folds", plus:"none", actions:"hide"},
+    {id:"20", name:"芯片改小字", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost", chip:"text"},
+    {id:"21", name:"操作变链接", font:"noto", title:"20", tw:"500", dense:"normal", layout:"folds", plus:"link", actions:"text"},
+    {id:"22", name:"宽栏 380", font:"mix-plex", title:"22", tw:"700", dense:"airy", layout:"folds", plus:"ghost", width:"380"},
+    {id:"23", name:"窄栏 280 密", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"ghost", width:"280"},
+    {id:"24", name:"字重 500", font:"plex", title:"22", tw:"500", dense:"normal", layout:"folds", plus:"ghost"},
+    {id:"25", name:"字距拉开", font:"noto", title:"16", tw:"700", dense:"normal", layout:"folds", plus:"ghost", ls:"wide"},
+    {id:"26", name:"行高疏 1.75", font:"mix-noto", title:"20", tw:"600", dense:"airy", layout:"folds", plus:"ghost", lh:"loose"},
+    {id:"27", name:"行高紧", font:"plex", title:"18", tw:"700", dense:"tight", layout:"folds", plus:"ghost", lh:"tight"},
+    {id:"28", name:"黄底标题", font:"mix-comic", title:"20", tw:"800", dense:"normal", layout:"folds", plus:"box", head:"yellow"},
+    {id:"29", name:"标题下划线", font:"noto-serif", title:"22", tw:"600", dense:"normal", layout:"folds", plus:"ghost", head:"rule"},
+    {id:"30", name:"模块 kicker", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost", head:"kicker"},
+    {id:"31", name:"无分割线", font:"plex", title:"20", tw:"600", dense:"airy", layout:"folds", plus:"ghost", gap:"space"},
+    {id:"32", name:"三张小卡", font:"noto", title:"18", tw:"700", dense:"normal", layout:"folds", plus:"ghost", cards:"1"},
+    {id:"33", name:"IBM 衬线全栏", font:"plex-serif", title:"22", tw:"600", dense:"airy", layout:"rail", plus:"link", lh:"loose"},
+    {id:"34", name:"思源宋 紧凑 tab", font:"noto-serif", title:"18", tw:"600", dense:"tight", layout:"tabs", plus:"none"},
+    {id:"35", name:"Comic 大留白 pill", font:"mix-comic", title:"26", tw:"800", dense:"airy", layout:"pills", plus:"box"},
+    {id:"36", name:"Plex tab 无操作", font:"plex", title:"18", tw:"600", dense:"tight", layout:"tabs", plus:"ghost", actions:"hide"},
+    {id:"37", name:"宋体 rail 宽", font:"noto-serif", title:"20", tw:"600", dense:"airy", layout:"rail", plus:"link", width:"380", lh:"loose"},
+    {id:"38", name:"黑体 record 窄", font:"noto", title:"16", tw:"700", dense:"tight", layout:"record", plus:"ghost", width:"280"},
+    {id:"39", name:"三角 + 下划线标题", font:"mix-plex", title:"20", tw:"700", dense:"normal", layout:"tri", plus:"tiny", head:"rule"},
+    {id:"40", name:"计数 + 黄标题", font:"noto", title:"18", tw:"800", dense:"normal", layout:"count", plus:"ghost", head:"yellow"},
+    {id:"41", name:"极简只列表", font:"plex", title:"16", tw:"500", dense:"tight", layout:"folds", plus:"none", chip:"hide", actions:"hide"},
+    {id:"42", name:"杂志大衬线", font:"noto-serif", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"none", actions:"text", lh:"loose", head:"kicker"},
+    {id:"43", name:"等宽感计数", font:"plex", title:"18", tw:"600", dense:"normal", layout:"count", plus:"circle", ls:"wide"},
+    {id:"44", name:"左齐无芯片", font:"noto", title:"20", tw:"500", dense:"normal", layout:"rail", plus:"ghost", chip:"hide"},
+    {id:"45", name:"卡片分区 Plex", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"box", cards:"1"},
+    {id:"46", name:"疏排无按钮 宋", font:"noto-serif", title:"22", tw:"600", dense:"airy", layout:"folds", plus:"none", gap:"space", actions:"hide"},
+    {id:"47", name:"kicker + tab", font:"mix-plex", title:"18", tw:"700", dense:"normal", layout:"tabs", plus:"ghost", head:"kicker"},
+    {id:"48", name:"紧凑圆 + 黑体", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"circle", lh:"tight"},
+    {id:"49", name:"链接操作 宽栏", font:"mix-noto", title:"22", tw:"600", dense:"airy", layout:"pills", plus:"link", actions:"text", width:"380"},
+    {id:"50", name:"现况字族 + 去按钮", font:"mix-comic", title:"22", tw:"800", dense:"normal", layout:"folds", plus:"ghost", actions:"text", chip:"text"}
+  ];
   const FOLDS = [
     {id:"01", name:"现况去阴影", html:`<div class="g-mini"><div class="row">记忆 1 <span class="plus plus-btn">+</span></div><div class="row">Idea <span class="plus plus-btn">+</span></div><div class="row">Bug <span class="plus plus-btn">+</span></div></div>`},
     {id:"02", name:"无边框灰 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="ghost">+</span></div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug <span class="ghost">+</span></div></div>`},
@@ -5779,10 +5908,13 @@ function bootDesignGallery(){
     {id:"D", name:"写在色块下", sample:"已做未测"}
   ];
   const q = new URLSearchParams(location.search);
-  let foldId = q.get("fold") || "01";
+  let skinId = q.get("skin") || "01";
+  let foldId = q.get("fold") || "";
   let tipId = q.get("tip") || "A";
+  const skinGrid = document.getElementById("g-skin-grid");
   const foldGrid = document.getElementById("g-fold-grid");
   const tipGrid = document.getElementById("g-tip-grid");
+  skinGrid.innerHTML = SKINS.map(s=>`<button type="button" class="g-card${s.id===skinId?" on":""}" data-skin="${s.id}"><span class="n">${s.id} ${s.name}</span><div class="g-thumb"><div class="g-skin" ${skinAttrs(s)}>${inspectorHtml(s)}</div></div></button>`).join("");
   foldGrid.innerHTML = FOLDS.map(f=>`<button type="button" class="g-card${f.id===foldId?" on":""}" data-fold="${f.id}"><span class="n">${f.id} ${f.name}</span>${f.html}</button>`).join("");
   tipGrid.innerHTML = TIPS.map(t=>`<button type="button" class="g-card${t.id===tipId?" on":""}" data-tip="${t.id}"><span class="n">${t.id} ${t.name}</span>
     <div style="display:flex;align-items:flex-start;gap:8px;min-height:36px">
@@ -5791,9 +5923,11 @@ function bootDesignGallery(){
     </div></button>`).join("");
 
   function paint(){
-    const fold = FOLDS.find(f=>f.id===foldId) || FOLDS[0];
+    const skin = SKINS.find(s=>s.id===skinId) || SKINS[0];
+    const fold = FOLDS.find(f=>f.id===foldId);
     const tip = TIPS.find(t=>t.id===tipId) || TIPS[0];
-    document.getElementById("g-pick").textContent = "记忆 "+fold.id+" · 说明 "+tip.id;
+    document.getElementById("g-pick").textContent = "整体 "+skin.id+(fold?" · 记忆 "+fold.id:"")+" · 说明 "+tip.id;
+    skinGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.skin===skinId));
     foldGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.fold===foldId));
     tipGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.tip===tipId));
     const tipCls = "g-tip "+tip.id.toLowerCase();
@@ -5805,20 +5939,32 @@ function bootDesignGallery(){
           ? `<div class="${tipCls}" style="position:static;margin:6px 0 0 18px">${tip.sample}</div>`
           : `<div class="${tipCls}" style="left:22px;top:-8px">${tip.sample}</div>`}
       </div>`;
-    document.getElementById("g-drawer").innerHTML = `
-      <h2>初次使用动画引导 <span class="state-chip untested">已做未测</span></h2>
-      <p class="lead">第一次打开工作台时，用动画把人领进图里。</p>
-      ${fold.html}`;
+    const drawer = document.getElementById("g-drawer");
+    drawer.className = "drawer g-skin";
+    ["font","title","tw","dense","layout","plus","chip","actions","head","ls","lh","gap","cards"].forEach(k=>{
+      const v = skin[k];
+      if(v) drawer.setAttribute("data-"+k, v);
+      else drawer.removeAttribute("data-"+k);
+    });
+    drawer.style.width = (skin.width||340)+"px";
+    drawer.innerHTML = inspectorHtml(skin, fold && fold.html);
     const url = new URL(location.href);
     url.searchParams.set("gallery","1");
-    url.searchParams.set("fold", foldId);
+    url.searchParams.set("skin", skinId);
+    if(foldId) url.searchParams.set("fold", foldId); else url.searchParams.delete("fold");
     url.searchParams.set("tip", tipId);
     history.replaceState(null, "", url);
   }
+  skinGrid.onclick = e=>{
+    const b = e.target.closest("[data-skin]");
+    if(!b) return;
+    skinId = b.dataset.skin;
+    paint();
+  };
   foldGrid.onclick = e=>{
     const b = e.target.closest("[data-fold]");
     if(!b) return;
-    foldId = b.dataset.fold;
+    foldId = foldId===b.dataset.fold ? "" : b.dataset.fold;
     paint();
   };
   tipGrid.onclick = e=>{
