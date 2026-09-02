@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { MotionConfig, useReducedMotion } from "motion/react";
 import { Icon } from "./components";
 import { Workbench } from "./Workbench";
@@ -16,7 +16,7 @@ type PageId = (typeof pageIds)[number];
 const pageLabels: Record<PageId, string> = {
   home: "首页",
   workbench: "工作台",
-  clients: "使用演示",
+  clients: "App 调用",
   memory: "项目记忆",
   debug: "Debug",
   install: "开始使用",
@@ -33,8 +33,8 @@ function Page({ id, active, children }: { id: PageId; active: boolean; children:
     <div
       className={`site-page page-${id}`}
       data-page={id}
+      data-active={active ? "true" : undefined}
       tabIndex={active ? -1 : undefined}
-      hidden={!active}
       inert={!active}
       aria-hidden={!active}
     >
@@ -66,27 +66,40 @@ export function App() {
   const [workbenchRevision, setWorkbenchRevision] = useState(0);
   const [debugRevision, setDebugRevision] = useState(0);
   const [activePage, setActivePage] = useState<PageId>(pageFromHash);
+  const activePageRef = useRef(activePage);
+  const [pageDirection, setPageDirection] = useState<"up" | "down">("down");
   const activeIndex = pageIds.indexOf(activePage);
+  const wheelGesture = useRef({ delta: 0, locked: false, release: 0, lastEvent: 0 });
+
+  const showPage = useCallback((page: PageId) => {
+    const previous = pageIds.indexOf(activePageRef.current);
+    const next = pageIds.indexOf(page);
+    if (previous === next) return;
+    setPageDirection(next > previous ? "down" : "up");
+    activePageRef.current = page;
+    setActivePage(page);
+  }, []);
 
   useEffect(() => {
-    const sync = () => setActivePage(pageFromHash());
+    const sync = () => showPage(pageFromHash());
     window.addEventListener("hashchange", sync);
     window.addEventListener("popstate", sync);
     return () => {
       window.removeEventListener("hashchange", sync);
       window.removeEventListener("popstate", sync);
     };
-  }, []);
+  }, [showPage]);
 
   const goToPage = useCallback((page: PageId) => {
     if (location.hash !== `#${page}`) history.pushState(history.state, "", `#${page}`);
-    setActivePage(page);
-  }, []);
+    showPage(page);
+  }, [showPage]);
 
   const movePage = useCallback((offset: number) => {
-    const next = Math.max(0, Math.min(pageIds.length - 1, activeIndex + offset));
-    if (next !== activeIndex) goToPage(pageIds[next]);
-  }, [activeIndex, goToPage]);
+    const current = pageIds.indexOf(activePageRef.current);
+    const next = Math.max(0, Math.min(pageIds.length - 1, current + offset));
+    if (next !== current) goToPage(pageIds[next]);
+  }, [goToPage]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -102,6 +115,59 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [movePage]);
 
+  const turnPageFromWheel = useCallback((deltaX: number, deltaY: number, deltaMode: number, ctrlKey: boolean) => {
+    if (ctrlKey || !deltaY || Math.abs(deltaY) <= Math.abs(deltaX)) return false;
+    const gesture = wheelGesture.current;
+    gesture.lastEvent = performance.now();
+    if (gesture.locked) return true;
+    const scheduleRelease = (minimumDelay: number) => {
+      window.clearTimeout(gesture.release);
+      const release = () => {
+        const idleFor = performance.now() - gesture.lastEvent;
+        if (idleFor < 140) {
+          gesture.release = window.setTimeout(release, 140 - idleFor);
+          return;
+        }
+        gesture.delta = 0;
+        gesture.locked = false;
+      };
+      gesture.release = window.setTimeout(release, minimumDelay);
+    };
+    const unit = deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+      : deltaMode === WheelEvent.DOM_DELTA_PAGE ? window.innerHeight : 1;
+    gesture.delta += deltaY * unit;
+    if (Math.abs(gesture.delta) < 48) {
+      scheduleRelease(140);
+      return true;
+    }
+    const direction = Math.sign(gesture.delta);
+    gesture.delta = 0;
+    gesture.locked = true;
+    scheduleRelease(760);
+    movePage(direction);
+    return true;
+  }, [movePage]);
+
+  useEffect(() => {
+    function onWheel(event: WheelEvent) {
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (turnPageFromWheel(event.deltaX, event.deltaY, event.deltaMode, event.ctrlKey)) event.preventDefault();
+    }
+    function onFrameWheel(event: MessageEvent) {
+      if (event.origin !== "null" || event.data?.source !== "cg-workbench-tour" || event.data?.type !== "page-wheel") return;
+      turnPageFromWheel(Number(event.data.deltaX) || 0, Number(event.data.deltaY) || 0, Number(event.data.deltaMode) || 0, Boolean(event.data.ctrlKey));
+    }
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("message", onFrameWheel);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("message", onFrameWheel);
+      window.clearTimeout(wheelGesture.current.release);
+      wheelGesture.current.delta = 0;
+      wheelGesture.current.locked = false;
+    };
+  }, [turnPageFromWheel]);
+
   function handlePageLink(event: ReactMouseEvent<HTMLDivElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
@@ -115,13 +181,14 @@ export function App() {
       requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-page="${page}"]`)?.focus());
   }
 
-  function openDemo(chapter: ChapterId) {
+  const openDemo = useCallback((chapter: ChapterId) => {
     if (chapter === "debug") setDebugRevision((value) => value + 1);
     else {
       setWorkbenchChapter(chapter);
       setWorkbenchRevision((value) => value + 1);
     }
-  }
+    goToPage(chapter === "debug" ? "debug" : "workbench");
+  }, [goToPage]);
 
   return (
     <MotionConfig
@@ -139,7 +206,7 @@ export function App() {
           </a>
           <nav aria-label={t("主导航")}>
             <a href="#workbench" aria-current={activePage === "workbench" ? "page" : undefined}>{t("工作台")}</a>
-            <a href="#clients" aria-current={activePage === "clients" ? "page" : undefined}>{t("使用演示")}</a>
+            <a href="#clients" aria-current={activePage === "clients" ? "page" : undefined}>{t("App 调用")}</a>
             <a href="#memory" aria-current={activePage === "memory" ? "page" : undefined}>{t("项目记忆")}</a>
             <a href="#debug" aria-current={activePage === "debug" ? "page" : undefined}>Debug</a>
           </nav>
@@ -162,6 +229,11 @@ export function App() {
           </div>
         </header>
         <main id="top" className="page-deck" key={language}>
+          <div
+            className="page-track"
+            data-direction={pageDirection}
+            style={{ transform: `translate3d(0, -${activeIndex * 100}%, 0)` }}
+          >
           <Page id="home" active={activePage === "home"}>
             <section className="hero" id="home" aria-labelledby="hero-title">
               <h1 id="hero-title">
@@ -171,7 +243,7 @@ export function App() {
                 <a className="primary" href="#install">
                   {t("安装 Context Guard")} <span>↓</span>
                 </a>
-                <a className="hero-demo-link" href="#clients">
+                <a className="hero-demo-link" href="#workbench">
                   {t("看完整使用过程")} <Icon name="arrow" size={16} />
                 </a>
               </div>
@@ -248,23 +320,14 @@ export function App() {
               </footer>
             </div>
           </Page>
-        </main>
-        <nav className="page-controls" aria-label={t("页面导航")}>
-          <button className="page-control page-control-previous" type="button" onClick={() => movePage(-1)} disabled={activeIndex === 0} aria-label={t("上一页")}>
-            <Icon name="back" size={17} /><span>{t("上一页")}</span>
-          </button>
-          <div className="page-dots">
-            {pageIds.map((page) => (
-              <button key={page} type="button" className={page === activePage ? "active" : ""}
-                aria-current={page === activePage ? "page" : undefined}
-                aria-label={`${t("转到")} ${t(pageLabels[page])}`}
-                onClick={() => goToPage(page)}><span /></button>
-            ))}
           </div>
-          <button className="page-control page-control-next" type="button" onClick={() => movePage(1)} disabled={activeIndex === pageIds.length - 1} aria-label={t("下一页")}>
-            <span>{t("下一页")}</span><Icon name="arrow" size={17} />
-          </button>
-        </nav>
+        </main>
+        <div className="page-position" aria-hidden="true">
+          <span style={{ width: `${((activeIndex + 1) / pageIds.length) * 100}%` }} />
+        </div>
+        <div className="visually-hidden" aria-live="polite">
+          {t("当前页面")}：{t(pageLabels[activePage])}
+        </div>
       </div>
     </MotionConfig>
   );

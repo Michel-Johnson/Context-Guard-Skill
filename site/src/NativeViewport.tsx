@@ -14,7 +14,7 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   turnKey?: string;
 }) {
   const [width, setWidth] = useState(900);
-  const height = Math.min(620, Math.max(width < 600 ? 220 : 350, width * .625));
+  const height = Math.min(700, Math.max(width < 600 ? 220 : 350, width * .625));
   const viewport = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const boxes = useRef<{ composer: Box | null; reply: Box | null }>({ composer: null, reply: null });
@@ -60,14 +60,15 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   function targetFor(elapsed: number) {
     if (elapsed >= timing.cameraStart) entered.current = true;
     const focus = full || !entered.current ? null
-      : elapsed < timing.sent ? boxes.current.composer : boxes.current.reply ?? boxes.current.composer;
+      : elapsed < timing.replyCameraAt ? boxes.current.composer : boxes.current.reply ?? boxes.current.composer;
     return frameFor(focus);
   }
 
   function paint(elapsed: number, delta: number) {
     const target = targetFor(elapsed);
     const previous = camera.current ?? stillCamera(frameFor(null));
-    const next = reduced ? stillCamera(target) : advanceCamera(previous, target, delta);
+    const frequency = !full && elapsed >= timing.replyCameraAt ? timing.replyCameraFrequency : timing.cameraFrequency;
+    const next = reduced ? stillCamera(target) : advanceCamera(previous, target, delta, frequency);
     camera.current = next;
     const settled = cameraSettled(next, target);
     // 停稳后吸附到目标，避免微小尾差持续触发布局/文字重绘。
