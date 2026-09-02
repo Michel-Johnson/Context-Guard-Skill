@@ -78,6 +78,17 @@ try {
   await page.addInitScript(value => localStorage.setItem('cg-workbench-maps-v16', JSON.stringify(value)), legacy);
   await page.goto(running.state.url); await synchronized();
   assert.equal((await read()).root.title, '浏览器验收'); recordCheck('legacy-cache-not-written');
+  const splitBox = await page.locator('#drawer-split').boundingBox();
+  assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
+  const widthBefore = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--drawer-width').trim());
+  await page.mouse.move(splitBox.x + splitBox.width / 2, splitBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(splitBox.x - 90, splitBox.y + 80, { steps: 8 });
+  await page.mouse.up();
+  const widthAfter = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--drawer-width').trim());
+  assert.notEqual(widthAfter, widthBefore);
+  await page.locator('#drawer-split').dblclick();
+  recordCheck('drawer-split-drag');
   await page.locator('.node[data-id="N1"]').click();
   const title = page.locator('#detail [data-ed="title"]');
   await title.fill('人类中文改名'); await title.press('Tab');

@@ -549,9 +549,9 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
-  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
-.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 12px);width:24px;bottom:0;
+  z-index:25;cursor:col-resize;touch-action:none;background:rgba(45,45,45,.001)}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:11px;width:2px;background:transparent}
 .drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
   background:var(--line-ink)}
 .drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
@@ -723,8 +723,8 @@ html.cg-phone .drawer{
   padding:18px 14px calc(20px + var(--safe-bottom));
 }
 html.cg-phone .drawer-split{
-  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
-  cursor:row-resize;transform:translateY(8px);
+  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:24px;
+  cursor:row-resize;transform:translateY(12px);
 }
 html.cg-phone .drawer-split:before{
   top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
@@ -5505,9 +5505,17 @@ function syncSplitChrome(){
   el.setAttribute("aria-orientation", phone ? "horizontal" : "vertical");
   el.title = t(phone ? "splitTitlePhone" : "splitTitle");
 }
+function finishDrawerChrome(){
+  restoreDrawerWidth();
+  restoreDrawerHeight();
+  bindDrawerSplit();
+  applyDrawerLayout();
+  syncChrome();
+}
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
-  if(!el) return;
+  if(!el || el.dataset.bound==="1") return;
+  el.dataset.bound = "1";
   let resizing = false;
   function move(e){
     if(!resizing) return;
@@ -5521,15 +5529,22 @@ function bindDrawerSplit(){
       applyDrawerWidth(window.innerWidth - x, false);
     }
   }
-  function stop(){
-    if(!resizing) return;
-    resizing = false;
-    document.body.classList.remove("drawer-resizing");
+  function unbindMove(){
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("mousemove", move, true);
     window.removeEventListener("pointerup", stop, true);
     window.removeEventListener("mouseup", stop, true);
     window.removeEventListener("pointercancel", stop, true);
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", stop);
+    el.removeEventListener("pointercancel", stop);
+    el.removeEventListener("lostpointercapture", stop);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
+    document.body.classList.remove("drawer-resizing");
+    unbindMove();
     if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
     else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
@@ -5549,6 +5564,10 @@ function bindDrawerSplit(){
     window.addEventListener("pointerup", stop, true);
     window.addEventListener("mouseup", stop, true);
     window.addEventListener("pointercancel", stop, true);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", stop);
+    el.addEventListener("pointercancel", stop);
+    el.addEventListener("lostpointercapture", stop);
     if(e.pointerId!=null){
       try{ el.setPointerCapture(e.pointerId); }catch(err){}
     }
@@ -5802,7 +5821,7 @@ async function boot(){
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
     notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
     document.body.append(notice);
-    await loadMapFromHttp(); renderAll(); return;
+    await loadMapFromHttp(); renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
@@ -5830,11 +5849,7 @@ async function boot(){
   }
   syncThemePicks();
   renderAll();
-  restoreDrawerWidth();
-  restoreDrawerHeight();
-  bindDrawerSplit();
-  applyDrawerLayout();
-  syncChrome();
+  finishDrawerChrome();
   fitView();
   if(new URLSearchParams(location.search).has("settings")){
     const menu = document.getElementById("settings-menu");
@@ -5847,6 +5862,7 @@ const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
   new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
 }
+finishDrawerChrome();
 boot();
 </script>
 </body>
