@@ -626,9 +626,13 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
-details.fold{margin-top:8px;border-top:1px solid var(--line);padding:20px 0 16px}
+.sec-block{margin-top:14px}
+.sec-add{display:inline-flex;align-items:center;gap:6px}
+.sec-block .mem-list,.sec-block .bug-list{margin-top:8px}
+.sec-block .mem-list li,.sec-block .bug-list li{border-top:0}
+details.fold{margin-top:14px;border-top:0;padding:4px 0 8px}
 details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
-  display:flex;align-items:center;gap:8px;min-height:36px;line-height:1.4;padding:4px 0 10px}
+  display:flex;align-items:center;gap:8px;min-height:28px;line-height:1.4;padding:4px 0}
 details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
@@ -748,7 +752,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
-html.cg-phone details.fold>summary{min-height:40px;padding:4px 0 10px}
+html.cg-phone .sec-add{min-height:36px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
@@ -5255,24 +5259,18 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
-    <details class="fold" data-fold="mem" ${foldMem?"open":""}>
-      <summary>${labels.memory} ${node.memories.length||""}
-        <button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">+</button>
-      </summary>
+    <section class="sec-block" data-fold="mem">
+      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} +</button>
       ${memHtml}
-    </details>
-    <details class="fold" data-fold="idea" ${foldIdea?"open":""}>
-      <summary>${labels.ideas} ${node.ideas.length||""}
-        <button type="button" class="plus-btn" data-act="add-idea" title="${escAttr(t("addIdea"))}">+</button>
-      </summary>
+    </section>
+    <section class="sec-block" data-fold="idea">
+      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} +</button>
       ${ideaHtml}
-    </details>
-    <details class="fold" data-fold="bug" ${foldBug?"open":""}>
-      <summary>${labels.bugs} ${openBugs.length||""}
-        <button type="button" class="plus-btn" data-act="add-bug" title="${escAttr(t("addBug"))}">+</button>
-      </summary>
+    </section>
+    <section class="sec-block" data-fold="bug">
+      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} +</button>
       ${bugHtml}
-    </details>
+    </section>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
@@ -5680,6 +5678,7 @@ function endPointer(e){
   }
 }
 vp.addEventListener("pointerdown", e=>{
+  if(window.__CG_GALLERY) return;
   hideDotHint();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
