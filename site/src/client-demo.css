@@ -20,10 +20,6 @@
 .client-route button[aria-current="step"] > span { color: var(--amber); }
 .client-route-chapters button:hover, .client-route-followups button:hover { color: var(--text); background: var(--panel); }
 .client-route-followups { padding-top: 8px; border-top: 1px solid var(--line); }
-.client-precondition { padding: 0 12px; font-size: 13px; line-height: 1.8; color: var(--muted); overflow-wrap: anywhere; }
-.client-precondition summary { min-height: 44px; cursor: pointer; padding: 10px 0; }
-.client-precondition p { margin-bottom: 9px; }
-.client-precondition a { display: flex; align-items: center; width: fit-content; min-height: 44px; color: var(--amber); }
 .client-reference-stage { grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
 .first-use-journey { min-width: 0; }
 .journey-mode { display: flex; flex-shrink: 0; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 6px; }
@@ -42,8 +38,6 @@
 .client-demo-controls > button { display: grid; place-items: center; flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 8px; color: var(--muted); }
 .client-demo-controls > button:first-child { border: 1px solid var(--line); border-radius: 50%; }
 .client-demo-controls > .lesson-view-toggle { display: block; margin-left: auto; font-size: 13px; white-space: nowrap; }
-.client-demo-progress { height: 2px; background: var(--line); }
-.client-demo-progress span { display: block; height: 100%; background: #baa489; }
 .lesson-result { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 80px; padding: 12px 0; }
 .lesson-exercise { min-width: 0; }
 .lesson-exercise[data-shown="false"] { visibility: hidden; }
@@ -60,9 +54,7 @@
   .client-route { grid-column: auto; grid-row: auto; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 8px 12px; padding-top: 0; border-right: 0; }
   .client-route-chapters { display: none; }
   .client-chapter-select { display: block; min-width: 0; width: 100%; min-height: 46px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 13px; }
-  .client-route-followups, .client-precondition { grid-column: 1 / -1; }
   .client-route-followups { display: none; }
-  .client-precondition summary { padding: 6px 8px; min-height: 36px; }
   .client-reference-stage { grid-column: auto; grid-row: auto; min-width: 0; }
   .journey-controls { flex-wrap: wrap; }
   .journey-caption { flex-basis: calc(100% - 62px); }

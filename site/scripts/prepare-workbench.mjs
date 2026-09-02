@@ -105,7 +105,8 @@ for(const event of ['drop','paste']) document.addEventListener(event,e=>{
 </script>`;
 const charset = /<meta charset=["']utf-8["']>/i;
 const bootCall = /\bboot\(\);(?=\s*<\/script>\s*<\/body>)/;
-if (!charset.test(source) || !source.includes("</body>") || !bootCall.test(source))
+const syncImport = 'try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }';
+if (!charset.test(source) || !source.includes("</body>") || !bootCall.test(source) || !source.includes(syncImport))
   throw new Error("产品 HTML 结构已改变，请重新核对演示接入。");
 const prepareData = `
 // 只配置宣传示例数据，保留产品控件和行为；不展示其他项目的内置样例。
@@ -121,7 +122,9 @@ for (const id of Object.keys(catalog)) {
 function buildWorkbench(language) {
   let html = source
   .replace(/<link[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g, "")
-  .replace(charset, (meta) => `${meta}\n${isolation(language)}<style>${fontCss}</style>`)
+  .replace(charset, (meta) => `${meta}\n${isolation(language)}<style>${fontCss}\n#cg-sync{display:none!important}</style>`)
+  // GitHub Pages 演示始终使用内置数据；避免尝试加载不存在且被 CSP 禁止的本地同步模块。
+  .replace(syncImport, 'try { throw new Error("static promotion preview"); }')
   // 仅记录产品已有初始化的返回值，导览不能再执行第二次 boot。
   .replace(bootCall, prepareData + "window.__CG_TOUR_BOOT__ = boot();")
   .replace("</body>", () => `<script>\n${runtime}\n</script>\n</body>`);
@@ -154,6 +157,7 @@ await writeFile(
         "仅将原 boot 调用返回值交给导览，避免重复初始化",
         "复用原生英文界面，翻译 Context Guard 预设数据；宣传示例只保留当前项目",
         "英文产物翻译一条原生空项目记忆；正式产品源码未修改",
+        "静态宣传页直接进入只读内置数据，不请求仅供本地工作台使用的同步模块",
       ],
     },
     null,
