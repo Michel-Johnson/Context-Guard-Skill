@@ -6,7 +6,7 @@
 - 首屏宣传镜头现在显式使用桌面源布局，并通过既有工作台导览协议循环演示“打开逐层建图候选 → 依次加入第一层模块 → 定稿”；离开首页后由IntersectionObserver暂停，返回后继续。减少动态用户仍看到稳定的最终工作台，不强制播放。
 - 所有宣传站内嵌工作台都由父页面明确传入布局模式：桌面使用右侧340px检查器，820px及以下使用原生手机底部检查器。嵌入专用参数只隐藏产品的设备预览提示，不修改`prototype/workbench.html`或正式工作台的设备判断。
 - Playwright 1440×900中英文实测首屏`phone=false`、检查器位于右侧、提示隐藏；连续采样覆盖1→5个节点、候选模式打开/关闭和鼠标移动，确认动画循环。进入`#workbench`后首屏iframe变为paused，当前工作台继续播放；390×844独立工作台为`phone=true`。控制台0 error、0 warning。
-- TypeScript/Vite生产构建452模块，13项站点时序/结构检查通过；根目录35项安全验收、50项Node测试、28项安装边界与CI smoke通过。npm dry-run仍为24个包文件且不含`site/`；本地截图为`output/playwright/hero-preview-fixed.png`。
+- TypeScript/Vite生产构建452模块，13项站点时序/结构检查通过；合入最新main后，根目录35项安全验收、62项Node测试、28项安装边界与CI smoke通过。npm dry-run为26个包文件且不含`site/`；本地截图为`output/playwright/hero-preview-fixed.png`。
 
 ## 首屏宣传图与 App 动画接续（2026-09-02）
 
