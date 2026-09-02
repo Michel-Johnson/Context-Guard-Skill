@@ -769,25 +769,35 @@ html.design-gallery #design-gallery{display:block;padding:18px 18px 48px}
 .g-bar b{font-size:15px}
 .g-bar .pick{font-size:13px;font-weight:800}
 .g-bar .hint{color:var(--muted);font-size:12.5px;font-weight:700}
-.g-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
-.g-preview{position:sticky;top:68px}
+.g-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;max-width:720px}
+.g-preview{position:sticky;top:68px;justify-self:start}
 .g-preview .g-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 8px}
 html.design-gallery .g-preview .drawer{display:block !important;position:relative;top:auto;right:auto;bottom:auto;width:340px;height:auto;
-  border-left:2px solid var(--line-ink);padding:16px 16px 20px;background:var(--paper)}
-.g-stage{position:relative;min-height:120px;margin:0 0 12px;padding:18px 12px 28px;
+  border:2px solid var(--line-ink);border-left:2px solid var(--line-ink);padding:16px 16px 20px;background:var(--paper);border-radius:10px}
+.g-stage{display:none;position:relative;min-height:88px;margin:0 0 12px;padding:16px 12px 20px;
   background:var(--bg);border:2px solid var(--line-ink);border-radius:10px}
+html.design-gallery[data-g-tab="tip"] .g-stage{display:block}
+html.design-gallery[data-g-tab="tip"] #g-drawer{display:none !important}
 html.design-gallery .g-stage .node.module{display:flex !important}
 .g-tip{position:absolute;z-index:2;font-size:12px;font-weight:800;line-height:1.35;pointer-events:none;max-width:220px}
 .g-tip.a{padding:6px 9px;background:var(--paper);border:2px solid var(--line-ink);border-radius:8px}
 .g-tip.b{padding:0;border:0;background:transparent}
 .g-tip.c{padding:6px 9px;background:var(--yellow);border:2px solid var(--line-ink);border-radius:8px}
 .g-tip.d{padding:0;border:0;background:transparent;font-size:11px;color:var(--muted)}
-.g-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
-.g-card{text-align:left;padding:10px 12px 8px;border:2px solid var(--line-ink);border-radius:10px;
-  background:var(--paper);box-shadow:none;cursor:pointer;width:100%}
+.g-grid{display:flex;flex-direction:column;gap:2px}
+.g-card{text-align:left;padding:7px 8px;border:0;border-radius:8px;
+  background:transparent;box-shadow:none;cursor:pointer;width:100%;display:flex;align-items:baseline;gap:8px}
 .g-card:hover{background:#fff;transform:none;box-shadow:none}
 .g-card.on{background:var(--yellow)}
-.g-card .n{display:block;font-size:11px;font-weight:800;color:var(--muted);margin:0 0 8px;letter-spacing:.04em}
+.g-card .n{display:block;font-size:11px;font-weight:800;color:var(--muted);margin:0;letter-spacing:.04em;flex:0 0 2em;font-variant-numeric:tabular-nums}
+.g-card .g-spec{flex:1;min-width:0;font-size:14px;font-weight:700;line-height:1.3}
+.g-tabs,.g-filters{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 10px}
+.g-tabs button,.g-filters button{padding:4px 9px;font-size:12.5px;box-shadow:none;border:0;background:transparent;font-weight:700;color:var(--muted)}
+.g-tabs button:hover,.g-filters button:hover{transform:none;box-shadow:none;background:#fff;color:var(--ink)}
+.g-tabs button.on,.g-filters button.on{background:var(--yellow);color:var(--ink)}
+.g-pane{display:none}
+.g-pane.on{display:block}
+.g-count{font-size:12px;font-weight:700;color:var(--muted);margin:0 0 8px}
 .g-mini .row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);
   font-size:13px;font-weight:800;color:var(--muted)}
 .g-mini .row:first-child{border-top:0}
@@ -810,10 +820,8 @@ html.design-gallery .g-stage .node.module{display:flex !important}
 .g-mini .sub{display:block;font-size:11px;color:var(--muted);font-weight:700;margin:-2px 0 6px}
 .g-mini .chip{font-size:11px;font-weight:800;border:1.5px solid var(--line-ink);border-radius:999px;padding:1px 7px}
 .g-mini .tri{color:var(--muted);font-size:11px}
-.g-h{font-size:16px;margin:22px 0 8px}
+.g-h{font-size:16px;margin:0 0 8px}
 .g-copy{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
-.g-grid-skins{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
-.g-thumb{max-height:150px;overflow:hidden;pointer-events:none}
 .g-kicker{display:none;font-size:10px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:0 0 4px}
 .g-skin{background:var(--paper);color:var(--ink)}
 .g-skin h2{margin:4px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.25;
@@ -860,7 +868,7 @@ html.design-gallery .g-stage .node.module{display:flex !important}
 .g-skin[data-cards="1"] .g-mini .row{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 6px;border-top:1.5px solid var(--line)}
 @media (max-width:980px){
   .g-layout{grid-template-columns:1fr}
-  .g-preview{position:relative;top:auto}
+  .g-preview{position:relative;top:auto;justify-self:stretch}
   .g-preview .drawer{width:100%}
 }
 </style>
@@ -870,22 +878,37 @@ html.design-gallery .g-stage .node.module{display:flex !important}
   <div class="g-bar">
     <b>设计稿</b>
     <span class="pick" id="g-pick">还没选</span>
-    <span class="hint">点卡片就能选。选好后把顶栏编号发我，例如「整体 23，说明 B」。</span>
+    <span class="hint">左边点名字，右边只出一栏。选好后把顶栏编号发我。</span>
   </div>
   <div class="g-layout">
     <div>
-      <h2 class="g-h" style="margin-top:0">右边栏整体 · 50 版</h2>
-      <p class="g-copy">字体、字号、疏密、标题和分区一起换。点一张，右边按真实宽度预览。</p>
-      <div class="g-grid g-grid-skins" id="g-skin-grid"></div>
-      <h2 class="g-h">记忆 / Idea / Bug 细部</h2>
-      <p class="g-copy">可叠加在整体之上。都没有阴影。</p>
-      <div class="g-grid" id="g-fold-grid"></div>
-      <h2 class="g-h">色块说明</h2>
-      <p class="g-copy">鼠标停在左边色块上时的样子。四宫格已经从检查器拿掉。</p>
-      <div class="g-grid" id="g-tip-grid"></div>
+      <div class="g-tabs" id="g-tabs">
+        <button type="button" data-tab="skin" class="on">右边栏</button>
+        <button type="button" data-tab="fold">记忆行</button>
+        <button type="button" data-tab="tip">色块说明</button>
+      </div>
+      <div class="g-pane on" data-pane="skin">
+        <div class="g-filters" id="g-filters">
+          <button type="button" data-group="type" class="on">字体</button>
+          <button type="button" data-group="layout">分区</button>
+          <button type="button" data-group="dense">疏密</button>
+          <button type="button" data-group="head">标题</button>
+          <button type="button" data-group="mix">综合</button>
+        </div>
+        <p class="g-count" id="g-count"></p>
+        <div class="g-grid" id="g-skin-grid"></div>
+      </div>
+      <div class="g-pane" data-pane="fold">
+        <p class="g-copy">只改记忆 / Idea / Bug 这一列。再点一次取消。</p>
+        <div class="g-grid" id="g-fold-grid"></div>
+      </div>
+      <div class="g-pane" data-pane="tip">
+        <p class="g-copy">鼠标停在色块上时的样子。</p>
+        <div class="g-grid" id="g-tip-grid"></div>
+      </div>
     </div>
     <aside class="g-preview">
-      <div class="g-label">预览 · 检查器 340px</div>
+      <div class="g-label" id="g-label">预览</div>
       <div class="g-stage" id="g-stage"></div>
       <aside class="drawer" id="g-drawer"></aside>
     </aside>
@@ -5907,26 +5930,62 @@ function bootDesignGallery(){
     {id:"C", name:"选中黄底", sample:"已做未测"},
     {id:"D", name:"写在色块下", sample:"已做未测"}
   ];
+  const FONT = {
+    comic:'"Comic Neue","PingFang SC",sans-serif',
+    plex:'"IBM Plex Sans","Noto Sans SC",sans-serif',
+    "plex-serif":'"IBM Plex Serif","Noto Serif SC",serif',
+    noto:'"Noto Sans SC","PingFang SC",sans-serif',
+    "noto-serif":'"Noto Serif SC","Songti SC",serif',
+    "mix-plex":'"IBM Plex Sans","Noto Sans SC",sans-serif',
+    "mix-noto":'"Noto Sans SC","PingFang SC",sans-serif',
+    "mix-comic":'"Comic Neue","PingFang SC",sans-serif'
+  };
+  function skinGroup(s){
+    const n = +s.id;
+    if(n<=10) return "type";
+    if(n<=20) return "layout";
+    if(n<=27) return "dense";
+    if(n<=32) return "head";
+    return "mix";
+  }
   const q = new URLSearchParams(location.search);
   let skinId = q.get("skin") || "01";
   let foldId = q.get("fold") || "";
   let tipId = q.get("tip") || "A";
+  let tab = q.get("tab") || "skin";
+  let group = q.get("group") || skinGroup({id: skinId});
   const skinGrid = document.getElementById("g-skin-grid");
   const foldGrid = document.getElementById("g-fold-grid");
   const tipGrid = document.getElementById("g-tip-grid");
-  skinGrid.innerHTML = SKINS.map(s=>`<button type="button" class="g-card${s.id===skinId?" on":""}" data-skin="${s.id}"><span class="n">${s.id} ${s.name}</span><div class="g-thumb"><div class="g-skin" ${skinAttrs(s)}>${inspectorHtml(s)}</div></div></button>`).join("");
-  foldGrid.innerHTML = FOLDS.map(f=>`<button type="button" class="g-card${f.id===foldId?" on":""}" data-fold="${f.id}"><span class="n">${f.id} ${f.name}</span>${f.html}</button>`).join("");
-  tipGrid.innerHTML = TIPS.map(t=>`<button type="button" class="g-card${t.id===tipId?" on":""}" data-tip="${t.id}"><span class="n">${t.id} ${t.name}</span>
-    <div style="display:flex;align-items:flex-start;gap:8px;min-height:36px">
-      <i class="dot module untested" style="margin-top:4px"></i>
-      <span class="g-tip ${t.id.toLowerCase()}">${t.sample}</span>
-    </div></button>`).join("");
+  const countEl = document.getElementById("g-count");
+  function renderSkinList(){
+    const rows = SKINS.filter(s=>skinGroup(s)===group);
+    if(countEl) countEl.textContent = rows.length+" 条，点名字看右边。";
+    skinGrid.innerHTML = rows.map(s=>`<button type="button" class="g-card" data-skin="${s.id}">
+      <span class="n">${s.id}</span>
+      <span class="g-spec" style="font-family:${FONT[s.font]||FONT.plex};font-weight:${s.tw}">${s.name}</span>
+    </button>`).join("");
+  }
+  foldGrid.innerHTML = FOLDS.map(f=>`<button type="button" class="g-card" data-fold="${f.id}"><span class="n">${f.id}</span><span class="g-spec">${f.name}</span></button>`).join("");
+  tipGrid.innerHTML = TIPS.map(t=>`<button type="button" class="g-card" data-tip="${t.id}"><span class="n">${t.id}</span><span class="g-spec">${t.name}</span></button>`).join("");
+  renderSkinList();
 
+  function setTab(next){
+    tab = next;
+    document.documentElement.setAttribute("data-g-tab", tab);
+    document.querySelectorAll("#g-tabs [data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===tab));
+    document.querySelectorAll("[data-pane]").forEach(p=>p.classList.toggle("on", p.dataset.pane===tab));
+  }
   function paint(){
     const skin = SKINS.find(s=>s.id===skinId) || SKINS[0];
     const fold = FOLDS.find(f=>f.id===foldId);
     const tip = TIPS.find(t=>t.id===tipId) || TIPS[0];
     document.getElementById("g-pick").textContent = "整体 "+skin.id+(fold?" · 记忆 "+fold.id:"")+" · 说明 "+tip.id;
+    const label = document.getElementById("g-label");
+    if(label){
+      label.textContent = tab==="tip" ? "预览 · 色块说明" : "预览 · "+(skin.width||340)+"px";
+    }
+    document.querySelectorAll("#g-filters [data-group]").forEach(b=>b.classList.toggle("on", b.dataset.group===group));
     skinGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.skin===skinId));
     foldGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.fold===foldId));
     tipGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.tip===tipId));
@@ -5951,10 +6010,28 @@ function bootDesignGallery(){
     const url = new URL(location.href);
     url.searchParams.set("gallery","1");
     url.searchParams.set("skin", skinId);
+    url.searchParams.set("tab", tab);
+    url.searchParams.set("group", group);
     if(foldId) url.searchParams.set("fold", foldId); else url.searchParams.delete("fold");
     url.searchParams.set("tip", tipId);
     history.replaceState(null, "", url);
   }
+  setTab(tab);
+  document.getElementById("g-tabs").onclick = e=>{
+    const b = e.target.closest("[data-tab]");
+    if(!b) return;
+    setTab(b.dataset.tab);
+    paint();
+  };
+  document.getElementById("g-filters").onclick = e=>{
+    const b = e.target.closest("[data-group]");
+    if(!b) return;
+    group = b.dataset.group;
+    const hit = SKINS.find(s=>skinGroup(s)===group);
+    if(hit && !SKINS.filter(s=>skinGroup(s)===group).some(s=>s.id===skinId)) skinId = hit.id;
+    renderSkinList();
+    paint();
+  };
   skinGrid.onclick = e=>{
     const b = e.target.closest("[data-skin]");
     if(!b) return;
