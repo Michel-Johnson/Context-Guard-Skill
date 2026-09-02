@@ -546,7 +546,7 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 @keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
-.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
+.drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:#f3ead6;
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 12px);width:24px;bottom:0;
@@ -6182,7 +6182,13 @@ async function boot(){
   // A local server owns exactly one project. Switching demo repositories is preview-only.
   if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
   if(!window.__CG_SERVER){
-    document.addEventListener("click",e=>{ const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel"); if(b){ e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly"); } },true);
+    document.addEventListener("click",e=>{
+      const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel");
+      if(!b) return;
+      const act=b.getAttribute && b.getAttribute("data-act");
+      if(act && act.startsWith("expand-")) return;
+      e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly");
+    },true);
   }
   if(window.__CG_PREVIEW){
     closeOverlay();
