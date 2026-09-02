@@ -112,7 +112,21 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
-.session-chip{display:none}
+.session-switch{position:relative;flex:0 0 auto}
+.session-chip{display:flex;align-items:center;gap:7px;max-width:260px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:11px;font-weight:700;white-space:nowrap;cursor:pointer;box-shadow:none}
+.session-chip:hover,.session-chip[aria-expanded="true"]{background:var(--module-soft);transform:none;box-shadow:none}
+.session-chip #session-name{overflow:hidden;text-overflow:ellipsis}
+.session-status{width:15px;height:15px;display:inline-grid;place-items:center;flex:0 0 auto}
+.session-status.active{border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
+.session-status.stopped::before{content:"✓";color:var(--green);font-size:15px;font-weight:900;line-height:1}
+.session-status.empty{display:none}
+.session-menu{position:fixed;z-index:70;width:max-content;min-width:210px;max-width:min(360px,calc(100vw - 16px));padding:5px;background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow)}
+.session-menu[hidden]{display:none}
+.session-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:340px;padding:8px 10px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--ink);text-align:left;white-space:nowrap}
+.session-menu button:hover{background:var(--module-soft);transform:none;box-shadow:none}
+.session-menu button[aria-selected="true"]{background:var(--module-soft)}
+.session-menu .session-option-name{overflow:hidden;text-overflow:ellipsis}
+@keyframes session-spin{to{transform:rotate(360deg)}}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
 #btn-auth{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto;font-size:16px;line-height:1}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -513,7 +527,8 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
   padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;cursor:pointer;margin:0}
 .bug-panel li:hover{background:#fff}
 .bug-panel li.on{background:#fff3bf;box-shadow:inset 3px 0 0 var(--line-ink)}
-.bug-panel .bug-title{flex:1;min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
+.bug-panel .bug-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bug-panel .bug-title{min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bug-panel .bug-row{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;flex:0 0 auto;margin:0}
 .bug-panel .sess-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
@@ -521,6 +536,14 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
 .bug-panel li:not(.on) .claim{pointer-events:none;text-decoration:none}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
+.bug-status{display:inline-flex;align-items:center;align-self:flex-start;max-width:100%;padding:2px 7px;border-radius:999px;
+  font-size:10.5px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bug-status.waiting{background:#fff3bf;color:var(--focus)}
+.bug-status.processing{background:var(--blue-soft);color:var(--module)}
+.bug-status.handoff{background:var(--red-soft);color:var(--red)}
+.bug-status.settling,.bug-status.fixed,.bug-status.resolved{background:var(--green-soft);color:var(--green)}
+.bug-status.deferred,.bug-status.wontfix{background:#eeeeec;color:var(--muted)}
+.bug-main>.bug-status{margin:3px 0 0 8px}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:#f7f1e6}
 body.bug-path-mode .node .add-child{display:none}
@@ -864,9 +887,12 @@ html.design-gallery .g-mock{display:block !important;position:relative;top:auto;
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
-    <div class="session-chip" aria-hidden="true">
-      <b id="session-name">S-0823</b>
-      <b id="auth-count">0</b>
+    <div class="session-switch" id="session-switch">
+      <button type="button" class="session-chip" id="session-chip" aria-label="切换 Agent 会话" aria-haspopup="listbox" aria-expanded="false" aria-controls="session-menu">
+        <b id="session-name">暂无 Agent 会话</b>
+        <span id="session-status" class="session-status empty" aria-label="未挂载会话"></span>
+      </button>
+      <div class="session-menu" id="session-menu" role="listbox" aria-label="Agent 会话" hidden></div>
     </div>
     <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
     <span id="repo-status" class="repo-status" hidden></span>
@@ -1035,7 +1061,7 @@ const I18N = {
     workCopy2:"下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。",
     trayTitle:"已取消的提议",
     trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
-    openBugs:"未修的 Bug",
+    openBugs:"Bug 处理状态",
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
@@ -1044,7 +1070,9 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
-    leave:"离开", claim:"本会话在修",
+    leave:"取消认领", claim:"由本会话处理", bugSending:"发送中", bugSendFailed:"发送失败",
+    bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
+    bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugDeferred:"已延期", bugWontFix:"不处理",
     exitChain:"退出链路",
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
@@ -1123,7 +1151,7 @@ const I18N = {
     workCopy2:"The notes below are a prepared demo. Real first-use decides L1 with you, then goes deeper; titles must be instantly readable. This demo still shows the agreed 4–8 trunk cards. This is not a live read of the repo.",
     trayTitle:"Cancelled proposals",
     trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
-    openBugs:"Open bugs",
+    openBugs:"Bug status",
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
@@ -1132,7 +1160,9 @@ const I18N = {
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
-    leave:"Leave", claim:"This session is fixing it",
+    leave:"Unassign", claim:"Handle in this session", bugSending:"Sending", bugSendFailed:"Send failed",
+    bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
+    bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugDeferred:"Deferred", bugWontFix:"Won't fix",
     exitChain:"Exit chain",
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
@@ -3591,6 +3621,47 @@ function renderRepoMenu(){
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
+function sessionMetaLabel(meta){
+  if(!meta) return "暂无 Agent 会话";
+  const raw = String(meta.id||"");
+  const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
+  return `${meta.platform}-${meta.name||short}`;
+}
+function positionSessionMenu(){
+  const chip = document.getElementById("session-chip");
+  const menu = document.getElementById("session-menu");
+  if(!chip || !menu || menu.hidden) return;
+  const rect = chip.getBoundingClientRect();
+  const width = Math.max(210, menu.offsetWidth||0);
+  menu.style.left = `${Math.max(8,Math.min(innerWidth-width-8,rect.right-width))}px`;
+  menu.style.top = `${Math.min(innerHeight-(menu.offsetHeight||0)-8,rect.bottom+6)}px`;
+}
+function closeSessionMenu(){
+  const menu = document.getElementById("session-menu");
+  const chip = document.getElementById("session-chip");
+  if(menu) menu.hidden = true;
+  if(chip) chip.setAttribute("aria-expanded","false");
+}
+function renderSessionMenu(){
+  const menu = document.getElementById("session-menu");
+  if(!menu) return;
+  const sessions = workbenchSync?.sessions||[];
+  menu.innerHTML = sessions.map(meta=>{
+    const state = meta.status==="active" ? "active" : "stopped";
+    const stateLabel = state==="active" ? "工作中" : "已完成";
+    return `<button type="button" role="option" data-session="${escAttr(meta.id)}" aria-selected="${meta.id===workbenchSync.activeSession}" title="${escAttr(stateLabel)}">
+      <span class="session-option-name">${esc(sessionMetaLabel(meta))}</span>
+      <span class="session-status ${state}" aria-label="${stateLabel}"></span>
+    </button>`;
+  }).join("");
+  menu.querySelectorAll("[data-session]").forEach(button=>{
+    button.onclick = async ()=>{
+      await workbenchSync?.selectSession(button.dataset.session);
+      closeSessionMenu();
+    };
+  });
+  positionSessionMenu();
+}
 function closeSettings(){
   const menu = document.getElementById("settings-menu");
   const btn = document.getElementById("btn-settings");
@@ -4234,7 +4305,8 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+function currentSessionId(){ return workbenchSync?.activeSession || null; }
+const bugDispatching = new Set();
 function sessionColor(name){
   const pal=["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
   let h=0;
@@ -4254,6 +4326,47 @@ function bugSessionsOf(bug){
   });
   return bug.sessions;
 }
+function sessionMetaOf(sessionId){
+  return (workbenchSync?.sessions||[]).find(item=>item.id===sessionId) || null;
+}
+function sessionDisplayName(sessionId){
+  const meta = sessionMetaOf(sessionId);
+  const raw = String(sessionId||"");
+  const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
+  return meta ? `${meta.platform}-${meta.name||short}` : short;
+}
+function bugProgress(bug){
+  const status = String(bug?.status||"open");
+  if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
+  if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
+  if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
+  if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
+  if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
+  const sessions = bugSessionsOf(bug);
+  if(!sessions.length){
+    if(bugDispatching.has(bug?.id)) return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSending")}`, detail:""};
+    if(bug?.dispatch?.status==="failed") return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSendFailed")}`, detail:""};
+    return {kind:"waiting", label:t("bugWaiting"), detail:""};
+  }
+  const sentAt = Date.parse(bug?.dispatch?.at||"");
+  const recentlySent = bug?.dispatch?.status==="sent" && Number.isFinite(sentAt) && Date.now()-sentAt<30000
+    ? bug.dispatch.session_id
+    : null;
+  const active = sessions.filter(id=>sessionMetaOf(id)?.status!=="stopped" || id===recentlySent);
+  const handling = active.length ? active : sessions;
+  const names = handling.map(sessionDisplayName);
+  const detail = names.join("、");
+  const compact = names.length>1 ? `${names[0]} +${names.length-1}` : names[0];
+  return {
+    kind:active.length?"processing":"handoff",
+    label:`${t(active.length?"bugProcessing":"bugHandoff")} · ${compact}`,
+    detail
+  };
+}
+function bugProgressHtml(bug){
+  const state = bugProgress(bug);
+  return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
+}
 function openBugList(){
   const out=[];
   walkAll(data,(n,ps)=>{
@@ -4262,6 +4375,9 @@ function openBugList(){
       if(!b || b.status==="dormant") return;
       out.push({bug:b, node:n, path:[...ps, n]});
     });
+  });
+  ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(b=>{
+    if(b && b.status!=="dormant") out.push({bug:b, node:data, path:[data], unassigned:true});
   });
   return out;
 }
@@ -4278,7 +4394,9 @@ function focusedBug(){
   const n = getNode(bugFocus.nodeId);
   if(!n) return null;
   const b = (n.bugs||[]).find(x=>x.id===bugFocus.bugId);
-  return b ? {node:n, bug:b} : null;
+  if(b) return {node:n, bug:b, unassigned:false};
+  const loose = ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===bugFocus.bugId);
+  return loose ? {node:n, bug:loose, unassigned:true} : null;
 }
 function clearRelationMode(){
   if(!relationMode) return;
@@ -4334,14 +4452,38 @@ function openBugPanel(open){
   document.getElementById("bug-panel").classList.toggle("open", !!open);
   document.getElementById("btn-bugs").classList.toggle("on", !!open);
 }
-function toggleBugSession(node, bug){
+async function toggleBugSession(node, bug){
   if(!node || !bug) return;
   const sid = currentSessionId();
+  if(!sid){ workbenchSync?.setStatus(workbenchSync.status, "尚无真实 Agent 会话"); return; }
   const list = bugSessionsOf(bug);
   const i = list.indexOf(sid);
-  if(i>=0) list.splice(i,1);
-  else list.push(sid);
+  if(i>=0){
+    list.splice(i,1);
+    if(bug.dispatch?.session_id===sid) delete bug.dispatch;
+    renderAll();
+    return;
+  }
+  if(bugDispatching.has(bug.id)) return;
+  bugDispatching.add(bug.id);
   renderAll();
+  try{
+    if(!workbenchSync?.sendBug){
+      const error = new Error("当前工作台不支持向会话发送消息");
+      error.code = "SESSION_MESSAGE_UNAVAILABLE";
+      throw error;
+    }
+    await workbenchSync.sendBug(sid,node.id,bug.id);
+    const latestList = bugSessionsOf(bug);
+    if(!latestList.includes(sid)) latestList.push(sid);
+    bug.dispatch = {status:"sent",session_id:sid,at:new Date().toISOString()};
+  }catch(error){
+    bug.dispatch = {status:"failed",session_id:sid,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    workbenchSync?.setStatus(workbenchSync.status,"Bug 信息发送失败");
+  }finally{
+    bugDispatching.delete(bug.id);
+    renderAll();
+  }
 }
 function renderBugPanel(){
   const list = openBugList();
@@ -4359,28 +4501,26 @@ function renderBugPanel(){
     const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
+    const sending = bugDispatching.has(item.bug.id);
     const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
-    const claim = on
-      ? `<button type="button" class="claim" data-claim>${mine?t("leave"):t("claim")}</button>`
+    const claim = on && sid && !item.unassigned
+      ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):mine?t("leave"):t("claim")}</button>`
       : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
-      <span class="bug-title">${esc(title)}</span>
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
       ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
     </li>`;
   }).join("");
-  ul.querySelectorAll("li[data-node]").forEach(li=>{
+  ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
+    const item = list[index];
     li.onclick = e=>{
       if(e.target.closest("[data-claim]")) return;
-      enterBugPath(li.dataset.node, li.dataset.bug);
+      enterBugPath(item.node.id, item.bug.id);
     };
-  });
-  ul.querySelectorAll("[data-claim]").forEach(btn=>{
-    btn.onclick = e=>{
+    const claim = li.querySelector("[data-claim]");
+    if(claim) claim.onclick = async e=>{
       e.preventDefault(); e.stopPropagation();
-      const li = btn.closest("li");
-      const n = getNodeAny(li.dataset.node);
-      const b = n && (n.bugs||[]).find(x=>x.id===li.dataset.bug);
-      toggleBugSession(n, b);
+      await toggleBugSession(item.node, item.bug);
     };
   });
 }
@@ -4409,7 +4549,6 @@ function renderNav(){
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
-    document.getElementById("auth-count").textContent = sessionAuth.size;
     document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
@@ -4423,7 +4562,6 @@ function renderNav(){
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
-  document.getElementById("auth-count").textContent = sessionAuth.size;
   document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
@@ -4459,14 +4597,30 @@ document.getElementById("first-use-cut-back").onclick = ()=>{
 document.getElementById("repo-title").onclick = e=>{
   e.stopPropagation();
   closeSettings();
+  closeSessionMenu();
   document.getElementById("repo-menu").classList.toggle("open");
 };
-document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
+document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); closeSessionMenu(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
 document.getElementById("settings-wrap").onclick = e=>e.stopPropagation();
+document.getElementById("session-switch").onclick = e=>e.stopPropagation();
+document.getElementById("session-chip").onclick = e=>{
+  e.stopPropagation();
+  closeRepoMenu(); closeSettings();
+  const menu = document.getElementById("session-menu");
+  const open = menu.hidden;
+  if(!open){ closeSessionMenu(); return; }
+  renderSessionMenu();
+  if(!workbenchSync?.sessions?.length) return;
+  menu.hidden = false;
+  e.currentTarget.setAttribute("aria-expanded","true");
+  positionSessionMenu();
+};
+window.addEventListener("resize",positionSessionMenu);
 document.getElementById("btn-settings").onclick = e=>{
   e.stopPropagation();
   closeRepoMenu();
+  closeSessionMenu();
   const menu = document.getElementById("settings-menu");
   const open = !menu.classList.contains("open");
   menu.classList.toggle("open", open);
@@ -5108,16 +5262,17 @@ function renderDetail(){
     const sid = currentSessionId();
     const sessions = bugSessionsOf(bug);
     const mine = bug && sessions.indexOf(sid)>=0;
+    const sending = bug && bugDispatching.has(bug.id);
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
-      <h2>${esc(bug && bug.title ? bug.title : "Bug")}</h2>
+      <h2>${esc(bug && bug.title ? bug.title : "Bug")}${bugProgressHtml(bug)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        <button type="button" class="quiet" data-act="claim">${mine?t("leave"):t("claim")}</button>
+        ${hit && hit.unassigned ? `<span class="muted">未挂节点</span>` : sid ? `<button type="button" class="quiet" data-act="claim" ${sending?"disabled":""}>${sending?t("bugSending"):mine?t("leave"):t("claim")}</button>` : `<span class="muted">暂无真实 Agent 会话</span>`}
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
-    if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
+    if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await toggleBugSession(hit && hit.node, bug); };
     return;
   }
 
@@ -5171,16 +5326,18 @@ function renderDetail(){
   const bugHtml = bugRows.length
     ? `<ul class="bug-list">`+bugRows.map(row=>{
         const b = row.bug;
+        const settled = ["pending","fixed","resolved","dormant"].includes(b.status);
         const title = row.home
           ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
           : `<div class="bug-title">${esc(b.title)}</div>`;
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
-        <li class="${b.status==='pending'?'bug-pending':''}">
-          <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
+        <li class="${settled?'bug-pending':''}">
+          <div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
+            ${bugProgressHtml(b)}
             ${attach}
           </div>
         </li>`;
@@ -5852,7 +6009,7 @@ async function boot(){
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:(ids,session,meta)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=sessionMetaLabel(meta); const state=meta?.status==="active"?"active":meta?"stopped":"empty"; const stateLabel=state==="active"?"工作中":state==="stopped"?"已完成":"未挂载会话"; label.textContent=displayName; label.title=meta?.name||session||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=!meta; chip.setAttribute("aria-label",meta?`切换 Agent 会话，当前 ${displayName}，${stateLabel}`:"暂无 Agent 会话"); renderSessionMenu(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
   const connected=await workbenchSync.start();
   if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }

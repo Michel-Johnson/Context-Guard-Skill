@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
@@ -10,10 +12,30 @@ import { generateProjections } from './projections.mjs';
 import { MapError, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
+const execFileAsync = promisify(execFile);
+const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+export function bugSessionMessage(node, bug) {
+  return [
+    'Context Guard 工作台向你分配了一个 Bug。',
+    `Bug: ${compactText(bug.id, 128)} · ${compactText(bug.title)}`,
+    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
+    compactText(bug.desc) ? `描述: ${compactText(bug.desc)}` : '',
+    compactText(bug.record, 500) ? `记录: ${compactText(bug.record, 500)}` : '',
+    '请在当前项目中核对并处理；完成后更新 Context Guard 中的 Bug 状态和证据。',
+  ].filter(Boolean).join('\n');
+}
+async function queueCodexMessage({ sessionId, message, root }) {
+  await execFileAsync(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 15000,
+    maxBuffer: 1024 * 1024,
+  });
+}
 export async function health(state) {
   try { const res = await fetch(new URL('/__context_guard/health', state.url), { signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
 }
-export async function startServer({ root, port = 8877, host = '127.0.0.1', fault } = {}) {
+export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
   const ctx = path.join(root, '.codex/context'), lock = path.join(ctx, 'private/node-workbench.lock');
@@ -32,6 +54,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   const adminToken = token(), humanToken = token(), agentTokens = new Map(), peers = new Map();
   const access = await new Access(root).init();
+  let stopAccessWatch = () => {};
   let projectionQueue = Promise.resolve();
   const store = new MapStore(root, { fault, project: (doc, version) => {
     const job = projectionQueue.then(() => store.version === version ? generateProjections(root, doc, version, () => store.version === version) : false);
@@ -119,7 +142,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const result = await store.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers().length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
-          if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, { sessions: await access.knownSessions(), grants: access.data.sessions }); }
+          if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, await access.snapshot()); }
           if (route === '/api/access' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             await store.serial(async () => {
@@ -129,6 +152,24 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               await store.recordEvent({ operationId: randomUUID(), fromVersion: store.version, version: store.version, actor, actions: ['grant'], nodeIds: input.nodes, sessionId: input.sessionId });
             });
             broadcast('access', {}); return send(res, 200, { saved: true });
+          }
+          if (route === '/api/session-message' && req.method === 'POST') {
+            isHuman(actor); const input = await body(req);
+            const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
+            const nodeId = typeof input.nodeId === 'string' ? input.nodeId.trim() : '';
+            const bugId = typeof input.bugId === 'string' ? input.bugId.trim() : '';
+            const session = (await access.sessionRegistry()).find(item => item.id === sessionId);
+            if (!session) throw new MapError('UNKNOWN_SESSION', 'Session is not part of this project', 403);
+            if (session.platform !== 'codex') throw new MapError('UNSUPPORTED_PLATFORM', 'Automatic messages currently require a Codex session', 400);
+            await store.serial(() => store.refresh());
+            const node = store.doc.root ? entries(store.doc.root).get(nodeId)?.node : null;
+            const bug = (node?.bugs || []).find(item => item?.id === bugId);
+            if (!node || !bug) throw new MapError('NOT_FOUND', 'Bug or owner node is missing', 404);
+            if (['resolved', 'dormant', 'wontfix'].includes(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
+            const message = bugSessionMessage(node, bug);
+            try { await messageQueue({ sessionId, message, root, session, node: structuredClone(node), bug: structuredClone(bug) }); }
+            catch { throw new MapError('SESSION_MESSAGE_FAILED', 'Bug information could not be delivered to the session', 502); }
+            return send(res, 200, { sent: true, sessionId, bugId });
           }
           if (route === '/api/migration-preview' && req.method === 'POST') {
             isHuman(actor); const input = await body(req); validate(input.doc);
@@ -178,11 +219,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const state = { protocol: 2, root, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };
     await atomicWrite(statePath(root), encode(state));
     store.on('change', state => broadcast('state', state));
+    stopAccessWatch = access.watch(() => broadcast('access', {}));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
     function close() {
       if (close.promise) return close.promise;
       close.promise = (async () => {
         clearInterval(heartbeat);
+        stopAccessWatch();
         // Stop accepting reconnects before draining events or slow projections.
         const disconnected = new Promise((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve());
@@ -200,5 +243,5 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
     return { state, store, access, server, close, humanToken };
-  } catch (e) { await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
+  } catch (e) { stopAccessWatch(); await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
 }

@@ -86,7 +86,7 @@ async function main(args) {
   const state = await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') return { url: state.url, root, protocol: 2 };
   let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
-  if (command === 'attach-bug' && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
+  if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
     await fs.appendFile(path.join(root, '.codex/context/sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'maintenance', session_id: sessionId, platform: 'cli' }) + '\n');
   }
@@ -114,7 +114,11 @@ async function main(args) {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
     return call('/api/commit', { method: 'POST', body: { operationId: `bug:${sessionId}:${input.bug.id}`, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
   }
-  throw new MapError('USAGE', 'Use workbench or map status|read|changes|inbox|ack|watch|apply|operation|projections');
+  if (action === 'update-bug') {
+    const input = await inputJSON(opt.input), snapshot = await call('/api/state');
+    return call('/api/commit', { method: 'POST', body: { operationId: `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
+  }
+  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, or map status|read|changes|inbox|ack|watch|apply|operation|projections');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }
