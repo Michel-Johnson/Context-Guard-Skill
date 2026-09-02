@@ -519,8 +519,8 @@ body.auth-mode .node .add-child{display:none}
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
 body.bugs-open #viewport{right:var(--bug-panel-width)}
-body.bugs-open .drawer,
-body.bugs-open .drawer-split{display:none}
+body.bugs-open .drawer{display:none}
+body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
@@ -572,9 +572,9 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
   border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
-  z-index:21;cursor:col-resize;touch-action:none;background:transparent}
-.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
+.drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 12px);width:24px;bottom:0;
+  z-index:25;cursor:col-resize;touch-action:none;background:rgba(45,45,45,.001)}
+.drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:11px;width:2px;background:transparent}
 .drawer-split:hover:before,.drawer-split:focus-visible:before,body.drawer-resizing .drawer-split:before{
   background:var(--line-ink)}
 .drawer-split:hover,.drawer-split:focus-visible,body.drawer-resizing .drawer-split{
@@ -746,8 +746,8 @@ html.cg-phone .drawer{
   padding:18px 14px calc(20px + var(--safe-bottom));
 }
 html.cg-phone .drawer-split{
-  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:18px;
-  cursor:row-resize;transform:translateY(8px);
+  top:auto;left:0;right:0;bottom:var(--drawer-height);width:100%;height:24px;
+  cursor:row-resize;transform:translateY(12px);
 }
 html.cg-phone .drawer-split:before{
   top:7px;bottom:auto;left:50%;width:42px;height:4px;margin-left:-21px;
@@ -756,7 +756,7 @@ html.cg-phone .drawer-split:before{
 html.cg-phone .drawer-split:hover:before,html.cg-phone .drawer-split:focus-visible:before,
 html.cg-phone body.drawer-resizing .drawer-split:before{opacity:.7}
 html.cg-phone body.drawer-resizing{cursor:row-resize}
-html.cg-phone body.bugs-open .drawer-split{display:block}
+html.cg-phone body.bugs-open .drawer-split{display:block;right:0;width:100%}
 html.cg-phone .bug-panel{
   top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
   border-left:none;border-top:2px solid var(--line-ink);
@@ -5580,7 +5580,9 @@ function chromeTop(){
 }
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
+const BUG_W_KEY = "cg-bug-panel-width";
 const DRAWER_W_DEFAULT = 340;
+const BUG_W_DEFAULT = 240;
 const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
 function isPhoneLayout(){
   if(window.__CG_PHONE_FORCE===true) return true;
@@ -5607,10 +5609,15 @@ function defaultDrawerHeight(){
   return Math.round((window.innerHeight || 800) * 0.4);
 }
 function drawerHeightPx(){ return cssPx("--drawer-height", defaultDrawerHeight()); }
-function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", BUG_W_DEFAULT); }
+function bugsPanelOpen(){ return document.body.classList.contains("bugs-open") && !isPhoneLayout(); }
 function clampDrawerWidth(px){
   const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
   return Math.max(220, Math.min(max, Math.round(px)));
+}
+function clampBugPanelWidth(px){
+  const max = Math.max(220, Math.min(560, Math.floor(window.innerWidth * 0.55)));
+  return Math.max(180, Math.min(max, Math.round(px)));
 }
 function clampDrawerHeight(px){
   const top = chromeTop();
@@ -5634,10 +5641,24 @@ function applyDrawerHeight(px, save){
   }
   return h;
 }
+function applyBugPanelWidth(px, save){
+  const w = clampBugPanelWidth(px);
+  document.documentElement.style.setProperty("--bug-panel-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(BUG_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
 function restoreDrawerWidth(){
   try{
     const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
     if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function restoreBugPanelWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(BUG_W_KEY));
+    if(Number.isFinite(n)) applyBugPanelWidth(n, false);
   }catch(e){}
 }
 function restoreDrawerHeight(){
@@ -5662,9 +5683,18 @@ function syncSplitChrome(){
   el.setAttribute("aria-orientation", phone ? "horizontal" : "vertical");
   el.title = t(phone ? "splitTitlePhone" : "splitTitle");
 }
+function finishDrawerChrome(){
+  restoreDrawerWidth();
+  restoreDrawerHeight();
+  restoreBugPanelWidth();
+  bindDrawerSplit();
+  applyDrawerLayout();
+  syncChrome();
+}
 function bindDrawerSplit(){
   const el = document.getElementById("drawer-split");
-  if(!el) return;
+  if(!el || el.dataset.bound==="1") return;
+  el.dataset.bound = "1";
   let resizing = false;
   function move(e){
     if(!resizing) return;
@@ -5675,24 +5705,32 @@ function bindDrawerSplit(){
     }else{
       const x = e.clientX;
       if(!Number.isFinite(x)) return;
-      applyDrawerWidth(window.innerWidth - x, false);
+      if(bugsPanelOpen()) applyBugPanelWidth(window.innerWidth - x, false);
+      else applyDrawerWidth(window.innerWidth - x, false);
     }
   }
-  function stop(){
-    if(!resizing) return;
-    resizing = false;
-    document.body.classList.remove("drawer-resizing");
+  function unbindMove(){
     window.removeEventListener("pointermove", move, true);
     window.removeEventListener("mousemove", move, true);
     window.removeEventListener("pointerup", stop, true);
     window.removeEventListener("mouseup", stop, true);
     window.removeEventListener("pointercancel", stop, true);
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", stop);
+    el.removeEventListener("pointercancel", stop);
+    el.removeEventListener("lostpointercapture", stop);
+  }
+  function stop(){
+    if(!resizing) return;
+    resizing = false;
+    document.body.classList.remove("drawer-resizing");
+    unbindMove();
     if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx(), true);
     else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
   function start(e){
-    if(document.body.classList.contains("bugs-open") && !isPhoneLayout()) return;
     if(e.button!=null && e.button!==0) return;
     if(resizing && e.type==="mousedown") return;
     e.preventDefault();
@@ -5706,6 +5744,10 @@ function bindDrawerSplit(){
     window.addEventListener("pointerup", stop, true);
     window.addEventListener("mouseup", stop, true);
     window.addEventListener("pointercancel", stop, true);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", stop);
+    el.addEventListener("pointercancel", stop);
+    el.addEventListener("lostpointercapture", stop);
     if(e.pointerId!=null){
       try{ el.setPointerCapture(e.pointerId); }catch(err){}
     }
@@ -5715,6 +5757,7 @@ function bindDrawerSplit(){
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
     if(isPhoneLayout()) applyDrawerHeight(defaultDrawerHeight(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(BUG_W_DEFAULT, true);
     else applyDrawerWidth(DRAWER_W_DEFAULT, true);
     fitView();
   });
@@ -5729,7 +5772,9 @@ function bindDrawerSplit(){
     }
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     e.preventDefault();
-    applyDrawerWidth(drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step), true);
+    const delta = e.key==="ArrowLeft" ? step : -step;
+    if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx() + delta, true);
+    else applyDrawerWidth(drawerWidthPx() + delta, true);
     fitView();
   });
 }
@@ -5959,7 +6004,7 @@ async function boot(){
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
     notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
     document.body.append(notice);
-    await loadMapFromHttp(); renderAll(); return;
+    await loadMapFromHttp(); renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
@@ -5987,11 +6032,7 @@ async function boot(){
   }
   syncThemePicks();
   renderAll();
-  restoreDrawerWidth();
-  restoreDrawerHeight();
-  bindDrawerSplit();
-  applyDrawerLayout();
-  syncChrome();
+  finishDrawerChrome();
   fitView();
   if(new URLSearchParams(location.search).has("settings")){
     const menu = document.getElementById("settings-menu");
@@ -6004,6 +6045,7 @@ const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
   new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
 }
+finishDrawerChrome();
 boot();
 </script>
 </body>
