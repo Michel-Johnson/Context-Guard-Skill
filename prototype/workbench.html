@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+<!-- CG_SERVER_BOOT -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Context Guard · 工作台原型</title>
@@ -421,6 +422,7 @@ html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 .settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:248px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
 .settings-menu.open{display:block}
+.settings-menu{max-height:calc(100dvh - 90px);overflow-y:auto}
 .settings-menu .set-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 6px}
 .settings-menu .set-block + .set-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .settings-menu .set-tools{display:flex;flex-direction:column;gap:6px}
@@ -437,6 +439,14 @@ html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 .theme-pick .swatch{width:22px;height:14px;border-radius:4px;flex:0 0 auto;border:1.5px solid #2d2d2d}
 .settings-menu .lang-toggle{width:100%}
 .settings-menu .lang-toggle button{flex:1}
+.sync-settings{font-size:12px}
+.sync-settings summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.sync-settings p{line-height:1.5;overflow-wrap:anywhere}
+.sync-actions{display:grid;gap:6px}
+.sync-actions button{font-size:12px;padding:6px 8px;text-align:left}
+.sync-settings label{display:block;margin-top:12px;color:var(--muted)}
+.sync-settings select{display:block;width:100%;min-width:0;margin-top:5px;font:inherit}
+.sync-notice{margin-left:8px;color:var(--red);font-size:12px;white-space:nowrap}
 
 /* 授权模式 */
 body.auth-mode .node{cursor:cell}
@@ -649,7 +659,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .dormant-list .exp{display:block;margin-top:3px}
 
 .files{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
-.files.is-drop{outline:2px dashed var(--module);outline-offset:3px;background:var(--module-soft);border-radius:8px}
+[data-drop-files].is-drop{outline:2px dashed var(--module);outline-offset:3px;background:var(--module-soft);border-radius:8px}
 .file-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;
   border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px 8px 3px 4px;font-size:11.5px}
 .file-thumb{width:36px;height:36px;object-fit:cover;border-radius:4px;background:#f4f1ea}
@@ -932,7 +942,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"连接仓库", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"授权附件目录", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -1020,7 +1030,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Link repo", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Allow attachment folder", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -2722,7 +2732,8 @@ let authMode = false;
 let composingId = null;
 let composingKind = "work";
 let composeParent = null;
-function clearCompose(){ composingId = null; composingKind = "work"; composeParent = null; }
+function clearCompose(){
+  workbenchSync?.setInputDraft(null); composingId = null; composingKind = "work"; composeParent = null; }
 let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
@@ -2796,7 +2807,7 @@ function filePathOf(f){
 function fileList(owner){
   if(!owner) return [];
   if(!Array.isArray(owner.files)) owner.files = [];
-  owner.files = owner.files.map(filePathOf).filter(Boolean).map(path=>({path}));
+  owner.files = owner.files.map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
   return owner.files;
 }
 function normRepoPath(p){
@@ -2928,42 +2939,21 @@ async function looksLikeRepoRoot(){
   }catch(e){ return false; }
 }
 async function linkRepo(){
-  if(!canFsAccess()) return false;
-  try{
-    repoRootHandle = await window.showDirectoryPicker({id:"context-guard-repo", mode:"readwrite"});
-    repoFsOk = await ensureRepoPerm();
-    if(!repoFsOk){ setRepoStatus("fail"); return false; }
-    await fsDbSet("repoDir", repoRootHandle);
-    if(!(await looksLikeRepoRoot())){
-      repoFsOk = false;
-      setRepoStatus("notRoot");
-      renderAll();
-      return false;
-    }
-    snapshotRepo();
-    diskProjectId = currentRepo().id;
-    const liveKids = ((currentRepo().live || data || {}).children || []).length;
-    /* 画布上已有图：写回仓库。空画布才从磁盘读。连接不是用旧文件覆盖人刚改的图。 */
-    if(liveKids){
-      const ok = await writeMapToRepo();
-      setRepoStatus(ok ? "ok" : "fail");
-    }else{
-      const loaded = await loadMapFromRepo();
-      setRepoStatus(loaded ? "ok" : "fail");
-    }
-    if(pendingWrite){
-      const pw = pendingWrite;
-      pendingWrite = null;
-      await saveBlobToOwner(pw.node, pw.kind, pw.key, pw.blob, pw.name);
-    }else{
-      renderAll();
-      fitView();
-    }
-    return repoFsOk;
-  }catch(e){
-    setRepoStatus("fail");
-    return false;
-  }
+  if(!workbenchSync?.ready || !canFsAccess()){ workbenchSync?.setStatus("readonly"); return false; }
+  try {
+    const picked=await window.showDirectoryPicker({id:"context-guard-attachments",mode:"readwrite"});
+    const cg=await picked.getDirectoryHandle(".codex"); const ctx=await cg.getDirectoryHandle("context");
+    const handle=await ctx.getFileHandle("map.json"); const file=await handle.getFile();
+    const digest=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await file.arrayBuffer()))).map(x=>x.toString(16).padStart(2,"0")).join("");
+    const current=await workbenchSync.call("/api/state");
+    if(digest!==current.version) throw new Error("所选目录的地图与当前服务不同，请选择服务显示的项目目录");
+    repoRootHandle=picked; repoFsOk=await ensureRepoPerm();
+    if(!repoFsOk) return false;
+    await fsDbSet("repoDir",repoRootHandle);
+    if(pendingWrite){ const pending=pendingWrite; pendingWrite=null; await saveBlobToOwner(pending.node,pending.kind,pending.key,pending.blob,pending.name); }
+    workbenchSync.setStatus(workbenchSync.status,"附件目录已连接；地图仍由 Node 保存");
+    return true;
+  } catch(e){ workbenchSync.setStatus(workbenchSync.status,e.message); return false; }
 }
 function safeFilePart(name){
   const raw = String(name||"paste").split(/[\\/]/).pop();
@@ -2993,6 +2983,7 @@ function shotRel(fileName, blob){
   return SHOT_DIR+"/"+stamp+"-"+name;
 }
 async function writeRepoPath(rel, blob){
+  if(String(rel).replace(/\\/g,"/") === ".codex/context/map.json") throw new Error("Map writes require the Node interface");
   if(!repoRootHandle) throw new Error("no repo");
   const parts = String(rel).split("/").filter(Boolean);
   if(parts.some(part=>part==="."||part==="..")) throw new Error("bad path");
@@ -3128,13 +3119,15 @@ function attachHtml(kind, key, owner, readonly){
     return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
+  if(!files.length && !isAttaching(kind, key)) return "";
   const add = isAttaching(kind, key)
     ? `<span class="file-add">
          <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="${escAttr(t("filePathPh"))}" autocomplete="off">
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
          <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
+         ${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}`;
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
@@ -3184,37 +3177,20 @@ function bindFileUi(el, node){
     box.addEventListener("dragover", e=>{
       if(!e.dataTransfer) return;
       e.preventDefault();
+      e.stopPropagation();
       e.dataTransfer.dropEffect = "copy";
       box.classList.add("is-drop");
     });
     box.addEventListener("dragleave", ()=>box.classList.remove("is-drop"));
     box.addEventListener("drop", e=>{
-      e.preventDefault();
+      e.stopPropagation();
       box.classList.remove("is-drop");
       takeAttach(node, box.dataset.fk, box.dataset.fi, e);
     });
   });
 }
 function unpackInbox(n){
-  if(!n._inbox || !n._inbox.length) return;
-  const parentLocked = !isProposed(n);
-  const next = n._inbox.map(c=>{
-    if(c.proposal==="cancelled") return c;
-    const human = c.origin==="human" || c.proposal==="accepted" ||
-      (parentLocked && c.origin!=="agent");
-    if(human){
-      c.proposal = "accepted";
-      c.isNew = false;
-      if(!c.origin) c.origin = "human";
-      return c;
-    }
-    c.proposal = c.proposal || "proposed";
-    if(c.proposal==="proposed") c.isNew = true;
-    c.origin = c.origin || "agent";
-    return c;
-  });
-  n._inbox = [];
-  n.children = (n.children||[]).concat(next);
+  if(n._inbox?.length){ n.children=(n.children||[]).concat(n._inbox); n._inbox=[]; }
 }
 function currentRepo(){ return catalog[repoId]; }
 const STORE_KEY = "cg-workbench-maps-v16";
@@ -3242,8 +3218,10 @@ function syncBootstrapFromTree(){
     r.bootstrap = "proposed";
   }
 }
+let workbenchSync = null;
+let applyingServerMap = false;
 function persist(){
-  if(window.__CG_PREVIEW) return;
+  if(window.__CG_PREVIEW || applyingServerMap) return;
   snapshotRepo();
   const dump = {repoId, repos:{}};
   Object.values(catalog).forEach(r=>{
@@ -3288,45 +3266,22 @@ function mapDocFromRepo(r){
   };
 }
 function applyMapDoc(doc){
-  if(!doc || !doc.root || !doc.root.id) return false;
-  const id = (doc.project && catalog[doc.project]) ? doc.project : "context-guard";
-  if(!catalog[id]) return false;
-  diskProjectId = id;
-  const r = catalog[id];
-  const tree = clone(doc.root);
-  if(Array.isArray(doc.flows)) tree.flows = clone(doc.flows);
-  r.live = tree;
-  if(doc.bootstrap) r.bootstrap = doc.bootstrap;
-  r.firstUseOpen = false;
-  if(id===repoId){
-    loadLive(r);
-    applyRepoChrome();
-  }
-  return true;
+  if(!doc?.root?.id) return false;
+  const id = doc.project || "context-guard";
+  if(!Object.hasOwn(catalog,id)) Object.defineProperty(catalog,id,{value:{...catalog["context-guard"], id, name:id, source:window.__CG_SERVER?.root || id},writable:true,enumerable:true,configurable:true});
+  diskProjectId = id; repoId = id;
+  const r = catalog[id]; r.live=clone(doc.root); r.bootstrap=doc.bootstrap || "ready"; r.firstUseOpen=false;
+  adoptTree(doc.root);
+  if(Array.isArray(doc.flows)) data.flows=clone(doc.flows);
+  if(!getNode(selectedId)) selectedId=data.id;
+  if(!getNode(viewRootId)) viewRootId=data.id;
+  applyRepoChrome(); closeOverlay(); return true;
 }
-function scheduleMapWrite(){
-  if(!repoFsOk) return;
-  if(currentRepo().id !== diskProjectId) return;
-  clearTimeout(mapWriteTimer);
-  mapWriteTimer = setTimeout(()=>{ writeMapToRepo(); }, 450);
-}
+function scheduleMapWrite(){ workbenchSync?.changed(); }
 async function writeMapToRepo(){
-  if(!repoFsOk || mapWriteBusy) return false;
-  const r = currentRepo();
-  if(r.id !== diskProjectId) return false;
-  if(r.bootstrap!=="ready" && r.bootstrap!=="proposed") return false;
-  mapWriteBusy = true;
-  try{
-    snapshotRepo();
-    const json = JSON.stringify(mapDocFromRepo(r), null, 2) + "\n";
-    await writeRepoPath(MAP_FILE, new Blob([json], {type:"application/json"}));
-    await syncBootstrapFile(r.bootstrap);
-    mapWriteBusy = false;
-    return true;
-  }catch(e){
-    mapWriteBusy = false;
-    return false;
-  }
+  if(!workbenchSync?.ready) return false;
+  await workbenchSync.flush();
+  return workbenchSync.status === "synced";
 }
 async function syncBootstrapFile(st){
   try{
@@ -3455,22 +3410,17 @@ function restore(){
 }
 function adoptTree(tree){
   const src = clone(tree);
-  data.id = src.id;
-  data.title = src.title;
-  data.state = src.state;
-  data.kind = src.kind;
-  data.memories = src.memories||[];
-  data.ideas = src.ideas||[];
-  data.bugs = src.bugs||[];
-  data.dormant = src.dormant||[];
-  data.files = src.files||[];
-  data.owns = src.owns||[];
-  data.children = src.children||[];
-  data.flows = src.flows||[];
+  Object.keys(data).forEach(k=>delete data[k]);
+  Object.assign(data, src);
+  function defaults(n){
+    for(const k of ["memories","ideas","bugs","dormant","files","owns","children"]){ if(!n[k]) n[k]=[]; }
+    (n.children||[]).concat(n._inbox||[]).forEach(defaults);
+  }
+  defaults(data);
   promoteFatWork(data);
   uniquifyIds(data);
   normalizeTree(data);
-  stampMapCompletion();
+  if(!window.__CG_SERVER) stampMapCompletion();
 }
 function snapshotRepo(){
   const r = currentRepo();
@@ -3490,7 +3440,7 @@ function renderFirstUseCopy(){
 }
 function applyRepoChrome(){
   const r = currentRepo();
-  document.getElementById("repo-title").innerHTML = r.name+" "+t("archMap")+' <span class="caret">▾</span>';
+  document.getElementById("repo-title").innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -3498,7 +3448,7 @@ function renderRepoMenu(){
   const el = document.getElementById("repo-menu");
   el.innerHTML = Object.values(catalog).map(r=>`
     <button type="button" data-repo="${r.id}" class="${r.id===repoId?"on":""}">
-      <b>${r.name}</b>
+      <b>${esc(r.name)}</b>
       <span class="src">${r.source}</span>
       <span class="tag${r.bootstrap==="pending"||r.bootstrap==="analyzing"?" wait":""}">${bootstrapLabel(r.bootstrap)}</span>
       ${hasMap(r)? `<span class="reanalyze" data-reanalyze="${r.id}">${t("reanalyze")}</span>`:""}
@@ -4044,6 +3994,7 @@ function moduleAuthState(n){
   return "partial";
 }
 function toggleAuth(n){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(isProposed(n)||isCancelled(n)) return;
   if(n.kind==="module"){
     const ids = subtreeIds(n);
@@ -4051,15 +4002,16 @@ function toggleAuth(n){
     if(st==="all"){ ids.forEach(id=>sessionAuth.delete(id)); }
     else{
       ids.forEach(id=>sessionAuth.add(id));
-      findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+      /* Scope is explicit; granting a child does not grant its ancestors. */
     }
   }else{
     if(sessionAuth.has(n.id)) sessionAuth.delete(n.id);
     else{
       sessionAuth.add(n.id);
-      findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+      /* Scope is explicit; granting a child does not grant its ancestors. */
     }
   }
+  workbenchSync?.toggleAccess([...sessionAuth]);
   renderAll();
 }
 function cancelledList(){
@@ -4117,17 +4069,8 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){
-  const raw = String((currentRepo() && currentRepo().sessionName) || (document.getElementById("session-name")||{}).textContent || "S-0823").trim();
-  const m = raw.match(/^(\S+)/);
-  return m ? m[1] : "S-0823";
-}
-function sessionColor(name){
-  const pal = ["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
-  let h = 0;
-  String(name||"").split("").forEach(ch=>{ h = (h*33 + ch.charCodeAt(0))|0; });
-  return pal[Math.abs(h)%pal.length];
-}
+function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+
 function bugSessionsOf(bug){
   if(!bug) return [];
   if(!Array.isArray(bug.sessions)) bug.sessions = [];
@@ -4304,8 +4247,8 @@ function renderNav(){
   }
   const path = findPath(viewRootId);
   el.innerHTML = path.map((n,i)=> i===path.length-1
-    ? `<span class="here">${n.kind==="module"?"▣ ":""}${n.title}</span>`
-    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${n.title}</a><span class="sep">›</span>`
+    ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
+    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${esc(n.title)}</a><span class="sep">›</span>`
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
@@ -4401,7 +4344,7 @@ function renderTray(){
   const ul = document.getElementById("tray-list");
   ul.innerHTML = list.length? list.map(({node,parent})=>`
     <li>
-      <div class="t-title">${node.title}<span style="font-size:11px"> · ${t("wasUnder")}${parent?parent.title:t("root")}</span></div>
+      <div class="t-title">${esc(node.title)}<span style="font-size:11px"> · ${t("wasUnder")}${parent?parent.title:t("root")}</span></div>
       <div class="t-actions">
         <button data-restore="${node.id}">${t("restoreMap")}</button>
         ${pendingDeleteId===node.id?"":`<button data-delete="${node.id}" class="danger">${t("forever")}</button>`}
@@ -4416,7 +4359,7 @@ function renderTray(){
     n.proposal="accepted"; n.isNew=false;
     unpackInbox(n);
     sessionAuth.add(n.id);
-    findPath(n.id).forEach(a=>sessionAuth.add(a.id));
+    /* Scope is explicit; granting a child does not grant its ancestors. */
     renderAll();
   });
   ul.querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{
@@ -4461,17 +4404,17 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>
+    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${esc(n.title)}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
-      (n.purpose? `<div class="m-blurb">${n.purpose}</div>`:"")+
+      (n.purpose? `<div class="m-blurb">${esc(n.purpose)}</div>`:"")+
       add;
   }
   if(isProposed(n)){
-    return pending+`<i class="dot proposed"></i><span>${n.title}</span>`;
+    return pending+`<i class="dot proposed"></i><span>${esc(n.title)}</span>`;
   }
-  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${n.title}</span>`+
+  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${esc(n.title)}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4495,6 +4438,7 @@ function renderMap(){
       !(n.kind==="module" && moduleAuthState(n)!=="none");
     const relDim = !!(relationMode && relSet && !relSet.has(n.id));
     const div = document.createElement("div");
+    div.dataset.id = n.id;
     div.className = "node" + (isViewRoot?" root":"") +
       (n.kind==="module"?" module":"") +
       (n.kind==="work" && n.kind!=="module"?" work":"") +
@@ -4842,6 +4786,7 @@ function onNodeClick(e, n){
 }
 
 function acceptProposal(n, silent){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   n.proposal = "accepted"; n.isNew = false;
   sessionAuth.add(n.id);
   const path = findPath(n.id);
@@ -4853,10 +4798,12 @@ function acceptProposal(n, silent){
   renderAll();
 }
 function acceptLayer(node){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   node.children.filter(isProposed).forEach(c=>acceptProposal(c, true));
   renderAll();
 }
 function cancelProposal(n){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(!n || n.id===data.id) return;
   clearCompose();
   const p = pathOf(n) || [];
@@ -4874,6 +4821,7 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
   composeParent = node;
   selectedId = node.id;
@@ -4885,6 +4833,7 @@ function startCompose(node, kind){
 }
 function addChild(node){ startCompose(node, "work"); }
 function addModule(from){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   const target = from || getNode(selectedId);
   /* 挂在点中的节点后。不要因为提议/找不到就改挂到当前页根（看起来像最开始那个模块）。 */
   if(!target || isCancelled(target)) return;
@@ -4892,6 +4841,7 @@ function addModule(from){
 }
 function inTree(n){ return !!(n && pathOf(n)); }
 function commitChild(node, title){
+  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   const t = (title||"").trim();
   if(!t) return;
   let parent = composeParent;
@@ -4936,22 +4886,24 @@ const STATE_LABEL = ()=>({
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
-  el.contentEditable = "true";
-  el.spellcheck = false;
-  el.addEventListener("focus", ()=>{
-    if(el.classList.contains("ghost")){
-      const r = document.createRange(); r.selectNodeContents(el);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    }
-  });
-  el.addEventListener("keydown", e=>{
-    if(e.key==="Enter" && !multiline){ e.preventDefault(); el.blur(); }
-    if(e.key==="Escape"){ e.preventDefault(); el.blur(); }
-  });
-  el.addEventListener("blur", ()=>{
-    const v = multiline ? (el.innerText||"").replace(/\u00a0/g," ").trim() : textOf(el);
-    commit(v);
-  });
+  if(!window.__CG_SERVER){ el.contentEditable="false"; return; }
+  el.contentEditable="true"; el.spellcheck=false;
+  let composing=false;
+  function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
+  function save(blur=false){
+    if(composing) return;
+    const v=multiline?(el.innerText||"").replace(/\u00a0/g," ").trim():textOf(el);
+    if(!blur && !v){ workbenchSync?.setInputDraft(draft()); return; }
+    window.__CG_INPUT_COMMIT=!blur;
+    try { commit(v); } finally { window.__CG_INPUT_COMMIT=false; }
+    workbenchSync?.setInputDraft(el.dataset.ed==="compose-title" && composingId ? draft() : null); persist();
+    if(blur) workbenchSync?.flush();
+  }
+  el.addEventListener("compositionstart",()=>{ composing=true; if(workbenchSync) workbenchSync.composing=true; workbenchSync?.setInputDraft(draft()); });
+  el.addEventListener("compositionend",()=>{ composing=false; if(workbenchSync) workbenchSync.composing=false; save(); });
+  el.addEventListener("input",()=>{ workbenchSync?.setInputDraft(draft()); save(); });
+  el.addEventListener("keydown",e=>{ if(!composing && !e.isComposing && ((e.key==="Enter"&&!multiline)||e.key==="Escape")){ e.preventDefault();el.blur(); } });
+  el.addEventListener("blur",()=>save(true));
 }
 function bindSilent(el, fn){
   if(!el) return;
@@ -4995,10 +4947,10 @@ function renderDetail(){
   /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Idea/Bug/继承都先不出现。 */
   if(proposed){
     el.innerHTML = `
-      <h2>${node.title}
+      <h2>${esc(node.title)}
         <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
-      ${node.purpose? `<p class="lead">${node.purpose}</p>`:""}
+      ${node.purpose? `<p class="lead">${esc(node.purpose)}</p>`:""}
       <div class="actions">
         <button data-act="accept" class="primary">${t("join")}</button>
         <button data-act="cancel">${t("hide")}</button>
@@ -5011,7 +4963,7 @@ function renderDetail(){
   }
   if(cancelled){
     el.innerHTML = `
-      <h2>${node.title}</h2>
+      <h2>${esc(node.title)}</h2>
       <div class="actions">
         <button data-act="restore" class="primary">${t("restore")}</button>
       </div>`;
@@ -5030,12 +4982,12 @@ function renderDetail(){
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="mem" data-i="${i}">${m.text}</span>${attachHtml("mem", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${esc(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
   const ideaHtml = node.ideas.length
     ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${m.state}"></i><div class="mem-body"><span class="txt ed" data-ed="idea" data-i="${i}">${m.text||""}</span>${attachHtml("idea", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
 
@@ -5043,13 +4995,13 @@ function renderDetail(){
     ? `<ul class="bug-list">`+bugRows.map(row=>{
         const b = row.bug;
         const title = row.home
-          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${b.title}</div>`
-          : `<div class="bug-title">${b.title}</div>`;
+          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
+          : `<div class="bug-title">${esc(b.title)}</div>`;
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
         <li class="${b.status==='pending'?'bug-pending':''}">
           <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
-          <div class="bug-main">
+          <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
             ${attach}
@@ -5064,8 +5016,8 @@ function renderDetail(){
   const labels = uiLabels();
   const states = STATE_LABEL();
   const workSt = workDotState(node);
-  const chip = cancelled? `<span class="state-chip failed">${t("cancelledChip")}</span>`
-    : node.badge? `<span class="state-chip ${node.state}">${node.badge}</span>`
+  const chip = cancelled? `<span class="state-chip failed">${esc(t("cancelledChip"))}</span>`
+    : node.badge? `<span class="state-chip ${escAttr(node.state)}">${esc(node.badge)}</span>`
     : (workSt==="success"||workSt==="failed"||workSt==="untested")
       ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
@@ -5078,8 +5030,8 @@ function renderDetail(){
     : "";
 
   el.innerHTML = `
-    <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
-    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
+    <h2><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</h2>
+    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
     ${statePick}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
@@ -5119,14 +5071,14 @@ function renderDetail(){
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
-        ${inherited.map((m,i)=>`<li><i class="dot ${m.mem.state}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${m.mem.text}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
-        ${alsoMems.map(m=>`<li><i class="dot ${m.mem.state||"success"}"></i><span class="txt">${m.mem.text||""}</span></li>`).join("")}
+        ${inherited.map((m,i)=>`<li><i class="dot ${escAttr(m.mem.state)}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${esc(m.mem.text)}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
+        ${alsoMems.map(m=>`<li><i class="dot ${escAttr(m.mem.state||"success")}"></i><span class="txt">${esc(m.mem.text||"")}</span></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
       <summary>${labels.dormant} ${node.dormant.length}</summary>
       <ul class="dormant-list">
-        ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${d.title}</b></li>`).join("")}
+        ${node.dormant.map((d,i)=>`<li><b class="ed" data-ed="dorm-title" data-i="${i}">${esc(d.title)}</b></li>`).join("")}
       </ul>
     </details>`:""}`;
 
@@ -5259,8 +5211,10 @@ function renderDetail(){
     composeEl.focus();
   }
   bindFileUi(el, node);
+  // Keep a blur-triggered detail redraw from removing the button being clicked.
+  el.querySelectorAll("button").forEach(button=>button.addEventListener("mousedown",e=>e.preventDefault()));
   hydrateThumbs(el);
-  el.addEventListener("paste", e=>{
+  el.onpaste = e=>{
     const memEd = e.target.closest('[data-ed="mem"]');
     const ideaEd = e.target.closest('[data-ed="idea"]');
     const bugEd = e.target.closest('[data-ed="bug-title"]');
@@ -5269,7 +5223,7 @@ function renderDetail(){
     else if(ideaEd) takeAttach(node, "idea", ideaEd.dataset.i, e);
     else if(bugEd) takeAttach(node, "bug", bugEd.dataset.bug, e);
     else if(drop) takeAttach(node, drop.dataset.fk, drop.dataset.fi, e);
-  });
+  };
 }
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
@@ -5578,35 +5532,33 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
-function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
-  const st = currentRepo().bootstrap;
-  if(st==="ready" || st==="proposed") persist(); }
+function renderAll(){
+  if(window.__CG_INPUT_COMMIT){ renderMap(); persist(); return; }
+  liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail(); persist();
+}
 async function boot(){
-  const stored = readStoredUiLang();
-  if(stored) uiLang = stored;
+  const stored=readStoredUiLang(); if(stored) uiLang=stored;
   applyStaticI18n();
-  applyRepoChrome();
-  restore();
-  await restoreRepoDir();
-  if(!stored) await loadPrefsLang();
-  applyStaticI18n();
-  const cachedLive = restoredFromLs && ((currentRepo().live || data || {}).children || []).length;
-  /* 只保护浏览器实际恢复出的活图；内置演示图不能阻止全新页面读取仓库 Map。 */
-  if(cachedLive){
-    if(repoFsOk){
-      const ok = await writeMapToRepo();
-      setRepoStatus(ok ? "ok" : "fail");
-    }
-  }else if(repoFsOk){
-    const loaded = await loadMapFromRepo();
-    setRepoStatus(loaded ? "ok" : "fail");
-  }else{
-    await loadMapFromHttp();
+  let WorkbenchSync;
+  try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }
+  catch(e){
+    const notice=document.createElement("div"); notice.id="cg-sync"; notice.dataset.status="readonly";
+    notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
+    notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
+    document.body.append(notice);
+    await loadMapFromHttp(); renderAll(); return;
   }
-  if(!(hasMap(currentRepo()) || currentRepo().live)){
-    emptyFirstUse();
-  }else{
-    applyRepoChrome();
+  workbenchSync=new WorkbenchSync({
+    getRoot:()=>data,
+    apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
+    setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+  });
+  const connected=await workbenchSync.start();
+  if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
+  // A local server owns exactly one project. Switching demo repositories is preview-only.
+  if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
+  if(!window.__CG_SERVER){
+    document.addEventListener("click",e=>{ const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel"); if(b){ e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly"); } },true);
   }
   if(window.__CG_PREVIEW){
     closeOverlay();

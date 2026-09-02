@@ -23,7 +23,7 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
 
-**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. On the same machine, 「连接仓库」 can write `map.json` back to disk.
+**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
 
 ```bash
 context-guard workbench --root /path/to/project
@@ -193,3 +193,7 @@ Run `context-guard workbench --root /path/to/project` to see the map.
 ```
 
 See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
+
+## Local workbench synchronization
+
+Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
