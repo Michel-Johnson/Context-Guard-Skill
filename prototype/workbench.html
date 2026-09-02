@@ -637,9 +637,10 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
 .note-stack{display:flex;flex-direction:column;gap:10px;margin-top:14px}
 .note-card{background:#fff;border-radius:12px;padding:12px 12px 10px}
-.note-head{display:flex;align-items:center;justify-content:flex-start;gap:0;margin:0 0 6px}
-.note-head b{font-size:13px;font-weight:800}
-.note-head .plus-btn{width:1.35em;height:1.35em;font-size:16px;color:var(--ink);font-weight:800}
+.note-head{margin:0 0 6px}
+.note-add{display:inline-flex;align-items:center;gap:.2em;margin:0;padding:0;border:0;
+  background:transparent;box-shadow:none;font-size:13px;font-weight:800;color:var(--ink);line-height:1.2}
+.note-add:hover,.note-add:focus{transform:none;box-shadow:none;background:transparent;border:0;color:var(--ink)}
 .note-card .mem-list,.note-card .bug-list{margin:0}
 .note-card .mem-list li,.note-card .bug-list li{border-top:0;padding:7px 0}
 .note-card .empty{margin:0;padding:2px 0 4px;font-size:12.5px}
@@ -775,7 +776,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
-html.cg-phone .note-head .plus-btn{width:36px;height:36px}
+html.cg-phone .note-add{min-height:36px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
@@ -5385,8 +5386,7 @@ function noteCardHtml({fold, title, addAct, addTitle, items, listClass, expanded
   }
   return `<section class="note-card" data-fold="${fold}">
     <header class="note-head">
-      <b>${title}</b>
-      <button type="button" class="plus-btn" data-act="${addAct}" title="${escAttr(addTitle)}">＋</button>
+      <button type="button" class="note-add" data-act="${addAct}" title="${escAttr(addTitle)}">${title} ＋</button>
     </header>
     ${body}
   </section>`;
