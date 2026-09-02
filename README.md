@@ -171,9 +171,10 @@ Use $context-guard. Four stores: sessions, bugs, tasks, map.
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language English
 python3 scripts/context_guard.py workbench --root /path/to/project
+context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map.
+Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop, `write-candidates --input ...` for validated first-use L1 candidates, and `archive-session` to save durable session results.
 
 ## Main Files
 

@@ -24,6 +24,8 @@ export function validate(doc) {
   if (object(doc) && doc.root === null && doc.bootstrap === 'pending' && !(doc.flows || []).length) return new Map();
   if (!object(doc) || !object(doc.root)) throw new MapError('INVALID_MAP', 'Map requires a root node');
   const index = entries(doc.root);
+  if (doc.unassigned_bugs !== undefined && !Array.isArray(doc.unassigned_bugs)) throw new MapError('INVALID_MAP', 'unassigned_bugs must be an array');
+  if ((doc.unassigned_bugs || []).some(item => !object(item))) throw new MapError('INVALID_MAP', 'Unassigned bug must be an object');
   for (const { node } of index.values()) {
     if (typeof node.title !== 'string' || node.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid title`);
     if (node.purpose !== undefined && typeof node.purpose !== 'string') throw new MapError('INVALID_MAP', 'purpose must be text');
@@ -55,7 +57,8 @@ export function applyOperations(document, operations, actor, grants = []) {
   for (const op of operations) {
     if (op.type === 'initialize') {
       if (doc.root !== null || typeof op.project !== 'string' || !op.project.trim()) throw new MapError('INVALID_INITIALIZATION', 'Only an empty legacy pending map can be initialized');
-      checkFields(op.node, ['id', ...editableFields]);
+      checkFields(op.node, ['id', ...editableFields, 'children', '_inbox']);
+      if (!human && (op.node.children?.length || op.node._inbox?.length)) throw new MapError('FORBIDDEN', 'Only the workbench can initialize a complete map', 403);
       doc.project = op.project;
       doc.root = { id: 'T0', title: op.project, kind: 'module', state: 'dirty', children: [], ...copy(op.node), origin: actor.kind, proposal: human ? 'accepted' : 'proposed', proposedBy: actor.sessionId };
       doc.bootstrap = 'proposed'; resultIds.push(doc.root.id); continue;
@@ -84,6 +87,16 @@ export function applyOperations(document, operations, actor, grants = []) {
       if (existing && !same(existing, op.bug)) throw new MapError('DUPLICATE_ID', 'Bug ID already exists', 409);
       if (!existing) list.push(copy(op.bug));
       resultIds.push(op.id || doc.root.id);
+    } else if (op.type === 'update-bug') {
+      if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '') || !['open', 'fixed', 'resolved', 'deferred', 'wontfix'].includes(op.bug.status)) throw new MapError('INVALID_BUG', 'Invalid bug status update');
+      let found = null, owner = doc.root.id;
+      for (const [id, entry] of index) {
+        found = (entry.node.bugs || []).find(item => item.id === op.bug.id);
+        if (found) { owner = id; break; }
+      }
+      if (!found) found = (doc.unassigned_bugs || []).find(item => item.id === op.bug.id);
+      if (!found) throw new MapError('NOT_FOUND', `Bug ${op.bug.id} is missing`, 404);
+      found.status = op.bug.status; resultIds.push(owner);
     } else {
       if (!target) throw new MapError('NOT_FOUND', `Node ${op.id} is missing`, 404);
       if (!allowed(target.node)) throw new MapError('FORBIDDEN', `Session is not authorized for ${op.id}`, 403);

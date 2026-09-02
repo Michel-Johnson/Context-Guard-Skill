@@ -9,6 +9,7 @@ import http from 'node:http';
 import { ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
+import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, diffTrees, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
@@ -29,11 +30,49 @@ async function fixture() {
   const ctx = path.join(root, '.codex/context'); await fs.mkdir(path.join(ctx, 'sessions'), { recursive: true });
   const doc = { v: 1, project: 'test-project', unknownTop: { preserve: true }, root: { id: 'T0', title: '项目', kind: 'module', unknownNode: 42, children: [{ id: 'N1', title: '原始标题', kind: 'work', proposal: 'accepted', memories: [], bugs: [], children: [] }] } };
   await fs.writeFile(path.join(ctx, 'map.json'), encode(doc));
-  await fs.writeFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: agent.sessionId, event: 'session-start' }) + '\n');
+  await fs.writeFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ at: '2026-01-01T00:00:00Z', platform: 'codex', session_id: agent.sessionId, thread_name: '真实会话名称', event: 'session-start' }) + '\n');
   return { root, ctx, doc };
 }
 function edit(store, title, extras = {}) { return { baseVersion: store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title } }], ...extras }; }
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
+
+test('session registry exposes lifecycle state and filters maintenance actors', async () => {
+  const f = await fixture(), access = await new Access(f.root).init();
+  await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), [
+    JSON.stringify({ at: '2026-01-01T00:00:01Z', event: 'maintenance', platform: 'cli', session_id: 'maintenance-test' }),
+    JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'session-start', platform: 'cursor', session_id: 'second-session' }),
+    JSON.stringify({ at: '2026-01-01T00:00:03Z', event: 'stop', platform: 'cursor', session_id: 'second-session' }),
+  ].join('\n') + '\n');
+  const snapshot = await access.snapshot();
+  assert.deepEqual(snapshot.sessions.map(item => item.id), ['second-session', agent.sessionId]);
+  assert.equal(snapshot.sessions[0].status, 'stopped');
+  assert.equal(snapshot.sessions[1].status, 'active');
+  assert.equal(snapshot.sessions[1].name, '真实会话名称');
+  assert.equal(snapshot.currentSessionId, agent.sessionId);
+  assert.ok((await access.recordedSessionIds()).includes('maintenance-test'));
+});
+
+test('Codex task discovery supplies real names and active/completed state without a hook record', async () => {
+  const f = await fixture();
+  const access = await new Access(f.root, { codexSessions: async () => [
+    { id: 'codex-active', name: '新任务', platform: 'codex', status: 'active', firstSeen: '2026-01-01T00:00:04Z', lastSeen: '2026-01-01T00:00:05Z', lastEvent: 'task_started' },
+    { id: 'codex-complete', name: '已完成任务', platform: 'codex', status: 'stopped', firstSeen: '2026-01-01T00:00:02Z', lastSeen: '2026-01-01T00:00:03Z', lastEvent: 'task_complete' },
+  ] }).init();
+  const snapshot = await access.snapshot();
+  assert.equal(snapshot.currentSessionId, 'codex-active');
+  assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })), [
+    { id: 'codex-active', name: '新任务', status: 'active' },
+    { id: 'codex-complete', name: '已完成任务', status: 'stopped' },
+  ]);
+  assert.deepEqual(await access.register('codex-complete'), { kind: 'agent', sessionId: 'codex-complete' });
+});
+
+test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {
+  const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
+  const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
+  assert.equal(rolloutTaskStatus(started).status, 'active');
+  assert.equal(rolloutTaskStatus(`${started}\n${completed}`).status, 'stopped');
+});
 
 test('write, preserve unknown data, reject stale update, persist idempotency across restart', async () => {
   const f = await fixture(); let store = await new MapStore(f.root).init();
@@ -89,6 +128,15 @@ test('permissions, field validation, cycles and missing references', async () =>
   } finally { await store.close(); }
 });
 
+test('bad-case compatibility operations attach unassigned cases and resolve them', async () => {
+  const f = await fixture();
+  const attached = applyOperations(f.doc, [{ type: 'attach-bug', id: '', bug: { id: 'B1', title: '未挂节点', status: 'open', sessions: [agent.sessionId] } }], agent).doc;
+  assert.equal(attached.unassigned_bugs[0].id, 'B1');
+  const resolved = applyOperations(attached, [{ type: 'update-bug', bug: { id: 'B1', status: 'resolved' } }], agent).doc;
+  assert.equal(resolved.unassigned_bugs[0].status, 'resolved');
+  assert.throws(() => applyOperations(resolved, [{ type: 'update-bug', bug: { id: 'B9', status: 'resolved' } }], agent), { code: 'NOT_FOUND' });
+});
+
 test('projection retains legacy/manual content, includes state and bugs, detects pending versions', async () => {
   const f = await fixture(); await fs.mkdir(path.join(f.ctx, 'cards')); await fs.writeFile(path.join(f.ctx, 'cards/N1.md'), '人工笔记不能丢失\n');
   f.doc.root.children[0].bugs.push({ id: 'B32', title: '回归坏例', status: 'open' });
@@ -109,6 +157,9 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     await fs.writeFile(path.join(f.ctx, 'l1-candidates.json'), '{"lenses":[]}');
     assert.equal((await call('/.codex/context/l1-candidates.json', running.humanToken)).status, 200);
     const registration = await call('/api/session', running.state.adminToken, { sessionId: agent.sessionId }); assert.equal(registration.status, 200);
+    const accessState = await call('/api/access', running.humanToken);
+    assert.equal(accessState.data.sessions[0].id, agent.sessionId);
+    assert.equal(accessState.data.currentSessionId, agent.sessionId);
     const credential = registration.data.token;
     assert.equal((await call('/api/session', running.state.adminToken, { sessionId: 'fake-session' })).status, 403);
     assert.equal((await call('/api/state', credential, null, { Origin: 'https://evil.invalid' })).status, 403);
@@ -171,6 +222,22 @@ test('projection failure is explicit and direct authoritative reads remain avail
 });
 
 test('a legacy null-root map can be explicitly initialized but existing roots cannot be replaced', async () => {
+  const complete = applyOperations(
+    { v: 1, bootstrap: 'pending', project: 'legacy', root: null, flows: [] },
+    [
+      { type: 'initialize', project: 'legacy', node: { id: 'T0', title: '完整地图', kind: 'module', children: [{ id: 'N1', title: '现有模块', kind: 'work', children: [] }] } },
+      { type: 'document', fields: { flows: [{ from: 'T0', to: 'N1', label: '包含' }] } },
+    ],
+    human,
+  ).doc;
+  assert.equal(complete.root.children[0].title, '现有模块');
+  assert.equal(complete.root.proposal, 'accepted');
+  assert.equal(complete.flows.length, 1);
+  assert.throws(() => applyOperations(
+    { v: 1, bootstrap: 'pending', project: 'legacy', root: null, flows: [] },
+    [{ type: 'initialize', project: 'legacy', node: { id: 'T0', title: 'Agent 整图', children: [{ id: 'N1', title: '越权', children: [] }] } }],
+    agent,
+  ), { code: 'FORBIDDEN' });
   const f = await fixture(); await fs.writeFile(path.join(f.ctx, 'map.json'), encode({ v: 1, bootstrap: 'pending', root: null, flows: [] }));
   const store = await new MapStore(f.root).init();
   try {

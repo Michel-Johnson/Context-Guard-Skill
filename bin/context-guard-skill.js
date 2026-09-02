@@ -26,6 +26,8 @@ function usage() {
 Usage:
   context-guard install [--platform auto|all|codex|cursor|claude] [--no-hooks]
                         [--target <dir>] [--hooks-target <file>] [--config-target <file>]
+  context-guard doctor [--platform auto|all|codex|cursor|claude] [--root <project>]
+                       [--target <dir>] [--hooks-target <file>] [--config-target <file>] [--json]
   context-guard path
   context-guard <context_guard.py command> [args...]
 
@@ -68,6 +70,21 @@ function platformTargets(platform) {
       ? path.join(home, PLATFORM_SPECS[platform].configFile)
       : null
   };
+}
+
+let detectedPython;
+function pythonCommand() {
+  if (detectedPython !== undefined) return detectedPython;
+  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+  detectedPython = null;
+  for (const command of candidates) {
+    const probe = spawnSync(command, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    if (!probe.error && probe.status === 0 && /^Python 3\./m.test(`${probe.stdout || ""}\n${probe.stderr || ""}`)) {
+      detectedPython = command;
+      break;
+    }
+  }
+  return detectedPython;
 }
 
 function selectedPlatforms(requested) {
@@ -205,8 +222,9 @@ function copySkill(target) {
 function hookCommand(skillTarget, event, platform) {
   const hookScript = path.join(skillTarget, "scripts", "context_guard_hook.py");
   const encodedHookScript = JSON.stringify(hookScript);
-  const pythonCommand = process.platform === "win32" ? "python" : "python3";
-  return `${pythonCommand} ${encodedHookScript} ${event} --platform ${platform}`;
+  const python = pythonCommand();
+  if (!python) throw new Error("Python 3 is required before lifecycle hooks can be installed");
+  return `${python} ${encodedHookScript} ${event} --platform ${platform}`;
 }
 
 function rewriteGroupedHookCommands(hooksConfig, skillTarget, platform) {
@@ -238,7 +256,7 @@ function cursorHooks(skillTarget) {
     hooks[cursorEvent] = [{
       type: "command",
       command: hookCommand(skillTarget, normalizedEvent, "cursor"),
-      timeout: 10
+      timeout: normalizedEvent === "session-start" ? 20 : 10
     }];
   }
   return { version: 1, hooks };
@@ -410,21 +428,90 @@ function install(args) {
   applyInstallPlan(plan, options.dryRun);
 }
 
+function parseDoctorArgs(args) {
+  const options = { platform: "auto", root: process.cwd(), target: null, hooksTarget: null, configTarget: null, json: false };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (["--platform", "--root", "--target", "--hooks-target", "--config-target"].includes(arg)) {
+      const value = args[++i];
+      if (!value) fail(`${arg} requires a value`);
+      if (arg === "--platform") {
+        const platform = String(value).toLowerCase();
+        if (!["auto", "all", ...Object.keys(PLATFORM_SPECS)].includes(platform)) fail("--platform must be auto, all, codex, cursor, or claude");
+        options.platform = platform;
+      } else options[{ "--root": "root", "--target": "target", "--hooks-target": "hooksTarget", "--config-target": "configTarget" }[arg]] = path.resolve(expandHome(value));
+    } else if (arg === "--json") options.json = true;
+    else fail(`unknown doctor option: ${arg}`);
+  }
+  if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "all") fail("custom doctor targets can only be used with one platform");
+  return options;
+}
+
+function hookCommands(config, platform, event) {
+  const entries = config?.hooks?.[event];
+  if (!Array.isArray(entries)) return [];
+  if (platform === "cursor") return entries.map(item => item?.command).filter(Boolean);
+  return entries.flatMap(group => (group?.hooks || []).map(item => item?.command)).filter(Boolean);
+}
+
+function doctor(args) {
+  const options = parseDoctorArgs(args);
+  const results = [];
+  const check = (name, ok, detail, required = true) => results.push({ name, ok: Boolean(ok), detail, required });
+  const python = pythonCommand();
+  check("python", python, python ? `${python} is Python 3` : "no working Python 3 interpreter");
+  let platforms = selectedPlatforms(options.platform);
+  if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") platforms = ["codex"];
+  const eventNames = {
+    codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "SubagentStop", "Stop"],
+    claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "SubagentStop", "Stop"],
+    cursor: ["sessionStart", "subagentStart", "beforeSubmitPrompt", "subagentStop", "stop"]
+  };
+  for (const platform of platforms) {
+    const defaults = platformTargets(platform);
+    const target = options.target || defaults.target;
+    const hooksTarget = options.hooksTarget || defaults.hooksTarget;
+    const configTarget = options.configTarget || defaults.configTarget;
+    check(`${platform}.skill`, fs.existsSync(path.join(target, "SKILL.md")) && fs.existsSync(path.join(target, "scripts", "context_guard_hook.py")), target);
+    let config = null;
+    try { config = readObject(hooksTarget, platform); } catch (error) { check(`${platform}.hooks`, false, error.message); }
+    if (config) {
+      const missing = eventNames[platform].filter(event => !hookCommands(config, platform, event).some(command => command.includes("context_guard_hook.py") && command.includes(`--platform ${platform}`)));
+      check(`${platform}.hooks`, missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : hooksTarget);
+    }
+    if (platform === "codex" && configTarget) {
+      const text = fs.existsSync(configTarget) ? fs.readFileSync(configTarget, "utf8") : "";
+      check("codex.hooks-feature", /^\s*hooks\s*=\s*true\s*$/m.test(text), configTarget);
+    }
+  }
+  const ctx = path.join(options.root, ".codex", "context");
+  let map = null;
+  try { map = JSON.parse(fs.readFileSync(path.join(ctx, "map.json"), "utf8")); } catch {}
+  check("project.map", map?.root?.id || map?.root === null, path.join(ctx, "map.json"));
+  check("project.sessions", fs.existsSync(path.join(ctx, "sessions.jsonl")), path.join(ctx, "sessions.jsonl"));
+  let workbench = null;
+  try { workbench = JSON.parse(fs.readFileSync(path.join(ctx, "private", "workbench.json"), "utf8")); } catch {}
+  let alive = false;
+  if (workbench?.pid) { try { process.kill(workbench.pid, 0); alive = true; } catch {} }
+  check("project.workbench", alive && workbench?.protocol === 2, alive ? workbench.url : "not running; SessionStart or `context-guard workbench` can start it", false);
+  const ok = results.every(item => !item.required || item.ok);
+  if (options.json) console.log(JSON.stringify({ ok, results }, null, 2));
+  else {
+    for (const item of results) console.log(`[${item.ok ? "ok" : item.required ? "fail" : "warn"}] ${item.name}: ${item.detail}`);
+    console.log(`[context-guard-skill] doctor: ${ok ? "ready" : "not ready"}`);
+  }
+  if (!ok) process.exitCode = 1;
+}
+
 function runPython(args) {
   if (!fs.existsSync(pythonScript)) {
     fail(`context_guard.py is missing: ${pythonScript}`);
   }
-  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
-  for (const command of candidates) {
-    // Windows Store aliases can exist but exit 9009 instead of raising ENOENT.
-    // Probe before running the real command so a failed command is never retried.
-    const probe = spawnSync(command, ["--version"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
-    if (probe.error || probe.status !== 0 || !/^Python 3\./m.test(`${probe.stdout || ""}\n${probe.stderr || ""}`)) continue;
-    const result = spawnSync(command, [pythonScript, ...args], { stdio: "inherit", windowsHide: true });
-    if (result.error) fail(result.error.message);
-    process.exit(result.status === null ? 1 : result.status);
-  }
-  fail("Python 3 is required; no working Python 3 interpreter was found (`python`, `python3`).");
+  const command = pythonCommand();
+  if (!command) fail("Python 3 is required; no working Python 3 interpreter was found (`python`, `python3`).");
+  const result = spawnSync(command, [pythonScript, ...args], { stdio: "inherit", windowsHide: true });
+  if (result.error) fail(result.error.message);
+  process.exit(result.status === null ? 1 : result.status);
 }
 
 const [command, ...rest] = process.argv.slice(2);
@@ -435,6 +522,8 @@ if (!command || command === "-h" || command === "--help" || command === "help") 
   try { install(rest); } catch (error) { fail(error.message); }
 } else if (command === "path") {
   console.log(sourceSkillDir);
+} else if (command === "doctor") {
+  doctor(rest);
 } else if (command === "map" || command === "workbench") {
   const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "workbench", "cli.mjs"), command, ...rest], { stdio: "inherit", windowsHide: true });
   process.exit(result.status ?? 1);

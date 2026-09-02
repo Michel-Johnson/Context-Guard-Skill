@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py session-start --platform codex",
-            "timeout": 10,
+            "timeout": 20,
             "statusMessage": "Initializing context folder"
           }
         ]

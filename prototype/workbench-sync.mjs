@@ -8,18 +8,19 @@ export class WorkbenchSync {
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
     this.revision = 0; this.cachedDiff = null;
-    this.composing = false; this.inputDraft = null; this.activeSession = null; this.captureKey = null;
+    this.composing = false; this.inputDraft = null; this.activeSession = null; this.sessions = []; this.captureKey = null;
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
-    this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
+    this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
     this.notice = document.createElement('span'); this.notice.className = 'sync-notice'; this.notice.setAttribute('role', 'status'); this.notice.hidden = true;
     document.getElementById('btn-settings').after(this.notice);
     this.panel.querySelector('#cg-sync-retry').onclick = () => this.retry();
+    this.panel.querySelector('#cg-sync-initialize').onclick = () => this.initializeCurrent();
     this.panel.querySelector('#cg-sync-export').onclick = () => this.export();
     this.panel.querySelector('#cg-sync-import').onclick = () => this.panel.querySelector('#cg-sync-file').click();
     this.panel.querySelector('#cg-sync-file').onchange = async e => { try { await this.preview(JSON.parse(await e.target.files[0].text())); } catch (err) { this.setStatus(this.status, '导入失败：' + err.message); } e.target.value = ''; };
     this.panel.querySelector('#cg-sync-reload').onclick = () => this.reload();
-    this.panel.querySelector('#cg-sync-session').onchange = e => { this.activeSession = e.target.value; this.refreshAccess(); };
+    this.panel.querySelector('#cg-sync-session').onchange = e => { this.activeSession = e.target.value || null; this.manualSession = true; this.refreshAccess(); };
     window.addEventListener('beforeunload', e => { if (this.dirty()) { this.saveDraft(); e.preventDefault(); e.returnValue = ''; } });
     window.addEventListener('pagehide', () => {
       if (!this.config || this.dirty()) return;
@@ -78,8 +79,16 @@ export class WorkbenchSync {
     if (!this.config) return false;
     try {
       const state = await this.call('/api/state');
-      if (!state.doc?.root || state.error) throw new Error(state.error?.message || '旧空图需要通过 map initialize 操作建立根节点');
       this.doc = state.doc; this.version = state.version; this.captureKey = 'cg-sync-draft:' + this.config.root;
+      if (state.error) throw new Error(state.error?.message || '服务需要恢复');
+      if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
+        this.initializationRequired = true;
+        this.panel.querySelector('#cg-sync-initialize').hidden = false;
+        this.connect(); await this.refreshAccess();
+        this.setStatus('error', '尚未创建真实地图；可将当前页面设为真实地图');
+        return false;
+      }
+      if (!state.doc?.root) throw new Error('地图根节点无效');
       this.a.apply(state.doc); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const restored = stored(this.captureKey), legacy = stored('cg-workbench-maps-v16');
       this.recovery = restored; this.legacy = legacy;
@@ -108,6 +117,7 @@ export class WorkbenchSync {
   async receive(state) {
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
+    if (this.initializationRequired) return;
     if (state.version === this.version) {
       if (!this.dirty()) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
       return;
@@ -171,6 +181,22 @@ export class WorkbenchSync {
       this.setStatus('draft'); await this.flush(); if (!this.dirty()) this.setStatus('synced');
     } catch (e) { this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : 'error', e.message); }
   }
+  async initializeCurrent() {
+    if (!this.config || !this.initializationRequired) return;
+    const node = copy(this.a.getRoot());
+    if (!node?.id || !node?.title) { this.setStatus('error', '当前页面没有可初始化的地图'); return; }
+    const flows = copy(node.flows || []); delete node.flows;
+    this.setStatus('saving', '正在建立真实地图');
+    try {
+      const operations = [{ type: 'initialize', project: this.doc?.project || node.title, node }];
+      if (flows.length) operations.push({ type: 'document', fields: { flows } });
+      const result = await this.call('/api/commit', { baseVersion: this.version, operationId: crypto.randomUUID(), operations });
+      if (!result.committed) throw new Error('地图初始化未提交');
+      this.initializationRequired = false;
+      this.panel.querySelector('#cg-sync-initialize').hidden = true;
+      await this.reload();
+    } catch (e) { this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : 'error', '初始化失败：' + e.message); }
+  }
   download(value, name) { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   export() {
     this.download({ project: this.doc?.project, current: this.ready ? { ...this.doc, root: copy(this.a.getRoot()) } : null, draft: this.captureKey ? stored(this.captureKey) : null, legacy: stored('cg-workbench-maps-v16'), inputDraft: this.inputDraft }, 'context-guard-recovery.json');
@@ -209,9 +235,22 @@ export class WorkbenchSync {
   async refreshAccess() {
     if (!this.config) return;
     const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
-    select.replaceChildren(...data.sessions.map(id => { const option = document.createElement('option'); option.value = id; option.textContent = id; return option; }));
-    if (!data.sessions.includes(this.activeSession)) this.activeSession = data.sessions.at(-1) || null;
-    select.value = this.activeSession || ''; this.a.setAccess(data.grants[this.activeSession]?.nodes || [], this.activeSession);
+    const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
+    this.sessions = sessions;
+    const current = sessions.find(item => item.id === this.activeSession);
+    const recommended = sessions.find(item => item.id === data.currentSessionId) || sessions[0] || null;
+    if (!current) { this.activeSession = recommended?.id || null; this.manualSession = false; }
+    else if (!this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
+    const options = sessions.map(item => {
+      const option = document.createElement('option'); option.value = item.id;
+      const short = item.id.length > 28 ? `${item.id.slice(0, 12)}…${item.id.slice(-8)}` : item.id;
+      const displayName = `${item.platform}-${item.name || short}`;
+      option.textContent = displayName; option.title = item.name || item.id; return option;
+    });
+    if (!options.length) { const empty = document.createElement('option'); empty.value = ''; empty.textContent = '暂无真实 Agent 会话'; options.push(empty); }
+    select.replaceChildren(...options); select.disabled = !sessions.length; select.value = this.activeSession || '';
+    const active = sessions.find(item => item.id === this.activeSession) || null;
+    this.a.setAccess(data.grants?.[this.activeSession]?.nodes || [], this.activeSession, active);
   }
   async toggleAccess(ids) {
     if (!this.activeSession) { this.setStatus(this.status, '尚无真实 Agent 会话，请先启动会话'); return; }

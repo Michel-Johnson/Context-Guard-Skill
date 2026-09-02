@@ -7,7 +7,7 @@
 <title>Context Guard · 工作台原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&family=Libre+Baskerville:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
@@ -58,6 +58,7 @@
   --focus:#8a6d1f; --focus-soft:#f5eeda; --module:#2d5da1; --module-soft:#f3ead6;
   --auth:#7a5ca8; --auth-soft:#f0eaf8;
   --yellow:#ffe66d; --gold:#d4a017;
+  --dot-success:#6ed08a; --dot-dirty:#3d7ee8;
   --shadow:3px 3px 0 #2d2d2d; --shadow-sm:2px 2px 0 #2d2d2d;
   --font-ui:"Comic Neue","Trebuchet MS","PingFang SC","Microsoft YaHei",sans-serif;
   --font-note:Georgia,"Libre Baskerville","Songti SC",serif;
@@ -108,8 +109,15 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
-.session-chip{display:none}
+.session-chip{display:flex;align-items:center;gap:7px;max-width:260px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:11px;white-space:nowrap}
+.session-chip #session-name{overflow:hidden;text-overflow:ellipsis}
+.session-status{width:15px;height:15px;display:inline-grid;place-items:center;flex:0 0 auto}
+.session-status.active{border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
+.session-status.stopped::before{content:"✓";color:var(--green);font-size:15px;font-weight:900;line-height:1}
+.session-status.empty{display:none}
+@keyframes session-spin{to{transform:rotate(360deg)}}
 .tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
+#btn-auth{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto;font-size:16px;line-height:1}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repo-status.ok{color:var(--green)}
 .repo-status.err{color:var(--red)}
@@ -208,12 +216,14 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .analyze-log li.done .find{color:var(--green)}
 .auth-btn.on{background:var(--auth);border-color:var(--auth);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.dot.dirty{background:var(--blue)} .dot.success{background:var(--green)}
+.node .dot[data-hint]{position:relative;cursor:help;z-index:1}
+.node .dot[data-hint]:before{content:"";position:absolute;inset:-7px}
+.dot.dirty{background:var(--dot-dirty)} .dot.success{background:var(--dot-success)}
 .dot.failed{background:var(--red)} .dot.untested{background:var(--gold)}
 .dot.module{background:var(--module);border-radius:2px}
-.dot.module.dirty{background:var(--blue)}
+.dot.module.dirty{background:var(--dot-dirty)}
 .dot.module.untested{background:var(--gold)}
-.dot.module.success{background:var(--green)}
+.dot.module.success{background:var(--dot-success)}
 .dot.module.failed{background:var(--red)}
 .dot.proposed{background:#c7ccc6} .dot.noauth{background:#cfcfcf}
 .dot-picks{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 0}
@@ -221,7 +231,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   padding:7px 9px;font-size:12px;font-weight:700;line-height:1.25;
   border:2px solid transparent;background:transparent;box-shadow:none}
 .dot-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
-.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:var(--shadow-sm)}
+.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:none}
 .dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
@@ -246,6 +256,10 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.rel-dim{opacity:.16;filter:grayscale(.55) brightness(.82)}
 .node.rel-dim.selected,.node.rel-hot.selected{opacity:1;filter:none}
 .node.rel-hot{opacity:1;filter:none}
+#dot-hint{position:fixed;z-index:28;max-width:220px;padding:6px 9px;
+  background:var(--paper);color:var(--ink);border:2px solid var(--line-ink);border-radius:8px;
+  box-shadow:none;font-size:12px;font-weight:700;line-height:1.35;pointer-events:none}
+#dot-hint[hidden]{display:none}
 body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
 body.rel-mode .node .add-child{display:none}
 /* ===== 节点：小圆角胶囊 ===== */
@@ -502,13 +516,23 @@ body.bugs-open .drawer-split{display:none}
   padding:8px 12px;border:0;border-bottom:1px solid var(--line);border-radius:0;cursor:pointer;margin:0}
 .bug-panel li:hover{background:#fff}
 .bug-panel li.on{background:#fff3bf;box-shadow:inset 3px 0 0 var(--line-ink)}
-.bug-panel .bug-title{flex:1;min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
+.bug-panel .bug-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bug-panel .bug-title{min-width:0;font-size:12.5px;font-weight:800;line-height:1.3;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bug-panel .bug-row{display:flex;flex-wrap:nowrap;gap:5px;align-items:center;flex:0 0 auto;margin:0}
 .bug-panel .sess-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
-.bug-panel .claim{font-size:11.5px;padding:0;border:0;box-shadow:none;background:transparent;color:var(--module);font-weight:800}
+.bug-panel .claim{font-size:11.5px;padding:0;border:0;box-shadow:none;background:transparent;color:var(--module);font-weight:800;white-space:nowrap}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
+.bug-panel li:not(.on) .claim{pointer-events:none;text-decoration:none}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
+.bug-status{display:inline-flex;align-items:center;align-self:flex-start;max-width:100%;padding:2px 7px;border-radius:999px;
+  font-size:10.5px;font-weight:700;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bug-status.waiting{background:#fff3bf;color:var(--focus)}
+.bug-status.processing{background:var(--blue-soft);color:var(--module)}
+.bug-status.handoff{background:var(--red-soft);color:var(--red)}
+.bug-status.settling,.bug-status.fixed,.bug-status.resolved{background:var(--green-soft);color:var(--green)}
+.bug-status.deferred,.bug-status.wontfix{background:#eeeeec;color:var(--muted)}
+.bug-main>.bug-status{margin:3px 0 0 8px}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:#f7f1e6}
 body.bug-path-mode .node .add-child{display:none}
@@ -535,7 +559,8 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
-  border-left:2px solid var(--line-ink);overflow:auto;padding:16px 18px 28px;cursor:default}
+  border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
+  font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
   z-index:21;cursor:col-resize;touch-action:none;background:transparent}
 .drawer-split:before{content:"";position:absolute;top:0;bottom:0;left:7px;width:2px;background:transparent}
@@ -550,7 +575,7 @@ body.drawer-resizing .bug-panel{pointer-events:none}
 .crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px;margin-bottom:2px}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
-.drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700}
 .state-chip{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;flex:0 0 auto}
 .state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
@@ -580,7 +605,6 @@ html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
   display:block;box-sizing:border-box;border:2px solid var(--line-ink);border-radius:8px;background:#fff}
 .compose .ed:focus{background:var(--green-soft);border-color:var(--green);box-shadow:none}
 .confirm-row{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--red)}
-.drawer h2{margin:4px 0 0;font-size:22px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:800}
 button{font:inherit;font-size:13px;font-weight:700;padding:6px 12px;border:2px solid var(--line-ink);background:var(--paper);
   border-radius:8px;cursor:pointer;color:var(--ink);box-shadow:var(--shadow-sm)}
 button:hover{background:var(--yellow);color:var(--ink);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--line-ink)}
@@ -592,12 +616,14 @@ button.warn:hover{border-color:var(--line-ink);background:var(--red-soft);color:
 button.quiet{border-color:transparent;color:var(--muted);padding:6px 8px;box-shadow:none}
 button.quiet:hover{border-color:var(--line-ink);color:var(--ink);box-shadow:var(--shadow-sm);background:var(--paper)}
 .plus-btn{width:28px;height:28px;padding:0;display:inline-grid;place-items:center;
-  font-size:20px;line-height:1;font-weight:800;border-radius:8px}
+  font-size:18px;line-height:1;font-weight:700;border-radius:8px;border:0;background:transparent;
+  color:var(--muted);box-shadow:none}
+.plus-btn:hover{transform:none;box-shadow:none;background:transparent;color:var(--ink)}
 section.block{margin-top:14px}
 section.block .block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px}
 section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(--ink);letter-spacing:0;font-weight:800}
 .mem-list{list-style:none;margin:0;padding:0}
-.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px;font-family:var(--font-note)}
+.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);font-size:12.5px;font-family:var(--font-note)}
 .mem-list li:first-child{border-top:0}
 .mem-list .dot{margin-top:5px}
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
@@ -622,16 +648,17 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
-details.fold{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
-details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none;
-  display:flex;align-items:center;gap:8px}
+details.fold{margin-top:8px;border-top:1px solid var(--line);padding:20px 0 16px}
+details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
+  display:flex;align-items:center;gap:8px;min-height:36px;line-height:1.4;padding:4px 0 10px}
 details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
-details.fold .mem-list{margin-top:6px}
+details.fold .mem-list,details.fold .bug-list,details.fold .dormant-list{margin-top:2px}
+details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{border-top:0;padding:10px 0 8px}
 
 .bug-list{list-style:none;margin:0;padding:0}
-.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line)}
+.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
 .bug-list li:first-child{border-top:0}
 .bug-check{width:18px;height:18px;border:2px solid var(--red);border-radius:5px;cursor:pointer;
   flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;
@@ -653,7 +680,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);
   border-radius:6px;background:#fff;margin:8px 0}
 .dormant-list{list-style:none;margin:0;padding:0}
-.dormant-list li{padding:7px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.dormant-list li{padding:10px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .dormant-list li:first-child{border-top:0}
 .dormant-list b{color:var(--ink)}
 .dormant-list .exp{display:block;margin-top:3px}
@@ -696,7 +723,7 @@ html.cg-phone .tray-btn,html.cg-phone .auth-btn,
 html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
   min-height:36px;padding-top:7px;padding-bottom:7px
 }
-html.cg-phone #btn-settings{width:36px;height:36px;min-height:36px;padding:0}
+html.cg-phone #btn-settings,html.cg-phone #btn-auth{width:36px;height:36px;min-height:36px;padding:0}
 html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
 html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
 html.cg-phone .drawer{
@@ -743,6 +770,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
+html.cg-phone details.fold>summary{min-height:40px;padding:4px 0 10px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
@@ -769,11 +797,11 @@ html.cg-phone .drawer h2{font-size:18px}
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
-    <div class="session-chip" aria-hidden="true">
-      <b id="session-name">S-0823</b>
-      <b id="auth-count">0</b>
+    <div class="session-chip" aria-label="当前 Agent 会话">
+      <b id="session-name">暂无 Agent 会话</b>
+      <span id="session-status" class="session-status empty" aria-label="未挂载会话"></span>
     </div>
-    <button class="auth-btn" id="btn-auth">🔑 <span data-i18n="authMode">授权模式</span></button>
+    <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
   </div>
@@ -860,6 +888,7 @@ html.cg-phone .drawer h2{font-size:18px}
     <div id="currents"></div>
   </div>
 </div>
+<div id="dot-hint" hidden role="tooltip"></div>
 
 <div class="tray" id="tray">
   <h3 data-i18n="trayTitle">已取消的提议</h3>
@@ -938,7 +967,7 @@ const I18N = {
     workCopy2:"下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。",
     trayTitle:"已取消的提议",
     trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
-    openBugs:"未修的 Bug",
+    openBugs:"Bug 处理状态",
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
@@ -948,6 +977,8 @@ const I18N = {
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
     leave:"离开", claim:"本会话在修",
+    bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
+    bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugDeferred:"已延期", bugWontFix:"不处理",
     exitChain:"退出链路",
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
@@ -1026,7 +1057,7 @@ const I18N = {
     workCopy2:"The notes below are a prepared demo. Real first-use decides L1 with you, then goes deeper; titles must be instantly readable. This demo still shows the agreed 4–8 trunk cards. This is not a live read of the repo.",
     trayTitle:"Cancelled proposals",
     trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
-    openBugs:"Open bugs",
+    openBugs:"Bug status",
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
@@ -1036,6 +1067,8 @@ const I18N = {
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
     leave:"Leave", claim:"This session is fixing it",
+    bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
+    bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugDeferred:"Deferred", bugWontFix:"Won't fix",
     exitChain:"Exit chain",
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
@@ -3877,6 +3910,43 @@ function workDotState(n){
 function workStateHint(s){
   return t("stateHint_"+s) || t("state_"+s);
 }
+function prefersFineHover(){
+  try{ return window.matchMedia("(hover: hover) and (pointer: fine)").matches; }catch(e){ return true; }
+}
+function nodeDotHtml(n, extraClass){
+  const st = workDotState(n);
+  const hint = workStateHint(st);
+  const native = prefersFineHover() ? "" : ` title="${escAttr(hint)}"`;
+  return `<i class="dot ${extraClass||""} ${st}" data-hint="${escAttr(hint)}" aria-label="${escAttr(hint)}"${native}></i>`;
+}
+let dotHintEl = null;
+function hideDotHint(){
+  if(!dotHintEl) dotHintEl = document.getElementById("dot-hint");
+  if(dotHintEl) dotHintEl.hidden = true;
+}
+function showDotHint(dot){
+  const text = dot && dot.getAttribute("data-hint");
+  if(!text) return;
+  if(!dotHintEl) dotHintEl = document.getElementById("dot-hint");
+  if(!dotHintEl) return;
+  dotHintEl.textContent = text;
+  dotHintEl.hidden = false;
+  const r = dot.getBoundingClientRect();
+  const tw = dotHintEl.offsetWidth;
+  const th = dotHintEl.offsetHeight;
+  let left = r.left + r.width/2 - tw/2;
+  let top = r.top - th - 8;
+  if(top < 52) top = r.bottom + 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  dotHintEl.style.left = left+"px";
+  dotHintEl.style.top = top+"px";
+}
+function bindNodeDotHint(div){
+  const dot = div.querySelector(".dot[data-hint]");
+  if(!dot) return;
+  dot.addEventListener("pointerenter", ()=>showDotHint(dot));
+  dot.addEventListener("pointerleave", hideDotHint);
+}
 /* 按仓库里实际有没有做、有没有测，给节点上色。旧缓存若还是蓝点，只升不降。 */
 const MAP_COMPLETION = {
   T0:"untested",
@@ -4069,7 +4139,12 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){ return workbenchSync?.activeSession || "human-workbench"; }
+function currentSessionId(){ return workbenchSync?.activeSession || null; }
+function sessionColor(sessionId){
+  let hash = 0;
+  for(const ch of String(sessionId||"")) hash = (hash*31 + ch.codePointAt(0)) >>> 0;
+  return `hsl(${hash%360} 68% 45%)`;
+}
 
 function bugSessionsOf(bug){
   if(!bug) return [];
@@ -4083,6 +4158,39 @@ function bugSessionsOf(bug){
   });
   return bug.sessions;
 }
+function sessionMetaOf(sessionId){
+  return (workbenchSync?.sessions||[]).find(item=>item.id===sessionId) || null;
+}
+function sessionDisplayName(sessionId){
+  const meta = sessionMetaOf(sessionId);
+  const raw = String(sessionId||"");
+  const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
+  return meta ? `${meta.platform}-${meta.name||short}` : short;
+}
+function bugProgress(bug){
+  const status = String(bug?.status||"open");
+  if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
+  if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
+  if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
+  if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
+  if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
+  const sessions = bugSessionsOf(bug);
+  if(!sessions.length) return {kind:"waiting", label:t("bugWaiting"), detail:""};
+  const active = sessions.filter(id=>sessionMetaOf(id)?.status!=="stopped");
+  const handling = active.length ? active : sessions;
+  const names = handling.map(sessionDisplayName);
+  const detail = names.join("、");
+  const compact = names.length>1 ? `${names[0]} +${names.length-1}` : names[0];
+  return {
+    kind:active.length?"processing":"handoff",
+    label:`${t(active.length?"bugProcessing":"bugHandoff")} · ${compact}`,
+    detail
+  };
+}
+function bugProgressHtml(bug){
+  const state = bugProgress(bug);
+  return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
+}
 function openBugList(){
   const out=[];
   walkAll(data,(n,ps)=>{
@@ -4091,6 +4199,9 @@ function openBugList(){
       if(!b || b.status==="dormant") return;
       out.push({bug:b, node:n, path:[...ps, n]});
     });
+  });
+  ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(b=>{
+    if(b && b.status!=="dormant") out.push({bug:b, node:data, path:[data], unassigned:true});
   });
   return out;
 }
@@ -4107,7 +4218,9 @@ function focusedBug(){
   const n = getNode(bugFocus.nodeId);
   if(!n) return null;
   const b = (n.bugs||[]).find(x=>x.id===bugFocus.bugId);
-  return b ? {node:n, bug:b} : null;
+  if(b) return {node:n, bug:b, unassigned:false};
+  const loose = ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===bugFocus.bugId);
+  return loose ? {node:n, bug:loose, unassigned:true} : null;
 }
 function clearRelationMode(){
   if(!relationMode) return;
@@ -4166,6 +4279,7 @@ function openBugPanel(open){
 function toggleBugSession(node, bug){
   if(!node || !bug) return;
   const sid = currentSessionId();
+  if(!sid){ workbenchSync?.setStatus(workbenchSync.status, "尚无真实 Agent 会话"); return; }
   const list = bugSessionsOf(bug);
   const i = list.indexOf(sid);
   if(i>=0) list.splice(i,1);
@@ -4189,27 +4303,24 @@ function renderBugPanel(){
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
-    const claim = on
+    const claim = on && sid && !item.unassigned
       ? `<button type="button" class="claim" data-claim>${mine?t("leave"):t("claim")}</button>`
       : "";
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
-      <span class="bug-title">${esc(title)}</span>
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
       ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
     </li>`;
   }).join("");
-  ul.querySelectorAll("li[data-node]").forEach(li=>{
+  ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
+    const item = list[index];
     li.onclick = e=>{
       if(e.target.closest("[data-claim]")) return;
-      enterBugPath(li.dataset.node, li.dataset.bug);
+      enterBugPath(item.node.id, item.bug.id);
     };
-  });
-  ul.querySelectorAll("[data-claim]").forEach(btn=>{
-    btn.onclick = e=>{
+    const claim = li.querySelector("[data-claim]");
+    if(claim) claim.onclick = e=>{
       e.preventDefault(); e.stopPropagation();
-      const li = btn.closest("li");
-      const n = getNodeAny(li.dataset.node);
-      const b = n && (n.bugs||[]).find(x=>x.id===li.dataset.bug);
-      toggleBugSession(n, b);
+      toggleBugSession(item.node, item.bug);
     };
   });
 }
@@ -4238,7 +4349,6 @@ function renderNav(){
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
-    document.getElementById("auth-count").textContent = sessionAuth.size;
     document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
@@ -4252,7 +4362,6 @@ function renderNav(){
   ).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
-  document.getElementById("auth-count").textContent = sessionAuth.size;
   document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
@@ -4404,7 +4513,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}<i class="dot module ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${esc(n.title)}</span>
+    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${esc(n.title)}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
@@ -4414,7 +4523,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(isProposed(n)){
     return pending+`<i class="dot proposed"></i><span>${esc(n.title)}</span>`;
   }
-  return authMark+`<i class="dot ${workDotState(n)}" title="${escAttr(workStateHint(workDotState(n)))}"></i><span>${esc(n.title)}</span>`+
+  return authMark+nodeDotHtml(n)+`<span>${esc(n.title)}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -4422,6 +4531,7 @@ function nodeHtml(n, isViewRoot, ghost){
 }
 
 function renderMap(){
+  hideDotHint();
   if(!(data.flows && data.flows.length) && currentRepo().blueprint && currentRepo().blueprint.flows){
     data.flows = clone(currentRepo().blueprint.flows);
   }
@@ -4449,6 +4559,7 @@ function renderMap(){
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
+    bindNodeDotHint(div);
     div.style.visibility = "hidden";
     nodesEl.appendChild(div);
     els.set(n.id, div);
@@ -4933,14 +5044,14 @@ function renderDetail(){
     const mine = bug && sessions.indexOf(sid)>=0;
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
-      <h2>${esc(bug && bug.title ? bug.title : "Bug")}</h2>
+      <h2>${esc(bug && bug.title ? bug.title : "Bug")}${bugProgressHtml(bug)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        <button type="button" class="quiet" data-act="claim">${mine?t("leave"):t("claim")}</button>
+        ${hit && hit.unassigned ? `<span class="muted">未挂节点</span>` : sid ? `<button type="button" class="quiet" data-act="claim">${mine?t("leave"):t("claim")}</button>` : `<span class="muted">暂无真实 Agent 会话</span>`}
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
-    if(claim) claim.onclick = ()=>toggleBugSession(hit && hit.node, bug);
+    if(claim) claim.onclick = ()=>{ if(!hit?.unassigned) toggleBugSession(hit && hit.node, bug); };
     return;
   }
 
@@ -4994,16 +5105,18 @@ function renderDetail(){
   const bugHtml = bugRows.length
     ? `<ul class="bug-list">`+bugRows.map(row=>{
         const b = row.bug;
+        const settled = ["pending","fixed","resolved","dormant"].includes(b.status);
         const title = row.home
           ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
           : `<div class="bug-title">${esc(b.title)}</div>`;
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
-        <li class="${b.status==='pending'?'bug-pending':''}">
-          <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
+        <li class="${settled?'bug-pending':''}">
+          <div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
+            ${bugProgressHtml(b)}
             ${attach}
           </div>
         </li>`;
@@ -5476,6 +5589,7 @@ function endPointer(e){
   }
 }
 vp.addEventListener("pointerdown", e=>{
+  hideDotHint();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
   if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
@@ -5551,7 +5665,7 @@ async function boot(){
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:(ids,session,meta)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const displayName=meta?`${meta.platform}-${meta.name||session}`:"暂无 Agent 会话"; const state=meta?.status==="active"?"active":meta?"stopped":"empty"; const stateLabel=state==="active"?"工作中":state==="stopped"?"已完成":"未挂载会话"; label.textContent=displayName; label.title=meta?.name||session||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
   const connected=await workbenchSync.start();
   if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }

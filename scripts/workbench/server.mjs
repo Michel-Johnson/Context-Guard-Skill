@@ -32,6 +32,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   const adminToken = token(), humanToken = token(), agentTokens = new Map(), peers = new Map();
   const access = await new Access(root).init();
+  let stopAccessWatch = () => {};
   let projectionQueue = Promise.resolve();
   const store = new MapStore(root, { fault, project: (doc, version) => {
     const job = projectionQueue.then(() => store.version === version ? generateProjections(root, doc, version, () => store.version === version) : false);
@@ -119,7 +120,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const result = await store.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers().length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
-          if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, { sessions: await access.knownSessions(), grants: access.data.sessions }); }
+          if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, await access.snapshot()); }
           if (route === '/api/access' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             await store.serial(async () => {
@@ -178,11 +179,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const state = { protocol: 2, root, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };
     await atomicWrite(statePath(root), encode(state));
     store.on('change', state => broadcast('state', state));
+    stopAccessWatch = access.watch(() => broadcast('access', {}));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
     function close() {
       if (close.promise) return close.promise;
       close.promise = (async () => {
         clearInterval(heartbeat);
+        stopAccessWatch();
         // Stop accepting reconnects before draining events or slow projections.
         const disconnected = new Promise((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve());
@@ -200,5 +203,5 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
     return { state, store, access, server, close, humanToken };
-  } catch (e) { await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
+  } catch (e) { stopAccessWatch(); await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
 }
