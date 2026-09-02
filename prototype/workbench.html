@@ -505,8 +505,8 @@ body.auth-mode .node .add-child{display:none}
   padding:10px 0 20px;display:none;cursor:default}
 .bug-panel.open{display:block}
 body.bugs-open #viewport{right:var(--bug-panel-width)}
-body.bugs-open .drawer,
-body.bugs-open .drawer-split{display:none}
+body.bugs-open .drawer{display:none}
+body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel h3{margin:0 12px 6px;font-size:13px;font-weight:800}
 .bug-panel ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .bug-panel li{display:flex;align-items:center;gap:8px;
@@ -733,7 +733,7 @@ html.cg-phone .drawer-split:before{
 html.cg-phone .drawer-split:hover:before,html.cg-phone .drawer-split:focus-visible:before,
 html.cg-phone body.drawer-resizing .drawer-split:before{opacity:.7}
 html.cg-phone body.drawer-resizing{cursor:row-resize}
-html.cg-phone body.bugs-open .drawer-split{display:block}
+html.cg-phone body.bugs-open .drawer-split{display:block;right:0;width:100%}
 html.cg-phone .bug-panel{
   top:auto;left:0;right:0;width:100%;height:var(--drawer-height);
   border-left:none;border-top:2px solid var(--line-ink);
@@ -5423,7 +5423,9 @@ function chromeTop(){
 }
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
+const BUG_W_KEY = "cg-bug-panel-width";
 const DRAWER_W_DEFAULT = 340;
+const BUG_W_DEFAULT = 240;
 const PHONE_MQ = "(max-width: 820px), (hover: none) and (pointer: coarse) and (orientation: portrait)";
 function isPhoneLayout(){
   if(window.__CG_PHONE_FORCE===true) return true;
@@ -5450,10 +5452,15 @@ function defaultDrawerHeight(){
   return Math.round((window.innerHeight || 800) * 0.4);
 }
 function drawerHeightPx(){ return cssPx("--drawer-height", defaultDrawerHeight()); }
-function bugPanelWidthPx(){ return cssPx("--bug-panel-width", 240); }
+function bugPanelWidthPx(){ return cssPx("--bug-panel-width", BUG_W_DEFAULT); }
+function bugsPanelOpen(){ return document.body.classList.contains("bugs-open") && !isPhoneLayout(); }
 function clampDrawerWidth(px){
   const max = Math.max(280, Math.min(640, Math.floor(window.innerWidth * 0.62)));
   return Math.max(220, Math.min(max, Math.round(px)));
+}
+function clampBugPanelWidth(px){
+  const max = Math.max(220, Math.min(560, Math.floor(window.innerWidth * 0.55)));
+  return Math.max(180, Math.min(max, Math.round(px)));
 }
 function clampDrawerHeight(px){
   const top = chromeTop();
@@ -5477,10 +5484,24 @@ function applyDrawerHeight(px, save){
   }
   return h;
 }
+function applyBugPanelWidth(px, save){
+  const w = clampBugPanelWidth(px);
+  document.documentElement.style.setProperty("--bug-panel-width", w+"px");
+  if(save){
+    try{ localStorage.setItem(BUG_W_KEY, String(w)); }catch(e){}
+  }
+  return w;
+}
 function restoreDrawerWidth(){
   try{
     const n = parseFloat(localStorage.getItem(DRAWER_W_KEY));
     if(Number.isFinite(n)) applyDrawerWidth(n, false);
+  }catch(e){}
+}
+function restoreBugPanelWidth(){
+  try{
+    const n = parseFloat(localStorage.getItem(BUG_W_KEY));
+    if(Number.isFinite(n)) applyBugPanelWidth(n, false);
   }catch(e){}
 }
 function restoreDrawerHeight(){
@@ -5508,6 +5529,7 @@ function syncSplitChrome(){
 function finishDrawerChrome(){
   restoreDrawerWidth();
   restoreDrawerHeight();
+  restoreBugPanelWidth();
   bindDrawerSplit();
   applyDrawerLayout();
   syncChrome();
@@ -5526,7 +5548,8 @@ function bindDrawerSplit(){
     }else{
       const x = e.clientX;
       if(!Number.isFinite(x)) return;
-      applyDrawerWidth(window.innerWidth - x, false);
+      if(bugsPanelOpen()) applyBugPanelWidth(window.innerWidth - x, false);
+      else applyDrawerWidth(window.innerWidth - x, false);
     }
   }
   function unbindMove(){
@@ -5546,11 +5569,11 @@ function bindDrawerSplit(){
     document.body.classList.remove("drawer-resizing");
     unbindMove();
     if(isPhoneLayout()) applyDrawerHeight(drawerHeightPx(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx(), true);
     else applyDrawerWidth(drawerWidthPx(), true);
     fitView();
   }
   function start(e){
-    if(document.body.classList.contains("bugs-open") && !isPhoneLayout()) return;
     if(e.button!=null && e.button!==0) return;
     if(resizing && e.type==="mousedown") return;
     e.preventDefault();
@@ -5577,6 +5600,7 @@ function bindDrawerSplit(){
   el.addEventListener("dblclick", e=>{
     e.preventDefault();
     if(isPhoneLayout()) applyDrawerHeight(defaultDrawerHeight(), true);
+    else if(bugsPanelOpen()) applyBugPanelWidth(BUG_W_DEFAULT, true);
     else applyDrawerWidth(DRAWER_W_DEFAULT, true);
     fitView();
   });
@@ -5591,7 +5615,9 @@ function bindDrawerSplit(){
     }
     if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
     e.preventDefault();
-    applyDrawerWidth(drawerWidthPx() + (e.key==="ArrowLeft" ? step : -step), true);
+    const delta = e.key==="ArrowLeft" ? step : -step;
+    if(bugsPanelOpen()) applyBugPanelWidth(bugPanelWidthPx() + delta, true);
+    else applyDrawerWidth(drawerWidthPx() + delta, true);
     fitView();
   });
 }
