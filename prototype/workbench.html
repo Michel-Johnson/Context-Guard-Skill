@@ -636,10 +636,20 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
+.note-stack{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.note-card{background:#fff;border-radius:12px;padding:12px 12px 10px}
+.note-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px}
+.note-head b{font-size:13px;font-weight:800}
+.note-card .mem-list,.note-card .bug-list{margin:0}
+.note-card .mem-list li,.note-card .bug-list li{border-top:0;padding:7px 0}
+.note-card .empty{margin:0;padding:2px 0 4px;font-size:12.5px}
+.note-more{display:block;width:auto;margin:4px 0 0;padding:4px 0;border:0;background:transparent;
+  box-shadow:none;color:var(--muted);font-size:12.5px;font-weight:700;text-align:left}
+.note-more:hover{transform:none;box-shadow:none;background:transparent;color:var(--ink);border:0}
 .sec-block{margin-top:0;padding:16px 0 12px;border-top:1px solid var(--line)}
 .sec-add{display:inline-flex;align-items:center;gap:6px}
 .sec-block .mem-list,.sec-block .bug-list{margin-top:8px}
-details.fold{margin-top:0;border-top:1px solid var(--line);padding:16px 0 12px}
+details.fold{margin-top:12px;border-top:0;padding:8px 4px 12px}
 details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
   display:flex;align-items:center;gap:8px;min-height:28px;line-height:1.4;padding:4px 0}
 details.fold>summary .plus-btn{margin-left:auto}
@@ -1314,6 +1324,9 @@ const I18N = {
     moduleName:"模块名称", childName:"子节点名称",
     memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
     addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
+    noneYet:"还没有",
+    showRest:"展开其余 {n} 条",
+    showLess:"收起",
     module:"模块", cancelledChip:"已取消",
     state_dirty:"未开发", state_untested:"已做未测", state_success:"测试通过", state_failed:"测试未过",
     stateHint_dirty:"还没开始开发",
@@ -1402,6 +1415,9 @@ const I18N = {
     moduleName:"Module name", childName:"Child name",
     memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
+    noneYet:"None yet",
+    showRest:"Show {n} more",
+    showLess:"Show less",
     module:"Module", cancelledChip:"Cancelled",
     state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
     stateHint_dirty:"Development has not started",
@@ -5345,6 +5361,29 @@ function bindSilent(el, fn){
   el.onmousedown = e=>e.preventDefault();
   el.onclick = fn;
 }
+const NOTE_PREVIEW = 5;
+function noteCardHtml({fold, title, addAct, addTitle, items, listClass, expanded, moreAct}){
+  let body;
+  if(!items.length){
+    body = `<p class="empty">${t("noneYet")}</p>`;
+  }else{
+    const extra = items.length - NOTE_PREVIEW;
+    const shown = (expanded || extra<=0) ? items : items.slice(0, NOTE_PREVIEW);
+    const more = extra>0
+      ? `<button type="button" class="note-more" data-act="${moreAct}">${
+          expanded ? t("showLess") : t("showRest").replace("{n}", String(extra))
+        }</button>`
+      : "";
+    body = `<ul class="${listClass}">${shown.join("")}</ul>${more}`;
+  }
+  return `<section class="note-card" data-fold="${fold}">
+    <header class="note-head">
+      <b>${title}</b>
+      <button type="button" class="plus-btn" data-act="${addAct}" title="${escAttr(addTitle)}">＋</button>
+    </header>
+    ${body}
+  </section>`;
+}
 function renderDetail(){
   liveSelected();
   let path = pathOf(getNode(selectedId)) || findPath(selectedId);
@@ -5413,37 +5452,26 @@ function renderDetail(){
   const alsoMems = memsAlsoFor(node);
   const inhCount = PINNED.length + inherited.length + alsoMems.length;
   const bugRows = bugsFor(node);
-  const openBugs = bugRows.map(r=>r.bug);
 
-  const memHtml = node.memories.length
-    ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${esc(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`
-      ).join("")+`</ul>`
-    : "";
-  const ideaHtml = node.ideas.length
-    ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
-      ).join("")+`</ul>`
-    : "";
-
-  const bugHtml = bugRows.length
-    ? `<ul class="bug-list">`+bugRows.map(row=>{
-        const b = row.bug;
-        const title = row.home
-          ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
-          : `<div class="bug-title">${esc(b.title)}</div>`;
-        const attach = row.home ? attachHtml("bug", b.id, b) : "";
-        return `
-        <li class="${b.status==='pending'?'bug-pending':''}">
-          <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
-          <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
-            ${title}
-            ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
-            ${attach}
-          </div>
-        </li>`;
-      }).join("")+`</ul>`
-    : "";
+  const memItems = node.memories.map((m,i)=>
+    `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${esc(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`);
+  const ideaItems = node.ideas.map((m,i)=>
+    `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`);
+  const bugItems = bugRows.map(row=>{
+    const b = row.bug;
+    const title = row.home
+      ? `<div class="bug-title ed" data-ed="bug-title" data-bug="${b.id}">${esc(b.title)}</div>`
+      : `<div class="bug-title">${esc(b.title)}</div>`;
+    const attach = row.home ? attachHtml("bug", b.id, b) : "";
+    return `<li class="${b.status==='pending'?'bug-pending':''}">
+      <div class="bug-check ${b.status==='pending'?'done':''}" data-bug="${b.id}">${b.status==='pending'?"✓":""}</div>
+      <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
+        ${title}
+        ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
+        ${attach}
+      </div>
+    </li>`;
+  });
 
   const pendingKids = node.children.filter(isProposed).length;
   const canDelete = node.id!==data.id;
@@ -5477,18 +5505,11 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
-    <section class="sec-block" data-fold="mem">
-      <button type="button" class="sec-add" data-act="add-mem" title="${escAttr(t("addMem"))}">${labels.memory}${node.memories.length?" "+node.memories.length:""} ＋</button>
-      ${memHtml}
-    </section>
-    <section class="sec-block" data-fold="idea">
-      <button type="button" class="sec-add" data-act="add-idea" title="${escAttr(t("addIdea"))}">${labels.ideas}${node.ideas.length?" "+node.ideas.length:""} ＋</button>
-      ${ideaHtml}
-    </section>
-    <section class="sec-block" data-fold="bug">
-      <button type="button" class="sec-add" data-act="add-bug" title="${escAttr(t("addBug"))}">${labels.bugs}${openBugs.length?" "+openBugs.length:""} ＋</button>
-      ${bugHtml}
-    </section>
+    <div class="note-stack">
+      ${noteCardHtml({fold:"mem", title:labels.memory, addAct:"add-mem", addTitle:t("addMem"), items:memItems, listClass:"mem-list", expanded:foldMem, moreAct:"expand-mem"})}
+      ${noteCardHtml({fold:"idea", title:labels.ideas, addAct:"add-idea", addTitle:t("addIdea"), items:ideaItems, listClass:"mem-list", expanded:foldIdea, moreAct:"expand-idea"})}
+      ${noteCardHtml({fold:"bug", title:labels.bugs, addAct:"add-bug", addTitle:t("addBug"), items:bugItems, listClass:"bug-list", expanded:foldBug, moreAct:"expand-bug"})}
+    </div>
     <details class="fold" data-fold="inherited" ${foldInherited?"open":""}>
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
@@ -5539,6 +5560,9 @@ function renderDetail(){
     const last = document.querySelector(".bug-list .bug-title.ed:last-of-type, .bug-list li:last-child .bug-title");
     if(last) last.focus();
   };
+  if(q('[data-act="expand-mem"]')) q('[data-act="expand-mem"]').onclick = (e)=>{ e.preventDefault(); foldMem = !foldMem; renderAll(); };
+  if(q('[data-act="expand-idea"]')) q('[data-act="expand-idea"]').onclick = (e)=>{ e.preventDefault(); foldIdea = !foldIdea; renderAll(); };
+  if(q('[data-act="expand-bug"]')) q('[data-act="expand-bug"]').onclick = (e)=>{ e.preventDefault(); foldBug = !foldBug; renderAll(); };
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
   if(q('[data-act="done"]'))    q('[data-act="done"]').onclick    = ()=>{ node.state="success";
