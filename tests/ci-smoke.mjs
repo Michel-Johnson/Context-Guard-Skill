@@ -305,6 +305,13 @@ async function main() {
   assert.equal((await fetch(automaticUrl)).status, 200);
   run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
+  const archivedMap = readJson(path.join(project, ".codex/context/map.json"));
+  const archiveProposal = archivedMap.root.children.find(node => node.proposal === "proposed" && node.owns?.includes("scripts/context_guard.py"));
+  assert.ok(archiveProposal, "archive-session should propose a node for files missing from the Map");
+  assert.equal(archiveProposal.proposedBy, "session-three");
+  assert.match(archiveProposal.memories[0].text, /CI 主链路通过/);
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.filter(node => node.id === archiveProposal.id).length, 1);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
 
   const candidatesInput = path.join(temporaryRoot, "l1-candidates.json");

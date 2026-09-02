@@ -7,6 +7,7 @@ export const packedFiles = [
   "scripts/workbench/inbox.mjs",
   "scripts/workbench/io.mjs",
   "scripts/workbench/projections.mjs",
+  "scripts/workbench/reconcile.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
 
@@ -23,6 +24,7 @@ export const packedFiles = [
   "references/context-template.md",
   "scripts/context_guard_hook.py",
   "scripts/context_guard.py",
+  "scripts/cloud/server.mjs",
   "scripts/map_owns.py"
 ];
 
@@ -35,6 +37,7 @@ export const installedFiles = [
   "scripts/workbench/inbox.mjs",
   "scripts/workbench/io.mjs",
   "scripts/workbench/projections.mjs",
+  "scripts/workbench/reconcile.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
 

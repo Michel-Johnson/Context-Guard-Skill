@@ -271,6 +271,8 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
         "never store secrets in project context. "
         "Before the final response, archive durable progress once with `context-guard archive-session --root "
         f"{quoted_root} --session {json.dumps(current_session_id)} --summary <summary> --decisions <decisions> --next <next-steps> --files <comma-separated>`; "
+        "pass every repo-relative file changed by this Agent. Archive automatically records the summary on owning Map nodes and proposes a new node for uncovered files; "
+        "if authorization, UI synchronization, or version checks fail, report the failure and do not claim the Map was updated. Do not read or update legacy roadmap.md. "
         f"Before map work, run `context-guard map read --root {quoted_root} --session {json.dumps(current_session_id)} --node <id>`; "
         "this checks page drafts and returns the current version. For ongoing observation initialize `map inbox --start` once, "
         "then use `map inbox` or `map watch --wait-ms 40000`; report/process a pending receipt before `map ack --receipt <receipt>`. "

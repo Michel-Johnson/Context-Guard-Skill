@@ -8,6 +8,7 @@ import { startServer, statePath, health, skillRoot } from './server.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
+import { buildArchiveReconciliation } from './reconcile.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -109,6 +110,13 @@ async function main(args) {
   if (action === 'changes') return call('/api/changes' + (opt.cursor ? '?cursor=' + encodeURIComponent(opt.cursor) : ''));
   if (action === 'operation') return call('/api/operation?id=' + encodeURIComponent(opt.id || ''));
   if (action === 'apply') return call('/api/commit', { method: 'POST', body: await inputJSON(opt.input) });
+  if (action === 'reconcile') {
+    const input = await inputJSON(opt.input), snapshot = await call('/api/state');
+    const reconciliation = buildArchiveReconciliation(snapshot.doc, sessionId, input);
+    if (!reconciliation.operations.length) return { committed: true, duplicate: !!reconciliation.key, version: snapshot.version, reconciliation };
+    const result = await call('/api/commit', { method: 'POST', body: { operationId: reconciliation.operationId, baseVersion: snapshot.version, operations: reconciliation.operations } });
+    return { ...result, reconciliation: { ...reconciliation, operations: reconciliation.operations.map(operation => operation.type) } };
+  }
   if (action === 'projections') return call('/api/projections', { method: 'POST', body: { wait: !!opt.wait } });
   if (action === 'attach-bug') {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
@@ -116,9 +124,12 @@ async function main(args) {
   }
   if (action === 'update-bug') {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
-    return call('/api/commit', { method: 'POST', body: { operationId: `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
+    const result = await call('/api/commit', { method: 'POST', body: { operationId: `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
+    // The command updates both the live map and its generated indexes as one observable operation.
+    await call('/api/projections', { method: 'POST', body: { wait: true } });
+    return result;
   }
-  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, or map status|read|changes|inbox|ack|watch|apply|operation|projections');
+  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }

@@ -9,7 +9,7 @@ import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
-import { MapError, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
+import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 const execFileAsync = promisify(execFile);
@@ -22,6 +22,15 @@ export function bugSessionMessage(node, bug) {
     compactText(bug.desc) ? `描述: ${compactText(bug.desc)}` : '',
     compactText(bug.record, 500) ? `记录: ${compactText(bug.record, 500)}` : '',
     '请在当前项目中核对并处理；完成后更新 Context Guard 中的 Bug 状态和证据。',
+  ].filter(Boolean).join('\n');
+}
+export function todoSessionMessage(node, todo) {
+  return [
+    'Context Guard 工作台向你分配了一个 TODO。',
+    `TODO: ${compactText(todo.id, 128)} · ${compactText(todo.title)}`,
+    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
+    compactText(todo.desc) ? `描述: ${compactText(todo.desc)}` : '',
+    '请在当前项目中完成这个开发事项；完成后把 Context Guard 中的 TODO 标记为已完成。',
   ].filter(Boolean).join('\n');
 }
 async function queueCodexMessage({ sessionId, message, root }) {
@@ -120,7 +129,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             peer.res?.end(); peer.res = res; peers.set(id, peer);
             res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
             res.write(`retry: 500\nevent: state\ndata: ${JSON.stringify(store.state(false))}\n\n`);
-            req.on('close', () => { if (peer.res === res) peer.res = null; }); return;
+            req.on('close', () => {
+              if (peer.res !== res) return;
+              // The synchronization fence only represents live pages. Dirty browser
+              // state is already captured by the page recovery layer; retaining a
+              // disconnected peer would make a closed tab block every later Agent.
+              peers.delete(id);
+            }); return;
           }
           if (route === '/api/presence' && req.method === 'POST') {
             isHuman(actor); const input = await body(req), peer = peers.get(input.clientId);
@@ -143,13 +158,25 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return send(res, 200, result);
           }
           if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, await access.snapshot()); }
+          if (route === '/api/access-plan' && req.method === 'POST') {
+            isHuman(actor); const input = await body(req);
+            const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
+            await access.register(sessionId);
+            await store.serial(() => store.refresh());
+            const nodes = assignmentScope(store.doc, String(input.nodeId || '').trim());
+            const granted = new Set(access.grants(sessionId));
+            return send(res, 200, { sessionId, nodeId: input.nodeId, nodes, missing: nodes.filter(id => !granted.has(id)) });
+          }
           if (route === '/api/access' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             await store.serial(async () => {
               await store.refresh(); const ids = entries(store.doc.root);
-              if (!Array.isArray(input.nodes) || input.nodes.some(id => !ids.has(id))) throw new MapError('INVALID_SCOPE', 'Unknown node in scope');
-              await access.grant(input.sessionId, input.nodes, store.version);
-              await store.recordEvent({ operationId: randomUUID(), fromVersion: store.version, version: store.version, actor, actions: ['grant'], nodeIds: input.nodes, sessionId: input.sessionId });
+              const requested = Array.isArray(input.addNodes)
+                ? [...new Set([...access.grants(input.sessionId), ...input.addNodes])]
+                : input.nodes;
+              if (!Array.isArray(requested) || requested.some(id => !ids.has(id))) throw new MapError('INVALID_SCOPE', 'Unknown node in scope');
+              await access.grant(input.sessionId, requested, store.version);
+              await store.recordEvent({ operationId: randomUUID(), fromVersion: store.version, version: store.version, actor, actions: ['grant'], nodeIds: requested, sessionId: input.sessionId });
             });
             broadcast('access', {}); return send(res, 200, { saved: true });
           }
@@ -158,18 +185,24 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
             const nodeId = typeof input.nodeId === 'string' ? input.nodeId.trim() : '';
             const bugId = typeof input.bugId === 'string' ? input.bugId.trim() : '';
+            const todoId = typeof input.todoId === 'string' ? input.todoId.trim() : '';
             const session = (await access.sessionRegistry()).find(item => item.id === sessionId);
             if (!session) throw new MapError('UNKNOWN_SESSION', 'Session is not part of this project', 403);
             if (session.platform !== 'codex') throw new MapError('UNSUPPORTED_PLATFORM', 'Automatic messages currently require a Codex session', 400);
             await store.serial(() => store.refresh());
             const node = store.doc.root ? entries(store.doc.root).get(nodeId)?.node : null;
             const bug = (node?.bugs || []).find(item => item?.id === bugId);
-            if (!node || !bug) throw new MapError('NOT_FOUND', 'Bug or owner node is missing', 404);
-            if (['resolved', 'dormant', 'wontfix'].includes(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
-            const message = bugSessionMessage(node, bug);
-            try { await messageQueue({ sessionId, message, root, session, node: structuredClone(node), bug: structuredClone(bug) }); }
-            catch { throw new MapError('SESSION_MESSAGE_FAILED', 'Bug information could not be delivered to the session', 502); }
-            return send(res, 200, { sent: true, sessionId, bugId });
+            const todo = (node?.todos || []).find(item => item?.id === todoId);
+            if (!node || (!bug && !todo) || (bugId && todoId)) throw new MapError('NOT_FOUND', 'Work item or owner node is missing', 404);
+            if (!access.grants(sessionId).includes(nodeId)) throw new MapError('SESSION_SCOPE_REQUIRED', 'Authorize this node for the session before assigning work', 403);
+            if (bug && ['resolved', 'dormant', 'wontfix'].includes(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
+            if (todo?.status === 'done') throw new MapError('TODO_CLOSED', 'Completed TODOs cannot be assigned', 409);
+            const message = bug ? bugSessionMessage(node, bug) : todoSessionMessage(node, todo);
+            const payload = { sessionId, message, root, session, node: structuredClone(node) };
+            if (bug) payload.bug = structuredClone(bug); else payload.todo = structuredClone(todo);
+            try { await messageQueue(payload); }
+            catch { throw new MapError('SESSION_MESSAGE_FAILED', 'Work item could not be delivered to the session', 502); }
+            return send(res, 200, { sent: true, sessionId, ...(bug ? { bugId } : { todoId }) });
           }
           if (route === '/api/migration-preview' && req.method === 'POST') {
             isHuman(actor); const input = await body(req); validate(input.doc);
