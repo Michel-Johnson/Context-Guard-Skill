@@ -55,6 +55,7 @@
 <style>
 :root{
   --chrome-top:52px;
+  --chrome-btn-h:36px;
   --ink:#2d2d2d; --muted:#746c60; --paper:#fffdf8; --bg:#fefaf2; --line:#d7ccb8; --line-ink:#2d2d2d;
   --green:#3a6e55; --green-soft:#efe6d2; --red:#e24b4b; --red-soft:#f8e4dc;
   --blue:#2d5da1; --blue-soft:#e4ebf4; --gray:#9a9084;
@@ -113,22 +114,24 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs .here{font-weight:700;padding:3px 9px;background:var(--module-soft);border-radius:6px;color:var(--module)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
-.tray-btn,.auth-btn{font-size:12.5px;padding:5px 11px}
-#btn-auth{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto;font-size:16px;line-height:1}
+.tray-btn,.auth-btn{
+  height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0 12px;font-size:12.5px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 auto}
+#btn-auth{width:var(--chrome-btn-h);padding:0;font-size:16px}
 .repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repo-status.ok{color:var(--green)}
 .repo-status.err{color:var(--red)}
-.dir-toggle,.lang-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
-.dir-toggle button,.lang-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
-.lang-toggle button{padding:5px 10px;min-width:36px}
+.dir-toggle,.lang-toggle,.rel-toggle{
+  display:flex;align-items:stretch;height:var(--chrome-btn-h);border:2px solid var(--line-ink);border-radius:8px;
+  overflow:hidden;flex:0 0 auto;box-sizing:border-box;box-shadow:var(--shadow-sm)}
+.dir-toggle button,.lang-toggle button,.rel-toggle button{
+  border:0;border-radius:0;height:auto;min-height:0;padding:0 12px;font-size:12.5px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
+.lang-toggle button{padding:0 10px;min-width:36px}
 .dir-toggle button + button,.lang-toggle button + button{border-left:2px solid var(--line-ink)}
-.dir-toggle button:hover,.lang-toggle button:hover{color:var(--ink)}
-.dir-toggle button.on,.lang-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
+.dir-toggle button:hover,.lang-toggle button:hover,.rel-toggle button:hover{color:var(--ink)}
+.dir-toggle button.on,.lang-toggle button.on,.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
 .dir-toggle.is-catalog{display:none}
-.rel-toggle{display:flex;border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;box-shadow:var(--shadow-sm)}
-.rel-toggle button{border:0;border-radius:0;padding:5px 12px;font-size:12.5px;background:var(--paper);color:var(--muted);cursor:pointer;font-weight:700}
-.rel-toggle button:hover{color:var(--ink)}
-.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
 body.rel-mode{background:#f3eee4}
@@ -235,6 +238,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
+#nodes{position:absolute;left:0;top:0;z-index:2}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
 #links path.link.dimmed{opacity:.18}
@@ -262,6 +266,7 @@ body.rel-mode .node .add-child{display:none}
 /* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
   width:max-content;max-width:280px;word-break:keep-all;overflow:visible;
+  min-height:var(--chrome-btn-h);box-sizing:border-box;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:16px;
   padding:5px 13px 5px 11px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
   box-shadow:var(--shadow-sm);transition:opacity .2s, transform .12s}
@@ -428,7 +433,7 @@ html.phone-preview .phone-preview-banner{display:block}
 html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
 .settings-wrap{position:relative;flex:0 0 auto}
-#btn-settings{width:36px;height:36px;padding:0;display:inline-grid;place-items:center;flex:0 0 auto}
+#btn-settings{width:var(--chrome-btn-h);padding:0}
 #btn-settings .gear-icon{width:18px;height:18px;display:block}
 .settings-menu{display:none;position:absolute;right:0;top:100%;margin-top:8px;z-index:40;width:248px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:10px}
@@ -586,7 +591,10 @@ html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
 .drawer .work-list li{margin:0 0 2px}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
 .note.alert{color:var(--red)}
-.actions{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap}
+.actions{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap;align-items:center}
+.actions > button,.compose > button{
+  height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0 12px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
 .files-row{margin-top:10px}
 .compose{display:flex;gap:6px;margin-top:10px;align-items:stretch}
 .compose .ed{flex:1;min-width:0;min-height:40px;padding:8px 12px;line-height:1.45;
@@ -726,10 +734,14 @@ html.cg-phone .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-hei
 html.cg-phone .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
 html.cg-phone #rel-hint{white-space:nowrap}
 html.cg-phone .tray-btn,html.cg-phone .auth-btn,
+html.cg-phone .dir-toggle,html.cg-phone .rel-toggle,html.cg-phone .lang-toggle,
 html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
-  min-height:36px;padding-top:7px;padding-bottom:7px
+  height:var(--chrome-btn-h);min-height:var(--chrome-btn-h)
 }
-html.cg-phone #btn-settings,html.cg-phone #btn-auth{width:36px;height:36px;min-height:36px;padding:0}
+html.cg-phone .dir-toggle button,html.cg-phone .rel-toggle button,html.cg-phone .lang-toggle button{
+  padding-top:0;padding-bottom:0
+}
+html.cg-phone #btn-settings,html.cg-phone #btn-auth{width:var(--chrome-btn-h);height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0}
 html.cg-phone #viewport{inset:var(--chrome-top) 0 var(--drawer-height) 0}
 html.cg-phone body.bugs-open #viewport{right:0;bottom:var(--drawer-height)}
 html.cg-phone .drawer{
@@ -769,7 +781,7 @@ html.cg-phone .first-use .card{width:min(720px,calc(100% - 20px));padding:18px 1
 html.cg-phone .first-use .card.wide{width:min(920px,calc(100% - 16px));max-height:none}
 html.cg-phone .first-use h2{font-size:17px}
 html.cg-phone .first-use .actions{flex-direction:column}
-html.cg-phone .first-use .actions button{width:100%;min-height:44px}
+html.cg-phone .first-use .actions button{width:100%;height:auto;min-height:44px}
 html.cg-phone .lens-bar{left:8px;right:8px;bottom:8px;flex-wrap:wrap;gap:8px}
 html.cg-phone .lens-group .lens-items{grid-template-columns:1fr}
 html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html.cg-phone .lens-tray li input[type=text]{font-size:16px}
@@ -3650,6 +3662,7 @@ function applyMapDoc(doc){
   if(Array.isArray(doc.flows)) data.flows=clone(doc.flows);
   if(!getNode(selectedId)) selectedId=data.id;
   if(!getNode(viewRootId)) viewRootId=data.id;
+  if(!window.__CG_SERVER) authUnlockAll();
   applyRepoChrome(); closeOverlay(); return true;
 }
 function scheduleMapWrite(){ workbenchSync?.changed(); }
@@ -4441,7 +4454,7 @@ function moduleAuthState(n){
   return "partial";
 }
 function toggleAuth(n){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(isProposed(n)||isCancelled(n)) return;
   if(n.kind==="module"){
     const ids = subtreeIds(n);
@@ -4458,7 +4471,7 @@ function toggleAuth(n){
       /* Scope is explicit; granting a child does not grant its ancestors. */
     }
   }
-  workbenchSync?.toggleAccess([...sessionAuth]);
+  if(workbenchSync?.ready) workbenchSync.toggleAccess([...sessionAuth]);
   renderAll();
 }
 function cancelledList(){
@@ -4861,7 +4874,7 @@ function nodeHtml(n, isViewRoot, ghost){
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
-    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${esc(n.title)}</span>
+    return pending+`<div class="m-head">${authMark}${nodeDotHtml(n, "module")}<span>${esc(n.title || "…")}</span>
         ${lock}
         ${focusId===n.id?`<span class="focus-mark">◎</span>`:""}
       </div>`+
@@ -4869,9 +4882,9 @@ function nodeHtml(n, isViewRoot, ghost){
       add;
   }
   if(isProposed(n)){
-    return pending+`<i class="dot proposed"></i><span>${esc(n.title)}</span>`;
+    return pending+`<i class="dot proposed"></i><span>${esc(n.title || "…")}</span>`;
   }
-  return authMark+nodeDotHtml(n)+`<span>${esc(n.title)}</span>`+
+  return authMark+nodeDotHtml(n)+`<span>${esc(n.title || "…")}</span>`+
     (!isAuth(n)?`<span class="lock">🔒</span>`:"")+
     (openBugs?`<span class="bug-badge">${openBugs}</span>`:"")+
     (focusId===n.id?`<span class="focus-mark">◎</span>`:"")+
@@ -6177,7 +6190,9 @@ async function boot(){
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
     notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
     document.body.append(notice);
-    await loadMapFromHttp(); renderAll(); fitView(); return;
+    await loadMapFromHttp();
+    authUnlockAll();
+    renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
@@ -6185,7 +6200,11 @@ async function boot(){
     setAccess:(ids,session)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); document.getElementById("session-name").textContent=session||"暂无 Agent 会话"; applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
   const connected=await workbenchSync.start();
-  if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
+  if(!connected){
+    await loadMapFromHttp();
+    if(!window.__CG_SERVER) authUnlockAll();
+    applyingServerMap=true; renderAll(); applyingServerMap=false;
+  }
   // A local server owns exactly one project. Switching demo repositories is preview-only.
   if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
   if(window.__CG_PREVIEW){

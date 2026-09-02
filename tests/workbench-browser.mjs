@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -26,6 +27,31 @@ function recordCheck(name) { checks.push(name); console.log(`Browser check passe
 const read = async () => JSON.parse(await fs.readFile(mapPath, 'utf8'));
 async function until(fn, timeout = 6000) { const end = Date.now() + timeout; while (!await fn()) { if (Date.now() >= end) throw new Error('condition timed out'); await pause(25); } }
 const synchronized = () => page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+async function servePrototype() {
+  const protoDir = path.join(workspace, 'prototype');
+  const types = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, 'http://127.0.0.1');
+      const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'workbench.html';
+      const file = path.normalize(path.join(protoDir, rel));
+      if (!file.startsWith(protoDir + path.sep)) { res.writeHead(403); res.end(); return; }
+      const data = await fs.readFile(file);
+      res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
+      res.end(data);
+    } catch { res.writeHead(404); res.end(); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return server;
+}
+async function chromeHeights(target) {
+  return target.evaluate(() => {
+    const rel = document.getElementById('rel-toggle');
+    const ids = ['btn-auth', 'btn-bugs', 'btn-settings'];
+    const boxes = [rel, ...ids.map(id => document.getElementById(id))].filter(Boolean);
+    return boxes.map(el => Math.round(el.getBoundingClientRect().height));
+  });
+}
 async function openSyncSettings() {
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') !== 'true') await page.locator('#btn-settings').click();
   if (await page.locator('#cg-sync').getAttribute('open') === null) await page.locator('#cg-sync summary').click();
@@ -78,6 +104,15 @@ try {
   await page.addInitScript(value => localStorage.setItem('cg-workbench-maps-v16', JSON.stringify(value)), legacy);
   await page.goto(running.state.url); await synchronized();
   assert.equal((await read()).root.title, '浏览器验收'); recordCheck('legacy-cache-not-written');
+  const chrome = await chromeHeights(page);
+  assert.ok(chrome.length >= 3, 'chrome buttons are on screen');
+  assert.equal(new Set(chrome).size, 1, `chrome button heights ${chrome.join(',')}`);
+  const moduleBtn = page.locator('#detail [data-act="module"]');
+  if (await moduleBtn.count()) {
+    const actH = await moduleBtn.evaluate(el => Math.round(el.getBoundingClientRect().height));
+    assert.equal(actH, chrome[0], `inspector ＋模块 height ${actH} vs chrome ${chrome[0]}`);
+  }
+  recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
   const widthBefore = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--drawer-width').trim());
@@ -240,6 +275,32 @@ try {
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
+  stage = 'static-preview-clicks';
+  const staticServer = await servePrototype();
+  const preview = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  preview.on('pageerror', error => errors.push(error.message));
+  try {
+    const port = staticServer.address().port;
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1`);
+    await preview.waitForSelector('.node.root');
+    assert.equal(await preview.locator('.node.noauth').count(), 0, 'static preview unlocks every node');
+    assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
+    const previewChrome = await chromeHeights(preview);
+    assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    const child = preview.locator('#nodes .node.module').nth(1);
+    const childId = await child.getAttribute('data-id');
+    const childTitle = (await child.locator('.m-head span').innerText()).trim();
+    await child.click();
+    await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
+    await preview.locator('#btn-auth').click();
+    await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
+    assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
+    await preview.locator('#btn-auth').click();
+    recordCheck('static-preview-node-click');
+  } finally {
+    await preview.close();
+    await new Promise(resolve => staticServer.close(resolve));
+  }
   await page.screenshot({ path: path.join(output, 'synced.png'), fullPage: true });
   assert.deepEqual(errors, []);
   passed = true;
