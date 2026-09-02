@@ -95,6 +95,23 @@ test("工作台镜头按目标倍率重绘iframe，停稳位移对齐设备像�
   assert.doesNotMatch(workbenchSource, /requestAnimationFrame\(animate\)/);
 });
 
+test("工作台六个章节完成后自动顺序循环，减少动态时不自动切换", () => {
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /const advanceChapter = useCallback\(\(\) => \{/);
+  assert.match(workbenchSource, /if \(reduced \|\| !completionEnabled\.current\) return/);
+  assert.match(workbenchSource, /completionEnabled\.current = false/);
+  assert.match(workbenchSource, /chapters\[\(current \+ 1\) % chapters\.length\]/);
+  assert.match(workbenchSource, /if \(chapter === selected\) return/);
+  assert.match(workbenchSource, /onClick=\{\(\) => selectChapter\(item\.id\)\}/);
+  assert.match(workbenchSource, /onComplete=\{advanceChapter\}/);
+  assert.match(workbenchSource, /onPrepared=\{\(\) => \{ completionEnabled\.current = true; \}\}/);
+  assert.match(workbenchSource, /\(controlled\?\.onComplete \?\? onCompleteRef\.current\)\?\.\(\)/);
+
+  const tourSource = readFileSync(new URL("../src/workbench-tour.js", import.meta.url), "utf8");
+  assert.match(tourSource, /if \(document\.querySelector\("#nav-crumbs a"\)\) await click\("#nav-crumbs a", true\)/);
+  assert.match(tourSource, /send\("prepared"\);\s*send\("step", \{ step: first, complete: false \}\)/);
+});
+
 test("文字逐字增长，不产生半个Unicode字符", () => {
   const text = "A中文😀B";
   for (let i = 0; i <= 5; i++) assert.equal(typedText(text, i * 24, 0), Array.from(text).slice(0, i).join(""));

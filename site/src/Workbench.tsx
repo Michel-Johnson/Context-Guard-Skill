@@ -52,6 +52,8 @@ export function TourStage({
   reduced,
   restartToken = 0,
   playback,
+  onComplete,
+  onPrepared,
 }: {
   chapter: ChapterId | "first-use";
   steps: readonly string[];
@@ -60,6 +62,8 @@ export function TourStage({
   reduced: boolean;
   restartToken?: number;
   playback?: TourPlayback;
+  onComplete?: () => void;
+  onPrepared?: () => void;
 }) {
   const { language, t } = useLanguage();
   const frame = useRef<HTMLIFrameElement>(null);
@@ -73,6 +77,10 @@ export function TourStage({
   const bootReady = useRef(false);
   const playbackRef = useRef(playback);
   playbackRef.current = playback;
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const onPreparedRef = useRef(onPrepared);
+  onPreparedRef.current = onPrepared;
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
   const completedScene = useRef("");
@@ -144,6 +152,7 @@ export function TourStage({
       if (message.type === "prepared") {
         setScenePrepared(true);
         playbackRef.current?.onPrepared?.(true);
+        onPreparedRef.current?.();
       }
       if (message.type === "camera")
         setCamera(message.overview ? overview : message);
@@ -155,7 +164,7 @@ export function TourStage({
         const controlled = playbackRef.current;
         if (message.complete && completedScene.current !== message.scene && (!controlled || controlled.playing || (reducedRef.current && controlled.active))) {
           completedScene.current = message.scene;
-          playbackRef.current?.onComplete();
+          (controlled?.onComplete ?? onCompleteRef.current)?.();
         }
       }
       if (message.type === "interaction") {
@@ -440,6 +449,22 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
   const { language, t } = useLanguage();
   const chapters = getChapters(language);
   const scene = chapters.find((item) => item.id === selected)!;
+  const completionEnabled = useRef(false);
+  useLayoutEffect(() => {
+    completionEnabled.current = false;
+  }, [selected, restartToken]);
+  const selectChapter = useCallback((chapter: WorkbenchChapterId) => {
+    if (chapter === selected) return;
+    completionEnabled.current = false;
+    onSelect(chapter);
+  }, [onSelect, selected]);
+  const advanceChapter = useCallback(() => {
+    if (reduced || !completionEnabled.current) return;
+    completionEnabled.current = false;
+    const current = chapters.findIndex((item) => item.id === selected);
+    const next = chapters[(current + 1) % chapters.length];
+    onSelect(next.id);
+  }, [chapters, onSelect, reduced, selected]);
   return (
     <section
       id="workbench"
@@ -450,7 +475,7 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
         className="tour-chapter-select"
         aria-label={t("演示功能")}
         value={selected}
-        onChange={(event) => onSelect(event.target.value as WorkbenchChapterId)}
+        onChange={(event) => selectChapter(event.target.value as WorkbenchChapterId)}
       >
         {chapters.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select>
@@ -461,7 +486,7 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
               role="tab"
               key={item.id}
               aria-selected={selected === item.id}
-              onClick={() => onSelect(item.id)}
+              onClick={() => selectChapter(item.id)}
             >
               {item.label}
             </button>
@@ -474,6 +499,8 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
           label={t("工作台")}
           reduced={reduced}
           restartToken={restartToken}
+          onComplete={advanceChapter}
+          onPrepared={() => { completionEnabled.current = true; }}
         />
       </div>
     </section>
