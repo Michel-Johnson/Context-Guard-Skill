@@ -756,7 +756,11 @@ html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
 html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
 html.cg-phone .drawer h2{font-size:18px}
 
-html.design-gallery,html.design-gallery body{overflow:auto;height:auto;min-height:100dvh}
+html.design-gallery,html.design-gallery body{
+  overflow:auto !important;height:auto !important;max-height:none;min-height:100dvh;
+  overscroll-behavior:auto;touch-action:auto
+}
+html.design-gallery #viewport{pointer-events:none !important}
 html.design-gallery header.top,
 html.design-gallery #viewport,
 html.design-gallery #detail,
@@ -767,7 +771,7 @@ html.design-gallery .first-use,
 html.design-gallery .theme-preview-banner,
 html.design-gallery .phone-preview-banner{display:none !important}
 #design-gallery{display:none}
-html.design-gallery #design-gallery{display:block;padding:0 0 64px}
+html.design-gallery #design-gallery{display:block;padding:0 0 64px;position:relative;z-index:40}
 .g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;
   padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
 .g-bar b{font-size:15px}
@@ -5722,6 +5726,7 @@ vp.addEventListener("pointerup", endPointer);
 vp.addEventListener("pointercancel", endPointer);
 window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
+  if(window.__CG_GALLERY) return;
   e.preventDefault();
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
   const nk = Math.min(2.2, Math.max(.35, view.k*factor));
