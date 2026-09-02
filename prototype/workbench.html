@@ -537,7 +537,7 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--paper);
-  border-left:2px solid var(--line-ink);overflow:auto;padding:10px 12px 24px;cursor:default;
+  border-left:2px solid var(--line-ink);overflow:auto;padding:16px 16px 28px;cursor:default;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .drawer-split{position:fixed;top:var(--chrome-top);right:calc(var(--drawer-width) - 8px);width:16px;bottom:0;
   z-index:21;cursor:col-resize;touch-action:none;background:transparent}
@@ -601,7 +601,7 @@ section.block{margin-top:14px}
 section.block .block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px}
 section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(--ink);letter-spacing:0;font-weight:800}
 .mem-list{list-style:none;margin:0;padding:0}
-.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px;font-family:var(--font-note)}
+.mem-list li{display:flex;gap:9px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);font-size:12.5px;font-family:var(--font-note)}
 .mem-list li:first-child{border-top:0}
 .mem-list .dot{margin-top:5px}
 .mem-list .src{color:var(--muted);font-size:11px;margin-left:6px;white-space:nowrap}
@@ -626,16 +626,16 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
-details.fold{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
-details.fold>summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none;
-  display:flex;align-items:center;gap:8px}
+details.fold{margin-top:6px;border-top:1px solid var(--line);padding:16px 0 12px}
+details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
+  display:flex;align-items:center;gap:8px;min-height:32px;line-height:1.4;padding:2px 0 8px}
 details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
-details.fold .mem-list{margin-top:6px}
+details.fold .mem-list,details.fold .bug-list,details.fold .dormant-list{margin-top:4px}
 
 .bug-list{list-style:none;margin:0;padding:0}
-.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line)}
+.bug-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
 .bug-list li:first-child{border-top:0}
 .bug-check{width:18px;height:18px;border:2px solid var(--red);border-radius:5px;cursor:pointer;
   flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;
@@ -657,7 +657,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 .dormant-box input{width:100%;font:inherit;font-size:12.5px;padding:6px 10px;border:1px solid var(--line);
   border-radius:6px;background:#fff;margin:8px 0}
 .dormant-list{list-style:none;margin:0;padding:0}
-.dormant-list li{padding:7px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.dormant-list li{padding:10px 0;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
 .dormant-list li:first-child{border-top:0}
 .dormant-list b{color:var(--ink)}
 .dormant-list .exp{display:block;margin-top:3px}
@@ -747,6 +747,7 @@ html.cg-phone .ed,html.cg-phone .file-path,html.cg-phone .dormant-box input,html
 html.cg-phone .file-path{min-width:0}
 html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
+html.cg-phone details.fold>summary{min-height:40px;padding:4px 0 10px}
 html.cg-phone .dot-pick{min-height:40px}
 html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
   left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
