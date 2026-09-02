@@ -349,7 +349,7 @@ async function main() {
   run(python, [contextScript, "record-bad-case-fix", "--root", project, "--case", "B1", "--method", "安装并校验生命周期 Hook", "--evidence", "三平台打包冒烟通过", "--status", "resolved", "--session", "session-three"]);
   assert.equal(readJson(path.join(project, ".codex/context/bugs-index.json")).B1.status, "resolved");
   assert.equal(readJson(mapPath).root.bugs[0].status, "resolved");
-  assert.match(fs.readFileSync(path.join(project, ".codex/context/fixes/B1.md"), "utf8"), /## 怎么修\n安装并校验生命周期 Hook/);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/fixes/B1.md"), "utf8").replace(/\r\n/g, "\n"), /## 怎么修\n安装并校验生命周期 Hook/);
   assert.equal(readJson(path.join(project, ".codex/context/bad-case-events.json")).at(-1).event, "fix");
 
   for (const platform of ["codex", "cursor", "claude"]) {
