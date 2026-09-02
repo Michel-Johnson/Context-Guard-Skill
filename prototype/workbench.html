@@ -223,7 +223,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   padding:7px 9px;font-size:12px;font-weight:700;line-height:1.25;
   border:2px solid transparent;background:transparent;box-shadow:none}
 .dot-pick:hover{background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
-.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:var(--shadow-sm)}
+.dot-pick.on{border-color:var(--line-ink);background:#fff;box-shadow:none}
 .dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
@@ -250,7 +250,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.rel-hot{opacity:1;filter:none}
 #dot-hint{position:fixed;z-index:28;max-width:220px;padding:6px 9px;
   background:var(--paper);color:var(--ink);border:2px solid var(--line-ink);border-radius:8px;
-  box-shadow:var(--shadow-sm);font-size:12px;font-weight:700;line-height:1.35;pointer-events:none}
+  box-shadow:none;font-size:12px;font-weight:700;line-height:1.35;pointer-events:none}
 #dot-hint[hidden]{display:none}
 body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
 body.rel-mode .node .add-child{display:none}
@@ -590,7 +590,8 @@ button.warn:hover{border-color:var(--line-ink);background:var(--red-soft);color:
 button.quiet{border-color:transparent;color:var(--muted);padding:6px 8px;box-shadow:none}
 button.quiet:hover{border-color:var(--line-ink);color:var(--ink);box-shadow:var(--shadow-sm);background:var(--paper)}
 .plus-btn{width:28px;height:28px;padding:0;display:inline-grid;place-items:center;
-  font-size:20px;line-height:1;font-weight:800;border-radius:8px}
+  font-size:20px;line-height:1;font-weight:800;border-radius:8px;box-shadow:none}
+.plus-btn:hover{transform:none;box-shadow:none;background:var(--module-soft)}
 section.block{margin-top:14px}
 section.block .block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px}
 section.block>h3,section.block .block-head h3{margin:0;font-size:13px;color:var(--ink);letter-spacing:0;font-weight:800}
@@ -5152,16 +5153,9 @@ function renderDetail(){
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
-  const statePick = !cancelled
-    ? `<div class="dot-picks" role="radiogroup" aria-label="${escAttr(t("workState"))}">`+
-      WORK_STATES.map(s=>`<button type="button" class="dot-pick${workSt===s?" on":""}" data-work-state="${s}" title="${escAttr(workStateHint(s))}" aria-pressed="${workSt===s?"true":"false"}"><i class="dot ${s}"></i><span>${states[s]}</span></button>`).join("")+
-      `</div>`
-    : "";
-
   el.innerHTML = `
     <h2><span class="ed" data-ed="title">${node.title}</span>${chip}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${node.purpose||""}</p>`:""}
-    ${statePick}
     <div class="actions">
       ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
       ${!cancelled? `
