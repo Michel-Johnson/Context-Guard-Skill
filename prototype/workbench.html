@@ -626,18 +626,17 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
-.sec-block{margin-top:14px}
+.sec-block{margin-top:0;padding:16px 0 12px;border-top:1px solid var(--line)}
 .sec-add{display:inline-flex;align-items:center;gap:6px}
 .sec-block .mem-list,.sec-block .bug-list{margin-top:8px}
-.sec-block .mem-list li,.sec-block .bug-list li{border-top:0}
-details.fold{margin-top:14px;border-top:0;padding:4px 0 8px}
+details.fold{margin-top:0;border-top:1px solid var(--line);padding:16px 0 12px}
 details.fold>summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;
   display:flex;align-items:center;gap:8px;min-height:28px;line-height:1.4;padding:4px 0}
 details.fold>summary .plus-btn{margin-left:auto}
 details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
 details.fold .mem-list,details.fold .bug-list,details.fold .dormant-list{margin-top:2px}
-details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{border-top:0;padding:10px 0 8px}
+details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{padding:10px 0 8px}
 
 .bug-list{list-style:none;margin:0;padding:0}
 .bug-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
@@ -877,6 +876,7 @@ html.design-gallery .g-mock{display:block !important;position:relative;top:auto;
             <button type="button" id="btn-lens" aria-pressed="false" data-i18n="lensMode">第一层候选</button>
           </div>
           <button class="tray-btn" id="btn-tray">🗂 <span data-i18n="cancelled">已取消</span> (<span id="tray-count">0</span>)</button>
+          <button type="button" class="tray-btn" id="btn-link-repo" hidden data-i18n="linkRepo" data-i18n-title="linkRepoTitle" title="选带 SKILL.md 的仓库根，改图可以写回 map.json">连接仓库</button>
         </div>
       </div>
       <div class="set-block">
@@ -1029,7 +1029,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"连接仓库", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
+    attach:"附", linkRepo:"连接仓库", linkRepoTitle:"选带 SKILL.md 的仓库根，改图可以写回 map.json", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -1117,7 +1117,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Link repo", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
+    attach:"File", linkRepo:"Link repo", linkRepoTitle:"Pick the repo root with SKILL.md so edits can write map.json", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -3231,7 +3231,7 @@ function attachHtml(kind, key, owner, readonly){
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
          <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>${canFsAccess() && !repoFsOk ? `<button type="button" class="quiet" data-act="link-repo">${t("linkRepo")}</button>` : ""}`;
+    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>`;
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
@@ -3250,9 +3250,6 @@ function bindFileUi(el, node){
       }
       beginAttach(b.dataset.fk, b.dataset.fi, "");
     };
-  });
-  el.querySelectorAll('[data-act="link-repo"]').forEach(b=>{
-    b.onclick = e=>{ e.preventDefault(); e.stopPropagation(); linkRepo(); };
   });
   el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
     b.onclick = ()=>saveFrom(b);
@@ -4499,6 +4496,10 @@ document.getElementById("btn-tray").onclick = ()=>{
   document.getElementById("btn-tray").classList.toggle("on", open);
   if(open) closeSettings();
 };
+document.getElementById("btn-link-repo").onclick = async ()=>{
+  await linkRepo();
+  closeSettings();
+};
 document.getElementById("first-use-go").onclick = ()=>enterLensMode();
 document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
@@ -5737,7 +5738,13 @@ vp.addEventListener("wheel", e=>{
   applyView();
 },{passive:false});
 
+function syncLinkRepoBtn(){
+  const b = document.getElementById("btn-link-repo");
+  if(!b) return;
+  b.hidden = !canFsAccess();
+}
 function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray(); renderBugPanel(); renderMap(); renderDetail();
+  syncLinkRepoBtn();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 function bootDesignGallery(){
