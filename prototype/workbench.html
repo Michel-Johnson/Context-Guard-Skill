@@ -4279,7 +4279,7 @@ function renderBugPanel(){
     const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
-    const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
+    const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
     const claim = on
       ? `<button type="button" class="claim" data-claim>${mine?t("leave"):t("claim")}</button>`
       : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
