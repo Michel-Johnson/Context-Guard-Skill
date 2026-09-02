@@ -767,166 +767,68 @@ html.design-gallery .first-use,
 html.design-gallery .theme-preview-banner,
 html.design-gallery .phone-preview-banner{display:none !important}
 #design-gallery{display:none}
-html.design-gallery #design-gallery{display:block;padding:18px 18px 48px}
-.g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;
-  margin:0 -18px 18px;padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
+html.design-gallery #design-gallery{display:block;padding:0 0 64px}
+.g-bar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;
+  padding:12px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink)}
 .g-bar b{font-size:15px}
-.g-bar .pick{font-size:13px;font-weight:800}
 .g-bar .hint{color:var(--muted);font-size:12.5px;font-weight:700}
-.g-layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:28px;align-items:start;max-width:720px}
-.g-preview{position:sticky;top:68px;justify-self:start}
-.g-preview .g-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em;margin:0 0 8px}
-html.design-gallery .g-preview #detail{display:block !important;position:relative;top:auto;right:auto;bottom:auto;left:auto;
-  width:340px;height:auto;max-height:calc(100dvh - 88px);border:2px solid var(--line-ink);border-radius:10px;
-  z-index:1}
-html.design-gallery[data-g-tab="tip"] .g-preview #detail{display:none !important}
-.drawer[data-plus="box"] .plus-btn{border:2px solid var(--line-ink);background:var(--paper);color:var(--ink)}
-.drawer[data-plus="ghost"] .plus-btn{border:0;background:transparent;color:var(--muted)}
-.drawer[data-plus="link"] .plus-btn{border:0;width:auto;height:auto;padding:0;background:transparent;color:var(--module);font-size:0}
-.drawer[data-plus="link"] .plus-btn:before{content:"添加";font-size:12px;font-weight:700}
-.drawer[data-plus="circle"] .plus-btn{border:1.5px solid var(--line-ink);border-radius:50%;background:var(--paper);color:var(--ink);font-size:14px}
-.drawer[data-plus="tiny"] .plus-btn{border:0;width:auto;height:auto;background:transparent;font-size:12px;color:var(--muted)}
-.drawer[data-plus="none"] .plus-btn{display:none}
-.drawer[data-layout="rail"] details.fold{border-top:0;border-left:3px solid var(--line-ink);padding:6px 0 6px 10px;margin-top:8px}
-.drawer[data-cards="1"] details.fold{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:8px;border-top:1.5px solid var(--line)}
-.drawer[data-gap="space"] details.fold{border-top:0}
-.g-stage{display:none;position:relative;min-height:88px;margin:0 0 12px;padding:16px 12px 20px;
-  background:var(--bg);border:2px solid var(--line-ink);border-radius:10px}
-html.design-gallery[data-g-tab="tip"] .g-stage{display:block}
-html.design-gallery .g-stage .node.module{display:flex !important}
-.g-tip{position:absolute;z-index:2;font-size:12px;font-weight:800;line-height:1.35;pointer-events:none;max-width:220px}
-.g-tip.a{padding:6px 9px;background:var(--paper);border:2px solid var(--line-ink);border-radius:8px}
-.g-tip.b{padding:0;border:0;background:transparent}
-.g-tip.c{padding:6px 9px;background:var(--yellow);border:2px solid var(--line-ink);border-radius:8px}
-.g-tip.d{padding:0;border:0;background:transparent;font-size:11px;color:var(--muted)}
-.g-grid{display:flex;flex-direction:column;gap:2px}
-.g-card{text-align:left;padding:7px 8px;border:0;border-radius:8px;
-  background:transparent;box-shadow:none;cursor:pointer;width:100%;display:flex;align-items:baseline;gap:8px}
-.g-card:hover{background:#fff;transform:none;box-shadow:none}
-.g-card.on{background:var(--yellow)}
-.g-card .n{display:block;font-size:11px;font-weight:800;color:var(--muted);margin:0;letter-spacing:.04em;flex:0 0 2em;font-variant-numeric:tabular-nums}
-.g-card .g-spec{flex:1;min-width:0;font-size:14px;font-weight:700;line-height:1.3}
-.g-tabs,.g-filters{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 10px}
-.g-tabs button,.g-filters button{padding:4px 9px;font-size:12.5px;box-shadow:none;border:0;background:transparent;font-weight:700;color:var(--muted)}
-.g-tabs button:hover,.g-filters button:hover{transform:none;box-shadow:none;background:#fff;color:var(--ink)}
-.g-tabs button.on,.g-filters button.on{background:var(--yellow);color:var(--ink)}
-.g-pane{display:none}
-.g-pane.on{display:block}
-.g-count{font-size:12px;font-weight:700;color:var(--muted);margin:0 0 8px}
-.g-mini .row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);
-  font-size:13px;font-weight:800;color:var(--muted)}
-.g-mini .row:first-child{border-top:0}
-.g-mini .plus,.g-mini .ghost,.g-mini .link,.g-mini .circle,.g-mini .tiny{display:inline-grid;place-items:center;margin-left:auto}
-.g-mini .plus{width:28px;height:28px;padding:0;box-shadow:none;border:2px solid var(--line-ink);border-radius:8px;background:var(--paper);font-size:20px;font-weight:800}
-.g-mini .ghost{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--muted);font-size:18px;padding:0}
-.g-mini .link{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--module);font-size:12px;padding:0}
-.g-mini .circle{margin-left:auto;width:22px;height:22px;padding:0;border-radius:50%;box-shadow:none;font-size:14px;border:1.5px solid var(--line-ink);background:var(--paper);font-weight:800}
-.g-mini .tiny{margin-left:auto;border:0;box-shadow:none;background:transparent;color:var(--muted);font-size:12px;padding:0}
-.g-mini .pill{display:inline-flex;align-items:center;padding:2px 8px;border:1.5px solid var(--line-ink);border-radius:999px;font-size:12px}
-.g-mini .tabs{display:flex;border-bottom:2px solid var(--line-ink);margin-bottom:8px}
-.g-mini .tabs b{padding:6px 8px;font-size:12px;color:var(--muted)}
-.g-mini .tabs b.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--line-ink)}
-.g-mini .bar{display:flex;align-items:center;gap:8px;padding:7px 0 7px 8px;border-left:3px solid var(--line-ink);
-  font-size:13px;font-weight:800;color:var(--muted)}
-.g-mini .dash{margin-top:6px;border:1.5px dashed var(--line);border-radius:8px;padding:6px 8px;color:var(--muted);font-size:12px;font-weight:700}
-.g-mini .pills{display:flex;gap:6px;flex-wrap:wrap}
-.g-mini .pills i{border:1.5px solid var(--line-ink);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:800;font-style:normal}
-.g-mini .pills i.on{background:var(--yellow)}
-.g-mini .sub{display:block;font-size:11px;color:var(--muted);font-weight:700;margin:-2px 0 6px}
-.g-mini .chip{font-size:11px;font-weight:800;border:1.5px solid var(--line-ink);border-radius:999px;padding:1px 7px}
-.g-mini .tri{color:var(--muted);font-size:11px}
-.g-h{font-size:16px;margin:0 0 8px}
-.g-copy{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
-.g-kicker{display:none;font-size:10px;letter-spacing:.14em;color:var(--red);font-weight:800;margin:0 0 4px}
-.g-skin{background:var(--paper);color:var(--ink)}
-.g-skin h2{margin:4px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.25;
-  font-size:var(--g-title,22px);font-weight:var(--g-tw,800);font-family:inherit}
-.g-skin .lead{font-family:var(--g-note, Georgia,"Libre Baskerville","Songti SC",serif)}
-.g-skin[data-font="comic"]{font-family:"Comic Neue","PingFang SC","Microsoft YaHei",sans-serif}
-.g-skin[data-font="plex"]{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.g-skin[data-font="plex-serif"]{font-family:"IBM Plex Serif","Noto Serif SC","Songti SC",serif}
-.g-skin[data-font="noto"]{font-family:"Noto Sans SC","PingFang SC",sans-serif}
-.g-skin[data-font="noto-serif"]{font-family:"Noto Serif SC","Songti SC",serif}
-.g-skin[data-font="mix-plex"]{font-family:"IBM Plex Sans","Noto Sans SC",sans-serif}
-.g-skin[data-font="mix-plex"] .lead{font-family:"Libre Baskerville","Noto Serif SC",serif}
-.g-skin[data-font="mix-noto"]{font-family:"Noto Sans SC","PingFang SC",sans-serif}
-.g-skin[data-font="mix-noto"] .lead,.g-skin[data-font="mix-noto"] .g-mem{font-family:"Noto Serif SC","Songti SC",serif}
-.g-skin[data-font="mix-comic"]{font-family:"Comic Neue","PingFang SC",sans-serif}
-.g-skin[data-font="mix-comic"] .lead{font-family:Georgia,"Libre Baskerville","Songti SC",serif}
-.g-skin[data-title="16"]{--g-title:16px}
-.g-skin[data-title="18"]{--g-title:18px}
-.g-skin[data-title="20"]{--g-title:20px}
-.g-skin[data-title="22"]{--g-title:22px}
-.g-skin[data-title="26"]{--g-title:26px}
-.g-skin[data-tw="500"]{--g-tw:500}
-.g-skin[data-tw="600"]{--g-tw:600}
-.g-skin[data-tw="700"]{--g-tw:700}
-.g-skin[data-tw="800"]{--g-tw:800}
-.g-skin[data-dense="tight"]{padding:10px 12px !important}
-.g-skin[data-dense="tight"] .lead{margin-top:4px;font-size:12px}
-.g-skin[data-dense="normal"]{padding:16px 16px 20px !important}
-.g-skin[data-dense="airy"]{padding:24px 20px 28px !important}
-.g-skin[data-dense="airy"] .lead{margin-top:10px;font-size:14px;line-height:1.65}
-.g-skin[data-ls="wide"] h2{letter-spacing:.06em;font-size:15px;font-weight:700}
-.g-skin[data-lh="loose"] .lead,.g-skin[data-lh="loose"] .g-mem{line-height:1.75}
-.g-skin[data-lh="tight"] .lead{line-height:1.25;font-size:12px}
-.g-skin[data-head="yellow"] h2{background:var(--yellow);margin:0 -8px 10px;padding:8px 10px;border-radius:6px}
-.g-skin[data-head="rule"] h2{border-bottom:2px solid var(--line-ink);padding-bottom:10px;margin-bottom:8px}
-.g-skin[data-head="kicker"] .g-kicker{display:block}
-.g-skin[data-chip="hide"] .state-chip{display:none}
-.g-skin[data-chip="text"] .state-chip{background:transparent;padding:0;color:var(--muted);border-radius:0}
-.g-skin[data-actions="hide"] .actions{display:none}
-.g-skin[data-actions="text"] .actions button{border:0;box-shadow:none;background:transparent;padding:0 8px 0 0;color:var(--module)}
-.g-skin[data-actions="text"] .actions button:hover{transform:none;box-shadow:none;text-decoration:underline;background:transparent}
-.g-skin .g-mem{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink)}
-.g-skin[data-gap="space"] .g-mini .row{border-top:0;padding:10px 0}
-.g-skin[data-cards="1"] .g-mini .row{border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 6px;border-top:1.5px solid var(--line)}
-@media (max-width:980px){
-  .g-layout{grid-template-columns:1fr}
-  .g-preview{position:relative;top:auto;justify-self:stretch}
-  .g-preview .drawer{width:100%}
-}
+.g-scroll{display:flex;flex-direction:column;gap:52px;max-width:380px;margin:22px auto 0;padding:0 16px}
+.g-num{font-size:13px;font-weight:800;margin:0 0 10px;color:var(--muted);letter-spacing:.04em}
+html.design-gallery .g-mock{display:block !important;position:relative;top:auto;right:auto;bottom:auto;left:auto;
+  width:340px;height:auto;pointer-events:none;border:2px solid var(--line-ink);border-radius:10px;
+  padding:16px 16px 22px;font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+.g-mock h2{font-size:18px;font-weight:700}
+.g-mock .lead{margin:8px 0 0;font-family:var(--font-note)}
+.g-mock .sec header{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;font-weight:700;min-height:36px}
+.g-mock .sec header .add{margin-left:auto;font-size:18px;font-weight:700;color:var(--muted)}
+.g-mock .hit{display:flex;gap:8px;align-items:flex-start;margin-top:4px;font-size:12.5px;font-family:var(--font-note);line-height:1.5}
+.g-mock .hit p{margin:0}
+.g-mock[data-sep="pinch"] .sec{border-top:1px solid var(--line);padding:4px 0 2px}
+.g-mock[data-sep="pinch"] .sec header{min-height:0;font-size:12px}
+.g-mock[data-sep="line"] .sec{border-top:1px solid var(--line);padding:20px 0 16px}
+.g-mock[data-sep="far"] .sec{border-top:1px solid var(--line);padding:28px 0 22px}
+.g-mock[data-sep="none"] .sec{border:0;padding:16px 0}
+.g-mock[data-sep="wide"] .sec{border:0;padding:26px 0}
+.g-mock[data-sep="dash"] .sec{border-top:1.5px dashed var(--line);padding:20px 0 16px}
+.g-mock[data-sep="short"] .sec{border:0;padding:16px 0 12px}
+.g-mock[data-sep="short"] .sec header{border-bottom:2px solid var(--line-ink);padding-bottom:8px;margin-bottom:8px}
+.g-mock[data-sep="cards"] .sec{border:1.5px solid var(--line);border-radius:10px;padding:14px 12px;margin:10px 0 0}
+.g-mock[data-sep="soft"] .sec{border:0;border-radius:10px;padding:14px 12px;margin:8px 0 0;background:#f6f1e6}
+.g-mock[data-sep="rail"] .sec{border:0;border-left:3px solid var(--line-ink);padding:12px 0 12px 12px;margin-top:12px}
+.g-mock[data-sep="gap"] .sec{border:0;padding:8px 0 20px;margin-top:8px}
+.g-mock[data-tint="mem"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="zebra"] .sec.mem{background:#e7f6ec;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="zebra"] .sec.bug,.g-mock[data-tint="zebra"] .sec.inh{background:#e7eefc;border-radius:10px;padding-left:12px;padding-right:12px}
+.g-mock[data-tint="rail"] .sec.mem{border-left-color:#6ed08a}
+.g-mock[data-tint="rail"] .sec.idea{border-left-color:#c8c2b6}
+.g-mock[data-tint="rail"] .sec.bug,.g-mock[data-tint="rail"] .sec.inh{border-left-color:#3d7ee8}
+.g-mock[data-tint="pills"] .sec header{align-self:flex-start}
+.g-mock[data-tint="pills"] .sec.mem header{background:#e7f6ec;color:#2d6b45;border-radius:999px;padding:4px 10px;min-height:0}
+.g-mock[data-tint="pills"] .sec.bug header,.g-mock[data-tint="pills"] .sec.inh header{background:#e7eefc;color:#2d5da1;border-radius:999px;padding:4px 10px;min-height:0}
+.g-mock[data-plus="hide"] .sec header .add{display:none}
+.g-mock[data-plus="text"] .sec header .add{font-size:0}
+.g-mock[data-plus="text"] .sec header .add:before{content:"添加";font-size:12px;font-weight:700;color:var(--module)}
+.g-mock[data-plus="left"] .sec header{flex-direction:row}
+.g-mock[data-plus="left"] .sec header .add{margin-left:0;margin-right:6px;order:-1}
+.g-mock[data-note="1"] .sec.idea .body:before{content:"还没有 Idea";display:block;color:var(--muted);font-size:12px;padding:6px 0 4px;font-family:var(--font-note)}
+.g-mock[data-indent="1"] .sec .body{padding-left:12px}
+.g-mock[data-indent="2"] .sec .body{padding-left:20px}
+.g-mock[data-head="lg"] .sec header{font-size:15px;min-height:42px}
+.g-mock[data-head="xl"] .sec header{font-size:16px;min-height:48px;font-weight:800}
+.g-mock[data-head="space"] .sec header{letter-spacing:.08em;font-size:12px}
+.g-mock[data-head="rule"] .sec header{border-bottom:2px solid #6ed08a;padding-bottom:8px;margin-bottom:8px;display:inline-flex;min-height:0}
+.g-mock[data-head="rule"] .sec.bug header,.g-mock[data-head="rule"] .sec.inh header{border-bottom-color:#3d7ee8}
+.g-mock[data-stack="1"] .sec + .sec{margin-top:18px}
+.g-mock[data-quiet="1"] .sec.inh header{color:#b5aea2;font-weight:600}
 </style>
 </head>
 <body>
 <div id="design-gallery">
   <div class="g-bar">
-    <b>设计稿</b>
-    <span class="pick" id="g-pick">还没选</span>
-    <span class="hint">右边是工作台真实检查器。点名字换字体和疏密。选好把顶栏编号发我。</span>
+    <b>检查器分区 · 50 版</b>
+    <span class="hint">往下滑动看。看中了把编号发我，例如「分区 17」。不用点按钮。</span>
   </div>
-  <div class="g-layout">
-    <div>
-      <div class="g-tabs" id="g-tabs">
-        <button type="button" data-tab="skin" class="on">右边栏</button>
-        <button type="button" data-tab="fold">记忆行</button>
-        <button type="button" data-tab="tip">色块说明</button>
-      </div>
-      <div class="g-pane on" data-pane="skin">
-        <div class="g-filters" id="g-filters">
-          <button type="button" data-group="type" class="on">字体</button>
-          <button type="button" data-group="layout">分区</button>
-          <button type="button" data-group="dense">疏密</button>
-          <button type="button" data-group="head">标题</button>
-          <button type="button" data-group="mix">综合</button>
-        </div>
-        <p class="g-count" id="g-count"></p>
-        <div class="g-grid" id="g-skin-grid"></div>
-      </div>
-      <div class="g-pane" data-pane="fold">
-        <p class="g-copy">只改记忆 / Idea / Bug 这一列。再点一次取消。</p>
-        <div class="g-grid" id="g-fold-grid"></div>
-      </div>
-      <div class="g-pane" data-pane="tip">
-        <p class="g-copy">鼠标停在色块上时的样子。</p>
-        <div class="g-grid" id="g-tip-grid"></div>
-      </div>
-    </div>
-    <aside class="g-preview">
-      <div class="g-label" id="g-label">预览 · 真实检查器</div>
-      <div class="g-stage" id="g-stage"></div>
-    </aside>
-  </div>
+  <div class="g-scroll" id="g-scroll"></div>
 </div>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
@@ -5835,256 +5737,84 @@ function renderAll(){ liveViewRoot(); liveSelected(); renderNav(); renderTray();
   const st = currentRepo().bootstrap;
   if(st==="ready" || st==="proposed") persist(); }
 function bootDesignGallery(){
-  document.title = "设计稿 · 右边栏";
-  function foldBlock(plus, layout){
-    const add = plus==="box" ? `<span class="plus plus-btn">+</span>`
-      : plus==="circle" ? `<span class="circle">+</span>`
-      : plus==="link" ? `<span class="link">添加</span>`
-      : plus==="none" ? ``
-      : plus==="tiny" ? `<span class="tiny">+</span>`
-      : `<span class="ghost">+</span>`;
-    if(layout==="tabs") return `<div class="g-mini"><div class="tabs"><b class="on">记忆 1</b><b>Idea</b><b>Bug</b></div><div class="g-mem">prototype/workbench.html 单文件原型</div></div>`;
-    if(layout==="pills") return `<div class="g-mini"><div class="pills"><i class="on">记忆 1</i><i>Idea</i><i>Bug</i></div><div class="g-mem">prototype/workbench.html 单文件原型</div></div>`;
-    if(layout==="rail") return `<div class="g-mini"><div class="bar">记忆 1 ${add}</div><div class="bar">Idea ${add}</div><div class="bar">Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
-    if(layout==="record") return `<div class="g-mini"><div class="row" style="flex-wrap:wrap">记录 <span class="chip">记忆 1</span> <span class="chip">Idea</span> <span class="chip">Bug</span> ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
-    if(layout==="tri") return `<div class="g-mini"><div class="row"><span class="tri">▾</span> 记忆 1 ${add}</div><div class="row"><span class="tri">▸</span> Idea ${add}</div><div class="row"><span class="tri">▸</span> Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
-    if(layout==="count") return `<div class="g-mini"><div class="row">记忆 <span class="tiny">1</span>${add}</div><div class="row">Idea <span class="tiny">0</span>${add}</div><div class="row">Bug <span class="tiny">0</span>${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
-    return `<div class="g-mini"><div class="row">记忆 1 ${add}</div><div class="row">Idea ${add}</div><div class="row">Bug ${add}</div></div><div class="g-mem">prototype/workbench.html 单文件原型</div>`;
-  }
-  function skinAttrs(s){
-    return `data-font="${s.font}" data-title="${s.title}" data-tw="${s.tw}" data-dense="${s.dense}" data-layout="${s.layout}" data-plus="${s.plus}" data-chip="${s.chip||"pill"}" data-actions="${s.actions||"row"}" data-head="${s.head||""}" data-ls="${s.ls||""}" data-lh="${s.lh||""}" data-gap="${s.gap||""}" data-cards="${s.cards||""}"`;
-  }
-  function inspectorHtml(s, foldOverride){
-    const folds = foldOverride || foldBlock(s.plus, s.layout);
-    const chip = `<span class="state-chip untested">已做未测</span>`;
-    const acts = `<div class="actions"><button type="button">加模块</button><button type="button">加子项</button></div>`;
-    return `<p class="g-kicker">模块</p>
-      <h2>初次使用动画引导 ${chip}</h2>
-      <p class="lead">第一次打开工作台时，用动画把人领进图里。</p>
-      ${acts}
-      ${folds}`;
-  }
-  const SKINS = [
-    {id:"01", name:"现况 Comic", font:"mix-comic", title:"22", tw:"800", dense:"normal", layout:"folds", plus:"box"},
-    {id:"02", name:"Plex 紧凑", font:"plex", title:"18", tw:"700", dense:"tight", layout:"folds", plus:"ghost"},
-    {id:"03", name:"思源黑体", font:"noto", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
-    {id:"04", name:"思源宋体大标题", font:"noto-serif", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"link"},
-    {id:"05", name:"Plex + 衬线用途", font:"mix-plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
-    {id:"06", name:"黑体标题宋体正文", font:"mix-noto", title:"22", tw:"700", dense:"normal", layout:"folds", plus:"ghost"},
-    {id:"07", name:"大留白 26", font:"plex", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"none", actions:"hide"},
-    {id:"08", name:"密排 16", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"tiny", lh:"tight"},
-    {id:"09", name:"用途先行", font:"mix-plex", title:"18", tw:"600", dense:"airy", layout:"folds", plus:"ghost", head:"kicker"},
-    {id:"10", name:"无芯片", font:"plex", title:"22", tw:"700", dense:"normal", layout:"folds", plus:"ghost", chip:"hide"},
-    {id:"11", name:"Tab + Plex", font:"plex", title:"20", tw:"700", dense:"normal", layout:"tabs", plus:"ghost"},
-    {id:"12", name:"Tab + 思源黑", font:"noto", title:"18", tw:"700", dense:"tight", layout:"tabs", plus:"ghost"},
-    {id:"13", name:"Pill + 宋体", font:"noto-serif", title:"22", tw:"600", dense:"normal", layout:"pills", plus:"link"},
-    {id:"14", name:"左侧细线 Plex", font:"plex", title:"18", tw:"600", dense:"normal", layout:"rail", plus:"ghost"},
-    {id:"15", name:"合成记录 紧凑", font:"noto", title:"16", tw:"700", dense:"tight", layout:"record", plus:"ghost"},
-    {id:"16", name:"三角折叠 大字", font:"mix-comic", title:"26", tw:"800", dense:"airy", layout:"tri", plus:"tiny"},
-    {id:"17", name:"计数右齐 黑体", font:"noto", title:"20", tw:"700", dense:"normal", layout:"count", plus:"ghost"},
-    {id:"18", name:"文字添加 衬线", font:"plex-serif", title:"22", tw:"600", dense:"normal", layout:"folds", plus:"link", actions:"text"},
-    {id:"19", name:"无按钮密排", font:"plex", title:"18", tw:"600", dense:"tight", layout:"folds", plus:"none", actions:"hide"},
-    {id:"20", name:"芯片改小字", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost", chip:"text"},
-    {id:"21", name:"操作变链接", font:"noto", title:"20", tw:"500", dense:"normal", layout:"folds", plus:"link", actions:"text"},
-    {id:"22", name:"宽栏 380", font:"mix-plex", title:"22", tw:"700", dense:"airy", layout:"folds", plus:"ghost", width:"380"},
-    {id:"23", name:"窄栏 280 密", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"ghost", width:"280"},
-    {id:"24", name:"字重 500", font:"plex", title:"22", tw:"500", dense:"normal", layout:"folds", plus:"ghost"},
-    {id:"25", name:"字距拉开", font:"noto", title:"16", tw:"700", dense:"normal", layout:"folds", plus:"ghost", ls:"wide"},
-    {id:"26", name:"行高疏 1.75", font:"mix-noto", title:"20", tw:"600", dense:"airy", layout:"folds", plus:"ghost", lh:"loose"},
-    {id:"27", name:"行高紧", font:"plex", title:"18", tw:"700", dense:"tight", layout:"folds", plus:"ghost", lh:"tight"},
-    {id:"28", name:"黄底标题", font:"mix-comic", title:"20", tw:"800", dense:"normal", layout:"folds", plus:"box", head:"yellow"},
-    {id:"29", name:"标题下划线", font:"noto-serif", title:"22", tw:"600", dense:"normal", layout:"folds", plus:"ghost", head:"rule"},
-    {id:"30", name:"模块 kicker", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"ghost", head:"kicker"},
-    {id:"31", name:"无分割线", font:"plex", title:"20", tw:"600", dense:"airy", layout:"folds", plus:"ghost", gap:"space"},
-    {id:"32", name:"三张小卡", font:"noto", title:"18", tw:"700", dense:"normal", layout:"folds", plus:"ghost", cards:"1"},
-    {id:"33", name:"IBM 衬线全栏", font:"plex-serif", title:"22", tw:"600", dense:"airy", layout:"rail", plus:"link", lh:"loose"},
-    {id:"34", name:"思源宋 紧凑 tab", font:"noto-serif", title:"18", tw:"600", dense:"tight", layout:"tabs", plus:"none"},
-    {id:"35", name:"Comic 大留白 pill", font:"mix-comic", title:"26", tw:"800", dense:"airy", layout:"pills", plus:"box"},
-    {id:"36", name:"Plex tab 无操作", font:"plex", title:"18", tw:"600", dense:"tight", layout:"tabs", plus:"ghost", actions:"hide"},
-    {id:"37", name:"宋体 rail 宽", font:"noto-serif", title:"20", tw:"600", dense:"airy", layout:"rail", plus:"link", width:"380", lh:"loose"},
-    {id:"38", name:"黑体 record 窄", font:"noto", title:"16", tw:"700", dense:"tight", layout:"record", plus:"ghost", width:"280"},
-    {id:"39", name:"三角 + 下划线标题", font:"mix-plex", title:"20", tw:"700", dense:"normal", layout:"tri", plus:"tiny", head:"rule"},
-    {id:"40", name:"计数 + 黄标题", font:"noto", title:"18", tw:"800", dense:"normal", layout:"count", plus:"ghost", head:"yellow"},
-    {id:"41", name:"极简只列表", font:"plex", title:"16", tw:"500", dense:"tight", layout:"folds", plus:"none", chip:"hide", actions:"hide"},
-    {id:"42", name:"杂志大衬线", font:"noto-serif", title:"26", tw:"600", dense:"airy", layout:"folds", plus:"none", actions:"text", lh:"loose", head:"kicker"},
-    {id:"43", name:"等宽感计数", font:"plex", title:"18", tw:"600", dense:"normal", layout:"count", plus:"circle", ls:"wide"},
-    {id:"44", name:"左齐无芯片", font:"noto", title:"20", tw:"500", dense:"normal", layout:"rail", plus:"ghost", chip:"hide"},
-    {id:"45", name:"卡片分区 Plex", font:"plex", title:"20", tw:"700", dense:"normal", layout:"folds", plus:"box", cards:"1"},
-    {id:"46", name:"疏排无按钮 宋", font:"noto-serif", title:"22", tw:"600", dense:"airy", layout:"folds", plus:"none", gap:"space", actions:"hide"},
-    {id:"47", name:"kicker + tab", font:"mix-plex", title:"18", tw:"700", dense:"normal", layout:"tabs", plus:"ghost", head:"kicker"},
-    {id:"48", name:"紧凑圆 + 黑体", font:"noto", title:"16", tw:"700", dense:"tight", layout:"folds", plus:"circle", lh:"tight"},
-    {id:"49", name:"链接操作 宽栏", font:"mix-noto", title:"22", tw:"600", dense:"airy", layout:"pills", plus:"link", actions:"text", width:"380"},
-    {id:"50", name:"现况字族 + 去按钮", font:"mix-comic", title:"22", tw:"800", dense:"normal", layout:"folds", plus:"ghost", actions:"text", chip:"text"}
+  document.title = "检查器分区 · 50 版";
+  const VARIANTS = [
+    {id:"01", name:"现况：字贴横线", sep:"pinch"},
+    {id:"02", name:"横线拉开", sep:"line"},
+    {id:"03", name:"横线再拉开", sep:"far"},
+    {id:"04", name:"不要横线", sep:"none"},
+    {id:"05", name:"更大留白、不要横线", sep:"wide"},
+    {id:"06", name:"虚线分隔", sep:"dash"},
+    {id:"07", name:"标题下一截短线", sep:"short"},
+    {id:"08", name:"每块一张卡", sep:"cards"},
+    {id:"09", name:"浅底圆角块", sep:"soft"},
+    {id:"10", name:"左侧细线", sep:"rail"},
+    {id:"11", name:"只靠间距", sep:"gap"},
+    {id:"12", name:"记忆浅绿底", sep:"line", tint:"mem"},
+    {id:"13", name:"记忆绿 / Bug蓝 淡底", sep:"none", tint:"zebra"},
+    {id:"14", name:"左条：绿和蓝", sep:"rail", tint:"rail"},
+    {id:"15", name:"标题做成绿蓝胶囊", sep:"none", tint:"pills"},
+    {id:"16", name:"卡片 + 绿蓝底", sep:"cards", tint:"zebra"},
+    {id:"17", name:"浅底块 + 绿记忆", sep:"soft", tint:"mem"},
+    {id:"18", name:"无横线 + 绿记忆", sep:"wide", tint:"mem"},
+    {id:"19", name:"拉开的线 + 绿记忆", sep:"far", tint:"mem"},
+    {id:"20", name:"短线改成绿和蓝", sep:"short", head:"rule"},
+    {id:"21", name:"标题下彩线、不要横线", sep:"none", head:"rule"},
+    {id:"22", name:"大标题行", sep:"line", head:"lg"},
+    {id:"23", name:"更大标题、无横线", sep:"none", head:"xl"},
+    {id:"24", name:"字距拉开的小标题", sep:"far", head:"space"},
+    {id:"25", name:"卡片 + 大标题", sep:"cards", head:"lg"},
+    {id:"26", name:"Idea 写出「还没有」", sep:"line", note:"1"},
+    {id:"27", name:"无横线，空项也写一句", sep:"none", note:"1"},
+    {id:"28", name:"卡片里写出空项", sep:"cards", note:"1"},
+    {id:"29", name:"内容往右缩一格", sep:"line", indent:"1"},
+    {id:"30", name:"无横线，内容再缩进", sep:"none", indent:"2"},
+    {id:"31", name:"卡片 + 缩进", sep:"cards", indent:"1"},
+    {id:"32", name:"加号改成「添加」", sep:"line", plus:"text"},
+    {id:"33", name:"无横线，「添加」", sep:"wide", plus:"text"},
+    {id:"34", name:"加号放到标题左边", sep:"none", plus:"left"},
+    {id:"35", name:"不要加号", sep:"far", plus:"hide"},
+    {id:"36", name:"卡片不要加号", sep:"cards", plus:"hide"},
+    {id:"37", name:"区块之间再空一截", sep:"none", stack:"1"},
+    {id:"38", name:"卡片拉开", sep:"cards", stack:"1"},
+    {id:"39", name:"左条拉开", sep:"rail", stack:"1", tint:"rail"},
+    {id:"40", name:"继承写淡一点", sep:"line", quiet:"1"},
+    {id:"41", name:"无横线，继承淡", sep:"wide", quiet:"1"},
+    {id:"42", name:"绿底记忆 + 继承淡", sep:"none", tint:"mem", quiet:"1"},
+    {id:"43", name:"绿蓝胶囊 + 空项说明", sep:"none", tint:"pills", note:"1"},
+    {id:"44", name:"绿蓝淡底 + 大标题", sep:"soft", tint:"zebra", head:"lg"},
+    {id:"45", name:"左条彩线 + 添加", sep:"rail", tint:"rail", plus:"text"},
+    {id:"46", name:"无横线 + 缩进 + 空项", sep:"wide", indent:"2", note:"1"},
+    {id:"47", name:"卡片 + 彩线标题", sep:"cards", head:"rule"},
+    {id:"48", name:"只靠间距 + 大标题", sep:"gap", head:"xl"},
+    {id:"49", name:"浅底 + 不要加号 + 空项", sep:"soft", plus:"hide", note:"1"},
+    {id:"50", name:"无横线、绿记忆、蓝继承、大留白", sep:"wide", tint:"zebra", quiet:"1", stack:"1"}
   ];
-  const FOLDS = [
-    {id:"01", name:"现况去阴影", html:`<div class="g-mini"><div class="row">记忆 1 <span class="plus plus-btn">+</span></div><div class="row">Idea <span class="plus plus-btn">+</span></div><div class="row">Bug <span class="plus plus-btn">+</span></div></div>`},
-    {id:"02", name:"无边框灰 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="ghost">+</span></div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug <span class="ghost">+</span></div></div>`},
-    {id:"03", name:"文字「添加」", html:`<div class="g-mini"><div class="row">记忆 1 <span class="link">添加</span></div><div class="row">Idea <span class="link">添加</span></div><div class="row">Bug <span class="link">添加</span></div></div>`},
-    {id:"04", name:"细线圈 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="circle">+</span></div><div class="row">Idea <span class="circle">+</span></div><div class="row">Bug <span class="circle">+</span></div></div>`},
-    {id:"05", name:"标题后直接 +", html:`<div class="g-mini"><div class="row">记忆 1 +</div><div class="row">Idea +</div><div class="row">Bug +</div></div>`},
-    {id:"06", name:"计数胶囊", html:`<div class="g-mini"><div class="row"><span class="pill">记忆 1</span><span class="ghost">+</span></div><div class="row"><span class="pill">Idea</span><span class="ghost">+</span></div><div class="row"><span class="pill">Bug</span><span class="ghost">+</span></div></div>`},
-    {id:"07", name:"一行 tab", html:`<div class="g-mini"><div class="tabs"><b class="on">记忆 1</b><b>Idea</b><b>Bug</b></div><div class="row" style="border:0;font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
-    {id:"08", name:"悬停才出 +", html:`<div class="g-mini"><div class="row">记忆 1</div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug</div></div>`},
-    {id:"09", name:"左侧细线", html:`<div class="g-mini"><div class="bar">记忆 1 <span class="ghost">+</span></div><div class="bar">Idea <span class="ghost">+</span></div><div class="bar">Bug <span class="ghost">+</span></div></div>`},
-    {id:"10", name:"副标题条数", html:`<div class="g-mini"><div class="row">记忆 <span class="ghost">+</span></div><span class="sub">1 条</span><div class="row">Idea <span class="ghost">+</span></div><span class="sub">没有</span><div class="row">Bug <span class="ghost">+</span></div></div>`},
-    {id:"11", name:"虚线添加行", html:`<div class="g-mini"><div class="row">记忆 1</div><div class="dash">＋ 添加记忆</div><div class="row">Idea</div><div class="dash">＋ 添加 Idea</div></div>`},
-    {id:"12", name:"空心圆 22px", html:`<div class="g-mini"><div class="row">记忆 1 <span class="circle">+</span></div><div class="row">Idea <span class="circle">+</span></div><div class="row">Bug <span class="circle">+</span></div></div>`},
-    {id:"13", name:"下划线标题", html:`<div class="g-mini"><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">记忆 1 <span class="tiny">+</span></div><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">Idea <span class="tiny">+</span></div><div class="row" style="border:0;border-bottom:2px solid var(--line-ink)">Bug <span class="tiny">+</span></div></div>`},
-    {id:"14", name:"极紧凑", html:`<div class="g-mini"><div class="row" style="padding:4px 0;font-size:12px">记忆 1 <span class="tiny">+</span></div><div class="row" style="padding:4px 0;font-size:12px">Idea <span class="tiny">+</span></div><div class="row" style="padding:4px 0;font-size:12px">Bug <span class="tiny">+</span></div></div>`},
-    {id:"15", name:"合成「记录」", html:`<div class="g-mini"><div class="row" style="flex-wrap:wrap">记录 <span class="chip">记忆 1</span> <span class="chip">Idea</span> <span class="chip">Bug</span> <span class="ghost">+</span></div><div class="row" style="font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
-    {id:"16", name:"三个 pill 切换", html:`<div class="g-mini"><div class="pills"><i class="on">记忆 1</i><i>Idea</i><i>Bug</i></div><div class="row" style="border:0;padding-top:10px;font-weight:700;font-size:12px;color:var(--ink)">prototype/workbench.html 单文件原型</div></div>`},
-    {id:"17", name:"计数右对齐", html:`<div class="g-mini"><div class="row">记忆 <span style="margin-left:auto;font-size:12px">1</span> <span class="ghost">+</span></div><div class="row">Idea <span style="margin-left:auto;font-size:12px">0</span> <span class="ghost">+</span></div><div class="row">Bug <span style="margin-left:auto;font-size:12px">0</span> <span class="ghost">+</span></div></div>`},
-    {id:"18", name:"12px 灰字 +", html:`<div class="g-mini"><div class="row">记忆 1 <span class="tiny">+</span></div><div class="row">Idea <span class="tiny">+</span></div><div class="row">Bug <span class="tiny">+</span></div></div>`},
-    {id:"19", name:"一体 记忆(1)", html:`<div class="g-mini"><div class="row">记忆(1) <span class="ghost">+</span></div><div class="row">Idea <span class="ghost">+</span></div><div class="row">Bug <span class="ghost">+</span></div></div>`},
-    {id:"20", name:"三角折叠", html:`<div class="g-mini"><div class="row"><span class="tri">▾</span> 记忆 1 <span class="tiny">+</span></div><div class="row"><span class="tri">▸</span> Idea <span class="tiny">+</span></div><div class="row"><span class="tri">▸</span> Bug <span class="tiny">+</span></div></div>`}
-  ];
-  const TIPS = [
-    {id:"A", name:"描边白底", sample:"开发完了，还没有给这个节点生成测试"},
-    {id:"B", name:"无框短字", sample:"已做未测"},
-    {id:"C", name:"选中黄底", sample:"已做未测"},
-    {id:"D", name:"写在色块下", sample:"已做未测"}
-  ];
-  const FONT = {
-    comic:'"Comic Neue","PingFang SC",sans-serif',
-    plex:'"IBM Plex Sans","Noto Sans SC",sans-serif',
-    "plex-serif":'"IBM Plex Serif","Noto Serif SC",serif',
-    noto:'"Noto Sans SC","PingFang SC",sans-serif',
-    "noto-serif":'"Noto Serif SC","Songti SC",serif',
-    "mix-plex":'"IBM Plex Sans","Noto Sans SC",sans-serif',
-    "mix-noto":'"Noto Sans SC","PingFang SC",sans-serif',
-    "mix-comic":'"Comic Neue","PingFang SC",sans-serif'
-  };
-  function skinGroup(s){
-    const n = +s.id;
-    if(n<=10) return "type";
-    if(n<=20) return "layout";
-    if(n<=27) return "dense";
-    if(n<=32) return "head";
-    return "mix";
-  }
-  const q = new URLSearchParams(location.search);
-  let skinId = q.get("skin") || "02";
-  let foldId = q.get("fold") || "";
-  let tipId = q.get("tip") || "A";
-  let tab = q.get("tab") || "skin";
-  let group = q.get("group") || skinGroup({id: skinId});
-  const skinGrid = document.getElementById("g-skin-grid");
-  const foldGrid = document.getElementById("g-fold-grid");
-  const tipGrid = document.getElementById("g-tip-grid");
-  const countEl = document.getElementById("g-count");
-  const previewHost = document.querySelector(".g-preview");
-  const liveDrawer = document.getElementById("detail");
-  if(previewHost && liveDrawer && liveDrawer.parentNode!==previewHost) previewHost.appendChild(liveDrawer);
-  const FOLD_PLUS = { "01":"box","02":"ghost","03":"link","04":"circle","05":"tiny","12":"circle","18":"tiny" };
-  function renderSkinList(){
-    const rows = SKINS.filter(s=>skinGroup(s)===group);
-    if(countEl) countEl.textContent = rows.length+" 条，点名字看右边。";
-    skinGrid.innerHTML = rows.map(s=>`<button type="button" class="g-card" data-skin="${s.id}">
-      <span class="n">${s.id}</span>
-      <span class="g-spec" style="font-family:${FONT[s.font]||FONT.plex};font-weight:${s.tw}">${s.name}</span>
-    </button>`).join("");
-  }
-  foldGrid.innerHTML = FOLDS.map(f=>`<button type="button" class="g-card" data-fold="${f.id}"><span class="n">${f.id}</span><span class="g-spec">${f.name}</span></button>`).join("");
-  tipGrid.innerHTML = TIPS.map(t=>`<button type="button" class="g-card" data-tip="${t.id}"><span class="n">${t.id}</span><span class="g-spec">${t.name}</span></button>`).join("");
-  renderSkinList();
-
-  function setTab(next){
-    tab = next;
-    document.documentElement.setAttribute("data-g-tab", tab);
-    document.querySelectorAll("#g-tabs [data-tab]").forEach(b=>b.classList.toggle("on", b.dataset.tab===tab));
-    document.querySelectorAll("[data-pane]").forEach(p=>p.classList.toggle("on", p.dataset.pane===tab));
-  }
-  function paint(){
-    const skin = SKINS.find(s=>s.id===skinId) || SKINS[0];
-    const fold = FOLDS.find(f=>f.id===foldId);
-    const tip = TIPS.find(t=>t.id===tipId) || TIPS[0];
-    document.getElementById("g-pick").textContent = "整体 "+skin.id+(fold?" · 记忆 "+fold.id:"")+" · 说明 "+tip.id;
-    const label = document.getElementById("g-label");
-    if(label){
-      label.textContent = tab==="tip" ? "预览 · 色块说明" : "真实检查器 · "+(skin.width||340)+"px";
-    }
-    document.querySelectorAll("#g-filters [data-group]").forEach(b=>b.classList.toggle("on", b.dataset.group===group));
-    skinGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.skin===skinId));
-    foldGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.fold===foldId));
-    tipGrid.querySelectorAll(".g-card").forEach(c=>c.classList.toggle("on", c.dataset.tip===tipId));
-    const tipCls = "g-tip "+tip.id.toLowerCase();
-    const below = tip.id==="D";
-    document.getElementById("g-stage").innerHTML = `
-      <div class="node module" style="position:relative">
-        <div class="m-head"><i class="dot module untested"></i><span>初次使用动画引导</span></div>
-        ${below
-          ? `<div class="${tipCls}" style="position:static;margin:6px 0 0 18px">${tip.sample}</div>`
-          : `<div class="${tipCls}" style="left:22px;top:-8px">${tip.sample}</div>`}
-      </div>`;
-    const drawer = liveDrawer || document.getElementById("detail");
-    if(drawer){
-      drawer.classList.add("g-skin");
-      ["font","title","tw","dense","layout","plus","chip","actions","head","ls","lh","gap","cards"].forEach(k=>{
-        const v = (k==="plus" && fold && FOLD_PLUS[fold.id]) ? FOLD_PLUS[fold.id] : skin[k];
-        if(v) drawer.setAttribute("data-"+k, v);
-        else drawer.removeAttribute("data-"+k);
-      });
-      drawer.style.width = (skin.width||340)+"px";
-    }
-    const url = new URL(location.href);
-    url.searchParams.set("gallery","1");
-    url.searchParams.set("skin", skinId);
-    url.searchParams.set("tab", tab);
-    url.searchParams.set("group", group);
-    if(foldId) url.searchParams.set("fold", foldId); else url.searchParams.delete("fold");
-    url.searchParams.set("tip", tipId);
-    history.replaceState(null, "", url);
-  }
-  setTab(tab);
-  document.getElementById("g-tabs").onclick = e=>{
-    const b = e.target.closest("[data-tab]");
-    if(!b) return;
-    setTab(b.dataset.tab);
-    paint();
-  };
-  document.getElementById("g-filters").onclick = e=>{
-    const b = e.target.closest("[data-group]");
-    if(!b) return;
-    group = b.dataset.group;
-    const hit = SKINS.find(s=>skinGroup(s)===group);
-    if(hit && !SKINS.filter(s=>skinGroup(s)===group).some(s=>s.id===skinId)) skinId = hit.id;
-    renderSkinList();
-    paint();
-  };
-  skinGrid.onclick = e=>{
-    const b = e.target.closest("[data-skin]");
-    if(!b) return;
-    skinId = b.dataset.skin;
-    paint();
-  };
-  foldGrid.onclick = e=>{
-    const b = e.target.closest("[data-fold]");
-    if(!b) return;
-    foldId = foldId===b.dataset.fold ? "" : b.dataset.fold;
-    paint();
-  };
-  tipGrid.onclick = e=>{
-    const b = e.target.closest("[data-tip]");
-    if(!b) return;
-    tipId = b.dataset.tip;
-    paint();
-  };
-  paint();
+  const body = `<div class="hit"><i class="dot success"></i><div><p>npx/init/set-language 属于冷启动，不是 hook。</p></div></div>`;
+  const root = document.getElementById("g-scroll");
+  root.innerHTML = VARIANTS.map(v=>{
+    const attrs = ["sep","tint","plus","note","indent","head","stack","quiet"]
+      .filter(k=>v[k]).map(k=>`data-${k}="${v[k]}"`).join(" ");
+    return `<article class="g-item" id="v${v.id}">
+      <div class="g-num">${v.id} · ${v.name}</div>
+      <aside class="drawer g-mock" data-v="${v.id}" ${attrs}>
+        <h2>冷启动 <span class="state-chip untested">已做未测</span></h2>
+        <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
+        <div class="actions">
+          <button type="button">＋ 模块</button>
+          <button type="button">＋ 子节点</button>
+          <button type="button" class="quiet">删除</button>
+        </div>
+        <section class="sec mem"><header>记忆 1 <span class="add">+</span></header><div class="body">${body}</div></section>
+        <section class="sec idea"><header>Idea <span class="add">+</span></header><div class="body"></div></section>
+        <section class="sec bug"><header>Bug <span class="add">+</span></header><div class="body"></div></section>
+        <section class="sec inh"><header>继承的 5</header><div class="body"></div></section>
+      </aside>
+    </article>`;
+  }).join("");
 }
 async function boot(){
   if(window.__CG_GALLERY){
-    window.__CG_PREVIEW = true;
-    applyStaticI18n();
-    ensureDemoBugs(data);
-    selectedId = "M1";
-    viewRootId = "T0";
-    foldMem = true;
-    foldIdea = true;
-    foldBug = true;
-    foldInherited = true;
-    applyRepoChrome();
-    closeOverlay();
-    renderAll();
     bootDesignGallery();
     return;
   }
