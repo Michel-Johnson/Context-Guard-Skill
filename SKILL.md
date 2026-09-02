@@ -48,9 +48,11 @@ First session language: when `.codex/context/preferences.json` has `record_langu
 
 First use (no map yet): talk with the human layer by layer. First offer several ways to cut L1, or a larger set of candidate modules whose titles a person can read in seconds. After they lock L1 (about 4–8), design L2, then L3. Write `architecture.md` as you go. Submit L1 proposals with `owns` paths and have the human confirm them in the workbench. Later sessions open that map. Do not dump a full tree, a directory listing, or one node per file.
 
-When a credible failure or user-reported bad case appears, record it immediately with `context-guard record-bad-case --root <project> --title <title> --phenomenon <what-failed> --trigger <trigger> --cause <cause-or-pending> --guard <regression-guard> --node <map-node> --keys <comma-separated>`. Do not create a bad case from a guess.
+When a credible failure or user-reported bad case appears, record it immediately with `context-guard record-bad-case --root <project> --session <actual-session-id> --title <title> --phenomenon <what-failed> --trigger <trigger> --cause <cause-or-pending> --guard <regression-guard> --node <map-node> --keys <comma-separated>`. Omit `--node` only when the case is intentionally unassigned. After a verified fix, run `context-guard record-bad-case-fix --root <project> --case <B-id> --method <fix> --evidence <proof> --status resolved --session <actual-session-id>`. Do not create a bad case from a guess.
 
-CLI: `context-guard init`, `set-language`, `workbench`, `map read/status/changes/inbox/ack/watch/apply/operation/projections`, and `record-bad-case`. People look at the workbench, not a generated roadmap page.
+For first-use mapping, write an Agent-produced JSON through `context-guard write-candidates --root <project> --input <file-or->`; invalid lens/candidate structures are rejected before the workbench reads them. Before the final response, explicitly archive durable session results once with `context-guard archive-session --root <project> --session <actual-session-id> --summary <summary> --decisions <decisions> --next <next-steps> --files <comma-separated>`. This is Agent-driven and never a Stop-hook gate.
+
+CLI: `context-guard init`, `set-language`, `doctor`, `workbench`, `map read/status/changes/inbox/ack/watch/apply/operation/projections`, `record-bad-case`, `record-bad-case-fix`, `write-candidates`, and `archive-session`. People look at the workbench, not a generated roadmap page.
 
 ## What not to do
 

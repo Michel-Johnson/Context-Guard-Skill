@@ -361,6 +361,137 @@ def append_session_event(
     return session_path
 
 
+def session_records(root: Path) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    path = context_dir(root) / "sessions.jsonl"
+    if not path.exists():
+        return records
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get("session_id"), str):
+            records.append(value)
+    return records
+
+
+def resolve_session_id(root: Path, explicit: str = "") -> str:
+    if explicit.strip():
+        return explicit.strip()
+    for key in ("CODEX_THREAD_ID", "CLAUDE_SESSION_ID", "CURSOR_SESSION_ID"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    state = read_json(context_dir(root) / "private" / "hook-sessions.json", {})
+    if isinstance(state, dict):
+        values = [value.strip() for value in state.values() if isinstance(value, str) and value.strip()]
+        if values:
+            return values[-1]
+    return ""
+
+
+def session_platform(root: Path, session_id: str) -> str:
+    platform = "cli"
+    for record in session_records(root):
+        if record.get("session_id") == session_id and isinstance(record.get("platform"), str):
+            platform = str(record["platform"])
+    return platform
+
+
+def archive_session(
+    root: Path,
+    session_id: str,
+    summary: str,
+    decisions: str,
+    next_steps: str,
+    files: str,
+) -> Path:
+    init_context(root)
+    known = {str(item.get("session_id")) for item in session_records(root)}
+    if not session_id or session_id not in known:
+        raise ValueError("archive-session needs a session previously recorded by a lifecycle hook")
+    path = append_session_event(
+        root,
+        "archive",
+        session_platform(root, session_id),
+        session_id,
+        {"has_summary": bool(summary.strip())},
+    )
+    file_list = [item.strip() for item in files.split(",") if item.strip()]
+    lines = ["", f"## Archive {utc_now()}", ""]
+    for heading, value in (
+        ("Summary", summary),
+        ("Decisions", decisions),
+        ("Next", next_steps),
+    ):
+        if value.strip():
+            lines.extend([f"### {heading}", "", value.strip(), ""])
+    if file_list:
+        lines.extend(["### Files", "", *[f"- {item}" for item in file_list], ""])
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("\n".join(lines).rstrip() + "\n")
+    print(f"[context-guard] archived session: {session_id} ({path})")
+    return path
+
+
+def validate_candidates(value: object) -> dict[str, object]:
+    if not isinstance(value, dict) or not isinstance(value.get("lenses"), list) or not value["lenses"]:
+        raise ValueError("candidate input needs a non-empty lenses array")
+    if len(value["lenses"]) > 12:
+        raise ValueError("candidate input supports at most 12 lenses")
+    lens_ids: set[str] = set()
+    candidate_ids: set[str] = set()
+    normalized: list[dict[str, object]] = []
+    for lens in value["lenses"]:
+        if not isinstance(lens, dict):
+            raise ValueError("each lens must be an object")
+        lens_id = safe_identifier(str(lens.get("id", "")), "")
+        title = str(lens.get("title", "")).strip()
+        candidates = lens.get("candidates")
+        if not lens_id or lens_id in lens_ids or not title or not isinstance(candidates, list):
+            raise ValueError("each lens needs a unique id, title, and candidates array")
+        lens_ids.add(lens_id)
+        items: list[dict[str, object]] = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                raise ValueError("each candidate must be an object")
+            candidate_id = safe_identifier(str(candidate.get("id", "")), "")
+            candidate_title = str(candidate.get("title", "")).strip()
+            if not candidate_id or candidate_id in candidate_ids or not candidate_title:
+                raise ValueError("each candidate needs a globally unique id and a title")
+            owns = candidate.get("owns", [])
+            if not isinstance(owns, list) or any(not isinstance(item, str) for item in owns):
+                raise ValueError("candidate owns must be an array of paths")
+            candidate_ids.add(candidate_id)
+            items.append({
+                "id": candidate_id,
+                "title": candidate_title,
+                "purpose": str(candidate.get("purpose", "")).strip(),
+                "owns": [item.strip() for item in owns if item.strip()],
+            })
+        normalized.append({
+            "id": lens_id,
+            "title": title,
+            "why": str(lens.get("why", "")).strip(),
+            "candidates": items,
+        })
+    return {"v": 1, "generated_at": utc_now(), "lenses": normalized}
+
+
+def write_candidates(root: Path, input_path: str) -> Path:
+    init_context(root)
+    if input_path == "-":
+        value = json.load(sys.stdin)
+    else:
+        value = json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
+    normalized = validate_candidates(value)
+    path = context_dir(root) / "l1-candidates.json"
+    write_json(path, normalized)
+    print(f"[context-guard] candidates: {path}")
+    return path
+
+
 def next_bug_id(ctx: Path) -> str:
     numbers = []
     for path in (ctx / "bugs").glob("B*.md"):
@@ -398,8 +529,11 @@ def run_node_workbench(args: list[str], payload: object = None) -> dict:
     return result
 
 
-def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str) -> None:
-    run_node_workbench(["attach-bug", "--root", str(ctx.parent.parent)], {"node": node_id, "bug": bug})
+def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str, session_id: str) -> None:
+    args = ["attach-bug", "--root", str(ctx.parent.parent)]
+    if session_id:
+        args.extend(["--session", session_id])
+    run_node_workbench(args, {"node": node_id, "bug": bug})
 
 
 def record_bad_case(
@@ -412,9 +546,18 @@ def record_bad_case(
     node: str,
     status: str,
     keys: str,
+    session_id: str,
 ) -> tuple[str, Path]:
     init_context(root)
     ctx = context_dir(root)
+    map_doc = read_json(ctx / "map.json", {})
+    map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
+    if node and find_map_node(map_root, node) is None:
+        raise ValueError(f"unknown map node: {node}")
+    if session_id:
+        known = {str(item.get("session_id")) for item in session_records(root)}
+        if session_id not in known:
+            raise ValueError("bad-case session must first be recorded by a lifecycle hook")
     bug_id = next_bug_id(ctx)
     key_list = [item.strip() for item in keys.split(",") if item.strip()]
     bug_path = ctx / "bugs" / f"{bug_id}.md"
@@ -427,6 +570,7 @@ def record_bad_case(
         f"- status: {status}",
         f"- 现象: {phenomenon.strip()}",
         f"- keys: {', '.join(key_list)}",
+        f"- sessions: {session_id or 'unassigned'}",
         f"- fix: .codex/context/fixes/{bug_id}.md",
     ]
     if card_path:
@@ -460,6 +604,7 @@ def record_bad_case(
         "status": status,
         "bug": f".codex/context/bugs/{bug_id}.md",
         "fix": f".codex/context/fixes/{bug_id}.md",
+        "sessions": [session_id] if session_id else [],
     }
     if card_path:
         entry["card"] = card_path
@@ -474,13 +619,93 @@ def record_bad_case(
             "desc": phenomenon.strip(),
             "status": status,
             "files": "",
-            "sessions": "",
+            "sessions": [session_id] if session_id else [],
             "record": f".codex/context/bugs/{bug_id}.md",
         },
         node,
+        session_id,
     )
+    events = read_json(ctx / "bad-case-events.json", [])
+    if not isinstance(events, list):
+        events = []
+    events.append({
+        "at": utc_now(),
+        "event": "occurrence",
+        "case": bug_id,
+        "status": status,
+        "session_id": session_id or None,
+        "phenomenon": phenomenon.strip(),
+        "trigger": trigger.strip(),
+    })
+    write_json(ctx / "bad-case-events.json", events)
     print(f"[context-guard] recorded bad case: {bug_id} ({bug_path})")
     return bug_id, bug_path
+
+
+def replace_markdown_section(text: str, heading: str, value: str) -> str:
+    pattern = re.compile(rf"(?ms)(^## {re.escape(heading)}\n).*?(?=^## |\Z)")
+    if pattern.search(text):
+        return pattern.sub(lambda match: match.group(1) + value.strip() + "\n\n", text, count=1).rstrip() + "\n"
+    return text.rstrip() + f"\n\n## {heading}\n{value.strip()}\n"
+
+
+def update_bug_on_map(ctx: Path, bug_id: str, status: str, session_id: str) -> None:
+    args = ["update-bug", "--root", str(ctx.parent.parent)]
+    if session_id:
+        args.extend(["--session", session_id])
+    run_node_workbench(args, {"bug": {"id": bug_id, "status": status}})
+
+
+def record_bad_case_fix(
+    root: Path,
+    bug_id: str,
+    method: str,
+    evidence: str,
+    status: str,
+    session_id: str,
+) -> Path:
+    init_context(root)
+    ctx = context_dir(root)
+    bug_id = bug_id.strip().upper()
+    if not re.fullmatch(r"B\d+", bug_id):
+        raise ValueError("case must use the B<number> identifier")
+    bug_path = ctx / "bugs" / f"{bug_id}.md"
+    fix_path = ctx / "fixes" / f"{bug_id}.md"
+    if not bug_path.is_file() or not fix_path.is_file():
+        raise ValueError(f"unknown bad case: {bug_id}")
+    if not method.strip() or not evidence.strip():
+        raise ValueError("record-bad-case-fix needs --method and --evidence")
+    bug_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", bug_path.read_text(encoding="utf-8"), count=1)
+    bug_path.write_text(bug_text, encoding="utf-8")
+    fix_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", fix_path.read_text(encoding="utf-8"), count=1)
+    fix_text = replace_markdown_section(fix_text, "怎么修", method)
+    fix_text = replace_markdown_section(fix_text, "证据", evidence)
+    fix_path.write_text(fix_text, encoding="utf-8")
+    index = read_json(ctx / "bugs-index.json", {})
+    if not isinstance(index, dict) or not isinstance(index.get(bug_id), dict):
+        raise ValueError(f"bad case is missing from bugs-index.json: {bug_id}")
+    index[bug_id]["status"] = status
+    if session_id:
+        sessions = index[bug_id].setdefault("sessions", [])
+        if isinstance(sessions, list) and session_id not in sessions:
+            sessions.append(session_id)
+    write_json(ctx / "bugs-index.json", index)
+    update_bug_on_map(ctx, bug_id, status, session_id)
+    events = read_json(ctx / "bad-case-events.json", [])
+    if not isinstance(events, list):
+        events = []
+    events.append({
+        "at": utc_now(),
+        "event": "fix",
+        "case": bug_id,
+        "status": status,
+        "session_id": session_id or None,
+        "method": method.strip(),
+        "evidence": evidence.strip(),
+    })
+    write_json(ctx / "bad-case-events.json", events)
+    print(f"[context-guard] recorded bad case fix: {bug_id} ({fix_path})")
+    return fix_path
 
 
 def workbench_state_path(root: Path) -> Path:
@@ -589,7 +814,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Context Guard v1 utilities")
     parser.add_argument(
         "command",
-        choices=["init", "set-language", "show-roadmap", "workbench", "record-bad-case", *PARKED],
+        choices=[
+            "init", "set-language", "show-roadmap", "workbench", "record-bad-case",
+            "record-bad-case-fix", "archive-session", "write-candidates", *PARKED,
+        ],
     )
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--language", default=None)
@@ -605,8 +833,17 @@ def main() -> int:
     parser.add_argument("--cause", default="")
     parser.add_argument("--guard", default="")
     parser.add_argument("--node", default="")
-    parser.add_argument("--status", choices=["open", "fixed", "deferred", "wontfix"], default="open")
+    parser.add_argument("--status", choices=["open", "fixed", "resolved", "deferred", "wontfix"], default="open")
     parser.add_argument("--keys", default="")
+    parser.add_argument("--session", default="")
+    parser.add_argument("--case", dest="case_id", default="")
+    parser.add_argument("--method", default="")
+    parser.add_argument("--evidence", default="")
+    parser.add_argument("--summary", default="")
+    parser.add_argument("--decisions", default="")
+    parser.add_argument("--next", dest="next_steps", default="")
+    parser.add_argument("--files", default="")
+    parser.add_argument("--input", default="")
     args, _unknown = parser.parse_known_args()
     explicit = args.root is not None
     root = (args.root or folder_root(Path.cwd())).resolve()
@@ -631,18 +868,56 @@ def main() -> int:
         if not args.title or not args.phenomenon:
             print("[context-guard] record-bad-case needs --title and --phenomenon", file=sys.stderr)
             return 2
-        record_bad_case(
-            root,
-            args.title,
-            args.phenomenon,
-            args.trigger,
-            args.cause,
-            args.guard,
-            args.node,
-            args.status,
-            args.keys,
-        )
-        return 0
+        try:
+            record_bad_case(
+                root,
+                args.title,
+                args.phenomenon,
+                args.trigger,
+                args.cause,
+                args.guard,
+                args.node,
+                args.status,
+                args.keys,
+                resolve_session_id(root, args.session),
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] record-bad-case failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "record-bad-case-fix":
+        try:
+            record_bad_case_fix(
+                root, args.case_id, args.method, args.evidence, args.status,
+                resolve_session_id(root, args.session),
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] record-bad-case-fix failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "archive-session":
+        if not any((args.summary.strip(), args.decisions.strip(), args.next_steps.strip(), args.files.strip())):
+            print("[context-guard] archive-session needs durable --summary, --decisions, --next, or --files", file=sys.stderr)
+            return 2
+        try:
+            archive_session(
+                root, resolve_session_id(root, args.session), args.summary,
+                args.decisions, args.next_steps, args.files,
+            )
+            return 0
+        except (OSError, ValueError) as exc:
+            print(f"[context-guard] archive-session failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "write-candidates":
+        if not args.input:
+            print("[context-guard] write-candidates needs --input <json-file-or->", file=sys.stderr)
+            return 2
+        try:
+            write_candidates(root, args.input)
+            return 0
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[context-guard] write-candidates failed: {exc}", file=sys.stderr)
+            return 1
     if args.command == "workbench":
         if args.stop:
             stopped = stop_workbench(root)

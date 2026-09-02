@@ -171,9 +171,10 @@ Use $context-guard. 四块：会话、坏例、任务、地图。
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language 中文
 python3 scripts/context_guard.py workbench --root /path/to/project
+context-guard doctor --platform codex --root /path/to/project
 ```
 
-运行 `context-guard workbench --root /path/to/project` 看图。
+运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选，用 `archive-session` 保存本 Session 的耐久结果。
 
 ## 主要文件
 
