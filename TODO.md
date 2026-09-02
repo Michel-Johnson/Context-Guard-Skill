@@ -11,6 +11,11 @@
 
 ### 现在
 
+- [ ] **能用（今天主线）** — skill 最起码能跑通：init 之后工作台能打开、记坏例写全、命令行看得到这些命令
+  - [ ] `record-bad-case` 同时写出 `fixes/{id}.md`（现在索引会指向缺失文件）；没节点时 `unassigned_bugs` 工作台要能看见
+  - [ ] init 的空 `map.json`（`root: null`）工作台能加载，不要掉回演示图
+  - [ ] `node bin/context-guard-skill.js` 无参数时列出 init / set-language / workbench / record-bad-case
+  - [ ] init 骨架补齐：`FORMAT.md`、`owns-index.json`、`tasks-index.json`
 - [x] 把待办分成云端 / 本地
 - [x] **Skill：云端怎么看工作台、怎么确认**
   - [x] GitHack 只给人看已经推上去的图
