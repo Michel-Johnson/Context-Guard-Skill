@@ -174,6 +174,7 @@ try {
   await page.locator('#cg-sync-file').setInputFiles(imported); await page.waitForSelector('dialog[open]');
   assert.equal((await read()).root.children[0].purpose, '用于正式画布验证');
   await page.locator('dialog input[type="checkbox"]').check(); await page.getByRole('button', { name: '提交已选差异' }).click();
+  await page.waitForFunction(() => !document.querySelector('dialog[open]'));
   await until(async () => (await read()).root.children[0].purpose === '迁移已选择的用途'); await synchronized();
   await page.locator('#cg-sync-file').setInputFiles(imported); await page.waitForSelector('dialog[open]');
   assert.equal(await page.locator('dialog input[type="checkbox"]').count(), 0); await page.getByRole('button', { name: '取消', exact: true }).click(); recordCheck('migration-preview-and-idempotence');
