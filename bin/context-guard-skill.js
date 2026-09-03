@@ -224,6 +224,7 @@ function copySkill(target) {
             if (relative === "") return true;
             const parts = relative.split(path.sep);
             return parts[0] !== "cloud"
+              && relative !== "branch_guard.py"
               && !parts.includes("__pycache__")
               && !/\.py[co]$/i.test(parts.at(-1));
           }
