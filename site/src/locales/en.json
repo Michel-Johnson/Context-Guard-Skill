@@ -158,7 +158,7 @@
   "确认语言": "Choose a language",
   "示例用户回复，再记录偏好": "The demo user replies, then the preference is saved",
   "准备工作台": "Prepare the workbench",
-  "在 App 内取得独立工作台入口": "Get the separate workbench entry from the app",
+  "从当前客户端继续打开工作台": "Continue into the workbench from this client",
   "从会话进入项目画布": "Go from the conversation to the project canvas",
   "空白项目": "Empty project",
   "工作台已打开，第一层待讨论": "The workbench is open; layer one is ready to discuss",

@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { advanceCamera, cameraSettled, frameCamera, nativeHeight, stillCamera } from "../src/native-camera.ts";
+import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera } from "../src/native-camera.ts";
+
+test("客户端镜头只在高分辨率栅格上缩小", () => {
+  for (const pose of [
+    frameCamera(930, 580, 1280, null),
+    frameCamera(930, 580, 1280, { x: 800, y: 500, width: 440, height: 180 }),
+    { x: -100, y: -20, scale: nativeRasterScale },
+  ]) {
+    const raster = rasterizedCamera(pose);
+    assert.ok(raster.scale <= 1);
+    assert.ok(Math.abs(raster.x * nativeRasterScale - pose.x) < 1e-9);
+    assert.ok(Math.abs(raster.y * nativeRasterScale - pose.y) < 1e-9);
+  }
+});
 
 const input = { x: 828, y: 650, width: 440, height: 118 };
 const reply = { x: 832, y: 90, width: 432, height: 240 };
