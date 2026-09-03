@@ -11,6 +11,7 @@
 | Cursor | 真实 `agent acp` 握手、安装文件和配置合同；确认未登录创建 Session 返回认证要求 | 客户端发现 Skill、原生 SessionStart/UserPromptSubmit/Stop：需要登录；握手通过不等于这些功能通过 |
 
 三家的消息记录、语言提示与保存、bad case 落盘等确定性逻辑，继续由原有 `tests/ci-smoke.mjs` 的模拟事件测试验证。模拟事件不冒充真实客户端事件；AI 的语义判断和实际回复不在本轮验收内。
+Claude 的无对话检查只验证真实 SessionStart 产生“需要绑定”的注册证据且不建图、不启动服务；用户确认绑定并以同一 Session ID 继续的链路由打包冒烟和浏览器测试覆盖。
 
 ## 在哪里运行
 
