@@ -214,6 +214,12 @@ def map_entries(node: object):
 
 def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     map_file = ctx / "map.json"
+    isolation = read_json(ctx / "private" / "map-scopes.json", {})
+    if isinstance(isolation, dict) and isolation.get("mode") == "session-maps":
+        scoped_file = ctx / "private" / "session-maps" / hashlib.sha256(current_session_id.encode()).hexdigest() / "map.json"
+        # Before the first Session read, Main is the seed, never a write target.
+        if scoped_file.is_file():
+            map_file = scoped_file
     document = read_json(map_file, {})
     nodes = list(map_entries(document.get("root"))) if isinstance(document, dict) else []
     access = read_json(ctx / "sessions" / "workbench-access.json", {})

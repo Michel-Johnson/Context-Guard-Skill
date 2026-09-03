@@ -6,8 +6,8 @@ import { MapError, validate, applyOperations, diffTrees } from '../../prototype/
 import { hash, encode, atomicWrite, readJSON } from './io.mjs';
 
 export class MapStore extends EventEmitter {
-  constructor(root, { fault = async () => {}, project = async () => {} } = {}) {
-    super(); this.root = root; this.ctx = path.join(root, '.codex/context');
+  constructor(root, { fault = async () => {}, project = async () => {}, contextDir } = {}) {
+    super(); this.root = root; this.ctx = contextDir || path.join(root, '.codex/context');
     this.file = path.join(this.ctx, 'map.json'); this.runtime = path.join(this.ctx, 'private/sync');
     this.pendingFile = path.join(this.runtime, 'pending.json');
     this.eventsFile = path.join(this.ctx, 'sessions/workbench-changes.jsonl');

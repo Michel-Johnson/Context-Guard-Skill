@@ -29,7 +29,7 @@ Usage:
   context-guard doctor [--platform auto|all|codex|cursor|claude] [--root <project>]
                        [--target <dir>] [--hooks-target <file>] [--config-target <file>] [--json]
   context-guard path
-  context-guard sync connect|ensure|status|pull|prepare|track|checkpoint|finish [args...]
+  context-guard sync connect|ensure|status|pull|prepare|track|checkpoint|finish|publish [args...]
   context-guard <context_guard.py command> [args...]
 
 Examples:

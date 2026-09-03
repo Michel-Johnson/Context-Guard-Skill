@@ -5,14 +5,8 @@ server. Cloud remains part of this repository; do not copy individual files or
 create a second repository.
 
 For private development memory, first read `references/server-memory.md`.
-The current Cloud server exposes public read-only routes; its write tokens do
-not make those reads private. Do not expose this service with private records on
-a public interface. Private read authorization and the complete server-memory
-contract must be implemented and verified before migration; installing the
-current Map service alone does not satisfy that contract.
-
-The current server speaks HTTP. Keep it on a trusted private network until a
-later deployment adds HTTPS at the reverse proxy.
+The Cloud process speaks HTTP only to its reverse proxy. Public access must use
+HTTPS and private-read mode; never expose the backend port itself.
 
 ## 1. Prepare the server
 
@@ -37,15 +31,18 @@ Create `$HOME/.config/context-guard-cloud.env` with mode `0600`:
 ```dotenv
 CONTEXT_GUARD_CLOUD_TOKEN=<long-random-admin-token>
 CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN=<different-long-random-browser-token>
+CONTEXT_GUARD_CLOUD_REPOSITORIES={"my-project":"/absolute/path/to/its/repository"}
 ```
 
 Tokens are server secrets. Do not commit them, paste them into Map records, or
 put them in a service command line. Generate independent random values with a
 system password manager or `openssl rand -hex 32`.
 
-The included `deploy/context-guard-cloud.service` listens on `0.0.0.0:8788` and
-stores data in `$HOME/context-guard-cloud-data`. Change its port or paths before
-installation if the host uses different locations.
+The repository mapping lets publication verify a full commit against a freshly
+fetched `origin/main`. It contains administrator paths, not user input. The
+included service listens on loopback. If Caddy runs in Docker, bind Cloud only
+to that Docker network's host gateway and proxy to that private address; do not
+bind `0.0.0.0`.
 
 ## 3. Start the service
 
@@ -80,7 +77,7 @@ project. To rotate a lost token, call
 Open the editable cloud workbench once with:
 
 ```text
-http://<server>:8788/auth?token=<workbench-token>&next=/
+https://<cloud-domain>/auth?token=<workbench-token>&next=/
 ```
 
 The token is exchanged for an HttpOnly cookie. Remove the token from copied or
@@ -92,7 +89,7 @@ Run this inside every local or remote checkout that works on the project:
 
 ```bash
 context-guard sync connect --root <project-path> \
-  --url http://<server>:8788 --project my-project --token-stdin
+  --url https://<cloud-domain> --project my-project --token-stdin
 context-guard sync status --root <project-path>
 ```
 
@@ -101,6 +98,19 @@ different Maps, choose the authoritative side and reconnect with exactly one of
 `--pull` or `--push`. After connection, normal development uses `sync prepare`
 before work and `sync finish` after tests as described in
 `references/cloud-sync-interface.md`.
+
+To migrate an existing project to Session Maps, first read its current Map
+version, then make one administrator request:
+
+```text
+POST /api/projects/<project-id>/scopes/enable
+Authorization: Bearer <admin-token>
+{"baseVersion":"<current-map-version>"}
+```
+
+The server saves the existing Map as the `legacy-unverified` Main baseline.
+Each Session is created lazily by `sync prepare`; its scoped token is stored only
+in the local private sync configuration.
 
 ## 6. Upgrade and recover
 

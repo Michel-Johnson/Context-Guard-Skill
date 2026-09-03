@@ -6,8 +6,10 @@ defines the required authority and isolation. That backend is still pending;
 do not commit `.codex` as a workaround or claim local reads are server-confirmed
 memory.
 
-The authoritative document is `<project>/.codex/context/map.json`. Browser storage
-contains recovery drafts and UI preferences, never a second authoritative map.
+Before isolation, the authoritative document is `<project>/.codex/context/map.json`.
+After isolation, this file is Main and each Session document lives under the
+ignored private Session Map directory. Browser storage contains recovery drafts
+and UI preferences, never a second authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
 The server, submissions and live notifications run on Node 18 or newer; no new
 runtime dependency is required.
@@ -20,6 +22,28 @@ context-guard map status --root "/path/to/project" --session "actual-hook-sessio
 context-guard map read --root "/path/to/project" --session "actual-hook-session-id" --node M1
 context-guard map changes --root "/path/to/project" --session "actual-hook-session-id" --cursor "last-cursor"
 ```
+
+Enable isolation once with the version returned by a current read:
+
+```sh
+context-guard map isolate --root "/path/to/project" --base-version <version>
+```
+
+The migration preserves the old Map, marks it `legacy-unverified`, and lazily
+seeds each real Session from Main. The top selector shows one scope at a time:
+All Sessions is Main; a named Session is its private Map.
+
+After the source change is present on the fetched `origin/main`, publish with:
+
+```sh
+context-guard map publish --root "/path/to/project" --session <session-id> \
+  --operation-id <stable-id> --base-version <main-version> \
+  --session-version <session-version> --commit <full-main-sha>
+```
+
+Publication performs a three-way merge. Independent Main edits are preserved;
+overlapping fields fail with `MAP_MERGE_CONFLICT`. A Session write never changes
+Main by itself.
 
 `workbench` prints JSON with the URL. The Python compatibility command still opens
 the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit means

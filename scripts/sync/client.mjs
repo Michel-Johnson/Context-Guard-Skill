@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { diffTrees, same, validate, MapError } from '../../prototype/map-model.mjs';
+import { isolationFile, mergeMaps, sessionContext } from '../workbench/scopes.mjs';
 
 const ownFile = fileURLToPath(import.meta.url);
 const encode = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -39,6 +40,11 @@ export function syncPaths(root) {
     lock: path.join(dir, 'transaction.lock'),
     map: path.join(root, '.codex/context/map.json'),
   };
+}
+
+function scopedSyncPaths(root, sessionId) {
+  const dir = path.join(syncPaths(root).dir, 'sessions', createHash('sha256').update(sessionId).digest('hex'));
+  return { dir, state: path.join(dir, 'state.json'), base: path.join(dir, 'base-map.json') };
 }
 
 async function atomicWrite(file, value) {
@@ -95,19 +101,47 @@ async function cloudRequest(config, route, { method = 'GET', body, timeout = 150
   return result;
 }
 
-async function readLocalMap(root) {
-  const document = JSON.parse((await fs.readFile(syncPaths(root).map, 'utf8')).replace(/^\uFEFF/, ''));
+async function isolatedLocalMap(root, sessionId) {
+  if (!sessionId || (await readJson(isolationFile(root)))?.mode !== 'session-maps') return syncPaths(root).map;
+  return path.join(sessionContext(root, sessionId), 'map.json');
+}
+
+async function ensureCloudSession(root, config, sessionId, status = 'active', nodes = undefined) {
+  const key = createHash('sha256').update(sessionId).digest('hex');
+  if (config.sessionTokens?.[key]) {
+    if (nodes || status !== 'active') await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/session`, { method: 'POST', body: { sessionId, status, ...(nodes ? { addNodes: nodes } : {}) } });
+    return { ...config, token: config.sessionTokens[key] };
+  }
+  const registered = await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/session`, {
+    method: 'POST', body: { sessionId, name: sessionId, platform: process.env.CODEX_THREAD_ID ? 'codex' : process.env.CURSOR_SESSION_ID ? 'cursor' : process.env.CLAUDE_SESSION_ID ? 'claude' : 'unknown', status, ...(nodes ? { addNodes: nodes } : {}) },
+  });
+  if (!registered.sessionToken) throw new MapError('SESSION_TOKEN_MISSING', 'This Session already exists on Cloud; an administrator must rotate its scoped token', 409);
+  const next = { ...config, sessionTokens: { ...(config.sessionTokens || {}), [key]: registered.sessionToken } };
+  await atomicWrite(syncPaths(root).config, encode(next));
+  return { ...next, token: registered.sessionToken };
+}
+
+async function readLocalMap(root, sessionId = null) {
+  const file = await isolatedLocalMap(root, sessionId);
+  let raw = await fs.readFile(file, 'utf8').catch(error => error.code === 'ENOENT' ? null : Promise.reject(error));
+  if (raw === null && sessionId) {
+    const seed = await readJson(path.join(sessionContext(root, sessionId), 'base.json'));
+    const document = seed?.document || JSON.parse((await fs.readFile(syncPaths(root).map, 'utf8')).replace(/^\uFEFF/, ''));
+    await atomicWrite(file, encode(document)); raw = encode(document);
+  }
+  const document = JSON.parse(raw.replace(/^\uFEFF/, ''));
   validate(document);
   return document;
 }
 
-async function writeLocalMap(root, document, label = 'cloud') {
+async function writeLocalMap(root, document, label = 'cloud', sessionId = null) {
   validate(document);
   const paths = syncPaths(root);
   const backup = path.join(paths.dir, `backup-${label}-${Date.now()}.json`);
-  const current = await fs.readFile(paths.map, 'utf8').catch(error => error.code === 'ENOENT' ? null : Promise.reject(error));
+  const map = await isolatedLocalMap(root, sessionId);
+  const current = await fs.readFile(map, 'utf8').catch(error => error.code === 'ENOENT' ? null : Promise.reject(error));
   if (current !== null) await atomicWrite(backup, current.endsWith('\n') ? current : `${current}\n`);
-  await atomicWrite(paths.map, encode(document));
+  await atomicWrite(map, encode(document));
   return backup;
 }
 
@@ -224,6 +258,21 @@ export async function prepareSync({ root, sessionId, nodeIds = [], paths = [], w
     const existing = await readJson(workPath(root, sessionId));
     if (existing && ['working', 'conflict'].includes(existing.status)) return existing;
     const remote = await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/map`);
+    if (remote.isolated) {
+      const scoped = await ensureCloudSession(root, config, sessionId, 'active', nodeIds);
+      let session = await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/state?session=${encodeURIComponent(sessionId)}`);
+      session = await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/refresh?session=${encodeURIComponent(sessionId)}`, { method: 'POST', body: { baseVersion: session.version } });
+      const local = await readLocalMap(root, sessionId);
+      const localSeed = await readJson(path.join(sessionContext(root, sessionId), 'base.json'));
+      const merged = same(local, session.doc) ? local : mergeMaps(localSeed?.document || session.doc, session.doc, local);
+      if (!same(local, merged)) await writeLocalMap(root, merged, 'prepare-session', sessionId);
+      const scopePaths = scopedSyncPaths(root, sessionId);
+      await atomicWrite(scopePaths.state, encode({ version: session.version, mainVersion: session.mainVersion, status: 'working', updatedAt: new Date().toISOString() }));
+      await atomicWrite(scopePaths.base, encode(session.doc));
+      const work = { workId, sessionId, status: 'working', isolated: true, nodeIds, paths, remoteVersion: session.version, baseDocument: session.doc, preparedAt: new Date().toISOString() };
+      await atomicWrite(workPath(root, sessionId), encode(work));
+      return { workId, status: 'working', isolated: true, version: session.version, mainVersion: session.mainVersion, scope: { nodeIds, paths } };
+    }
     const state = await readJson(localPaths.state, { cursor: 0, version: null });
     const local = await readLocalMap(root), base = await readJson(localPaths.base, null);
     if (base && hashDoc(local) !== hashDoc(base)) throw new MapError('LOCAL_DIRTY', 'Local Map changed before prepare; finish or reconcile it first', 409);
@@ -255,7 +304,15 @@ export async function checkpointSync({ root, sessionId }) {
   return withLock(root, async () => {
     const config = await loadConfig(root), file = workPath(root, sessionId), work = await readJson(file);
     if (!work || !['working', 'conflict'].includes(work.status)) return { active: false };
-    const local = await readLocalMap(root);
+    const local = await readLocalMap(root, work.isolated ? sessionId : null);
+    if (work.isolated) {
+      const scoped = await ensureCloudSession(root, config, sessionId);
+      const remote = await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/state?session=${encodeURIComponent(sessionId)}`);
+      const changed = remote.version !== work.remoteVersion;
+      work.status = changed ? 'conflict' : 'working'; work.impacts = changed ? [{ type: 'session-map.changed', version: remote.version }] : []; work.checkedAt = new Date().toISOString();
+      await atomicWrite(file, encode(work));
+      return { active: true, status: work.status, impacts: work.impacts, localChanged: !same(local, work.baseDocument) };
+    }
     const operations = documentOperations(work.baseDocument, local);
     const result = await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/work/checkpoint`, {
       method: 'POST', body: { workId: work.workId, operations, scope: { nodeIds: work.nodeIds || [], paths: work.paths || [] } },
@@ -270,7 +327,29 @@ export async function finishSync({ root, sessionId }) {
   return withLock(root, async () => {
     const config = await loadConfig(root), localPaths = syncPaths(root), file = workPath(root, sessionId), work = await readJson(file);
     if (!work || !['working', 'conflict'].includes(work.status)) return { active: false };
-    const local = await readLocalMap(root);
+    const local = await readLocalMap(root, work.isolated ? sessionId : null);
+    if (work.isolated) {
+      try {
+        const scoped = await ensureCloudSession(root, config, sessionId, 'completed', work.nodeIds || []);
+        const remote = await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/state?session=${encodeURIComponent(sessionId)}`);
+        const merged = mergeMaps(work.baseDocument, remote.doc, local);
+        const operations = documentOperations(remote.doc, merged);
+        const result = operations.length ? await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/commit?session=${encodeURIComponent(sessionId)}`, {
+          method: 'POST', body: { baseVersion: remote.version, operationId: `finish:${work.workId}`, operations },
+        }) : { committed: false, unchanged: true, version: remote.version };
+        await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/session`, { method: 'POST', body: { sessionId, status: 'completed', nodes: work.nodeIds || [] } });
+        const scopePaths = scopedSyncPaths(root, sessionId);
+        await atomicWrite(scopePaths.state, encode({ version: result.version, status: 'completed', updatedAt: new Date().toISOString() }));
+        await atomicWrite(scopePaths.base, encode(merged));
+        work.status = 'completed'; work.result = result; work.completedAt = new Date().toISOString(); delete work.baseDocument; await atomicWrite(file, encode(work));
+        return { active: true, isolated: true, ...result };
+      } catch (error) {
+        if (error.code === 'MAP_MERGE_CONFLICT' || error.code === 'VERSION_CONFLICT') {
+          work.status = 'conflict'; work.impacts = error.details?.conflicts || []; work.checkedAt = new Date().toISOString(); await atomicWrite(file, encode(work));
+        }
+        throw error;
+      }
+    }
     const operations = documentOperations(work.baseDocument, local);
     try {
       const result = await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/work/finish`, {
@@ -288,6 +367,17 @@ export async function finishSync({ root, sessionId }) {
       }
       throw error;
     }
+  });
+}
+
+export async function publishSync({ root, sessionId, commit, operationId = `publish:${sessionId}:${commit}` }) {
+  root = await fs.realpath(path.resolve(root));
+  return withLock(root, async () => {
+    const config = await loadConfig(root), scoped = await ensureCloudSession(root, config, sessionId);
+    const state = await cloudRequest(scoped, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/state?session=${encodeURIComponent(sessionId)}`);
+    return cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/scopes/publish`, {
+      method: 'POST', body: { sessionId, operationId, baseVersion: state.mainVersion, sessionVersion: state.version, commit },
+    });
   });
 }
 
@@ -363,10 +453,13 @@ async function serve(root) {
           }
           const operations = documentOperations(base, local);
           if (!operations.length) return;
-          const result = await cloudRequest(config, `/api/projects/${encodeURIComponent(config.projectId)}/commits`, {
+          const route = remote.isolated
+            ? `/api/projects/${encodeURIComponent(config.projectId)}/scopes/commit`
+            : `/api/projects/${encodeURIComponent(config.projectId)}/commits`;
+          const result = await cloudRequest(config, route, {
             method: 'POST', body: { baseVersion: state.version, operationId: `local:${randomUUID()}`, sessionId: 'workbench', operations },
           });
-          await saveSyncState(root, { ...state, cursor: result.seq, receivedCursor: result.seq, version: result.version, status: 'synced', conflict: null, updatedAt: new Date().toISOString() }, local);
+          await saveSyncState(root, { ...state, cursor: result.seq || state.cursor || 0, receivedCursor: result.seq || state.receivedCursor || 0, version: result.version, status: 'synced', conflict: null, updatedAt: new Date().toISOString() }, local);
         });
       }).catch(() => {});
     }, 80);
@@ -426,7 +519,11 @@ async function main(args) {
   if (action === 'track') return trackSync({ root, sessionId, paths: split(options.paths) });
   if (action === 'checkpoint') return checkpointSync({ root, sessionId });
   if (action === 'finish') return finishSync({ root, sessionId });
-  throw new MapError('USAGE', 'Use sync connect|ensure|status|pull|prepare|track|checkpoint|finish');
+  if (action === 'publish') {
+    if (!options.commit) throw new MapError('USAGE', 'sync publish requires --commit with the merged main SHA');
+    return publishSync({ root, sessionId, commit: options.commit, operationId: options['operation-id'] || undefined });
+  }
+  throw new MapError('USAGE', 'Use sync connect|ensure|status|pull|prepare|track|checkpoint|finish|publish');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {

@@ -6,16 +6,15 @@ Read this reference only when a project is connected to Context Guard Cloud or a
 For first-time server installation, project enrollment, upgrades, and host
 migration, read `references/cloud-deployment.md` first.
 
-This document describes the existing Map/event protocol, not full development
-memory synchronization. Projects requiring a private server as the authority for
-all memory must also follow `references/server-memory.md`. Session isolation,
-complete record storage and main-baseline publication are not implemented by
-connecting every worktree to a single mutable Cloud Map.
+This document describes Map/event synchronization, including Session Map
+isolation. It does not yet cover complete Markdown record storage. Projects that
+use the private server as authority for all memory must also follow
+`references/server-memory.md`.
 
 ## Model
 
-Cloud is a directory of projects. It does not merge projects into one Map. Each
-project owns one independent snapshot and one ordered event stream.
+Cloud is a directory of projects. It does not merge projects. In isolated mode,
+each project owns one Main Map plus one Map per Session. All Sessions reads Main.
 
 The local repository remains the working copy. Credentials, cursors, inboxes and
 development windows live under:
@@ -79,8 +78,8 @@ context-guard sync prepare --root <project> --session <session-id> \
   --nodes N460 --paths scripts/cloud/server.mjs
 ```
 
-`prepare` drains current cloud state, records `baseSeq` and `baseVersion`,
-and opens a durable development window. The Codex hook runs it once at the first
+In isolated mode, `prepare` refreshes that Session from Main, stores its scoped
+base version, and opens a durable development window. The Codex hook runs it once at the first
 mutating tool of a plan. Later `PostToolUse` hooks only add observed paths with
 `sync track`; they do not perform remote synchronization for every file.
 
@@ -90,14 +89,24 @@ After development and verification:
 context-guard sync finish --root <project> --session <session-id>
 ```
 
-`finish` checks every remote Map event after `baseSeq` in one serialized
-server transaction:
+In legacy mode, `finish` checks remote events as described below. In isolated
+mode, it three-way merges only that Session Map and never writes Main:
 
 - Disjoint node/field/path scopes are rebased automatically.
 - Overlapping scope returns `WORK_IMPACT`; local files are preserved and the
   window remains `conflict`/unverified.
 - A successful result records `work.completed`, updates the cloud snapshot,
   and refreshes the local Map from that snapshot.
+
+After the PR is merged, publish the Session Map to Main explicitly:
+
+```bash
+context-guard sync publish --root <project> --session <session-id> \
+  --commit <full-sha-on-main>
+```
+
+The Cloud server freshly fetches its configured source repository, verifies the
+commit is an ancestor of `main`, and then applies a conflict-detecting merge.
 
 `sync checkpoint` performs the same impact check without completing the
 window. `sync track --paths ...` adds repository-relative files to its scope.
@@ -126,7 +135,8 @@ keys.
 ## Cloud authorization
 
 - Admin token: create projects and rotate project tokens only.
-- Project token: one project's Map, events and development windows only.
+- Project token: enroll Sessions, synchronize Main, and request verified publication for one project.
+- Session token: read/write only one Session Map; generated once and kept in private local config.
 - Workbench token: browser editing only; exchanged for an HttpOnly cookie at
   `/auth?token=...&next=/`.
 - Public pages and project directory are read-only.

@@ -4,10 +4,10 @@ Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
-**Status: required behavior, not an implemented service contract.** The current
-Cloud interface synchronizes Maps and events; the local workbench uses a local
-Map document. Neither implements the complete contract below.
-Implementation, migration and acceptance remain open in `CI_todo.md`.
+**Status: partially implemented.** Local and Cloud workbenches now isolate Main
+and Session Maps, use Session-scoped Cloud credentials, and publish to Main only
+after verifying a merged commit. The complete server storage of Session Markdown,
+messages, full Bug/fix/task records and indexes remains open in `CI_todo.md`.
 
 ## Authority and storage
 
@@ -33,9 +33,9 @@ actual Session binds explicitly to that project and its own worktree. Different
 Sessions have separate working-memory scopes; authorized historical reads must
 retain their source Session and version, not silently overlay another worktree.
 
-All Sessions reads only the server's published main baseline. Identify it by the
+All Sessions reads only the server's published Main baseline. Identify it by the
 authoritative repository, branch, main commit SHA and memory revision. A Session
-upload or `sync finish` is not a main publication. After verifying that the
+upload or `sync finish` is not a Main publication. After verifying that the
 corresponding source change is merged into the configured main branch, reconcile
 its associated memory and publish the complete baseline atomically. Preserve
 other Session records; do not promote unrelated unmerged changes. If GitHub main

@@ -20,7 +20,7 @@ Four stores only:
 1. **Sessions** — lifecycle hooks append `.codex/context/sessions.jsonl` and create `sessions/{id}.md`
 2. **Bugs** — thin card in `.codex/context/bugs/{id}.md` plus how-to in `fixes/{id}.md`; stub on the map node
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
-4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
+4. **Map** — All Sessions uses the published Main tree; after Session Maps are enabled, every real Session edits its own private tree
 
 ### Memory authority and publication
 
@@ -46,7 +46,7 @@ Use `.codex/context/FIND.md` for bugs/tasks/ownership, but verify `projection-st
 
 Start `context-guard workbench --root <project>`. Node owns one local project, atomically saves valid operations to map.json, and notifies pages after file/Agent changes. Browser cache is for recovery drafts and preferences only. Static/GitHack/file views are read-only; their clicks do not persist to this workspace.
 
-Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite map.json. See `references/workbench-interface.md` for schema, errors, migration and recovery.
+Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. In Session Map mode this writes only that Session. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite any Main or Session `map.json`. See `references/workbench-interface.md` for schema, errors, migration and recovery.
 
 Agent creates are proposals and must include an independent-responsibility purpose, `owns`, and auditable `proposalEvidence` with matching parent, valid basis, reason, and implementation files; direct `map apply create` cannot bypass these rules. A human confirms in the local workbench and grants/revokes exact node scopes for actual lifecycle sessions. The request body cannot claim human identity; chat assent does not give the Agent a browser capability. Do not rebuild L1 unless asked. On a static/cloud workflow, prepare proposals for later local review; this local protocol does not silently convert chat assent into a human token.
 
@@ -67,10 +67,14 @@ Context Guard installs eleven Codex lifecycle hooks: `SessionStart`, `UserPrompt
 ### Cloud-connected projects
 
 Cloud is a multi-project directory; each project still owns an independent Map.
-For server-backed development memory, first follow `references/server-memory.md`:
-the existing Map-only sync is not yet a complete memory store or a main-baseline
-publication mechanism. Do not point feature-session sync at an authoritative main
-Map to work around that gap.
+For server-backed development memory, first follow `references/server-memory.md`.
+Cloud can isolate Map working copies: All Sessions reads Main, while each named
+Session reads and writes only its own Map with a scoped credential. `sync finish`
+updates the Session copy, never Main. After the source PR is merged, publish with
+`context-guard sync publish --root <project> --session <id> --commit <full-main-sha>`;
+the server fetches the configured repository and rejects a commit that is not on
+the latest `main`. This Map isolation does not yet make every Markdown record a
+server-backed record.
 When `.codex/context/private/cloud-sync/config.json` exists, run
 `context-guard sync prepare --root <project> --session <actual-session-id>`
 before development and `context-guard sync finish ...` after verification.
@@ -98,7 +102,7 @@ When a credible failure or user-reported bad case appears, record it immediately
 
 For first-use mapping, write an Agent-produced JSON through `context-guard write-candidates --root <project> --input <file-or->`; invalid lens/candidate structures are rejected before the workbench reads them. Before the final response, explicitly archive durable session results once with `context-guard archive-session --root <project> --session <actual-session-id> --summary <summary> --decisions <decisions> --next <next-steps> --files <comma-separated>`. Pass every repo-relative file changed by this Agent. The archive command automatically appends the summary only to accepted nodes covered by `owns`. An uncovered file is unclassified and must not create a Map node by itself. If a test, document, or configuration file belongs to an existing node but is outside its `owns`, pass `--input <json-file-or->` with an `assignments` item containing `nodeId`, `reason`, and `files`. Propose a node only for a genuinely independent module, interface, component, or responsibility; the `proposal` input must contain `parentId`, `title`, `purpose`, `reason`, `basis`, and `files`, include non-supporting implementation evidence, and still requires human confirmation. Authorization, validation, `UI_PENDING`, and version conflicts fail the archive visibly; never claim the Map was updated after a failed command. This is Agent-driven and never a Stop-hook gate.
 
-CLI: `context-guard init`, `set-language`, `doctor`, `workbench`, `sync connect/ensure/status/pull/prepare/track/checkpoint/finish`, `map read/status/changes/inbox/ack/watch/apply/operation/projections/reconcile`, `record-todo`, `resolve-signal`, `record-bad-case`, `record-bad-case-fix`, `write-candidates`, and `archive-session`. People look at the workbench, not a generated roadmap page. Do not read or update a legacy `.codex/context/roadmap.md`.
+CLI: `context-guard init`, `set-language`, `doctor`, `workbench`, `sync connect/ensure/status/pull/prepare/track/checkpoint/finish/publish`, `map isolate/read/status/changes/inbox/ack/watch/apply/operation/projections/reconcile/publish`, `record-todo`, `resolve-signal`, `record-bad-case`, `record-bad-case-fix`, `write-candidates`, and `archive-session`. People look at the workbench, not a generated roadmap page. Do not read or update a legacy `.codex/context/roadmap.md`.
 
 ## What not to do
 

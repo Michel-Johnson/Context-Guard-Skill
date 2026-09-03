@@ -10,8 +10,10 @@ export const packedFiles = [
   "scripts/workbench/cli.mjs",
   "scripts/workbench/inbox.mjs",
   "scripts/workbench/io.mjs",
+  "scripts/workbench/main-source.mjs",
   "scripts/workbench/projections.mjs",
   "scripts/workbench/reconcile.mjs",
+  "scripts/workbench/scopes.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
 
@@ -29,6 +31,7 @@ export const packedFiles = [
   "scripts/context_guard_hook.py",
   "scripts/context_guard.py",
   "scripts/cloud/server.mjs",
+  "scripts/cloud/session-maps.mjs",
   "scripts/map_owns.py"
 ];
 
@@ -44,8 +47,10 @@ export const installedFiles = [
   "scripts/workbench/cli.mjs",
   "scripts/workbench/inbox.mjs",
   "scripts/workbench/io.mjs",
+  "scripts/workbench/main-source.mjs",
   "scripts/workbench/projections.mjs",
   "scripts/workbench/reconcile.mjs",
+  "scripts/workbench/scopes.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
 
@@ -58,7 +63,9 @@ export const installedFiles = [
   "references/context-template.md",
   "scripts/context_guard.py",
   "scripts/context_guard_hook.py",
-  "scripts/map_owns.py"
+  "scripts/map_owns.py",
+  "scripts/workbench/main-source.mjs",
+  "scripts/workbench/scopes.mjs"
 ];
 
 export const forbiddenInstalledPaths = [

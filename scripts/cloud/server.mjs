@@ -3,7 +3,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, validate, MapError } from '../../prototype/map-model.mjs';
+import { applyOperations, assignmentScope, entries, validate, MapError } from '../../prototype/map-model.mjs';
+import { CloudSessionMaps } from './session-maps.mjs';
+import { verifyMainCommit } from '../workbench/main-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -13,6 +15,14 @@ const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
 const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
+function repositoryConfig(raw = '') {
+  if (!raw) return {};
+  try {
+    const value = JSON.parse(raw);
+    if (!value || Array.isArray(value) || typeof value !== 'object' || Object.values(value).some(item => typeof item !== 'string' || !path.isAbsolute(item))) throw new Error('invalid');
+    return value;
+  } catch { throw new MapError('INVALID_REPOSITORIES', 'CONTEXT_GUARD_CLOUD_REPOSITORIES must map project IDs to absolute repository paths'); }
+}
 
 async function atomicWrite(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -158,7 +168,9 @@ export async function startCloudServer({
   dataDir = process.env.CONTEXT_GUARD_CLOUD_DATA || path.join(root, '.cloud-data'),
   adminToken = process.env.CONTEXT_GUARD_CLOUD_TOKEN || '',
   browserToken = process.env.CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN || adminToken,
+  sourceRepositories = repositoryConfig(process.env.CONTEXT_GUARD_CLOUD_REPOSITORIES),
 } = {}) {
+  const sessionMaps = new CloudSessionMaps(dataDir);
   const registryFile = path.join(dataDir, 'projects.json');
   const mapsDir = path.join(dataDir, 'maps');
   const eventsDir = path.join(dataDir, 'events');
@@ -206,6 +218,10 @@ export async function startCloudServer({
     if (adminToken && safeEqual(credential, adminToken)) return;
     if (!project.tokenHash || !safeEqual(digest(credential), project.tokenHash)) throw new MapError('UNAUTHORIZED', 'A project sync token is required', 401);
   };
+  const requireSession = async (req, url, project, sessionId) => {
+    if (adminToken && safeEqual(bearer(req, url), adminToken)) return;
+    if (!await sessionMaps.authorize(project.id, sessionId, bearer(req, url))) throw new MapError('UNAUTHORIZED', 'A Session-scoped token is required', 401);
+  };
   const cookieValue = req => String(req.headers.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith('cg_workbench='))?.slice('cg_workbench='.length) || '';
   const requireWorkbench = (req, url) => {
     const credential = bearer(req, url) || decodeURIComponent(cookieValue(req));
@@ -233,6 +249,10 @@ export async function startCloudServer({
     return event;
   };
   const projectSnapshot = async project => {
+    if (await sessionMaps.enabled(project.id)) {
+      const state = await sessionMaps.state(project.id, null);
+      return { projectId: project.id, version: state.version, document: state.doc, isolated: true, baselineStatus: state.baselineStatus, seq: 0 };
+    }
     const events = await readEvents(project.id);
     const stored = await readJson(mapFile(project.id), null);
     return stored
@@ -249,7 +269,8 @@ export async function startCloudServer({
     const document = snapshot.document || emptyProjectDocument(project);
     return { projectId: project.id, version: snapshot.version || versionOf(document), document };
   };
-  const workbenchState = async (scope, project) => {
+  const workbenchState = async (scope, project, sessionId = null) => {
+    if (project && await sessionMaps.enabled(project.id)) return sessionMaps.state(project.id, sessionId);
     const snapshot = await workbenchSnapshot(scope, project);
     return { version: snapshot.version, doc: snapshot.document, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
   };
@@ -257,7 +278,7 @@ export async function startCloudServer({
     const state = await workbenchState(scope, project);
     for (const client of workbenchClients) {
       if (client.res.destroyed) { workbenchClients.delete(client); continue; }
-      if (client.scope === scope) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+      if (!client.scoped && client.scope === scope) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
     }
   };
   const validateOperationId = input => {
@@ -321,6 +342,49 @@ export async function startCloudServer({
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
+      const scopedRoute = route.match(/^\/api\/projects\/([^/]+)\/scopes\/(enable|session|state|commit|refresh|publish)$/);
+      if (scopedRoute) {
+        const project = projectById(decodeURIComponent(scopedRoute[1]));
+        if (!project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
+        const action = scopedRoute[2], sessionId = url.searchParams.get('session');
+        if (action === 'state' && req.method === 'GET') {
+          if (sessionId) await requireSession(req, url, project, sessionId); else requireProject(req, url, project);
+          return send(res, 200, await sessionMaps.state(project.id, sessionId));
+        }
+        if (req.method !== 'POST') throw new MapError('METHOD', 'POST required', 405);
+        const input = await requestBody(req);
+        if (action === 'enable') {
+          requireAdmin(req, url);
+          return send(res, 200, await serial(project.id, async () => {
+            const current = await projectSnapshot(project);
+            if (input.baseVersion !== current.version) throw new MapError('VERSION_CONFLICT', 'Review the existing Map before migration', 409);
+            return sessionMaps.enable(project.id, current.document);
+          }));
+        }
+        if (action === 'session') { requireProject(req, url, project); return send(res, 200, await sessionMaps.session(project.id, input)); }
+        if (action === 'publish') {
+          requireProject(req, url, project);
+          const scopes = await sessionMaps.open(project.id);
+          const result = await scopes.publish(input, commit => verifyMainCommit(sourceRepositories[project.id], commit));
+          if (!result.duplicate && result.committed) await serial(project.id, () => appendEvent(project.id, { type: 'map.committed', actor: { kind: 'publication', sessionId: input.sessionId }, scope: { wildcard: true }, version: result.version }));
+          return send(res, 200, result);
+        }
+        if (action === 'commit' && !sessionId) {
+          requireProject(req, url, project);
+          const scopes = await sessionMaps.open(project.id);
+          const result = await scopes.main.commit(input, { kind: 'human', sessionId: 'main-sync' });
+          if (!result.duplicate && result.committed) await serial(project.id, () => appendEvent(project.id, { type: 'map.committed', actor: { kind: 'human', sessionId: 'main-sync' }, scope: { wildcard: true }, version: result.version }));
+          return send(res, 200, result);
+        }
+        if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Agent writes must name a Session; Main requires publication', 403);
+        await requireSession(req, url, project, sessionId);
+        if (action === 'refresh') return send(res, 200, await sessionMaps.refreshMain(project.id, sessionId, input.baseVersion));
+        if (action === 'commit') {
+          const store = await sessionMaps.store(project.id, sessionId);
+          const nodes = (await sessionMaps.sessions(project.id)).grants?.[sessionId]?.nodes || [];
+          return send(res, 200, await store.commit(input, { kind: 'agent', sessionId }, nodes));
+        }
+      }
       if (route === '/auth' && req.method === 'GET') {
         if (!browserToken || !safeEqual(url.searchParams.get('token'), browserToken)) throw new MapError('UNAUTHORIZED', 'Invalid workbench token', 401);
         const next = url.searchParams.get('next') || '/';
@@ -335,20 +399,46 @@ export async function startCloudServer({
         const action = workbench[3];
         if (action === '/bootstrap' && req.method === 'GET') return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) });
         requireWorkbench(req, url);
-        if (action === '/api/state' && req.method === 'GET') return send(res, 200, { ...(await workbenchState(scope, project)), actor: { kind: 'human', sessionId: 'cloud-workbench' }, grants: [] }, workbenchCookie());
+        const sessionId = url.searchParams.get('session');
+        if (action === '/api/state' && req.method === 'GET') return send(res, 200, { ...(await workbenchState(scope, project, sessionId)), actor: { kind: 'human', sessionId: 'cloud-workbench' }, grants: [] }, workbenchCookie());
         if (action === '/api/events' && req.method === 'GET') {
           const client = { scope, res }; workbenchClients.add(client);
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...workbenchCookie() });
-          res.write(`retry: 1000\nevent: state\ndata: ${JSON.stringify(await workbenchState(scope, project))}\n\n`);
+          res.write(`retry: 1000\nevent: state\ndata: ${JSON.stringify(await workbenchState(scope, project, sessionId))}\n\n`);
+          if (project && await sessionMaps.enabled(project.id)) {
+            client.scoped = true;
+            const store = await sessionMaps.store(project.id, sessionId);
+            const update = state => res.write(`event: state\ndata: ${JSON.stringify({ ...state, scope: sessionId })}\n\n`);
+            store.on('change', update); req.on('close', () => store.off('change', update));
+          }
           req.on('close', () => workbenchClients.delete(client)); return;
         }
-        if (action === '/api/access' && req.method === 'GET') return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
+        if (action === '/api/access' && req.method === 'GET') return send(res, 200, project && await sessionMaps.enabled(project.id) ? await sessionMaps.sessions(project.id) : { sessions: [], grants: {}, currentSessionId: null });
+        if (action === '/api/access-plan' && req.method === 'POST') {
+          const input = await requestBody(req);
+          if (!project || !await sessionMaps.enabled(project.id)) throw new MapError('ISOLATION_REQUIRED', 'Session Maps are not enabled', 409);
+          const state = await sessionMaps.state(project.id, input.sessionId);
+          const nodes = assignmentScope(state.doc, String(input.nodeId || '').trim());
+          const current = (await sessionMaps.sessions(project.id)).grants?.[input.sessionId]?.nodes || [];
+          return send(res, 200, { sessionId: input.sessionId, nodeId: input.nodeId, nodes, missing: nodes.filter(node => !current.includes(node)) });
+        }
+        if (action === '/api/access' && req.method === 'POST') {
+          const input = await requestBody(req);
+          if (!project || !await sessionMaps.enabled(project.id)) throw new MapError('ISOLATION_REQUIRED', 'Session Maps are not enabled', 409);
+          const state = await sessionMaps.state(project.id, input.sessionId), known = entries(state.doc.root);
+          const current = (await sessionMaps.sessions(project.id)).grants?.[input.sessionId]?.nodes || [];
+          const nodes = Array.isArray(input.addNodes) ? [...new Set([...current, ...input.addNodes])] : input.nodes;
+          if (!Array.isArray(nodes) || nodes.some(node => !known.has(node))) throw new MapError('INVALID_SCOPE', 'Unknown node in scope');
+          await sessionMaps.session(project.id, { sessionId: input.sessionId, nodes });
+          return send(res, 200, { saved: true });
+        }
         if (action === '/api/presence' && req.method === 'POST') {
-          const input = await requestBody(req), state = await workbenchState(scope, project);
+          const input = await requestBody(req), state = await workbenchState(scope, project, sessionId);
           return send(res, 200, { version: state.version, synchronized: input.version === state.version && !input.dirty, error: null, recovery: false });
         }
         if (action === '/api/commit' && req.method === 'POST') {
           const input = await requestBody(req);
+          if (project && await sessionMaps.enabled(project.id)) return send(res, 200, await (await sessionMaps.store(project.id, sessionId)).commit(input, { kind: 'human', sessionId: 'cloud-workbench' }));
           if (project) return send(res, 200, await commitProject(project, input, { kind: 'human', sessionId: 'cloud-workbench' }));
           const result = await serial('overview', async () => {
             const operationId = validateOperationId(input), receiptPath = operationFile('overview', operationId);
@@ -402,6 +492,7 @@ export async function startCloudServer({
         }
         if (action === 'map' && req.method === 'GET') return send(res, 200, await projectSnapshot(project));
         requireProject(req, url, project);
+        if (req.method !== 'GET' && await sessionMaps.enabled(project.id)) throw new MapError('SESSION_REQUIRED', 'This project uses Session Maps; upgrade the client and use the scopes API', 409);
         if (action === 'snapshot' && req.method === 'POST') return send(res, 200, await saveSnapshot(project, await requestBody(req)));
         if (action === 'commits' && req.method === 'POST') {
           const input = await requestBody(req);
@@ -499,7 +590,7 @@ export async function startCloudServer({
   const close = () => new Promise((resolve, reject) => {
     clearInterval(heartbeat);
     for (const res of directoryClients) res.end(); for (const client of workbenchClients) client.res.end(); for (const set of projectClients.values()) for (const res of set) res.end();
-    server.close(error => error ? reject(error) : resolve());
+    server.close(error => error ? reject(error) : sessionMaps.close().then(resolve, reject));
   });
   return { server, close, url: `http://${host}:${server.address().port}` };
 }

@@ -9,6 +9,7 @@ import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
+import { isolationFile, sessionContext } from './scopes.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -86,6 +87,16 @@ async function main(args) {
   }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') return { url: state.url, root, protocol: 2 };
+  if (command === 'map' && opt._[0] === 'isolate') {
+    if (!opt['base-version']) throw new MapError('VERSION_REQUIRED', 'Pass --base-version from map read; existing records will remain legacy-unverified');
+    return request(state, '/api/isolation', { method: 'POST', body: { baseVersion: opt['base-version'] } });
+  }
+  if (command === 'map' && opt._[0] === 'publish') {
+    for (const key of ['operation-id', 'base-version', 'session-version', 'commit']) if (!opt[key]) throw new MapError('USAGE', `map publish requires --${key}`);
+    const sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
+    if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Pass the Session that owns the Map');
+    return request(state, '/api/publication', { method: 'POST', body: { sessionId, operationId: opt['operation-id'], baseVersion: opt['base-version'], sessionVersion: opt['session-version'], commit: opt.commit } });
+  }
   let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
@@ -97,6 +108,10 @@ async function main(args) {
   const action = command === 'map' ? opt._[0] || 'status' : command;
   if (['inbox', 'ack', 'watch'].includes(action)) {
     const inbox = new AgentInbox(root, sessionId, call);
+    if ((await readJSON(isolationFile(root), null))?.mode === 'session-maps') {
+      await call('/api/state');
+      inbox.ctx = sessionContext(root, sessionId);
+    }
     if (action === 'ack') return inbox.acknowledge(opt.receipt);
     if (action === 'watch') return inbox.wait(Number(opt['wait-ms'] ?? 40000));
     return inbox.read({ start: !!opt.start });

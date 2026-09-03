@@ -39,7 +39,10 @@ export class WorkbenchSync {
     });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
-  endpoint(route) { return `${this.config?.apiBase || ''}${route}`; }
+  endpoint(route) {
+    const base = `${this.config?.apiBase || ''}${route}`;
+    return this.isolated && !this.isAllSessions() ? base + (base.includes('?') ? '&' : '?') + 'session=' + encodeURIComponent(this.activeSession) : base;
+  }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST') {
     const response = await fetch(this.endpoint(route), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
@@ -92,7 +95,8 @@ export class WorkbenchSync {
     if (!this.config) return false;
     try {
       const state = await this.call('/api/state');
-      this.doc = state.doc; this.version = state.version; this.captureKey = 'cg-sync-draft:' + this.config.root;
+      this.isolated = !!state.isolated;
+      this.doc = state.doc; this.version = state.version; this.captureKey = 'cg-sync-draft:' + this.config.root + (this.isolated ? ':' + this.activeSession : '');
       if (state.error) throw new Error(state.error?.message || '服务需要恢复');
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         this.initializationRequired = true;
@@ -113,7 +117,7 @@ export class WorkbenchSync {
   connect() {
     this.events?.close();
     const query = new URLSearchParams({ clientId: this.id }); if (this.config.token) query.set('token', this.config.token);
-    this.events = new EventSource(`${this.endpoint('/api/events')}?${query}`, { withCredentials: true });
+    this.events = new EventSource(this.endpoint(`/api/events?${query}`), { withCredentials: true });
     this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
     this.events.addEventListener('access', () => this.refreshAccess());
     this.events.addEventListener('cloud-sync', e => this.renderCloudStatus(JSON.parse(e.data)));
@@ -130,6 +134,8 @@ export class WorkbenchSync {
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
   async receive(state) {
+    if (this.switching || this.isolated && (state.scope || ALL_SESSIONS) !== this.activeSession) return;
+    this.isolated = !!state.isolated;
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) return;
@@ -256,8 +262,8 @@ export class WorkbenchSync {
     this.sessions = sessions; this.grants = data.grants || {};
     const current = sessions.find(item => item.id === this.activeSession);
     const recommended = sessions.find(item => item.id === data.currentSessionId) || sessions[0] || null;
-    if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = recommended?.id || ALL_SESSIONS; this.manualSession = false; }
-    else if (this.activeSession !== ALL_SESSIONS && current && !this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
+    if (!this.isolated && this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = recommended?.id || ALL_SESSIONS; this.manualSession = false; }
+    else if (!this.isolated && this.activeSession !== ALL_SESSIONS && current && !this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
     const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '全部 Session';
     const options = [all, ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
@@ -284,6 +290,29 @@ export class WorkbenchSync {
   }
   async selectSession(sessionId) {
     if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId)) return false;
+    if (this.switching) return false;
+    if (sessionId !== this.activeSession) {
+      await this.flush();
+      if (this.dirty()) { this.saveDraft(); this.setStatus(this.status, '请先保存或处理当前 Session 的草稿，再切换'); return false; }
+      this.switching = true; this.loadGeneration = (this.loadGeneration || 0) + 1;
+      const previous = this.activeSession, previousIsolation = this.isolated;
+      this.events?.close(); clearTimeout(this.timer);
+      try {
+        // Optimistically include the requested Session in the state request. A
+        // legacy server ignores it and answers isolated:false; this also closes
+        // the race immediately after isolation is enabled.
+        this.activeSession = sessionId; this.isolated = true;
+        const state = await this.call('/api/state');
+        if (state.error || state.recovery || !state.doc?.root) throw new Error('目标 Session Map 不可用');
+        this.isolated = !!state.isolated;
+        this.doc = state.doc; this.version = state.version; this.a.apply(state.doc);
+        this.baseTree = copy(this.a.getRoot()); this.revision++; this.deferredState = null;
+        this.captureKey = 'cg-sync-draft:' + this.config.root + (this.isolated ? ':' + sessionId : '');
+        this.recovery = stored(this.captureKey); this.setStatus('synced', this.recovery ? '此 Session 有恢复草稿；未自动覆盖地图' : '');
+        await this.refreshAccess();
+      } catch (error) { this.activeSession = previous; this.isolated = previousIsolation; this.setStatus('error', error.message); return false; }
+      finally { this.switching = false; this.connect(); }
+    }
     this.activeSession = sessionId;
     this.manualSession = true;
     await this.refreshAccess();

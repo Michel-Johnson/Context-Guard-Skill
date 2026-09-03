@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node .github/scripts/security-checks.test.mjs && node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs .github/scripts/cli-python.test.mjs tests/cloud-workbench.test.mjs tests/cloud-sync-client.test.mjs tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs tests/hook-lifecycle.test.mjs && node tests/ci-smoke.mjs",
+    "test": "node .github/scripts/security-checks.test.mjs && node .github/scripts/verify-workflows.mjs && node --test .github/scripts/client-protocol.test.mjs .github/scripts/cli-python.test.mjs tests/cloud-workbench.test.mjs tests/cloud-sync-client.test.mjs tests/session-maps.test.mjs tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs tests/hook-lifecycle.test.mjs && node tests/ci-smoke.mjs",
     "security:setup": "node .github/scripts/security-tool.mjs",
     "security:test": "node .github/scripts/security-checks.test.mjs",
     "security:staged": "node .github/scripts/security-scan.mjs staged",

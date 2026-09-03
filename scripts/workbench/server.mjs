@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MapStore } from './store.mjs';
+import { MapScopes } from './scopes.mjs';
+import { verifyMainCommit } from './main-source.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
@@ -71,10 +73,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const job = projectionQueue.then(() => store.version === version ? generateProjections(root, doc, version, () => store.version === version) : false);
     projectionQueue = job.catch(() => {}); return job;
   } });
+  const scopes = new MapScopes(root, store, { fault });
   let server, base;
   const send = (res, code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
-  function broadcast(type, data) {
-    for (const peer of peers.values()) if (peer.res && !peer.res.destroyed) {
+  function broadcast(type, data, scope) {
+    for (const peer of peers.values()) if ((scope === undefined || peer.scope === scope) && peer.res && !peer.res.destroyed) {
       if (peer.res.writableLength > 2 * 1024 * 1024) { peer.res.destroy(); continue; }
       peer.res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
     }
@@ -96,16 +99,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       serviceAlive,
     };
   }
-  function pendingPeers() { return [...peers.values()].filter(p => p.dirty || !p.res || p.res.destroyed).map(p => p.id); }
-  async function fence() {
+  function pendingPeers(scope) { return [...peers.values()].filter(p => (scope === undefined || p.scope === scope) && (p.dirty || !p.res || p.res.destroyed)).map(p => p.id); }
+  async function fence(scope) {
     const checkpoint = randomUUID();
-    broadcast('checkpoint', { checkpoint });
+    broadcast('checkpoint', { checkpoint }, scope);
     const deadline = Date.now() + 1200;
-    while ([...peers.values()].some(p => p.checkpoint !== checkpoint)) {
+    while ([...peers.values()].some(p => (scope === undefined || p.scope === scope) && p.checkpoint !== checkpoint)) {
       if (Date.now() >= deadline) throw new MapError('UI_PENDING', 'A page has not acknowledged the synchronization checkpoint', 409, { peers: pendingPeers() });
       await pause(15);
     }
-    if (pendingPeers().length) throw new MapError('UI_PENDING', 'A page has unsaved edits', 409, { peers: pendingPeers() });
+    if (pendingPeers(scope).length) throw new MapError('UI_PENDING', 'A page has unsaved edits', 409, { peers: pendingPeers(scope) });
   }
   async function body(req) {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new MapError('CONTENT_TYPE', 'Use application/json', 415);
@@ -146,13 +149,40 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           await fence(); send(res, 202, { stopping: true }); setImmediate(() => close()); return;
         }
+        if (route === '/api/isolation' && req.method === 'POST' && req.headers.authorization === `Bearer ${adminToken}`) {
+          const input = await body(req); await fence();
+          const result = await scopes.enable(input.baseVersion);
+          broadcast('state', { ...store.state(false), isolated: true, scope: null }, null);
+          return send(res, 200, result);
+        }
+        if (route === '/api/publication' && req.method === 'POST' && req.headers.authorization === `Bearer ${adminToken}`) {
+          const input = await body(req); await fence();
+          return send(res, 200, await scopes.publish(input, commit => verifyMainCommit(root, commit)));
+        }
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
+          if (route === '/api/isolation' && req.method === 'POST') {
+            isHuman(actor); const input = await body(req); await fence();
+            const result = await scopes.enable(input.baseVersion);
+            broadcast('state', { ...store.state(false), isolated: true, scope: null }, null);
+            return send(res, 200, result);
+          }
+          const isolated = await scopes.enabled();
+          const requestedSession = url.searchParams.get('session');
+          if (isolated && actor.kind === 'agent' && requestedSession && requestedSession !== actor.sessionId) throw new MapError('FORBIDDEN', 'A Session cannot select another Map', 403);
+          const scope = isolated ? (actor.kind === 'agent' ? actor.sessionId : requestedSession || null) : null;
+          if (scope) await access.register(scope);
+          const store = await scopes.forSession(scope);
+          if (!store.scopeBroadcastAttached && scope) {
+            store.on('change', state => broadcast('state', { ...state, scope }, scope));
+            store.scopeBroadcastAttached = true;
+          }
           if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus()); }
           if (route === '/api/events' && req.method === 'GET') {
             isHuman(actor); const id = url.searchParams.get('clientId');
             if (!id || id.length > 100) throw new MapError('INVALID_CLIENT', 'Invalid clientId');
             let peer = peers.get(id) || { id, dirty: false, version: null };
+            peer.scope = scope;
             peer.res?.end(); peer.res = res; peers.set(id, peer);
             res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
             res.write(`retry: 500\nevent: state\ndata: ${JSON.stringify(store.state(false))}\n\n`);
@@ -170,18 +200,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return send(res, 200, { version: store.version, synchronized: input.version === store.version && !input.dirty && !store.error && !store.blocked, error: store.error, recovery: store.blocked });
           }
           if (route === '/api/state' && req.method === 'GET') {
-            if (actor.kind === 'agent') await fence();
+            if (actor.kind === 'agent') await fence(scope);
             await store.serial(() => store.refresh());
             const state = store.state();
             if (url.searchParams.has('node')) { const entry = state.doc && entries(state.doc.root).get(url.searchParams.get('node')); if (!entry) throw new MapError('NOT_FOUND', 'Node missing', 404); delete state.doc; state.node = entry.node; state.parentId = entry.parent?.id || null; }
-            return send(res, 200, { ...state, actor, grants: access.grants(actor.sessionId), peers: [...peers.values()].map(({ id, dirty, version }) => ({ id, dirty, version })) });
+            return send(res, 200, { ...state, isolated, scope, actor, grants: access.grants(actor.sessionId), peers: [...peers.values()].filter(p => p.scope === scope).map(({ id, dirty, version }) => ({ id, dirty, version })) });
           }
           if (route === '/api/changes' && req.method === 'GET') { await store.serial(() => store.refresh()); return send(res, 200, store.changes(url.searchParams.get('cursor'))); }
           if (route === '/api/operation' && req.method === 'GET') { const record = await store.operation(url.searchParams.get('id') || ''); return send(res, 200, { found: !!record, result: record?.result, recovery: store.blocked }); }
           if (route === '/api/commit' && req.method === 'POST') {
             const input = await body(req);
-            if (actor.kind === 'agent') await fence();
-            const result = await store.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers().length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
+            if (actor.kind === 'agent') await fence(scope);
+            const result = await store.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers(scope).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
           if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, await access.snapshot()); }
@@ -278,7 +308,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     base = `http://127.0.0.1:${server.address().port}`;
     const state = { protocol: 2, root, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };
     await atomicWrite(statePath(root), encode(state));
-    store.on('change', state => broadcast('state', state));
+    store.on('change', state => broadcast('state', { ...state, scope: null }, null));
     stopAccessWatch = access.watch(() => broadcast('access', {}));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
     function close() {
@@ -297,7 +327,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         server.closeIdleConnections?.();
         server.closeAllConnections?.();
         await disconnected;
-        await store.close(); await projectionQueue;
+        await scopes.close(); await store.close(); await projectionQueue;
         if ((await readJSON(statePath(root), null))?.instance === instance) await fs.unlink(statePath(root));
         if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock);
       })();
