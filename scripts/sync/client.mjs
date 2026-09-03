@@ -312,7 +312,7 @@ export async function ensureService(root) {
     try { process.kill(current.pid, 0); return { started: false, pid: current.pid }; } catch {}
   }
   const log = await fs.open(paths.serviceLog, 'a');
-  const child = spawn(process.execPath, [ownFile, 'serve', '--root', root], { detached: true, stdio: ['ignore', log.fd, log.fd] });
+  const child = spawn(process.execPath, [ownFile, 'serve', '--root', root], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {

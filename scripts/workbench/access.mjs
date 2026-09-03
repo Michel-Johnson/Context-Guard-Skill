@@ -11,6 +11,11 @@ const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
 let nodeSqlite;
 
+function hasBuiltInSqlite(version = process.versions.node) {
+  const [major = 0, minor = 0] = String(version).split('.').map(Number);
+  return major > 22 || (major === 22 && minor >= 5);
+}
+
 async function queryWithNodeSqlite(database, sql) {
   if (nodeSqlite === undefined) nodeSqlite = await import('node:sqlite').catch(() => null);
   if (!nodeSqlite?.DatabaseSync) return null;
@@ -55,6 +60,7 @@ export class Access {
     this.sqliteCommand = options.sqliteCommand || 'sqlite3';
     this.execFile = options.execFile || execFileAsync;
     this.querySqlite = options.querySqlite || queryWithNodeSqlite;
+    this.allowExternalSqlite = options.allowExternalSqlite ?? !hasBuiltInSqlite(options.nodeVersion);
     this.codexSessions = options.codexSessions || null;
     this.codexRows = null;
     this.codexQuery = null;
@@ -167,6 +173,7 @@ export class Access {
     const promise = (async () => {
       let rows = await this.querySqlite(database, sql);
       if (rows === null) {
+        if (!this.allowExternalSqlite) throw new Error('Built-in SQLite is unavailable on a supported Node.js runtime');
         const { stdout } = await this.execFile(this.sqliteCommand, ['-readonly', '-json', database, sql], {
           encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
         });

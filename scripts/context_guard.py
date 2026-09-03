@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def configure_stdio() -> None:
     """Use UTF-8 for client JSON and logs even on legacy Windows code pages."""
@@ -93,6 +95,7 @@ def folder_root(cwd: Path) -> Path:
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=2,
+            creationflags=WINDOWS_NO_WINDOW,
         ).strip()
         if out:
             return Path(out)
@@ -127,7 +130,7 @@ def context_dir(root: Path) -> Path:
     def git_common(folder: Path) -> Path:
         result = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=folder,
                                 text=True, capture_output=True, check=True, timeout=5,
-                                **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+                                creationflags=WINDOWS_NO_WINDOW)
         return (folder / result.stdout.strip()).resolve(strict=True)
     if git_common(root) != git_common(target) or not (target / ".codex/context/map.json").is_file():
         raise ValueError("Bound worktree must reference an existing Map in the same Git repository")
@@ -731,7 +734,7 @@ def run_node_workbench(args: list[str], payload: object = None) -> dict:
     command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"), *args]
     completed = subprocess.run(command, input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
         text=True, encoding="utf-8", capture_output=True, timeout=30,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        creationflags=WINDOWS_NO_WINDOW)
     try:
         result = json.loads(completed.stdout)
     except ValueError as exc:
@@ -948,7 +951,8 @@ def serve_workbench(root: Path, host: str, port: int) -> int:
     validate_workbench_host(host)
     init_context(root)
     return subprocess.call(["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"),
-        "serve", "--root", str(root), "--host", host, "--port", str(port)])
+        "serve", "--root", str(root), "--host", host, "--port", str(port)],
+        creationflags=WINDOWS_NO_WINDOW)
 
 
 def maybe_open_browser(url: str, enabled: bool) -> None:

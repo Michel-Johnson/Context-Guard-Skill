@@ -22,6 +22,8 @@ from context_guard import read_hook_runtime, read_json, read_preferences, start_
 from context_guard import safe_identifier, write_hook_runtime, write_json
 from context_guard import run_node_workbench
 
+WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 WORKSPACE_KEYS = {
     "cwd",
@@ -216,7 +218,9 @@ def map_entries(node: object):
 def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     map_file = ctx / "map.json"
     access_file = ctx / "sessions" / "workbench-access.json"
-    probe = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ctx.parent.parent, capture_output=True, text=True, timeout=5, check=False)
+    probe = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ctx.parent.parent,
+                           capture_output=True, text=True, timeout=5, check=False,
+                           creationflags=WINDOWS_NO_WINDOW)
     if probe.returncode == 0:
         shared = Path(probe.stdout.strip()) / "context-guard"
         bindings = read_json(shared / "workbench-bindings.json", {})
@@ -271,7 +275,8 @@ def map_inbox(root: Path, ctx: Path, current_session_id: str) -> dict[str, objec
         "--session", current_session_id, "--start",
     ]
     try:
-        result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=10, check=False)
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=10, check=False,
+                                creationflags=WINDOWS_NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as error:
         return {"pending": False, "error": {"code": "INBOX_READ_FAILED", "message": str(error)}}
     lines = (result.stdout or "").strip().splitlines()
@@ -592,7 +597,8 @@ def sync_command(root: Path, action: str, current_session_id: str = "", paths: l
     if clean_paths:
         command.extend(["--paths", ",".join(clean_paths)])
     try:
-        result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=15, check=False)
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=15, check=False,
+                                creationflags=WINDOWS_NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as error:
         return {"error": {"code": "SYNC_TOOL_FAILED", "message": str(error)}}
     output = (result.stdout or "").strip().splitlines()
@@ -644,7 +650,7 @@ def git_changed_paths(root: Path) -> list[str]:
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain", "-z"], cwd=root, capture_output=True,
-            timeout=5, check=False,
+            timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError):
         return []

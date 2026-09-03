@@ -18,7 +18,7 @@ if (!isGlobalInstall && !autoInstall) {
 }
 
 const cli = path.join(__dirname, "context-guard-skill.js");
-const result = spawnSync(process.execPath, [cli, "install"], { stdio: "inherit" });
+const result = spawnSync(process.execPath, [cli, "install"], { stdio: "inherit", windowsHide: true });
 
 if (result.error) {
   console.warn(`[context-guard-skill] auto install skipped: ${result.error.message}`);
