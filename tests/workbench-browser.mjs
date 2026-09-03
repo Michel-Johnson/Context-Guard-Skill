@@ -404,6 +404,14 @@ try {
     });
     assert.equal(headerCutsNode, false, 'panning a node under the header must clip, not slice a dead pill');
     recordCheck('static-preview-node-click');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1&phone=1`);
+    await preview.waitForSelector('.node .add-child');
+    const ghostPlus = await preview.evaluate(() =>
+      [...document.querySelectorAll('.node:not(.selected) .add-child')].map(el => Number(getComputedStyle(el).opacity))
+    );
+    assert.ok(ghostPlus.length, 'phone nodes have add-child');
+    assert.ok(ghostPlus.every(o => o === 0), `unselected pluses must be hidden on phone, got ${ghostPlus.join(',')}`);
+    recordCheck('phone-add-child-hidden');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));

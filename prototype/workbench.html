@@ -790,8 +790,8 @@ html.cg-phone .tray{
   z-index:32
 }
 html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
-html.cg-phone .node .add-child{width:22px;height:22px;line-height:18px;font-size:13px;right:-11px;opacity:.34}
-html.cg-phone .node.selected .add-child{opacity:1}
+html.cg-phone .node .add-child{width:22px;height:22px;line-height:18px;font-size:13px;right:-11px;opacity:0;pointer-events:none}
+html.cg-phone .node.selected .add-child{opacity:1;pointer-events:auto}
 html.cg-phone .node .add-child:after{content:"";position:absolute;inset:-12px}
 html.cg-phone body.layout-tb .node .add-child{bottom:-11px}
 html.cg-phone .node:hover,html.cg-phone .node.module:hover{transform:none}
