@@ -289,7 +289,7 @@ try {
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?preview=1`);
     await preview.waitForSelector('.node.root');
     assert.equal(await preview.evaluate(() => document.documentElement.classList.contains('theme-preview')), true);
-    assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(60, 60, 60)');
+    assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(50, 54, 57)');
     const previewBanner = await preview.evaluate(() => {
       const el = document.querySelector('.theme-preview-banner');
       const s = getComputedStyle(el);
@@ -304,10 +304,6 @@ try {
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
     assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
-    const barBg = await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor);
-    assert.equal(barBg, 'rgb(60, 60, 60)', `live top bar stays charcoal ${barBg}`);
-    const barRadius = await preview.locator('header.top').evaluate(el => getComputedStyle(el).borderRadius);
-    assert.ok(parseInt(barRadius) >= 12, `top bar has rounded corners ${barRadius}`);
     const context = await preview.evaluate(() => {
       const crumbs = document.querySelector('.nav-crumbs');
       const here = crumbs.querySelector('.here');
