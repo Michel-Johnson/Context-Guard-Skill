@@ -3,6 +3,9 @@
 Read this reference only when a project is connected to Context Guard Cloud or a
 `WORK_IMPACT` conflict must be resolved.
 
+For first-time server installation, project enrollment, upgrades, and host
+migration, read `references/cloud-deployment.md` first.
+
 ## Model
 
 Cloud is a directory of projects. It does not merge projects into one Map. Each

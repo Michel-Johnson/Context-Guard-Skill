@@ -29,7 +29,7 @@ Usage:
   context-guard doctor [--platform auto|all|codex|cursor|claude] [--root <project>]
                        [--target <dir>] [--hooks-target <file>] [--config-target <file>] [--json]
   context-guard path
-  context-guard sync connect|status|prepare|finish [args...]
+  context-guard sync connect|ensure|status|pull|prepare|track|checkpoint|finish [args...]
   context-guard <context_guard.py command> [args...]
 
 Examples:
@@ -216,7 +216,21 @@ function copySkill(target) {
     const from = path.join(sourceSkillDir, entry);
     if (!fs.existsSync(from)) continue;
     const to = path.join(target, entry);
-    fs.cpSync(from, to, { recursive: true });
+    const options = entry === "scripts"
+      ? {
+          recursive: true,
+          filter(source) {
+            const relative = path.relative(from, source);
+            if (relative === "") return true;
+            const parts = relative.split(path.sep);
+            return parts[0] !== "cloud"
+              && relative !== "branch_guard.py"
+              && !parts.includes("__pycache__")
+              && !/\.py[co]$/i.test(parts.at(-1));
+          }
+        }
+      : { recursive: true };
+    fs.cpSync(from, to, options);
   }
 }
 

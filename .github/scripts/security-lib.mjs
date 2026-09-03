@@ -29,7 +29,7 @@ export function forbiddenPath(name, packageMode = false) {
   if (!safePath(name)) return true;
   const parts = name.toLowerCase().split("/");
   const leaf = parts.at(-1);
-  if (parts.some(p => [".codex", "node_modules", "output", ".security-tools", "__pycache__", ".pytest_cache", "coverage"].includes(p))) return true;
+  if (parts.some(p => [".codex", "node_modules", "output", "temp", ".security-tools", "__pycache__", ".pytest_cache", "coverage"].includes(p))) return true;
   if (leaf === ".npmrc" || /^(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)$/.test(leaf) || /\.(?:key|p12|pfx|log)$/.test(leaf)) return true;
   if ((leaf === ".env" || leaf.startsWith(".env.")) && ![".env.example", ".env.sample", ".env.template"].includes(leaf)) return true;
   if (/^(?:credentials|secrets?)(?:\.local)?\.(?:json|ya?ml|toml)$/.test(leaf)) return true;

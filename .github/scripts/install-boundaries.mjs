@@ -16,6 +16,19 @@ const write = (file, data) => {
   fs.writeFileSync(file, typeof data === "string" ? data : JSON.stringify(data));
 };
 
+function assertNoPythonCache(skill) {
+  const scripts = path.join(skill, "scripts");
+  const pending = fs.existsSync(scripts) ? [scripts] : [];
+  while (pending.length) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      assert.notEqual(entry.name, "__pycache__", "Python cache directory leaked into installed Skill");
+      assert.ok(!/\.py[co]$/i.test(entry.name), `Python cache file leaked into installed Skill: ${entry.name}`);
+      if (entry.isDirectory()) pending.push(path.join(directory, entry.name));
+    }
+  }
+}
+
 function snapshot(root) {
   const result = {};
   function visit(dir) {
@@ -104,6 +117,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
       for (const client of clients) {
         if (expected.includes(client)) {
           for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)), `${client}/${file}`);
+          assertNoPythonCache(skill(client));
           assert.ok(fs.existsSync(config(client)), `${client} hooks missing`);
         } else assert.ok(!fs.existsSync(home(client)), `Must not install unrelated ${client}`);
       }
@@ -143,6 +157,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
         if (client !== "cursor") assert.equal(groups.find(group => group.hooks.some(h => h.command === thirdParty.command)).matcher, "user-matcher");
         assert.deepEqual(snapshot(path.join(env.HOME, "project")), memory);
         for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)));
+        assertNoPythonCache(skill(client));
       }
       const backups = fs.readdirSync(home(client)).filter(file => file.startsWith(configName(client) + ".bak-"));
       assert.ok(backups.some(file => fs.readFileSync(path.join(home(client), file), "utf8") === JSON.stringify(settings)), "Original config must be recoverable");

@@ -211,4 +211,4 @@ context-guard sync prepare --root /path/to/project --session "$CODEX_THREAD_ID" 
 context-guard sync finish --root /path/to/project --session "$CODEX_THREAD_ID"
 ```
 
-详细协议见 [Cloud Sync 接口](references/cloud-sync-interface.md)。
+详细协议见 [Cloud Sync 接口](references/cloud-sync-interface.md)。在新服务器安装、创建项目凭据、连接工作副本或迁移服务时，按 [Cloud 部署指南](references/cloud-deployment.md) 操作；云端仍属于本仓库，持久数据和密钥放在仓库外。

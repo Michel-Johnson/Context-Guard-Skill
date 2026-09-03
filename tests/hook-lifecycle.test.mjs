@@ -3,13 +3,15 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 
 const repository = path.resolve(import.meta.dirname, '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
 const contextScript = path.join(repository, 'scripts/context_guard.py');
 const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
+const cloudServer = path.join(repository, 'scripts/cloud/server.mjs');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -51,6 +53,18 @@ async function freePort() {
   const port = server.address().port;
   await new Promise(resolve => server.close(resolve));
   return port;
+}
+
+async function waitForHealth(url) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(new URL('/api/health', url));
+      if (response.ok) return;
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  throw new Error(`cloud server did not start: ${url}`);
 }
 
 async function installMap(project) {
@@ -118,6 +132,61 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   for (const name of ['session-start', 'user-prompt-submit', 'pre-tool-use', 'post-tool-use', 'pre-compact', 'post-compact', 'subagent-start', 'subagent-stop', 'interrupt', 'stop']) {
     assert.ok(events.some(event => event.event === name), `missing ${name}`);
   }
+});
+
+test('configured Cloud hooks prepare once, track paths, checkpoint and require finish', async t => {
+  const project = await fixture();
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hook-cloud-'));
+  const port = await freePort();
+  const cloudUrl = `http://127.0.0.1:${port}`;
+  const cloud = spawn(process.execPath, [cloudServer], {
+    cwd: project,
+    env: {
+      ...process.env,
+      CONTEXT_GUARD_CLOUD_HOST: '127.0.0.1', CONTEXT_GUARD_CLOUD_PORT: String(port),
+      CONTEXT_GUARD_CLOUD_DATA: dataDir, CONTEXT_GUARD_CLOUD_TOKEN: 'hook-admin',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  });
+  t.after(async () => {
+    cloud.kill('SIGTERM');
+    await new Promise(resolve => cloud.once('exit', resolve));
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(cloudUrl);
+  const created = await fetch(new URL('/api/projects', cloudUrl), {
+    method: 'POST', headers: { Authorization: 'Bearer hook-admin', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'hook-cloud', name: 'Hook Cloud' }),
+  }).then(response => response.json());
+
+  const session = 'hook-cloud-session';
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await installMap(project);
+  await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
+  const ctx = path.join(project, '.codex/context');
+  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
+
+  const prepared = hook('PreToolUse', project, session, {
+    tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
+  });
+  assert.match(prepared.json.hookSpecificOutput.additionalContext, /cloud prepare ran once/);
+  await fs.writeFile(path.join(project, 'src/cloud.mjs'), 'ok\n');
+  hook('PostToolUse', project, session, {
+    tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs') },
+  });
+  const blocked = hook('Stop', project, session, { stop_hook_active: false });
+  assert.equal(blocked.json.decision, 'block');
+  assert.match(blocked.json.reason, /sync finish/);
+  const beforeFinish = await syncStatus(project);
+  const active = beforeFinish.works.find(item => item.sessionId === session);
+  assert.equal(active.status, 'working');
+  assert.ok(active.paths.includes('src/cloud.mjs'));
+  await finishSync({ root: project, sessionId: session });
+  const stopped = hook('Stop', project, session, { stop_hook_active: true });
+  assert.match(stopped.json.systemMessage, /lifecycle completed/);
+  const afterFinish = await syncStatus(project);
+  assert.equal(afterFinish.works.find(item => item.sessionId === session).status, 'completed');
 });
 
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {

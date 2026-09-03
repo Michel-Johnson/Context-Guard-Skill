@@ -204,3 +204,5 @@ Node now owns local map submissions and live page updates. Use `context-guard ma
 ## Cloud event synchronization
 
 Cloud Sync receives project-scoped SSE events instead of periodically replacing every Map. Run `context-guard sync prepare` before development and `context-guard sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified. See the [Cloud Sync interface](references/cloud-sync-interface.md).
+
+To install Cloud on a new Linux server, create project credentials, connect working copies, or move the service to another host, follow the [Cloud deployment guide](references/cloud-deployment.md). Cloud stays in this repository; its persistent data and secrets stay outside the Git checkout.

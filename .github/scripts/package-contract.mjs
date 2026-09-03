@@ -3,6 +3,7 @@ export const packedFiles = [
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",
   "references/cloud-sync-interface.md",
+  "references/cloud-deployment.md",
   "scripts/sync/client.mjs",
   "scripts/workbench/access.mjs",
   "scripts/workbench/cli.mjs",
@@ -35,6 +36,7 @@ export const installedFiles = [
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",
   "references/cloud-sync-interface.md",
+  "references/cloud-deployment.md",
   "scripts/sync/client.mjs",
   "scripts/workbench/access.mjs",
   "scripts/workbench/cli.mjs",
@@ -58,6 +60,9 @@ export const installedFiles = [
 ];
 
 export const forbiddenInstalledPaths = [
+  "scripts/cloud",
+  "scripts/branch_guard.py",
+  "scripts/__pycache__",
   "tests",
   "fixtures",
   ".github",
