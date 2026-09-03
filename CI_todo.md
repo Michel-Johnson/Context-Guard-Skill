@@ -1,5 +1,7 @@
 # CI TODO
 
+- [x] Cloud Map 成功响应前持久化事件、地图与回执；中断恢复、重启恢复、服务器时间和多项目并发均有正式测试（`tests/cloud-workbench.test.mjs`）
+- [x] Cloud 项目总览重建时保留人工编辑、TODO 和自定义字段，重启后仍可恢复（`tests/cloud-workbench.test.mjs`）
 - [ ] `sync serve/ensure` 长驻进程、断线重连和 SSE 游标恢复
 - [ ] `sync checkpoint` 独立行为
 - [x] 已配置 Cloud 时的 `PreToolUse` / `PostToolUse` / `Stop` Hook 完整流程（`tests/hook-lifecycle.test.mjs`）
