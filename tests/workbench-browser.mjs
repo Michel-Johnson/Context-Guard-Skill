@@ -289,6 +289,16 @@ try {
     const port = staticServer.address().port;
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1`);
     await preview.waitForSelector('.node.root');
+    const previewBanner = await preview.evaluate(() => {
+      const el = document.querySelector('.theme-preview-banner');
+      const s = getComputedStyle(el);
+      return {
+        display: s.display,
+        shown: s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0
+      };
+    });
+    assert.equal(previewBanner.shown, false, `preview module-card chip must stay hidden ${JSON.stringify(previewBanner)}`);
+    recordCheck('preview-theme-banner-hidden');
     assert.equal(await preview.locator('.node.noauth').count(), 0, 'static preview unlocks every node');
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
@@ -328,8 +338,22 @@ try {
     });
     assert.equal(tbSpread.tb, true);
     assert.ok(tbSpread.dy > 20, `first layer top-down should sit children below ${JSON.stringify(tbSpread)}`);
+    const tbWrap = await preview.evaluate(() => {
+      const boxes = ['M1', 'M2', 'M3', 'M4', 'M5'].map(id => {
+        const r = document.querySelector(`.node[data-id="${id}"]`).getBoundingClientRect();
+        return { id, y: Math.round(r.top), x: Math.round(r.left) };
+      });
+      const bands = [];
+      boxes.forEach(b => {
+        if (!bands.some(y => Math.abs(y - b.y) < 24)) bands.push(b.y);
+      });
+      const ys = boxes.map(b => b.y);
+      return { boxes, bands: bands.length, ySpan: Math.max(...ys) - Math.min(...ys) };
+    });
+    assert.ok(tbWrap.bands >= 2 && tbWrap.ySpan > 40, `top-down should wrap children, not one row ${JSON.stringify(tbWrap)}`);
     await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
     recordCheck('layout-dir-on-first-layer');
+    recordCheck('layout-tb-wraps');
     await preview.locator('#btn-rel').click();
     await preview.locator('.node[data-id="M2"]').click();
     await preview.locator('.flow-lab').first().waitFor({ state: 'visible' });
@@ -420,6 +444,7 @@ try {
       });
     });
     assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
+    recordCheck('phone-preview-banners-hidden');
     recordCheck('phone-add-child-hidden');
   } finally {
     await preview.close();

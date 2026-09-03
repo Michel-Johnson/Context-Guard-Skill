@@ -450,12 +450,11 @@ html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
 .theme-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
   font-size:12px;font-weight:700;box-shadow:var(--shadow-sm);width:max-content;height:auto;max-width:calc(100vw - 24px)}
-html.theme-preview .theme-preview-banner{display:block}
+html.theme-preview .theme-preview-banner{display:none}
 .phone-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
   font-size:12px;font-weight:700;box-shadow:var(--shadow-sm);width:max-content;height:auto;max-width:calc(100vw - 24px)}
 html.phone-preview .phone-preview-banner{display:block}
-html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
 .settings-wrap{position:relative;flex:0 0 auto}
 #btn-settings{width:var(--chrome-btn-h);padding:0}
@@ -4967,6 +4966,13 @@ function renderMap(){
     if(relationMode) return c.kind==="module" ? 120 : GAP_TB_X+18;
     return c.kind==="module" ? MOD_GAP_X : GAP_TB_X;
   }
+  function tbWrapCols(kids){
+    if(kids.length<=2) return kids.length;
+    if(isPhoneLayout()) return 2;
+    const mods = kids.filter(c=>c.kind==="module").length;
+    if(mods>=kids.length-1) return kids.length===4 ? 2 : 3;
+    return 4;
+  }
   function shiftSubtree(n, dx, dy){
     const p = pos.get(n.id); if(p){ p.x += dx; p.y += dy; }
     visibleChildren(n).forEach(c=>shiftSubtree(c, dx, dy));
@@ -4994,22 +5000,29 @@ function renderMap(){
   function subtreeTB(n, left, y){
     const s = size.get(n.id);
     const kids = visibleChildren(n);
-    const childY = y + s.h + hopTB;
     if(!kids.length){ pos.set(n.id,{x:left, y}); return s.w; }
-    let x = left;
-    kids.forEach(c=>{ x += subtreeTB(c, x, childY) + gapX(c); });
-    let total = x - gapX(kids[kids.length-1]) - left;
-    const first = kids[0], last = kids[kids.length-1];
-    const fc = pos.get(first.id), lc = pos.get(last.id);
-    const cx = (fc.x + size.get(first.id).w/2 + lc.x + size.get(last.id).w/2)/2;
-    let nx = cx - s.w/2;
-    if(s.w > total){
-      const shift = (s.w-total)/2;
-      kids.forEach(c=>shiftSubtree(c, shift, 0));
-      nx = left; total = s.w;
-    }
-    pos.set(n.id,{x:Math.max(nx, left), y});
-    return total;
+    const cols = tbWrapCols(kids);
+    const rows = [];
+    for(let i=0;i<kids.length;i+=cols) rows.push(kids.slice(i, i+cols));
+    let cursorY = y + s.h + hopTB;
+    let maxW = s.w;
+    const rowMeta = [];
+    rows.forEach(row=>{
+      let x = left;
+      row.forEach(c=>{ x += subtreeTB(c, x, cursorY) + gapX(c); });
+      const rowW = x - gapX(row[row.length-1]) - left;
+      const rowH = Math.max(...row.map(c=>subtreeH(c)));
+      rowMeta.push({row, w:rowW});
+      maxW = Math.max(maxW, rowW);
+      cursorY += rowH + hopTB;
+    });
+    rowMeta.forEach(meta=>{
+      if(meta.w>=maxW) return;
+      const dx = (maxW-meta.w)/2;
+      meta.row.forEach(c=>shiftSubtree(c, dx, 0));
+    });
+    pos.set(n.id, {x:left + Math.max(0, (maxW-s.w)/2), y});
+    return maxW;
   }
   function subtreeH(n){
     let max = pos.get(n.id).y + size.get(n.id).h;
