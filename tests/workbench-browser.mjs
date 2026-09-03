@@ -317,7 +317,8 @@ try {
     assert.equal(context.switch, true);
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 1);
-    await preview.mouse.click(640, 420);
+    await preview.locator('#context-card').click();
+    assert.equal(await preview.locator('#repo-menu.open').count(), 0);
     await preview.locator('.node[data-id="M1"]').click();
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     const nested = await preview.evaluate(() =>
