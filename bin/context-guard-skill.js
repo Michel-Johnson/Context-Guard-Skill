@@ -321,6 +321,10 @@ function plannedHooks(platform, skillTarget, hooksTarget) {
     return mergeCursorHooks(existing, cursorHooks(skillTarget));
   }
   const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
+  if (platform === "claude") {
+    const supported = new Set(["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"]);
+    rawIncoming.hooks = Object.fromEntries(Object.entries(rawIncoming.hooks || {}).filter(([event]) => supported.has(event)));
+  }
   const incoming = rewriteGroupedHookCommands(rawIncoming, skillTarget, platform);
   return mergeHooks(existing, incoming);
 }
@@ -464,7 +468,7 @@ function doctor(args) {
   let platforms = selectedPlatforms(options.platform);
   if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") platforms = ["codex"];
   const eventNames = {
-    codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
+    codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "SubagentStop", "Stop", "Interrupt"],
     claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
     cursor: ["sessionStart", "subagentStart", "beforeSubmitPrompt", "subagentStop", "stop"]
   };

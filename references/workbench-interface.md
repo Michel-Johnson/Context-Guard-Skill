@@ -69,7 +69,7 @@ Operations are atomic with respect to other supported submissions:
 - `attach-bug`: narrow compatibility operation adding a uniquely identified bug
   stub; it does not authorize changing other fields or proposal approval.
 
-Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `bugs`,
+Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `todos`, `bugs`,
 `dormant`, `files`, `owns`. `proposal` and `isNew` changes require the workbench.
 The tree uses `children` and may contain legacy `_inbox` children. IDs are unique
 across both. Existing unknown metadata is preserved. Own paths are relative to
@@ -198,6 +198,11 @@ may repeat a report. Agent actions must still use stable operation IDs. Own-sess
 writes advance the observation baseline without triggering a self-response loop.
 Other-session, human and external-file actions remain observable.
 
+Active Codex hooks call this inbox at session start, on each user prompt, and after
+compaction. They expose a pending receipt and changed node IDs to the Agent but do
+not acknowledge it. This makes another Agent's committed Map changes visible at a
+reasoning boundary without treating file events as model wake-ups.
+
 These commands use the existing authenticated changes API and verify the actual
 disk hash. They do not send page checkpoints, blur inputs, read browser storage,
 or certify that an uncommitted browser draft is saved. Before making any change,
@@ -221,6 +226,26 @@ The adapter needs no new server endpoint and works with an already-running Node
 protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack
 workflow; they are not an alternative idle-task scheduler.
+
+## Prompt signals and Map TODOs
+
+`UserPromptSubmit` stores a stable private signal ID. The Agent classifies it by
+meaning, not keyword matching:
+
+```sh
+context-guard record-todo --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "New requirement" --description "Acceptance details"
+context-guard record-bad-case --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "Failure" --phenomenon "What failed"
+context-guard resolve-signal --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --kind task
+```
+
+`record-todo` requires the real lifecycle session and an explicit grant for the
+target node. It creates one idempotent `todos[]` entry bound to that session and
+signal, with creation/update timestamps. Retrying cannot duplicate it. Bad cases
+resolve their signal only after the Map attachment succeeds. `TODO.md` remains a
+human-owned file and the hook denies Agent writes to it.
 
 ## Cache migration and external saves
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -345,8 +347,12 @@ def append_session_event(
 ) -> Path:
     init_context(root)
     ctx = context_dir(root)
+    recorded_at = utc_now()
     record: dict[str, object] = {
-        "at": utc_now(),
+        "at": recorded_at,
+        "occurred_at": recorded_at,
+        "recorded_at": recorded_at,
+        "event_id": str(uuid.uuid4()),
         "event": event,
         "platform": platform,
         "session_id": session_id,
@@ -357,8 +363,98 @@ def append_session_event(
         handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
     session_path = ensure_session_file(root, session_id, platform)
     with session_path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(f"- {record['at']} · {event}\n")
+        handle.write(f"- {record['at']} · {event} · {record['event_id']}\n")
     return session_path
+
+
+def hook_runtime_path(root: Path, session_id: str) -> Path:
+    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    return context_dir(root) / "private" / "hook-runtime" / f"{digest}.json"
+
+
+def read_hook_runtime(root: Path, session_id: str) -> dict[str, object]:
+    value = read_json(hook_runtime_path(root, session_id), {})
+    if not isinstance(value, dict):
+        value = {}
+    value.setdefault("v", 1)
+    value.setdefault("session_id", session_id)
+    value.setdefault("signals", [])
+    return value
+
+
+def write_hook_runtime(root: Path, session_id: str, value: dict[str, object]) -> Path:
+    value["v"] = 1
+    value["session_id"] = session_id
+    value["updated_at"] = utc_now()
+    target = hook_runtime_path(root, session_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, target)
+    return target
+
+
+def prompt_signal_id(session_id: str, turn_id: str, prompt: str) -> str:
+    digest = hashlib.sha256(
+        json.dumps([session_id, turn_id, prompt], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return f"SIG-{digest[:20]}"
+
+
+def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) -> dict[str, object]:
+    runtime = read_hook_runtime(root, session_id)
+    signals = runtime.get("signals")
+    if not isinstance(signals, list):
+        signals = []
+        runtime["signals"] = signals
+    signal_id = prompt_signal_id(session_id, turn_id, prompt)
+    existing = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
+    if existing:
+        return existing
+    signal: dict[str, object] = {
+        "id": signal_id,
+        "turn_id": turn_id,
+        "created_at": utc_now(),
+        "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "preview": " ".join(prompt.split())[:400],
+        "status": "pending",
+    }
+    signals.append(signal)
+    if len(signals) > 100:
+        unresolved = [item for item in signals if isinstance(item, dict) and item.get("status") == "pending"][-50:]
+        resolved = [item for item in signals if isinstance(item, dict) and item.get("status") != "pending"][-50:]
+        runtime["signals"] = unresolved + resolved
+    write_hook_runtime(root, session_id, runtime)
+    return signal
+
+
+def resolve_prompt_signal(
+    root: Path,
+    session_id: str,
+    signal_id: str,
+    kind: str,
+    node_id: str = "",
+    record_id: str = "",
+) -> dict[str, object]:
+    runtime = read_hook_runtime(root, session_id)
+    signals = runtime.get("signals")
+    if not isinstance(signals, list):
+        raise ValueError("hook runtime has no prompt signals")
+    signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
+    if not signal:
+        raise ValueError(f"unknown prompt signal: {signal_id}")
+    previous = str(signal.get("kind") or "")
+    if signal.get("status") == "resolved" and previous and previous != kind:
+        raise ValueError(f"prompt signal is already resolved as {previous}")
+    signal.update({
+        "status": "resolved",
+        "kind": kind,
+        "resolved_at": utc_now(),
+        "node_id": node_id or None,
+        "record_id": record_id or None,
+    })
+    write_hook_runtime(root, session_id, runtime)
+    return signal
 
 
 def session_records(root: Path) -> list[dict[str, object]]:
@@ -575,6 +671,72 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+def record_todo(
+    root: Path,
+    title: str,
+    description: str,
+    node_id: str,
+    session_id: str,
+    signal_id: str,
+) -> dict[str, object]:
+    init_context(root)
+    if not title.strip() or not node_id.strip() or not signal_id.strip():
+        raise ValueError("record-todo needs --title, --node, and --signal")
+    known = {str(item.get("session_id")) for item in session_records(root)}
+    if not session_id or session_id not in known:
+        raise ValueError("record-todo needs a session previously recorded by a lifecycle hook")
+    runtime = read_hook_runtime(root, session_id)
+    signals = runtime.get("signals") if isinstance(runtime.get("signals"), list) else []
+    signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
+    if not signal:
+        raise ValueError(f"unknown prompt signal: {signal_id}")
+    map_doc = read_json(context_dir(root) / "map.json", {})
+    if find_map_node(map_doc.get("root") if isinstance(map_doc, dict) else None, node_id) is None:
+        raise ValueError(f"unknown map node: {node_id}")
+    todo_id = "TD-" + hashlib.sha256(f"{session_id}\0{signal_id}".encode("utf-8")).hexdigest()[:16]
+    result = run_node_workbench(
+        ["record-todo", "--root", str(root), "--session", session_id],
+        {
+            "id": todo_id,
+            "node": node_id,
+            "signalId": signal_id,
+            "title": title.strip(),
+            "description": description.strip(),
+            "at": str(signal.get("created_at") or utc_now()),
+        },
+    )
+    resolve_prompt_signal(root, session_id, signal_id, "todo", node_id, todo_id)
+    append_session_event(
+        root,
+        "todo-recorded",
+        session_platform(root, session_id),
+        session_id,
+        {
+            "signal_id": signal_id,
+            "node_ids": [node_id],
+            "record_id": todo_id,
+            "map_version": result.get("version"),
+        },
+    )
+    print(f"[context-guard] recorded todo: {todo_id} ({node_id})")
+    return {"id": todo_id, "node": node_id, "version": result.get("version"), "duplicate": bool(result.get("duplicate"))}
+
+
+def resolve_signal(root: Path, session_id: str, signal_id: str, kind: str) -> dict[str, object]:
+    if kind not in {"task", "ignore"}:
+        raise ValueError("resolve-signal --kind must be task or ignore; use record-todo/record-bad-case for durable records")
+    signal = resolve_prompt_signal(root, session_id, signal_id, kind)
+    append_session_event(
+        root,
+        "signal-resolved",
+        session_platform(root, session_id),
+        session_id,
+        {"signal_id": signal_id, "signal_kind": kind, "turn_id": signal.get("turn_id")},
+    )
+    print(f"[context-guard] resolved signal: {signal_id} ({kind})")
+    return signal
+
+
 def run_node_workbench(args: list[str], payload: object = None) -> dict:
     command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"), *args]
     completed = subprocess.run(command, input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
@@ -607,6 +769,7 @@ def record_bad_case(
     status: str,
     keys: str,
     session_id: str,
+    signal_id: str = "",
 ) -> tuple[str, Path]:
     init_context(root)
     ctx = context_dir(root)
@@ -696,8 +859,11 @@ def record_bad_case(
         "session_id": session_id or None,
         "phenomenon": phenomenon.strip(),
         "trigger": trigger.strip(),
+        "signal_id": signal_id or None,
     })
     write_json(ctx / "bad-case-events.json", events)
+    if signal_id:
+        resolve_prompt_signal(root, session_id, signal_id, "bad-case", node, bug_id)
     print(f"[context-guard] recorded bad case: {bug_id} ({bug_path})")
     return bug_id, bug_path
 
@@ -863,7 +1029,7 @@ def show_roadmap(root: Path, should_open: bool) -> int:
 def parked_command(name: str) -> int:
     print(
         f"[context-guard] `{name}` is parked. v1 is sessions / bugs / tasks / map. "
-        "See TODO.md at the repo root. Do not expand Test Hub or Roadmap HTML.",
+        "Use the live Map for Agent TODOs; TODO.md is human-owned. Do not expand Test Hub or Roadmap HTML.",
         file=sys.stderr,
     )
     return 2
@@ -876,7 +1042,8 @@ def main() -> int:
         "command",
         choices=[
             "init", "set-language", "show-roadmap", "workbench", "record-bad-case",
-            "record-bad-case-fix", "archive-session", "write-candidates", *PARKED,
+            "record-bad-case-fix", "record-todo", "resolve-signal", "archive-session",
+            "write-candidates", *PARKED,
         ],
     )
     parser.add_argument("--root", type=Path, default=None)
@@ -900,6 +1067,9 @@ def main() -> int:
     parser.add_argument("--method", default="")
     parser.add_argument("--evidence", default="")
     parser.add_argument("--summary", default="")
+    parser.add_argument("--description", default="")
+    parser.add_argument("--signal", default="")
+    parser.add_argument("--kind", default="")
     parser.add_argument("--decisions", default="")
     parser.add_argument("--next", dest="next_steps", default="")
     parser.add_argument("--files", default="")
@@ -940,10 +1110,28 @@ def main() -> int:
                 args.status,
                 args.keys,
                 resolve_session_id(root, args.session),
+                args.signal,
             )
             return 0
         except (OSError, RuntimeError, ValueError) as exc:
             print(f"[context-guard] record-bad-case failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "record-todo":
+        try:
+            record_todo(
+                root, args.title, args.description, args.node,
+                resolve_session_id(root, args.session), args.signal,
+            )
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] record-todo failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "resolve-signal":
+        try:
+            resolve_signal(root, resolve_session_id(root, args.session), args.signal, args.kind)
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] resolve-signal failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "record-bad-case-fix":
         try:

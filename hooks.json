@@ -50,6 +50,18 @@
         ]
       }
     ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py permission-request --platform codex",
+            "timeout": 10,
+            "statusMessage": "Checking Context Guard node scope"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
@@ -63,6 +75,32 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py pre-compact --platform codex",
+            "timeout": 10,
+            "statusMessage": "Saving Context Guard plan state"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py post-compact --platform codex",
+            "timeout": 10,
+            "statusMessage": "Restoring Context Guard map state"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [
@@ -70,7 +108,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py subagent-stop --platform codex",
             "timeout": 10,
-            "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
+            "statusMessage": "Reviewing subagent scope and evidence"
           }
         ]
       }
@@ -82,7 +120,19 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py stop --platform codex",
             "timeout": 10,
-            "statusMessage": "Reminder: write sessions/bugs/tasks if this turn mattered"
+            "statusMessage": "Checking Map archive and plan completion"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py interrupt --platform codex",
+            "timeout": 3,
+            "statusMessage": "Saving interrupted Context Guard state"
           }
         ]
       }

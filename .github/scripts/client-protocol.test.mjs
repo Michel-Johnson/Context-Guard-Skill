@@ -6,7 +6,7 @@ import path from "node:path";
 import http from "node:http";
 import { once } from "node:events";
 import { isolatedEnvironment, allowedMethods, run, rpcClient } from "./client-protocol.mjs";
-import { assertInside, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
+import { assertInside, codexEvents, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
 import { installedFiles } from "./package-contract.mjs";
 
 function scratch(t) {
@@ -67,9 +67,9 @@ test("discovery checker rejects missing, disabled, wrong-path skills and hooks",
   const root = scratch(t), skill = path.join(root, "skill"), hooksPath = path.join(root, "hooks.json");
   const good = {
     skills: { data: [{ cwd: root, errors: [], skills: [{ name: "context-guard", enabled: true, path: path.join(skill, "SKILL.md") }] }] },
-    hooks: { data: [{ cwd: root, errors: [], hooks: ["sessionStart", "userPromptSubmit", "stop", "subagentStart", "subagentStop"].map((eventName) => ({ eventName, enabled: true, handlerType: "command", command: "python context_guard_hook.py --platform codex", sourcePath: hooksPath, trustStatus: "untrusted" })) }] }
+    hooks: { data: [{ cwd: root, errors: [], hooks: Object.values(codexEvents).map((eventName) => ({ eventName, enabled: true, handlerType: "command", command: "python context_guard_hook.py --platform codex", sourcePath: hooksPath, trustStatus: "untrusted" })) }] }
   };
-  assert.equal(verifyCodexDiscovery(good, root, skill, hooksPath).length, 5);
+  assert.equal(verifyCodexDiscovery(good, root, skill, hooksPath).length, 11);
   for (const mutate of [
     (value) => { value.skills.data[0].skills = []; },
     (value) => { value.skills.data[0].skills[0].enabled = false; },

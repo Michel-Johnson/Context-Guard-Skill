@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { startServer, statePath, health, skillRoot } from './server.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
@@ -118,6 +118,41 @@ async function main(args) {
     return { ...result, reconciliation: { ...reconciliation, operations: reconciliation.operations.map(operation => operation.type) } };
   }
   if (action === 'projections') return call('/api/projections', { method: 'POST', body: { wait: !!opt.wait } });
+  if (action === 'record-todo') {
+    const input = await inputJSON(opt.input);
+    const nodeId = typeof input.node === 'string' ? input.node.trim() : '';
+    const signalId = typeof input.signalId === 'string' ? input.signalId.trim() : '';
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!nodeId || !signalId || !title) throw new MapError('INVALID_TODO', 'record-todo needs node, signalId, and title');
+    const snapshot = await call('/api/state?node=' + encodeURIComponent(nodeId));
+    if (!snapshot.node) throw new MapError('NOT_FOUND', `Node ${nodeId} is missing`, 404);
+    const id = typeof input.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(input.id)
+      ? input.id
+      : `TD-${createHash('sha256').update(`${sessionId}\0${signalId}`).digest('hex').slice(0, 16)}`;
+    const existing = (snapshot.node.todos || []).find(item => item?.id === id || item?.source_signal === signalId);
+    if (existing) return { committed: true, duplicate: true, version: snapshot.version, todo: existing };
+    const at = typeof input.at === 'string' && input.at ? input.at : new Date().toISOString();
+    const todo = {
+      id,
+      title,
+      desc: typeof input.description === 'string' ? input.description.trim() : '',
+      status: 'processing',
+      sessions: [sessionId],
+      target_session: sessionId,
+      source_signal: signalId,
+      created_at: at,
+      updated_at: at,
+    };
+    const result = await call('/api/commit', {
+      method: 'POST',
+      body: {
+        operationId: `todo:${sessionId}:${signalId}`,
+        baseVersion: snapshot.version,
+        operations: [{ type: 'update', id: nodeId, fields: { todos: [...(snapshot.node.todos || []), todo] } }],
+      },
+    });
+    return { ...result, todo };
+  }
   if (action === 'attach-bug') {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
     return call('/api/commit', { method: 'POST', body: { operationId: `bug:${sessionId}:${input.bug.id}`, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
@@ -129,7 +164,7 @@ async function main(args) {
     await call('/api/projections', { method: 'POST', body: { wait: true } });
     return result;
   }
-  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
+  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, record-todo, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }

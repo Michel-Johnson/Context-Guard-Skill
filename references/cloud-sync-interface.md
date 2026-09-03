@@ -71,8 +71,9 @@ context-guard sync prepare --root <project> --session <session-id> \
 ```
 
 `prepare` drains current cloud state, records `baseSeq` and `baseVersion`,
-and opens a durable development window. Hooks may prepare automatically, but an
-explicit call is required before relying on the result.
+and opens a durable development window. The Codex hook runs it once at the first
+mutating tool of a plan. Later `PostToolUse` hooks only add observed paths with
+`sync track`; they do not perform remote synchronization for every file.
 
 After development and verification:
 
@@ -91,6 +92,8 @@ server transaction:
 
 `sync checkpoint` performs the same impact check without completing the
 window. `sync track --paths ...` adds repository-relative files to its scope.
+Every lifecycle observation and plan transition is also written with occurrence
+and recording timestamps plus stable event/plan IDs for later reconstruction.
 
 ## Status and recovery
 

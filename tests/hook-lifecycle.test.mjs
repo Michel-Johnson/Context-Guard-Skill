@@ -1,0 +1,203 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import test from 'node:test';
+
+const repository = path.resolve(import.meta.dirname, '..');
+const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
+const contextScript = path.join(repository, 'scripts/context_guard.py');
+const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd || repository,
+    encoding: 'utf8',
+    input: options.input,
+    env: { ...process.env, CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CONTEXT_GUARD_HEADLESS: '1', ...options.env },
+    timeout: options.timeout || 30_000,
+    windowsHide: true,
+  });
+  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  return result;
+}
+
+function hook(event, project, sessionId, extra = {}) {
+  const payload = {
+    session_id: sessionId,
+    cwd: project,
+    hook_event_name: event,
+    turn_id: extra.turn_id || 'turn-one',
+    ...extra,
+  };
+  const result = run('python3', [hookScript, event.replaceAll(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''), '--platform', 'codex'], {
+    cwd: project,
+    input: JSON.stringify(payload),
+  });
+  return { ...result, json: result.stdout.trim() ? JSON.parse(result.stdout) : {} };
+}
+
+async function fixture() {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hooks-'));
+  await fs.mkdir(path.join(project, 'src'), { recursive: true });
+  return project;
+}
+
+async function freePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+async function installMap(project) {
+  const ctx = path.join(project, '.codex/context');
+  const map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  map.root.children = [{
+    id: 'N1', title: 'Runtime', kind: 'module', state: 'dirty', proposal: 'accepted', isNew: false,
+    purpose: 'Own runtime code', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: ['src/'], children: [],
+  }];
+  map.bootstrap = 'ready';
+  await fs.writeFile(path.join(ctx, 'map.json'), `${JSON.stringify(map, null, 2)}\n`);
+  return map;
+}
+
+test('Codex installs exactly the eleven supported Context Guard hooks except SessionEnd', async () => {
+  const config = JSON.parse(await fs.readFile(path.join(repository, 'hooks.json'), 'utf8'));
+  assert.deepEqual(Object.keys(config.hooks).sort(), [
+    'Interrupt', 'PermissionRequest', 'PostCompact', 'PostToolUse', 'PreCompact', 'PreToolUse',
+    'SessionStart', 'Stop', 'SubagentStart', 'SubagentStop', 'UserPromptSubmit',
+  ].sort());
+  assert.equal(config.hooks.Interrupt[0].hooks[0].timeout, 3);
+  assert.equal(config.hooks.SessionEnd, undefined);
+});
+
+test('hooks keep an auditable plan across prompt, tools, compaction, interrupt and stop', async t => {
+  const project = await fixture();
+  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  const session = 'hook-session-one';
+
+  const started = hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  assert.match(started.json.hookSpecificOutput.additionalContext, /Context Guard Map snapshot/);
+
+  const prompted = hook('UserPromptSubmit', project, session, { prompt: '完成 Hook 生命周期开发' });
+  const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
+
+  const prepared = hook('PreToolUse', project, session, {
+    tool_name: 'apply_patch', tool_use_id: 'tool-one',
+    tool_input: { command: `*** Update File: ${path.join(project, 'scratch.txt')}` },
+  });
+  assert.match(prepared.json.hookSpecificOutput.additionalContext, /plan-/);
+  await fs.writeFile(path.join(project, 'scratch.txt'), 'changed\n');
+  hook('PostToolUse', project, session, {
+    tool_name: 'apply_patch', tool_use_id: 'tool-one', tool_input: { path: path.join(project, 'scratch.txt') },
+  });
+  hook('PreCompact', project, session, { trigger: 'auto' });
+  const restored = hook('PostCompact', project, session, { trigger: 'auto' });
+  assert.match(restored.json.hookSpecificOutput.additionalContext, /Restored plan:/);
+  const subagent = hook('SubagentStart', project, session, { agent_id: 'agent-one', agent_type: 'explorer' });
+  assert.match(subagent.json.hookSpecificOutput.additionalContext, /Subagent scope is limited/);
+  const subagentStopped = hook('SubagentStop', project, session, { agent_id: 'agent-one', agent_type: 'explorer', last_assistant_message: 'done' });
+  assert.match(subagentStopped.json.systemMessage, /subagent boundary/);
+  const interrupted = hook('Interrupt', project, session);
+  assert.match(interrupted.json.systemMessage, /interrupted plan state/);
+  const stopped = hook('Stop', project, session, { stop_hook_active: false });
+  assert.match(stopped.json.systemMessage, /lifecycle completed/);
+
+  const events = (await fs.readFile(path.join(project, '.codex/context/sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+  for (const event of events) {
+    assert.ok(event.event_id);
+    assert.ok(event.occurred_at);
+    assert.ok(event.recorded_at);
+  }
+  for (const name of ['session-start', 'user-prompt-submit', 'pre-tool-use', 'post-tool-use', 'pre-compact', 'post-compact', 'subagent-start', 'subagent-stop', 'interrupt', 'stop']) {
+    assert.ok(events.some(event => event.event === name), `missing ${name}`);
+  }
+});
+
+test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {
+  const project = await fixture();
+  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  const session = 'hook-session-two';
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await installMap(project);
+
+  const denied = hook('PermissionRequest', project, session, {
+    tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/index.mjs') },
+  });
+  assert.equal(denied.json.hookSpecificOutput.decision.behavior, 'deny');
+  assert.match(denied.json.hookSpecificOutput.decision.message, /N1/);
+
+  const ctx = path.join(project, '.codex/context');
+  await fs.mkdir(path.join(ctx, 'sessions'), { recursive: true });
+  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
+  t.after(() => spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], { encoding: 'utf8' }));
+
+  const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'todo-turn', prompt: '后续开发通知模块' });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  const args = [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId, '--node', 'N1', '--title', '开发通知模块', '--description', '实现通知入口'];
+  run('python3', args);
+  run('python3', args);
+  let map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  assert.equal(map.root.children[0].todos.length, 1);
+  assert.equal(map.root.children[0].todos[0].target_session, session);
+  assert.equal(map.root.children[0].todos[0].source_signal, signalId);
+  assert.ok(map.root.children[0].todos[0].created_at);
+
+  const badPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-turn', prompt: '刚才保存失败，必须记录坏例' });
+  const badSignal = badPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(badSignal);
+  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+    '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交未保存', '--trigger', '提交工作台',
+    '--cause', '待确认', '--guard', '生命周期回归测试']);
+  map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  assert.equal(map.root.children[0].bugs.length, 1);
+  assert.equal(map.root.children[0].bugs[0].sessions[0], session);
+  const badEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
+  assert.equal(badEvents[0].signal_id, badSignal);
+
+  const otherSession = 'hook-session-other';
+  hook('SessionStart', project, otherSession, { source: 'startup', is_background_agent: true });
+  const workbenchState = JSON.parse(await fs.readFile(path.join(ctx, 'private/workbench.json'), 'utf8'));
+  const bootstrap = await fetch(new URL('/__context_guard/bootstrap', workbenchState.url)).then(response => response.json());
+  const grant = await fetch(new URL('/api/access', workbenchState.url), {
+    method: 'POST', headers: { Authorization: `Bearer ${bootstrap.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: otherSession, nodes: ['N1'] }),
+  });
+  assert.equal(grant.status, 200);
+  const otherPrompt = hook('UserPromptSubmit', project, otherSession, { turn_id: 'other-turn', prompt: '增加另一个会话的待办' });
+  const otherSignal = otherPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  run('python3', [contextScript, 'record-todo', '--root', project, '--session', otherSession, '--signal', otherSignal,
+    '--node', 'N1', '--title', '跨会话待办', '--description', '用于 inbox 测试']);
+  const received = hook('PostCompact', project, session, { trigger: 'manual' });
+  assert.match(received.json.hookSpecificOutput.additionalContext, /Pending Map inbox receipt/);
+  assert.match(received.json.hookSpecificOutput.additionalContext, /hook-session-other/);
+
+  const allowed = hook('PermissionRequest', project, session, {
+    tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/allowed.mjs') },
+  });
+  assert.equal(allowed.json.hookSpecificOutput, undefined);
+  assert.match(allowed.json.systemMessage, /normal permission prompt/);
+
+  const directTodo = hook('PreToolUse', project, session, {
+    tool_name: 'apply_patch', tool_use_id: 'direct-todo',
+    tool_input: { command: `*** Update File: ${path.join(project, 'TODO.md')}` },
+  });
+  assert.equal(directTodo.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(directTodo.json.hookSpecificOutput.permissionDecisionReason, /human-owned/);
+
+  const directMap = hook('PreToolUse', project, session, {
+    tool_name: 'Bash', tool_use_id: 'direct-map',
+    tool_input: { command: `sed -i '' test ${path.join(project, '.codex/context/map.json')}` },
+  });
+  assert.equal(directMap.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(directMap.json.hookSpecificOutput.permissionDecisionReason, /map\.json/);
+});
