@@ -22,6 +22,22 @@ Four stores only:
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
 
+### Memory authority and publication
+
+Follow the project's `RULE.md` for its memory authority and publication boundary.
+When it selects server-backed memory, read [references/server-memory.md](references/server-memory.md)
+before memory-dependent work: all development records come from that project's
+private server; the four local stores above are versioned caches and pending drafts,
+not a second authority. Validate the actual Session/worktree binding and server
+memory version on every human prompt. Keep Session memory separate from the
+committed-main baseline. If the server, migration or required client capability is
+unavailable, report it; do not silently substitute local history or claim a sync.
+Do not infer a server binding for other projects. The Context Guard development
+repository excludes the entire `.codex/` tree from Git and distribution packages;
+do not move its memory into tracked files or public PR attachments to bypass that
+rule. Credentials never belong in memory. Recording or syncing memory does not
+authorize a source commit, push or deployment.
+
 Before acting on the map, run `context-guard map read --root <project> --session <actual-session-id> --node <id>`. This checks pending browser edits and returns authoritative node data and its version. Find human actions with `map changes --cursor <last-cursor>`. A missing cursor means read current state, not "no changes".
 
 Use `.codex/context/FIND.md` for bugs/tasks/ownership, but verify `projection-status.json.sourceVersion` before reading generated cards. `python3 scripts/map_owns.py cards --root <project>` now requests versioned Node projections; manual card annotations are retained. If projection fails, read the current node through the CLI.
@@ -51,6 +67,10 @@ Context Guard installs eleven Codex lifecycle hooks: `SessionStart`, `UserPrompt
 ### Cloud-connected projects
 
 Cloud is a multi-project directory; each project still owns an independent Map.
+For server-backed development memory, first follow `references/server-memory.md`:
+the existing Map-only sync is not yet a complete memory store or a main-baseline
+publication mechanism. Do not point feature-session sync at an authoritative main
+Map to work around that gap.
 When `.codex/context/private/cloud-sync/config.json` exists, run
 `context-guard sync prepare --root <project> --session <actual-session-id>`
 before development and `context-guard sync finish ...` after verification.
@@ -66,7 +86,7 @@ any project.
 
 ### Bugs — record fast
 
-When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes; commit/push only when explicitly authorized. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. On GitHack they can see the open-bug list after push. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
+When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. Follow the configured memory authority when archiving; recording a bug never authorizes publishing private records to GitHub. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
 
 First session language: when `.codex/context/preferences.json` has `record_language: unset`, ask the user whether project context should be recorded in 中文 or English before substantive project work. Do not infer the answer. Persist it with `context-guard set-language --root <project> --language <zh-or-en>`. Do not ask again after it is set.
 

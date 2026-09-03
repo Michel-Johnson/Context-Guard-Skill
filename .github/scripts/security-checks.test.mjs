@@ -52,6 +52,33 @@ try {
     assert.equal(forbiddenPath(".github/scripts/check.mjs", true), true);
     assert.match(fs.readFileSync(path.join(toolRoot, ".gitignore"), "utf8"), /^temp\/$/m);
   });
+  check("all project Codex records remain ignored and forbidden in source and packages", () => {
+    const records = createRepository("record-ignore");
+    write(records, ".gitignore", fs.readFileSync(path.join(toolRoot, ".gitignore"), "utf8"));
+    const python = pythonInvocation();
+    run(python.command, [...python.prefix, path.join(toolRoot, "scripts/context_guard.py"), "init", "--root", records]);
+    for (const name of [".codex/.gitignore", ".codex/config.toml", ".codex/context/map.json", ".codex/context/user-messages.md", ".codex/context/sessions.jsonl", ".codex/context/sessions/one.md", ".codex/context/tasks/T1.md", ".codex/context/bugs/B1.md", ".codex/context/fixes/B1.md", ".codex/context/private/memory-server.md"]) {
+      assert.equal(forbiddenPath(name), true, name);
+      assert.equal(forbiddenPath(name, true), true, name);
+      const ignored = spawnSync("git", ["check-ignore", "--no-index", "-q", name], { cwd: records, env, windowsHide: true });
+      assert.equal(ignored.status, 0, name);
+    }
+    git(records, "add", "--all");
+    assert.equal(git(records, "ls-files", ".codex"), "");
+    assert.ok(fs.existsSync(path.join(records, ".codex/context/index.md")), "ignoring memory must preserve local files");
+  });
+  check("actual commit hook rejects force-added memory without deleting it", () => {
+    const records = createRepository("record-commit");
+    assert.equal(cli("security-hooks.mjs", ["install"], records).status, 0);
+    write(records, ".gitignore", fs.readFileSync(path.join(toolRoot, ".gitignore"), "utf8"));
+    const name = ".codex/context/sessions/one.md";
+    const content = "Synthetic development memory, no credential.\n";
+    write(records, name, content);
+    git(records, "add", "-f", name);
+    const result = spawnSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "Must reject private memory"], { cwd: records, env, encoding: "utf8", windowsHide: true });
+    assert.notEqual(result.status, 0);
+    assert.equal(fs.readFileSync(path.join(records, name), "utf8"), content);
+  });
   const root = createRepository("index");
   check("clean staged snapshot", () => snapshot(root));
   check("unstaged secrets do not change the staged snapshot", () => { write(root, "README.md", token); snapshot(root); });

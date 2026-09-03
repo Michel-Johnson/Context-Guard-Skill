@@ -6,6 +6,12 @@ Read this reference only when a project is connected to Context Guard Cloud or a
 For first-time server installation, project enrollment, upgrades, and host
 migration, read `references/cloud-deployment.md` first.
 
+This document describes the existing Map/event protocol, not full development
+memory synchronization. Projects requiring a private server as the authority for
+all memory must also follow `references/server-memory.md`. Session isolation,
+complete record storage and main-baseline publication are not implemented by
+connecting every worktree to a single mutable Cloud Map.
+
 ## Model
 
 Cloud is a directory of projects. It does not merge projects into one Map. Each
