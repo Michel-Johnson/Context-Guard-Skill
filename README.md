@@ -39,6 +39,13 @@ context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop
 ```
 
+Local URLs default to `http://project-name.localhost:1355` (a subsequent free port
+is used if occupied), with no global Portless installation. Sessions reuse live
+pages. Explicit `workbench bind --root <worktree> --project-root <existing-map-worktree>`
+joins linked Git worktrees without merging Maps. Use `--direct` with older services.
+See [named workbenches](references/named-workbench.md) and
+[Portless attribution](THIRD_PARTY_NOTICES.md); Apache-2.0 notices ship with the package.
+
 The workbench chrome is Chinese or English. Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
 
 ### Overview

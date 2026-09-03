@@ -20,7 +20,7 @@ function run(command, args, options = {}) {
     cwd: options.cwd || repository,
     encoding: 'utf8',
     input: options.input,
-    env: { ...process.env, CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CONTEXT_GUARD_HEADLESS: '1', ...options.env },
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CONTEXT_GUARD_HEADLESS: '1', ...options.env },
     timeout: options.timeout || 30_000,
     windowsHide: true,
   });
