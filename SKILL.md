@@ -49,6 +49,10 @@ the Agent one by one. Disjoint changes rebase; `WORK_IMPACT` leaves the work
 unverified until it is reconciled. Hooks automate checkpoints where supported,
 but the server transaction is the correctness boundary. Read
 `references/cloud-sync-interface.md` for connection, event and recovery rules.
+When the human asks how to install, move, or upgrade the cloud server, read and
+follow `references/cloud-deployment.md`; deploy the complete repository, keep
+data and credentials outside its checkout, and verify health before connecting
+any project.
 
 ### Bugs — record fast
 
