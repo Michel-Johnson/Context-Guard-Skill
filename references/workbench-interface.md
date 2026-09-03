@@ -36,6 +36,9 @@ the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit me
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
 session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
 Do not substitute the visible demo session label or invent a human identity.
+Session IDs remain internal protocol keys. The workbench renders the host-provided
+task name plus useful worktree/branch context and never exposes full or shortened
+Session IDs as user-facing labels or fallback text.
 
 At SessionStart and every prompt, use `workbench --binding-status --session <id>`.
 The result separates the binding record (`current`, `moved`, `other-worktree`,

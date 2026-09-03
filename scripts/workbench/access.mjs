@@ -277,7 +277,6 @@ export class Access {
         ...item,
         ...binding,
         bindingState: target ? 'bound' : 'stale',
-        shortId: item.id.length > 20 ? `${item.id.slice(0, 8)}…${item.id.slice(-6)}` : item.id,
         worktreeName: target ? path.basename(target) : path.basename(binding.worktreeRoot || ''),
       };
     }));
