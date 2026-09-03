@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
-import { MapError } from '../../prototype/map-model.mjs';
+import { applyOperations, MapError, validate } from '../../prototype/map-model.mjs';
 import { validateMemory } from '../workbench/memory-schema.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
@@ -14,6 +14,43 @@ const validSessionId = value => typeof value === 'string' && value.length > 0 &&
 function validateOptions({ dataDir, adminToken }) {
   if (!dataDir || !adminToken) throw new Error('Explicit private data directory and admin token required');
   if (!path.isAbsolute(dataDir)) throw new Error('Private data directory must be absolute and outside source control');
+}
+
+const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, receipts: {} });
+const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
+
+export async function readMemoryProject({ dataDir, adminToken, projects = {} }, projectId) {
+  validateOptions({ dataDir, adminToken });
+  if (!projects[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  return readJSON(memoryFile(dataDir, projectId), initialMemoryState());
+}
+
+export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
+  if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
+  const file = memoryFile(configuration.dataDir, projectId);
+  return withFileLock(file + '.lock', async () => {
+    const state = await readMemoryProject(configuration, projectId);
+    const current = state.sessions[sessionId];
+    if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
+    if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Session Map changed; reload before committing', 409, { currentVersion: current.version });
+    if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
+    const receiptKey = hash(`workbench:${sessionId}:${input.operationId}`);
+    const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
+    if (state.receipts[receiptKey]) {
+      if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
+      return state.receipts[receiptKey].result;
+    }
+    const applied = applyOperations(current.memory.map, input.operations, actor);
+    validate(applied.doc);
+    const updatedAt = new Date().toISOString();
+    const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), memory: { ...current.memory, map: applied.doc }, updatedAt };
+    state.sessions[sessionId] = snapshot;
+    state.revision++;
+    const result = { committed: true, projectId, sessionId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
+    state.receipts[receiptKey] = { fingerprint, result };
+    await atomicWrite(file, encode(state));
+    return result;
+  });
 }
 
 export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {}) {
@@ -34,8 +71,8 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
       const credential = req.headers.authorization?.replace(/^Bearer /, '') || '';
       const admin = equal(credential, adminToken);
       if (!project || (!admin && (!project.token || !equal(credential, project.token)))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
-      const file = path.join(dataDir, hash(projectId), 'memory.json');
-      const initial = { revision: 0, main: null, preferences: null, sessions: {}, receipts: {} };
+      const file = memoryFile(dataDir, projectId);
+      const initial = initialMemoryState();
       if (req.method === 'GET') {
         const state = await readJSON(file, initial);
         if (scope === 'main') return send(200, { projectId, snapshot: state.main });
