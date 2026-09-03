@@ -69,6 +69,39 @@ async function waitForHealth(url) {
   throw new Error(`cloud server did not start: ${url}`);
 }
 
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+async function waitForProcessExit(pid, timeout = 5_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (!processIsAlive(pid)) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail(`workbench process ${pid} did not exit within ${timeout} ms`);
+}
+
+async function stopFixtureWorkbench(project, pid) {
+  const stopped = spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15_000,
+  });
+  assert.equal(stopped.status, 0, stopped.stderr || stopped.error?.message);
+  assert.equal(JSON.parse(stopped.stdout).stopped, true);
+  await waitForProcessExit(pid);
+  const privateDir = path.join(project, '.codex/context/private');
+  await assert.rejects(fs.access(path.join(privateDir, 'node-workbench.lock')), { code: 'ENOENT' });
+  await assert.rejects(fs.access(path.join(privateDir, 'workbench.json')), { code: 'ENOENT' });
+}
+
 async function installMap(project) {
   const ctx = path.join(project, '.codex/context');
   const map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
@@ -220,14 +253,38 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   assert.equal(afterFinish.works.find(item => item.sessionId === session).status, 'completed');
 });
 
+test('fixture cleanup stops the detached workbench before removing its directory', async t => {
+  const project = await fixture();
+  let pid = null;
+  t.after(async () => {
+    if (pid && processIsAlive(pid)) {
+      try { process.kill(pid); } catch {}
+      await waitForProcessExit(pid).catch(() => {});
+    }
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
+  const state = JSON.parse(await fs.readFile(path.join(project, '.codex/context/private/workbench.json'), 'utf8'));
+  pid = state.pid;
+  assert.equal(processIsAlive(pid), true);
+
+  await stopFixtureWorkbench(project, pid);
+  pid = null;
+  await fs.rm(project, { recursive: true });
+  await assert.rejects(fs.access(project), { code: 'ENOENT' });
+});
+
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {
   const project = await fixture();
+  let workbenchPid = null;
   t.after(async () => {
-    spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-    await fs.rm(project, { recursive: true, force: true });
+    try {
+      if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    } finally {
+      await fs.rm(project, { recursive: true, force: true });
+    }
   });
   const session = 'hook-session-two';
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
@@ -249,6 +306,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.doesNotMatch(archiveDenied.stderr, /Traceback/);
 
   const initialState = JSON.parse(await fs.readFile(path.join(ctx, 'private/workbench.json'), 'utf8'));
+  workbenchPid = initialState.pid;
   const initialBootstrap = await fetch(new URL('/__context_guard/bootstrap', initialState.url)).then(response => response.json());
   const initialGrant = await fetch(new URL('/api/access', initialState.url), {
     method: 'POST', headers: { Authorization: `Bearer ${initialBootstrap.token}`, 'Content-Type': 'application/json' },
