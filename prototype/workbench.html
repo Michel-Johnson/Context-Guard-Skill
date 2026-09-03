@@ -3676,7 +3676,7 @@ function sessionMetaLabel(meta){
   if(!meta) return "暂无 Agent 会话";
   const raw = String(meta.id||"");
   const short = raw.length>28 ? `${raw.slice(0,12)}…${raw.slice(-8)}` : raw;
-  return `${meta.platform}-${meta.name||short}`;
+  return `${meta.platform}-${meta.name||short}${meta.branch?` · ${meta.branch}`:""}`;
 }
 function positionSessionMenu(){
   const chip = document.getElementById("session-chip");
@@ -3697,7 +3697,9 @@ function renderSessionMenu(){
   const menu = document.getElementById("session-menu");
   if(!menu) return;
   const sessions = workbenchSync?.sessions||[];
-  const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(t("globalSessionView"))}">
+  const main=workbenchSync?.project?.main;
+  const mainHint=main?.branch?`${t("globalSessionView")} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:t("globalSessionView");
+  const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(mainHint)}">
     <span class="session-option-name">${esc(t("allSessions"))}</span>
   </button>`;
   menu.innerHTML = all + sessions.map(meta=>{
@@ -6341,8 +6343,9 @@ async function boot(){
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
+    pending:()=>{ for(const id of ['nodes','links','currents']) document.getElementById(id)?.replaceChildren(); },
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session,meta,global)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?"stopped":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":"未挂载会话"; label.textContent=displayName; label.title=global?t("globalSessionView"):meta?.name||session||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:(ids,session,meta,global,main)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?"stopped":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":"未挂载会话"; label.textContent=displayName; label.title=global&&main?.branch?`${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:global?stateLabel:meta?.worktreeRoot||meta?.name||session||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
   const connected=await workbenchSync.start();
   if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }

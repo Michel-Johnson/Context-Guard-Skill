@@ -14,6 +14,8 @@ const skillInstallEntries = [
   "SKILL.md",
   "README.md",
   "README.zh-CN.md",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses",
   "agents",
   "prototype",
   "references",
@@ -501,6 +503,18 @@ function doctor(args) {
     if (platform === "codex" && configTarget) {
       const text = fs.existsSync(configTarget) ? fs.readFileSync(configTarget, "utf8") : "";
       check("codex.hooks-feature", /^\s*hooks\s*=\s*true\s*$/m.test(text), configTarget);
+      const probe = spawnSync(process.execPath, [path.join(sourceSkillDir, 'scripts/workbench/hook-status.mjs'), options.root, target], { encoding: 'utf8', windowsHide: true, timeout: 7000 });
+      let native = {}; try { native = JSON.parse(probe.stdout); } catch {}
+      check('codex.hooks-trust', native.trusted, native.unavailable ? 'native trust status unavailable; not ready' : JSON.stringify(native));
+      const crypto = require('crypto');
+      let expected = '', installed = '';
+      try { expected = crypto.createHash('sha256').update(fs.readFileSync(path.join(sourceSkillDir, 'scripts/context_guard_hook.py'))).digest('hex'); installed = crypto.createHash('sha256').update(fs.readFileSync(path.join(target, 'scripts/context_guard_hook.py'))).digest('hex'); } catch {}
+      check('codex.hooks-version', expected && expected === installed, 'installed Hook must match this release');
+      let events = [];
+      try { events = fs.readFileSync(path.join(options.root, '.codex/context/sessions.jsonl'), 'utf8').split('\n').filter(Boolean).map(JSON.parse); } catch {}
+      const current = events.filter(event => event.hook_sha256 === installed && (!process.env.CODEX_THREAD_ID || event.session_id === process.env.CODEX_THREAD_ID));
+      check('codex.hooks-executed', current.length > 0, 'execution evidence for the current installed script');
+      check('codex.context-emitted', current.some(event => event.context_emitted), 'context output emitted; delivery to a model is not observable by doctor');
     }
   }
   const ctx = path.join(options.root, ".codex", "context");
@@ -547,7 +561,7 @@ if (!command || command === "-h" || command === "--help" || command === "help") 
   const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "sync", "client.mjs"), ...rest], { stdio: "inherit", windowsHide: true });
   if (result.error) fail(result.error.message);
   process.exit(result.status === null ? 1 : result.status);
-} else if (command === "map" || command === "workbench") {
+} else if (["map", "workbench", "memory", "preferences"].includes(command)) {
   const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "workbench", "cli.mjs"), command, ...rest], { stdio: "inherit", windowsHide: true });
   process.exit(result.status ?? 1);
 } else {

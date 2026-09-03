@@ -22,13 +22,33 @@ Four stores only:
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
 
+### Memory authority and publication
+
+Follow the project's `RULE.md` for its memory authority and publication boundary.
+When it selects server-backed memory, read [references/server-memory.md](references/server-memory.md)
+before memory-dependent work: all development records come from that project's
+private server; the four local stores above are versioned caches and pending drafts,
+not a second authority. Validate the actual Session/worktree binding and server
+memory version on every human prompt. Keep Session memory separate from the
+committed-main baseline. If the server, migration or required client capability is
+unavailable, report it; do not silently substitute local history or claim a sync.
+Do not infer a server binding for other projects. The Context Guard development
+repository excludes the entire `.codex/` tree from Git and distribution packages;
+do not move its memory into tracked files or public PR attachments to bypass that
+rule. Credentials never belong in memory. Recording or syncing memory does not
+authorize a source commit, push or deployment.
+
 Before acting on the map, run `context-guard map read --root <project> --session <actual-session-id> --node <id>`. This checks pending browser edits and returns authoritative node data and its version. Find human actions with `map changes --cursor <last-cursor>`. A missing cursor means read current state, not "no changes".
 
 Use `.codex/context/FIND.md` for bugs/tasks/ownership, but verify `projection-status.json.sourceVersion` before reading generated cards. `python3 scripts/map_owns.py cards --root <project>` now requests versioned Node projections; manual card annotations are retained. If projection fails, read the current node through the CLI.
 
 ### Workbench and supported writes
 
-Start `context-guard workbench --root <project>`. Node owns one local project, atomically saves valid operations to map.json, and notifies pages after file/Agent changes. Browser cache is for recovery drafts and preferences only. Static/GitHack/file views are read-only; their clicks do not persist to this workspace.
+On every prompt, validate the actual Session's binding with `context-guard workbench --binding-status --root <project> --session <actual-session-id>` before reading project memory. If unbound, ask which project workbench the user wants; after confirmation run `context-guard workbench --root <project> --session <actual-session-id>`. Do not initialize a map, start a replacement service, or discover and register historical Sessions to fill the picker. A valid binding is reused without asking again. Never change its worktree through an ordinary bind: after explicit user confirmation use `--rebind`, which expires old tokens and views. An unreadable binding or unavailable service is an error, not first use. Binding does not grant node permissions.
+
+Linked Git worktrees share one workbench identity and service. Each explicitly bound Session has an isolated map; the All Sessions view is a read-only published main baseline, never a live feature map. Use an advertised GitHub default branch only when unambiguous; otherwise ask and persist `workbench --bind-main <branch> --remote <remote>` or `--local-main <branch>`. Never guess main/master. For private memory configure the project's server explicitly using the private input-file flow in `references/server-memory.md`.
+
+Node atomically saves valid operations and notifies pages after file/Agent changes. Browser cache is only for recovery drafts and UI preferences. Static/GitHack/file views are read-only.
 
 Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite map.json. See `references/workbench-interface.md` for schema, errors, migration and recovery.
 
@@ -51,6 +71,10 @@ Context Guard installs eleven Codex lifecycle hooks: `SessionStart`, `UserPrompt
 ### Cloud-connected projects
 
 Cloud is a multi-project directory; each project still owns an independent Map.
+For server-backed development memory, first follow `references/server-memory.md`:
+the existing Map-only sync is not yet a complete memory store or a main-baseline
+publication mechanism. Do not point feature-session sync at an authoritative main
+Map to work around that gap.
 When `.codex/context/private/cloud-sync/config.json` exists, run
 `context-guard plan-start --root <project> --session <actual-session-id> --input <plan.json>`
 before development and `context-guard plan-finish ...` after verification and archive.
@@ -66,9 +90,11 @@ any project.
 
 ### Bugs — record fast
 
-When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes; commit/push only when explicitly authorized. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. On GitHack they can see the open-bug list after push. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
+When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. Follow the configured memory authority when archiving; recording a bug never authorizes publishing private records to GitHub. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
 
-First session language: when `.codex/context/preferences.json` has `record_language: unset`, ask the user whether project context should be recorded in 中文 or English before substantive project work. Do not infer the answer. Persist it with `context-guard set-language --root <project> --language <zh-or-en>`. Do not ask again after it is set.
+Project language: read `context-guard preferences --root <project>`. Confirmed language is shared across linked worktrees (and comes from the private server when configured). Consistent existing settings migrate automatically; unset never overrides a confirmed language. Ask 中文 or English only when the shared value is unset, or ask which confirmed value to retain when migration reports a conflict. Persist with `context-guard set-language --root <project> --language <zh-or-en>` and verify the returned value. Read/network failures must not trigger first-use questions. Do not ask again after a successful confirmation.
+
+`doctor` separates installation, native Hook trust, execution of the installed script version, and emitted context. Modified/untrusted hooks are not ready. Never write trust hashes or silently replace unrelated hooks; use the native review flow. Emitted context is not proof of delivery to a model.
 
 ### First use
 

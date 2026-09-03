@@ -4,8 +4,23 @@ Read this reference when installing or upgrading Context Guard Cloud on a
 server. Cloud remains part of this repository; do not copy individual files or
 create a second repository.
 
+For private development memory, first read `references/server-memory.md`.
+The current Cloud server exposes public read-only routes; its write tokens do
+not make those reads private. Do not expose this service with private records on
+a public interface. Private read authorization and the complete server-memory
+contract must be implemented and verified before migration; installing the
+current Map service alone does not satisfy that contract.
+
 The current server speaks HTTP. Keep it on a trusted private network until a
 later deployment adds HTTPS at the reverse proxy.
+
+For an Internet-facing installation, set `CONTEXT_GUARD_CLOUD_PRIVATE=1`,
+`CONTEXT_GUARD_CLOUD_SECURE_COOKIES=1`, and the exact HTTPS origin in
+`CONTEXT_GUARD_CLOUD_ORIGIN`. Terminate TLS at a reverse proxy and forward only
+to the loopback Cloud port. The health endpoint remains public but does not list
+projects; maps, the project directory, UI assets, events, and editing all require
+the existing workbench cookie or a scoped project token. Never expose the
+backend port in a host firewall.
 
 ## 1. Prepare the server
 

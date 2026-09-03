@@ -15,6 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def configure_stdio() -> None:
     """Use UTF-8 for client JSON and logs even on legacy Windows code pages."""
@@ -93,6 +95,7 @@ def folder_root(cwd: Path) -> Path:
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=2,
+            creationflags=WINDOWS_NO_WINDOW,
         ).strip()
         if out:
             return Path(out)
@@ -113,6 +116,26 @@ def guard_implicit_skill_root(root: Path, explicit_root: bool) -> int:
 
 
 def context_dir(root: Path) -> Path:
+    root = root.resolve()
+    binding_file = root / ".codex/context/private/project-binding.json"
+    if not binding_file.exists():
+        return root / ".codex" / "context"
+    binding = json.loads(binding_file.read_text(encoding="utf-8"))
+    target = Path(binding.get("projectRoot", ""))
+    if binding.get("version") != 1 or not target.is_absolute():
+        raise ValueError("Invalid workbench project binding")
+    target = target.resolve(strict=True)
+    if target == root or (target / ".codex/context/private/project-binding.json").exists():
+        raise ValueError("Workbench binding chains are not supported")
+    def git_common(folder: Path) -> Path:
+        result = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=folder,
+                                text=True, capture_output=True, check=True, timeout=5,
+                                creationflags=WINDOWS_NO_WINDOW)
+        return (folder / result.stdout.strip()).resolve(strict=True)
+    if git_common(root) != git_common(target) or not (target / ".codex/context/map.json").is_file():
+        raise ValueError("Bound worktree must reference an existing Map in the same Git repository")
+    # A legacy project binding selects the service, never another worktree's
+    # Session storage. Preserve the source records and registration evidence.
     return root / ".codex" / "context"
 
 
@@ -164,8 +187,12 @@ def write_json(path: Path, value: object) -> None:
 
 
 def read_preferences(ctx: Path) -> dict[str, str]:
-    data = read_json(ctx / "preferences.json", {})
-    return data if isinstance(data, dict) else {}
+    local = ctx / "preferences.json"
+    data = json.loads(local.read_text(encoding="utf-8")) if local.exists() else {}
+    if not isinstance(data, dict):
+        raise ValueError("Invalid preferences; repair the file instead of repeating setup")
+    shared = run_node_workbench(["preferences", "--root", str(ctx.parent.parent)])
+    return {**data, **shared}
 
 
 def write_preferences(ctx: Path, preferences: dict[str, str]) -> None:
@@ -255,9 +282,10 @@ def init_context(root: Path) -> list[Path]:
 
 
 def set_record_language(root: Path, language: str) -> Path:
+    normalized = normalize_record_language(language)
+    run_node_workbench(["preferences", "--root", str(root), "--language", normalized])
     init_context(root)
     ctx = context_dir(root)
-    normalized = normalize_record_language(language)
     preferences = default_preferences()
     preferences.update(read_preferences(ctx))
     preferences["record_language"] = normalized
@@ -618,6 +646,12 @@ def archive_session(
             f"{len(reconciliation.get('unclassified') or reconciliation.get('uncovered') or [])} unclassified file(s), "
             f"{'1 proposed node' if proposed_id else 'no node proposal'}"
         )
+    memory = run_node_workbench(["memory", "status", "--root", str(root), "--session", session_id])
+    if memory.get("current"):
+        receipt = run_node_workbench(["memory", "sync", "--root", str(root), "--session", session_id])
+        print(f"[context-guard] server archive acknowledged: {receipt.get('snapshot', {}).get('version')}")
+    else:
+        print("[context-guard] server memory not configured; local archive remains unsynced")
     return path
 
 
@@ -773,7 +807,7 @@ def run_node_workbench(args: list[str], payload: object = None) -> dict:
     command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"), *args]
     completed = subprocess.run(command, input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
         text=True, encoding="utf-8", capture_output=True, timeout=30,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        creationflags=WINDOWS_NO_WINDOW)
     try:
         result = json.loads(completed.stdout)
     except ValueError as exc:
@@ -990,7 +1024,8 @@ def serve_workbench(root: Path, host: str, port: int) -> int:
     validate_workbench_host(host)
     init_context(root)
     return subprocess.call(["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"),
-        "serve", "--root", str(root), "--host", host, "--port", str(port)])
+        "serve", "--root", str(root), "--host", host, "--port", str(port)],
+        creationflags=WINDOWS_NO_WINDOW)
 
 
 def maybe_open_browser(url: str, enabled: bool) -> None:
@@ -1008,9 +1043,10 @@ def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_
         return None
     init_context(root)
     try:
-        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port)])
+        should_open = open_browser and os.environ.get("CONTEXT_GUARD_HEADLESS") != "1" and not os.environ.get("CI")
+        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port), *(["--claim-open"] if should_open else [])])
         url = result["url"]
-        maybe_open_browser(url, open_browser)
+        maybe_open_browser(url, should_open and result.get("shouldOpen", False))
         return url
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"[context-guard] Node workbench: {exc}", file=sys.stderr)
@@ -1049,6 +1085,11 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--binding-status", action="store_true")
+    parser.add_argument("--bind-main")
+    parser.add_argument("--local-main")
+    parser.add_argument("--remote", default="origin")
+    parser.add_argument("--rebind", action="store_true")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8877)
     parser.add_argument("--title", default="")
@@ -1183,6 +1224,18 @@ def main() -> int:
             print(f"[context-guard] write-candidates failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "workbench":
+        if args.binding_status or args.bind_main or args.local_main or args.session:
+            command = ["workbench", "--root", str(root)]
+            for key, value in [("binding-status", args.binding_status), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
+                if value:
+                    command.append("--" + key)
+                    if value is not True:
+                        command.append(str(value))
+            result = run_node_workbench(command)
+            print(json.dumps(result, ensure_ascii=False))
+            if result.get("url"):
+                maybe_open_browser(result["url"], not args.no_open)
+            return 0
         if args.stop:
             stopped = stop_workbench(root)
             print(f"[context-guard] workbench: {'stopped' if stopped else 'not running'}")

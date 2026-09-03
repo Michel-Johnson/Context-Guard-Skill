@@ -9,6 +9,20 @@ import { MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
+let nodeSqlite;
+
+function hasBuiltInSqlite(version = process.versions.node) {
+  const [major = 0, minor = 0] = String(version).split('.').map(Number);
+  return major > 22 || (major === 22 && minor >= 5);
+}
+
+async function queryWithNodeSqlite(database, sql) {
+  if (nodeSqlite === undefined) nodeSqlite = await import('node:sqlite').catch(() => null);
+  if (!nodeSqlite?.DatabaseSync) return null;
+  const connection = new nodeSqlite.DatabaseSync(database, { readOnly: true });
+  try { return connection.prepare(sql).all(); }
+  finally { connection.close(); }
+}
 
 function taskEvent(line) {
   try {
@@ -38,18 +52,31 @@ export class Access {
   constructor(root, options = {}) {
     this.root = root;
     this.ctx = path.join(root, '.codex/context');
-    this.file = path.join(this.ctx, 'sessions/workbench-access.json');
+    this.file = options.file || path.join(this.ctx, 'sessions/workbench-access.json');
+    this.bindingsFile = options.bindingsFile || path.join(this.ctx, 'sessions/workbench-bindings.json');
     this.sessionsFile = path.join(this.ctx, 'sessions.jsonl');
     this.codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
     this.codexDb = options.codexDb || null;
     this.sqliteCommand = options.sqliteCommand || 'sqlite3';
+    this.execFile = options.execFile || execFileAsync;
+    this.querySqlite = options.querySqlite || queryWithNodeSqlite;
+    this.allowExternalSqlite = options.allowExternalSqlite ?? !hasBuiltInSqlite(options.nodeVersion);
     this.codexSessions = options.codexSessions || null;
+    this.codexRows = null;
+    this.codexQuery = null;
     this.rolloutStates = new Map();
     this.queue = Promise.resolve();
   }
-  async init() { this.data = await readJSON(this.file, { sessions: {} }); return this; }
-  async hookSessionRegistry() {
-    const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+  async init() {
+    this.data = await readJSON(this.file, { sessions: {} });
+    this.bindings = await readJSON(this.bindingsFile, { sessions: {} });
+    return this;
+  }
+  binding(sessionId) { return this.bindings.sessions[sessionId] || null; }
+  bindingRoots() { return [...new Set([this.root, ...Object.values(this.bindings.sessions).map(item => item?.worktreeRoot).filter(Boolean)])]; }
+  async hookSessionRegistry(root = this.root) {
+    const sessionsFile = path.join(root, '.codex/context/sessions.jsonl');
+    const text = await fs.readFile(sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
     const sessions = new Map();
     for (const line of text.split('\n').filter(Boolean)) {
       try {
@@ -68,6 +95,7 @@ export class Access {
           firstSeen: previous?.firstSeen || at,
           lastSeen: at,
           lastEvent: typeof event.event === 'string' ? event.event : previous?.lastEvent || 'unknown',
+          worktreeRoot: root,
         });
       } catch {}
     }
@@ -131,15 +159,44 @@ export class Access {
     this.rolloutStates.set(file, next);
     return next;
   }
-  async discoverCodexSessions() {
-    if (this.codexSessions) return this.codexSessions(this.root);
+  async databaseSignature(database) {
+    const signatures = await Promise.all([database, `${database}-wal`].map(async file => {
+      const stat = await fs.stat(file).catch(() => null);
+      return stat ? `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : '-';
+    }));
+    return `${database}:${signatures.join(':')}`;
+  }
+  async loadCodexRows(database, sql) {
+    const signature = `${await this.databaseSignature(database)}:${sql}`;
+    if (this.codexRows?.signature === signature) return this.codexRows.rows;
+    if (this.codexQuery?.signature === signature) return this.codexQuery.promise;
+    const promise = (async () => {
+      let rows = await this.querySqlite(database, sql);
+      if (rows === null) {
+        if (!this.allowExternalSqlite) throw new Error('Built-in SQLite is unavailable on a supported Node.js runtime');
+        const { stdout } = await this.execFile(this.sqliteCommand, ['-readonly', '-json', database, sql], {
+          encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+        });
+        rows = stdout.trim() ? JSON.parse(stdout) : [];
+      }
+      this.codexRows = { signature, rows };
+      return rows;
+    })();
+    this.codexQuery = { signature, promise };
+    try { return await promise; }
+    finally { if (this.codexQuery?.promise === promise) this.codexQuery = null; }
+  }
+  async discoverCodexSessions(roots = [this.root]) {
+    if (this.codexSessions) {
+      const batches = await Promise.all(roots.map(root => this.codexSessions(root)));
+      return batches.flat();
+    }
     const database = await this.stateDatabase();
     if (!database) return [];
-    const cwd = this.root.replaceAll("'", "''");
-    const sql = `select id, name, title, created_at, updated_at, rollout_path from threads where cwd='${cwd}' and thread_source='user' and archived=0 order by updated_at desc limit 100`;
+    const escaped = roots.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
+    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
     try {
-      const { stdout } = await execFileAsync(this.sqliteCommand, ['-readonly', '-json', database, sql], { encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024 });
-      const rows = stdout.trim() ? JSON.parse(stdout) : [];
+      const rows = await this.loadCodexRows(database, sql);
       return await Promise.all(rows.map(async row => {
         const state = await this.rolloutState(row.rollout_path);
         return {
@@ -150,16 +207,23 @@ export class Access {
           firstSeen: isoTime(row.created_at),
           lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
           lastEvent: state.lastEvent,
+          worktreeRoot: String(row.cwd || ''),
         };
       }));
     } catch { return []; }
   }
   async sessionRegistry() {
-    const [hookSessions, codexSessions] = await Promise.all([this.hookSessionRegistry(), this.discoverCodexSessions()]);
-    const sessions = new Map(hookSessions.map(item => [item.id, item]));
-    for (const discovered of codexSessions) {
+    const roots = this.bindingRoots();
+    const [hookBatches, codexSessions] = await Promise.all([Promise.all(roots.map(root => this.hookSessionRegistry(root))), this.discoverCodexSessions(roots)]);
+    const hookSessions = hookBatches.flat();
+    const sessions = new Map(Object.entries(this.bindings.sessions).filter(([id]) => !id.startsWith('maintenance-')).map(([id, binding]) => [id, {
+      id, name: '', platform: 'unknown', status: 'stopped', firstSeen: binding.updatedAt, lastSeen: binding.updatedAt, lastEvent: 'bound', ...binding,
+    }]));
+    for (const discovered of [...hookSessions, ...codexSessions]) {
       if (!discovered?.id) continue;
-      const previous = sessions.get(discovered.id);
+      if (!this.binding(discovered.id)) continue;
+      const stored = sessions.get(discovered.id);
+      const previous = stored?.lastEvent === 'bound' ? { ...stored, firstSeen: '', lastSeen: '' } : stored;
       sessions.set(discovered.id, {
         ...previous,
         ...discovered,
@@ -168,7 +232,7 @@ export class Access {
         lastSeen: [previous?.lastSeen, discovered.lastSeen].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
       });
     }
-    return [...sessions.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+    return [...sessions.values()].map(item => ({ ...item, ...(this.binding(item.id) || {}) })).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
   }
   async recordedSessionIds() {
     const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
@@ -186,8 +250,10 @@ export class Access {
       grants: this.data.sessions,
     };
   }
-  async knownSessions() {
-    return (await this.sessionRegistry()).map(item => item.id);
+  async knownSessions(root = null) {
+    if (!root) return (await this.sessionRegistry()).map(item => item.id);
+    const [hook, codex] = await Promise.all([this.hookSessionRegistry(root), this.discoverCodexSessions([root])]);
+    return [...new Set([...hook, ...codex].map(item => item.id))];
   }
   watch(onChange) {
     let timer, checking = false, signature;
@@ -211,14 +277,28 @@ export class Access {
     const interval = setInterval(inspect, 750); interval.unref?.();
     return () => { clearTimeout(timer); clearInterval(interval); unwatchFile(this.sessionsFile, inspect); };
   }
-  async register(sessionId) {
-    if (!(await this.knownSessions()).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Codex project', 403);
-    return { kind: 'agent', sessionId };
+  async register(sessionId, binding = {}) {
+    if (!Object.keys(binding).length && !this.binding(sessionId)) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind this Session explicitly before granting scope', 409);
+    const worktreeRoot = binding.worktreeRoot || this.binding(sessionId)?.worktreeRoot || this.root;
+    if (!(await this.knownSessions(worktreeRoot)).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
+    const stored = {
+      ...(this.binding(sessionId) || {}),
+      ...binding,
+      sessionId,
+      worktreeRoot,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = this.queue.then(async () => {
+      this.bindings.sessions[sessionId] = stored;
+      await atomicWrite(this.bindingsFile, encode(this.bindings));
+    });
+    this.queue = next.catch(() => {}); await next;
+    return { kind: 'agent', sessionId, ...(stored.projectId ? { projectId: stored.projectId } : {}), ...(stored.worktreeId ? { worktreeId: stored.worktreeId } : {}) };
   }
   grants(sessionId) { return this.data.sessions[sessionId]?.nodes || []; }
   async grant(sessionId, nodes, version) {
+    await this.register(sessionId);
     const next = this.queue.then(async () => {
-      await this.register(sessionId);
       const data = structuredClone(this.data);
       data.sessions[sessionId] = { nodes: [...new Set(nodes)], version, changedAt: new Date().toISOString() };
       await atomicWrite(this.file, encode(data)); this.data = data;

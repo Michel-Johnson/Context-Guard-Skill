@@ -1,7 +1,7 @@
 import { conversationTiming, usages, type Usage } from "./app-usage.ts";
 import { localizeData, type Language } from "./locale.ts";
 
-// 同一个示例用户、同一个项目。这里只演示客户端内的调用；工作台操作位于独立整屏页。
+// 同一个示例用户、同一个项目。Cursor 在窗口内接续工作台，其他客户端仍使用独立工作台页。
 const first = usages[0];
 function followUp(id: string, request: string, response: string, activity: Usage["activity"]): Usage {
   return { ...first, title: id, continuation: true, request, response, activity };
@@ -21,7 +21,7 @@ export const firstUseTurns: readonly Usage[] = [
 export const firstUseChapters = [
   { id: "invoke", title: "调用 Skill", detail: "说明需求，确认记录语言", kind: "app", turn: 0, duration: conversationTiming(firstUseTurns[0]).end },
   { id: "language", title: "确认语言", detail: "示例用户回复，再记录偏好", kind: "app", turn: 1, duration: conversationTiming(firstUseTurns[1]).end },
-  { id: "prepare", title: "准备工作台", detail: "在 App 内取得独立工作台入口", kind: "app", turn: 2, duration: conversationTiming(firstUseTurns[2]).end },
+  { id: "prepare", title: "准备工作台", detail: "从当前客户端继续打开工作台", kind: "app", turn: 2, duration: conversationTiming(firstUseTurns[2]).end },
 ] as const;
 
 const englishTurns: readonly Usage[] = localizeData("en", firstUseTurns).map((turn) => ({ ...turn, language: "en" }));

@@ -6,11 +6,12 @@
 
 | 客户端 | 真实客户端检查 | 明确未覆盖 |
 | --- | --- | --- |
-| Codex | App Server 的 `skills/list` 和 `hooks/list` 识别安装后的 Skill、五个 Hook；移走 Skill 或删掉 SessionStart 后检查必须失败，恢复后通过 | Hook 实际执行：非托管 Hook 仍需用户信任，测试不绕过 |
-| Claude Code | `claude --init-only` 真正触发 SessionStart；建立文件和 session、启动工作台 HTTP；第二次启动保留语言和旧 session，复用工作台；去掉 Hook 后不再初始化 | AI 真实询问语言、UserPromptSubmit 和对话 Stop 的客户端触发 |
+| Codex | App Server 的 `skills/list` 和 `hooks/list` 识别安装后的 Skill 与 11 个生命周期 Hook；移走 Skill 或删掉 SessionStart 后检查必须失败，恢复后通过 | Hook 实际执行及上下文送达：非托管 Hook 仍需用户信任，测试不绕过 |
+| Claude Code | `claude --init-only` 真正触发 SessionStart；未绑定时只留下注册证据且不初始化项目；去掉 Hook 后不再产生注册证据 | AI 询问并确认工作台绑定、UserPromptSubmit 和对话 Stop 的客户端触发 |
 | Cursor | 真实 `agent acp` 握手、安装文件和配置合同；确认未登录创建 Session 返回认证要求 | 客户端发现 Skill、原生 SessionStart/UserPromptSubmit/Stop：需要登录；握手通过不等于这些功能通过 |
 
 三家的消息记录、语言提示与保存、bad case 落盘等确定性逻辑，继续由原有 `tests/ci-smoke.mjs` 的模拟事件测试验证。模拟事件不冒充真实客户端事件；AI 的语义判断和实际回复不在本轮验收内。
+Claude 的无对话检查只验证真实 SessionStart 产生“需要绑定”的注册证据且不建图、不启动服务；用户确认绑定并以同一 Session ID 继续的链路由打包冒烟和浏览器测试覆盖。
 
 ## 在哪里运行
 
