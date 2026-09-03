@@ -5,16 +5,18 @@ server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
 **Status: private service/client implementation with automated local acceptance;
-real deployment and historical migration require separate approval.** The existing
-public Cloud Map service is not this backend. Never direct private Session uploads
-at its public endpoints. Runtime adoption and migration remain in `CI_todo.md`.
+real deployment and historical migration require separate approval.** When
+`CONTEXT_GUARD_MEMORY_CONFIG` is configured, the normal Cloud process mounts this
+API at the same HTTPS origin. Without that explicit configuration, no private
+memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`.
 
 ## Runtime interface
 
-Run `node scripts/cloud/memory.mjs` with `CONTEXT_GUARD_MEMORY_CONFIG` pointing to a
-private JSON configuration outside source control: an absolute `dataDir`,
-`adminToken`, optional loopback `host`/`port`, and `projects`. The service rejects
-non-loopback listeners. Each project maps its ID to a scoped `token`
+Point `CONTEXT_GUARD_MEMORY_CONFIG` at a private JSON configuration outside source
+control: an absolute `dataDir`, `adminToken`, and `projects`. `scripts/cloud/server.mjs`
+then serves Cloud and memory through one process and one HTTPS origin. The standalone
+`scripts/cloud/memory.mjs` entry remains available for loopback-only testing and
+rejects non-loopback listeners. Each project maps its ID to a scoped `token`
 and an administrator-configured repository mirror `root`, authoritative `ref`,
 optional `remote` to fetch on publication, and public repository identifier.
 Use a TLS reverse proxy or SSH loopback tunnel; the client rejects non-loopback
@@ -32,7 +34,8 @@ records. Session writes carry `operationId`, `baseVersion`, `baseMainVersion`,
 `sourceCommit`, and `memory:{map,records}`. Snapshot and idempotency receipt are
 committed in one fsynced atomic replacement under a per-project lock. A reused ID
 with different content fails. Private/runtime paths are rejected by a strict record
-allowlist; retain records without retention pruning. Do not upload secret content.
+allowlist; retain records without retention pruning. Session snapshots include the
+server write time. Do not upload secret content.
 
 `memory prepare` fetches versioned main/Session records and preserves conflicting
 local edits. `memory sync` uploads only to the current bound Session and replays an

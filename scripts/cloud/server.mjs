@@ -5,6 +5,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { fileURLToPath } from 'node:url';
 import { applyOperations, validate, MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
+import { createMemoryHandler } from './memory.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -192,6 +193,7 @@ export async function startCloudServer({
   privateAccess = process.env.CONTEXT_GUARD_CLOUD_PRIVATE === '1',
   secureCookies = process.env.CONTEXT_GUARD_CLOUD_SECURE_COOKIES === '1',
   publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
+  memoryConfig,
   faultInjector = async () => {},
 } = {}) {
   const registryFile = path.join(dataDir, 'projects.json');
@@ -206,6 +208,10 @@ export async function startCloudServer({
   const projectClients = new Map();
   const tails = new Map();
   let registryTail = Promise.resolve();
+  const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
+    ? await readJson(path.resolve(process.env.CONTEXT_GUARD_MEMORY_CONFIG), null)
+    : null);
+  const memoryHandler = configuredMemory ? createMemoryHandler(configuredMemory) : null;
   let registry = await readJson(registryFile, null);
   if (!registry) {
     registry = { v: 2, projects: [compactProject({ id: 'context-guard', name: 'Context Guard', description: 'Context Guard 项目地图' })] };
@@ -461,6 +467,7 @@ export async function startCloudServer({
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
       if (publicOrigin && req.headers.origin && req.headers.origin !== publicOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
+      if (memoryHandler && await memoryHandler(req, res)) return;
       if (route === '/auth' && req.method === 'GET') {
         if (!browserToken || !safeEqual(url.searchParams.get('token'), browserToken)) throw new MapError('UNAUTHORIZED', 'Invalid workbench token', 401);
         const next = url.searchParams.get('next') || '/';
