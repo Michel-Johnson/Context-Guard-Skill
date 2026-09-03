@@ -61,6 +61,7 @@ export const installedFiles = [
 
 export const forbiddenInstalledPaths = [
   "scripts/cloud",
+  "scripts/__pycache__",
   "tests",
   "fixtures",
   ".github",
