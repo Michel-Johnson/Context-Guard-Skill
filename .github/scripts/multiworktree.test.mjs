@@ -15,7 +15,7 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 const python = process.platform === 'win32' ? 'python' : 'python3';
 function run(command, args, cwd = repo, input) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, CONTEXT_GUARD_HEADLESS: '1', CODEX_THREAD_ID: '', CONTEXT_GUARD_DISABLE_WORKBENCH: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1', CODEX_THREAD_ID: '', CONTEXT_GUARD_DISABLE_WORKBENCH: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => stdout += data); child.stderr.on('data', data => stderr += data);
     child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr })); child.stdin.end(input);

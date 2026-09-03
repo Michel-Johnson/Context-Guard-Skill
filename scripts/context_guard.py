@@ -113,6 +113,26 @@ def guard_implicit_skill_root(root: Path, explicit_root: bool) -> int:
 
 
 def context_dir(root: Path) -> Path:
+    root = root.resolve()
+    binding_file = root / ".codex/context/private/project-binding.json"
+    if not binding_file.exists():
+        return root / ".codex" / "context"
+    binding = json.loads(binding_file.read_text(encoding="utf-8"))
+    target = Path(binding.get("projectRoot", ""))
+    if binding.get("version") != 1 or not target.is_absolute():
+        raise ValueError("Invalid workbench project binding")
+    target = target.resolve(strict=True)
+    if target == root or (target / ".codex/context/private/project-binding.json").exists():
+        raise ValueError("Workbench binding chains are not supported")
+    def git_common(folder: Path) -> Path:
+        result = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=folder,
+                                text=True, capture_output=True, check=True, timeout=5,
+                                **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+        return (folder / result.stdout.strip()).resolve(strict=True)
+    if git_common(root) != git_common(target) or not (target / ".codex/context/map.json").is_file():
+        raise ValueError("Bound worktree must reference an existing Map in the same Git repository")
+    # A legacy project binding selects the service, never another worktree's
+    # Session storage. Preserve the source records and registration evidence.
     return root / ".codex" / "context"
 
 
@@ -946,9 +966,10 @@ def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_
         return None
     init_context(root)
     try:
-        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port)])
+        should_open = open_browser and os.environ.get("CONTEXT_GUARD_HEADLESS") != "1" and not os.environ.get("CI")
+        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port), *(["--claim-open"] if should_open else [])])
         url = result["url"]
-        maybe_open_browser(url, open_browser)
+        maybe_open_browser(url, should_open and result.get("shouldOpen", False))
         return url
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"[context-guard] Node workbench: {exc}", file=sys.stderr)

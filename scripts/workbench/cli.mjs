@@ -12,6 +12,8 @@ import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
 import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
 import { atomicWrite, encode } from './io.mjs';
+import { resolveProjectRoot, bindProject } from './project.mjs';
+import { namedWorkbench } from './named.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -33,6 +35,7 @@ async function initialize(root) {
   throw new Error('Python is still required for project initialization');
 }
 export async function ensureServer(root, port = 8877) {
+  root = await resolveProjectRoot(root);
   await initialize(root);
   root = await fs.realpath(root);
   const project = await ensureProjectBinding(await resolveProject(root));
@@ -57,7 +60,8 @@ export async function ensureServer(root, port = 8877) {
     if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
     return state;
   }
-  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a');
+  await fs.mkdir(path.join(root, '.codex/context/private'), { recursive: true, mode: 0o700 });
+  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a', 0o600);
   const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
   const deadline = Date.now() + 12000;
@@ -98,6 +102,10 @@ async function inputJSON(file) {
 }
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'workbench' && opt._[0] === 'bind') {
+    if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');
+    return bindProject(root, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });
+  }
   if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
   if (command === 'memory') {
     const project = await resolveProject(root), session = String(opt.session || process.env.CODEX_THREAD_ID || '');
@@ -146,7 +154,11 @@ async function main(args) {
   if (command === 'workbench') {
     if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } });
     const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
-    return { url: state.url, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
+    const result = opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
+      ? { url: state.url, projectRoot: state.root }
+      : await namedWorkbench(state, request, { name: opt.name });
+    const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
+    return { ...result, ...claim, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
   }
   let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {

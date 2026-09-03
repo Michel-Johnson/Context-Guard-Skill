@@ -14,6 +14,8 @@ const skillInstallEntries = [
   "SKILL.md",
   "README.md",
   "README.zh-CN.md",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses",
   "agents",
   "prototype",
   "references",
