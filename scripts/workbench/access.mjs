@@ -9,6 +9,15 @@ import { MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
+let nodeSqlite;
+
+async function queryWithNodeSqlite(database, sql) {
+  if (nodeSqlite === undefined) nodeSqlite = await import('node:sqlite').catch(() => null);
+  if (!nodeSqlite?.DatabaseSync) return null;
+  const connection = new nodeSqlite.DatabaseSync(database, { readOnly: true });
+  try { return connection.prepare(sql).all(); }
+  finally { connection.close(); }
+}
 
 function taskEvent(line) {
   try {
@@ -43,7 +52,11 @@ export class Access {
     this.codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
     this.codexDb = options.codexDb || null;
     this.sqliteCommand = options.sqliteCommand || 'sqlite3';
+    this.execFile = options.execFile || execFileAsync;
+    this.querySqlite = options.querySqlite || queryWithNodeSqlite;
     this.codexSessions = options.codexSessions || null;
+    this.codexRows = null;
+    this.codexQuery = null;
     this.rolloutStates = new Map();
     this.queue = Promise.resolve();
   }
@@ -131,6 +144,32 @@ export class Access {
     this.rolloutStates.set(file, next);
     return next;
   }
+  async databaseSignature(database) {
+    const signatures = await Promise.all([database, `${database}-wal`].map(async file => {
+      const stat = await fs.stat(file).catch(() => null);
+      return stat ? `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : '-';
+    }));
+    return `${database}:${signatures.join(':')}`;
+  }
+  async loadCodexRows(database, sql) {
+    const signature = await this.databaseSignature(database);
+    if (this.codexRows?.signature === signature) return this.codexRows.rows;
+    if (this.codexQuery?.signature === signature) return this.codexQuery.promise;
+    const promise = (async () => {
+      let rows = await this.querySqlite(database, sql);
+      if (rows === null) {
+        const { stdout } = await this.execFile(this.sqliteCommand, ['-readonly', '-json', database, sql], {
+          encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+        });
+        rows = stdout.trim() ? JSON.parse(stdout) : [];
+      }
+      this.codexRows = { signature, rows };
+      return rows;
+    })();
+    this.codexQuery = { signature, promise };
+    try { return await promise; }
+    finally { if (this.codexQuery?.promise === promise) this.codexQuery = null; }
+  }
   async discoverCodexSessions() {
     if (this.codexSessions) return this.codexSessions(this.root);
     const database = await this.stateDatabase();
@@ -138,8 +177,7 @@ export class Access {
     const cwd = this.root.replaceAll("'", "''");
     const sql = `select id, name, title, created_at, updated_at, rollout_path from threads where cwd='${cwd}' and thread_source='user' and archived=0 order by updated_at desc limit 100`;
     try {
-      const { stdout } = await execFileAsync(this.sqliteCommand, ['-readonly', '-json', database, sql], { encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024 });
-      const rows = stdout.trim() ? JSON.parse(stdout) : [];
+      const rows = await this.loadCodexRows(database, sql);
       return await Promise.all(rows.map(async row => {
         const state = await this.rolloutState(row.rollout_path);
         return {

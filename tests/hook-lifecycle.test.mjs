@@ -13,6 +13,7 @@ const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
 const contextScript = path.join(repository, 'scripts/context_guard.py');
 const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
 const cloudServer = path.join(repository, 'scripts/cloud/server.mjs');
+const python = process.platform === 'win32' ? 'python' : 'python3';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -35,7 +36,7 @@ function hook(event, project, sessionId, extra = {}) {
     turn_id: extra.turn_id || 'turn-one',
     ...extra,
   };
-  const result = run('python3', [hookScript, event.replaceAll(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''), '--platform', 'codex'], {
+  const result = run(python, [hookScript, event.replaceAll(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''), '--platform', 'codex'], {
     cwd: project,
     input: JSON.stringify(payload),
   });
@@ -100,17 +101,17 @@ test('an initialized Git source checkout can use its own real Map without enabli
     await fs.copyFile(contextScript, path.join(root, 'scripts/context_guard.py'));
   }
   await fs.writeFile(path.join(source, '.git'), 'gitdir: test\n');
-  run('python3', [path.join(source, 'scripts/context_guard.py'), 'init', '--root', source], { cwd: source });
-  run('python3', [path.join(installed, 'scripts/context_guard.py'), 'init', '--root', installed], { cwd: installed });
+  run(python, [path.join(source, 'scripts/context_guard.py'), 'init', '--root', source], { cwd: source });
+  run(python, [path.join(installed, 'scripts/context_guard.py'), 'init', '--root', installed], { cwd: installed });
 
-  const sourceHook = run('python3', [path.join(source, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+  const sourceHook = run(python, [path.join(source, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: source, env: { PWD: source, CODEX_WORKSPACE_ROOT: source, CODEX_PROJECT_ROOT: source, CODEX_CWD: source, WORKSPACE_ROOT: source, PROJECT_ROOT: source },
     input: JSON.stringify({ session_id: 'source-session', cwd: source, source: 'startup', is_background_agent: true }),
   });
   assert.match(sourceHook.stdout, /Context Guard Map snapshot/);
   assert.match(await fs.readFile(path.join(source, '.codex/context/sessions.jsonl'), 'utf8'), /source-session/);
 
-  const installedHook = run('python3', [path.join(installed, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+  const installedHook = run(python, [path.join(installed, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: installed, env: { PWD: installed, CODEX_WORKSPACE_ROOT: installed, CODEX_PROJECT_ROOT: installed, CODEX_CWD: installed, WORKSPACE_ROOT: installed, PROJECT_ROOT: installed },
     input: JSON.stringify({ session_id: 'installed-session', cwd: installed, source: 'startup', is_background_agent: true }),
   });
@@ -130,7 +131,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   const prompted = hook('UserPromptSubmit', project, session, { prompt: '完成 Hook 生命周期开发' });
   const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(signalId);
-  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
 
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'apply_patch', tool_use_id: 'tool-one',
@@ -236,7 +237,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const port = await freePort();
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
   t.after(() => spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], { encoding: 'utf8' }));
-  const archiveDenied = spawnSync('python3', [contextScript, 'archive-session', '--root', project, '--session', session,
+  const archiveDenied = spawnSync(python, [contextScript, 'archive-session', '--root', project, '--session', session,
     '--summary', '未授权归档', '--files', 'src/index.mjs'], { cwd: project, encoding: 'utf8' });
   assert.notEqual(archiveDenied.status, 0);
   assert.match(archiveDenied.stderr, /archive-session failed/);
@@ -255,8 +256,8 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(signalId);
   const args = [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId, '--node', 'N1', '--title', '开发通知模块', '--description', '实现通知入口'];
-  run('python3', args);
-  run('python3', args);
+  run(python, args);
+  run(python, args);
   let map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
   assert.equal(map.root.children[0].todos.length, 1);
   assert.equal(map.root.children[0].todos[0].target_session, session);
@@ -266,10 +267,10 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const badPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-turn', prompt: '刚才保存失败，必须记录坏例' });
   const badSignal = badPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(badSignal);
-  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+  run(python, [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
     '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交未保存', '--trigger', '提交工作台',
     '--cause', '待确认', '--guard', '生命周期回归测试']);
-  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+  run(python, [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
     '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交未保存']);
   map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
   assert.equal(map.root.children[0].bugs.length, 1);
@@ -288,7 +289,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(grant.status, 200);
   const otherPrompt = hook('UserPromptSubmit', project, otherSession, { turn_id: 'other-turn', prompt: '增加另一个会话的待办' });
   const otherSignal = otherPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
-  run('python3', [contextScript, 'record-todo', '--root', project, '--session', otherSession, '--signal', otherSignal,
+  run(python, [contextScript, 'record-todo', '--root', project, '--session', otherSession, '--signal', otherSignal,
     '--node', 'N1', '--title', '跨会话待办', '--description', '用于 inbox 测试']);
   const received = hook('PostCompact', project, session, { trigger: 'manual' });
   map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));

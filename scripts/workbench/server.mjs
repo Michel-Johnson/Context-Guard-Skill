@@ -40,6 +40,7 @@ async function queueCodexMessage({ sessionId, message, root }) {
     encoding: 'utf8',
     timeout: 15000,
     maxBuffer: 1024 * 1024,
+    windowsHide: true,
   });
 }
 export async function health(state) {
