@@ -299,7 +299,7 @@ try {
     const flowLabs = await preview.evaluate(() => {
       const labs = [...document.querySelectorAll('.flow-lab')].map(el => {
         const r = el.getBoundingClientRect();
-        return { text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        return { text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
       });
       const hits = [];
       for (let i = 0; i < labs.length; i++) {
@@ -310,11 +310,21 @@ try {
           }
         }
       }
-      return { texts: labs.map(l => l.text), hits };
+      const box = id => {
+        const r = document.querySelector(`.node[data-id="${id}"]`).getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      };
+      const m2 = box('M2'), m4 = box('M4');
+      const mid = { cx: (m2.cx + m4.cx) / 2, cy: (m2.cy + m4.cy) / 2 };
+      const dist = (a, b) => Math.hypot(a.cx - b.cx, a.cy - b.cy);
+      const pair = labs.filter(l => l.text === '安装时可选 hooks' || l.text === 'SessionStart 触发冷启动');
+      const awayFromApex = pair.filter(l => dist(l, mid) >= dist(l, m2) || dist(l, mid) >= dist(l, m4));
+      return { texts: labs.map(l => l.text), hits, awayFromApex: awayFromApex.map(l => l.text) };
     });
     assert.ok(flowLabs.texts.includes('安装时可选 hooks'), 'hook install label');
     assert.ok(flowLabs.texts.includes('SessionStart 触发冷启动'), 'hook start label');
     assert.deepEqual(flowLabs.hits, [], `overlapping relation labels ${JSON.stringify(flowLabs.hits)}`);
+    assert.deepEqual(flowLabs.awayFromApex, [], `labels should stay on the arc, not hug a node: ${flowLabs.awayFromApex.join(',')}`);
     await preview.locator('#btn-rel').click();
     recordCheck('relation-flow-labels');
     const child = preview.locator('#nodes .node.module').nth(1);

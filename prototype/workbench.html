@@ -5248,30 +5248,34 @@ function renderMap(){
       const u=1-t;
       return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y};
     }
-    function labOverlap(a,b,pad){
-      return Math.abs(a.x-b.x)*2 < a.w+b.w+pad*2 && Math.abs(a.y-b.y)*2 < a.h+b.h+pad*2;
+    function labOverlapAmt(a,b,pad){
+      const ox = (a.w+b.w)/2 + pad - Math.abs(a.x-b.x);
+      const oy = (a.h+b.h)/2 + pad - Math.abs(a.y-b.y);
+      if(ox<=0 || oy<=0) return null;
+      return {ox, oy};
     }
-    function labBlocked(box, placed){
-      if(placed.some(p=>labOverlap(box,p,8))) return true;
-      for(const [id,p] of pos){
-        const s = size.get(id);
-        if(!p||!s) continue;
-        if(labOverlap(box, {x:p.x+s.w/2, y:p.y+s.h/2, w:s.w, h:s.h}, 10)) return true;
-      }
-      return false;
-    }
-    function settleLab(x,y,w,h,placed,out){
-      const ring = [[0,0]];
-      if(out){ ring.push([out.x,out.y],[-out.x,-out.y]); }
-      ring.push([0,-1],[0,1],[1,0],[-1,0],[1,-1],[-1,-1],[1,1],[-1,1]);
-      for(let dist=0; dist<=140; dist+=5){
-        for(const [dx,dy] of ring){
-          if(dist===0 && (dx||dy)) continue;
-          const box = {x:x+dx*dist, y:y+dy*dist, w, h};
-          if(!labBlocked(box, placed)) return box;
+    function unstackLabs(placed){
+      for(let n=0; n<8; n++){
+        let moved = false;
+        for(let i=0; i<placed.length; i++){
+          for(let j=i+1; j<placed.length; j++){
+            const a = placed[i], b = placed[j];
+            const hit = labOverlapAmt(a,b,6);
+            if(!hit) continue;
+            moved = true;
+            if(hit.oy <= hit.ox){
+              const s = a.y===b.y ? 1 : Math.sign(a.y-b.y);
+              a.y += s * hit.oy/2;
+              b.y -= s * hit.oy/2;
+            }else{
+              const s = a.x===b.x ? 1 : Math.sign(a.x-b.x);
+              a.x += s * hit.ox/2;
+              b.x -= s * hit.ox/2;
+            }
+          }
         }
+        if(!moved) break;
       }
-      return {x,y,w,h};
     }
     function measureLab(text){
       if(!flowLabsEl) return {w: Math.max(24, text.length*7), h:16};
@@ -5287,60 +5291,36 @@ function renderMap(){
       return {w, h};
     }
     paths = `<defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#5a7a62" stroke-width="1.2"/></marker></defs>` + paths;
-    const relFlows = (data.flows||[]).filter(f=>
-      (f.from===relFocus || f.to===relFocus) && pos.has(f.from) && pos.has(f.to)
-    );
-    const pairN = new Map();
-    relFlows.forEach(f=>{
-      const k = f.from<f.to ? f.from+"|"+f.to : f.to+"|"+f.from;
-      pairN.set(k, (pairN.get(k)||0)+1);
-    });
-    const pairSeen = new Map();
     const pendingLabs = [];
-    relFlows.forEach(f=>{
+    (data.flows||[]).forEach(f=>{
+      if(f.from!==relFocus && f.to!==relFocus) return;
+      if(!pos.has(f.from) || !pos.has(f.to)) return;
       const curve = flowCurve(f.from, f.to);
       if(!curve) return;
       paths += `<path class="flow hot" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
-      if(!f.label) return;
-      const k = f.from<f.to ? f.from+"|"+f.to : f.to+"|"+f.from;
-      const total = pairN.get(k)||1;
-      const idx = pairSeen.get(k)||0;
-      pairSeen.set(k, idx+1);
-      const t = total>1 ? 0.3 : 0.5;
-      pendingLabs.push({text:f.label, curve, t, from:f.from});
+      if(f.label) pendingLabs.push({text:f.label, curve});
     });
     if(flowLabsEl){
       flowLabsEl.style.width = (maxX+140)+"px";
       flowLabsEl.style.height = (maxY+140)+"px";
-      const placed = [];
-      pendingLabs.forEach(item=>{
+      const placed = pendingLabs.map(item=>{
         const {w,h} = measureLab(item.text);
-        let t = item.t;
-        const p = pos.get(item.from), s = size.get(item.from);
-        if(p && s){
-          const nbox = {x:p.x+s.w/2, y:p.y+s.h/2, w:s.w, h:s.h};
-          for(let cand=item.t; cand<=0.55; cand+=0.04){
-            const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, cand);
-            if(!labOverlap({x:pt.x,y:pt.y,w,h}, nbox, 10)){ t = cand; break; }
-          }
-        }
-        const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, t);
+        const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, 0.5);
         const mid = {x:(item.curve.a.x+item.curve.b.x)/2, y:(item.curve.a.y+item.curve.b.y)/2};
         const ox = item.curve.c.x-mid.x, oy = item.curve.c.y-mid.y;
         const olen = Math.hypot(ox,oy)||1;
-        const out = {x:ox/olen, y:oy/olen};
-        pt.x += out.x*12;
-        pt.y += out.y*12;
-        const box = settleLab(pt.x, pt.y, w, h, placed, out);
-        placed.push(box);
+        return {text:item.text, x:pt.x+(ox/olen)*10, y:pt.y+(oy/olen)*10, w, h};
+      });
+      unstackLabs(placed);
+      placed.forEach(box=>{
         const el = document.createElement("span");
         el.className = "flow-lab";
-        el.textContent = item.text;
+        el.textContent = box.text;
         el.style.left = box.x+"px";
         el.style.top = box.y+"px";
         flowLabsEl.appendChild(el);
-        maxX = Math.max(maxX, box.x+w/2);
-        maxY = Math.max(maxY, box.y+h/2);
+        maxX = Math.max(maxX, box.x+box.w/2);
+        maxY = Math.max(maxY, box.y+box.h/2);
       });
       extents = {w:maxX, h:maxY};
       linksEl.setAttribute("width", maxX+140);
