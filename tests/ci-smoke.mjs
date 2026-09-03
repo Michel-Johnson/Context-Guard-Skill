@@ -111,7 +111,14 @@ async function main() {
   const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
   const hookScript = path.join(packageDirectory, "scripts", "context_guard_hook.py");
   const cloudDeploymentGuide = path.join(packageDirectory, "references", "cloud-deployment.md");
-  checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  const syntheticCache = path.join(packageDirectory, "scripts", "__pycache__");
+  fs.mkdirSync(syntheticCache, { recursive: true });
+  fs.writeFileSync(path.join(syntheticCache, "context_guard.cpython-test.pyc"), "synthetic cache");
+  try {
+    checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  } finally {
+    fs.rmSync(syntheticCache, { recursive: true, force: true });
+  }
   assert.equal(countSkillFiles(packageDirectory), 1, "published package must contain one skill");
   assert.ok(fs.existsSync(cloudDeploymentGuide), "published package must include the cloud deployment guide");
   const deploymentGuide = fs.readFileSync(cloudDeploymentGuide, "utf8");

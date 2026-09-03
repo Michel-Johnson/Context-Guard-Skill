@@ -221,7 +221,11 @@ function copySkill(target) {
           recursive: true,
           filter(source) {
             const relative = path.relative(from, source);
-            return relative === "" || relative.split(path.sep)[0] !== "cloud";
+            if (relative === "") return true;
+            const parts = relative.split(path.sep);
+            return parts[0] !== "cloud"
+              && !parts.includes("__pycache__")
+              && !/\.py[co]$/i.test(parts.at(-1));
           }
         }
       : { recursive: true };
