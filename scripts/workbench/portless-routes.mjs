@@ -12,6 +12,7 @@ export function validRoute(r) {
     && Number.isInteger(r.port) && r.port > 0 && r.port < 65536
     && typeof r.root === 'string' && path.isAbsolute(r.root)
     && /^[a-f0-9]{24}$/.test(r.projectId) && typeof r.instance === 'string' && r.instance.length >= 20
+    && (r.runtimeSchema === undefined || Number.isInteger(r.runtimeSchema) && r.runtimeSchema > 0)
     && typeof r.proxyToken === 'string' && r.proxyToken.length >= 32;
 }
 export class RouteStore {

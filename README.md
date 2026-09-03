@@ -36,18 +36,22 @@ Other projects do not automatically inherit this repository's server configurati
 
 ```bash
 context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
-context-guard workbench --root /path/to/project --session <actual-session-id>
+context-guard workbench --root /path/to/project --session <actual-session-id> --workbench-url http://project-name.localhost:1355/prototype/workbench.html
+context-guard workbench --diagnose --root /path/to/project --session <actual-session-id>
 # only after explicit confirmation to move an existing binding:
 context-guard workbench --root /other/worktree --session <actual-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
 
 Local URLs default to `http://project-name.localhost:1355` (a subsequent free port
-is used if occupied), with no global Portless installation. Sessions reuse live
-pages. Explicit `workbench bind --root <worktree> --project-root <existing-map-worktree>`
+is used if occupied), with no global Portless installation. Binding verifies the
+named URL, Git project, backend instance, and runtime before persisting; returned
+URLs pin the selected Session and never auto-switch to a newer active task. Explicit
+`workbench bind --root <worktree> --project-root <existing-map-worktree>`
 selects a service target without merging Maps or replacing the required Session
-binding. Session records remain isolated in their own worktrees. Use `--direct`
-with older services.
+binding. Session records remain isolated in their own worktrees. Diagnose old or
+duplicate services first; explicit migration backs up their private context and
+signals only the reviewed `pid:instance` identities without force-killing them.
 See [named workbenches](references/named-workbench.md) and
 [Portless attribution](THIRD_PARTY_NOTICES.md); Apache-2.0 notices ship with the package.
 

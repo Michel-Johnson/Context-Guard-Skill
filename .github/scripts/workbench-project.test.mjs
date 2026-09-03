@@ -60,6 +60,21 @@ test('linked worktrees resolve to one project and one shared workbench directory
   assert.equal(binding.baseMainSha, main.mainSha);
 });
 
+test('worktree identity survives a move but not path reuse by a different worktree', async t => {
+  const fixture = await repository(); t.after(() => fixture.dispose());
+  const initial = await resolveProject(fixture.worktree);
+  const moved = fixture.worktree + '-moved';
+  git(fixture.root, 'worktree', 'move', fixture.worktree, moved);
+  const afterMove = await resolveProject(moved);
+  assert.equal(afterMove.worktreeId, initial.worktreeId);
+  assert.equal(afterMove.worktreeRoot, await fs.realpath(moved));
+  git(fixture.root, 'worktree', 'remove', '--force', moved);
+  git(fixture.root, 'branch', '-D', 'feature');
+  git(fixture.root, 'worktree', 'add', '-b', 'replacement', moved);
+  const replacement = await resolveProject(moved);
+  assert.notEqual(replacement.worktreeId, initial.worktreeId);
+});
+
 test('a git project without a GitHub main requires an explicit binding', async t => {
   const fixture = await repository({ remote: '' }); t.after(() => fixture.dispose());
   const project = await resolveProject(fixture.worktree);
@@ -140,7 +155,7 @@ test('an unconfigured project never seeds All Sessions from a feature worktree',
   assert.equal(state.source.status, 'binding-required');
 });
 
-test('All Sessions keeps the main baseline while Session views read their bound worktree', async t => {
+test('Session views read their worktree while All Sessions refuses a Git-file fallback', async t => {
   const fixture = await repository(); t.after(() => fixture.dispose());
   await commitMainMap(fixture, 'main map');
   const maps = [[fixture.root, 'main map', 'session-main'], [fixture.worktree, 'feature map', 'session-feature']];
@@ -161,16 +176,17 @@ test('All Sessions keeps the main baseline while Session views read their bound 
   const state = async (token, view = '') => fetch(origin + `/api/state${view ? `?view=${encodeURIComponent(view)}` : ''}`, { headers: { Authorization: `Bearer ${token}` } }).then(async response => ({ status: response.status, body: await response.json() }));
   assert.equal((await state(mainActor.token)).body.doc.root.title, 'main map');
   assert.equal((await state(featureActor.token)).body.doc.root.title, 'feature map');
-  assert.equal((await state(running.humanToken)).body.doc.root.title, 'main map');
+  assert.equal((await state(running.humanToken)).body.doc.root, null);
+  assert.equal((await state(running.humanToken)).body.source.status, 'MEMORY_NOT_CONFIGURED');
   assert.equal((await state(running.humanToken, 'session:session-feature')).body.doc.root.title, 'feature map');
   const changed = JSON.parse(await fs.readFile(path.join(fixture.worktree, '.codex/context/map.json'), 'utf8'));
   changed.root.title = 'feature changed only';
   await fs.writeFile(path.join(fixture.worktree, '.codex/context/map.json'), JSON.stringify(changed, null, 2) + '\n');
-  assert.equal((await state(featureActor.token)).body.doc.root.title, 'feature changed only');
-  assert.equal((await state(running.humanToken)).body.doc.root.title, 'main map');
+  assert.equal((await state(featureActor.token)).body.doc.root.title, 'feature map', 'Session memory changes only through its bound Session store');
+  assert.equal((await state(running.humanToken)).body.doc.root, null);
 });
 
-test('All Sessions ignores worktree edits and refreshes only after the configured main ref advances', async t => {
+test('All Sessions remains unavailable when Git advances without a published server baseline', async t => {
   const fixture = await repository(); t.after(() => fixture.dispose());
   await commitMainMap(fixture, 'main baseline');
   for (const [root, title] of [[fixture.root, 'uncommitted main edit'], [fixture.worktree, 'unmerged feature']]) {
@@ -181,12 +197,16 @@ test('All Sessions ignores worktree edits and refreshes only after the configure
   const running = await startServer({ root: fixture.worktree, port: 0 }); t.after(() => running.close());
   const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).doc.root.title, 'main baseline');
+  const before = await response.json();
+  assert.equal(before.doc.root, null);
+  assert.equal(before.source.status, 'MEMORY_NOT_CONFIGURED');
   await commitMainMap(fixture, 'merged update');
   const refreshed = await fetch(new URL('/api/project-refresh', running.state.url), { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}` } });
   assert.equal(refreshed.status, 200);
   const afterMerge = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
-  assert.equal((await afterMerge.json()).doc.root.title, 'merged update');
+  const after = await afterMerge.json();
+  assert.equal(after.doc.root, null);
+  assert.equal(after.source.status, 'MEMORY_NOT_CONFIGURED');
   const rejected = await fetch(new URL('/api/commit', running.state.url), { method: 'POST', headers: { Authorization: `Bearer ${running.humanToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: 'main-write', baseVersion: running.store.version, operations: [] }) });
   assert.equal(rejected.status, 403);
   assert.equal((await rejected.json()).error.code, 'READ_ONLY_MAIN');

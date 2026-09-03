@@ -5,8 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { resolveProject, projectPreferences, saveMainBinding, sessionBinding } from '../../scripts/workbench/project.mjs';
+import { resolveProject, projectPreferences, saveMainBinding, sessionBinding, bindingStatus } from '../../scripts/workbench/project.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
+import { request } from '../../scripts/workbench/cli.mjs';
+import { namedWorkbench } from '../../scripts/workbench/named.mjs';
+import { startNamedProxy } from '../../scripts/workbench/named-proxy.mjs';
 import { WorkbenchSync } from '../../prototype/workbench-sync.mjs';
 import { startMemoryServer } from '../../scripts/cloud/memory.mjs';
 import { memoryConfigPath, memoryStatus, synchronizeMemory, prepareMemory, sessionMemoryDir } from '../../scripts/workbench/memory.mjs';
@@ -25,10 +28,10 @@ const git = async (root, ...args) => { const r = await run('git', args, root); a
 const cli = (root, ...args) => run(process.execPath, [path.join(repo, 'scripts/workbench/cli.mjs'), ...args, '--root', root]);
 const hookRoots = new Map();
 const hook = (root, id, event = 'session-start') => run(python, [path.join(hookRoots.get(root) || repo, 'scripts/context_guard_hook.py'), event, '--platform', 'codex'], root, JSON.stringify({ cwd: root, session_id: id, prompt: '检查绑定', is_background_agent: true }));
-async function fixture(t) {
+async function fixture(t, cleanup = true) {
   await fs.mkdir(path.join(repo, 'temp'), { recursive: true });
   const dir = await fs.mkdtemp(path.join(repo, 'temp/binding-'));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  if (cleanup) t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const root = path.join(dir, 'repo'), other = path.join(dir, 'other'); await fs.mkdir(root);
   await git(root, 'init', '-b', 'trunk'); await git(root, 'config', 'user.email', 'fixture@example.invalid'); await git(root, 'config', 'user.name', 'Fixture');
   await fs.writeFile(path.join(root, 'README.md'), 'fixture'); await git(root, 'add', 'README.md'); await git(root, 'commit', '-m', 'initial');
@@ -89,7 +92,9 @@ test('bound worktrees share service; Session maps are isolated; rebind expires o
   assert.notEqual((await call(service, '/api/state', two)).data.doc.root.purpose, 'one-only');
   const all = (await call(service, '/api/state', service.humanToken)).data;
   assert.equal(all.doc.root, null); assert.equal(all.source.needsReconcile, true);
-  const reused = await cli(other, 'workbench', '--session', 'two'); assert.equal(reused.code, 0, reused.stdout); assert.equal(JSON.parse(reused.stdout).url, service.state.url);
+  const reused = await cli(other, 'workbench', '--session', 'two'); assert.equal(reused.code, 0, reused.stdout);
+  const reusedUrl = new URL(JSON.parse(reused.stdout).url); const serviceUrl = new URL(service.state.url);
+  assert.equal(reusedUrl.origin + reusedUrl.pathname, serviceUrl.origin + serviceUrl.pathname); assert.equal(reusedUrl.searchParams.get('session'), 'two');
   const prompted = await hook(other, 'two', 'user-prompt-submit'); assert.doesNotMatch(prompted.stdout, /This Session is not bound/);
   await hook(other, 'one');
   assert.equal((await call(service, '/api/session', service.state.adminToken, { sessionId: 'one', worktreeRoot: other })).data.error.code, 'SESSION_ALREADY_BOUND');
@@ -97,6 +102,30 @@ test('bound worktrees share service; Session maps are isolated; rebind expires o
   assert.equal(rebound.status, 200, JSON.stringify(rebound));
   assert.equal((await call(service, '/api/state', one)).status, 401);
   assert.notEqual(service.stores.get('session:one').doc.root.purpose, 'one-only');
+});
+test('a supplied workbench URL is verified before the Session binding is committed', async t => {
+  const first = await fixture(t, false), second = await fixture(t, false);
+  await saveMainBinding(first.root, { mode: 'local', branch: 'trunk' });
+  await saveMainBinding(second.root, { mode: 'local', branch: 'trunk' });
+  await initialize(first.root); await initialize(second.root);
+  await hook(first.root, 'url-session');
+  const firstService = await startServer({ root: first.root, port: 0 });
+  const otherService = await startServer({ root: second.root, port: 0 });
+  const firstProxy = await startNamedProxy({ dir: path.join(first.dir, 'proxy'), port: 0 });
+  const otherProxy = await startNamedProxy({ dir: path.join(second.dir, 'proxy'), port: 0 });
+  const firstNamed = await namedWorkbench(firstService.state, request, { dir: path.join(first.dir, 'proxy'), port: 0 });
+  const otherNamed = await namedWorkbench(otherService.state, request, { dir: path.join(second.dir, 'proxy'), port: 0 });
+  t.after(async () => { await Promise.all([firstProxy.close(), otherProxy.close(), firstService.close(), otherService.close()]); await Promise.all([fs.rm(first.dir, { recursive: true, force: true }), fs.rm(second.dir, { recursive: true, force: true })]); });
+  const rejected = await cli(first.root, 'workbench', '--session', 'url-session', '--workbench-url', otherNamed.url);
+  assert.notEqual(rejected.code, 0); assert.match(rejected.stdout, /PROJECT_MISMATCH/);
+  assert.equal((await bindingStatus(await resolveProject(first.root), 'url-session')).session.bound, false);
+  const accepted = await cli(first.root, 'workbench', '--session', 'url-session', '--workbench-url', firstNamed.url);
+  assert.equal(accepted.code, 0, accepted.stdout);
+  const result = JSON.parse(accepted.stdout);
+  assert.equal(result.binding.verified, true);
+  assert.match(result.url, /\.localhost:/);
+  assert.equal(new URL(result.url).searchParams.get('session'), 'url-session');
+  assert.equal((await bindingStatus(await resolveProject(first.root), 'url-session')).session.bound, true);
 });
 test('private memory requires authentication, isolates Sessions, verifies merge and persists CAS receipts', async t => {
   const { dir, root, other } = await fixture(t);
@@ -143,6 +172,7 @@ test('native Hook readiness requires every supported event to be trusted and ena
   const required = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt'];
   const hooks = required.map(eventName => ({ eventName, enabled: true, trustStatus: 'trusted', command: `${python} ${path.join(target, 'scripts/context_guard_hook.py')}` }));
   assert.equal(summarizeHooks({ data: [{ hooks }] }, target).trusted, true);
+  assert.equal(summarizeHooks({ data: [{ hooks: hooks.map(hook => ({ ...hook, eventName: hook.eventName[0].toLowerCase() + hook.eventName.slice(1) })) }] }, target).trusted, true);
   hooks[0] = { ...hooks[0], trustStatus: 'untrusted' };
   const rejected = summarizeHooks({ data: [{ hooks }] }, target);
   assert.equal(rejected.trusted, false); assert.deepEqual(rejected.missing, ['SessionStart']);

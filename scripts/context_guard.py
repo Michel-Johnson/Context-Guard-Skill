@@ -964,7 +964,7 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
         pass
 
 
-def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True) -> str | None:
+def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, raise_errors: bool = False) -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
@@ -977,6 +977,8 @@ def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_
         return url
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"[context-guard] Node workbench: {exc}", file=sys.stderr)
+        if raise_errors:
+            raise
         return None
 
 

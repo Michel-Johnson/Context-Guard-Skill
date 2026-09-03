@@ -5,13 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 import { RouteStore } from './portless-routes.mjs';
+import { compatibleRuntime } from './runtime.mjs';
 
 const secret = () => randomBytes(32).toString('base64url');
 export async function backendIdentity(route) {
   try {
     const response = await fetch(`http://127.0.0.1:${route.port}/__context_guard/health`, { signal: AbortSignal.timeout(1000), redirect: 'error' });
     const value = await response.json();
-    return response.ok && value.protocol === 2 && value.instance === route.instance && (value.namedRoot || value.root) === route.root;
+    return response.ok && compatibleRuntime(value) && value.instance === route.instance
+      && (value.namedRoot || value.root) === route.root
+      && (!route.runtimeSchema || value.runtimeSchema === route.runtimeSchema);
   } catch { return false; }
 }
 function headers(input) {

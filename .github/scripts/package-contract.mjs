@@ -16,6 +16,7 @@ export const packedFiles = [
   "references/cloud-sync-interface.md",
   "references/cloud-deployment.md",
   "references/server-memory.md",
+  "scripts/workbench/runtime.mjs",
   "scripts/sync/client.mjs",
   "scripts/workbench/access.mjs",
   "scripts/workbench/cli.mjs",
@@ -61,6 +62,7 @@ export const installedFiles = [
   "references/cloud-sync-interface.md",
   "references/cloud-deployment.md",
   "references/server-memory.md",
+  "scripts/workbench/runtime.mjs",
   "scripts/sync/client.mjs",
   "scripts/workbench/access.mjs",
   "scripts/workbench/cli.mjs",
@@ -73,6 +75,7 @@ export const installedFiles = [
   "scripts/workbench/store.mjs",
 
   "SKILL.md",
+  "bin/context-guard-skill.js",
   "README.md",
   "README.zh-CN.md",
   "agents/openai.yaml",

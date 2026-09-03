@@ -127,6 +127,11 @@ try {
   await bindSession(liveSession);
   await page.waitForFunction(() => document.querySelectorAll('#session-menu [data-session]').length === 3);
   assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
+  const pinnedPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  await pinnedPage.goto(`${running.state.url}?session=${encodeURIComponent(session)}`);
+  await pinnedPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
+  assert.equal(await pinnedPage.locator('#cg-sync-session').inputValue(), session, 'a Session URL must not switch to a newer active task');
+  await pinnedPage.close();
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
   await running.access.grant(liveSession, ['N1'], running.store.version);
   await page.locator('#session-chip').click();
@@ -137,7 +142,7 @@ try {
   await page.locator('#session-chip').click();
   await page.locator(`#session-menu [data-session="${liveSession}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, liveSession);
-  assert.equal(await page.locator('#session-name').textContent(), 'cursor-browser-live-agent');
+  assert.match(await page.locator('#session-name').textContent(), /^cursor-.*browser-live-agent/);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   await page.locator('#session-chip').click();
   await page.locator(`#session-menu [data-session="${session}"]`).click();

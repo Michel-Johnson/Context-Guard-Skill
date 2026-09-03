@@ -25,6 +25,7 @@ requests retain the direct authenticated backend channel.
 
 ```sh
 context-guard workbench --root "/path/to/project"
+context-guard workbench --diagnose --root "/path/to/project" --session "actual-hook-session-id"
 context-guard map status --root "/path/to/project" --session "actual-hook-session-id"
 context-guard map read --root "/path/to/project" --session "actual-hook-session-id" --node M1
 context-guard map changes --root "/path/to/project" --session "actual-hook-session-id" --cursor "last-cursor"
@@ -37,14 +38,33 @@ session. Only IDs actually recorded by a lifecycle hook can register as an Agent
 Do not substitute the visible demo session label or invent a human identity.
 
 At SessionStart and every prompt, use `workbench --binding-status --session <id>`.
-Unbound means ask the user, then bind with `workbench --session <id>`; a broken
-binding/service means repair, not create another workbench. Main branch selection
+The result separates the binding record (`current`, `moved`, `other-worktree`,
+`stale`, or `project-mismatch`) from runtime verification (`ready`, `stopped`,
+`legacy`, `duplicate`, or `named-mismatch`). Unbound means ask the user for the
+project workbench URL, then bind with `workbench --session <id> --workbench-url
+<confirmed-url>`. The URL must resolve to the same Git project, backend instance,
+and compatible runtime. A broken binding/service means repair, not create another
+workbench. Main branch selection
 uses advertised GitHub origin/HEAD, or explicit `--bind-main <branch> --remote <name>`
 or `--local-main <branch>`. No main/master fallback. Existing confirmed language
 is project-scoped and inherited by new worktrees. An ordinary bind cannot move an
 already bound Session. After explicit user confirmation, `workbench --session <id>
 --rebind` preserves prior data, invalidates old capabilities and discards the old
 view/store cache.
+
+Binding is prepared before the named route is touched and committed only after
+the final URL has passed identity verification. The returned URL includes
+`?session=<id>` so that browser tab remains pinned to that Session; activity in
+another task never changes the selected map. Only explicit human selection does.
+
+Runtime compatibility uses a schema plus named capabilities, not the broad HTTP
+protocol number. `workbench --diagnose` inventories every registered state file
+for the Git common directory without starting or stopping a service. When it
+returns `migrationRequired`, review the exact `pid:instance` retire keys. The
+explicit `workbench migrate --root ... --retire <keys>` command copies every
+target's `.codex/context` into the private Git-common-dir migration backup before
+sending only `SIGTERM`; identity changes abort, timeouts never escalate to a
+force-kill, and unknown state files are preserved.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
 connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
@@ -303,8 +323,9 @@ security sandbox**: a program with the user's full filesystem/browser access can
 read credentials, edit the map or impersonate browser actions. Do not expose the
 port or use it to isolate a hostile Agent running as the same OS user.
 
-One Node instance owns a project. An identified old Python service is not silently
-killed: export its cache and stop it using the old entry before starting Node.
+One compatible Node instance owns a project. An old or duplicate service is never
+silently killed: diagnose it, review the private backup target, and run the exact
+explicit migration command before starting the current runtime.
 `context-guard workbench --root ... --stop` waits for connected page checkpoints;
 dirty pages must be saved or explicitly resolved first.
 

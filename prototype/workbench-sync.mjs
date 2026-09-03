@@ -18,7 +18,9 @@ export class WorkbenchSync {
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
     this.revision = 0; this.cachedDiff = null;
-    this.composing = false; this.inputDraft = null; this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
+    const requestedSession = new URLSearchParams(location.search).get('session') || '';
+    this.composing = false; this.inputDraft = null; this.activeSession = requestedSession || ALL_SESSIONS; this.viewId = requestedSession ? `session:${requestedSession}` : 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
+    this.manualSession = Boolean(requestedSession);
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
@@ -278,15 +280,15 @@ export class WorkbenchSync {
     const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
     this.sessions = sessions; this.grants = data.grants || {};
     const current = sessions.find(item => item.id === this.activeSession);
-    const recommended = sessions.find(item => item.id === data.currentSessionId) || sessions[0] || null;
-    if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = recommended?.id || ALL_SESSIONS; this.manualSession = false; }
-    else if (this.activeSession !== ALL_SESSIONS && current && !this.manualSession && recommended && recommended.id !== current.id && recommended.status === 'active' && recommended.lastSeen > current.lastSeen) this.activeSession = recommended.id;
+    // A browser belongs to the Session explicitly present in its URL or selected
+    // by the human. Activity in another task must never silently switch maps.
+    if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.manualSession = false; }
     const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '全部 Session';
     const options = [all, ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
-      const short = item.id.length > 28 ? `${item.id.slice(0, 12)}…${item.id.slice(-8)}` : item.id;
-      const displayName = `${item.platform}-${item.name || short}`;
-      option.textContent = displayName; option.title = item.name || item.id; return option;
+      const short = item.shortId || (item.id.length > 20 ? `${item.id.slice(0, 8)}…${item.id.slice(-6)}` : item.id);
+      const displayName = `${item.platform}-${item.name || 'Session'} · ${short}${item.worktreeName ? ` · ${item.worktreeName}` : ''}`;
+      option.textContent = displayName; option.title = `${item.id}\n${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
     })];
     select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
