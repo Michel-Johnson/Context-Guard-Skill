@@ -93,7 +93,16 @@ export class WorkbenchSync {
     if (!this.config) return;
     try { return await this.call('/api/presence', { clientId: this.id, dirty: this.dirty(), version: this.version, checkpoint }); } catch { this.setStatus('offline'); }
   }
-  setInputDraft(input) { this.inputDraft = input; if (input) { this.saveDraft(); if (!['conflict', 'offline', 'error'].includes(this.status)) this.setStatus('draft'); } this.presence(); }
+  setInputDraft(input) {
+    const hadDraft = !!this.inputDraft;
+    this.inputDraft = input;
+    if (input) this.saveDraft();
+    // An input event must synchronously invalidate an older "synced" indicator.
+    // Keep it invalidated while the DOM change is being folded into operations,
+    // including the short hand-off where the input draft becomes null.
+    if ((input || hadDraft) && !['conflict', 'offline', 'error'].includes(this.status)) this.setStatus('draft');
+    this.presence();
+  }
   async start() {
     if (!this.config) return false;
     try {

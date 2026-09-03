@@ -73,6 +73,14 @@ The included `deploy/context-guard-cloud.service` listens on `0.0.0.0:8788` and
 stores data in `$HOME/context-guard-cloud-data`. Change its port or paths before
 installation if the host uses different locations.
 
+When using a dedicated system service account, that account must be able to read
+the checkout and protected configuration and read/write both data directories.
+Keep the checkout itself read-only to the service when practical. With systemd
+`ProtectSystem=strict`, omit the memory project's `remote` field and update the
+repository mirror during deployment; the service will verify the deployed ref
+without trying to fetch into a read-only checkout. Do not make the whole checkout
+writable merely to support publication.
+
 ## 3. Start the service
 
 ```bash
@@ -82,6 +90,13 @@ systemctl --user daemon-reload
 systemctl --user enable --now context-guard-cloud.service
 curl --fail http://127.0.0.1:8788/api/health
 ```
+
+For a system service account, run the fast-forward pull as that account (or make
+the resulting checkout readable by it), then restart the system unit. The server
+closes live SSE and keep-alive connections during shutdown so a normal restart
+does not wait for the process manager's stop timeout. After every upgrade, test
+one authenticated edit, reload the page, restart the service, and confirm the
+same version and content are still present on disk.
 
 If memory is configured, verify it through the same process without putting the
 credential in a URL:
