@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { ensureServer, stopServer, request } from '../scripts/workbench/cli.mjs';
@@ -56,6 +56,9 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal(saved.status, 200);
   assert.equal((await call(named.url, '/api/state', { headers: auth })).data.doc.root.title, 'Saved through named entry');
   for (let i = 0; i < 5; i++) assert.ok((await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: `test-${i}` } })).token);
+  const actor = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-0' } });
+  const denied = await call(named.url, '/api/commit', { method: 'POST', headers: { ...auth, Authorization: `Bearer ${actor.token}` }, body: { baseVersion: saved.data.version, operationId: 'ungranted-agent', operations: [{ type: 'update', id: 'T0', fields: { title: 'Must not change' } }] } });
+  assert.equal(denied.status, 403);
   const otherRoot = await fixture(t, 'Other Project'), other = await startServer({ root: otherRoot, port: 0 }); t.after(() => other.close());
   const otherName = await namedWorkbench(other.state, request, { dir });
   assert.equal((await call(otherName.url, '/api/state', { headers: auth })).status, 403);
@@ -135,6 +138,8 @@ test('explicit linked-worktree binding reuses server and hook context without ov
   await bindProject(source, root, { keepLocal: true });
   assert.equal(await resolveProjectRoot(source), root);
   assert.equal(await fs.readFile(mapFile, 'utf8'), '{"local":"preserved"}');
+  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/sync/client.mjs'), 'status', '--root', source], { encoding: 'utf8' });
+  assert.equal(cloud.status, 1); assert.match(cloud.stdout, /BOUND_SYNC_UNSUPPORTED/);
   const results = await Promise.all([ensureServer(root, 0), ensureServer(source, 0)]); t.after(() => stopServer(root));
   assert.equal(results[0].instance, results[1].instance);
   const python = process.platform === 'win32' ? 'python' : 'python3';
