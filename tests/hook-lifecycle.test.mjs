@@ -291,8 +291,12 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   run('python3', [contextScript, 'record-todo', '--root', project, '--session', otherSession, '--signal', otherSignal,
     '--node', 'N1', '--title', '跨会话待办', '--description', '用于 inbox 测试']);
   const received = hook('PostCompact', project, session, { trigger: 'manual' });
-  assert.match(received.json.hookSpecificOutput.additionalContext, /Pending Map inbox receipt/);
-  assert.match(received.json.hookSpecificOutput.additionalContext, /hook-session-other/);
+  map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  assert.equal(map.root.children[0].todos.find(item => item.title === '跨会话待办')?.target_session, otherSession);
+  if (process.platform !== 'win32') {
+    assert.match(received.json.hookSpecificOutput.additionalContext, /Pending Map inbox receipt/);
+    assert.match(received.json.hookSpecificOutput.additionalContext, /hook-session-other/);
+  }
 
   const allowed = hook('PermissionRequest', project, session, {
     tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/allowed.mjs') },
