@@ -98,8 +98,14 @@ async function main() {
   const postinstall = path.join(packageDirectory, "bin", "postinstall.js");
   const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
   const hookScript = path.join(packageDirectory, "scripts", "context_guard_hook.py");
+  const cloudDeploymentGuide = path.join(packageDirectory, "references", "cloud-deployment.md");
   checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
   assert.equal(countSkillFiles(packageDirectory), 1, "published package must contain one skill");
+  assert.ok(fs.existsSync(cloudDeploymentGuide), "published package must include the cloud deployment guide");
+  const deploymentGuide = fs.readFileSync(cloudDeploymentGuide, "utf8");
+  for (const required of ["npm ci --omit=dev", "context-guard-cloud.service", "/api/health", "/api/projects", "sync connect", "sync finish"]) {
+    assert.ok(deploymentGuide.includes(required), `cloud deployment guide must document ${required}`);
+  }
   run(process.execPath, [cli, "--help"]);
   run(python, ["-c", [
     "from pathlib import Path",
@@ -141,6 +147,7 @@ async function main() {
 
   for (const home of Object.values(homes)) {
     assert.ok(fs.existsSync(path.join(installedPath(home), "SKILL.md")));
+    assert.ok(fs.existsSync(path.join(installedPath(home), "references", "cloud-deployment.md")));
     assert.ok(fs.existsSync(path.join(installedPath(home), "scripts", "context_guard_hook.py")));
     assert.equal(countSkillFiles(installedPath(home)), 1);
   }
