@@ -406,6 +406,8 @@ async function serve(root) {
 async function main(args) {
   const [action = 'status', ...rest] = args, options = parseOptions(rest);
   const root = path.resolve(options.root || process.cwd());
+  const { resolveProjectRoot } = await import('../workbench/project.mjs');
+  if (await resolveProjectRoot(root) !== await fs.realpath(root)) throw new MapError('BOUND_SYNC_UNSUPPORTED', 'Linked-worktree binding currently supports the local Map only. Cloud synchronization needs explicit worktree-aware support; no local or remote Map was changed');
   const sessionId = String(options.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
   if (action === 'connect') {
     let inputToken = options.token;
