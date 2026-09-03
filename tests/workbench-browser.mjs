@@ -47,7 +47,6 @@ async function servePrototype() {
 async function chromeHeights(target) {
   return target.evaluate(() => {
     const els = [
-      document.querySelector('header.top h1.repo-switch'),
       document.querySelector('.nav-crumbs .here'),
       document.getElementById('dir-toggle'),
       document.getElementById('rel-toggle'),
@@ -303,6 +302,37 @@ try {
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
     assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    const context = await preview.evaluate(() => {
+      const crumbs = document.querySelector('.nav-crumbs');
+      const here = crumbs.querySelector('.here');
+      return {
+        h1: !!document.querySelector('header.top h1'),
+        here: here?.textContent.replace(/\s+/g, ' ').trim(),
+        switch: here?.classList.contains('switch'),
+        hits: (crumbs.innerText.match(/Context Guard/g) || []).length
+      };
+    });
+    assert.equal(context.h1, false, 'repo name is not a second title');
+    assert.equal(context.hits, 1, `root should show one context card ${JSON.stringify(context)}`);
+    assert.equal(context.switch, true);
+    await preview.locator('#context-card').click();
+    assert.equal(await preview.locator('#repo-menu.open').count(), 1);
+    await preview.mouse.click(640, 420);
+    await preview.locator('.node[data-id="M1"]').click();
+    await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
+    const nested = await preview.evaluate(() =>
+      [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
+        tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
+      }))
+    );
+    assert.ok(nested.length >= 2, `drilled path ${JSON.stringify(nested)}`);
+    assert.equal(nested[0].tag, 'A');
+    assert.ok(nested[0].text.includes('Context Guard'));
+    assert.ok(nested.at(-1).text.includes('工作台'));
+    assert.equal(nested.at(-1).switch, false);
+    await preview.locator('.nav-crumbs a').first().click();
+    await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    recordCheck('context-card-merged');
     const dirToggle = preview.locator('#dir-toggle');
     await dirToggle.waitFor({ state: 'visible' });
     assert.equal(await preview.locator('#dir-toggle button').count(), 0);

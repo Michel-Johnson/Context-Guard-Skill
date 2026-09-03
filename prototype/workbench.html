@@ -89,12 +89,8 @@ body::before{
 
 header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:10px 13px;
   padding:10px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink);flex-wrap:nowrap;cursor:default}
-header.top .brand{position:relative;flex:0 0 auto}
+header.top .brand{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center}
 header.top h1{margin:0;font-size:16px}
-header.top h1.repo-switch{cursor:pointer;display:inline-flex;align-items:center;gap:6px;
-  height:var(--chrome-btn-h);padding:0 2px;box-sizing:border-box;line-height:1}
-header.top h1.repo-switch:hover{color:var(--module)}
-header.top h1 .caret{font-size:11px;color:var(--muted)}
 .repo-menu{display:none;position:absolute;left:0;top:100%;margin-top:8px;z-index:40;min-width:280px;
   background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow);padding:6px}
 .repo-menu.open{display:block}
@@ -116,6 +112,8 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs a:hover{border-color:var(--line);background:#fff}
 .nav-crumbs .here{font-weight:700;background:var(--module-soft);border-radius:8px;color:var(--module);
   border:2px solid transparent}
+.nav-crumbs .here.switch{cursor:pointer;gap:6px}
+.nav-crumbs .here .caret{font-size:11px;color:var(--muted)}
 .nav-crumbs .sep{color:var(--line)}
 .session-chip{display:none}
 .tray-btn,.auth-btn{
@@ -738,9 +736,7 @@ html.cg-phone header.top{
   padding:calc(6px + var(--safe-top)) 10px 6px;
 }
 html.cg-phone header.top .brand{order:1;flex:1 1 0;min-width:0}
-html.cg-phone header.top h1{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html.cg-phone .settings-wrap{order:2;flex:0 0 auto;margin-left:0}
-html.cg-phone .nav-crumbs{order:3;flex:1 1 100%;min-width:0;padding-bottom:2px}
 html.cg-phone .top-tools{
   order:4;flex:1 1 100%;margin-left:0;min-width:0;
   overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
@@ -864,7 +860,8 @@ html.design-gallery .g-mock.g-chrome{width:100%;height:auto;background:#f4eee3;b
 
 /* 01 现况粗框 */
 .g-lay-01 .bar{height:52px;padding:0 18px;background:#fffdf8;border-bottom:2px solid #2d2d2d;gap:13px}
-.g-lay-01 .here{height:36px;padding:0 12px;display:inline-flex;align-items:center;background:#e4ebf4;color:#2d5da1;border-radius:8px;font-weight:700}
+.g-lay-01 .here{height:36px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;background:#e4ebf4;color:#2d5da1;border-radius:8px;font-weight:700}
+.g-lay-01 .here .caret{font-size:11px;opacity:.5}
 .g-lay-01 .box{height:36px;padding:0 12px;display:inline-flex;align-items:center;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;box-shadow:2px 2px 0 #2d2d2d;font-size:12.5px;font-weight:700}
 .g-lay-01 .dir{width:60px;padding:3px;display:grid;grid-template-columns:1fr 1fr;position:relative;font-size:10px}
 .g-lay-01 .dir i{position:absolute;right:3px;top:3px;bottom:3px;width:calc(50% - 3px);background:#ffe66d;border:2px solid #2d2d2d;border-radius:5px}
@@ -1177,10 +1174,9 @@ html.design-gallery .g-mock.g-chrome{width:100%;height:auto;background:#f4eee3;b
 <div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
 <header class="top">
   <div class="brand">
-    <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
+    <nav class="nav-crumbs" id="nav-crumbs"></nav>
     <div class="repo-menu" id="repo-menu"></div>
   </div>
-  <nav class="nav-crumbs" id="nav-crumbs"></nav>
   <div class="top-tools">
     <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
       <span class="dir-thumb" aria-hidden="true"></span>
@@ -1310,6 +1306,7 @@ const I18N = {
   zh: {
     docTitle:"Context Guard · 工作台原型",
     archMap:"架构导图",
+    switchRepo:"切换项目",
     dirLr:"左右", dirTb:"上下",
     dirTitle:"布局：点一下切换左右 / 上下",
     relations:"关系",
@@ -1402,6 +1399,7 @@ const I18N = {
   en: {
     docTitle:"Context Guard · workbench",
     archMap:"architecture map",
+    switchRepo:"Switch project",
     dirLr:"Left–right", dirTb:"Top–down",
     dirTitle:"Layout: tap to switch left–right / top–down",
     relations:"Relations",
@@ -1537,10 +1535,6 @@ function applyStaticI18n(){
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
   syncThemePicks();
-  const titleEl = document.getElementById("repo-title");
-  if(titleEl && catalog[repoId]){
-    titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
-  }
   if(typeof syncSplitChrome==="function") syncSplitChrome();
 }
 function readStoredUiLang(){
@@ -3906,8 +3900,6 @@ function renderFirstUseCopy(){
   document.getElementById("first-use-copy").textContent = t("firstCopy").replace("{name}", r.name);
 }
 function applyRepoChrome(){
-  const r = currentRepo();
-  document.getElementById("repo-title").innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -4739,6 +4731,25 @@ function enterView(id, opts){
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
+function canSwitchRepo(){
+  return !window.__CG_SERVER && Object.keys(catalog).length>1;
+}
+function crumbLabel(n){
+  return `${n.kind==="module"?"▣ ":""}${esc(n.title)}`;
+}
+function bindContextSwitch(el){
+  const open = ()=>{
+    closeSettings();
+    document.getElementById("repo-menu").classList.toggle("open");
+    el.setAttribute("aria-expanded", document.getElementById("repo-menu").classList.contains("open") ? "true" : "false");
+  };
+  el.onclick = e=>{ e.stopPropagation(); open(); };
+  el.onkeydown = e=>{
+    if(e.key!=="Enter" && e.key!==" ") return;
+    e.preventDefault();
+    open();
+  };
+}
 function renderNav(){
   const el = document.getElementById("nav-crumbs");
   if(bugPathMode && bugFocus){
@@ -4755,11 +4766,23 @@ function renderNav(){
     return;
   }
   const path = findPath(viewRootId);
-  el.innerHTML = path.map((n,i)=> i===path.length-1
-    ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
-    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${esc(n.title)}</a><span class="sep">›</span>`
-  ).join("");
+  const switchable = canSwitchRepo();
+  el.innerHTML = path.map((n,i)=>{
+    const last = i===path.length-1;
+    if(last){
+      const atRoot = i===0;
+      const caret = atRoot && switchable ? ` <span class="caret">▾</span>` : "";
+      const cls = atRoot && switchable ? "here switch" : "here";
+      const extra = atRoot && switchable
+        ? ` role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" title="${esc(t("switchRepo"))}"`
+        : "";
+      return `<span class="${cls}" id="context-card"${extra}>${atRoot ? esc(n.title) : crumbLabel(n)}${caret}</span>`;
+    }
+    return `<a data-id="${n.id}">${crumbLabel(n)}</a><span class="sep">›</span>`;
+  }).join("");
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+  const card = document.getElementById("context-card");
+  if(card && path.length===1 && switchable) bindContextSwitch(card);
   document.getElementById("tray-count").textContent = cancelledList().length;
   document.getElementById("auth-count").textContent = sessionAuth.size;
   syncChrome();
@@ -4792,11 +4815,6 @@ document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
   currentRepo().firstUseOpen = true;
   setOverlay(true, false);
-};
-document.getElementById("repo-title").onclick = e=>{
-  e.stopPropagation();
-  closeSettings();
-  document.getElementById("repo-menu").classList.toggle("open");
 };
 document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
@@ -6183,7 +6201,7 @@ function bootDesignGallery(){
   const add = (id, name, html) => L.push({id, name, html});
 
   add("01", "现况粗框",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图 <i class="caret">▾</i></b><span class="here">Context Guard</span><span class="sp"></span><div class="tools"><span class="box dir"><i></i><span>左右</span><span>上下</span></span><span class="box">关系</span><span class="box sq">🔑</span><span class="box">🐞 Bug (1)</span><span class="box sq">⚙</span></div></div>`);
+    `<div class="bar"><span class="here">Context Guard <i class="caret">▾</i></span><span class="sp"></span><div class="tools"><span class="box dir"><i></i><span>左右</span><span>上下</span></span><span class="box">关系</span><span class="box sq">🔑</span><span class="box">🐞 Bug (1)</span><span class="box sq">⚙</span></div></div>`);
   add("02", "细线字钮",
     `<div class="bar"><b class="ttl">Context Guard 架构导图 <i class="caret">▾</i></b><span class="here">Context Guard</span><span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
   add("03", "纯文字",
@@ -6318,7 +6336,10 @@ async function boot(){
     applyingServerMap=true; renderAll(); applyingServerMap=false;
   }
   // A local server owns exactly one project. Switching demo repositories is preview-only.
-  if(window.__CG_SERVER){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
+  if(window.__CG_SERVER){
+    const menu = document.getElementById("repo-menu");
+    if(menu) menu.style.display="none";
+  }
   if(window.__CG_PREVIEW){
     closeOverlay();
     currentRepo().firstUseOpen = false;
