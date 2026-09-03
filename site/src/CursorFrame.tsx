@@ -22,7 +22,7 @@ function CursorWatermark() {
   </div>;
 }
 
-export function CursorFrame({ children, title }: { children: ReactNode; title: string }) {
+export function CursorFrame({ children, title, workspace }: { children: ReactNode; title: string; workspace?: ReactNode }) {
   return <div className="native-client-frame native-cursor">
     <div className="native-cursor-menubar" aria-hidden="true">
       <CursorIcon name="cursor" size={13} className="native-cursor-mark" />
@@ -38,7 +38,7 @@ export function CursorFrame({ children, title }: { children: ReactNode; title: s
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="m1 1 8 8M9 1 1 9" /></svg>
       </div>
     </div>
-    <div className="native-cursor-body">
+    <div className={`native-cursor-body${workspace ? " has-workbench" : ""}`}>
       <aside className="native-cursor-explorer" aria-hidden="true">
         <div className="native-cursor-activity">
           <span className="is-selected"><CursorIcon name="files" size={15} /></span><span><CursorIcon name="search" size={15} /></span>
@@ -51,6 +51,7 @@ export function CursorFrame({ children, title }: { children: ReactNode; title: s
         </div>
         <div className="native-cursor-outline"><span><CursorIcon name="chevron-right" size={12} />OUTLINE</span><span><CursorIcon name="chevron-right" size={12} />TIMELINE</span></div>
       </aside>
+      {workspace ? <div className="native-cursor-workbench">{workspace}</div> : <>
       <div className="native-cursor-editor" aria-hidden="true"><CursorWatermark /></div>
       <div className="native-cursor-chat" data-native-chat>
         <div className="native-cursor-chat-tabs" aria-hidden="true">
@@ -59,6 +60,7 @@ export function CursorFrame({ children, title }: { children: ReactNode; title: s
         </div>
         <div className="native-chat-slot">{children}</div>
       </div>
+      </>}
     </div>
     <div className="native-cursor-status" aria-hidden="true">
       <CursorIcon name="remote" size={13} /><span>demo-project</span><span className="native-cursor-problems"><CursorIcon name="error" size={12} />0<CursorIcon name="warning" size={12} />0</span>

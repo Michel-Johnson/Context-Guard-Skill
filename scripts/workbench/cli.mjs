@@ -3,13 +3,17 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
-import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees } from './project.mjs';
+import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
+import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
+import { atomicWrite, encode } from './io.mjs';
+import { resolveProjectRoot, bindProject } from './project.mjs';
+import { namedWorkbench } from './named.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -31,6 +35,7 @@ async function initialize(root) {
   throw new Error('Python is still required for project initialization');
 }
 export async function ensureServer(root, port = 8877) {
+  root = await resolveProjectRoot(root);
   await initialize(root);
   root = await fs.realpath(root);
   const project = await ensureProjectBinding(await resolveProject(root));
@@ -55,7 +60,8 @@ export async function ensureServer(root, port = 8877) {
     if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
     return state;
   }
-  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a');
+  await fs.mkdir(path.join(root, '.codex/context/private'), { recursive: true, mode: 0o700 });
+  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a', 0o600);
   const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
   const deadline = Date.now() + 12000;
@@ -96,6 +102,26 @@ async function inputJSON(file) {
 }
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'workbench' && opt._[0] === 'bind') {
+    if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');
+    return bindProject(root, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });
+  }
+  if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
+  if (command === 'memory') {
+    const project = await resolveProject(root), session = String(opt.session || process.env.CODEX_THREAD_ID || '');
+    if (opt._[0] === 'configure') {
+      const config = await inputJSON(opt.input);
+      if (!config.url || !config.token || !config.projectId) throw new MapError('INVALID_MEMORY_CONFIG', 'Provide url, projectId, and token in the private input file');
+      await memoryRequest(project, 'main', undefined, config);
+      await atomicWrite(memoryConfigPath(project), encode(config));
+      return { configured: true, verified: (await memoryStatus(project, session)).current };
+    }
+    if (opt._[0] === 'sync') return synchronizeMemory(root, session);
+    if (opt._[0] === 'prepare') return prepareMemory(project, session);
+    if (opt._[0] === 'rebase') return rebaseMemory(project, session);
+    if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
+    return memoryStatus(project, session);
+  }
   if (command === 'serve') {
     const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1' });
     process.on('SIGTERM', () => running.close()); process.on('SIGINT', () => running.close());
@@ -108,7 +134,6 @@ async function main(args) {
     return bindingStatus(await resolveProject(root), String(opt.session || ''));
   }
   if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
-    await stopServer(root);
     const project = await saveMainBinding(root, {
       mode: opt['local-main'] ? 'local' : 'remote',
       remote: String(opt.remote || 'origin'),
@@ -120,13 +145,21 @@ async function main(args) {
   if (command === 'workbench' && opt.session && project.bindingRequired) {
     throw new MapError('BINDING_REQUIRED', 'Choose the project main branch before binding this Session', 409, { projectId: project.projectId });
   }
+  let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
+  const isMaintenance = ['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session;
+  if (command !== 'workbench' && !isMaintenance && (!sessionId || !(await bindingStatus(project, sessionId)).session.bound)) {
+    throw new MapError('SESSION_BINDING_REQUIRED', 'Ask which workbench to bind to; confirm with workbench --session. No service or map was created.', 409);
+  }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') {
-    if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root } });
+    if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } });
     const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
-    return { url: state.url, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
+    const result = opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
+      ? { url: state.url, projectRoot: state.root }
+      : await namedWorkbench(state, request, { name: opt.name });
+    const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
+    return { ...result, ...claim, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
   }
-  let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
   let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
@@ -137,11 +170,12 @@ async function main(args) {
   if (!maintenance && !(await bindingStatus(project, sessionId)).session.bound) {
     throw new MapError('SESSION_BINDING_REQUIRED', 'Ask the user to confirm this Session binding, then run workbench --session before Map actions', 409, { projectId: project.projectId, sessionId });
   }
-  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root } });
+  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
   if (['inbox', 'ack', 'watch'].includes(action)) {
-    const inbox = new AgentInbox(root, sessionId, call);
+    const dir = sessionMemoryDir(project, sessionId);
+    const inbox = new AgentInbox(root, sessionId, call, project.kind === 'git' ? { ctx: dir, pendingFile: path.join(dir, 'sync/pending.json'), eventsDir: dir } : {});
     if (action === 'ack') return inbox.acknowledge(opt.receipt);
     if (action === 'watch') return inbox.wait(Number(opt['wait-ms'] ?? 40000));
     return inbox.read({ start: !!opt.start });
@@ -163,6 +197,41 @@ async function main(args) {
     return { ...result, reconciliation: { ...reconciliation, operations: reconciliation.operations.map(operation => operation.type) } };
   }
   if (action === 'projections') return call('/api/projections', { method: 'POST', body: { wait: !!opt.wait } });
+  if (action === 'record-todo') {
+    const input = await inputJSON(opt.input);
+    const nodeId = typeof input.node === 'string' ? input.node.trim() : '';
+    const signalId = typeof input.signalId === 'string' ? input.signalId.trim() : '';
+    const title = typeof input.title === 'string' ? input.title.trim() : '';
+    if (!nodeId || !signalId || !title) throw new MapError('INVALID_TODO', 'record-todo needs node, signalId, and title');
+    const snapshot = await call('/api/state?node=' + encodeURIComponent(nodeId));
+    if (!snapshot.node) throw new MapError('NOT_FOUND', `Node ${nodeId} is missing`, 404);
+    const id = typeof input.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(input.id)
+      ? input.id
+      : `TD-${createHash('sha256').update(`${sessionId}\0${signalId}`).digest('hex').slice(0, 16)}`;
+    const existing = (snapshot.node.todos || []).find(item => item?.id === id || item?.source_signal === signalId);
+    if (existing) return { committed: true, duplicate: true, version: snapshot.version, todo: existing };
+    const at = typeof input.at === 'string' && input.at ? input.at : new Date().toISOString();
+    const todo = {
+      id,
+      title,
+      desc: typeof input.description === 'string' ? input.description.trim() : '',
+      status: 'processing',
+      sessions: [sessionId],
+      target_session: sessionId,
+      source_signal: signalId,
+      created_at: at,
+      updated_at: at,
+    };
+    const result = await call('/api/commit', {
+      method: 'POST',
+      body: {
+        operationId: `todo:${sessionId}:${signalId}`,
+        baseVersion: snapshot.version,
+        operations: [{ type: 'update', id: nodeId, fields: { todos: [...(snapshot.node.todos || []), todo] } }],
+      },
+    });
+    return { ...result, todo };
+  }
   if (action === 'attach-bug') {
     const input = await inputJSON(opt.input), snapshot = await call('/api/state');
     return call('/api/commit', { method: 'POST', body: { operationId: `bug:${sessionId}:${input.bug.id}`, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
@@ -174,7 +243,7 @@ async function main(args) {
     await call('/api/projections', { method: 'POST', body: { wait: true } });
     return result;
   }
-  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
+  throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, record-todo, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }

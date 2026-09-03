@@ -59,6 +59,16 @@ async function cli(action, input, extra = [], expectedError) {
     child.stdin.end(input ? JSON.stringify(input) : undefined);
   });
 }
+async function bindSession(sessionId, worktreeRoot = root) {
+  const response = await fetch(new URL('/api/session', running.state.url), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, worktreeRoot }),
+  });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  return result;
+}
 try {
   await fs.mkdir(root);
   const python = (process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']).find(command => {
@@ -66,22 +76,23 @@ try {
     return result.status === 0 && /^Python 3\./m.test(`${result.stdout}\n${result.stderr}`);
   });
   assert.ok(python, 'Python 3 is required for the real SessionStart hook');
-  const hookStart = await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+  const unbound = await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, thread_name: 'basic-browser', is_background_agent: true }), timeout: 20000,
   });
-  assert.match(JSON.parse(hookStart.stdout).hookSpecificOutput.additionalContext, /not bound to the project's main Context Guard workbench/);
+  assert.match(unbound.stdout, /This Session is not bound/);
   const sessions = (await fs.readFile(path.join(ctx, 'sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessions.some(event => event.session_id === session && event.event === 'session-start'));
-  assert.ok((await fs.stat(path.join(ctx, 'sessions', `${session}.md`))).isFile());
-  await run(process.execPath, [path.join(workspace, 'bin/context-guard-skill.js'), 'set-language', '--root', root, '--language', 'zh'], { cwd: root, env });
+  await assert.rejects(fs.stat(path.join(ctx, 'sessions', `${session}.md`)), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(mapPath), { code: 'ENOENT' });
+  await run(python, [path.join(workspace, 'scripts/context_guard.py'), 'init', '--root', root], { cwd: root, env });
   await fs.writeFile(mapPath, encode({ v: 1, project: 'browser-test', bootstrap: 'pending', flows: [], root: null }));
   running = await startServer({ root, port: 0, messageQueue });
-  const bind = await fetch(new URL('/api/session', running.state.url), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: session, worktreeRoot: root }),
+  await bindSession(session);
+  await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+    cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, thread_name: 'basic-browser', is_background_agent: true }), timeout: 20000,
   });
-  assert.equal(bind.status, 200);
+  assert.ok((await fs.stat(path.join(ctx, 'sessions', `${session}.md`))).isFile());
+  await run(process.execPath, [path.join(workspace, 'bin/context-guard-skill.js'), 'set-language', '--root', root, '--language', 'zh'], { cwd: root, env });
   browser = await chromium.launch({ headless: true, env });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(15000);
@@ -113,16 +124,8 @@ try {
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 500).toISOString(), event: 'maintenance', platform: 'cli', session_id: 'maintenance-browser' })}\n`);
   const liveSession = 'browser-live-agent';
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 1000).toISOString(), event: 'session-start', platform: 'cursor', session_id: liveSession })}\n`);
-  await pause(1000);
-  assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
-  const liveBind = await fetch(new URL('/api/session', running.state.url), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: liveSession, worktreeRoot: root }),
-  });
-  assert.equal(liveBind.status, 200);
+  await bindSession(liveSession);
   await page.waitForFunction(() => document.querySelectorAll('#session-menu [data-session]').length === 3);
-  recordCheck('unbound-session-hidden-until-explicit-binding');
   assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
   await running.access.grant(liveSession, ['N1'], running.store.version);
@@ -283,7 +286,9 @@ try {
   assert.equal(hash(await fs.readFile(mapPath)), version); recordCheck('view-does-not-write');
   await until(() => running.access.grants('browser-test-agent').includes('N1'));
   let current = await cli('read'); assert.equal(current.code, 0); assert.equal(current.version, hash(await fs.readFile(mapPath))); recordCheck('human-to-agent-fence');
-  assert.equal((await cli('inbox', undefined, ['--start'])).initialized, true);
+  const initialInbox = await cli('inbox', undefined, ['--start']);
+  assert.equal(initialInbox.pending, true, 'the bound SessionStart baseline must retain later human changes');
+  await cli('ack', undefined, ['--receipt', initialInbox.receipt]);
   const staleVersion = current.version;
   let result = await cli('apply', { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title: 'Agent CLI 更新' } }] });
   assert.equal(result.committed, true); await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent === 'Agent CLI 更新'); recordCheck('agent-cli-to-page');
@@ -292,7 +297,13 @@ try {
   assert.equal((await read()).root.children[0].title, 'Agent CLI 更新'); recordCheck('stale-version-rejected');
   stage = 'human-confirmation';
   current = await cli('read');
-  const create = { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: 'Agent 提议' } }] };
+  const proposalFile = 'src/agent-proposal.mjs';
+  const create = { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'create', parentId: 'T0', node: {
+    id: 'N2', title: 'Agent 提议', purpose: '提供新的独立产品职责', owns: [proposalFile],
+    memories: [{ text: '新增独立职责', paths: [proposalFile], proposalEvidence: {
+      parentId: 'T0', basis: 'new-responsibility', reason: '新增独立实现边界且当前 Map 没有对应节点', files: [proposalFile],
+    } }],
+  } }] };
   result = await cli('apply', create); assert.equal(result.committed, true); assert.equal((await cli('apply', create)).duplicate, true);
   assert.equal((await read()).root.children.filter(x => x.id === 'N2').length, 1);
   assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
@@ -300,7 +311,10 @@ try {
   await cli('apply', { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N2', fields: { proposal: 'accepted' } }] }, [], 'FORBIDDEN');
   assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
   assert.equal((await cli('inbox')).pending, false); recordCheck('retry-deduplication-and-no-self-confirmation');
-  await page.locator('.node[data-id="N2"]').click(); await page.locator('#detail [data-act="accept"]').click(); await synchronized();
+  await page.locator('.node[data-id="N2"]').click();
+  assert.match(await page.locator('#detail .proposal-evidence').textContent(), /新增独立实现边界且当前 Map 没有对应节点/);
+  assert.match(await page.locator('#detail .proposal-evidence').textContent(), /src\/agent-proposal\.mjs/);
+  await page.locator('#detail [data-act="accept"]').click(); await synchronized();
   await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.proposal === 'accepted'); recordCheck('proposal-human-confirmation');
   stage = 'inbox-ack';
   const confirmation = await cli('inbox');

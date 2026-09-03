@@ -21,14 +21,18 @@ const overview: Camera = {
   overview: true,
 };
 const CAMERA_DURATION = 850;
-const CAMERA_EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
+const CAMERA_RASTER_SCALE = 2;
 
 type CameraPose = { x: number; y: number; scale: number };
 
-function applyCameraPose(node: HTMLDivElement, pose: CameraPose) {
-  node.style.transition = "none";
-  node.style.zoom = String(pose.scale);
-  node.style.transform = `translate(${pose.x / pose.scale}px,${pose.y / pose.scale}px) scale(1)`;
+function paintCameraPose(node: HTMLDivElement, pose: CameraPose) {
+  const ratio = window.devicePixelRatio || 1;
+  const x = Math.round(pose.x * ratio) / ratio;
+  const y = Math.round(pose.y * ratio) / ratio;
+  node.style.zoom = String(CAMERA_RASTER_SCALE);
+  node.style.left = "0px";
+  node.style.top = "0px";
+  node.style.transform = `translate3d(${x / CAMERA_RASTER_SCALE}px,${y / CAMERA_RASTER_SCALE}px,0) scale(${pose.scale / CAMERA_RASTER_SCALE})`;
 }
 
 export type TourPlayback = {
@@ -70,8 +74,8 @@ export function TourStage({
   const surface = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
-  const cameraTimer = useRef(0);
-  const bakedScale = useRef(1);
+  const cameraFrame = useRef(0);
+  const currentPose = useRef<CameraPose | null>(null);
   const cameraReady = useRef(false);
   const lastScene = useRef("");
   const bootReady = useRef(false);
@@ -313,23 +317,30 @@ export function TourStage({
   useLayoutEffect(() => {
     const node = plane.current;
     if (!node) return;
-    window.clearTimeout(cameraTimer.current);
     const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
+    window.cancelAnimationFrame(cameraFrame.current);
     if (!cameraReady.current || reduced || exploring) {
       cameraReady.current = true;
-      bakedScale.current = target.scale;
-      applyCameraPose(node, target);
+      currentPose.current = target;
+      paintCameraPose(node, target);
       return;
     }
-    const rasterScale = bakedScale.current;
-    node.style.transition = `transform ${CAMERA_DURATION}ms ${CAMERA_EASING}`;
-    node.style.zoom = String(rasterScale);
-    node.style.transform = `translate(${target.x / rasterScale}px,${target.y / rasterScale}px) scale(${target.scale / rasterScale})`;
-    cameraTimer.current = window.setTimeout(() => {
-      bakedScale.current = target.scale;
-      applyCameraPose(node, target);
-    }, CAMERA_DURATION);
-    return () => window.clearTimeout(cameraTimer.current);
+    const start = currentPose.current ?? target;
+    const started = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - started) / CAMERA_DURATION);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      const pose = {
+        x: start.x + (target.x - start.x) * eased,
+        y: start.y + (target.y - start.y) * eased,
+        scale: start.scale + (target.scale - start.scale) * eased,
+      };
+      currentPose.current = pose;
+      paintCameraPose(node, pose);
+      if (progress < 1) cameraFrame.current = window.requestAnimationFrame(animate);
+    };
+    cameraFrame.current = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(cameraFrame.current);
   }, [x, y, scale, reduced, exploring]);
   return (
     <div

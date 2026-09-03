@@ -12,6 +12,14 @@ Product vs test branches and security checks: `docs/development-security.md`.
 npm run dev:setup
 ```
 
-Local `.codex/` records never belong in commits. Preserve local files when removing
-them from tracking. Run `npm test` before delivery. Never bypass a secret finding
-or replace an existing user hook without explicit review.
+All `.codex/` records stay out of Git commits and distribution artifacts.
+This repository uses the user-designated private server as the authority for all
+development memory; read `references/server-memory.md` before memory-dependent
+work. Local context is only a versioned cache or unsynced draft. Keep Session
+memory separate from the server's committed-main baseline; never silently fall
+back to stale local memory. Connection details stay in the untracked local handoff
+file named by `RULE.md`. Server-memory implementation and migration are still
+pending in `CI_todo.md`; do not claim they are operational.
+Preserve local files when removing them from tracking. Run `npm test` before
+delivery. Never bypass a secret finding or replace an existing user hook without
+explicit review.

@@ -26,6 +26,9 @@
 .native-cursor-panel-icon { position: relative; display: inline-flex; width: 14px; height: 14px; }
 .native-cursor-panel-fill { position: absolute; inset: 0; opacity: .65; }
 .native-cursor-body { display: grid; grid-template-columns: 176px minmax(0, 1fr) 464px; flex: 1; min-height: 0; }
+.native-cursor-body.has-workbench { grid-template-columns: 176px minmax(0, 1fr); }
+.native-cursor-workbench { display: flex; align-items: center; min-width: 0; min-height: 0; overflow: hidden; padding: 8px; background: #101010; }
+.native-cursor-workbench > .tour-shell { width: 100%; }
 .native-cursor-explorer { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid #f0f0f013; background: #141414; }
 .native-cursor-activity { display: flex; align-items: center; flex-shrink: 0; gap: 4px; height: 30px; padding-left: 21px; color: #c0c0c0; }
 .native-cursor-activity > span { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 24px; border-radius: 5px; }

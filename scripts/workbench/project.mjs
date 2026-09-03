@@ -3,7 +3,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { atomicWrite, encode, readJSON } from './io.mjs';
+import { atomicWrite, encode, readJSON, withFileLock, hash } from './io.mjs';
+import { MapError } from '../../prototype/map-model.mjs';
 
 const execFileAsync = promisify(execFile);
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
@@ -55,9 +56,6 @@ function githubRepository(remote) {
 async function defaultBranch(root, remote = 'origin') {
   const symbolic = await git(root, ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`], { optional: true });
   if (symbolic.startsWith(`${remote}/`)) return symbolic.slice(remote.length + 1);
-  for (const branch of ['main', 'master']) {
-    if (await git(root, ['rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${branch}^{commit}`], { optional: true })) return branch;
-  }
   return '';
 }
 
@@ -114,6 +112,7 @@ export async function resolveProject(openedRoot) {
   const projectId = `git-${digest(commonDir).slice(0, 20)}`;
   const sharedDir = path.join(commonDir, 'context-guard');
   const stored = await readJSON(path.join(sharedDir, 'project-binding.json'), null);
+  if (stored && (stored.projectId !== projectId || !stored.main?.branch)) throw new Error('Invalid project binding; repair it explicitly, do not recreate it');
   const originUrl = await git(worktreeRoot, ['config', '--get', 'remote.origin.url'], { optional: true });
   const originGithub = githubRepository(originUrl);
   const automaticBranch = originGithub ? await defaultBranch(worktreeRoot) : '';
@@ -173,13 +172,47 @@ export async function bindingStatus(project, sessionId = '') {
     main: project.binding?.main || null,
     bindingRequired: project.bindingRequired,
     workbenchState: project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : path.join(project.worktreeRoot, '.codex/context/private/workbench.json'),
-    session: session ? { bound: session.projectId === project.projectId && session.worktreeRoot === project.worktreeRoot, ...session } : { bound: false, sessionId },
+    session: session ? { ...session, bound: session.projectId === project.projectId && session.worktreeRoot === project.worktreeRoot } : { bound: false, sessionId },
   };
 }
 
-export async function readMainMap(project, ref = project.mainRef) {
-  if (project.kind !== 'git' || !ref) return '';
-  return git(project.worktreeRoot, ['show', `${ref}:.codex/context/map.json`], { optional: true });
+export async function projectPreferences(project, language) {
+  const file = path.join(project.sharedDir, 'preferences.json');
+  return withFileLock(file + '.lock', async () => {
+    const stored = await readJSON(file, null);
+    if (await readJSON(path.join(project.sharedDir, 'memory-client.json'), null)) {
+      const { memoryRequest } = await import('./memory.mjs');
+      const remote = (await memoryRequest(project, 'preferences')).preferences;
+      const chosen = language === undefined ? remote?.language || stored?.record_language : language;
+      if (!chosen) return { record_language: 'unset', display_language: 'auto' };
+      if (!['zh', 'en'].includes(chosen)) throw new Error('Language must be zh or en');
+      const result = remote?.language === chosen ? remote : (await memoryRequest(project, 'preferences', { operationId: `language:${remote?.version || 'initial'}:${chosen}`, baseVersion: remote?.version || null, language: chosen })).snapshot;
+      const value = { record_language: result.language, display_language: result.language, serverVersion: result.version };
+      await atomicWrite(file, encode(value)); return value;
+    }
+    if (language !== undefined) {
+      if (!['zh', 'en'].includes(language)) throw new Error('Language must be zh or en');
+      const next = { ...stored, record_language: language, display_language: language, updatedAt: new Date().toISOString() };
+      await atomicWrite(file, encode(next));
+      const verified = await readJSON(file);
+      if (verified.record_language !== language) throw new Error('Language persistence verification failed');
+      return verified;
+    }
+    if (stored) {
+      if (!['zh', 'en'].includes(stored.record_language)) throw new Error('Invalid shared language configuration');
+      return stored;
+    }
+    const values = new Set();
+    for (const root of await listWorktrees(project)) {
+      const value = await readJSON(path.join(root, '.codex/context/preferences.json'), null);
+      if (['zh', 'en'].includes(value?.record_language)) values.add(value.record_language);
+    }
+    if (values.size > 1) throw Object.assign(new Error('Confirmed language settings conflict; ask which project language to retain'), { code: 'LANGUAGE_CONFLICT' });
+    if (!values.size) return { record_language: 'unset', display_language: 'auto' };
+    const value = { record_language: [...values][0], display_language: [...values][0], migrated: true };
+    await atomicWrite(file, encode(value));
+    return readJSON(file);
+  });
 }
 
 export async function sameProject(leftRoot, rightRoot) {
@@ -225,4 +258,42 @@ export async function sessionBinding(project, sessionId) {
     workbenchState: project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : path.join(project.worktreeRoot, '.codex/context/private/workbench.json'),
     updatedAt: new Date().toISOString(),
   };
+}
+
+export const bindingPath = root => path.join(root, '.codex/context/private/project-binding.json');
+async function commonDir(root) {
+  const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd: root, windowsHide: true, timeout: 5000 });
+  return fs.realpath(path.resolve(root, stdout.trim()));
+}
+export async function resolveProjectRoot(root) {
+  root = await fs.realpath(path.resolve(root));
+  const binding = await readJSON(bindingPath(root), null);
+  if (!binding) return root;
+  if (binding.version !== 1 || !path.isAbsolute(binding.projectRoot || '')) throw new MapError('INVALID_BINDING', 'Invalid workbench project binding');
+  const target = await fs.realpath(binding.projectRoot);
+  if (target === root || await readJSON(bindingPath(target), null)) throw new MapError('INVALID_BINDING', 'Workbench binding chains are not supported');
+  if (await commonDir(root) !== await commonDir(target)) throw new MapError('INVALID_BINDING', 'Bound worktrees must belong to the same local Git repository');
+  await fs.access(path.join(target, '.codex/context/map.json'));
+  return target;
+}
+export async function bindProject(root, target, { keepLocal = false } = {}) {
+  root = await fs.realpath(root); target = await fs.realpath(target);
+  if (root === target || await resolveProjectRoot(target) !== target) throw new MapError('INVALID_BINDING', 'Select an unbound, different project worktree');
+  if (await commonDir(root) !== await commonDir(target)) throw new MapError('INVALID_BINDING', 'Different Git projects cannot share this binding');
+  await fs.access(path.join(target, '.codex/context/map.json'));
+  const existing = await readJSON(bindingPath(root), null);
+  if (existing && existing.projectRoot !== target) throw new MapError('BINDING_EXISTS', 'An existing binding cannot be silently replaced');
+  const localMap = await fs.stat(path.join(root, '.codex/context/map.json')).catch(e => e.code === 'ENOENT' ? null : Promise.reject(e));
+  if (localMap && !keepLocal) throw new MapError('LOCAL_MAP_EXISTS', 'Local Map is preserved. Pass --keep-local to confirm keeping its Session seed; no Map is merged or deleted');
+  // Do not change an active worktree's data source under its service or pages.
+  const state = await readJSON(path.join(root, '.codex/context/private/workbench.json'), null);
+  if (state?.pid) { let alive = true; try { process.kill(state.pid, 0); } catch (e) { if (e.code === 'ESRCH') alive = false; }
+    if (alive) throw new MapError('WORKBENCH_ACTIVE', 'Stop this worktree workbench before binding it'); }
+  await atomicWrite(bindingPath(root), encode({ version: 1, projectRoot: target, boundAt: new Date().toISOString() }));
+  return { root, projectRoot: target, localMapPreserved: !!localMap };
+}
+export const projectId = root => hash(root).slice(0, 24);
+export function projectName(value, root) {
+  const name = String(value || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63).replace(/-+$/g, '');
+  return name || `project-${projectId(root).slice(0, 12)}`;
 }

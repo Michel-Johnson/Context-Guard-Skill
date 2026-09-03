@@ -19,7 +19,7 @@ let passed = false;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || repositoryRoot,
-    env: { ...process.env, ...options.env },
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', ...options.env },
     input: options.input,
     encoding: "utf8",
     windowsHide: true
@@ -232,23 +232,28 @@ async function main() {
     }
   );
   const firstResponse = JSON.parse(firstStart.stdout);
-  assert.match(firstResponse.additional_context, /ask the user whether project context should be recorded/);
-  assert.match(firstResponse.additional_context, /not bound to the project's main Context Guard workbench/);
-  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "index.md")));
+  assert.match(firstResponse.additional_context, /This Session is not bound/);
+  assert.ok(!fs.existsSync(path.join(project, ".codex", "context", "index.md")), "an unbound Session must not initialize project memory");
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "payload root must beat process cwd");
-  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
+  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions.jsonl")), "an unbound hook keeps only registration evidence");
+  assert.ok(!fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
+
+  workbenchProject = project;
+  const bindingPort = await freePort();
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-one", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
 
   // Cursor on Windows can prepend a UTF-8 BOM to every hook payload.
   const cursorMessages = ["第一条 Cursor 消息", "第二条 Cursor 消息"];
   for (const [index, prompt] of cursorMessages.entries()) {
-    const promptSubmit = run(python, [hookScript, "user-prompt-submit", "--platform", "cursor"], {
+    run(python, [hookScript, "user-prompt-submit", "--platform", "cursor"], {
       cwd: unrelatedCwd,
       env: hookEnvironment,
       input: "\uFEFF" + JSON.stringify({
         workspace_roots: [project], conversation_id: "session-one", generation_id: `generation-${index}`, prompt
       })
     });
-    assert.match(JSON.parse(promptSubmit.stdout).additional_context, /not bound to the project's main Context Guard workbench/);
   }
   run(python, [hookScript, "stop", "--platform", "cursor"], {
     cwd: unrelatedCwd,
@@ -262,9 +267,20 @@ async function main() {
   assert.ok(cursorEvents.filter(({ event }) => event === "user-prompt-submit").every(({ message_status }) => message_status === "recorded"));
   const cursorMemory = fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8");
   for (const message of cursorMessages) assert.ok(cursorMemory.includes(message));
+  const cursorSessionMemory = fs.readFileSync(path.join(project, ".codex", "context", "sessions", "session-one.md"), "utf8");
+  for (const message of cursorMessages) assert.ok(cursorSessionMemory.includes(message));
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "BOM payload root must beat process cwd");
 
   run(python, [contextScript, "set-language", "--root", project, "--language", "zh"]);
+  const secondBindingPrompt = run(
+    python,
+    [hookScript, "session-start", "--platform", "codex"],
+    { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-two" }) }
+  );
+  assert.match(secondBindingPrompt.stdout, /This Session is not bound/);
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-two", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
   const secondStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -275,20 +291,14 @@ async function main() {
     }
   );
   const secondResponse = JSON.parse(secondStart.stdout);
-  assert.doesNotMatch(JSON.stringify(secondResponse), /project context should be recorded/);
-  assert.match(secondResponse.hookSpecificOutput.additionalContext, /not bound to the project's main Context Guard workbench/);
+  assert.doesNotMatch(JSON.stringify(secondResponse), /ask the user whether/);
   assert.equal(readJson(path.join(project, ".codex", "context", "preferences.json")).record_language, "zh");
   const namedSession = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse).findLast((event) => event.session_id === "session-two");
   assert.equal(namedSession.thread_name, "basic", "Codex lifecycle records should include the real thread name");
 
-  const unboundMap = spawnSync(process.execPath, [path.join(repositoryRoot, "bin/context-guard-skill.js"), "map", "status", "--root", project, "--session", "session-two"], { encoding: "utf8", windowsHide: true });
-  assert.equal(unboundMap.status, 1);
-  assert.equal(JSON.parse(unboundMap.stdout).error.code, "SESSION_BINDING_REQUIRED");
-
   const userMessage = "请记住：CI 第一版只保护已经实现的安装流程。";
-  run(python, [contextScript, "workbench", "--root", project, "--session", "session-two"]);
-  const boundPrompt = run(
+  run(
     python,
     [hookScript, "user-prompt-submit", "--platform", "claude"],
     {
@@ -297,7 +307,6 @@ async function main() {
       input: JSON.stringify({ workspace_root: project, session_id: "session-two", prompt: userMessage })
     }
   );
-  assert.doesNotMatch(JSON.stringify(JSON.parse(boundPrompt.stdout)), /not bound to the project's main Context Guard workbench/);
   run(
     python,
     [hookScript, "stop", "--platform", "claude"],
@@ -308,6 +317,7 @@ async function main() {
     }
   );
   assert.match(fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8"), /CI 第一版/);
+  assert.match(fs.readFileSync(path.join(project, ".codex", "context", "sessions", "session-two.md"), "utf8"), /CI 第一版/);
   const sessionEvents = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessionEvents.some((event) => event.event === "session-start" && event.session_id === "session-one"));
@@ -323,8 +333,17 @@ async function main() {
   ]) run(python, [hookScript, event, "--platform", "codex"], { env: hookEnvironment, input: JSON.stringify(input) });
   const fallbackEvents = fs.readFileSync(path.join(fallbackProject, ".codex/context/sessions.jsonl"), "utf8").trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(new Set(fallbackEvents.map(event => event.session_id)).size, 1, "hook processes without a client ID must share the current project session");
+  assert.ok(!fs.existsSync(path.join(fallbackProject, ".codex/context/map.json")), "unbound fallback hooks must not initialize project memory");
 
-  workbenchProject = project;
+  const thirdBindingPrompt = run(
+    python,
+    [hookScript, "session-start", "--platform", "codex"],
+    { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-three" }) }
+  );
+  assert.match(thirdBindingPrompt.stdout, /This Session is not bound/);
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-three", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
   const automaticWorkbenchStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -336,17 +355,25 @@ async function main() {
   );
   const automaticContext = JSON.parse(automaticWorkbenchStart.stdout).hookSpecificOutput.additionalContext;
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
-  assert.ok(automaticUrl, `SessionStart should inject the automatically started workbench URL\n${automaticWorkbenchStart.stderr}`);
+  assert.ok(automaticUrl, `a bound SessionStart should reuse and report its project workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
-  run(python, [contextScript, "workbench", "--root", project, "--session", "session-three"]);
   run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /unclassified files: scripts\/context_guard\.py/);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.length, 0, "unclassified files must not create Map nodes");
+  const archiveGovernance = path.join(temporaryRoot, "archive-governance.json");
+  fs.writeFileSync(archiveGovernance, JSON.stringify({ proposal: {
+    parentId: "T0", title: "Context CLI", purpose: "提供 Context Guard 命令入口", reason: "新增独立命令职责且当前 Map 没有对应节点",
+    basis: "new-interface", files: ["scripts/context_guard.py"]
+  } }));
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
   const archivedMap = readJson(path.join(project, ".codex/context/map.json"));
   const archiveProposal = archivedMap.root.children.find(node => node.proposal === "proposed" && node.owns?.includes("scripts/context_guard.py"));
-  assert.ok(archiveProposal, "archive-session should propose a node for files missing from the Map");
+  assert.ok(archiveProposal, "archive-session should only create an explicit evidence-backed proposal");
   assert.equal(archiveProposal.proposedBy, "session-three");
-  assert.match(archiveProposal.memories[0].text, /CI 主链路通过/);
-  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.match(archiveProposal.memories[0].text, /建立 Context CLI 节点/);
+  assert.equal(archiveProposal.memories[0].proposalEvidence.basis, "new-interface");
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
   assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.filter(node => node.id === archiveProposal.id).length, 1);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
 
@@ -395,10 +422,19 @@ async function main() {
   assert.match(fs.readFileSync(path.join(project, ".codex/context/fixes/B1.md"), "utf8").replace(/\r\n/g, "\n"), /## 怎么修\n安装并校验生命周期 Hook/);
   assert.equal(readJson(path.join(project, ".codex/context/bad-case-events.json")).at(-1).event, "fix");
 
-  for (const platform of ["codex", "cursor", "claude"]) {
+  for (const platform of ["cursor", "claude"]) {
     const doctor = run(process.execPath, [cli, "doctor", "--platform", platform, "--root", project, "--json"], { env: clientEnvironment });
     assert.equal(JSON.parse(doctor.stdout).ok, true);
   }
+  const codexDoctor = spawnSync(process.execPath, [cli, "doctor", "--platform", "codex", "--root", project, "--json"], {
+    cwd: repositoryRoot, env: { ...process.env, ...clientEnvironment, CODEX_THREAD_ID: "" }, encoding: "utf8", windowsHide: true
+  });
+  assert.equal(codexDoctor.status, 1, "configured files are not proof that Codex trusted the Hook");
+  const codexDoctorReport = JSON.parse(codexDoctor.stdout);
+  assert.equal(codexDoctorReport.ok, false);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.hooks-trust").ok, false);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.hooks-executed").ok, true);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.context-emitted").ok, true);
 
   workbenchProject = project;
   const port = await freePort();

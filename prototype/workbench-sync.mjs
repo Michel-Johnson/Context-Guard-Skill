@@ -99,13 +99,16 @@ export class WorkbenchSync {
       this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
       if (state.error) throw new Error(state.error?.message || '服务需要恢复');
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
+        const readOnlyMain = this.viewId === 'main' && state.source?.status !== 'local-folder';
         this.initializationRequired = true;
-        this.panel.querySelector('#cg-sync-initialize').hidden = false;
+        this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
+        if (readOnlyMain) this.a.pending?.();
         this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
-        this.setStatus('error', '尚未创建真实地图；可将当前页面设为真实地图');
-        return false;
+        this.setStatus('error', readOnlyMain ? 'main 基线尚未发布；请切换已绑定 Session' : '尚未创建真实地图；可将当前页面设为真实地图');
+        return readOnlyMain;
       }
       if (!state.doc?.root) throw new Error('地图根节点无效');
+      this.initializationRequired = false;
       this.a.apply(state.doc); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const restored = stored(this.captureKey), legacy = stored('cg-workbench-maps-v16');
       this.recovery = restored; this.legacy = legacy;
@@ -139,7 +142,7 @@ export class WorkbenchSync {
     if (state.viewId && state.viewId !== this.viewId) return;
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
-    if (this.initializationRequired) return;
+    if (this.initializationRequired) { await this.reload(); return; }
     if (state.version === this.version) {
       if (!this.dirty()) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
       return;
@@ -226,12 +229,24 @@ export class WorkbenchSync {
   async reload() {
     if (!this.config) return;
     if (this.dirty()) { this.saveDraft(); this.export(); }
-    const current = await this.call('/api/state'); if (current.error || !current.doc?.root) { this.setStatus('error', current.error?.message || '地图根节点尚未初始化'); return; }
+    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
+    const current = await this.call('/api/state');
+    if (generation !== this.loadGeneration) return;
+    if (current.error || !current.doc?.root) {
+      const readOnlyMain = this.viewId === 'main' && current.source?.status !== 'local-folder';
+      this.ready = false; this.initializationRequired = true; this.doc = current.doc; this.version = current.version;
+      this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
+      if (readOnlyMain) this.a.pending?.();
+      if (!this.events) { this.connect(); await this.refreshAccess(); }
+      this.setStatus('error', current.error?.message || (readOnlyMain ? 'main 基线尚未发布' : '地图根节点尚未初始化')); return;
+    }
+    this.initializationRequired = false;
+    this.panel.querySelector('#cg-sync-initialize').hidden = true;
     this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version; this.source = current.source || null;
     this.a.apply(current.doc); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
     this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
-    await this.presence(); this.setStatus('synced', '旧草稿副本仍保留');
+    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : '旧草稿副本仍保留');
   }
   async preview(input) {
     if (!this.config) throw new Error('请在本地 Node 工作台导入');

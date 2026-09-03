@@ -40,10 +40,12 @@ export function describeChanges(before, after) {
 }
 
 export class AgentInbox {
-  constructor(root, sessionId, call) {
+  constructor(root, sessionId, call, options = {}) {
     if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Use the real lifecycle session');
     this.root = root; this.sessionId = sessionId; this.call = call;
-    this.ctx = path.join(root, '.codex/context');
+    this.ctx = options.ctx || path.join(root, '.codex/context');
+    this.pendingFile = options.pendingFile || path.join(this.ctx, 'private/sync/pending.json');
+    this.eventsDir = options.eventsDir || path.join(this.ctx, 'sessions');
     this.file = path.join(this.ctx, 'private/sync/inboxes', hash(sessionId) + '.json');
     this.lock = this.file + '.lock';
   }
@@ -69,7 +71,7 @@ export class AgentInbox {
       const raw = await fs.readFile(path.join(this.ctx, 'map.json'));
       if (raw.length > 16 * 1024 * 1024) throw new MapError('INVALID_MAP', 'Map exceeds 16 MiB');
       const doc = JSON.parse(raw.toString('utf8').replace(/^\uFEFF/, '')); validate(doc);
-      const pending = await readJSON(path.join(this.ctx, 'private/sync/pending.json'), null);
+      const pending = await readJSON(this.pendingFile, null);
       if (!pending && hash(raw) === events.version) return { ...events, doc };
       await pause(25);
     }
@@ -134,7 +136,7 @@ export class AgentInbox {
     // Register before reading, so a write between read and wait cannot get lost.
     const ctx = await fs.realpath(this.ctx);
     const handles = [watch(ctx, (_, name) => { if (!name || String(name) === 'map.json') notify(); }),
-      watch(await fs.realpath(path.join(ctx, 'sessions')), (_, name) => { if (!name || String(name) === 'workbench-changes.jsonl') notify(); })];
+      watch(await fs.realpath(this.eventsDir), (_, name) => { if (!name || ['workbench-changes.jsonl', 'changes.jsonl'].includes(String(name))) notify(); })];
     try {
       for (;;) {
         changed = false;

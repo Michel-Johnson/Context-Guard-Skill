@@ -5,6 +5,7 @@ import fs from "node:fs";
 const ci = fs.readFileSync(".github/workflows/ci.yml", "utf8");
 const publish = fs.readFileSync(".github/workflows/npm-publish.yml", "utf8");
 const clients = fs.readFileSync(".github/workflows/client-compatibility.yml", "utf8");
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 
 function requireMatch(content, pattern, message) {
   if (!pattern.test(content)) throw new Error(message);
@@ -40,6 +41,11 @@ for (const job of ["package", "install", "browser"]) {
   requireMatch(aggregate, new RegExp(`test "\\$${job.toUpperCase()}_RESULT" = "success"`), `Required must reject failed/skipped ${job}.`);
 }
 forbidMatch(ci, /continue-on-error:\s*true/, "Required CI failures must propagate.");
+const installJob = ci.slice(ci.indexOf("  install:"), ci.indexOf("  browser:"));
+requireMatch(installJob, /os:\s*windows-latest/, "Install CI must retain the Windows runner for workbench process regressions.");
+requireMatch(installJob, /run:\s*npm test/, "The Windows install matrix must run the complete test suite.");
+requireMatch(packageJson.scripts.test, /tests\/hook-lifecycle\.test\.mjs/, "npm test must retain the detached workbench cleanup regression.");
+requireMatch(packageJson.scripts.test, /verify-hidden-processes\.mjs/, "npm test must enforce hidden Windows child processes.");
 
 for (const [name, content] of [["CI", ci], ["CD", publish]]) {
   const gate = content.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');

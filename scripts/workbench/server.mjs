@@ -10,7 +10,8 @@ import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
-import { resolveProject, ensureProjectBinding, refreshMain, readMainMap, sessionBinding, sessionBindingsPath } from './project.mjs';
+import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
+import { memoryRequest, sessionMemoryDir } from './memory.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -42,6 +43,7 @@ async function queueCodexMessage({ sessionId, message, root }) {
   await execFileAsync(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
     cwd: root,
     encoding: 'utf8',
+    windowsHide: true,
     timeout: 15000,
     maxBuffer: 1024 * 1024,
   });
@@ -52,8 +54,12 @@ export async function health(state) {
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
-  const project = await ensureProjectBinding(await resolveProject(root));
+  let project = await ensureProjectBinding(await resolveProject(root));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
+  const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
+  let namedEntry = await readJSON(namedFile, null), openClaimAt = 0;
+  const validNamedOrigin = value => /^http:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost:[1-9][0-9]{0,4}$/.test(value || '') && Number(new URL(value).port) > 0 && Number(new URL(value).port) <= 65535;
+  if (namedEntry && (!validNamedOrigin(namedEntry.origin) || typeof namedEntry.proxyToken !== 'string' || namedEntry.proxyToken.length < 32)) throw new MapError('INVALID_ORIGIN', 'Invalid saved named entry; configuration preserved');
   await fs.mkdir(path.dirname(lock), { recursive: true });
   const instance = token();
   for (let i = 0; i < 2; i++) {
@@ -82,21 +88,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const mainDir = path.join(project.sharedDir, 'main');
     const mainFile = path.join(mainDir, 'map.json');
     await fs.mkdir(mainDir, { recursive: true });
-    const exists = await fs.access(mainFile).then(() => true, () => false);
-    if (!force && exists && source.baselineSha === source.sha) return source;
-    const committed = source.ref ? await readMainMap(project, source.ref) : '';
-    if (committed) {
-      await atomicWrite(mainFile, committed.endsWith('\n') ? committed : `${committed}\n`);
-      return { ...source, status: 'ready', baselineSha: source.sha, needsReconcile: false };
+    try {
+      const { snapshot } = await memoryRequest(project, 'main');
+      if (!snapshot) throw new MapError('BASELINE_PENDING', 'No main baseline has been published', 409);
+      validate(snapshot.memory.map);
+      await atomicWrite(mainFile, encode(snapshot.memory.map));
+      return { ...source, status: snapshot.mainSha === source.sha ? 'ready' : 'stale', memoryVersion: snapshot.version, baselineSha: snapshot.mainSha, needsReconcile: snapshot.mainSha !== source.sha };
+    } catch (error) {
+      // Keep a previously verified baseline; never replace it with an empty map on disconnect.
+      if (!await readJSON(mainFile, null)) await atomicWrite(mainFile, encode({ v: 1, project: path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
+      return { ...source, status: error.code || 'memory-unavailable', needsReconcile: true };
     }
-    const local = await readJSON(path.join(project.worktreeRoot, '.codex/context/map.json'), {});
-    await atomicWrite(mainFile, encode({ v: 1, project: local.project || path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
-    return {
-      ...source,
-      status: project.bindingRequired ? 'binding-required' : 'main-map-missing',
-      baselineSha: source.sha || '',
-      needsReconcile: true,
-    };
   }
   const send = (res, code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
   function broadcast(type, data, viewId = null) {
@@ -133,17 +135,23 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     return requested;
   }
   async function storeFor(viewId) {
-    if (stores.has(viewId)) return stores.get(viewId);
+    if (viewId === 'main') return stores.get(viewId);
     const sessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
     const binding = access.binding(sessionId);
     if (!binding?.worktreeRoot) throw new MapError('UNKNOWN_SESSION', 'Session is not bound to a worktree', 404);
     const sessionProject = await resolveProject(binding.worktreeRoot);
     if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
-    for (const [knownView, knownStore] of stores) {
-      if (knownView === 'main' || knownStore.root !== sessionProject.worktreeRoot) continue;
-      stores.set(viewId, knownStore); storeViews.get(knownStore)?.add(viewId); return knownStore;
+    if (stores.has(viewId)) return stores.get(viewId);
+    const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
+    if (!await readJSON(file, null)) {
+      let seed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
+      try {
+        const { snapshot } = await memoryRequest(project, 'main');
+        if (snapshot) { seed = snapshot.memory.map; await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: snapshot.version, map: seed })); }
+      } catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
+      await atomicWrite(file, encode(seed));
     }
-    return createStore(viewId, sessionProject.worktreeRoot);
+    return createStore(viewId, sessionProject.worktreeRoot, { file, runtime: path.join(dir, 'sync'), eventsFile: path.join(dir, 'changes.jsonl'), projectionRoot: dir });
   }
   function sourceFor(viewId) {
     if (viewId === 'main') return mainSource;
@@ -151,6 +159,20 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     return binding ? { status: 'worktree', branch: binding.branch || '', sha: binding.head || '', worktreeRoot: binding.worktreeRoot, baseMainSha: binding.baseMainSha || '' } : null;
   }
   const stateFor = (viewId, target, full = true) => ({ ...target.state(full), viewId, source: sourceFor(viewId) });
+  let refreshing = null;
+  function refreshProject() {
+    if (refreshing) return refreshing;
+    refreshing = (async () => {
+      project = await resolveProject(root);
+      const refreshed = await refreshMain(project);
+      mainSource = await updateMainBaseline({ ...mainSource, ...refreshed });
+      await mainStore.serial(() => mainStore.refresh());
+      await atomicWrite(sourceFile, encode(mainSource));
+      broadcast('state', stateFor('main', mainStore, false), 'main');
+      return { projectId: project.projectId, source: mainSource };
+    })().finally(() => { refreshing = null; });
+    return refreshing;
+  }
   async function cloudSyncStatus() {
     const paths = syncPaths(root);
     const config = await readJSON(paths.config, null) || await readJSON(paths.legacyConfig, null);
@@ -227,17 +249,43 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     stopCloudWatch = () => { clearTimeout(cloudWatcher.timer); cloudWatcher.close(); };
     server = http.createServer(async (req, res) => {
       try {
-        if (req.headers.host !== new URL(base).host) throw new MapError('HOST_REJECTED', 'Invalid Host', 403);
-        if (req.headers.origin && req.headers.origin !== base) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
+        const direct = req.headers.host === new URL(base).host;
+        const named = namedEntry && req.headers.host === new URL(namedEntry.origin).host && req.headers['x-context-guard-proxy'] === namedEntry.proxyToken;
+        if (!direct && !named) throw new MapError('HOST_REJECTED', 'Invalid Host', 403);
+        const requestOrigin = direct ? base : namedEntry.origin;
+        if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
-        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, pid: process.pid, protocol: 2, instance, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
+        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, pid: process.pid, protocol: 2, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
         if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, protocol: 2 });
+        if (['/api/named-entry', '/api/open-claim'].includes(route) && req.method === 'POST') {
+          if (!direct || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
+          const input = await body(req);
+          if (route === '/api/open-claim') {
+            const shouldOpen = !peers.size && Date.now() - openClaimAt > 5000;
+            if (shouldOpen) openClaimAt = Date.now();
+            return send(res, 200, { shouldOpen });
+          }
+          if (!validNamedOrigin(input.origin) || typeof input.proxyToken !== 'string' || input.proxyToken.length < 32) throw new MapError('INVALID_ORIGIN', 'Expected an exact local project HTTP origin');
+          namedEntry = { name: new URL(input.origin).hostname.slice(0, -10), origin: input.origin, proxyToken: namedEntry?.proxyToken || input.proxyToken };
+          await atomicWrite(namedFile, encode(namedEntry));
+          return send(res, 200, { proxyToken: namedEntry.proxyToken });
+        }
         if (route === '/api/session' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req);
           const sessionProject = await resolveProject(input.worktreeRoot || root);
           if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
+          const previous = access.binding(input.sessionId);
+          if (previous && previous.worktreeRoot !== sessionProject.worktreeRoot) {
+            if (!input.allowRebind) throw new MapError('SESSION_ALREADY_BOUND', 'Session is already bound to another worktree; require explicit user confirmation and --rebind', 409, { worktreeRoot: previous.worktreeRoot });
+            const view = `session:${input.sessionId}`;
+            await fence(view);
+            for (const [credential, actor] of agentTokens) if (actor.sessionId === input.sessionId) agentTokens.delete(credential);
+            if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
+            for (const peer of viewPeers(view)) peer.res?.end();
+          }
           const actor = await access.register(input.sessionId, await sessionBinding(sessionProject, input.sessionId));
+          if (project.kind === 'git') await storeFor(`session:${input.sessionId}`);
           const credential = token(); agentTokens.set(credential, actor);
           return send(res, 200, { token: credential, actor });
         }
@@ -248,13 +296,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         if (route === '/api/project-refresh' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
-          const refreshed = await refreshMain(project), baselineSha = mainSource?.baselineSha || '';
-          mainSource = { ...refreshed, baselineSha, needsReconcile: !baselineSha || !!(refreshed.sha && baselineSha !== refreshed.sha) };
-          mainSource = await updateMainBaseline(mainSource);
-          await mainStore.serial(() => mainStore.refresh());
-          await atomicWrite(sourceFile, encode(mainSource));
-          broadcast('state', stateFor('main', mainStore, false), 'main');
-          return send(res, 200, { projectId: project.projectId, source: mainSource });
+          return send(res, 200, await refreshProject());
         }
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
@@ -396,10 +438,28 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (sharedState !== statePath(root)) await atomicWrite(statePath(root), encode(state));
     stopAccessWatch = access.watch(() => broadcast('access', {}));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
+    const mainRefresh = setInterval(() => { if (project.kind === 'git') refreshProject().catch(() => {}); }, 30000); mainRefresh.unref();
+    let ownershipChecks = 0, ownershipCheckRunning = false;
+    const ownershipWatch = setInterval(async () => {
+      if (close.promise || ownershipCheckRunning) return;
+      ownershipCheckRunning = true;
+      try {
+        const owner = await readJSON(sharedState, null);
+        if (owner?.instance === instance) ownershipChecks = 0;
+        else if (++ownershipChecks >= 2) await close();
+      } catch {
+        // A transient unreadable state file must not terminate a healthy server.
+        ownershipChecks = 0;
+      } finally { ownershipCheckRunning = false; }
+    }, 500);
+    ownershipWatch.unref();
     function close() {
       if (close.promise) return close.promise;
       close.promise = (async () => {
         clearInterval(heartbeat);
+        clearInterval(mainRefresh);
+        clearInterval(ownershipWatch);
+        await refreshing?.catch(() => {});
         stopAccessWatch();
         stopCloudWatch();
         // Stop accepting reconnects before draining events or slow projections.

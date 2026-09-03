@@ -41,12 +41,17 @@ test("英文流程完整翻译并在示例用户确认后设置英语，不改�
   assert.deepEqual(english.chapters.map(c => c.id), chinese.chapters.map(c => c.id));
 });
 
-test("App调用与工作台演示保持为两个独立整屏页", () => {
+test("Cursor在客户端窗口内接续工作台，其他入口仍可打开独立工作台页", () => {
   const story = getFirstUseStory("zh");
   assert.deepEqual(story.chapters.map(chapter => chapter.id), ["invoke", "language", "prepare"]);
   assert.ok(story.chapters.every(chapter => chapter.kind === "app"));
   const journeySource = readFileSync(new URL("../src/FirstUseJourney.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(journeySource, /TourStage|journey-workbench-screen|usePaneTransition/);
+  assert.match(journeySource, /const \[cursorWorkbench, setCursorWorkbench\] = useState\(false\)/);
+  assert.match(journeySource, /client\.id === "cursor"[\s\S]*setCursorWorkbench\(true\)[\s\S]*return/);
+  assert.match(journeySource, /workspace=\{workspace\}/);
+  assert.match(journeySource, /<TourStage chapter="map"/);
+  assert.match(journeySource, /setCursorWorkbench\(false\)/);
+  assert.match(journeySource, /onOpenDemo\("map"\)/);
   assert.match(journeySource, /state\.position\.index === chapters\.length - 1\)\s*openWorkbench\(\)/);
   assert.doesNotMatch(journeySource, /client-demo-progress/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
@@ -78,7 +83,7 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
 });
 
-test("工作台镜头按目标倍率重绘iframe，停稳位移对齐设备像素", () => {
+test("工作台和客户端镜头使用稳定的双倍栅格，避免缩放重排和低清放大", () => {
   const stageSource = readFileSync(new URL("../src/stage.css", import.meta.url), "utf8");
   const planeRule = stageSource.match(/\.tour-plane\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.doesNotMatch(planeRule, /will-change\s*:\s*transform/);
@@ -88,11 +93,18 @@ test("工作台镜头按目标倍率重绘iframe，停稳位移对齐设备像�
   assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
   assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
   assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
-  assert.match(workbenchSource, /node\.style\.zoom = String\(pose\.scale\)/);
-  assert.match(workbenchSource, /const rasterScale = bakedScale\.current/);
-  assert.match(workbenchSource, /target\.scale \/ rasterScale/);
-  assert.match(workbenchSource, /window\.setTimeout\(\(\) =>/);
-  assert.doesNotMatch(workbenchSource, /requestAnimationFrame\(animate\)/);
+  assert.match(workbenchSource, /const CAMERA_RASTER_SCALE = 2/);
+  assert.match(workbenchSource, /node\.style\.zoom = String\(CAMERA_RASTER_SCALE\)/);
+  assert.match(workbenchSource, /pose\.scale \/ CAMERA_RASTER_SCALE/);
+  assert.match(workbenchSource, /requestAnimationFrame\(animate\)/);
+
+  const viewportSource = readFileSync(new URL("../src/NativeViewport.tsx", import.meta.url), "utf8");
+  assert.match(viewportSource, /rasterizedCamera\(\{ \.\.\.pose, x, y \}\)/);
+  assert.match(viewportSource, /plane\.current\.style\.zoom = String\(nativeRasterScale\)/);
+
+  const cameraSource = readFileSync(new URL("../src/native-camera.ts", import.meta.url), "utf8");
+  assert.match(cameraSource, /nativeRasterScale = 2/);
+  assert.match(cameraSource, /scale: pose\.scale \/ nativeRasterScale/);
 });
 
 test("工作台六个章节完成后自动顺序循环，减少动态时不自动切换", () => {

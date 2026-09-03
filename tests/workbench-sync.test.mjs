@@ -35,6 +35,16 @@ async function fixture() {
   return { root, ctx, doc };
 }
 function edit(store, title, extras = {}) { return { baseVersion: store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title } }], ...extras }; }
+function agentProposal(id = 'N2', title = '提议', file = 'src/proposal.mjs') {
+  return {
+    type: 'create', parentId: 'T0', node: {
+      id, title, purpose: '提供一个新的独立产品职责', kind: 'work', owns: [file],
+      memories: [{ text: '新增独立职责', paths: [file], proposalEvidence: {
+        parentId: 'T0', basis: 'new-responsibility', reason: '新增独立实现边界且当前 Map 没有对应节点', files: [file],
+      } }],
+    },
+  };
+}
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 
 test('session registry exposes lifecycle state and filters maintenance actors', async () => {
@@ -45,13 +55,13 @@ test('session registry exposes lifecycle state and filters maintenance actors', 
     JSON.stringify({ at: '2026-01-01T00:00:03Z', event: 'stop', platform: 'cursor', session_id: 'second-session' }),
   ].join('\n') + '\n');
   assert.deepEqual((await access.snapshot()).sessions, []);
-  await access.register(agent.sessionId);
-  await access.register('second-session');
+  await access.register(agent.sessionId, { worktreeRoot: f.root });
+  await access.register('second-session', { worktreeRoot: f.root });
   const snapshot = await access.snapshot();
-  assert.deepEqual(new Set(snapshot.sessions.map(item => item.id)), new Set(['second-session', agent.sessionId]));
-  assert.equal(snapshot.sessions.find(item => item.id === 'second-session').status, 'stopped');
-  assert.equal(snapshot.sessions.find(item => item.id === agent.sessionId).status, 'active');
-  assert.equal(snapshot.sessions.find(item => item.id === agent.sessionId).name, '真实会话名称');
+  assert.deepEqual(snapshot.sessions.map(item => item.id), ['second-session', agent.sessionId]);
+  assert.equal(snapshot.sessions[0].status, 'stopped');
+  assert.equal(snapshot.sessions[1].status, 'active');
+  assert.equal(snapshot.sessions[1].name, '真实会话名称');
   assert.equal(snapshot.currentSessionId, agent.sessionId);
   assert.ok((await access.recordedSessionIds()).includes('maintenance-test'));
 });
@@ -63,15 +73,91 @@ test('Codex task discovery supplies real names and active/completed state withou
     { id: 'codex-complete', name: '已完成任务', platform: 'codex', status: 'stopped', firstSeen: '2026-01-01T00:00:02Z', lastSeen: '2026-01-01T00:00:03Z', lastEvent: 'task_complete' },
   ] }).init();
   assert.deepEqual((await access.snapshot()).sessions, []);
-  await access.register('codex-active');
-  await access.register('codex-complete');
+  await access.register('codex-active', { worktreeRoot: f.root });
+  await access.register('codex-complete', { worktreeRoot: f.root });
   const snapshot = await access.snapshot();
   assert.equal(snapshot.currentSessionId, 'codex-active');
-  assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })).sort((a, b) => a.id.localeCompare(b.id)), [
+  assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })), [
     { id: 'codex-active', name: '新任务', status: 'active' },
     { id: 'codex-complete', name: '已完成任务', status: 'stopped' },
   ]);
   assert.deepEqual(await access.register('codex-complete'), { kind: 'agent', sessionId: 'codex-complete' });
+});
+
+test('Codex database discovery hides its child process and reuses rows until the database changes', async () => {
+  const f = await fixture();
+  const database = path.join(f.root, 'state.sqlite');
+  const rollout = path.join(f.root, 'rollout.jsonl');
+  const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
+  const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
+  await fs.writeFile(database, 'initial');
+  await fs.writeFile(rollout, `${started}\n`);
+  const calls = [];
+  const access = await new Access(f.root, {
+    codexDb: database,
+    sqliteCommand: 'sqlite3-test',
+    querySqlite: async () => null,
+    allowExternalSqlite: true,
+    execFile: async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: JSON.stringify([{ id: 'codex-db', name: '数据库任务', created_at: 1, updated_at: 2, rollout_path: rollout }]) };
+    },
+  }).init();
+
+  assert.equal((await access.discoverCodexSessions())[0].status, 'active');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'sqlite3-test');
+  assert.equal(calls[0].options.windowsHide, true);
+
+  await fs.appendFile(rollout, `${completed}\n`);
+  assert.equal((await access.discoverCodexSessions())[0].status, 'stopped');
+  assert.equal(calls.length, 1, 'rollout changes must not relaunch sqlite when the database is unchanged');
+
+  await fs.appendFile(database, '-changed');
+  await access.discoverCodexSessions();
+  assert.equal(calls.length, 2, 'database changes must refresh the cached query');
+});
+
+test('supported Node.js does not fall back to an external SQLite process', async () => {
+  const f = await fixture();
+  const database = path.join(f.root, 'state.sqlite');
+  await fs.writeFile(database, 'not-a-database');
+  let externalCalls = 0;
+  const access = await new Access(f.root, {
+    codexDb: database,
+    nodeVersion: '22.5.0',
+    querySqlite: async () => null,
+    execFile: async () => { externalCalls++; throw new Error('external SQLite must not run'); },
+  }).init();
+
+  assert.deepEqual(await access.discoverCodexSessions(), []);
+  assert.equal(externalCalls, 0);
+});
+
+test('Node SQLite discovery reads Codex sessions without starting an external process', async t => {
+  const sqlite = await import('node:sqlite').catch(() => null);
+  if (!sqlite?.DatabaseSync) { t.skip('node:sqlite requires Node 22.5 or newer'); return; }
+  const f = await fixture();
+  const database = path.join(f.root, 'native-state.sqlite');
+  const rollout = path.join(f.root, 'native-rollout.jsonl');
+  const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
+  await fs.writeFile(rollout, `${started}\n`);
+  const connection = new sqlite.DatabaseSync(database);
+  try {
+    connection.exec('CREATE TABLE threads (id TEXT, name TEXT, title TEXT, created_at INTEGER, updated_at INTEGER, rollout_path TEXT, cwd TEXT, thread_source TEXT, archived INTEGER)');
+    connection.prepare('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('native-session', '进程内任务', '', 1, 2, rollout, f.root, 'user', 0);
+  } finally { connection.close(); }
+  let externalCalls = 0;
+  const access = await new Access(f.root, {
+    codexDb: database,
+    execFile: async () => { externalCalls++; throw new Error('external sqlite must not run'); },
+  }).init();
+
+  const sessions = await access.discoverCodexSessions();
+  assert.deepEqual(sessions.map(({ id, name, status }) => ({ id, name, status })), [
+    { id: 'native-session', name: '进程内任务', status: 'active' },
+  ]);
+  assert.equal(externalCalls, 0);
 });
 
 test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {
@@ -169,12 +255,14 @@ test('permissions, field validation, cycles and missing references', async () =>
     assert.throws(() => applyOperations(store.doc, [{ type: 'move', id: 'T0', parentId: 'N1' }], human), { code: 'INVALID_MOVE' });
     assert.throws(() => applyOperations(store.doc, [{ type: 'update', id: 'N1', fields: { memories: [{ text: 'x', also: ['missing'] }] } }], human), { code: 'INVALID_REFERENCE' });
     assert.equal(applyOperations(store.doc, [{ type: 'update', id: 'N1', fields: { state: 'untested' } }], human).doc.root.children[0].state, 'untested');
-    const result = applyOperations(store.doc, [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: '提议', proposal: 'accepted' } }], agent);
+    assert.throws(() => applyOperations(store.doc, [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: '无证据提议' } }], agent), { code: 'INVALID_PROPOSAL' });
+    const result = applyOperations(store.doc, [agentProposal()], agent);
     assert.equal(result.doc.root.children[1].proposal, 'proposed');
+    assert.throws(() => applyOperations(result.doc, [agentProposal('N3', '提议', 'src/other.mjs')], agent), { code: 'DUPLICATE_PROPOSAL' });
   } finally { await store.close(); }
 });
 
-test('archive reconciliation updates owned nodes, proposes uncovered work, and is idempotent', () => {
+test('archive reconciliation updates owned nodes and leaves uncovered work unclassified', () => {
   const doc = {
     v: 1,
     project: 'archive-map',
@@ -193,20 +281,107 @@ test('archive reconciliation updates owned nodes, proposes uncovered work, and i
   const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
   assert.deepEqual(reconciliation.mapped, { N1: ['src/index.js'], M1: ['src/worker.js'] });
   assert.deepEqual(reconciliation.uncovered, ['feature/new.js']);
-  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['update', 'update', 'create']);
+  assert.deepEqual(reconciliation.unclassified, ['feature/new.js']);
+  assert.equal(reconciliation.proposedId, null);
+  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['update', 'update']);
   assert.throws(() => applyOperations(doc, reconciliation.operations, agent), { code: 'FORBIDDEN' });
   const updated = applyOperations(doc, reconciliation.operations, agent, ['M1', 'N1']).doc;
-  const proposed = updated.root.children.find(node => node.id === reconciliation.proposedId);
-  assert.equal(proposed.proposal, 'proposed');
-  assert.equal(proposed.proposedBy, agent.sessionId);
-  assert.deepEqual(proposed.owns, ['feature/new.js']);
   assert.equal(updated.root.children[0].children[0].memories[0].session, agent.sessionId);
   assert.equal(buildArchiveReconciliation(updated, agent.sessionId, input).operations.length, 0);
-  const later = buildArchiveReconciliation(updated, agent.sessionId, { ...input, summary: '继续完善自动记录功能' });
-  assert.deepEqual(later.operations.map(operation => operation.type), ['update', 'update', 'update']);
-  const laterDoc = applyOperations(updated, later.operations, agent, ['M1', 'N1']).doc;
-  assert.equal(laterDoc.root.children.filter(node => node.id === reconciliation.proposedId).length, 1);
-  assert.equal(laterDoc.root.children.find(node => node.id === reconciliation.proposedId).memories.length, 2);
+});
+
+test('archive reconciliation explicitly assigns support files to an accepted node', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [
+      { id: 'W1', title: '工作台', purpose: '提供可视化工作台', kind: 'work', proposal: 'accepted', owns: ['prototype/workbench.html'], memories: [], children: [] },
+    ] },
+  };
+  const input = {
+    summary: '修复工作台并补齐回归',
+    files: ['prototype/workbench.html', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/workbench-interface.md'],
+    assignments: [{
+      nodeId: 'W1',
+      reason: '服务、测试和接口文档都是工作台实现的配套变更',
+      files: ['scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/workbench-interface.md'],
+    }],
+  };
+  const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
+  assert.deepEqual(reconciliation.mapped, { W1: [
+    'prototype/workbench.html', 'references/workbench-interface.md', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs',
+  ] });
+  assert.deepEqual(reconciliation.unclassified, []);
+  assert.equal(reconciliation.operations.length, 1);
+  const updated = applyOperations(doc, reconciliation.operations, agent, ['W1']).doc;
+  assert.equal(updated.root.children[0].memories[0].assignmentEvidence[0].reason, input.assignments[0].reason);
+});
+
+test('archive reconciliation only creates evidence-backed proposals and deduplicates them', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [] },
+  };
+  const base = { summary: '新增独立通知模块', files: ['src/notify/index.mjs', 'tests/notify.test.mjs'] };
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    ...base,
+    proposal: { parentId: 'T0', title: '通知', purpose: '发送通知', files: base.files },
+  }), /reason/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    summary: '只补测试', files: ['tests/notify.test.mjs'],
+    proposal: { parentId: 'T0', title: '通知', purpose: '发送通知', reason: '新职责', basis: 'new-module', files: ['tests/notify.test.mjs'] },
+  }), /cannot be the sole evidence/);
+  const proposal = {
+    parentId: 'T0',
+    title: '通知',
+    purpose: '集中处理外部通知发送',
+    reason: '新增独立运行边界和入口，不属于现有节点',
+    basis: 'new-module',
+    files: base.files,
+  };
+  const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, { ...base, proposal });
+  assert.deepEqual(reconciliation.unclassified, []);
+  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['create']);
+  const updated = applyOperations(doc, reconciliation.operations, agent).doc;
+  const proposed = updated.root.children[0];
+  assert.equal(proposed.id, reconciliation.proposedId);
+  assert.equal(proposed.proposal, 'proposed');
+  assert.equal(proposed.memories[0].proposalEvidence.basis, 'new-module');
+  assert.equal(buildArchiveReconciliation(updated, agent.sessionId, { ...base, proposal }).operations.length, 0);
+
+  const later = buildArchiveReconciliation(updated, agent.sessionId, { ...base, summary: '继续完善通知模块', proposal });
+  assert.equal(later.proposedId, proposed.id);
+  assert.equal(later.proposalDuplicate, true);
+  assert.deepEqual(later.operations.map(operation => operation.type), ['update']);
+  const laterDoc = applyOperations(updated, later.operations, agent).doc;
+  assert.equal(laterDoc.root.children.length, 1);
+  assert.equal(laterDoc.root.children[0].memories.length, 2);
+  const otherSession = buildArchiveReconciliation(laterDoc, 'other-session', { ...base, summary: '另一会话发现同一模块', proposal });
+  assert.equal(otherSession.proposedId, proposed.id);
+  assert.equal(otherSession.proposalDuplicate, true);
+  assert.deepEqual(otherSession.operations, []);
+});
+
+test('archive governance rejects duplicate, conflicting, and unrelated declarations', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [
+      { id: 'N1', title: '入口', kind: 'work', proposal: 'accepted', owns: ['src/index.js'], memories: [], children: [] },
+    ] },
+  };
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['src/index.js'], assignments: [{ nodeId: 'N1', reason: '重复声明', files: ['src/index.js'] }],
+  }), /owns already covers/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['feature/new.js'], assignments: [{ nodeId: 'missing', reason: '不存在', files: ['feature/new.js'] }],
+  }), /accepted Map node/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['feature/new.js'], proposal: {
+      parentId: 'T0', title: '入口', purpose: '重复入口', reason: '误判为新职责', basis: 'new-responsibility', files: ['feature/new.js'],
+    },
+  }), /duplicates an accepted node title/);
 });
 
 test('archive reconciliation keeps optimistic version conflicts visible', async () => {
