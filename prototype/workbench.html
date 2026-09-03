@@ -619,6 +619,9 @@ html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
 .drawer .work-list li{margin:0 0 2px}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
 .note.alert{color:var(--red)}
+.proposal-evidence{margin:10px 0 0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.48);font-size:12px;line-height:1.5;color:var(--muted)}
+.proposal-evidence p{margin:0 0 4px}.proposal-evidence p:last-child{margin-bottom:0}.proposal-evidence b{color:var(--ink)}
+.proposal-evidence code{font-family:var(--font-ui);font-size:11px;overflow-wrap:anywhere}
 .actions{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap}
 .files-row{margin-top:10px}
 .compose{display:flex;gap:6px;margin-top:10px;align-items:stretch}
@@ -1122,6 +1125,7 @@ const I18N = {
     stateHint_failed:"开发完成，测试不通过",
     workState:"开发进度",
     pendingChip:"待批",
+    proposalReason:"新增依据", proposalBasis:"提案类型", proposalFiles:"实现文件",
     summarizing:"沉淀中…",
     dormantExp:"（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
     doneMem:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论"
@@ -1216,6 +1220,7 @@ const I18N = {
     stateHint_failed:"Built, but tests failed",
     workState:"Build status",
     pendingChip:"Pending",
+    proposalReason:"Reason", proposalBasis:"Proposal type", proposalFiles:"Implementation files",
     summarizing:"Settling…",
     dormantExp:"(Demo) The agent summarized the cause and fix. This lesson is dormant until a similar bug returns.",
     doneMem:"(Demo) The human marked this task done. The agent folded the draft into this memory."
@@ -5540,11 +5545,18 @@ function renderDetail(){
 
   /* 提议节点：只决定加不加入。面包屑、开工标记、附件/记忆/Idea/Bug/继承都先不出现。 */
   if(proposed){
+    const evidence = (node.memories||[]).map(memory=>memory&&memory.proposalEvidence).find(value=>value&&typeof value==="object");
+    const evidenceFiles = evidence&&Array.isArray(evidence.files) ? evidence.files : [];
     el.innerHTML = `
       <h2>${esc(node.title)}
         <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
       ${node.purpose? `<p class="lead">${esc(node.purpose)}</p>`:""}
+      ${evidence? `<div class="proposal-evidence">
+        <p><b>${t("proposalReason")}：</b>${esc(evidence.reason||"")}</p>
+        <p><b>${t("proposalBasis")}：</b>${esc(evidence.basis||"")}</p>
+        ${evidenceFiles.length? `<p><b>${t("proposalFiles")}：</b>${evidenceFiles.map(file=>`<code>${esc(file)}</code>`).join("、")}</p>`:""}
+      </div>`:""}
       <div class="actions">
         <button data-act="accept" class="primary">${t("join")}</button>
         <button data-act="cancel">${t("hide")}</button>

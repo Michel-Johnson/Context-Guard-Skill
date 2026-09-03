@@ -35,6 +35,16 @@ async function fixture() {
   return { root, ctx, doc };
 }
 function edit(store, title, extras = {}) { return { baseVersion: store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title } }], ...extras }; }
+function agentProposal(id = 'N2', title = '提议', file = 'src/proposal.mjs') {
+  return {
+    type: 'create', parentId: 'T0', node: {
+      id, title, purpose: '提供一个新的独立产品职责', kind: 'work', owns: [file],
+      memories: [{ text: '新增独立职责', paths: [file], proposalEvidence: {
+        parentId: 'T0', basis: 'new-responsibility', reason: '新增独立实现边界且当前 Map 没有对应节点', files: [file],
+      } }],
+    },
+  };
+}
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 
 test('session registry exposes lifecycle state and filters maintenance actors', async () => {
@@ -163,12 +173,14 @@ test('permissions, field validation, cycles and missing references', async () =>
     assert.throws(() => applyOperations(store.doc, [{ type: 'move', id: 'T0', parentId: 'N1' }], human), { code: 'INVALID_MOVE' });
     assert.throws(() => applyOperations(store.doc, [{ type: 'update', id: 'N1', fields: { memories: [{ text: 'x', also: ['missing'] }] } }], human), { code: 'INVALID_REFERENCE' });
     assert.equal(applyOperations(store.doc, [{ type: 'update', id: 'N1', fields: { state: 'untested' } }], human).doc.root.children[0].state, 'untested');
-    const result = applyOperations(store.doc, [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: '提议', proposal: 'accepted' } }], agent);
+    assert.throws(() => applyOperations(store.doc, [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: '无证据提议' } }], agent), { code: 'INVALID_PROPOSAL' });
+    const result = applyOperations(store.doc, [agentProposal()], agent);
     assert.equal(result.doc.root.children[1].proposal, 'proposed');
+    assert.throws(() => applyOperations(result.doc, [agentProposal('N3', '提议', 'src/other.mjs')], agent), { code: 'DUPLICATE_PROPOSAL' });
   } finally { await store.close(); }
 });
 
-test('archive reconciliation updates owned nodes, proposes uncovered work, and is idempotent', () => {
+test('archive reconciliation updates owned nodes and leaves uncovered work unclassified', () => {
   const doc = {
     v: 1,
     project: 'archive-map',
@@ -187,20 +199,107 @@ test('archive reconciliation updates owned nodes, proposes uncovered work, and i
   const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
   assert.deepEqual(reconciliation.mapped, { N1: ['src/index.js'], M1: ['src/worker.js'] });
   assert.deepEqual(reconciliation.uncovered, ['feature/new.js']);
-  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['update', 'update', 'create']);
+  assert.deepEqual(reconciliation.unclassified, ['feature/new.js']);
+  assert.equal(reconciliation.proposedId, null);
+  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['update', 'update']);
   assert.throws(() => applyOperations(doc, reconciliation.operations, agent), { code: 'FORBIDDEN' });
   const updated = applyOperations(doc, reconciliation.operations, agent, ['M1', 'N1']).doc;
-  const proposed = updated.root.children.find(node => node.id === reconciliation.proposedId);
-  assert.equal(proposed.proposal, 'proposed');
-  assert.equal(proposed.proposedBy, agent.sessionId);
-  assert.deepEqual(proposed.owns, ['feature/new.js']);
   assert.equal(updated.root.children[0].children[0].memories[0].session, agent.sessionId);
   assert.equal(buildArchiveReconciliation(updated, agent.sessionId, input).operations.length, 0);
-  const later = buildArchiveReconciliation(updated, agent.sessionId, { ...input, summary: '继续完善自动记录功能' });
-  assert.deepEqual(later.operations.map(operation => operation.type), ['update', 'update', 'update']);
-  const laterDoc = applyOperations(updated, later.operations, agent, ['M1', 'N1']).doc;
-  assert.equal(laterDoc.root.children.filter(node => node.id === reconciliation.proposedId).length, 1);
-  assert.equal(laterDoc.root.children.find(node => node.id === reconciliation.proposedId).memories.length, 2);
+});
+
+test('archive reconciliation explicitly assigns support files to an accepted node', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [
+      { id: 'W1', title: '工作台', purpose: '提供可视化工作台', kind: 'work', proposal: 'accepted', owns: ['prototype/workbench.html'], memories: [], children: [] },
+    ] },
+  };
+  const input = {
+    summary: '修复工作台并补齐回归',
+    files: ['prototype/workbench.html', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/workbench-interface.md'],
+    assignments: [{
+      nodeId: 'W1',
+      reason: '服务、测试和接口文档都是工作台实现的配套变更',
+      files: ['scripts/workbench/server.mjs', 'tests/workbench-browser.mjs', 'references/workbench-interface.md'],
+    }],
+  };
+  const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, input);
+  assert.deepEqual(reconciliation.mapped, { W1: [
+    'prototype/workbench.html', 'references/workbench-interface.md', 'scripts/workbench/server.mjs', 'tests/workbench-browser.mjs',
+  ] });
+  assert.deepEqual(reconciliation.unclassified, []);
+  assert.equal(reconciliation.operations.length, 1);
+  const updated = applyOperations(doc, reconciliation.operations, agent, ['W1']).doc;
+  assert.equal(updated.root.children[0].memories[0].assignmentEvidence[0].reason, input.assignments[0].reason);
+});
+
+test('archive reconciliation only creates evidence-backed proposals and deduplicates them', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [] },
+  };
+  const base = { summary: '新增独立通知模块', files: ['src/notify/index.mjs', 'tests/notify.test.mjs'] };
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    ...base,
+    proposal: { parentId: 'T0', title: '通知', purpose: '发送通知', files: base.files },
+  }), /reason/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    summary: '只补测试', files: ['tests/notify.test.mjs'],
+    proposal: { parentId: 'T0', title: '通知', purpose: '发送通知', reason: '新职责', basis: 'new-module', files: ['tests/notify.test.mjs'] },
+  }), /cannot be the sole evidence/);
+  const proposal = {
+    parentId: 'T0',
+    title: '通知',
+    purpose: '集中处理外部通知发送',
+    reason: '新增独立运行边界和入口，不属于现有节点',
+    basis: 'new-module',
+    files: base.files,
+  };
+  const reconciliation = buildArchiveReconciliation(doc, agent.sessionId, { ...base, proposal });
+  assert.deepEqual(reconciliation.unclassified, []);
+  assert.deepEqual(reconciliation.operations.map(operation => operation.type), ['create']);
+  const updated = applyOperations(doc, reconciliation.operations, agent).doc;
+  const proposed = updated.root.children[0];
+  assert.equal(proposed.id, reconciliation.proposedId);
+  assert.equal(proposed.proposal, 'proposed');
+  assert.equal(proposed.memories[0].proposalEvidence.basis, 'new-module');
+  assert.equal(buildArchiveReconciliation(updated, agent.sessionId, { ...base, proposal }).operations.length, 0);
+
+  const later = buildArchiveReconciliation(updated, agent.sessionId, { ...base, summary: '继续完善通知模块', proposal });
+  assert.equal(later.proposedId, proposed.id);
+  assert.equal(later.proposalDuplicate, true);
+  assert.deepEqual(later.operations.map(operation => operation.type), ['update']);
+  const laterDoc = applyOperations(updated, later.operations, agent).doc;
+  assert.equal(laterDoc.root.children.length, 1);
+  assert.equal(laterDoc.root.children[0].memories.length, 2);
+  const otherSession = buildArchiveReconciliation(laterDoc, 'other-session', { ...base, summary: '另一会话发现同一模块', proposal });
+  assert.equal(otherSession.proposedId, proposed.id);
+  assert.equal(otherSession.proposalDuplicate, true);
+  assert.deepEqual(otherSession.operations, []);
+});
+
+test('archive governance rejects duplicate, conflicting, and unrelated declarations', () => {
+  const doc = {
+    v: 1,
+    project: 'archive-map',
+    root: { id: 'T0', title: '项目', kind: 'module', proposal: 'accepted', children: [
+      { id: 'N1', title: '入口', kind: 'work', proposal: 'accepted', owns: ['src/index.js'], memories: [], children: [] },
+    ] },
+  };
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['src/index.js'], assignments: [{ nodeId: 'N1', reason: '重复声明', files: ['src/index.js'] }],
+  }), /owns already covers/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['feature/new.js'], assignments: [{ nodeId: 'missing', reason: '不存在', files: ['feature/new.js'] }],
+  }), /accepted Map node/);
+  assert.throws(() => buildArchiveReconciliation(doc, agent.sessionId, {
+    files: ['feature/new.js'], proposal: {
+      parentId: 'T0', title: '入口', purpose: '重复入口', reason: '误判为新职责', basis: 'new-responsibility', files: ['feature/new.js'],
+    },
+  }), /duplicates an accepted node title/);
 });
 
 test('archive reconciliation keeps optimistic version conflicts visible', async () => {

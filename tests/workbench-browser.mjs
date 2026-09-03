@@ -276,7 +276,13 @@ try {
   assert.equal((await read()).root.children[0].title, 'Agent CLI 更新'); recordCheck('stale-version-rejected');
   stage = 'human-confirmation';
   current = await cli('read');
-  const create = { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'create', parentId: 'T0', node: { id: 'N2', title: 'Agent 提议' } }] };
+  const proposalFile = 'src/agent-proposal.mjs';
+  const create = { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'create', parentId: 'T0', node: {
+    id: 'N2', title: 'Agent 提议', purpose: '提供新的独立产品职责', owns: [proposalFile],
+    memories: [{ text: '新增独立职责', paths: [proposalFile], proposalEvidence: {
+      parentId: 'T0', basis: 'new-responsibility', reason: '新增独立实现边界且当前 Map 没有对应节点', files: [proposalFile],
+    } }],
+  } }] };
   result = await cli('apply', create); assert.equal(result.committed, true); assert.equal((await cli('apply', create)).duplicate, true);
   assert.equal((await read()).root.children.filter(x => x.id === 'N2').length, 1);
   assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
@@ -284,7 +290,10 @@ try {
   await cli('apply', { baseVersion: current.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N2', fields: { proposal: 'accepted' } }] }, [], 'FORBIDDEN');
   assert.equal((await read()).root.children.find(x => x.id === 'N2').proposal, 'proposed');
   assert.equal((await cli('inbox')).pending, false); recordCheck('retry-deduplication-and-no-self-confirmation');
-  await page.locator('.node[data-id="N2"]').click(); await page.locator('#detail [data-act="accept"]').click(); await synchronized();
+  await page.locator('.node[data-id="N2"]').click();
+  assert.match(await page.locator('#detail .proposal-evidence').textContent(), /新增独立实现边界且当前 Map 没有对应节点/);
+  assert.match(await page.locator('#detail .proposal-evidence').textContent(), /src\/agent-proposal\.mjs/);
+  await page.locator('#detail [data-act="accept"]').click(); await synchronized();
   await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.proposal === 'accepted'); recordCheck('proposal-human-confirmation');
   stage = 'inbox-ack';
   const confirmation = await cli('inbox');

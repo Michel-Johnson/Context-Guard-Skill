@@ -93,7 +93,7 @@ FIND_MD = """# Four stores — jump small, then open one file
 1. Sessions — `sessions.jsonl` (append-only) and `sessions/{id}.md`
 2. Bugs — `bugs-index.json`, then `bugs/{id}.md` and `fixes/{id}.md`
 3. Tasks — `tasks/{id}.md`
-4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint. `archive-session --files ...` records completed work on owning nodes and proposes nodes for uncovered files.
+4. Map — `context-guard map read/apply` uses the authoritative map and a page synchronization checkpoint. `archive-session --files ...` records completed work on owning nodes. Unowned files stay unclassified unless `--input` explicitly assigns them or supplies an evidence-backed node proposal.
 
 Do not paste `map.json` or `jump-index.json`. Do not Grep this whole folder. Do not read or update a legacy `roadmap.md`.
 Before using cards/indexes, verify projection-status.json matches the current map version. Generate with `python3 scripts/map_owns.py cards --root <project>`, or read the current node through the Node CLI. See the installed skill references/workbench-interface.md.
@@ -406,6 +406,7 @@ def archive_session(
     decisions: str,
     next_steps: str,
     files: str,
+    input_path: str = "",
 ) -> Path:
     init_context(root)
     known = {str(item.get("session_id")) for item in session_records(root)}
@@ -416,6 +417,19 @@ def archive_session(
         "committed": True,
         "reconciliation": {"files": [], "mapped": {}, "uncovered": [], "operations": []},
     }
+    governance: dict[str, object] = {}
+    if input_path:
+        raw_governance = json.load(sys.stdin) if input_path == "-" else json.loads(
+            Path(input_path).resolve().read_text(encoding="utf-8")
+        )
+        if not isinstance(raw_governance, dict):
+            raise ValueError("archive-session --input needs a JSON object")
+        unsupported = set(raw_governance) - {"assignments", "proposal"}
+        if unsupported:
+            raise ValueError(f"archive-session --input has unsupported fields: {', '.join(sorted(unsupported))}")
+        governance = raw_governance
+    if governance and not file_list:
+        raise ValueError("archive-session --input needs --files")
     if file_list:
         map_result = run_node_workbench(
             ["map", "reconcile", "--root", str(root), "--session", session_id],
@@ -424,6 +438,7 @@ def archive_session(
                 "decisions": decisions.strip(),
                 "next": next_steps.strip(),
                 "files": file_list,
+                **governance,
             },
         )
     reconciliation = map_result.get("reconciliation", {})
@@ -456,13 +471,14 @@ def archive_session(
     if file_list:
         lines.extend(["### Files", "", *[f"- {item}" for item in file_list], ""])
         mapped = reconciliation.get("mapped") or {}
-        uncovered = reconciliation.get("uncovered") or []
+        unclassified = reconciliation.get("unclassified") or reconciliation.get("uncovered") or []
         lines.extend([
             "### Map",
             "",
             "- status: synced",
             f"- existing nodes: {', '.join(mapped) if isinstance(mapped, dict) and mapped else 'none'}",
             f"- proposed node: {proposed_id or 'none'}",
+            f"- unclassified files: {', '.join(unclassified) if isinstance(unclassified, list) and unclassified else 'none'}",
             f"- version: {map_result.get('version') or 'unchanged'}",
             "",
         ])
@@ -473,7 +489,8 @@ def archive_session(
         print(
             "[context-guard] map synchronized: "
             f"{len(reconciliation.get('mapped') or {})} existing node(s), "
-            f"{len(reconciliation.get('uncovered') or [])} uncovered file(s)"
+            f"{len(reconciliation.get('unclassified') or reconciliation.get('uncovered') or [])} unclassified file(s), "
+            f"{'1 proposed node' if proposed_id else 'no node proposal'}"
         )
     return path
 
@@ -945,7 +962,7 @@ def main() -> int:
         try:
             archive_session(
                 root, resolve_session_id(root, args.session), args.summary,
-                args.decisions, args.next_steps, args.files,
+                args.decisions, args.next_steps, args.files, args.input,
             )
             return 0
         except (OSError, ValueError) as exc:

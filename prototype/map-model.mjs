@@ -6,6 +6,37 @@ export class MapError extends Error {
 export const copy = value => JSON.parse(JSON.stringify(value));
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const object = x => x && typeof x === 'object' && !Array.isArray(x);
+const proposalBases = new Set(['new-module', 'new-interface', 'new-component', 'new-responsibility']);
+function proposalPath(value) {
+  if (typeof value !== 'string') return '';
+  let file = value.trim().replaceAll('\\', '/');
+  while (file.startsWith('./')) file = file.slice(2);
+  const parts = file.split('/').filter(Boolean);
+  if (!file || file.length > 500 || file.startsWith('/') || file.startsWith('~') || /^[A-Za-z]:\//.test(file) || !parts.length || parts.some(part => part === '.' || part === '..')) return '';
+  return parts.join('/') + (file.endsWith('/') ? '/' : '');
+}
+function supportOnlyPath(file) {
+  const lower = file.toLowerCase(), parts = lower.split('/'), basename = parts.at(-1);
+  if (['test', 'tests', '__tests__', 'docs', 'doc', 'references', '.github'].includes(parts[0])) return true;
+  if (/^(readme|changelog|contributing|license|todo)(\.|$)/.test(basename) || basename === 'skill.md') return true;
+  if (/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|package\.json)$/.test(basename)) return true;
+  if (/(^|[._-])(test|tests|spec)([._-]|$)/.test(basename)) return true;
+  return /(^|\/)([^/]*\.config\.[^/]+|[^/]*rc(?:\.[^/]+)?)$/.test(lower);
+}
+function validateAgentProposalNode(node, parentId) {
+  const title = String(node?.title || '').trim(), purpose = String(node?.purpose || '').trim();
+  const owns = Array.isArray(node?.owns) ? [...new Set(node.owns.map(proposalPath))] : [];
+  const evidence = (Array.isArray(node?.memories) ? node.memories : []).map(memory => memory?.proposalEvidence).find(object);
+  if (!title || title.length > 120 || !purpose || purpose.length > 500) throw new MapError('INVALID_PROPOSAL', 'Agent node proposals need a concise title and purpose');
+  if (!owns.length || owns.some(path => !path)) throw new MapError('INVALID_PROPOSAL', 'Agent node proposals need valid repo-relative owns paths');
+  if (!evidence) throw new MapError('INVALID_PROPOSAL', 'Agent node proposals need proposalEvidence');
+  const reason = String(evidence.reason || '').trim(), basis = String(evidence.basis || '').trim();
+  const files = Array.isArray(evidence.files) ? [...new Set(evidence.files.map(proposalPath))] : [];
+  if (String(evidence.parentId || '').trim() !== parentId) throw new MapError('INVALID_PROPOSAL', 'Proposal evidence parentId must match the create parent');
+  if (!reason || reason.length > 1000 || !proposalBases.has(basis)) throw new MapError('INVALID_PROPOSAL', 'Proposal evidence needs a valid basis and reason');
+  if (!files.length || files.some(path => !path) || files.every(supportOnlyPath)) throw new MapError('INVALID_PROPOSAL', 'Proposal evidence needs at least one implementation file');
+  if (files.some(file => !owns.some(owned => owned === file || file.startsWith(owned.endsWith('/') ? owned : `${owned}/`)))) throw new MapError('INVALID_PROPOSAL', 'Proposal evidence files must be covered by the proposed owns paths');
+}
 export function entries(root) {
   const found = new Map();
   function visit(node, parent = null, bucket = 'children', depth = 0) {
@@ -114,6 +145,16 @@ export function applyOperations(document, operations, actor, grants = []) {
       checkFields(op.node, ['id', ...editableFields]);
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
+      if (!human) {
+        validateAgentProposalNode(op.node, op.parentId);
+        const title = String(op.node.title).trim().toLocaleLowerCase();
+        const owns = new Set(op.node.owns.map(proposalPath));
+        for (const { node: existing } of index.values()) {
+          if (existing.proposal === 'cancelled') continue;
+          if (String(existing.title || '').trim().toLocaleLowerCase() === title) throw new MapError('DUPLICATE_PROPOSAL', 'A non-cancelled node already has this title', 409);
+          if (existing.proposal === 'proposed' && (existing.owns || []).some(file => owns.has(proposalPath(file)))) throw new MapError('DUPLICATE_PROPOSAL', 'A pending proposal already covers this path', 409);
+        }
+      }
       const node = { title: '', kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], ...copy(op.node), origin: actor.kind, proposedBy: actor.sessionId };
       if (!human) { node.proposal = 'proposed'; node.isNew = true; }
       else { node.proposal ||= 'accepted'; node.isNew = node.proposal === 'proposed'; }
