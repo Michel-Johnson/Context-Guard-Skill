@@ -8,7 +8,7 @@
 - [ ] `sync serve/ensure` 长驻进程、断线重连和 SSE 游标恢复
 - [ ] `sync checkpoint` 独立行为
 - [x] 显式 `plan-start` / 工具观察 / Map 归档 / `plan-finish` / Stop 流程；Cloud 成功与完成后本地回执丢失重试（`tests/hook-lifecycle.test.mjs`）
-- [ ] 工作台 Cloud 状态图标：同步中、已同步、冲突
+- [x] 工作台 Cloud 状态图标：编辑立即离开“已同步”，服务器确认后恢复“已同步”，并发覆盖显示“冲突”且保留草稿（`tests/cloud-workbench-browser.mjs`）
 - [ ] 首次连接冲突时的 `connect --pull` / `connect --push`
 - [x] 多意图 signal 拆分、TODO/坏例幂等、分类冲突不写 Map、未分类信号保留（`tests/hook-lifecycle.test.mjs`）
 - [x] 归档缺文件、缺验证/评估/范围复核/子 Agent 复核、归档后文件变化均不能完成；已有脏文件再次修改可识别（同上）
@@ -24,8 +24,8 @@
 
 - [x] 显式 Session 绑定、共享项目语言、单服务与独立 Git Session 地图；重新绑定使旧令牌失效
 - [x] 私有记忆接口：鉴权、CAS、原子快照/回执、主分支祖先验证；公开 Map 接口隔离
-- [ ] 用户服务器真实部署、TLS/隧道及仓库镜像刷新验收
-- [ ] 历史记忆清点、备份、迁移、版本覆盖核验及实际切换（需单独批准）
+- [x] 用户服务器真实部署、TLS、仓库镜像刷新、SSE 快速重启及重启后持久化验收（`tests/cloud-workbench.test.mjs`；生产验收记录在私有 Session 记忆）
+- [x] 历史记忆清点、备份、迁移、版本覆盖核验及实际切换（生产验收记录在私有 Session 记忆）
 - [ ] 原生 Codex UI 中安装新版本、审阅 Hook 后验证实际上下文投递；doctor 只能证明输出已生成
 
 ## 项目命名工作台

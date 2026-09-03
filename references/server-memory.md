@@ -4,8 +4,9 @@ Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
-**Status: private service/client implementation with automated local acceptance;
-real deployment and historical migration require separate approval.** When
+**Status: private service/client implementation, automated acceptance, and one
+production migration have been verified.** Further installations and migrations
+still require explicit approval. When
 `CONTEXT_GUARD_MEMORY_CONFIG` is configured, the normal Cloud process mounts this
 API at the same HTTPS origin. Without that explicit configuration, no private
 memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`.
@@ -21,6 +22,12 @@ and an administrator-configured repository mirror `root`, authoritative `ref`,
 optional `remote` to fetch on publication, and public repository identifier.
 Use a TLS reverse proxy or SSH loopback tunnel; the client rejects non-loopback
 plain HTTP, URL credentials, redirects, and credentials in query parameters.
+
+The service user must be able to read the protected configuration and repository
+mirror and read/write `dataDir`. If the checkout is intentionally read-only (for
+example under systemd `ProtectSystem=strict`), omit `remote`: deployment updates
+the mirror and publication only verifies the configured `ref`. Never grant broad
+checkout write access just so the service can run `git fetch`.
 
 Configure a client using `context-guard memory configure --root <project> --input
 <private-file>` containing `url`, `projectId`, `token`. It verifies the endpoint

@@ -16,6 +16,37 @@ async function request(base, route, options = {}) {
   return { response, body: await response.json() };
 }
 
+async function openEventStream(url, headers = {}) {
+  const controller = new AbortController();
+  const response = await fetch(url, { headers, signal: controller.signal });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  await reader.read();
+  return { controller, reader };
+}
+
+test('cloud shutdown closes live SSE clients promptly and can restart on the same data', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-shutdown-'));
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const saved = await request(service.url, '/api/projects/context-guard/commits', {
+    method: 'POST', headers,
+    body: JSON.stringify({ baseVersion: null, operationId: 'shutdown-seed', operations: [{ type: 'initialize', project: 'Context Guard', node: { id: 'T0', title: 'Survives restart', kind: 'module', state: 'dirty', children: [] } }] }),
+  });
+  assert.equal(saved.response.status, 200);
+  const stream = await openEventStream(service.url + '/api/events');
+  const projectStream = await openEventStream(service.url + '/api/projects/context-guard/events', { Authorization: 'Bearer test-token' });
+  const started = Date.now();
+  await service.close();
+  assert.ok(Date.now() - started < 2_000, 'shutdown must not wait for the process-manager timeout');
+  stream.controller.abort(); projectStream.controller.abort();
+  await stream.reader.cancel().catch(() => {}); await projectStream.reader.cancel().catch(() => {});
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  const restored = await request(service.url, '/api/projects/context-guard/map', { headers });
+  assert.equal(restored.body.document.root.title, 'Survives restart');
+});
+
 test('cloud workbench exposes a multi-project registry and guarded writes', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const health = await request(f.url, '/api/health');

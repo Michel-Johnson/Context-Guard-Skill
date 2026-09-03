@@ -31,6 +31,12 @@ let passed = false;
 const checks = [];
 const record = name => { checks.push(name); console.log(`Cloud browser check passed: ${name}`); };
 const synchronized = () => page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+const syncVersion = () => page.locator('#cg-sync-version').getAttribute('data-version');
+const synchronizedAfter = version => page.waitForFunction(previous => {
+  const panel = document.querySelector('#cg-sync');
+  const current = document.querySelector('#cg-sync-version')?.dataset.version;
+  return panel?.dataset.status === 'synced' && current && current !== previous;
+}, version);
 const headers = token => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
 const request = async (url, options = {}) => {
   const response = await fetch(url, options);
@@ -78,10 +84,13 @@ try {
 
   await page.locator('.node[data-id="T0"]').click();
   const title = page.locator('#detail [data-ed="title"]');
+  const beforeEditVersion = await syncVersion();
   await title.fill('Session map edited in browser');
+  await page.waitForFunction(() => ['draft', 'saving', 'persisted'].includes(document.querySelector('#cg-sync')?.dataset.status));
   await title.blur();
-  await synchronized();
+  await synchronizedAfter(beforeEditVersion);
   const savedSession = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') });
+  assert.equal(savedSession.body.snapshot.version, await syncVersion());
   assert.equal(savedSession.body.snapshot.memory.map.root.title, 'Session map edited in browser');
   assert.equal(savedSession.body.snapshot.updatedAt, new Date(savedSession.body.snapshot.updatedAt).toISOString());
   const unchangedMain = await request(`${service.url}/api/projects/context-guard/map`, { headers: headers('cloud-admin') });
@@ -96,6 +105,39 @@ try {
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
   record('Browser refresh restores the persisted Session edit');
+
+  const conflictBase = await syncVersion();
+  let interceptedResolve, releaseResolve;
+  const intercepted = new Promise(resolve => { interceptedResolve = resolve; });
+  const release = new Promise(resolve => { releaseResolve = resolve; });
+  const commitRoute = /\/api\/workbench\/projects\/context-guard\/api\/commit/;
+  await page.route(commitRoute, async route => {
+    interceptedResolve();
+    await release;
+    await route.continue();
+  });
+  await page.locator('.node[data-id="T0"]').click();
+  const conflictingTitle = page.locator('#detail [data-ed="title"]');
+  await conflictingTitle.fill('Unsaved browser conflict draft');
+  await intercepted;
+  const remote = await request(`${service.url}/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one`, {
+    method: 'POST',
+    headers: headers('browser-token'),
+    body: JSON.stringify({ baseVersion: conflictBase, operationId: 'browser-conflict-winner', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'concurrent server edit' } }] }),
+  });
+  assert.equal(remote.response.status, 200, JSON.stringify(remote.body));
+  releaseResolve();
+  await page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'conflict');
+  const recoveryDraft = await page.evaluate(() => Object.entries(localStorage)
+    .filter(([key]) => key.startsWith('cg-sync-draft:'))
+    .map(([, value]) => JSON.parse(value))
+    .find(value => value?.doc?.root?.title === 'Unsaved browser conflict draft'));
+  assert.ok(recoveryDraft, 'the losing browser edit must remain in a recovery draft');
+  const conflictWinner = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') });
+  assert.equal(conflictWinner.body.snapshot.memory.map.root.title, 'Session map edited in browser');
+  assert.equal(conflictWinner.body.snapshot.memory.map.root.purpose, 'concurrent server edit');
+  await page.unroute(commitRoute);
+  record('Concurrent edit shows conflict and preserves the losing browser draft');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
