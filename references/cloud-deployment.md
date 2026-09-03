@@ -4,15 +4,10 @@ Read this reference when installing or upgrading Context Guard Cloud on a
 server. Cloud remains part of this repository; do not copy individual files or
 create a second repository.
 
-For private development memory, first read `references/server-memory.md`.
-The current Cloud server exposes public read-only routes; its write tokens do
-not make those reads private. Do not expose this service with private records on
-a public interface. Private read authorization and the complete server-memory
-contract must be implemented and verified before migration; installing the
-current Map service alone does not satisfy that contract.
-
-The current server speaks HTTP. Keep it on a trusted private network until a
-later deployment adds HTTPS at the reverse proxy.
+For private development memory, first read `references/server-memory.md`. Cloud
+and the private memory API can run in one process, but private memory remains
+disabled until its protected configuration is supplied. Installing only the Map
+service does not migrate any Session memory.
 
 For an Internet-facing installation, set `CONTEXT_GUARD_CLOUD_PRIVATE=1`,
 `CONTEXT_GUARD_CLOUD_SECURE_COOKIES=1`, and the exact HTTPS origin in
@@ -45,11 +40,34 @@ Create `$HOME/.config/context-guard-cloud.env` with mode `0600`:
 ```dotenv
 CONTEXT_GUARD_CLOUD_TOKEN=<long-random-admin-token>
 CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN=<different-long-random-browser-token>
+CONTEXT_GUARD_MEMORY_CONFIG=/absolute/path/to/context-guard-memory.json
 ```
 
 Tokens are server secrets. Do not commit them, paste them into Map records, or
 put them in a service command line. Generate independent random values with a
 system password manager or `openssl rand -hex 32`.
+
+When private Session memory is required, create the referenced JSON file with
+mode `0600`. Its `dataDir` must be absolute and outside the checkout:
+
+```json
+{
+  "dataDir": "/var/lib/context-guard-memory",
+  "adminToken": "<publisher-token>",
+  "projects": {
+    "my-project": {
+      "token": "<project-memory-token>",
+      "root": "/opt/context-guard-cloud/repository",
+      "ref": "refs/remotes/origin/main",
+      "remote": "origin",
+      "repository": "owner/my-project"
+    }
+  }
+}
+```
+
+The Cloud service mounts the authenticated `/v1/projects/...` memory routes at
+the same origin. Keep the JSON file and both data directories in server backups.
 
 The included `deploy/context-guard-cloud.service` listens on `0.0.0.0:8788` and
 stores data in `$HOME/context-guard-cloud-data`. Change its port or paths before
@@ -63,6 +81,14 @@ cp "$HOME/context-guard-cloud/deploy/context-guard-cloud.service" \
 systemctl --user daemon-reload
 systemctl --user enable --now context-guard-cloud.service
 curl --fail http://127.0.0.1:8788/api/health
+```
+
+If memory is configured, verify it through the same process without putting the
+credential in a URL:
+
+```bash
+curl --fail https://map.example.com/v1/projects/my-project/main \
+  --header "Authorization: Bearer <project-memory-token>"
 ```
 
 Use `systemctl --user status context-guard-cloud.service` and

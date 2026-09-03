@@ -51,6 +51,34 @@ test('private mode protects reads and uses secure cookies without leaking projec
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: cookie, Origin: 'https://evil.example' } })).status, 403);
 });
 
+test('one cloud process serves the private Main and Session memory API', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-unified-cloud-'));
+  const service = await startCloudServer({
+    host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin',
+    memoryConfig: {
+      dataDir: path.join(dataDir, 'memory'),
+      adminToken: 'memory-admin',
+      projects: { 'context-guard': { token: 'project-memory-token' } },
+    },
+  });
+  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const memoryHeaders = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
+  const initial = await request(service.url, '/v1/projects/context-guard/main', { headers: memoryHeaders });
+  assert.equal(initial.response.status, 200); assert.equal(initial.body.snapshot, null);
+  const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Session map', kind: 'module', state: 'dirty', children: [] } };
+  const saved = await request(service.url, '/v1/projects/context-guard/sessions/session-one', {
+    method: 'POST', headers: memoryHeaders,
+    body: JSON.stringify({ operationId: 'session-write-one', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map, records: {} } }),
+  });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.body.snapshot.sessionId, 'session-one');
+  assert.equal(saved.body.snapshot.updatedAt, new Date(saved.body.snapshot.updatedAt).toISOString());
+  const read = await request(service.url, '/v1/projects/context-guard/sessions/session-one', { headers: memoryHeaders });
+  assert.equal(read.body.snapshot.memory.map.root.title, 'Session map');
+  const cloudMap = await request(service.url, '/api/projects/context-guard/map');
+  assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
+});
+
 test('cloud commit is idempotent and rejects stale map versions', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
