@@ -83,7 +83,7 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
 });
 
-test("工作台和客户端镜头按最高倍率预栅格化，缩放过程不放大低清画面", () => {
+test("工作台和客户端镜头逐帧重绘，不缩放合成纹理", () => {
   const stageSource = readFileSync(new URL("../src/stage.css", import.meta.url), "utf8");
   const planeRule = stageSource.match(/\.tour-plane\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.doesNotMatch(planeRule, /will-change\s*:\s*transform/);
@@ -93,15 +93,15 @@ test("工作台和客户端镜头按最高倍率预栅格化，缩放过程不�
   assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
   assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
   assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
-  assert.match(workbenchSource, /const rasterScale = Math\.max\(base, width < 600 \? 1 : 1\.12\)/);
-  assert.match(workbenchSource, /node\.style\.zoom = String\(rasterScale\)/);
-  assert.match(workbenchSource, /pose\.scale \/ rasterScale/);
-  assert.doesNotMatch(workbenchSource, /bakedScale|cameraTimer/);
-  assert.doesNotMatch(workbenchSource, /requestAnimationFrame\(animate\)/);
+  assert.match(workbenchSource, /node\.style\.zoom = String\(pose\.scale\)/);
+  assert.match(workbenchSource, /node\.style\.left = `\$\{x \/ pose\.scale\}px`/);
+  assert.match(workbenchSource, /requestAnimationFrame\(animate\)/);
+  assert.doesNotMatch(workbenchSource, /scale\(\$\{pose\.scale/);
 
   const viewportSource = readFileSync(new URL("../src/NativeViewport.tsx", import.meta.url), "utf8");
-  assert.match(viewportSource, /rasterizedCamera\(pose\)/);
-  assert.match(viewportSource, /zoom: nativeRasterScale/);
+  assert.match(viewportSource, /plane\.current\.style\.zoom = String\(pose\.scale\)/);
+  assert.match(viewportSource, /plane\.current\.style\.left = `\$\{x \/ pose\.scale\}px`/);
+  assert.doesNotMatch(viewportSource, /rasterizedCamera|scale\(\$\{rasterPose/);
 });
 
 test("工作台六个章节完成后自动顺序循环，减少动态时不自动切换", () => {

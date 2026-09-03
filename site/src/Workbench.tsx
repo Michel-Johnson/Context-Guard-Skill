@@ -21,13 +21,17 @@ const overview: Camera = {
   overview: true,
 };
 const CAMERA_DURATION = 850;
-const CAMERA_EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
 
 type CameraPose = { x: number; y: number; scale: number };
 
-function applyCameraPose(node: HTMLDivElement, pose: CameraPose, rasterScale: number) {
-  node.style.zoom = String(rasterScale);
-  node.style.transform = `translate(${pose.x / rasterScale}px,${pose.y / rasterScale}px) scale(${pose.scale / rasterScale})`;
+function paintCameraPose(node: HTMLDivElement, pose: CameraPose) {
+  const ratio = window.devicePixelRatio || 1;
+  const x = Math.round(pose.x * ratio) / ratio;
+  const y = Math.round(pose.y * ratio) / ratio;
+  node.style.zoom = String(pose.scale);
+  node.style.left = `${x / pose.scale}px`;
+  node.style.top = `${y / pose.scale}px`;
+  node.style.transform = "none";
 }
 
 export type TourPlayback = {
@@ -69,6 +73,8 @@ export function TourStage({
   const surface = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
+  const cameraFrame = useRef(0);
+  const currentPose = useRef<CameraPose | null>(null);
   const cameraReady = useRef(false);
   const lastScene = useRef("");
   const bootReady = useRef(false);
@@ -275,9 +281,6 @@ export function TourStage({
   const height = playback ? Math.min(620, Math.max(minimumHeight, width * 0.625))
     : Math.max(minimumHeight, (width * FRAME_HEIGHT) / FRAME_WIDTH);
   const base = Math.min(width / FRAME_WIDTH, height / FRAME_HEIGHT);
-  // 始终按镜头可能达到的最高倍率栅格化。镜头移动只做等比缩小与平移，
-  // 避免把上一帧的低分辨率 iframe 放大后出现短暂模糊。
-  const rasterScale = Math.max(base, width < 600 ? 1 : 1.12);
   let scale = base;
   let x = (width - FRAME_WIDTH * scale) / 2;
   let y = (height - FRAME_HEIGHT * scale) / 2;
@@ -314,12 +317,30 @@ export function TourStage({
     const node = plane.current;
     if (!node) return;
     const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
-    node.style.transition = !cameraReady.current || reduced || exploring
-      ? "none"
-      : `transform ${CAMERA_DURATION}ms ${CAMERA_EASING}`;
-    cameraReady.current = true;
-    applyCameraPose(node, target, rasterScale);
-  }, [x, y, scale, rasterScale, reduced, exploring]);
+    window.cancelAnimationFrame(cameraFrame.current);
+    if (!cameraReady.current || reduced || exploring) {
+      cameraReady.current = true;
+      currentPose.current = target;
+      paintCameraPose(node, target);
+      return;
+    }
+    const start = currentPose.current ?? target;
+    const started = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - started) / CAMERA_DURATION);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      const pose = {
+        x: start.x + (target.x - start.x) * eased,
+        y: start.y + (target.y - start.y) * eased,
+        scale: start.scale + (target.scale - start.scale) * eased,
+      };
+      currentPose.current = pose;
+      paintCameraPose(node, pose);
+      if (progress < 1) cameraFrame.current = window.requestAnimationFrame(animate);
+    };
+    cameraFrame.current = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(cameraFrame.current);
+  }, [x, y, scale, reduced, exploring]);
   return (
     <div
       className={"tour-shell" + (exploring ? " exploring" : "")}

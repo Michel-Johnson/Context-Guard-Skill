@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMotionValueEvent, type MotionValue } from "motion/react";
 import { usageTiming, type ConversationTiming } from "./app-usage";
-import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera, type Box, type CameraMotion } from "./native-camera";
+import { advanceCamera, cameraSettled, frameCamera, nativeHeight, stillCamera, type Box, type CameraMotion } from "./native-camera";
 
 export function NativeViewport({ children, clock, full, reduced = false, sourceWidth = 1280, focusPane, timing = usageTiming, turnKey = "" }: {
   children: ReactNode;
@@ -21,7 +21,7 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   const camera = useRef<CameraMotion | null>(null);
   const previousClock = useRef(clock.get());
   const entered = useRef(false);
-  const lastTransform = useRef("");
+  const lastPaint = useRef("");
   const manual = useRef(false);
 
   function measure() {
@@ -73,11 +73,16 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
     const settled = cameraSettled(next, target);
     // 停稳后吸附到目标，避免微小尾差持续触发布局/文字重绘。
     const pose = settled ? target : next.pose;
-    const rasterPose = rasterizedCamera(pose);
-    const transform = `translate(${rasterPose.x}px, ${rasterPose.y}px) scale(${rasterPose.scale})`;
-    if (plane.current && transform !== lastTransform.current) {
-      plane.current.style.transform = transform;
-      lastTransform.current = transform;
+    const ratio = window.devicePixelRatio || 1;
+    const x = Math.round(pose.x * ratio) / ratio;
+    const y = Math.round(pose.y * ratio) / ratio;
+    const paint = `${x}:${y}:${pose.scale}`;
+    if (plane.current && paint !== lastPaint.current) {
+      plane.current.style.zoom = String(pose.scale);
+      plane.current.style.left = `${x / pose.scale}px`;
+      plane.current.style.top = `${y / pose.scale}px`;
+      plane.current.style.transform = "none";
+      lastPaint.current = paint;
     }
     return settled;
   }
@@ -126,7 +131,7 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   }, [full, width, height, sourceWidth, reduced, clock]);
 
   return <div className="native-viewport" ref={viewport} style={{ height }}>
-    <div className="native-plane" ref={plane} style={{ width: sourceWidth, height: nativeHeight, zoom: nativeRasterScale }}>
+    <div className="native-plane" ref={plane} style={{ width: sourceWidth, height: nativeHeight }}>
       {children}
     </div>
   </div>;
