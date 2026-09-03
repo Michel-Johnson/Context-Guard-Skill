@@ -8,11 +8,11 @@ Context Guard is a durable project-memory skill for Codex, Cursor, and Claude. I
 
 ## What It Does
 
-- **Four stores**: sessions, bugs, tasks, map — in the opened project’s `.codex/context/`
+- **Four stores**: sessions, bugs, tasks, map — with local drafts/caches in the opened project’s `.codex/context/`
 - **First-use map**: the agent and the human decide the first layer together (several candidate cuts, then lock L1), then L2, then L3. Titles must be instantly readable. Later sessions open that map
 - **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
 - **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
-- **Record language**: Chinese or English per folder
+- **Record language**: Chinese or English per project, shared by its linked worktrees
 - **Lifecycle**: create session records, retain user messages, and persist agent-identified bad cases through one command
 
 v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
@@ -23,19 +23,22 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
+**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session asks which project workbench to use and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. You can also start or stop the workbench manually.
 
 **Development policy for this repository:** source code follows the existing
 branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
 release artifacts. All development memory must come from the user-designated
-private server, with local caches and isolated Session records. All Sessions must
-read the server's committed-main baseline. This is the required target, not a
-claim that the current local workbench or Map-only sync implements it; full-memory
-sync and migration remain pending. See [the memory contract](references/server-memory.md).
+private server, with local caches and isolated Session records. All Sessions reads
+the server's committed-main baseline. The private service/client and local
+acceptance tests are implemented; real deployment, native Hook trust verification,
+and historical migration remain pending separate approval. See [the memory contract](references/server-memory.md).
 Other projects do not automatically inherit this repository's server configuration.
 
 ```bash
-context-guard workbench --root /path/to/project
+context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
+context-guard workbench --root /path/to/project --session <actual-session-id>
+# only after explicit confirmation to move an existing binding:
+context-guard workbench --root /other/worktree --session <actual-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
 

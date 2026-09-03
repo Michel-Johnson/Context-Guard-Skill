@@ -54,6 +54,9 @@ test('session registry exposes lifecycle state and filters maintenance actors', 
     JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'session-start', platform: 'cursor', session_id: 'second-session' }),
     JSON.stringify({ at: '2026-01-01T00:00:03Z', event: 'stop', platform: 'cursor', session_id: 'second-session' }),
   ].join('\n') + '\n');
+  assert.deepEqual((await access.snapshot()).sessions, []);
+  await access.register(agent.sessionId, { worktreeRoot: f.root });
+  await access.register('second-session', { worktreeRoot: f.root });
   const snapshot = await access.snapshot();
   assert.deepEqual(snapshot.sessions.map(item => item.id), ['second-session', agent.sessionId]);
   assert.equal(snapshot.sessions[0].status, 'stopped');
@@ -69,6 +72,9 @@ test('Codex task discovery supplies real names and active/completed state withou
     { id: 'codex-active', name: '新任务', platform: 'codex', status: 'active', firstSeen: '2026-01-01T00:00:04Z', lastSeen: '2026-01-01T00:00:05Z', lastEvent: 'task_started' },
     { id: 'codex-complete', name: '已完成任务', platform: 'codex', status: 'stopped', firstSeen: '2026-01-01T00:00:02Z', lastSeen: '2026-01-01T00:00:03Z', lastEvent: 'task_complete' },
   ] }).init();
+  assert.deepEqual((await access.snapshot()).sessions, []);
+  await access.register('codex-active', { worktreeRoot: f.root });
+  await access.register('codex-complete', { worktreeRoot: f.root });
   const snapshot = await access.snapshot();
   assert.equal(snapshot.currentSessionId, 'codex-active');
   assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })), [

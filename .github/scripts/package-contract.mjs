@@ -1,4 +1,9 @@
 export const packedFiles = [
+  "scripts/workbench/hook-status.mjs",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/memory.mjs",
+  "scripts/workbench/memory-schema.mjs",
+  "scripts/cloud/memory.mjs",
   "prototype/map-model.mjs",
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",
@@ -33,6 +38,10 @@ export const packedFiles = [
 ];
 
 export const installedFiles = [
+  "scripts/workbench/hook-status.mjs",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/memory.mjs",
+  "scripts/workbench/memory-schema.mjs",
   "prototype/map-model.mjs",
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",

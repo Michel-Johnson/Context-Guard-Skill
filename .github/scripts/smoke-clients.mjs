@@ -82,6 +82,17 @@ export function verifyNativeSession(project, client) {
   return native;
 }
 
+export function verifyNativeUnboundSession(project, client) {
+  const ctx = contextPath(project);
+  assert.ok(fs.existsSync(path.join(ctx, "sessions.jsonl")), "No native SessionStart evidence");
+  const entries = fs.readFileSync(path.join(ctx, "sessions.jsonl"), "utf8").trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+  const native = entries.filter((item) => item.platform === client && item.event === "session-start" && item.root_source === "hook payload" && item.binding === "required");
+  assert.ok(native.length && native.every((item) => item.session_id && item.hook_sha256 && item.context_emitted === true), "No native unbound SessionStart evidence");
+  assert.ok(!fs.existsSync(path.join(ctx, "map.json")), "Unbound SessionStart must not initialize project memory");
+  assert.ok(!fs.existsSync(path.join(ctx, "private", "workbench.json")), "Unbound SessionStart must not start a workbench");
+  return native;
+}
+
 export async function verifyWorkbench(project, previous) {
   const state = readJson(path.join(contextPath(project), "private", "workbench.json"));
   const url = new URL(state.url);
@@ -201,31 +212,26 @@ async function main() {
       });
       await check("Restored Codex installation is discoverable", async () => { verifyCodexDiscovery(await query(), project, skill, hooksPath); });
     } else if (client === "claude") {
-      let firstSessions, workbench;
-      await check("Native --init-only: SessionStart creates files and workbench", async () => {
+      let firstSessions;
+      await check("Native --init-only: unbound SessionStart records the binding request only", async () => {
         await executeClient(["--init-only"]);
-        firstSessions = verifyNativeSession(project, client);
-        assert.equal(readJson(path.join(contextPath(project), "preferences.json")).record_language, "unset");
-        workbench = await verifyWorkbench(project);
-        return { sessionId: firstSessions.at(-1).session_id, workbench };
+        firstSessions = verifyNativeUnboundSession(project, client);
+        return { sessionId: firstSessions.at(-1).session_id, binding: "required" };
       });
-      await check("Second native startup preserves language, sessions and workbench", async () => {
-        await run(process.execPath, [cli, "set-language", "--root", project, "--language", "zh"], { cwd: project, env });
+      await check("Second native startup remains unbound without fabricating project state", async () => {
         await executeClient(["--init-only"]);
-        const sessions = verifyNativeSession(project, client);
+        const sessions = verifyNativeUnboundSession(project, client);
         assert.ok(new Set(sessions.map((item) => item.session_id)).size > new Set(firstSessions.map((item) => item.session_id)).size, "No new native session was created");
-        assert.equal(readJson(path.join(contextPath(project), "preferences.json")).record_language, "zh");
-        await verifyWorkbench(project, workbench);
       });
       await check("Negative: removing the real hook prevents native initialization", async () => {
         const config = readJson(hooksPath); delete config.hooks.SessionStart;
         fs.writeFileSync(hooksPath, JSON.stringify(config));
         try {
           await executeClient(["--init-only"], negativeProject);
-          assert.throws(() => verifyNativeSession(negativeProject, client), /No native SessionStart evidence/);
+          assert.throws(() => verifyNativeUnboundSession(negativeProject, client), /No native SessionStart evidence/);
         } finally { fs.writeFileSync(hooksPath, originalConfig); }
       });
-      report.boundaries.push("--init-only does not submit user messages or trigger a conversation Stop; those script behaviors remain covered by the base fixture tests.");
+      report.boundaries.push("--init-only proves the real Hook emitted an unbound registration request. User confirmation and replay of that same Session ID are covered by deterministic package/browser tests; it does not submit user messages or trigger Stop.");
     } else {
       const rpc = rpcClient(tools.command, [...tools.args, "acp"], { cwd: project, env });
       try {

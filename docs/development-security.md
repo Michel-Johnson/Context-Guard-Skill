@@ -14,8 +14,10 @@ This repository's development memory is governed by
 server is its authority, while local records are caches or pending drafts. This
 does not permit uploading credentials or machine runtime state as memory. Server
 reads and writes both need authorization; public read-only access is not private.
-Connection details stay out of public source. The complete memory backend and
-migration remain pending in `CI_todo.md`; current Map sync alone is insufficient.
+Connection details stay out of public source. The private memory backend/client
+has local automated acceptance, while deployment, native Hook trust verification,
+and historical migration remain pending in `CI_todo.md`; current Map sync alone
+is insufficient.
 
 Product branches retain approved `.github/` checks and `tests/ci-smoke.mjs`.
 Temporary tests and fake repositories remain on `cursor/test-layout-f54e`; do not

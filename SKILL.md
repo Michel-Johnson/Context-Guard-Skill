@@ -44,7 +44,11 @@ Use `.codex/context/FIND.md` for bugs/tasks/ownership, but verify `projection-st
 
 ### Workbench and supported writes
 
-Start `context-guard workbench --root <project>`. Node owns one local project, atomically saves valid operations to map.json, and notifies pages after file/Agent changes. Browser cache is for recovery drafts and preferences only. Static/GitHack/file views are read-only; their clicks do not persist to this workspace.
+On every prompt, validate the actual Session's binding with `context-guard workbench --binding-status --root <project> --session <actual-session-id>` before reading project memory. If unbound, ask which project workbench the user wants; after confirmation run `context-guard workbench --root <project> --session <actual-session-id>`. Do not initialize a map, start a replacement service, or discover and register historical Sessions to fill the picker. A valid binding is reused without asking again. Never change its worktree through an ordinary bind: after explicit user confirmation use `--rebind`, which expires old tokens and views. An unreadable binding or unavailable service is an error, not first use. Binding does not grant node permissions.
+
+Linked Git worktrees share one workbench identity and service. Each explicitly bound Session has an isolated map; the All Sessions view is a read-only published main baseline, never a live feature map. Use an advertised GitHub default branch only when unambiguous; otherwise ask and persist `workbench --bind-main <branch> --remote <remote>` or `--local-main <branch>`. Never guess main/master. For private memory configure the project's server explicitly using the private input-file flow in `references/server-memory.md`.
+
+Node atomically saves valid operations and notifies pages after file/Agent changes. Browser cache is only for recovery drafts and UI preferences. Static/GitHack/file views are read-only.
 
 Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite map.json. See `references/workbench-interface.md` for schema, errors, migration and recovery.
 
@@ -88,7 +92,9 @@ any project.
 
 When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. Follow the configured memory authority when archiving; recording a bug never authorizes publishing private records to GitHub. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
 
-First session language: when `.codex/context/preferences.json` has `record_language: unset`, ask the user whether project context should be recorded in 中文 or English before substantive project work. Do not infer the answer. Persist it with `context-guard set-language --root <project> --language <zh-or-en>`. Do not ask again after it is set.
+Project language: read `context-guard preferences --root <project>`. Confirmed language is shared across linked worktrees (and comes from the private server when configured). Consistent existing settings migrate automatically; unset never overrides a confirmed language. Ask 中文 or English only when the shared value is unset, or ask which confirmed value to retain when migration reports a conflict. Persist with `context-guard set-language --root <project> --language <zh-or-en>` and verify the returned value. Read/network failures must not trigger first-use questions. Do not ask again after a successful confirmation.
+
+`doctor` separates installation, native Hook trust, execution of the installed script version, and emitted context. Modified/untrusted hooks are not ready. Never write trust hashes or silently replace unrelated hooks; use the native review flow. Emitted context is not proof of delivery to a model.
 
 ### First use
 

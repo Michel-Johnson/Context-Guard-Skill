@@ -4,11 +4,14 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
-import { startServer, statePath, health, skillRoot } from './server.mjs';
+import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
+import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
+import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
+import { atomicWrite, encode } from './io.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -32,10 +35,26 @@ async function initialize(root) {
 export async function ensureServer(root, port = 8877) {
   await initialize(root);
   root = await fs.realpath(root);
-  const sameRoot = async live => live?.root && await fs.realpath(live.root).catch(() => null) === root;
-  let state = await readJSON(statePath(root), null), live = state && await health(state);
-  if (await sameRoot(live)) {
+  const project = await ensureProjectBinding(await resolveProject(root));
+  const sharedState = projectStatePath(project);
+  const sameProject = async live => live?.projectId
+    ? live.projectId === project.projectId
+    : !!live?.root && await fs.realpath(live.root).catch(() => null) === root;
+  const worktreeRoots = await listWorktrees(project);
+  const stateFiles = [...new Set([sharedState, ...worktreeRoots.map(statePath)])];
+  let state = null, live = null;
+  for (const file of stateFiles) {
+    const candidate = await readJSON(file, null);
+    const candidateLive = candidate && await health(candidate);
+    if (!candidateLive) continue;
+    if (candidateLive.projectId === project.projectId) { state = candidate; live = candidateLive; break; }
+    if (!candidateLive.projectId && candidateLive.root && worktreeRoots.includes(await fs.realpath(candidateLive.root).catch(() => ''))) {
+      throw new MapError('LEGACY_SERVICE', 'An older worktree-scoped service is active. Export its cache and stop it before starting the project workbench.', 409, { root: candidateLive.root });
+    }
+  }
+  if (await sameProject(live)) {
     if (live.protocol !== 2 || !state.adminToken) throw new MapError('LEGACY_SERVICE', 'Old read-only service is active. Export its cache before stopping it and starting the Node workbench.', 409);
+    if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
     return state;
   }
   const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a');
@@ -43,8 +62,8 @@ export async function ensureServer(root, port = 8877) {
   child.unref(); await log.close();
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
-    await pause(60); state = await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
-    if (live?.protocol === 2 && await sameRoot(live)) return state;
+    await pause(60); state = await readJSON(sharedState, null).catch(() => null) || await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
+    if (live?.protocol === 2 && await sameProject(live)) return state;
   }
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
@@ -55,7 +74,10 @@ export async function request(state, route, { token = state.adminToken, method =
   return result;
 }
 export async function stopServer(root) {
-  const state = await readJSON(statePath(root), null);
+  root = await fs.realpath(root);
+  const project = await resolveProject(root);
+  const sharedState = projectStatePath(project);
+  const state = await readJSON(sharedState, null) || await readJSON(statePath(root), null);
   if (!state || !await health(state)) return { stopped: false };
   if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
   await request(state, '/api/stop', { method: 'POST', body: {} });
@@ -63,8 +85,8 @@ export async function stopServer(root) {
   // A stop acknowledgement is not a released project lock. Do not let the next
   // command race the old process while it flushes writes and closes sockets.
   for (;;) {
-    const current = await readJSON(statePath(root), null);
-    const lock = await readJSON(path.join(root, '.codex/context/private/node-workbench.lock'), null);
+    const current = await readJSON(sharedState, null);
+    const lock = await readJSON(projectLockPath(project), null);
     if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
     if (Date.now() >= deadline) throw new MapError('STOP_FAILED', 'Workbench has not finished shutting down; project lock preserved', 503);
     await pause(25);
@@ -76,6 +98,22 @@ async function inputJSON(file) {
 }
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
+  if (command === 'memory') {
+    const project = await resolveProject(root), session = String(opt.session || process.env.CODEX_THREAD_ID || '');
+    if (opt._[0] === 'configure') {
+      const config = await inputJSON(opt.input);
+      if (!config.url || !config.token || !config.projectId) throw new MapError('INVALID_MEMORY_CONFIG', 'Provide url, projectId, and token in the private input file');
+      await memoryRequest(project, 'main', undefined, config);
+      await atomicWrite(memoryConfigPath(project), encode(config));
+      return { configured: true, verified: (await memoryStatus(project, session)).current };
+    }
+    if (opt._[0] === 'sync') return synchronizeMemory(root, session);
+    if (opt._[0] === 'prepare') return prepareMemory(project, session);
+    if (opt._[0] === 'rebase') return rebaseMemory(project, session);
+    if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
+    return memoryStatus(project, session);
+  }
   if (command === 'serve') {
     const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1' });
     process.on('SIGTERM', () => running.close()); process.on('SIGINT', () => running.close());
@@ -84,19 +122,48 @@ async function main(args) {
   if (command === 'workbench' && opt.stop) {
     return stopServer(root);
   }
-  const state = await ensureServer(root, Number(opt.port ?? 8877));
-  if (command === 'workbench') return { url: state.url, root, protocol: 2 };
+  if (command === 'workbench' && opt['binding-status']) {
+    return bindingStatus(await resolveProject(root), String(opt.session || ''));
+  }
+  if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
+    const project = await saveMainBinding(root, {
+      mode: opt['local-main'] ? 'local' : 'remote',
+      remote: String(opt.remote || 'origin'),
+      branch: String(opt['local-main'] || opt['bind-main']),
+    });
+    return { saved: true, ...(await bindingStatus(project, String(opt.session || ''))) };
+  }
+  const project = await ensureProjectBinding(await resolveProject(root));
+  if (command === 'workbench' && opt.session && project.bindingRequired) {
+    throw new MapError('BINDING_REQUIRED', 'Choose the project main branch before binding this Session', 409, { projectId: project.projectId });
+  }
   let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
+  const isMaintenance = ['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session;
+  if (command !== 'workbench' && !isMaintenance && (!sessionId || !(await bindingStatus(project, sessionId)).session.bound)) {
+    throw new MapError('SESSION_BINDING_REQUIRED', 'Ask which workbench to bind to; confirm with workbench --session. No service or map was created.', 409);
+  }
+  const state = await ensureServer(root, Number(opt.port ?? 8877));
+  if (command === 'workbench') {
+    if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } });
+    const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
+    return { url: state.url, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
+  }
+  let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
+    maintenance = true;
     await fs.appendFile(path.join(root, '.codex/context/sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'maintenance', session_id: sessionId, platform: 'cli' }) + '\n');
   }
   if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Pass the real lifecycle --session ID (or CODEX_THREAD_ID)');
-  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId } });
+  if (!maintenance && !(await bindingStatus(project, sessionId)).session.bound) {
+    throw new MapError('SESSION_BINDING_REQUIRED', 'Ask the user to confirm this Session binding, then run workbench --session before Map actions', 409, { projectId: project.projectId, sessionId });
+  }
+  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
   if (['inbox', 'ack', 'watch'].includes(action)) {
-    const inbox = new AgentInbox(root, sessionId, call);
+    const dir = sessionMemoryDir(project, sessionId);
+    const inbox = new AgentInbox(root, sessionId, call, project.kind === 'git' ? { ctx: dir, pendingFile: path.join(dir, 'sync/pending.json'), eventsDir: dir } : {});
     if (action === 'ack') return inbox.acknowledge(opt.receipt);
     if (action === 'watch') return inbox.wait(Number(opt['wait-ms'] ?? 40000));
     return inbox.read({ start: !!opt.start });
