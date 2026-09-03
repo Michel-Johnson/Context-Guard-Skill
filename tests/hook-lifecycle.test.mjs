@@ -58,6 +58,15 @@ async function confirmBinding(root, session) {
   await fs.writeFile(file, JSON.stringify(existing));
 }
 
+async function dispose(project) {
+  if (await fs.access(path.join(project, '.codex/context/private/workbench.json')).then(() => true, () => false)) {
+    spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+      encoding: 'utf8', timeout: 15_000, windowsHide: true,
+    });
+  }
+  await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
+}
+
 async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
@@ -123,6 +132,26 @@ async function installMap(project) {
   return map;
 }
 
+async function startPlan(t, project, session, paths = ['src/']) {
+  const ctx = path.join(project, '.codex/context');
+  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(await freePort())]);
+  return JSON.parse(run('python3', [contextScript, 'plan-start', '--root', project, '--session', session, '--input', '-'], {
+    input: JSON.stringify({ approved: true, summary: '实现并验证运行时', node_ids: ['N1'], paths }),
+  }).stdout);
+}
+
+function archivePlan(project, session, files = 'src/scratch.txt', extra = {}) {
+  return run('python3', [contextScript, 'archive-session', '--root', project, '--session', session,
+    '--summary', '完成运行时开发', '--files', files, '--input', '-'], {
+    input: JSON.stringify({ verification: 'hook-lifecycle fixture: verified output', assessment: { decision: 'reuse', reason: '属于现有运行时节点' }, ...extra }),
+  });
+}
+
+function finishPlan(project, session) {
+  return run('python3', [contextScript, 'plan-finish', '--root', project, '--session', session]);
+}
+
 test('Codex installs exactly the eleven supported Context Guard hooks except SessionEnd', async () => {
   const config = JSON.parse(await fs.readFile(path.join(repository, 'hooks.json'), 'utf8'));
   assert.deepEqual(Object.keys(config.hooks).sort(), [
@@ -163,7 +192,7 @@ test('an initialized Git source checkout can use its own real Map without enabli
 
 test('hooks keep an auditable plan across prompt, tools, compaction, interrupt and stop', async t => {
   const project = await fixture();
-  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  t.after(() => dispose(project));
   const session = 'hook-session-one';
   await confirmBinding(project, session);
 
@@ -174,15 +203,19 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(signalId);
   run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
+  await installMap(project);
+  const noPlan = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
+  assert.equal(noPlan.json.hookSpecificOutput.permissionDecision, 'deny');
+  await startPlan(t, project, session);
 
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'apply_patch', tool_use_id: 'tool-one',
-    tool_input: { command: `*** Update File: ${path.join(project, 'scratch.txt')}` },
+    tool_input: { command: `*** Update File: ${path.join(project, 'src/scratch.txt')}` },
   });
   assert.match(prepared.json.hookSpecificOutput.additionalContext, /plan-/);
-  await fs.writeFile(path.join(project, 'scratch.txt'), 'changed\n');
+  await fs.writeFile(path.join(project, 'src/scratch.txt'), 'changed\n');
   hook('PostToolUse', project, session, {
-    tool_name: 'apply_patch', tool_use_id: 'tool-one', tool_input: { path: path.join(project, 'scratch.txt') },
+    tool_name: 'apply_patch', tool_use_id: 'tool-one', tool_input: { path: path.join(project, 'src/scratch.txt') },
   });
   hook('PreCompact', project, session, { trigger: 'auto' });
   const restored = hook('PostCompact', project, session, { trigger: 'auto' });
@@ -193,7 +226,13 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.match(subagentStopped.json.systemMessage, /subagent boundary/);
   const interrupted = hook('Interrupt', project, session);
   assert.match(interrupted.json.systemMessage, /interrupted plan state/);
-  const stopped = hook('Stop', project, session, { stop_hook_active: false });
+  const blocked = hook('Stop', project, session, { stop_hook_active: false });
+  assert.equal(blocked.json.decision, 'block');
+  assert.match(hook('Stop', project, session, { stop_hook_active: true }).json.systemMessage, /INCOMPLETE/);
+  assert.throws(() => archivePlan(project, session), /subagent_review/);
+  archivePlan(project, session, 'src/scratch.txt', { subagent_review: { 'agent-one': 'Reviewed paths and test evidence; no additional changes' } });
+  finishPlan(project, session);
+  const stopped = hook('Stop', project, session, { stop_hook_active: true });
   assert.match(stopped.json.systemMessage, /lifecycle completed/);
 
   const events = (await fs.readFile(path.join(project, '.codex/context/sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
@@ -224,7 +263,7 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   t.after(async () => {
     cloud.kill('SIGTERM');
     await new Promise(resolve => cloud.once('exit', resolve));
-    await fs.rm(project, { recursive: true, force: true });
+    await dispose(project);
     await fs.rm(dataDir, { recursive: true, force: true });
   });
   await waitForHealth(cloudUrl);
@@ -240,23 +279,31 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
   const ctx = path.join(project, '.codex/context');
   await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
+  await startPlan(t, project, session);
 
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
   });
-  assert.match(prepared.json.hookSpecificOutput.additionalContext, /cloud prepare ran once/);
+  assert.match(prepared.json.hookSpecificOutput.additionalContext, /plan-/);
   await fs.writeFile(path.join(project, 'src/cloud.mjs'), 'ok\n');
   hook('PostToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs') },
   });
   const blocked = hook('Stop', project, session, { stop_hook_active: false });
   assert.equal(blocked.json.decision, 'block');
-  assert.match(blocked.json.reason, /sync finish/);
+  assert.match(blocked.json.reason, /plan-finish/);
   const beforeFinish = await syncStatus(project);
   const active = beforeFinish.works.find(item => item.sessionId === session);
   assert.equal(active.status, 'working');
-  assert.ok(active.paths.includes('src/cloud.mjs'));
-  await finishSync({ root: project, sessionId: session });
+  assert.deepEqual(active.paths, ['src/']);
+  archivePlan(project, session, 'src/cloud.mjs');
+  const runtimeDirectory = path.join(ctx, 'private/hook-runtime');
+  const runtimePath = path.join(runtimeDirectory, (await fs.readdir(runtimeDirectory)).find(file => file.endsWith('.json')));
+  const beforeFlush = await fs.readFile(runtimePath, 'utf8');
+  finishPlan(project, session);
+  // Model a process crash after remote completion but before the local receipt.
+  await fs.writeFile(runtimePath, beforeFlush);
+  finishPlan(project, session);
   const stopped = hook('Stop', project, session, { stop_hook_active: true });
   assert.match(stopped.json.systemMessage, /lifecycle completed/);
   const afterFinish = await syncStatus(project);
@@ -371,6 +418,22 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(map.root.children[0].bugs[0].sessions[0], session);
   const badEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
   assert.equal(badEvents[0].signal_id, badSignal);
+  const beforeConflict = await fs.readFile(path.join(ctx, 'map.json'), 'utf8');
+  assert.throws(() => run('python3', [contextScript, 'record-todo', '--root', project, '--session', session,
+    '--signal', badSignal, '--node', 'N1', '--title', 'must not write']), /already resolved as bad-case/);
+  assert.equal(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'), beforeConflict, 'classification conflict must fail before any Map write');
+
+  const mixed = hook('UserPromptSubmit', project, session, { turn_id: 'mixed', prompt: '修复显示；以后加快捷键；保存失败记坏例' });
+  const mixedId = mixed.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
+  const splitArgs = [contextScript, 'split-signal', '--root', project, '--session', session, '--signal', mixedId, '--input', '-'];
+  const splitInput = JSON.stringify({ items: ['修复显示', '以后加快捷键', '保存失败'] });
+  const children = JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout);
+  assert.deepEqual(JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout), children);
+  assert.equal(hook('Stop', project, session).json.decision, 'block');
+  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', children[0].id, '--kind', 'task']);
+  run('python3', [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', children[1].id, '--node', 'N1', '--title', '快捷键']);
+  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', children[2].id, '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交失败']);
+  assert.match(hook('Stop', project, session).json.systemMessage, /completed/);
 
   const otherSession = 'hook-session-other';
   await confirmBinding(project, otherSession);
@@ -390,10 +453,8 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const received = hook('PostCompact', project, session, { trigger: 'manual' });
   map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
   assert.equal(map.root.children[0].todos.find(item => item.title === '跨会话待办')?.target_session, otherSession);
-  if (process.platform !== 'win32') {
-    assert.match(received.json.hookSpecificOutput.additionalContext, /Pending Map inbox receipt/);
-    assert.match(received.json.hookSpecificOutput.additionalContext, /hook-session-other/);
-  }
+  assert.match(received.json.hookSpecificOutput.additionalContext, /Pending Map inbox receipt/);
+  assert.match(received.json.hookSpecificOutput.additionalContext, /hook-session-other/);
 
   const allowed = hook('PermissionRequest', project, session, {
     tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/allowed.mjs') },
@@ -420,4 +481,114 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
     tool_input: { path: path.join(project, '.codex/context/map.json'), content: '{}' },
   });
   assert.equal(directMapWrite.json.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('completion receipts require evidence, scope review, all files and fresh content', async t => {
+  const project = await fixture(), session = 'receipt-session';
+  t.after(() => dispose(project));
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { is_background_agent: true });
+  await installMap(project);
+  await fs.writeFile(path.join(project, 'src/dirty.txt'), 'already dirty');
+  await startPlan(t, project, session);
+  assert.throws(() => archivePlan(project, session, '', { verification: '' }), /verification evidence/);
+  assert.throws(() => archivePlan(project, session, '', { assessment: {} }), /assessment/);
+  const script = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
+  assert.match(script.json.hookSpecificOutput.additionalContext, /scope unknown/);
+  const outside = hook('PreToolUse', project, session, { tool_name: 'apply_patch', tool_input: '*** Add File: outside.txt\n+x' });
+  assert.equal(outside.json.hookSpecificOutput.permissionDecision, 'deny');
+  await fs.writeFile(path.join(project, 'src/dirty.txt'), 'modified again');
+  hook('PostToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' }, tool_response: { exit_code: 1 } });
+  assert.throws(() => finishPlan(project, session), /Archive this plan/);
+  assert.throws(() => archivePlan(project, session, 'src/dirty.txt'), /scope_review/);
+  assert.throws(() => archivePlan(project, session, 'src/dirty.txt', { scope_review: 'checked src only' }), /failure_review/);
+  assert.throws(() => archivePlan(project, session, '', { scope_review: 'checked', failure_review: 'retested' }), /omitted changed files/);
+  archivePlan(project, session, 'src/dirty.txt', { scope_review: 'git diff verified src only', failure_review: 'fixed script; output verified' });
+  await fs.writeFile(path.join(project, 'src/dirty.txt'), 'after receipt');
+  assert.throws(() => finishPlan(project, session), /changed after archive/);
+  archivePlan(project, session, 'src/dirty.txt', { scope_review: 'git diff verified src only', failure_review: 'fixed script; output verified' });
+  finishPlan(project, session);
+  const state = JSON.parse(run('python3', [contextScript, 'plan-status', '--root', project, '--session', session]).stdout);
+  assert.equal(state.active_plan, null);
+  assert.equal(state.last_plan.status, 'completed');
+  assert.ok(state.last_plan.started_at && state.last_plan.completed_at && state.last_plan.archive.at);
+  const map = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  assert.equal(map.root.children.length, 1, 'completion must not create a summary node');
+  const memory = map.root.children[0].memories.at(-1);
+  assert.equal(memory.assessment.decision, 'reuse');
+  assert.ok(memory.plan_id && memory.verification && memory.recorded_at);
+});
+
+test('unclassified plan files fail before any Map write; explicit support assignments recover', async t => {
+  const project = await fixture(), session = 'classification-session';
+  t.after(() => dispose(project));
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { is_background_agent: true });
+  await installMap(project);
+  await startPlan(t, project, session, ['src/', 'notes.md']);
+  await fs.writeFile(path.join(project, 'src/a.txt'), 'implementation');
+  await fs.writeFile(path.join(project, 'notes.md'), 'support notes');
+  const mapFile = path.join(project, '.codex/context/map.json');
+  const before = await fs.readFile(mapFile, 'utf8');
+  assert.throws(() => archivePlan(project, session, 'src/a.txt,notes.md'), /unclassified files/);
+  assert.equal(await fs.readFile(mapFile, 'utf8'), before);
+  archivePlan(project, session, 'src/a.txt,notes.md', { assignments: [{ nodeId: 'N1', files: ['notes.md'], reason: 'Runtime support documentation' }] });
+  finishPlan(project, session);
+});
+
+test('unresolved signals survive retention; empty or broken interfaces fail visibly', async () => {
+  const result = run('python3', ['-c', `
+import sys, json, tempfile
+from pathlib import Path
+from unittest.mock import patch
+from subprocess import CompletedProcess
+sys.path.insert(0, ${JSON.stringify(path.join(repository, 'scripts'))})
+import context_guard as core
+import context_guard_hook as hook
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    for n in range(110): core.add_prompt_signal(root, 's', str(n), 'request ' + str(n))
+    assert len(hook.pending_signals(core.read_hook_runtime(root, 's'))) == 110
+    ctx = core.context_dir(root)
+    (ctx / 'private/workbench.json').parent.mkdir(parents=True, exist_ok=True)
+    (ctx / 'private/workbench.json').write_text('{}')
+    with patch.object(hook.subprocess, 'run', return_value=CompletedProcess([], 0, '', '')):
+        assert hook.map_inbox(root, ctx, 's')['error']['code'] == 'INBOX_READ_FAILED'
+        assert hook.sync_command(root, 'checkpoint')['error']['code'] == 'SYNC_TOOL_FAILED'
+    with patch.object(hook, 'sync_command', return_value={'error': {'code': 'OFFLINE'}}):
+        try: hook.checked_sync(root, 's', 'finish')
+        except ValueError: pass
+        else: raise AssertionError('failed sync accepted')
+    with patch.object(hook, 'sync_command', return_value={'status': 'conflict'}):
+        try: hook.checked_sync(root, 's', 'checkpoint')
+        except ValueError: pass
+        else: raise AssertionError('conflict accepted')
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'touch x'}})
+    assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 fix.py'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git status --short'}})
+    assert hook.tool_paths({'tool_name':'apply_patch','tool_input':'*** Update File: src/a\\n*** Move to: src/b'}, root) == ['src/a', 'src/b']
+print('verified')
+`]);
+  assert.match(result.stdout, /verified/);
+});
+
+test('CLI entrypoints work through filesystem aliases, including Windows path casing', async t => {
+  const project = await fixture();
+  t.after(() => dispose(project));
+  for (const file of [workbenchCli, path.join(repository, 'scripts/sync/client.mjs')]) {
+    let alias;
+    if (process.platform === 'win32') {
+      // Windows resolves directory components case-insensitively, but Node's
+      // ESM loader still classifies the final extension textually. Keep `.mjs`
+      // intact so this exercises path casing instead of an unrelated loader rule.
+      alias = path.join(path.dirname(file).toUpperCase(), path.basename(file));
+    }
+    else {
+      alias = path.join(project, `${path.basename(path.dirname(file))}-alias.mjs`);
+      await fs.symlink(file, alias);
+    }
+    const probe = spawnSync(process.execPath, [alias, '--invalid-command'], { encoding: 'utf8', windowsHide: true });
+    assert.notEqual(probe.status, 0);
+    assert.ok(JSON.parse(probe.stdout).error, 'an invoked CLI must not silently exit without JSON');
+  }
 });
