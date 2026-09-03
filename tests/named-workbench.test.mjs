@@ -124,7 +124,12 @@ test('concurrent separate launchers reuse one daemon without replacing an occupi
   })));
   assert.equal(new Set(states.map(s => s.instance)).size, 1);
   assert.notEqual(Number(new URL(states[0].base).port), port);
-  t.after(async () => { process.kill(states[0].pid, 'SIGTERM'); for (let i = 0; i < 100; i++) { try { await fs.access(path.join(dir, 'proxy.json')); } catch { return; } await new Promise(r => setTimeout(r, 20)); } throw new Error('Proxy did not stop'); });
+  t.after(async () => {
+    const stopped = await call(states[0].base, '/__cg_proxy/stop', { method: 'POST', headers: { Authorization: `Bearer ${states[0].adminToken}` } });
+    assert.equal(stopped.status, 202);
+    for (let i = 0; i < 100; i++) { try { await fs.access(path.join(dir, 'proxy.json')); } catch { return; } await new Promise(r => setTimeout(r, 20)); }
+    throw new Error('Proxy did not stop');
+  });
 });
 test('explicit linked-worktree binding reuses server and hook context without overwriting maps', async t => {
   const root = await fixture(t), source = path.join(root, 'linked'), foreign = await fixture(t);

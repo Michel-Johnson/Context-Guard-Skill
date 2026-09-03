@@ -31,6 +31,9 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
         if (req.headers.origin && req.headers.origin !== base) return send(res, 403, { error: 'Origin rejected' });
         if (req.url === '/__cg_proxy/health' && req.method === 'GET') return send(res, 200, { kind: 'context-guard-named', version: 1, instance });
         if (req.headers.authorization !== `Bearer ${adminToken}`) return send(res, 401, { error: 'Local proxy capability required' });
+        if (req.url === '/__cg_proxy/stop' && req.method === 'POST') {
+          send(res, 202, { stopping: true }); setImmediate(() => close()); return;
+        }
         if (req.url === '/__cg_proxy/routes' && req.method === 'POST') {
           let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 16384) return send(res, 413, { error: 'Body too large' }); }
           const route = JSON.parse(text);
