@@ -44,11 +44,14 @@ test('session registry exposes lifecycle state and filters maintenance actors', 
     JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'session-start', platform: 'cursor', session_id: 'second-session' }),
     JSON.stringify({ at: '2026-01-01T00:00:03Z', event: 'stop', platform: 'cursor', session_id: 'second-session' }),
   ].join('\n') + '\n');
+  assert.deepEqual((await access.snapshot()).sessions, []);
+  await access.register(agent.sessionId);
+  await access.register('second-session');
   const snapshot = await access.snapshot();
-  assert.deepEqual(snapshot.sessions.map(item => item.id), ['second-session', agent.sessionId]);
-  assert.equal(snapshot.sessions[0].status, 'stopped');
-  assert.equal(snapshot.sessions[1].status, 'active');
-  assert.equal(snapshot.sessions[1].name, '真实会话名称');
+  assert.deepEqual(new Set(snapshot.sessions.map(item => item.id)), new Set(['second-session', agent.sessionId]));
+  assert.equal(snapshot.sessions.find(item => item.id === 'second-session').status, 'stopped');
+  assert.equal(snapshot.sessions.find(item => item.id === agent.sessionId).status, 'active');
+  assert.equal(snapshot.sessions.find(item => item.id === agent.sessionId).name, '真实会话名称');
   assert.equal(snapshot.currentSessionId, agent.sessionId);
   assert.ok((await access.recordedSessionIds()).includes('maintenance-test'));
 });
@@ -59,9 +62,12 @@ test('Codex task discovery supplies real names and active/completed state withou
     { id: 'codex-active', name: '新任务', platform: 'codex', status: 'active', firstSeen: '2026-01-01T00:00:04Z', lastSeen: '2026-01-01T00:00:05Z', lastEvent: 'task_started' },
     { id: 'codex-complete', name: '已完成任务', platform: 'codex', status: 'stopped', firstSeen: '2026-01-01T00:00:02Z', lastSeen: '2026-01-01T00:00:03Z', lastEvent: 'task_complete' },
   ] }).init();
+  assert.deepEqual((await access.snapshot()).sessions, []);
+  await access.register('codex-active');
+  await access.register('codex-complete');
   const snapshot = await access.snapshot();
   assert.equal(snapshot.currentSessionId, 'codex-active');
-  assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })), [
+  assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })).sort((a, b) => a.id.localeCompare(b.id)), [
     { id: 'codex-active', name: '新任务', status: 'active' },
     { id: 'codex-complete', name: '已完成任务', status: 'stopped' },
   ]);

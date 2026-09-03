@@ -82,3 +82,15 @@ test("Python CLI advertises only supported v1 commands", () => {
     assert.doesNotMatch(result.stdout, new RegExp(removed));
   }
 });
+
+test("Python workbench CLI exposes explicit Session and main binding options", () => {
+  const script = fileURLToPath(new URL("../../scripts/context_guard.py", import.meta.url));
+  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+  const result = candidates
+    .map(command => spawnSync(command, [script, "workbench", "--help"], { encoding: "utf8", windowsHide: true }))
+    .find(item => !item.error && item.status === 0);
+  assert.ok(result, "Python 3 is required for the CLI contract test");
+  for (const option of ["--session", "--binding-status", "--bind-main", "--local-main", "--remote"]) {
+    assert.match(result.stdout, new RegExp(option));
+  }
+});

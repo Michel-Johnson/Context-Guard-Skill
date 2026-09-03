@@ -779,6 +779,10 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--binding-status", action="store_true")
+    parser.add_argument("--bind-main", default="")
+    parser.add_argument("--local-main", default="")
+    parser.add_argument("--remote", default="origin")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8877)
     parser.add_argument("--title", default="")
@@ -878,8 +882,21 @@ def main() -> int:
         try:
             if args.foreground:
                 return serve_workbench(root, args.host, args.port)
+            if args.binding_status or args.bind_main or args.local_main or args.session:
+                command = ["workbench", "--root", str(root)]
+                if args.binding_status:
+                    command.append("--binding-status")
+                if args.bind_main:
+                    command.extend(["--bind-main", args.bind_main, "--remote", args.remote])
+                if args.local_main:
+                    command.extend(["--local-main", args.local_main])
+                if args.session:
+                    command.extend(["--session", args.session])
+                result = run_node_workbench(command)
+                print(json.dumps(result, ensure_ascii=False))
+                return 0
             return show_roadmap(root, not args.no_open)
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
             print(f"[context-guard] workbench failed: {exc}", file=sys.stderr)
             return 1
     return 2

@@ -233,6 +233,7 @@ async function main() {
   );
   const firstResponse = JSON.parse(firstStart.stdout);
   assert.match(firstResponse.additional_context, /ask the user whether project context should be recorded/);
+  assert.match(firstResponse.additional_context, /not bound to the project's main Context Guard workbench/);
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "index.md")));
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "payload root must beat process cwd");
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
@@ -240,13 +241,14 @@ async function main() {
   // Cursor on Windows can prepend a UTF-8 BOM to every hook payload.
   const cursorMessages = ["第一条 Cursor 消息", "第二条 Cursor 消息"];
   for (const [index, prompt] of cursorMessages.entries()) {
-    run(python, [hookScript, "user-prompt-submit", "--platform", "cursor"], {
+    const promptSubmit = run(python, [hookScript, "user-prompt-submit", "--platform", "cursor"], {
       cwd: unrelatedCwd,
       env: hookEnvironment,
       input: "\uFEFF" + JSON.stringify({
         workspace_roots: [project], conversation_id: "session-one", generation_id: `generation-${index}`, prompt
       })
     });
+    assert.match(JSON.parse(promptSubmit.stdout).additional_context, /not bound to the project's main Context Guard workbench/);
   }
   run(python, [hookScript, "stop", "--platform", "cursor"], {
     cwd: unrelatedCwd,
@@ -273,14 +275,20 @@ async function main() {
     }
   );
   const secondResponse = JSON.parse(secondStart.stdout);
-  assert.doesNotMatch(JSON.stringify(secondResponse), /ask the user whether/);
+  assert.doesNotMatch(JSON.stringify(secondResponse), /project context should be recorded/);
+  assert.match(secondResponse.hookSpecificOutput.additionalContext, /not bound to the project's main Context Guard workbench/);
   assert.equal(readJson(path.join(project, ".codex", "context", "preferences.json")).record_language, "zh");
   const namedSession = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse).findLast((event) => event.session_id === "session-two");
   assert.equal(namedSession.thread_name, "basic", "Codex lifecycle records should include the real thread name");
 
+  const unboundMap = spawnSync(process.execPath, [path.join(repositoryRoot, "bin/context-guard-skill.js"), "map", "status", "--root", project, "--session", "session-two"], { encoding: "utf8", windowsHide: true });
+  assert.equal(unboundMap.status, 1);
+  assert.equal(JSON.parse(unboundMap.stdout).error.code, "SESSION_BINDING_REQUIRED");
+
   const userMessage = "请记住：CI 第一版只保护已经实现的安装流程。";
-  run(
+  run(python, [contextScript, "workbench", "--root", project, "--session", "session-two"]);
+  const boundPrompt = run(
     python,
     [hookScript, "user-prompt-submit", "--platform", "claude"],
     {
@@ -289,6 +297,7 @@ async function main() {
       input: JSON.stringify({ workspace_root: project, session_id: "session-two", prompt: userMessage })
     }
   );
+  assert.doesNotMatch(JSON.stringify(JSON.parse(boundPrompt.stdout)), /not bound to the project's main Context Guard workbench/);
   run(
     python,
     [hookScript, "stop", "--platform", "claude"],
@@ -329,6 +338,7 @@ async function main() {
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
   assert.ok(automaticUrl, `SessionStart should inject the automatically started workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
+  run(python, [contextScript, "workbench", "--root", project, "--session", "session-three"]);
   run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
   const archivedMap = readJson(path.join(project, ".codex/context/map.json"));

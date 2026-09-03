@@ -1,9 +1,9 @@
 # Workbench / Agent interface (local Node protocol 2)
 
 For a Git project, one service owns all linked worktrees. The All Sessions baseline
-is stored in the Git common directory under `context-guard/main/map.json`; each
-Session remains bound to the authoritative `.codex/context/map.json` inside the
-worktree where it started. Browser storage contains recovery drafts and UI
+is materialized from the configured committed Git ref into the Git common directory
+under `context-guard/main/map.json`; each explicitly bound Session reads the
+authoritative `.codex/context/map.json` inside its own worktree. Browser storage contains recovery drafts and UI
 preferences, never an authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
 The server, submissions and live notifications run on Node 18 or newer; no new
@@ -23,14 +23,20 @@ the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit me
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
 session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
 Do not substitute the visible demo session label or invent a human identity.
+Lifecycle discovery alone does not register a Session. Hooks check binding at
+SessionStart and every UserPromptSubmit; after human confirmation, bind with
+`context-guard workbench --root <project> --session <actual-hook-session-id>`.
+Unbound and historical Sessions remain absent from the picker.
 
 The workbench session picker changes data sources, not only the authorization
-overlay. `All Sessions` reads the main baseline; `session:<id>` reads that Session's
-bound worktree. Starting from a feature worktree still seeds a new main baseline
-from the checked-out main worktree. If no main worktree is available, the service
-stays usable but marks the baseline as requiring reconciliation. GitHub `origin`
-and its advertised default branch are the automatic binding; otherwise the
-lifecycle context instructs the Agent to ask the user instead of inferring one.
+overlay. Read-only `All Sessions` reads `.codex/context/map.json` directly from the
+configured committed main ref; `session:<id>` reads that Session's bound worktree.
+Neither an uncommitted main-worktree edit nor an unmerged feature Map can enter the
+global view. A refresh replaces it only after the configured ref advances. GitHub
+`origin` and its advertised default branch are the automatic binding; otherwise the
+lifecycle context instructs the Agent to ask the user, then persist either
+`--bind-main <branch> --remote <remote>` or `--local-main <branch>`. If that ref has
+no committed Map, All Sessions remains pending instead of copying a worktree Map.
 
 Linked worktrees also share the Cloud project credential from the Git common
 directory. Their Cloud cursor, work windows, local Map and recovery files remain

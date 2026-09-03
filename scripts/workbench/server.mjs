@@ -10,7 +10,7 @@ import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
-import { resolveProject, refreshMain, sessionBinding, mainWorktree } from './project.mjs';
+import { resolveProject, ensureProjectBinding, refreshMain, readMainMap, sessionBinding, sessionBindingsPath } from './project.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -52,7 +52,7 @@ export async function health(state) {
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
-  const project = await resolveProject(root);
+  const project = await ensureProjectBinding(await resolveProject(root));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   await fs.mkdir(path.dirname(lock), { recursive: true });
   const instance = token();
@@ -70,13 +70,34 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const adminToken = token(), humanToken = token(), agentTokens = new Map(), peers = new Map();
   const access = await new Access(root, project.kind === 'git' ? {
     file: path.join(project.sharedDir, 'workbench-access.json'),
-    bindingsFile: path.join(project.sharedDir, 'workbench-bindings.json'),
+    bindingsFile: sessionBindingsPath(project),
   } : {}).init();
   let stopAccessWatch = () => {}, stopCloudWatch = () => {};
   const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap();
   let mainStore, mainSource = null;
   const sourceFile = path.join(project.sharedDir, 'main-source.json');
   let server, base;
+  async function updateMainBaseline(source, { force = false } = {}) {
+    if (project.kind !== 'git') return source;
+    const mainDir = path.join(project.sharedDir, 'main');
+    const mainFile = path.join(mainDir, 'map.json');
+    await fs.mkdir(mainDir, { recursive: true });
+    const exists = await fs.access(mainFile).then(() => true, () => false);
+    if (!force && exists && source.baselineSha === source.sha) return source;
+    const committed = source.ref ? await readMainMap(project, source.ref) : '';
+    if (committed) {
+      await atomicWrite(mainFile, committed.endsWith('\n') ? committed : `${committed}\n`);
+      return { ...source, status: 'ready', baselineSha: source.sha, needsReconcile: false };
+    }
+    const local = await readJSON(path.join(project.worktreeRoot, '.codex/context/map.json'), {});
+    await atomicWrite(mainFile, encode({ v: 1, project: local.project || path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
+    return {
+      ...source,
+      status: project.bindingRequired ? 'binding-required' : 'main-map-missing',
+      baselineSha: source.sha || '',
+      needsReconcile: true,
+    };
+  }
   const send = (res, code, data) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(data)); };
   function broadcast(type, data, viewId = null) {
     for (const peer of peers.values()) if (peer.res && !peer.res.destroyed) {
@@ -183,26 +204,20 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       checkedAt: new Date().toISOString(),
       needsReconcile: !!(baselineSha && project.mainSha && baselineSha !== project.mainSha),
     };
-    await atomicWrite(sourceFile, encode(mainSource));
     if (project.kind === 'git') {
       const mainDir = path.join(project.sharedDir, 'main');
       const mainFile = path.join(mainDir, 'map.json');
-      await fs.mkdir(mainDir, { recursive: true });
-      try { await fs.access(mainFile); }
-      catch {
-        const baselineRoot = await mainWorktree(project);
-        await fs.copyFile(path.join(baselineRoot || project.worktreeRoot, '.codex/context/map.json'), mainFile);
-        if (!baselineRoot) {
-          mainSource = { ...mainSource, status: 'main-worktree-required', baselineSha: '', needsReconcile: true };
-          await atomicWrite(sourceFile, encode(mainSource));
-        }
-      }
+      mainSource = await updateMainBaseline(mainSource, { force: true });
+      await atomicWrite(sourceFile, encode(mainSource));
       mainStore = await createStore('main', project.worktreeRoot, {
         file: mainFile,
         runtime: path.join(mainDir, 'sync'),
         eventsFile: path.join(mainDir, 'workbench-changes.jsonl'),
       });
-    } else mainStore = await createStore('main', root);
+    } else {
+      await atomicWrite(sourceFile, encode(mainSource));
+      mainStore = await createStore('main', root);
+    }
     const cloudSyncDir = path.join(ctx, 'private/cloud-sync');
     await fs.mkdir(cloudSyncDir, { recursive: true });
     const cloudWatcher = watch(cloudSyncDir, () => {
@@ -235,6 +250,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const refreshed = await refreshMain(project), baselineSha = mainSource?.baselineSha || '';
           mainSource = { ...refreshed, baselineSha, needsReconcile: !baselineSha || !!(refreshed.sha && baselineSha !== refreshed.sha) };
+          mainSource = await updateMainBaseline(mainSource);
+          await mainStore.serial(() => mainStore.refresh());
           await atomicWrite(sourceFile, encode(mainSource));
           broadcast('state', stateFor('main', mainStore, false), 'main');
           return send(res, 200, { projectId: project.projectId, source: mainSource });
@@ -276,12 +293,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (route === '/api/operation' && req.method === 'GET') { const record = await activeStore.operation(url.searchParams.get('id') || ''); return send(res, 200, { found: !!record, result: record?.result, recovery: activeStore.blocked }); }
           if (route === '/api/commit' && req.method === 'POST') {
             const input = await body(req);
+            if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
             if (actor.kind === 'agent') await fence(viewId);
             const result = await activeStore.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
-            if (viewId === 'main' && actor.kind === 'human' && result.committed && mainSource?.sha) {
-              mainSource = { ...mainSource, baselineSha: mainSource.sha, needsReconcile: false };
-              await atomicWrite(sourceFile, encode(mainSource));
-            }
             return send(res, 200, result);
           }
           if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, { ...(await access.snapshot()), project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } }); }

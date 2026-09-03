@@ -66,15 +66,22 @@ try {
     return result.status === 0 && /^Python 3\./m.test(`${result.stdout}\n${result.stderr}`);
   });
   assert.ok(python, 'Python 3 is required for the real SessionStart hook');
-  await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+  const hookStart = await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, thread_name: 'basic-browser', is_background_agent: true }), timeout: 20000,
   });
+  assert.match(JSON.parse(hookStart.stdout).hookSpecificOutput.additionalContext, /not bound to the project's main Context Guard workbench/);
   const sessions = (await fs.readFile(path.join(ctx, 'sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessions.some(event => event.session_id === session && event.event === 'session-start'));
   assert.ok((await fs.stat(path.join(ctx, 'sessions', `${session}.md`))).isFile());
   await run(process.execPath, [path.join(workspace, 'bin/context-guard-skill.js'), 'set-language', '--root', root, '--language', 'zh'], { cwd: root, env });
   await fs.writeFile(mapPath, encode({ v: 1, project: 'browser-test', bootstrap: 'pending', flows: [], root: null }));
   running = await startServer({ root, port: 0, messageQueue });
+  const bind = await fetch(new URL('/api/session', running.state.url), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: session, worktreeRoot: root }),
+  });
+  assert.equal(bind.status, 200);
   browser = await chromium.launch({ headless: true, env });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(15000);
@@ -106,7 +113,16 @@ try {
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 500).toISOString(), event: 'maintenance', platform: 'cli', session_id: 'maintenance-browser' })}\n`);
   const liveSession = 'browser-live-agent';
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 1000).toISOString(), event: 'session-start', platform: 'cursor', session_id: liveSession })}\n`);
+  await pause(1000);
+  assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
+  const liveBind = await fetch(new URL('/api/session', running.state.url), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: liveSession, worktreeRoot: root }),
+  });
+  assert.equal(liveBind.status, 200);
   await page.waitForFunction(() => document.querySelectorAll('#session-menu [data-session]').length === 3);
+  recordCheck('unbound-session-hidden-until-explicit-binding');
   assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
   await running.access.grant(liveSession, ['N1'], running.store.version);

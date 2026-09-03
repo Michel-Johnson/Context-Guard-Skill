@@ -23,12 +23,16 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** one project has one workbench, even when Git has several linked worktrees. Every lifecycle Session is bound to the worktree where it started. Selecting that Session shows its temporary worktree Map; **All Sessions** shows the project baseline associated with GitHub `origin/main` and never absorbs an unmerged worktree Map. If GitHub and the default branch cannot be identified, the hook asks the user to define the main baseline instead of guessing. The Node service automatically persists edits and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
+**Local:** one project has one workbench, even when Git has several linked worktrees. Every Agent reply verifies that the lifecycle Session has been explicitly bound; an unbound Session is hidden until the user confirms and the Agent runs `workbench --session`. Selecting a bound Session shows its temporary worktree Map. Read-only **All Sessions** reads the committed Map from GitHub's advertised default branch and never absorbs uncommitted or unmerged worktree changes. If GitHub and the default branch cannot be identified, the hook asks the user to choose a remote/branch or local branch and persists that choice. The Node service automatically persists Session-view edits and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
 
 **Cloud binding:** all worktrees of one Git project share the same Cloud project credential. Cursor, work-window and recovery state remain local to each worktree/Session, while the online Map is the common canonical Map.
 
 ```bash
 context-guard workbench --root /path/to/project
+context-guard workbench --root /path/to/project --session "$CODEX_THREAD_ID"
+context-guard workbench --root /path/to/project --bind-main main --remote origin
+# local-only repository:
+context-guard workbench --root /path/to/project --local-main trunk
 context-guard workbench --root /path/to/project --stop
 ```
 
@@ -176,7 +180,7 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results, adds the summary to existing owning Map nodes, and creates a human-confirmed proposal for changed files not yet covered by the Map.
+Run `context-guard workbench --root /path/to/project` to see the map. A lifecycle hook records a Session but does not silently add it to the picker. After the user confirms, bind it with `workbench --session <actual-id>`; the hook checks this again on every user prompt. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains internal. Settings switches only among explicitly bound Sessions, and grants persist across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results, adds the summary to existing owning Map nodes, and creates a human-confirmed proposal for changed files not yet covered by the Map.
 
 ## Main Files
 

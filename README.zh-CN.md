@@ -23,12 +23,16 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 **云端：** Cloud 首页只汇集多个项目入口，每个项目独立维护自己的 Map。公开页面只读；通过工作台令牌授权后的 Cloud 工作台可以编辑。项目使用独立同步令牌和事件流，不共享管理令牌。
 
-**本地：** 一个项目只有一个工作台，即使 Git 项目有多个 linked worktree。每个生命周期 Session 都绑定到启动它的 worktree；选择该 Session 时显示对应 worktree 的临时 Map，**所有会话**只显示跟随 GitHub `origin/main` 的项目基线，不吸收尚未合并的 worktree Map。无法识别 GitHub 和默认分支时，Hook 会让 Agent 询问用户主基线，而不是自行猜测。Node 服务会自动持久化编辑并把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
+**本地：** 一个项目只有一个工作台，即使 Git 项目有多个 linked worktree。Agent 每次回复前都会校验当前生命周期 Session 是否已显式绑定；未绑定的 Session 在用户确认并执行 `workbench --session` 前不会出现在工作台。选择已绑定 Session 时显示其 worktree 的临时 Map；只读的 **所有会话**直接读取 GitHub 默认分支中已经提交的 Map，不吸收未提交或未合并的 worktree 改动。无法识别 GitHub 和默认分支时，Hook 会让 Agent 询问并持久化远端/分支或本地分支，而不是自行猜测。Node 服务会自动持久化 Session 视图编辑并把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
 
 **云端绑定：** 同一 Git 项目的所有 worktree 共用一个 Cloud 项目凭据；游标、开发窗口和恢复状态仍分别保存在各 worktree/Session，本地临时状态最终对齐同一张线上 Map。
 
 ```bash
 context-guard workbench --root /path/to/project
+context-guard workbench --root /path/to/project --session "$CODEX_THREAD_ID"
+context-guard workbench --root /path/to/project --bind-main main --remote origin
+# 仅本地仓库：
+context-guard workbench --root /path/to/project --local-main trunk
 context-guard workbench --root /path/to/project --stop
 ```
 
@@ -176,7 +180,7 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果：已覆盖文件的摘要写入对应 Map 节点，没有节点覆盖的修改会自动生成待用户确认的新节点提案。
+运行 `context-guard workbench --root /path/to/project` 看图。生命周期 Hook 只记录 Session，不会静默加入工作台；用户确认后用 `workbench --session <真实ID>` 绑定，Hook 会在每次用户消息提交时继续校验。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中只显示已绑定会话；Session ID 仅作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果：已覆盖文件的摘要写入对应 Map 节点，没有节点覆盖的修改会自动生成待用户确认的新节点提案。
 
 ## 主要文件
 

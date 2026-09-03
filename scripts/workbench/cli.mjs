@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
-import { resolveProject, listWorktrees } from './project.mjs';
+import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
@@ -33,7 +33,7 @@ async function initialize(root) {
 export async function ensureServer(root, port = 8877) {
   await initialize(root);
   root = await fs.realpath(root);
-  const project = await resolveProject(root);
+  const project = await ensureProjectBinding(await resolveProject(root));
   const sharedState = projectStatePath(project);
   const sameProject = async live => live?.projectId
     ? live.projectId === project.projectId
@@ -104,6 +104,22 @@ async function main(args) {
   if (command === 'workbench' && opt.stop) {
     return stopServer(root);
   }
+  if (command === 'workbench' && opt['binding-status']) {
+    return bindingStatus(await resolveProject(root), String(opt.session || ''));
+  }
+  if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
+    await stopServer(root);
+    const project = await saveMainBinding(root, {
+      mode: opt['local-main'] ? 'local' : 'remote',
+      remote: String(opt.remote || 'origin'),
+      branch: String(opt['local-main'] || opt['bind-main']),
+    });
+    return { saved: true, ...(await bindingStatus(project, String(opt.session || ''))) };
+  }
+  const project = await ensureProjectBinding(await resolveProject(root));
+  if (command === 'workbench' && opt.session && project.bindingRequired) {
+    throw new MapError('BINDING_REQUIRED', 'Choose the project main branch before binding this Session', 409, { projectId: project.projectId });
+  }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') {
     if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root } });
@@ -111,11 +127,16 @@ async function main(args) {
     return { url: state.url, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
   }
   let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
+  let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
+    maintenance = true;
     await fs.appendFile(path.join(root, '.codex/context/sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'maintenance', session_id: sessionId, platform: 'cli' }) + '\n');
   }
   if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Pass the real lifecycle --session ID (or CODEX_THREAD_ID)');
+  if (!maintenance && !(await bindingStatus(project, sessionId)).session.bound) {
+    throw new MapError('SESSION_BINDING_REQUIRED', 'Ask the user to confirm this Session binding, then run workbench --session before Map actions', 409, { projectId: project.projectId, sessionId });
+  }
   const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;

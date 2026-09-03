@@ -17,7 +17,7 @@ from pathlib import Path, PureWindowsPath
 from context_guard import append_session_event
 from context_guard import context_dir as context_folder
 from context_guard import configure_stdio, folder_root, init_context, is_context_guard_skill_path
-from context_guard import read_json, read_preferences, start_workbench, write_json
+from context_guard import read_json, read_preferences, run_node_workbench, start_workbench, write_json
 
 
 WORKSPACE_KEYS = {
@@ -264,44 +264,35 @@ def language_setup_context(root: Path, ctx: Path) -> str:
     )
 
 
-def project_binding_context(root: Path) -> str:
-    """Ask for a main baseline only when Git cannot identify a GitHub main."""
+def workbench_binding_status(root: Path, current_session_id: str) -> dict[str, object]:
     try:
-        inside = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"], cwd=root,
-            capture_output=True, text=True, timeout=2, check=True,
-        ).stdout.strip()
-        if inside != "true":
-            return ""
-        remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"], cwd=root,
-            capture_output=True, text=True, timeout=2, check=False,
-        ).stdout.strip()
-        github = re.match(r"^(?:https?://|ssh://git@|git@)github\.com(?::|/)[^/]+/[^/]+?(?:\.git)?$", remote, re.I)
-        symbolic = subprocess.run(
-            ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
-            cwd=root, capture_output=True, text=True, timeout=2, check=False,
-        ).stdout.strip()
-        has_main = bool(symbolic)
-        if not has_main:
-            for branch in ("main", "master"):
-                result = subprocess.run(
-                    ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}^{{commit}}"],
-                    cwd=root, capture_output=True, text=True, timeout=2, check=False,
-                )
-                if result.returncode == 0:
-                    has_main = True
-                    break
-        if github and has_main:
-            return ""
-    except (OSError, subprocess.SubprocessError):
-        return ""
+        return run_node_workbench([
+            "workbench", "--root", str(root), "--binding-status", "--session", current_session_id,
+        ])
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        return {"error": str(error)}
+
+
+def project_binding_context(root: Path, current_session_id: str) -> str:
+    status = workbench_binding_status(root, current_session_id)
     quoted_root = json.dumps(str(root))
-    return (
-        "Context Guard cannot identify a GitHub origin/main baseline for this Git project. "
-        "Before treating All Sessions as authoritative, ask the user which remote and main branch define the project; "
-        f"do not infer them. Project root: {quoted_root}."
-    )
+    quoted_session = json.dumps(current_session_id)
+    if status.get("bindingRequired"):
+        return (
+            "Context Guard has no authoritative main branch for this project. Before substantive work, ask the user which "
+            "remote and branch define the main workbench; do not infer them. After the answer, run "
+            f"`context-guard workbench --root {quoted_root} --bind-main <branch> --remote <remote>` or, for a local-only branch, "
+            f"`context-guard workbench --root {quoted_root} --local-main <branch>`, then bind this Session with "
+            f"`context-guard workbench --root {quoted_root} --session {quoted_session}`."
+        )
+    session = status.get("session") if isinstance(status.get("session"), dict) else {}
+    if not session.get("bound"):
+        return (
+            "This Session is not bound to the project's main Context Guard workbench. Ask the user to confirm binding this "
+            f"Session to that workbench. After confirmation run `context-guard workbench --root {quoted_root} --session {quoted_session}`. "
+            "Do not silently bind it."
+        )
+    return ""
 
 
 def lifecycle_context(root: Path, workbench_url: str | None, current_session_id: str) -> str:
@@ -513,14 +504,13 @@ def main() -> int:
             url = start_workbench(
                 root,
                 open_browser=start_reason not in {"resume", "clear", "compact"},
-                session_id=current_session_id,
             )
             if sync_configured(ctx):
                 sync_command(root, "ensure")
         hook_log(
             f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})"
         )
-        contexts = [language_setup_context(root, ctx), project_binding_context(root), lifecycle_context(root, url, current_session_id)]
+        contexts = [language_setup_context(root, ctx), project_binding_context(root, current_session_id), lifecycle_context(root, url, current_session_id)]
         playbook = ctx / "tasks" / "J2.md"
         if playbook.is_file():
             contexts.append(
@@ -561,7 +551,8 @@ def main() -> int:
         map_file = ctx / "map.json"
         version = hashlib.sha256(map_file.read_bytes()).hexdigest() if map_file.is_file() else "missing"
         notice = f"Context Guard map on disk: {version}. Check map inbox for queued observations (initialize once with --start); process before ack --receipt. Before acting, use map read/changes with --root {json.dumps(str(root))} --session {json.dumps(current_session_id)}; a disk observation does not certify pending browser edits are saved."
-        return hook_response(platform, event, notice)
+        binding_notice = project_binding_context(root, current_session_id)
+        return hook_response(platform, event, "\n\n".join(item for item in (binding_notice, notice) if item))
 
     if event in {"stop", "subagent-stop"}:
         init_context(root)

@@ -171,9 +171,12 @@ export class Access {
     const roots = this.bindingRoots();
     const [hookBatches, codexSessions] = await Promise.all([Promise.all(roots.map(root => this.hookSessionRegistry(root))), this.discoverCodexSessions(roots)]);
     const hookSessions = hookBatches.flat();
-    const sessions = new Map(hookSessions.map(item => [item.id, item]));
-    for (const discovered of codexSessions) {
+    const sessions = new Map(Object.entries(this.bindings.sessions).filter(([id]) => !id.startsWith('maintenance-')).map(([id, binding]) => [id, {
+      id, name: '', platform: 'unknown', status: 'stopped', firstSeen: binding.updatedAt, lastSeen: binding.updatedAt, lastEvent: 'bound', ...binding,
+    }]));
+    for (const discovered of [...hookSessions, ...codexSessions]) {
       if (!discovered?.id) continue;
+      if (!this.binding(discovered.id)) continue;
       const previous = sessions.get(discovered.id);
       sessions.set(discovered.id, {
         ...previous,
