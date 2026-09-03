@@ -447,19 +447,44 @@ try {
     await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
     await preview.locator('#btn-auth').click();
-    await preview.mouse.move(420, 280);
+    const chromeGap = await preview.evaluate(() => {
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      return { headerBottom: header.bottom, headerTop: header.top, vpTop: vp.top, overlap: header.bottom - vp.top };
+    });
+    assert.ok(chromeGap.vpTop + 0.51 >= chromeGap.headerBottom, `canvas must start at the header bottom, not under it ${JSON.stringify(chromeGap)}`);
+    const panFrom = await preview.evaluate(() => {
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      for (let y = vp.top + 90; y < vp.bottom - 80; y += 28) {
+        for (let x = vp.left + 36; x < Math.min(vp.right - 36, 720); x += 36) {
+          const el = document.elementFromPoint(x, y);
+          if (el && !el.closest('.node') && el.closest('#viewport')) return { x, y };
+        }
+      }
+      return { x: vp.left + 80, y: vp.top + 160 };
+    });
+    await preview.mouse.move(panFrom.x, panFrom.y);
     await preview.mouse.down();
-    await preview.mouse.move(420, 720, { steps: 12 });
+    await preview.mouse.move(panFrom.x, 24, { steps: 16 });
     await preview.mouse.up();
     const headerCutsNode = await preview.evaluate(() => {
-      const bottom = document.querySelector('header.top').getBoundingClientRect().bottom;
-      for (let x = 40; x <= 520; x += 40) {
-        const el = document.elementFromPoint(x, bottom - 3);
-        if (el && el.closest && el.closest('.node')) return true;
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const y = header.bottom - 3;
+      const hits = [];
+      for (let x = 40; x <= 900; x += 20) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.closest && el.closest('#nodes .node')) hits.push(x);
       }
-      return false;
+      const overlapping = [...document.querySelectorAll('#nodes .node')].filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > header.bottom - 1 && r.top < header.bottom && r.right > 8 && r.left < window.innerWidth - 8;
+      }).length;
+      return { hits, overlapping, vpTop: vp.top, headerBottom: header.bottom };
     });
-    assert.equal(headerCutsNode, false, 'panning a node under the header must clip, not slice a dead pill');
+    assert.ok(headerCutsNode.vpTop + 0.51 >= headerCutsNode.headerBottom, `panning must not tuck the canvas under the header ${JSON.stringify(headerCutsNode)}`);
+    assert.ok(headerCutsNode.overlapping > 0, `pan must push a node box into the header strip ${JSON.stringify(headerCutsNode)}`);
+    assert.equal(headerCutsNode.hits.length, 0, `panning a node under the header must clip, not slice a dead pill ${JSON.stringify(headerCutsNode)}`);
     recordCheck('static-preview-node-click');
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1&phone=1`);
     await preview.waitForSelector('.node .add-child');

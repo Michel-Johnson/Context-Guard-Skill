@@ -60,7 +60,7 @@
 </script>
 <style>
 :root{
-  --chrome-top:52px;
+  --chrome-top:58px;
   --chrome-btn-h:36px;
   --ink:#2d2d2d; --muted:#746c60; --paper:#fffdf8; --bg:#fefaf2; --line:#d7ccb8; --line-ink:#2d2d2d;
   --green:#3a6e55; --green-soft:#efe6d2; --red:#e24b4b; --red-soft:#f8e4dc;
@@ -259,7 +259,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden;overflow:clip}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #nodes{position:absolute;left:0;top:0;z-index:2}
@@ -737,6 +737,7 @@ html[lang="en"] .bug-sub.ed:empty:before{content:"Notes (optional)"}
 
 /* ---------- 手机竖屏：顶栏换行、检查器改底栏 ---------- */
 /* 用 html.cg-phone，不靠 max-width。Safari「桌面网站」会把宽度报成 ~980，媒体查询不会中。 */
+html.cg-phone{--chrome-top:96px}
 html.cg-phone header.top{
   flex-wrap:wrap;align-items:center;gap:6px 8px;
   padding:calc(6px + var(--safe-top)) 10px 6px;
@@ -5834,7 +5835,7 @@ function applyView(){
 function chromeTop(){
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--chrome-top");
   const n = parseFloat(raw);
-  return Number.isFinite(n) && n>0 ? n : 52;
+  return Number.isFinite(n) && n>0 ? n : 58;
 }
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
@@ -6038,8 +6039,10 @@ function bindDrawerSplit(){
 }
 function syncChrome(){
   const h = document.querySelector("header.top");
-  if(!h) return;
-  const px = Math.ceil(h.getBoundingClientRect().height);
+  if(!h || !h.getClientRects().length) return;
+  const box = h.getBoundingClientRect();
+  const min = document.documentElement.classList.contains("cg-phone") ? 96 : 58;
+  const px = Math.max(min, Math.ceil(box.bottom));
   document.documentElement.style.setProperty("--chrome-top", px+"px");
 }
 function fitView(){
