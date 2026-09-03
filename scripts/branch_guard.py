@@ -13,6 +13,7 @@ PRODUCT_TESTS = {
     "tests/workbench-sync.test.mjs",
     "tests/workbench-inbox.test.mjs",
     "tests/hook-lifecycle.test.mjs",
+    "tests/named-workbench.test.mjs",
     "tests/workbench-browser.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",

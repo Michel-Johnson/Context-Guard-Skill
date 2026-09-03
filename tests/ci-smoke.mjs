@@ -19,7 +19,7 @@ let passed = false;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || repositoryRoot,
-    env: { ...process.env, ...options.env },
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', ...options.env },
     input: options.input,
     encoding: "utf8",
     windowsHide: true

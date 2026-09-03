@@ -1,4 +1,11 @@
 export const packedFiles = [
+  "references/named-workbench.md",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses/Portless-Apache-2.0.txt",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/named.mjs",
+  "scripts/workbench/named-proxy.mjs",
+  "scripts/workbench/portless-routes.mjs",
   "prototype/map-model.mjs",
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",
@@ -33,6 +40,13 @@ export const packedFiles = [
 ];
 
 export const installedFiles = [
+  "references/named-workbench.md",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses/Portless-Apache-2.0.txt",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/named.mjs",
+  "scripts/workbench/named-proxy.mjs",
+  "scripts/workbench/portless-routes.mjs",
   "prototype/map-model.mjs",
   "prototype/workbench-sync.mjs",
   "references/workbench-interface.md",

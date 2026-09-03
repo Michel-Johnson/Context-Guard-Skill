@@ -40,6 +40,7 @@ async function queueCodexMessage({ sessionId, message, root }) {
     encoding: 'utf8',
     timeout: 15000,
     maxBuffer: 1024 * 1024,
+    windowsHide: true,
   });
 }
 export async function health(state) {
@@ -49,6 +50,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
   const ctx = path.join(root, '.codex/context'), lock = path.join(ctx, 'private/node-workbench.lock');
+  const namedFile = path.join(ctx, 'private/named-entry.json');
+  let namedEntry = await readJSON(namedFile, null), openClaimAt = 0;
+  const validNamedOrigin = value => /^http:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost:[1-9][0-9]{0,4}$/.test(value || '') && Number(new URL(value).port) > 0 && Number(new URL(value).port) <= 65535;
+  if (namedEntry && (!validNamedOrigin(namedEntry.origin) || typeof namedEntry.proxyToken !== 'string' || namedEntry.proxyToken.length < 32)) throw new MapError('INVALID_ORIGIN', 'Invalid saved named entry; configuration preserved');
   await fs.mkdir(path.dirname(lock), { recursive: true });
   const instance = token();
   for (let i = 0; i < 2; i++) {
@@ -131,11 +136,27 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     stopCloudWatch = () => { clearTimeout(cloudWatcher.timer); cloudWatcher.close(); };
     server = http.createServer(async (req, res) => {
       try {
-        if (req.headers.host !== new URL(base).host) throw new MapError('HOST_REJECTED', 'Invalid Host', 403);
-        if (req.headers.origin && req.headers.origin !== base) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
+        const direct = req.headers.host === new URL(base).host;
+        const named = namedEntry && req.headers.host === new URL(namedEntry.origin).host && req.headers['x-context-guard-proxy'] === namedEntry.proxyToken;
+        if (!direct && !named) throw new MapError('HOST_REJECTED', 'Invalid Host', 403);
+        const requestOrigin = direct ? base : namedEntry.origin;
+        if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
-        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, root, pid: process.pid, protocol: 2, instance, recovery: store.blocked, rss: process.memoryUsage().rss });
+        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, root, pid: process.pid, protocol: 2, instance, namedEntry: true, recovery: store.blocked, rss: process.memoryUsage().rss });
         if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root, protocol: 2 });
+        if (['/api/named-entry', '/api/open-claim'].includes(route) && req.method === 'POST') {
+          if (!direct || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
+          const input = await body(req);
+          if (route === '/api/open-claim') {
+            const shouldOpen = !peers.size && Date.now() - openClaimAt > 5000;
+            if (shouldOpen) openClaimAt = Date.now();
+            return send(res, 200, { shouldOpen });
+          }
+          if (!validNamedOrigin(input.origin) || typeof input.proxyToken !== 'string' || input.proxyToken.length < 32) throw new MapError('INVALID_ORIGIN', 'Expected an exact local project HTTP origin');
+          namedEntry = { name: new URL(input.origin).hostname.slice(0, -10), origin: input.origin, proxyToken: namedEntry?.proxyToken || input.proxyToken };
+          await atomicWrite(namedFile, encode(namedEntry));
+          return send(res, 200, { proxyToken: namedEntry.proxyToken });
+        }
         if (route === '/api/session' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req), actor = await access.register(input.sessionId), credential = token(); agentTokens.set(credential, actor);

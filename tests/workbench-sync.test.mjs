@@ -78,6 +78,65 @@ test('Codex task discovery supplies real names and active/completed state withou
   assert.deepEqual(await access.register('codex-complete'), { kind: 'agent', sessionId: 'codex-complete' });
 });
 
+test('Codex database discovery hides its child process and reuses rows until the database changes', async () => {
+  const f = await fixture();
+  const database = path.join(f.root, 'state.sqlite');
+  const rollout = path.join(f.root, 'rollout.jsonl');
+  const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
+  const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
+  await fs.writeFile(database, 'initial');
+  await fs.writeFile(rollout, `${started}\n`);
+  const calls = [];
+  const access = await new Access(f.root, {
+    codexDb: database,
+    sqliteCommand: 'sqlite3-test',
+    querySqlite: async () => null,
+    execFile: async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: JSON.stringify([{ id: 'codex-db', name: '数据库任务', created_at: 1, updated_at: 2, rollout_path: rollout }]) };
+    },
+  }).init();
+
+  assert.equal((await access.discoverCodexSessions())[0].status, 'active');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, 'sqlite3-test');
+  assert.equal(calls[0].options.windowsHide, true);
+
+  await fs.appendFile(rollout, `${completed}\n`);
+  assert.equal((await access.discoverCodexSessions())[0].status, 'stopped');
+  assert.equal(calls.length, 1, 'rollout changes must not relaunch sqlite when the database is unchanged');
+
+  await fs.appendFile(database, '-changed');
+  await access.discoverCodexSessions();
+  assert.equal(calls.length, 2, 'database changes must refresh the cached query');
+});
+
+test('Node SQLite discovery reads Codex sessions without starting an external process', async t => {
+  const sqlite = await import('node:sqlite').catch(() => null);
+  if (!sqlite?.DatabaseSync) { t.skip('node:sqlite requires Node 22.5 or newer'); return; }
+  const f = await fixture();
+  const database = path.join(f.root, 'native-state.sqlite');
+  const rollout = path.join(f.root, 'native-rollout.jsonl');
+  const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
+  await fs.writeFile(rollout, `${started}\n`);
+  const connection = new sqlite.DatabaseSync(database);
+  try {
+    connection.exec('CREATE TABLE threads (id TEXT, name TEXT, title TEXT, created_at INTEGER, updated_at INTEGER, rollout_path TEXT, cwd TEXT, thread_source TEXT, archived INTEGER)');
+    connection.prepare('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('native-session', '进程内任务', '', 1, 2, rollout, f.root, 'user', 0);
+  } finally { connection.close(); }
+  let externalCalls = 0;
+  const access = await new Access(f.root, {
+    codexDb: database,
+    execFile: async () => { externalCalls++; throw new Error('external sqlite must not run'); },
+  }).init();
+
+  const sessions = await access.discoverCodexSessions();
+  assert.deepEqual(sessions.map(({ id, name, status }) => ({ id, name, status })), [
+    { id: 'native-session', name: '进程内任务', status: 'active' },
+  ]);
+  assert.equal(externalCalls, 0);
+});
+
 test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {
   const started = JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } });
   const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
