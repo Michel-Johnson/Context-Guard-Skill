@@ -25,6 +25,8 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 **本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。Node 服务会自动把编辑保存到本地 map.json，也会把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
 
+**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 只读服务器上与已合并主分支对应的基线。这是确定的目标规范，不代表当前本地工作台或仅 Map 同步已经实现；完整记忆同步和迁移仍待开发，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
+
 ```bash
 context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop

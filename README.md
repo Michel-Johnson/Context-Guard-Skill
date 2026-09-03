@@ -25,6 +25,15 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
 
+**Development policy for this repository:** source code follows the existing
+branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
+release artifacts. All development memory must come from the user-designated
+private server, with local caches and isolated Session records. All Sessions must
+read the server's committed-main baseline. This is the required target, not a
+claim that the current local workbench or Map-only sync implements it; full-memory
+sync and migration remain pending. See [the memory contract](references/server-memory.md).
+Other projects do not automatically inherit this repository's server configuration.
+
 ```bash
 context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop

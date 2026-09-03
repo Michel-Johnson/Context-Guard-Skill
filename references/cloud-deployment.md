@@ -4,6 +4,13 @@ Read this reference when installing or upgrading Context Guard Cloud on a
 server. Cloud remains part of this repository; do not copy individual files or
 create a second repository.
 
+For private development memory, first read `references/server-memory.md`.
+The current Cloud server exposes public read-only routes; its write tokens do
+not make those reads private. Do not expose this service with private records on
+a public interface. Private read authorization and the complete server-memory
+contract must be implemented and verified before migration; installing the
+current Map service alone does not satisfy that contract.
+
 The current server speaks HTTP. Keep it on a trusted private network until a
 later deployment adds HTTPS at the reverse proxy.
 

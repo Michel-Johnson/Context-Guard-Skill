@@ -1,5 +1,11 @@
 # Workbench / Agent interface (local Node protocol 2)
 
+This reference describes the current local document backend. For projects whose
+policy selects server-backed development memory, `references/server-memory.md`
+defines the required authority and isolation. That backend is still pending;
+do not commit `.codex` as a workaround or claim local reads are server-confirmed
+memory.
+
 The authoritative document is `<project>/.codex/context/map.json`. Browser storage
 contains recovery drafts and UI preferences, never a second authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
