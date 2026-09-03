@@ -13,7 +13,7 @@ import { buildArchiveReconciliation } from './reconcile.mjs';
 import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
 import { atomicWrite, encode } from './io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
-import { namedWorkbench, verifyWorkbenchUrl } from './named.mjs';
+import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
 import { compatibleRuntime, runtimeIdentity } from './runtime.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
@@ -157,8 +157,7 @@ async function stateForWorkbenchUrl(project, value) {
   }
   let response, advertised;
   try {
-    response = await fetch(new URL('/__context_guard/health', target), { signal: AbortSignal.timeout(1500), redirect: 'error' });
-    advertised = await response.json();
+    ({ response, value: advertised } = await readWorkbenchHealth(target));
   } catch (cause) { throw new MapError('WORKBENCH_UNAVAILABLE', `The supplied workbench URL is unavailable: ${cause.message}`, 503); }
   if (!response.ok || !compatibleRuntime(advertised)) throw new MapError('LEGACY_SERVICE', 'The supplied URL is not a compatible Context Guard workbench', 409);
   if (advertised.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'The supplied URL belongs to a different Git project', 409, { expectedProjectId: project.projectId, actualProjectId: advertised.projectId });

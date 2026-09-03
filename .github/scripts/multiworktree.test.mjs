@@ -106,17 +106,21 @@ test('bound worktrees share service; Session maps are isolated; rebind expires o
 });
 test('a supplied workbench URL is verified before the Session binding is committed', async t => {
   const first = await fixture(t, false), second = await fixture(t, false);
+  let firstService, otherService, firstProxy, otherProxy;
+  t.after(async () => {
+    await Promise.all([firstProxy, otherProxy, firstService, otherService].filter(Boolean).map(service => service.close()));
+    await Promise.all([fs.rm(first.dir, { recursive: true, force: true }), fs.rm(second.dir, { recursive: true, force: true })]);
+  });
   await saveMainBinding(first.root, { mode: 'local', branch: 'trunk' });
   await saveMainBinding(second.root, { mode: 'local', branch: 'trunk' });
   await initialize(first.root); await initialize(second.root);
   await hook(first.root, 'url-session');
-  const firstService = await startServer({ root: first.root, port: 0 });
-  const otherService = await startServer({ root: second.root, port: 0 });
-  const firstProxy = await startNamedProxy({ dir: path.join(first.dir, 'proxy'), port: 0 });
-  const otherProxy = await startNamedProxy({ dir: path.join(second.dir, 'proxy'), port: 0 });
+  firstService = await startServer({ root: first.root, port: 0 });
+  otherService = await startServer({ root: second.root, port: 0 });
+  firstProxy = await startNamedProxy({ dir: path.join(first.dir, 'proxy'), port: 0 });
+  otherProxy = await startNamedProxy({ dir: path.join(second.dir, 'proxy'), port: 0 });
   const firstNamed = await namedWorkbench(firstService.state, request, { dir: path.join(first.dir, 'proxy'), port: 0 });
   const otherNamed = await namedWorkbench(otherService.state, request, { dir: path.join(second.dir, 'proxy'), port: 0 });
-  t.after(async () => { await Promise.all([firstProxy.close(), otherProxy.close(), firstService.close(), otherService.close()]); await Promise.all([fs.rm(first.dir, { recursive: true, force: true }), fs.rm(second.dir, { recursive: true, force: true })]); });
   const rejected = await cli(first.root, 'workbench', '--session', 'url-session', '--workbench-url', otherNamed.url);
   assert.notEqual(rejected.code, 0); assert.match(rejected.stdout, /PROJECT_MISMATCH/);
   assert.equal((await bindingStatus(await resolveProject(first.root), 'url-session')).session.bound, false);

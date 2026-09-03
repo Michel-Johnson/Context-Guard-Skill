@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -76,14 +77,40 @@ export async function namedWorkbench(state, request, { name, dir, port } = {}) {
   return result;
 }
 
-export async function verifyWorkbenchUrl(url, expected) {
+export async function readWorkbenchHealth(url) {
   let response, value;
   try {
-    response = await fetch(new URL('/__context_guard/health', url), { signal: AbortSignal.timeout(1500), redirect: 'error' });
-    value = await response.json();
+    const target = new URL('/__context_guard/health', url);
+    // Node 18 delegates *.localhost to DNS on some platforms even though the
+    // browser-facing name is required to resolve to loopback. Probe the local
+    // proxy directly while preserving its host-based project routing.
+    if (target.protocol === 'http:' && target.hostname.endsWith('.localhost')) {
+      const result = await new Promise((resolve, reject) => {
+        const request = http.get({ hostname: '127.0.0.1', port: target.port, path: target.pathname + target.search, headers: { host: target.host } }, incoming => {
+          let text = '';
+          incoming.on('data', chunk => text += chunk);
+          incoming.on('end', () => {
+            try { resolve({ ok: incoming.statusCode >= 200 && incoming.statusCode < 300, value: JSON.parse(text) }); }
+            catch (error) { reject(error); }
+          });
+        });
+        request.setTimeout(1500, () => request.destroy(new Error('timeout')));
+        request.on('error', reject);
+      });
+      response = result;
+      value = result.value;
+    } else {
+      response = await fetch(target, { signal: AbortSignal.timeout(1500), redirect: 'error' });
+      value = await response.json();
+    }
   } catch (cause) {
     throw new Error(`Workbench URL verification failed: ${cause.message}`);
   }
+  return { response, value };
+}
+
+export async function verifyWorkbenchUrl(url, expected) {
+  const { response, value } = await readWorkbenchHealth(url);
   if (!response.ok || !compatibleRuntime(value) || value.projectId !== expected.projectId || value.instance !== expected.instance) {
     throw new Error('Workbench URL resolves to a different project, instance, or runtime');
   }
