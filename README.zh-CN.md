@@ -32,6 +32,10 @@ context-guard workbench --root /path/to/project
 context-guard workbench --root /path/to/project --stop
 ```
 
+本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。多个 session 复用已有页面；不同 Git worktree 可通过 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 明确绑定，不自动合并 Map。旧服务可用 `--direct` 继续直连。
+
+详见[命名工作台](references/named-workbench.md)。精简路由存储基于 Portless 0.15.6，遵循 Apache-2.0；[第三方声明](THIRD_PARTY_NOTICES.md)与许可证随安装包分发。
+
 顶栏最右 **设置** 里切界面语言和主题。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
 
 ### 总览

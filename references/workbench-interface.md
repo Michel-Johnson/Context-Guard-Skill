@@ -14,6 +14,11 @@ runtime dependency is required.
 
 ## Start and read
 
+The workbench command uses a project-named `.localhost` HTTP entry by default.
+See [named-workbench.md](named-workbench.md) for explicit linked-worktree binding,
+opening deduplication, private proxy state and direct-URL compatibility. Map CLI
+requests retain the direct authenticated backend channel.
+
 ```sh
 context-guard workbench --root "/path/to/project"
 context-guard map status --root "/path/to/project" --session "actual-hook-session-id"
