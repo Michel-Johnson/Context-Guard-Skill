@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMotionValueEvent, type MotionValue } from "motion/react";
 import { usageTiming, type ConversationTiming } from "./app-usage";
-import { advanceCamera, cameraSettled, frameCamera, nativeHeight, stillCamera, type Box, type CameraMotion } from "./native-camera";
+import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera, type Box, type CameraMotion } from "./native-camera";
 
 export function NativeViewport({ children, clock, full, reduced = false, sourceWidth = 1280, focusPane, timing = usageTiming, turnKey = "" }: {
   children: ReactNode;
@@ -73,7 +73,8 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
     const settled = cameraSettled(next, target);
     // 停稳后吸附到目标，避免微小尾差持续触发布局/文字重绘。
     const pose = settled ? target : next.pose;
-    const transform = `translate(${pose.x}px, ${pose.y}px) scale(${pose.scale})`;
+    const rasterPose = rasterizedCamera(pose);
+    const transform = `translate(${rasterPose.x}px, ${rasterPose.y}px) scale(${rasterPose.scale})`;
     if (plane.current && transform !== lastTransform.current) {
       plane.current.style.transform = transform;
       lastTransform.current = transform;
@@ -125,7 +126,7 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
   }, [full, width, height, sourceWidth, reduced, clock]);
 
   return <div className="native-viewport" ref={viewport} style={{ height }}>
-    <div className="native-plane" ref={plane} style={{ width: sourceWidth, height: nativeHeight }}>
+    <div className="native-plane" ref={plane} style={{ width: sourceWidth, height: nativeHeight, zoom: nativeRasterScale }}>
       {children}
     </div>
   </div>;

@@ -25,10 +25,9 @@ const CAMERA_EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
 
 type CameraPose = { x: number; y: number; scale: number };
 
-function applyCameraPose(node: HTMLDivElement, pose: CameraPose) {
-  node.style.transition = "none";
-  node.style.zoom = String(pose.scale);
-  node.style.transform = `translate(${pose.x / pose.scale}px,${pose.y / pose.scale}px) scale(1)`;
+function applyCameraPose(node: HTMLDivElement, pose: CameraPose, rasterScale: number) {
+  node.style.zoom = String(rasterScale);
+  node.style.transform = `translate(${pose.x / rasterScale}px,${pose.y / rasterScale}px) scale(${pose.scale / rasterScale})`;
 }
 
 export type TourPlayback = {
@@ -70,8 +69,6 @@ export function TourStage({
   const surface = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
-  const cameraTimer = useRef(0);
-  const bakedScale = useRef(1);
   const cameraReady = useRef(false);
   const lastScene = useRef("");
   const bootReady = useRef(false);
@@ -278,6 +275,9 @@ export function TourStage({
   const height = playback ? Math.min(620, Math.max(minimumHeight, width * 0.625))
     : Math.max(minimumHeight, (width * FRAME_HEIGHT) / FRAME_WIDTH);
   const base = Math.min(width / FRAME_WIDTH, height / FRAME_HEIGHT);
+  // 始终按镜头可能达到的最高倍率栅格化。镜头移动只做等比缩小与平移，
+  // 避免把上一帧的低分辨率 iframe 放大后出现短暂模糊。
+  const rasterScale = Math.max(base, width < 600 ? 1 : 1.12);
   let scale = base;
   let x = (width - FRAME_WIDTH * scale) / 2;
   let y = (height - FRAME_HEIGHT * scale) / 2;
@@ -313,24 +313,13 @@ export function TourStage({
   useLayoutEffect(() => {
     const node = plane.current;
     if (!node) return;
-    window.clearTimeout(cameraTimer.current);
     const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
-    if (!cameraReady.current || reduced || exploring) {
-      cameraReady.current = true;
-      bakedScale.current = target.scale;
-      applyCameraPose(node, target);
-      return;
-    }
-    const rasterScale = bakedScale.current;
-    node.style.transition = `transform ${CAMERA_DURATION}ms ${CAMERA_EASING}`;
-    node.style.zoom = String(rasterScale);
-    node.style.transform = `translate(${target.x / rasterScale}px,${target.y / rasterScale}px) scale(${target.scale / rasterScale})`;
-    cameraTimer.current = window.setTimeout(() => {
-      bakedScale.current = target.scale;
-      applyCameraPose(node, target);
-    }, CAMERA_DURATION);
-    return () => window.clearTimeout(cameraTimer.current);
-  }, [x, y, scale, reduced, exploring]);
+    node.style.transition = !cameraReady.current || reduced || exploring
+      ? "none"
+      : `transform ${CAMERA_DURATION}ms ${CAMERA_EASING}`;
+    cameraReady.current = true;
+    applyCameraPose(node, target, rasterScale);
+  }, [x, y, scale, rasterScale, reduced, exploring]);
   return (
     <div
       className={"tour-shell" + (exploring ? " exploring" : "")}

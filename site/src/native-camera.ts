@@ -1,12 +1,21 @@
 export const nativeHeight = 800;
+export const nativeRasterScale = 1.35;
 export type Box = { x: number; y: number; width: number; height: number };
 export type Camera = { x: number; y: number; scale: number };
 export type CameraMotion = { pose: Camera; velocity: Camera };
 
+export function rasterizedCamera(pose: Camera): Camera {
+  return {
+    x: pose.x / nativeRasterScale,
+    y: pose.y / nativeRasterScale,
+    scale: pose.scale / nativeRasterScale,
+  };
+}
+
 // 画布始终保持参考窗口的尺寸。取景只改变统一缩放和平移，不参与客户端布局。
 export function frameCamera(width: number, height: number, sourceWidth: number, focus: Box | null, pane?: { x: number; width: number }): Camera {
   const paneWidth = pane?.width ?? (sourceWidth === 640 ? 640 : 464);
-  const scale = focus ? Math.min(1.35, width / (paneWidth + 24))
+  const scale = focus ? Math.min(nativeRasterScale, width / (paneWidth + 24))
     : Math.min(width / sourceWidth, height / nativeHeight);
   const place = (size: number, extent: number, center: number) => size * scale <= extent
     ? (extent - size * scale) / 2
