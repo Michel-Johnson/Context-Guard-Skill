@@ -181,6 +181,13 @@ def read_json(path: Path, default: object) -> object:
         return default
 
 
+def read_input_json(input_path: str) -> object:
+    """Read CLI JSON as UTF-8 bytes so Windows console encodings cannot corrupt it."""
+    if input_path == "-":
+        return json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    return json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
+
+
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -531,9 +538,7 @@ def archive_session(
     plan = runtime.get("active_plan")
     closure: dict[str, object] = {}
     if input_path:
-        raw_governance = json.load(sys.stdin) if input_path == "-" else json.loads(
-            Path(input_path).resolve().read_text(encoding="utf-8")
-        )
+        raw_governance = read_input_json(input_path)
         if not isinstance(raw_governance, dict):
             raise ValueError("archive-session --input needs a JSON object")
         unsupported = set(raw_governance) - {"assignments", "proposal", "verification", "assessment", "scope_review", "failure_review", "subagent_review"}
@@ -701,10 +706,7 @@ def validate_candidates(value: object) -> dict[str, object]:
 
 def write_candidates(root: Path, input_path: str) -> Path:
     init_context(root)
-    if input_path == "-":
-        value = json.load(sys.stdin)
-    else:
-        value = json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
+    value = read_input_json(input_path)
     normalized = validate_candidates(value)
     path = context_dir(root) / "l1-candidates.json"
     write_json(path, normalized)
@@ -1120,7 +1122,7 @@ def main() -> int:
         return blocked
     if args.command == "split-signal":
         try:
-            data = json.load(sys.stdin) if args.input == "-" else json.loads(Path(args.input).read_text(encoding="utf-8"))
+            data = read_input_json(args.input)
             if not isinstance(data, dict):
                 raise ValueError("split-signal input needs an items array")
             print(json.dumps(split_signal(root, resolve_session_id(root, args.session), args.signal, data.get("items")), ensure_ascii=False))
@@ -1131,7 +1133,7 @@ def main() -> int:
     if args.command.startswith("plan-"):
         try:
             from context_guard_hook import plan_command
-            data = (json.load(sys.stdin) if args.input == "-" else json.loads(Path(args.input).read_text(encoding="utf-8"))) if args.input else {}
+            data = read_input_json(args.input) if args.input else {}
             if not isinstance(data, dict):
                 raise ValueError("plan input must be an object")
             print(json.dumps(plan_command(root, resolve_session_id(root, args.session), args.command, data), ensure_ascii=False))
