@@ -105,6 +105,7 @@ export async function diagnoseWorkbench(root, sessionId = '') {
     project: { id: project.projectId, kind: project.kind, root: openedRoot, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, main: project.binding?.main || null, bindingRequired: project.bindingRequired },
     runtime: { status: runtimeStatus, services: inventory.records.map(publicService), named },
     ...binding,
+    workbenchUrl: binding.session?.workbenchUrl || named.url || null,
     session: { ...binding.session, verified: binding.session.bound && runtimeStatus === 'ready' && (!namedEntry || named.status === 'ready') },
     migrationRequired: legacy.length > 0 || duplicates || named.status === 'mismatch',
     migrationPlan: [...legacy, ...(duplicates ? ready.slice(1) : [])].map(item => ({
@@ -299,7 +300,7 @@ async function main(args) {
         ? { url: state.url, projectRoot: state.root }
         : await namedWorkbench(state, request, { name: opt.name });
     await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
-    if (bindInput) await request(state, '/api/session', { method: 'POST', body: bindInput });
+    if (bindInput) await request(state, '/api/session', { method: 'POST', body: { ...bindInput, workbenchUrl: result.url } });
     const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
     const url = new URL(result.url);
     if (opt.session) url.searchParams.set('session', String(opt.session));

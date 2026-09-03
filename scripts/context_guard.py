@@ -1090,6 +1090,7 @@ def main() -> int:
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
     parser.add_argument("--binding-status", action="store_true")
+    parser.add_argument("--workbench-url")
     parser.add_argument("--bind-main")
     parser.add_argument("--local-main")
     parser.add_argument("--remote", default="origin")
@@ -1230,7 +1231,7 @@ def main() -> int:
     if args.command == "workbench":
         if args.binding_status or args.bind_main or args.local_main or args.session:
             command = ["workbench", "--root", str(root)]
-            for key, value in [("binding-status", args.binding_status), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
+            for key, value in [("binding-status", args.binding_status), ("workbench-url", args.workbench_url), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
                 if value:
                     command.append("--" + key)
                     if value is not True:

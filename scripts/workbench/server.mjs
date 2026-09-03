@@ -142,6 +142,31 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!requested.startsWith('session:') || !access.binding(requested.slice('session:'.length))) throw new MapError('UNKNOWN_VIEW', 'Select a registered Session view', 404);
     return requested;
   }
+  async function ensureSessionMap(sessionProject, sessionId) {
+    const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
+    const baseFile = path.join(dir, 'base-main.json');
+    const [existing, baseline] = await Promise.all([readJSON(file, null), readJSON(baseFile, null)]);
+    let main = null;
+    try { main = (await memoryRequest(project, 'main')).snapshot; }
+    catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
+    if (!existing) {
+      const seed = main?.memory?.map || await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
+      if (main) await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      await atomicWrite(file, encode(seed));
+    } else if (main && !baseline?.map) {
+      const legacySeed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'), null);
+      if (hash(encode(existing)) === hash(encode(main.memory.map))) {
+        await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      } else if (legacySeed && hash(encode(existing)) === hash(encode(legacySeed))) {
+        await atomicWrite(path.join(dir, 'before-main-baseline.json'), encode(existing));
+        await atomicWrite(file, encode(main.memory.map));
+        await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      } else {
+        throw new MapError('SESSION_BASELINE_REQUIRED', 'Session cache predates the confirmed main baseline and contains changes; preserve it and reconcile explicitly', 409);
+      }
+    }
+    return { dir, file };
+  }
   async function storeFor(viewId) {
     if (viewId === 'main') return stores.get(viewId);
     const sessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
@@ -150,15 +175,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const sessionProject = await resolveProject(binding.worktreeRoot);
     if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
     if (stores.has(viewId)) return stores.get(viewId);
-    const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
-    if (!await readJSON(file, null)) {
-      let seed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
-      try {
-        const { snapshot } = await memoryRequest(project, 'main');
-        if (snapshot) { seed = snapshot.memory.map; await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: snapshot.version, map: seed })); }
-      } catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
-      await atomicWrite(file, encode(seed));
-    }
+    const { dir, file } = await ensureSessionMap(sessionProject, sessionId);
     return createStore(viewId, sessionProject.worktreeRoot, { file, runtime: path.join(dir, 'sync'), eventsFile: path.join(dir, 'changes.jsonl'), projectionRoot: dir });
   }
   function sourceFor(viewId) {
@@ -237,7 +254,15 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         bindingState: await fs.realpath(previous.worktreeRoot || '').then(() => 'other-worktree').catch(() => 'stale'),
       });
     }
-    return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId) };
+    let workbenchUrl = previous?.workbenchUrl || null;
+    if (input.workbenchUrl) {
+      const candidate = new URL(String(input.workbenchUrl));
+      candidate.search = ''; candidate.hash = '';
+      const allowedOrigin = candidate.origin === base || candidate.origin === namedEntry?.origin;
+      if (!allowedOrigin || candidate.pathname !== '/prototype/workbench.html') throw new MapError('INVALID_WORKBENCH_URL', 'Binding URL must be this project workbench page', 400);
+      workbenchUrl = candidate.href;
+    }
+    return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId, { workbenchUrl }) };
   }
   const isHuman = actor => { if (actor.kind !== 'human') throw new MapError('FORBIDDEN', 'Requires the workbench capability', 403); };
   try {
@@ -306,8 +331,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
+          const sessionFiles = project.kind === 'git' ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
           const actor = await access.register(prepared.sessionId, prepared.binding);
-          if (project.kind === 'git') await storeFor(`session:${prepared.sessionId}`);
+          if (sessionFiles && !stores.has(`session:${prepared.sessionId}`)) {
+            await createStore(`session:${prepared.sessionId}`, prepared.sessionProject.worktreeRoot, {
+              file: sessionFiles.file,
+              runtime: path.join(sessionFiles.dir, 'sync'),
+              eventsFile: path.join(sessionFiles.dir, 'changes.jsonl'),
+              projectionRoot: sessionFiles.dir,
+            });
+          }
           const credential = token(); agentTokens.set(credential, actor);
           return send(res, 200, { token: credential, actor });
         }

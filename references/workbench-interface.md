@@ -56,6 +56,9 @@ Binding is prepared before the named route is touched and committed only after
 the final URL has passed identity verification. The returned URL includes
 `?session=<id>` so that browser tab remains pinned to that Session; activity in
 another task never changes the selected map. Only explicit human selection does.
+The verified project URL is stored with the Session binding and is returned as
+`workbenchUrl` by binding status. The loopback backend URL is diagnostic-only and
+must not replace the named project URL in a user-facing binding.
 
 Runtime compatibility uses a schema plus named capabilities, not the broad HTTP
 protocol number. `workbench --diagnose` inventories every registered state file

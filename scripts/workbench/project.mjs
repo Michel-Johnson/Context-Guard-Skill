@@ -263,7 +263,7 @@ export async function mainWorktree(project) {
   return null;
 }
 
-export async function sessionBinding(project, sessionId) {
+export async function sessionBinding(project, sessionId, { workbenchUrl = null } = {}) {
   return {
     sessionId,
     projectId: project.projectId,
@@ -275,6 +275,7 @@ export async function sessionBinding(project, sessionId) {
     mainBranch: project.mainBranch,
     baseMainSha: project.mainSha,
     workbenchState: project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : path.join(project.worktreeRoot, '.codex/context/private/workbench.json'),
+    ...(workbenchUrl ? { workbenchUrl } : {}),
     updatedAt: new Date().toISOString(),
   };
 }
