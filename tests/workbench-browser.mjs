@@ -289,7 +289,7 @@ try {
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?preview=1`);
     await preview.waitForSelector('.node.root');
     assert.equal(await preview.evaluate(() => document.documentElement.classList.contains('theme-preview')), true);
-    assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(50, 54, 57)');
+    assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 253, 248)');
     const previewBanner = await preview.evaluate(() => {
       const el = document.querySelector('.theme-preview-banner');
       const s = getComputedStyle(el);
