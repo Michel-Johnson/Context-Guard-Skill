@@ -206,6 +206,7 @@ export async function startCloudServer({
   const directoryClients = new Set();
   const workbenchClients = new Set();
   const projectClients = new Map();
+  const sockets = new Set();
   const tails = new Map();
   let registryTail = Promise.resolve();
   const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
@@ -706,16 +707,32 @@ export async function startCloudServer({
       if (!res.headersSent) send(res, error.status || 500, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message, ...(error.details || {}) } }); else res.end();
     }
   });
+  server.on('connection', socket => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
   server.requestTimeout = 15_000;
   const heartbeat = setInterval(() => {
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
     for (const res of directoryClients) if (!res.destroyed) res.write(': heartbeat\n\n');
   }, 15_000); heartbeat.unref();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
-  const close = () => new Promise((resolve, reject) => {
+  let closing;
+  const close = () => closing ||= new Promise((resolve, reject) => {
     clearInterval(heartbeat);
-    for (const res of directoryClients) res.end(); for (const client of workbenchClients) client.res.end(); for (const set of projectClients.values()) for (const res of set) res.end();
-    server.close(error => error ? reject(error) : resolve());
+    for (const res of directoryClients) res.end();
+    for (const client of workbenchClients) client.res.end();
+    for (const set of projectClients.values()) for (const res of set) res.end();
+    server.close(error => {
+      if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
+      else resolve();
+    });
+    server.closeIdleConnections?.();
+    const forceClose = setTimeout(() => {
+      server.closeAllConnections?.();
+      for (const socket of sockets) socket.destroy();
+    }, 250);
+    forceClose.unref();
   });
   return { server, close, url: `http://${host}:${server.address().port}` };
 }
