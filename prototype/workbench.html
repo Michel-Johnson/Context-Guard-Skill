@@ -570,12 +570,6 @@ body.bug-path-mode .drawer .sess-dot{width:8px;height:8px;border-radius:50%;disp
 #links path.current-flow{fill:none;stroke-width:4.6;stroke-dasharray:7 16;stroke-linecap:round;
   opacity:1;filter:drop-shadow(0 0 5px #fff8) drop-shadow(0 0 7px);animation:current-run .65s linear infinite}
 @keyframes current-run{to{stroke-dashoffset:-23}}
-#currents{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:3;overflow:visible}
-.current-bead{position:absolute;left:0;top:0;width:13px;height:13px;margin:-7px 0 0 -7px;
-  border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px 3px rgba(255,255,255,.8);pointer-events:none;
-  offset-rotate:0deg;animation:bead-run .85s linear infinite}
-.current-bead:after{content:"";position:absolute;inset:3px;border-radius:50%;background:#fff;opacity:.9}
-@keyframes bead-run{from{offset-distance:0%}to{offset-distance:100%}}
 
 /* ---------- 右侧抽屉 ---------- */
 .drawer{position:fixed;top:var(--chrome-top);right:0;bottom:0;width:var(--drawer-width);z-index:20;background:var(--bg);
@@ -1266,7 +1260,6 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
   <div id="world">
     <svg id="links"></svg>
     <div id="nodes"></div>
-    <div id="currents"></div>
     <div id="flow-labs"></div>
   </div>
 </div>
@@ -4893,7 +4886,6 @@ const GAP_TB = 56, GAP_TB_X = 22, MOD_GAP_X = 28;
 const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
-const currentsEl = document.getElementById("currents");
 const flowLabsEl = document.getElementById("flow-labs");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
@@ -4940,7 +4932,6 @@ function renderMap(){
   const relSet = relFocus ? flowPartners(relFocus) : null;
 
   nodesEl.innerHTML = "";
-  if(currentsEl) currentsEl.innerHTML = "";
   if(flowLabsEl) flowLabsEl.innerHTML = "";
   const els = new Map();
   function mountEl(n, ghost){
@@ -5182,24 +5173,11 @@ function renderMap(){
     const hit = focusedBug();
     const sessions = hit ? bugSessionsOf(hit.bug) : [];
     if(sessions.length && pathSegs.length){
-      if(currentsEl){
-        currentsEl.style.width = (maxX+140)+"px";
-        currentsEl.style.height = (maxY+140)+"px";
-      }
       sessions.forEach((sid, si)=>{
         const color = sessionColor(sid);
         pathSegs.forEach((d, di)=>{
           const delay = (di*0.18 + si*0.32).toFixed(2);
           paths += `<path class="current-flow" stroke="${color}" style="animation-delay:${delay}s" d="${d}"/>`;
-          if(currentsEl){
-            const bead = document.createElement("div");
-            bead.className = "current-bead";
-            bead.style.background = color;
-            bead.style.boxShadow = `0 0 12px 4px ${color}`;
-            bead.style.offsetPath = `path("${d}")`;
-            bead.style.animationDelay = delay+"s";
-            currentsEl.appendChild(bead);
-          }
         });
       });
     }

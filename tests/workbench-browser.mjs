@@ -327,6 +327,16 @@ try {
     assert.deepEqual(flowLabs.awayFromApex, [], `labels should stay on the arc, not hug a node: ${flowLabs.awayFromApex.join(',')}`);
     await preview.locator('#btn-rel').click();
     recordCheck('relation-flow-labels');
+    await preview.locator('#btn-bugs').click();
+    await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
+    await preview.waitForSelector('body.bug-path-mode');
+    assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
+    assert.equal(await preview.locator('.current-bead').count(), 0);
+    await preview.locator('#btn-bug-exit').click();
+    if (await preview.evaluate(() => document.body.classList.contains('bugs-open'))) {
+      await preview.locator('#btn-bugs').click();
+    }
+    recordCheck('bug-path-flow-no-bead');
     const child = preview.locator('#nodes .node.module').nth(1);
     const childId = await child.getAttribute('data-id');
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
