@@ -21,6 +21,7 @@ const overview: Camera = {
   overview: true,
 };
 const CAMERA_DURATION = 850;
+const CAMERA_RASTER_SCALE = 2;
 
 type CameraPose = { x: number; y: number; scale: number };
 
@@ -28,10 +29,10 @@ function paintCameraPose(node: HTMLDivElement, pose: CameraPose) {
   const ratio = window.devicePixelRatio || 1;
   const x = Math.round(pose.x * ratio) / ratio;
   const y = Math.round(pose.y * ratio) / ratio;
-  node.style.zoom = String(pose.scale);
-  node.style.left = `${x / pose.scale}px`;
-  node.style.top = `${y / pose.scale}px`;
-  node.style.transform = "none";
+  node.style.zoom = String(CAMERA_RASTER_SCALE);
+  node.style.left = "0px";
+  node.style.top = "0px";
+  node.style.transform = `translate3d(${x / CAMERA_RASTER_SCALE}px,${y / CAMERA_RASTER_SCALE}px,0) scale(${pose.scale / CAMERA_RASTER_SCALE})`;
 }
 
 export type TourPlayback = {

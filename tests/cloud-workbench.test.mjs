@@ -35,6 +35,22 @@ test('cloud workbench exposes a multi-project registry and guarded writes', asyn
   assert.equal(created.response.status, 201); assert.equal(created.body.project.id, 'second');
 });
 
+test('private mode protects reads and uses secure cookies without leaking project count', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-private-cloud-'));
+  const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'admin-test', browserToken: 'browser-test', privateAccess: true, secureCookies: true, publicOrigin: 'https://map.example.test' });
+  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const health = await request(service.url, '/api/health');
+  assert.equal(health.response.status, 200); assert.equal(health.body.projects, undefined);
+  for (const route of ['/api/projects', '/.codex/context/map.json', '/', '/prototype/workbench-sync.mjs']) {
+    assert.equal((await fetch(service.url + route)).status, 401, route);
+  }
+  const login = await fetch(service.url + '/auth?token=browser-test&next=/', { redirect: 'manual' });
+  assert.equal(login.status, 302); assert.match(login.headers.get('set-cookie'), /HttpOnly/); assert.match(login.headers.get('set-cookie'), /Secure/);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: cookie } })).status, 200);
+  assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: cookie, Origin: 'https://evil.example' } })).status, 403);
+});
+
 test('cloud commit is idempotent and rejects stale map versions', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
