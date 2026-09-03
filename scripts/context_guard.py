@@ -181,6 +181,13 @@ def read_json(path: Path, default: object) -> object:
         return default
 
 
+def read_input_json(input_path: str) -> object:
+    """Read CLI JSON as UTF-8 bytes so Windows console encodings cannot corrupt it."""
+    if input_path == "-":
+        return json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    return json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
+
+
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -408,7 +415,7 @@ def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) ->
     }
     signals.append(signal)
     if len(signals) > 100:
-        unresolved = [item for item in signals if isinstance(item, dict) and item.get("status") == "pending"][-50:]
+        unresolved = [item for item in signals if isinstance(item, dict) and item.get("status") == "pending"]
         resolved = [item for item in signals if isinstance(item, dict) and item.get("status") != "pending"][-50:]
         runtime["signals"] = unresolved + resolved
     write_hook_runtime(root, session_id, runtime)
@@ -442,6 +449,32 @@ def resolve_prompt_signal(
     })
     write_hook_runtime(root, session_id, runtime)
     return signal
+
+
+def split_signal(root: Path, session_id: str, signal_id: str, items: object) -> list[dict]:
+    """The Agent separates meanings; the hook never guesses from keywords."""
+    if not isinstance(items, list) or not 2 <= len(items) <= 20 or not all(isinstance(item, str) and item.strip() for item in items):
+        raise ValueError("split-signal needs 2–20 nonempty text items")
+    runtime = read_hook_runtime(root, session_id)
+    parent = next((item for item in runtime["signals"] if item.get("id") == signal_id), None)
+    if not parent:
+        raise ValueError("unknown parent signal")
+    normalized = [item.strip() for item in items]
+    digest = hashlib.sha256(json.dumps(normalized, ensure_ascii=False).encode()).hexdigest()
+    if parent.get("status") == "resolved":
+        if parent.get("kind") == "split" and parent.get("split_hash") == digest:
+            return [item for item in runtime["signals"] if item.get("parent_id") == signal_id]
+        raise ValueError("parent signal already resolved; cannot replace its classification")
+    children = [{"id": prompt_signal_id(session_id, f"{signal_id}:{index}", text), "parent_id": signal_id,
+                 "turn_id": parent.get("turn_id"), "created_at": utc_now(), "preview": text[:400],
+                 "prompt_hash": hashlib.sha256(text.encode()).hexdigest(), "status": "pending"}
+                for index, text in enumerate(normalized)]
+    parent.update({"status": "resolved", "kind": "split", "resolved_at": utc_now(), "split_hash": digest})
+    runtime["signals"].extend(children)
+    write_hook_runtime(root, session_id, runtime)
+    append_session_event(root, "signal-split", session_platform(root, session_id), session_id,
+                         {"signal_id": signal_id, "child_ids": [item["id"] for item in children]})
+    return children
 
 
 def session_records(root: Path) -> list[dict[str, object]]:
@@ -501,19 +534,45 @@ def archive_session(
         "reconciliation": {"files": [], "mapped": {}, "uncovered": [], "operations": []},
     }
     governance: dict[str, object] = {}
+    runtime = read_hook_runtime(root, session_id)
+    plan = runtime.get("active_plan")
+    closure: dict[str, object] = {}
     if input_path:
-        raw_governance = json.load(sys.stdin) if input_path == "-" else json.loads(
-            Path(input_path).resolve().read_text(encoding="utf-8")
-        )
+        raw_governance = read_input_json(input_path)
         if not isinstance(raw_governance, dict):
             raise ValueError("archive-session --input needs a JSON object")
-        unsupported = set(raw_governance) - {"assignments", "proposal"}
+        unsupported = set(raw_governance) - {"assignments", "proposal", "verification", "assessment", "scope_review", "failure_review", "subagent_review"}
         if unsupported:
             raise ValueError(f"archive-session --input has unsupported fields: {', '.join(sorted(unsupported))}")
-        governance = raw_governance
+        governance = {key: value for key, value in raw_governance.items() if key in {"assignments", "proposal"}}
+        closure = {key: value for key, value in raw_governance.items() if key not in governance}
+    current_snapshot = None
+    if isinstance(plan, dict):
+        from context_guard_hook import scope_snapshot
+        assessment = closure.get("assessment")
+        if not summary.strip() or not isinstance(closure.get("verification"), str) or not closure["verification"].strip():
+            raise ValueError("active plan archive needs summary and verification evidence in --input")
+        if not isinstance(assessment, dict) or assessment.get("decision") not in {"reuse", "propose", "none"} or not str(assessment.get("reason") or "").strip():
+            raise ValueError("archive needs assessment {decision:reuse|propose|none, reason}")
+        if (assessment["decision"] == "propose") != bool(governance.get("proposal")):
+            raise ValueError("proposal input must agree with the node/module assessment")
+        for flag, field in (("scope_review_required", "scope_review"), ("failure_review_required", "failure_review")):
+            if plan.get(flag) and not str(closure.get(field) or "").strip():
+                raise ValueError(f"archive needs {field}: explain actual scope or failed tool recovery")
+        reviews = closure.get("subagent_review") or {}
+        for agent_id, agent in (runtime.get("subagents") or {}).items():
+            if agent.get("plan_id") == plan["id"] and (not isinstance(reviews, dict) or not str(reviews.get(agent_id) or "").strip()):
+                raise ValueError(f"archive needs subagent_review for {agent_id}: verify or explicitly discard its result")
+        current_snapshot = scope_snapshot(root, plan["paths"])
+        baseline = plan.get("baseline") or {}
+        changed = {file for file in set(baseline) | set(current_snapshot) if baseline.get(file) != current_snapshot.get(file)}
+        if changed - set(file_list):
+            raise ValueError("archive omitted changed files: " + ", ".join(sorted(changed - set(file_list))))
+        if set(file_list) - (changed | set(plan.get("actual_paths") or [])):
+            raise ValueError("archive includes files not observed changed by the plan")
     if governance and not file_list:
         raise ValueError("archive-session --input needs --files")
-    if file_list:
+    if file_list or isinstance(plan, dict):
         map_result = run_node_workbench(
             ["map", "reconcile", "--root", str(root), "--session", session_id],
             {
@@ -521,12 +580,16 @@ def archive_session(
                 "decisions": decisions.strip(),
                 "next": next_steps.strip(),
                 "files": file_list,
+                **({"nodeIds": plan["node_ids"] if not file_list else [], "planId": plan["id"],
+                    "verification": closure["verification"], "assessment": closure["assessment"]} if isinstance(plan, dict) else {}),
                 **governance,
             },
         )
     reconciliation = map_result.get("reconciliation", {})
     if not isinstance(reconciliation, dict):
         reconciliation = {}
+    if isinstance(plan, dict) and (map_result.get("committed") is not True or reconciliation.get("unclassified") or reconciliation.get("uncovered")):
+        raise ValueError("plan archive incomplete: assign uncovered files to existing nodes or submit an evidence-backed proposal")
     node_ids = list((reconciliation.get("mapped") or {}).keys())
     proposed_id = str(reconciliation.get("proposedId") or "")
     if proposed_id:
@@ -551,6 +614,8 @@ def archive_session(
     ):
         if value.strip():
             lines.extend([f"### {heading}", "", value.strip(), ""])
+    if closure:
+        lines.extend(["### Verification and assessment", "", json.dumps(closure, ensure_ascii=False, indent=2), ""])
     if file_list:
         lines.extend(["### Files", "", *[f"- {item}" for item in file_list], ""])
         mapped = reconciliation.get("mapped") or {}
@@ -567,6 +632,17 @@ def archive_session(
         ])
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines).rstrip() + "\n")
+    if isinstance(plan, dict):
+        # A successful Map write plus local archive is the receipt; a reminder or
+        # an attempted write can never stand in for it.
+        latest = read_hook_runtime(root, session_id)
+        active = latest.get("active_plan") or {}
+        if active.get("id") != plan["id"] or active.get("revision") != plan.get("revision"):
+            raise ValueError("plan changed during archive; Map write succeeded but completion receipt needs revalidation")
+        plan["archive"] = {"at": utc_now(), "revision": plan.get("revision"), "snapshot": current_snapshot,
+                           "map_version": map_result.get("version"), "node_ids": node_ids, **closure}
+        latest["active_plan"] = plan
+        write_hook_runtime(root, session_id, latest)
     print(f"[context-guard] archived session: {session_id} ({path})")
     if file_list:
         print(
@@ -630,10 +706,7 @@ def validate_candidates(value: object) -> dict[str, object]:
 
 def write_candidates(root: Path, input_path: str) -> Path:
     init_context(root)
-    if input_path == "-":
-        value = json.load(sys.stdin)
-    else:
-        value = json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
+    value = read_input_json(input_path)
     normalized = validate_candidates(value)
     path = context_dir(root) / "l1-candidates.json"
     write_json(path, normalized)
@@ -683,6 +756,8 @@ def record_todo(
     signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
     if not signal:
         raise ValueError(f"unknown prompt signal: {signal_id}")
+    if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "todo"}:
+        raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
     map_doc = read_json(context_dir(root) / "map.json", {})
     if find_map_node(map_doc.get("root") if isinstance(map_doc, dict) else None, node_id) is None:
         raise ValueError(f"unknown map node: {node_id}")
@@ -1006,6 +1081,7 @@ def main() -> int:
             "init", "set-language", "workbench", "record-bad-case",
             "record-bad-case-fix", "record-todo", "resolve-signal", "archive-session",
             "write-candidates",
+            "plan-start", "plan-finish", "plan-status", "split-signal",
         ],
     )
     parser.add_argument("--root", type=Path, default=None)
@@ -1046,6 +1122,27 @@ def main() -> int:
     blocked = guard_implicit_skill_root(root, explicit)
     if blocked:
         return blocked
+    if args.command == "split-signal":
+        try:
+            data = read_input_json(args.input)
+            if not isinstance(data, dict):
+                raise ValueError("split-signal input needs an items array")
+            print(json.dumps(split_signal(root, resolve_session_id(root, args.session), args.signal, data.get("items")), ensure_ascii=False))
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] split-signal failed: {exc}", file=sys.stderr)
+            return 1
+    if args.command.startswith("plan-"):
+        try:
+            from context_guard_hook import plan_command
+            data = read_input_json(args.input) if args.input else {}
+            if not isinstance(data, dict):
+                raise ValueError("plan input must be an object")
+            print(json.dumps(plan_command(root, resolve_session_id(root, args.session), args.command, data), ensure_ascii=False))
+            return 0
+        except (OSError, RuntimeError, ValueError) as exc:
+            print(f"[context-guard] {args.command} failed: {exc}", file=sys.stderr)
+            return 1
     if args.command == "init":
         created = init_context(root)
         print(f"[context-guard] context: {context_dir(root)}")

@@ -446,7 +446,8 @@ async function main(args) {
   throw new MapError('USAGE', 'Use sync connect|ensure|status|pull|prepare|track|checkpoint|finish');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
+const entryPath = value => process.platform === 'win32' ? value.toLowerCase() : value;
+if (process.argv[1] && entryPath(await fs.realpath(process.argv[1]).catch(() => '')) === entryPath(await fs.realpath(ownFile))) {
   try {
     const result = await main(process.argv.slice(2));
     if (result !== undefined) process.stdout.write(`${JSON.stringify(result)}\n`);

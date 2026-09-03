@@ -39,7 +39,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
+        "matcher": "Bash|exec_command|shell|run_shell_command|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
         "hooks": [
           {
             "type": "command",
@@ -64,7 +64,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
+        "matcher": "Bash|exec_command|shell|run_shell_command|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
         "hooks": [
           {
             "type": "command",

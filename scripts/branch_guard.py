@@ -12,6 +12,7 @@ PRODUCT_TESTS = {
     "tests/ci-smoke.mjs",
     "tests/cloud-sync-client.test.mjs",
     "tests/cloud-workbench.test.mjs",
+    "tests/cloud-workbench-browser.mjs",
     "tests/workbench-sync.test.mjs",
     "tests/workbench-inbox.test.mjs",
     "tests/hook-lifecycle.test.mjs",

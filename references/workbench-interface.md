@@ -292,6 +292,69 @@ signal, with creation/update timestamps. Retrying cannot duplicate it. Bad cases
 resolve their signal only after the Map attachment succeeds. `TODO.md` remains a
 human-owned file and the hook denies Agent writes to it.
 
+For a message with several distinct intentions, call `split-signal --root ...
+--session ... --signal <parent> --input <json>` with
+`{"items":["fix rendering now","add shortcuts later","record save failure"]}`.
+Classify each returned child signal. The split is idempotent, and unresolved
+children still block completion. A classification conflict is rejected before
+writing to Map, so it cannot leave a new orphan TODO.
+
+## Explicit development plans
+
+After the user approves implementation, classify pending prompt signals and run:
+
+```sh
+context-guard plan-start --root <project> --session <actual-session-id> --input <plan.json>
+```
+
+```json
+{"approved":true,"summary":"Implement rendering fix","node_ids":["N1"],"paths":["src/","tests/render.test.mjs"]}
+```
+
+`approved` records the Agent's attestation of user approval, not a new browser
+capability. Node grants are independently checked. The command reads the nodes,
+requires pending inbox changes to be reviewed/acknowledged, hashes the declared
+files, records timestamps and prepares configured Cloud Sync. A second active
+plan is rejected. There is no invented native "plan approved" Hook event.
+
+Mutating tools require an active plan. Known paths outside the plan are denied.
+Unknown shell/script scopes are explicitly marked unverified, never described
+as checked. Tool hooks do not run cloud synchronization per file. Read-only
+inspection and standalone Context Guard recovery commands remain available.
+
+After testing, archive every changed file with `archive-session --files ...
+--input <archive.json>`. In addition to optional assignments/proposal, supply:
+
+```json
+{"verification":"npm test: passed; artifact/log location","assessment":{"decision":"reuse","reason":"No independent module introduced; belongs to rendering"}}
+```
+
+Assessment decisions: `reuse`, `propose`, or `none` (no new node needed). A
+`propose` decision requires the existing evidence-backed proposal object; the
+Agent cannot approve it. Unknown scripts additionally require `scope_review`;
+failed tools require `failure_review` describing resolution and revalidation.
+Delegated work requires `subagent_review`, an object mapping each relevant agent
+ID to reviewed evidence or an explicit explanation for discarding its result.
+These are Agent judgments: the Hook checks that they exist, not their truth.
+No-files plans still append the summary/evidence to the authorized plan nodes.
+Unclassified changed files cannot yield a successful plan archive receipt.
+
+Run `plan-finish --root ... --session ...`. It checks the successful archive,
+file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sync
+when configured. Failure leaves the plan unfinished. Changes after archive
+require a new verified archive. `plan-status` returns the active plan, last
+completed plan and pending signals; use it after compact/interrupt or a retry.
+Stop blocks pending signals or active plans and never marks them complete itself.
+On a host's repeated Stop invocation, it reports `INCOMPLETE` without another
+forced retry, preserving unfinished state so the Agent can report a real blocker
+instead of entering an infinite loop.
+
+Limits: this is a cooperative Agent protocol, not a filesystem sandbox. Arbitrary
+scripts may modify paths outside the declared scope; their actual scope requires
+Agent review. A local inbox check is a point-in-time observation, not a lock on
+all other writers. Cloud finish provides the serialized remote conflict check.
+Host Hook delivery and support must be validated on the installed client.
+
 ## Cache migration and external saves
 
 Keep the old browser/origin open and export its `cg-workbench-maps-v16` JSON. The

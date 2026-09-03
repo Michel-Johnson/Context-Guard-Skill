@@ -3,9 +3,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, validate, MapError } from '../../prototype/map-model.mjs';
+import { applyOperations, entries, validate, MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
-import { createMemoryHandler } from './memory.mjs';
+import { commitSessionMap, createMemoryHandler, readMemoryProject } from './memory.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -384,15 +384,36 @@ export async function startCloudServer({
     const document = snapshot.document || emptyProjectDocument(project);
     return { projectId: project.id, version: snapshot.version || versionOf(document), document };
   };
-  const workbenchState = async (scope, project) => {
-    const snapshot = await workbenchSnapshot(scope, project);
-    return { version: snapshot.version, doc: snapshot.document, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
+  const sessionSnapshot = async (project, viewId) => {
+    if (!configuredMemory?.projects?.[project.id]) throw new MapError('UNKNOWN_VIEW', 'Private Session memory is not configured for this project', 404);
+    const sessionId = viewId.slice('session:'.length);
+    const snapshot = (await readMemoryProject(configuredMemory, project.id)).sessions[sessionId];
+    if (!snapshot) throw new MapError('UNKNOWN_VIEW', 'Session memory is not available', 404);
+    return { version: snapshot.version, document: snapshot.memory.map, source: { status: 'session', sessionId, sourceCommit: snapshot.sourceCommit, baseMainVersion: snapshot.baseMainVersion, updatedAt: snapshot.updatedAt || null } };
   };
-  const broadcastWorkbench = async (scope, project) => {
-    const state = await workbenchState(scope, project);
+  const scopedWorkbenchState = async (scope, project, viewId = 'main') => {
+    const snapshot = viewId.startsWith('session:') ? await sessionSnapshot(project, viewId) : await workbenchSnapshot(scope, project);
+    return { version: snapshot.version, doc: snapshot.document, viewId, source: snapshot.source || null, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
+  };
+  const memorySessions = async project => {
+    if (!configuredMemory?.projects?.[project.id]) return [];
+    const state = await readMemoryProject(configuredMemory, project.id);
+    const names = await fs.readdir(path.join(worksDir, project.id)).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+    const works = [];
+    for (const name of names.filter(name => name.endsWith('.json'))) {
+      const work = await readJson(path.join(worksDir, project.id, name), null);
+      if (work?.sessionId) works.push(work);
+    }
+    return Object.values(state.sessions).map(snapshot => {
+      const latest = works.filter(work => work.sessionId === snapshot.sessionId).sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
+      return { id: snapshot.sessionId, name: '', platform: 'agent', status: latest?.status === 'working' ? 'active' : 'completed', lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
+    }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
+  };
+  const broadcastWorkbench = async (scope, project, viewId = 'main') => {
+    const state = await scopedWorkbenchState(scope, project, viewId);
     for (const client of workbenchClients) {
       if (client.res.destroyed) { workbenchClients.delete(client); continue; }
-      if (client.scope === scope) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+      if (client.scope === `${scope}|${viewId}`) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
     }
   };
   const validateOperationId = input => {
@@ -479,23 +500,39 @@ export async function startCloudServer({
         const scope = workbench[1] === 'overview' ? 'overview' : `project:${decodeURIComponent(workbench[2])}`;
         const project = workbench[2] ? projectById(decodeURIComponent(workbench[2])) : null;
         if (workbench[2] && !project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
+        const viewId = String(url.searchParams.get('view') || 'main');
+        if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
         if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
         requireWorkbench(req, url);
-        if (action === '/api/state' && req.method === 'GET') return send(res, 200, { ...(await workbenchState(scope, project)), actor: { kind: 'human', sessionId: 'cloud-workbench' }, grants: [] }, workbenchCookie());
+        if (action === '/api/state' && req.method === 'GET') {
+          const state = await scopedWorkbenchState(scope, project, viewId);
+          return send(res, 200, { ...state, actor: { kind: 'human', sessionId: 'cloud-workbench' }, grants: state.doc?.root ? [...entries(state.doc.root).keys()] : [] }, workbenchCookie());
+        }
         if (action === '/api/events' && req.method === 'GET') {
-          const client = { scope, res }; workbenchClients.add(client);
+          const client = { scope: `${scope}|${viewId}`, res }; workbenchClients.add(client);
           res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...workbenchCookie() });
-          res.write(`retry: 1000\nevent: state\ndata: ${JSON.stringify(await workbenchState(scope, project))}\n\n`);
+          res.write(`retry: 1000\nevent: state\ndata: ${JSON.stringify(await scopedWorkbenchState(scope, project, viewId))}\n\n`);
           req.on('close', () => workbenchClients.delete(client)); return;
         }
-        if (action === '/api/access' && req.method === 'GET') return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
+        if (action === '/api/access' && req.method === 'GET') {
+          if (!project) return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
+          const sessions = await memorySessions(project), grants = {};
+          const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
+          for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
+          return send(res, 200, { sessions, grants, currentSessionId: null, project: { id: project.id, kind: 'git', main: { status: 'ready' } } });
+        }
         if (action === '/api/presence' && req.method === 'POST') {
-          const input = await requestBody(req), state = await workbenchState(scope, project);
+          const input = await requestBody(req), state = await scopedWorkbenchState(scope, project, viewId);
           return send(res, 200, { version: state.version, synchronized: input.version === state.version && !input.dirty, error: null, recovery: false });
         }
         if (action === '/api/commit' && req.method === 'POST') {
           const input = await requestBody(req);
+          if (viewId.startsWith('session:')) {
+            const result = await commitSessionMap(configuredMemory, project.id, viewId.slice('session:'.length), input);
+            await broadcastWorkbench(scope, project, viewId);
+            return send(res, 200, result);
+          }
           if (project) return send(res, 200, await commitProject(project, input, { kind: 'human', sessionId: 'cloud-workbench' }));
           const result = await serial('overview', async () => {
             await recoverTransactions('overview');
@@ -524,7 +561,7 @@ export async function startCloudServer({
           });
           await broadcastWorkbench('overview', null); return send(res, 200, result);
         }
-        if (action === '/api/projections' && req.method === 'POST') return send(res, 200, { status: 'ready', sourceVersion: (await workbenchState(scope, project)).version });
+        if (action === '/api/projections' && req.method === 'POST') return send(res, 200, { status: 'ready', sourceVersion: (await scopedWorkbenchState(scope, project, viewId)).version });
         throw new MapError('NOT_FOUND', 'Unsupported cloud workbench route', 404);
       }
       if (route === '/api/health' && req.method === 'GET') return send(res, 200, { ok: true, service: 'context-guard-cloud', protocol: 3, ...(privateAccess ? {} : { projects: registry.projects.length }) });

@@ -75,6 +75,26 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(saved.body.snapshot.updatedAt, new Date(saved.body.snapshot.updatedAt).toISOString());
   const read = await request(service.url, '/v1/projects/context-guard/sessions/session-one', { headers: memoryHeaders });
   assert.equal(read.body.snapshot.memory.map.root.title, 'Session map');
+  const browserHeaders = { Authorization: 'Bearer cloud-admin', 'Content-Type': 'application/json' };
+  const access = await request(service.url, '/api/workbench/projects/context-guard/api/access', { headers: browserHeaders });
+  assert.deepEqual(access.body.sessions.map(session => session.id), ['session-one']);
+  assert.equal(access.body.project.kind, 'git');
+  const sessionState = await request(service.url, '/api/workbench/projects/context-guard/api/state?view=session%3Asession-one', { headers: browserHeaders });
+  assert.equal(sessionState.body.viewId, 'session:session-one');
+  assert.equal(sessionState.body.doc.root.title, 'Session map');
+  const edited = await request(service.url, '/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one', {
+    method: 'POST', headers: browserHeaders,
+    body: JSON.stringify({ baseVersion: sessionState.body.version, operationId: 'browser-session-edit', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'edited in cloud workbench' } }] }),
+  });
+  assert.equal(edited.response.status, 200);
+  assert.equal(edited.body.persistedAt, new Date(edited.body.persistedAt).toISOString());
+  const stale = await request(service.url, '/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one', {
+    method: 'POST', headers: browserHeaders,
+    body: JSON.stringify({ baseVersion: sessionState.body.version, operationId: 'stale-browser-edit', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'must not overwrite' } }] }),
+  });
+  assert.equal(stale.response.status, 409); assert.equal(stale.body.error.code, 'VERSION_CONFLICT');
+  const editedRead = await request(service.url, '/v1/projects/context-guard/sessions/session-one', { headers: memoryHeaders });
+  assert.equal(editedRead.body.snapshot.memory.map.root.purpose, 'edited in cloud workbench');
   const cloudMap = await request(service.url, '/api/projects/context-guard/map');
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
 });

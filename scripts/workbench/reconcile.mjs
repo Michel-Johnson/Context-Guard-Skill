@@ -3,7 +3,7 @@ import { entries } from '../../prototype/map-model.mjs';
 
 const PROPOSAL_BASES = new Set(['new-module', 'new-interface', 'new-component', 'new-responsibility']);
 const PROPOSAL_FIELDS = new Set(['parentId', 'title', 'purpose', 'reason', 'basis', 'files', 'kind']);
-const INPUT_FIELDS = new Set(['summary', 'decisions', 'next', 'files', 'assignments', 'proposal']);
+const INPUT_FIELDS = new Set(['summary', 'decisions', 'next', 'files', 'assignments', 'proposal', 'nodeIds', 'planId', 'verification', 'assessment']);
 
 function normalizeRepoPath(value) {
   let file = String(value || '').trim().replaceAll('\\', '/');
@@ -117,6 +117,7 @@ function archiveKey(sessionId, files, input, governance) {
     String(input.decisions || '').trim(),
     String(input.next || '').trim(),
     governance,
+    input.planId || null, input.verification || null, input.assessment || null,
   ])).digest('hex');
 }
 
@@ -128,6 +129,8 @@ function archiveMemory(input, sessionId, key, files, extra = {}) {
     record: `.codex/context/sessions/${String(sessionId).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 120) || 'session'}.md`,
     paths: files,
     archiveKey: key,
+    recorded_at: new Date().toISOString(),
+    ...(input.planId ? { plan_id: input.planId, verification: input.verification, assessment: input.assessment } : {}),
     ...extra,
   };
 }
@@ -149,12 +152,18 @@ export function buildArchiveReconciliation(doc, sessionId, input = {}) {
   const unknown = Object.keys(input).filter(key => !INPUT_FIELDS.has(key));
   if (unknown.length) throw new Error(`Archive input has unsupported fields: ${unknown.join(', ')}`);
   const files = [...new Set((Array.isArray(input.files) ? input.files : []).map(normalizeRepoPath))].sort();
-  if (!files.length) {
+  if (!files.length && !(input.nodeIds || []).length) {
     if (input.proposal || (input.assignments || []).length) throw new Error('Archive governance input needs changed files');
     return { key: null, files: [], mapped: {}, assignments: [], unclassified: [], uncovered: [], proposedId: null, operations: [], operationId: null };
   }
 
   const index = entries(doc.root), mapped = new Map(), directlyMapped = new Set();
+  if (!Array.isArray(input.nodeIds || [])) throw new Error('nodeIds must be an array');
+  for (const id of input.nodeIds || []) {
+    const node = index.get(id)?.node;
+    if (!node || ['proposed', 'cancelled'].includes(node.proposal)) throw new Error('Plan archive needs an accepted node');
+    mapped.set(id, []);
+  }
   for (const file of files) {
     const owner = ownerForPath(doc, file);
     if (!owner) continue;
@@ -218,6 +227,7 @@ export function buildArchiveReconciliation(doc, sessionId, input = {}) {
     unclassified = unclassified.filter(file => !proposed.has(file));
   }
 
+  if (input.planId && unclassified.length) throw new Error(`Plan archive has unclassified files: ${unclassified.join(', ')}`);
   return {
     key,
     files,
