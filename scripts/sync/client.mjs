@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { watch } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { diffTrees, same, validate, MapError } from '../../prototype/map-model.mjs';
@@ -27,9 +27,17 @@ function parseOptions(args) {
 
 export function syncPaths(root) {
   const dir = path.join(root, '.codex/context/private/cloud-sync');
+  const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: root, encoding: 'utf8', windowsHide: true, timeout: 2000,
+  });
+  const sharedDir = common.status === 0 && common.stdout.trim()
+    ? path.join(path.resolve(root, common.stdout.trim()), 'context-guard/cloud-sync')
+    : dir;
   return {
     dir,
-    config: path.join(dir, 'config.json'),
+    sharedDir,
+    config: path.join(sharedDir, 'config.json'),
+    legacyConfig: path.join(dir, 'config.json'),
     state: path.join(dir, 'state.json'),
     base: path.join(dir, 'base-map.json'),
     inbox: path.join(dir, 'inbox.jsonl'),
@@ -78,7 +86,12 @@ async function appendInbox(root, event) {
 }
 
 async function loadConfig(root) {
-  const config = await readJson(syncPaths(root).config);
+  const paths = syncPaths(root);
+  let config = await readJson(paths.config);
+  if (!config && paths.legacyConfig !== paths.config) {
+    config = await readJson(paths.legacyConfig);
+    if (config) await atomicWrite(paths.config, encode(config));
+  }
   if (!config?.url || !config?.projectId || !config?.token) throw new MapError('SYNC_NOT_CONFIGURED', 'Run context-guard sync connect first', 404);
   return config;
 }
@@ -293,7 +306,9 @@ export async function finishSync({ root, sessionId }) {
 
 export async function syncStatus(root) {
   root = await fs.realpath(path.resolve(root));
-  const paths = syncPaths(root), config = await readJson(paths.config), state = await readJson(paths.state), service = await readJson(paths.service);
+  const paths = syncPaths(root);
+  const config = await loadConfig(root).catch(error => error.code === 'SYNC_NOT_CONFIGURED' ? null : Promise.reject(error));
+  const state = await readJson(paths.state), service = await readJson(paths.service);
   let serviceAlive = false;
   if (service?.pid) try { process.kill(service.pid, 0); serviceAlive = true; } catch {}
   return {

@@ -62,10 +62,12 @@ async function defaultBranch(root, remote = 'origin') {
 async function worktreeMetadata(root, main = null) {
   const head = await git(root, ['rev-parse', 'HEAD'], { optional: true });
   const currentBranch = await git(root, ['branch', '--show-current'], { optional: true });
+  let gitDir = await git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true });
+  if (gitDir) gitDir = await fs.realpath(gitDir).catch(() => path.resolve(root, gitDir));
   const mainBranch = main?.branch || '';
   const mainRef = main?.ref || '';
   const mainSha = mainRef ? await git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }) : '';
-  return { branch: currentBranch, head, mainBranch, mainRef, mainSha };
+  return { branch: currentBranch, head, gitDir, mainBranch, mainRef, mainSha };
 }
 
 export const projectBindingPath = project => path.join(project.sharedDir, 'project-binding.json');
@@ -128,7 +130,11 @@ export async function resolveProject(openedRoot) {
     kind: 'git',
     openedRoot: requestedRoot,
     worktreeRoot,
-    worktreeId: `worktree-${digest(worktreeRoot).slice(0, 20)}`,
+    // The Git administration directory survives a supported `git worktree move`
+    // and changes when a different worktree is later created at the same path.
+    // An absolute checkout path has the opposite behaviour and caused stale
+    // bindings to look current after path reuse.
+    worktreeId: `worktree-${digest(metadata.gitDir || worktreeRoot).slice(0, 20)}`,
     commonDir,
     sharedDir,
     remote,
@@ -166,13 +172,25 @@ export async function saveMainBinding(openedRoot, options) {
 export async function bindingStatus(project, sessionId = '') {
   const bindings = await readJSON(sessionBindingsPath(project), { sessions: {} });
   const session = sessionId ? bindings?.sessions?.[sessionId] || null : null;
+  let state = 'unbound';
+  if (session) {
+    if (session.projectId !== project.projectId) state = 'project-mismatch';
+    else if (session.worktreeId === project.worktreeId) state = session.worktreeRoot === project.worktreeRoot ? 'current' : 'moved';
+    else if (!session.gitDir && session.worktreeRoot === project.worktreeRoot) state = 'current-legacy';
+    else {
+      const target = await fs.realpath(session.worktreeRoot || '').catch(() => null);
+      state = target ? 'other-worktree' : 'stale';
+    }
+  }
   return {
     projectId: project.projectId,
     kind: project.kind,
     main: project.binding?.main || null,
     bindingRequired: project.bindingRequired,
     workbenchState: project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : path.join(project.worktreeRoot, '.codex/context/private/workbench.json'),
-    session: session ? { ...session, bound: session.projectId === project.projectId && session.worktreeRoot === project.worktreeRoot } : { bound: false, sessionId },
+    session: session
+      ? { ...session, state, bound: ['current', 'current-legacy', 'moved'].includes(state), pathChanged: state === 'moved', migrationNeeded: state === 'current-legacy' }
+      : { bound: false, state, sessionId },
   };
 }
 
@@ -245,17 +263,19 @@ export async function mainWorktree(project) {
   return null;
 }
 
-export async function sessionBinding(project, sessionId) {
+export async function sessionBinding(project, sessionId, { workbenchUrl = null } = {}) {
   return {
     sessionId,
     projectId: project.projectId,
     worktreeId: project.worktreeId,
+    gitDir: project.gitDir || null,
     worktreeRoot: project.worktreeRoot,
     branch: project.branch,
     head: project.head,
     mainBranch: project.mainBranch,
     baseMainSha: project.mainSha,
     workbenchState: project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : path.join(project.worktreeRoot, '.codex/context/private/workbench.json'),
+    ...(workbenchUrl ? { workbenchUrl } : {}),
     updatedAt: new Date().toISOString(),
   };
 }

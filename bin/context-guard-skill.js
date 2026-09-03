@@ -16,6 +16,7 @@ const skillInstallEntries = [
   "README.zh-CN.md",
   "THIRD_PARTY_NOTICES.md",
   "licenses",
+  "bin",
   "agents",
   "prototype",
   "references",
@@ -231,7 +232,9 @@ function copySkill(target) {
               && !/\.py[co]$/i.test(parts.at(-1));
           }
         }
-      : { recursive: true };
+      : entry === "bin"
+        ? { recursive: true, filter(source) { const relative = path.relative(from, source); return relative === "" || relative === "context-guard-skill.js"; } }
+        : { recursive: true };
     fs.cpSync(from, to, options);
   }
 }
@@ -493,7 +496,9 @@ function doctor(args) {
     const target = options.target || defaults.target;
     const hooksTarget = options.hooksTarget || defaults.hooksTarget;
     const configTarget = options.configTarget || defaults.configTarget;
-    check(`${platform}.skill`, fs.existsSync(path.join(target, "SKILL.md")) && fs.existsSync(path.join(target, "scripts", "context_guard_hook.py")), target);
+    const installedLauncher = path.join(target, "bin", "context-guard-skill.js");
+    check(`${platform}.skill`, fs.existsSync(path.join(target, "SKILL.md")) && fs.existsSync(path.join(target, "scripts", "context_guard_hook.py")) && fs.existsSync(installedLauncher), target);
+    check(`${platform}.cli`, fs.existsSync(installedLauncher), installedLauncher);
     let config = null;
     try { config = readObject(hooksTarget, platform); } catch (error) { check(`${platform}.hooks`, false, error.message); }
     if (config) {
@@ -522,11 +527,14 @@ function doctor(args) {
   try { map = JSON.parse(fs.readFileSync(path.join(ctx, "map.json"), "utf8")); } catch {}
   check("project.map", map?.root?.id || map?.root === null, path.join(ctx, "map.json"));
   check("project.sessions", fs.existsSync(path.join(ctx, "sessions.jsonl")), path.join(ctx, "sessions.jsonl"));
-  let workbench = null;
-  try { workbench = JSON.parse(fs.readFileSync(path.join(ctx, "private", "workbench.json"), "utf8")); } catch {}
-  let alive = false;
-  if (workbench?.pid) { try { process.kill(workbench.pid, 0); alive = true; } catch {} }
-  check("project.workbench", alive && workbench?.protocol === 2, alive ? workbench.url : "not running; SessionStart or `context-guard workbench` can start it", false);
+  const diagnosticLauncher = platforms.length === 1 ? path.join((options.target || platformTargets(platforms[0]).target), "bin", "context-guard-skill.js") : null;
+  let diagnostic = null;
+  if (diagnosticLauncher && fs.existsSync(diagnosticLauncher)) {
+    const probe = spawnSync(process.execPath, [diagnosticLauncher, "workbench", "--diagnose", "--root", options.root, ...(process.env.CODEX_THREAD_ID ? ["--session", process.env.CODEX_THREAD_ID] : [])], { encoding: "utf8", windowsHide: true, timeout: 7000 });
+    try { diagnostic = JSON.parse(probe.stdout); } catch {}
+  }
+  const runtimeStatus = diagnostic?.runtime?.status || "unknown";
+  check("project.workbench", ["ready", "stopped"].includes(runtimeStatus), diagnostic ? JSON.stringify({ status: runtimeStatus, named: diagnostic.runtime.named, services: diagnostic.runtime.services }) : "diagnosis unavailable", false);
   const ok = results.every(item => !item.required || item.ok);
   if (options.json) console.log(JSON.stringify({ ok, results }, null, 2));
   else {

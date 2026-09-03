@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -6,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { readJSON, pause } from './io.mjs';
 import { projectId, projectName, resolveProject } from './project.mjs';
+import { compatibleRuntime, WORKBENCH_RUNTIME_SCHEMA } from './runtime.mjs';
 
 export const namedDirectory = () => path.resolve(process.env.CONTEXT_GUARD_NAMED_STATE_DIR || path.join(os.homedir(), '.context-guard/named-workbench'));
 function alive(pid) { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } }
@@ -58,17 +60,59 @@ export async function namedWorkbench(state, request, { name, dir, port } = {}) {
   const chosen = name || saved?.name || projectName(doc.project || path.basename(state.root), state.root);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(chosen)) throw new Error('Use a lowercase DNS name (letters, digits, hyphens; 1–63 characters)');
   const capabilities = await fetch(new URL('/__context_guard/health', state.url), { signal: AbortSignal.timeout(1000) }).then(r => r.json());
-  if (!capabilities.namedEntry) throw new Error('The running workbench needs an upgrade for named URLs. Use --direct, or stop it explicitly after saving drafts; it was not restarted');
+  if (!capabilities.namedEntry || !compatibleRuntime(capabilities)) throw new Error('The running workbench needs an upgrade for verified named URLs. Save drafts and use the explicit migration flow; it was not restarted');
   const proxy = await ensureNamedProxy({ dir, port });
   const hostname = `${chosen}.localhost`, origin = `http://${hostname}:${new URL(proxy.base).port}`;
   // Stable, domain-separated capability for concurrent first registration.
   const proxyToken = saved?.proxyToken || createHash('sha256').update(`named-forwarding:${state.adminToken}`).digest('base64url');
   const identityRoot = capabilities.namedRoot || state.root;
-  const route = { hostname, root: identityRoot, projectId: projectId(identityRoot), instance: state.instance, port: Number(new URL(state.url).port), proxyToken };
+  const route = { hostname, root: identityRoot, projectId: projectId(identityRoot), instance: state.instance, runtimeSchema: WORKBENCH_RUNTIME_SCHEMA, port: Number(new URL(state.url).port), proxyToken };
   const response = await fetch(proxy.base + '/__cg_proxy/routes', { method: 'POST', headers: { Authorization: `Bearer ${proxy.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(route), signal: AbortSignal.timeout(5000), redirect: 'error' });
   if (!response.ok) throw new Error('Project name registration failed; name may belong to another project');
   // Claim the name before changing the backend's accepted origin. A collision
   // must not break the project's previously working URL.
   await request(state, '/api/named-entry', { method: 'POST', body: { origin, name: chosen, proxyToken } });
-  return { url: origin + '/prototype/workbench.html', projectRoot: state.root, proxyPort: Number(new URL(proxy.base).port) };
+  const result = { url: origin + '/prototype/workbench.html', projectRoot: state.root, proxyPort: Number(new URL(proxy.base).port) };
+  await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
+  return result;
+}
+
+export async function readWorkbenchHealth(url) {
+  let response, value;
+  try {
+    const target = new URL('/__context_guard/health', url);
+    // Node 18 delegates *.localhost to DNS on some platforms even though the
+    // browser-facing name is required to resolve to loopback. Probe the local
+    // proxy directly while preserving its host-based project routing.
+    if (target.protocol === 'http:' && target.hostname.endsWith('.localhost')) {
+      const result = await new Promise((resolve, reject) => {
+        const request = http.get({ hostname: '127.0.0.1', port: target.port, path: target.pathname + target.search, headers: { host: target.host } }, incoming => {
+          let text = '';
+          incoming.on('data', chunk => text += chunk);
+          incoming.on('end', () => {
+            try { resolve({ ok: incoming.statusCode >= 200 && incoming.statusCode < 300, value: JSON.parse(text) }); }
+            catch (error) { reject(error); }
+          });
+        });
+        request.setTimeout(1500, () => request.destroy(new Error('timeout')));
+        request.on('error', reject);
+      });
+      response = result;
+      value = result.value;
+    } else {
+      response = await fetch(target, { signal: AbortSignal.timeout(1500), redirect: 'error' });
+      value = await response.json();
+    }
+  } catch (cause) {
+    throw new Error(`Workbench URL verification failed: ${cause.message}`);
+  }
+  return { response, value };
+}
+
+export async function verifyWorkbenchUrl(url, expected) {
+  const { response, value } = await readWorkbenchHealth(url);
+  if (!response.ok || !compatibleRuntime(value) || value.projectId !== expected.projectId || value.instance !== expected.instance) {
+    throw new Error('Workbench URL resolves to a different project, instance, or runtime');
+  }
+  return value;
 }

@@ -6,7 +6,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
-import { ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
+import { diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
@@ -165,6 +165,27 @@ test('rollout lifecycle parser maps work to spinner state and completion to chec
   const completed = JSON.stringify({ timestamp: '2026-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'task_complete' } });
   assert.equal(rolloutTaskStatus(started).status, 'active');
   assert.equal(rolloutTaskStatus(`${started}\n${completed}`).status, 'stopped');
+  assert.equal(rolloutTaskStatus(JSON.stringify({ timestamp: '2026-01-01T00:00:02Z', type: 'turn_completed' })).status, 'stopped');
+  assert.equal(rolloutTaskStatus(JSON.stringify({ timestamp: '2026-01-01T00:00:03Z', type: 'event_msg', payload: { event: { type: 'task_failed' } } })).status, 'stopped');
+  assert.equal(rolloutTaskStatus('{}').status, 'unknown');
+});
+
+test('newer stopped evidence wins over a stale active discovery for a bound Session', async () => {
+  const f = await fixture();
+  await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), [
+    JSON.stringify({ at: '2026-01-01T00:00:01Z', event: 'session-start', platform: 'codex', session_id: 'finished-session' }),
+    JSON.stringify({ at: '2026-01-01T00:00:05Z', event: 'stop', platform: 'codex', session_id: 'finished-session' }),
+  ].join('\n') + '\n');
+  const access = await new Access(f.root, { codexSessions: async () => [{
+    id: 'finished-session', name: '已结束任务', platform: 'codex', status: 'active',
+    statusSeen: '2026-01-01T00:00:02Z', firstSeen: '2026-01-01T00:00:01Z',
+    lastSeen: '2026-01-01T00:00:09Z', lastEvent: 'task_started',
+  }] }).init();
+  await access.register('finished-session', { worktreeRoot: f.root });
+  const session = (await access.snapshot()).sessions[0];
+  assert.equal(session.status, 'stopped');
+  assert.equal(session.lastEvent, 'stop');
+  assert.equal(session.statusSeen, '2026-01-01T00:00:05Z');
 });
 
 test('Bug handoff message carries the actionable Bug and node context', () => {
@@ -563,11 +584,45 @@ test('legacy GET-only service is identified and preserved; a second Node owner i
   const legacy = http.createServer((_req, res) => res.end(JSON.stringify({ ok: true, root: f.root, pid: process.pid })));
   await new Promise(resolve => legacy.listen(0, '127.0.0.1', resolve));
   await fs.writeFile(path.join(f.ctx, 'private/workbench.json'), encode({ url: `http://127.0.0.1:${legacy.address().port}/prototype/workbench.html` }));
-  try { await assert.rejects(ensureServer(f.root), { code: 'LEGACY_SERVICE' }); assert.equal(legacy.listening, true); }
+  try {
+    const diagnosis = await diagnoseWorkbench(f.root);
+    assert.equal(diagnosis.runtime.status, 'legacy');
+    assert.equal(diagnosis.migrationRequired, true);
+    assert.equal('adminToken' in diagnosis.runtime.services[0], false);
+    await assert.rejects(ensureServer(f.root), { code: 'LEGACY_SERVICE' }); assert.equal(legacy.listening, true);
+  }
   finally { await new Promise(resolve => legacy.close(resolve)); }
   const running = await startServer({ root: f.root, port: 0 });
   try { await assert.rejects(startServer({ root: f.root, port: 0 }), { code: 'ALREADY_RUNNING' }); }
   finally { await running.close(); }
+});
+
+test('explicit legacy migration backs up context and retires only an exact service identity', async t => {
+  const f = await fixture();
+  execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, windowsHide: true });
+  execFileSync('git', ['config', 'user.name', 'Context Guard Test'], { cwd: f.root, windowsHide: true });
+  execFileSync('git', ['config', 'user.email', 'context-guard@example.invalid'], { cwd: f.root, windowsHide: true });
+  await fs.writeFile(path.join(f.root, 'README.md'), 'fixture');
+  execFileSync('git', ['add', 'README.md'], { cwd: f.root, windowsHide: true });
+  execFileSync('git', ['commit', '-m', 'fixture'], { cwd: f.root, windowsHide: true });
+  const instance = randomUUID();
+  const code = `const http=require('node:http');const root=process.argv[1],instance=process.argv[2];const s=http.createServer((q,r)=>{r.setHeader('content-type','application/json');r.end(JSON.stringify({ok:true,root,pid:process.pid,protocol:2,instance}))});s.listen(0,'127.0.0.1',()=>process.stdout.write(String(s.address().port)+'\\n'));process.on('SIGTERM',()=>s.close(()=>process.exit(0)));`;
+  const child = spawn(process.execPath, ['-e', code, f.root, instance], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  t.after(() => { try { child.kill('SIGTERM'); } catch {} });
+  const port = Number(await new Promise((resolve, reject) => { child.stdout.once('data', data => resolve(String(data).trim())); child.once('error', reject); }));
+  await fs.mkdir(path.join(f.ctx, 'private'), { recursive: true });
+  await fs.writeFile(path.join(f.ctx, 'private/workbench.json'), encode({ url: `http://127.0.0.1:${port}/prototype/workbench.html`, pid: child.pid, instance }));
+  const diagnosis = await diagnoseWorkbench(f.root);
+  assert.equal(diagnosis.runtime.status, 'legacy');
+  const retireKey = diagnosis.migrationPlan[0].retireKey;
+  assert.equal(retireKey, `${child.pid}:${instance}`);
+  const output = execFileSync(process.execPath, ['scripts/workbench/cli.mjs', 'workbench', 'migrate', '--root', f.root, '--retire', retireKey], { cwd: process.cwd(), encoding: 'utf8', windowsHide: true });
+  const migrated = JSON.parse(output);
+  assert.equal(migrated.migrated, true);
+  assert.equal(migrated.restartRequired, false);
+  const manifest = JSON.parse(await fs.readFile(path.join(migrated.backupDir, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.services[0].retireKey, retireKey);
+  assert.equal((await diagnoseWorkbench(f.root)).runtime.status, 'stopped');
 });
 
 test('project path aliases reuse the same healthy service', async () => {

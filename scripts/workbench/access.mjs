@@ -24,22 +24,53 @@ async function queryWithNodeSqlite(database, sql) {
   finally { connection.close(); }
 }
 
+const ACTIVE_TASK_EVENTS = new Set(['task_started', 'turn_started', 'response.started']);
+const STOPPED_TASK_EVENTS = new Set([
+  'task_complete', 'task_completed', 'turn_complete', 'turn_completed', 'response.completed',
+  'task_cancelled', 'task_canceled', 'task_failed', 'turn_aborted', 'turn_cancelled', 'turn_canceled',
+]);
+const UNKNOWN_ACTIVITY = { status: 'unknown', lastEvent: 'unknown', lastSeen: '' };
+
 function taskEvent(line) {
   try {
     const event = JSON.parse(line);
-    const type = event?.type === 'event_msg' ? event.payload?.type : null;
-    if (!['task_started', 'task_complete'].includes(type)) return null;
-    return { status: type === 'task_started' ? 'active' : 'stopped', lastEvent: type, lastSeen: event.timestamp || '' };
+    const candidates = [
+      event?.type === 'event_msg' ? event.payload?.type : null,
+      event?.type,
+      event?.payload?.event?.type,
+      event?.event?.type,
+    ].filter(type => typeof type === 'string');
+    const type = candidates.find(candidate => ACTIVE_TASK_EVENTS.has(candidate) || STOPPED_TASK_EVENTS.has(candidate));
+    if (!type) return null;
+    return {
+      status: ACTIVE_TASK_EVENTS.has(type) ? 'active' : 'stopped',
+      lastEvent: type,
+      lastSeen: event.timestamp || event.created_at || event.payload?.timestamp || '',
+    };
   } catch { return null; }
 }
 
-export function rolloutTaskStatus(text, initial = { status: 'stopped', lastEvent: 'unknown', lastSeen: '' }) {
+export function rolloutTaskStatus(text, initial = UNKNOWN_ACTIVITY) {
   let state = { ...initial };
   for (const line of text.split('\n')) {
     const event = taskEvent(line);
     if (event) state = event;
   }
   return state;
+}
+
+function activityOf(item) {
+  const status = ['active', 'stopped'].includes(item?.status) ? item.status : 'unknown';
+  const statusSeen = item?.statusSeen || (status === 'unknown' ? '' : item?.lastSeen) || '';
+  return { status, statusSeen, lastEvent: item?.lastEvent || 'unknown', statusSource: item?.statusSource || item?.platform || 'unknown' };
+}
+
+function latestActivity(previous, discovered) {
+  const before = activityOf(previous), after = activityOf(discovered);
+  if (after.statusSeen > before.statusSeen) return after;
+  if (after.statusSeen < before.statusSeen) return before;
+  const rank = { unknown: 0, active: 1, stopped: 2 };
+  return rank[after.status] > rank[before.status] ? after : before;
 }
 
 function isoTime(value) {
@@ -87,11 +118,14 @@ export class Access {
         const previous = sessions.get(id);
         const stopped = ['stop', 'subagent-stop'].includes(event.event);
         const activated = ['session-start', 'subagent-start', 'user-prompt-submit'].includes(event.event);
+        const status = stopped ? 'stopped' : activated ? 'active' : previous?.status || 'unknown';
         sessions.set(id, {
           id,
           name: typeof event.thread_name === 'string' && event.thread_name.trim() ? event.thread_name.trim() : previous?.name || '',
           platform: typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown',
-          status: stopped ? 'stopped' : activated ? 'active' : previous?.status || 'active',
+          status,
+          statusSeen: stopped || activated ? at : previous?.statusSeen || '',
+          statusSource: 'hook',
           firstSeen: previous?.firstSeen || at,
           lastSeen: at,
           lastEvent: typeof event.event === 'string' ? event.event : previous?.lastEvent || 'unknown',
@@ -142,12 +176,12 @@ export class Access {
       }
       end = start;
     }
-    return { status: 'stopped', lastEvent: 'unknown', lastSeen: '' };
+    return { ...UNKNOWN_ACTIVITY };
   }
   async rolloutState(file) {
-    if (!file) return { status: 'stopped', lastEvent: 'unknown', lastSeen: '' };
+    if (!file) return { ...UNKNOWN_ACTIVITY };
     const stat = await fs.stat(file).catch(() => null);
-    if (!stat?.isFile()) return { status: 'stopped', lastEvent: 'unknown', lastSeen: '' };
+    if (!stat?.isFile()) return { ...UNKNOWN_ACTIVITY };
     const previous = this.rolloutStates.get(file);
     if (previous && stat.size === previous.size) return previous;
     let state;
@@ -204,6 +238,8 @@ export class Access {
           name: String(row.name || row.title || '').trim(),
           platform: 'codex',
           status: state.status,
+          statusSeen: state.lastSeen,
+          statusSource: 'codex-rollout',
           firstSeen: isoTime(row.created_at),
           lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
           lastEvent: state.lastEvent,
@@ -217,22 +253,34 @@ export class Access {
     const [hookBatches, codexSessions] = await Promise.all([Promise.all(roots.map(root => this.hookSessionRegistry(root))), this.discoverCodexSessions(roots)]);
     const hookSessions = hookBatches.flat();
     const sessions = new Map(Object.entries(this.bindings.sessions).filter(([id]) => !id.startsWith('maintenance-')).map(([id, binding]) => [id, {
-      id, name: '', platform: 'unknown', status: 'stopped', firstSeen: binding.updatedAt, lastSeen: binding.updatedAt, lastEvent: 'bound', ...binding,
+      id, name: '', platform: 'unknown', status: 'unknown', statusSeen: '', statusSource: 'binding', firstSeen: binding.updatedAt, lastSeen: binding.updatedAt, lastEvent: 'bound', ...binding,
     }]));
     for (const discovered of [...hookSessions, ...codexSessions]) {
       if (!discovered?.id) continue;
       if (!this.binding(discovered.id)) continue;
       const stored = sessions.get(discovered.id);
       const previous = stored?.lastEvent === 'bound' ? { ...stored, firstSeen: '', lastSeen: '' } : stored;
+      const activity = latestActivity(previous, discovered);
       sessions.set(discovered.id, {
         ...previous,
         ...discovered,
         name: discovered.name || previous?.name || '',
         firstSeen: [previous?.firstSeen, discovered.firstSeen].filter(Boolean).sort()[0] || new Date(0).toISOString(),
         lastSeen: [previous?.lastSeen, discovered.lastSeen].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
+        ...activity,
       });
     }
-    return [...sessions.values()].map(item => ({ ...item, ...(this.binding(item.id) || {}) })).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+    const validated = await Promise.all([...sessions.values()].map(async item => {
+      const binding = this.binding(item.id) || {};
+      const target = binding.worktreeRoot ? await fs.realpath(binding.worktreeRoot).catch(() => null) : null;
+      return {
+        ...item,
+        ...binding,
+        bindingState: target ? 'bound' : 'stale',
+        worktreeName: target ? path.basename(target) : path.basename(binding.worktreeRoot || ''),
+      };
+    }));
+    return validated.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
   }
   async recordedSessionIds() {
     const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));

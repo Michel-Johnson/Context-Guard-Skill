@@ -13,7 +13,8 @@ import { buildArchiveReconciliation } from './reconcile.mjs';
 import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
 import { atomicWrite, encode } from './io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
-import { namedWorkbench } from './named.mjs';
+import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
+import { compatibleRuntime, runtimeIdentity } from './runtime.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -34,29 +35,153 @@ async function initialize(root) {
   }
   throw new Error('Python is still required for project initialization');
 }
+export async function serviceInventory(project) {
+  const worktreeRoots = await listWorktrees(project);
+  const stateFiles = [...new Set([projectStatePath(project), ...worktreeRoots.map(statePath)])];
+  const records = [];
+  for (const file of stateFiles) {
+    const state = await readJSON(file, null);
+    if (!state) continue;
+    const live = await health(state);
+    const liveRoot = live?.root ? await fs.realpath(live.root).catch(() => live.root) : null;
+    const belongs = live?.projectId === project.projectId || (!live?.projectId && liveRoot && worktreeRoots.includes(liveRoot));
+    records.push({
+      file,
+      state,
+      live,
+      belongs,
+      status: !live ? 'dead' : !belongs ? 'foreign' : compatibleRuntime(live) ? 'ready' : 'legacy',
+    });
+  }
+  const unique = [];
+  for (const record of records) {
+    const identity = record.live?.instance || `${record.state?.pid || ''}:${record.state?.url || record.file}`;
+    if (!unique.some(item => item.identity === identity)) unique.push({ ...record, identity });
+  }
+  return { worktreeRoots, records: unique };
+}
+
+function publicService(record) {
+  return {
+    stateFile: record.file,
+    status: record.status,
+    pid: record.live?.pid || record.state?.pid || null,
+    url: record.state?.url || null,
+    root: record.live?.root || record.state?.root || null,
+    projectId: record.live?.projectId || null,
+    worktreeRoot: record.live?.worktreeRoot || null,
+    instance: record.live?.instance || record.state?.instance || null,
+    protocol: record.live?.protocol || record.state?.protocol || null,
+    runtimeSchema: record.live?.runtimeSchema || null,
+    buildId: record.live?.buildId || null,
+    capabilities: Array.isArray(record.live?.capabilities) ? record.live.capabilities : [],
+    retireKey: record.live?.pid && record.live?.instance ? `${record.live.pid}:${record.live.instance}` : null,
+  };
+}
+
+export async function diagnoseWorkbench(root, sessionId = '') {
+  const openedRoot = await fs.realpath(path.resolve(root));
+  const project = await resolveProject(openedRoot);
+  const binding = await bindingStatus(project, sessionId);
+  const inventory = await serviceInventory(project);
+  const projectServices = inventory.records.filter(item => item.belongs && item.live);
+  const ready = projectServices.filter(item => item.status === 'ready');
+  const legacy = projectServices.filter(item => item.status === 'legacy');
+  const duplicates = ready.length > 1;
+  let named = { status: 'not-configured', url: null };
+  const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(openedRoot, '.codex/context/private/named-entry.json');
+  const namedEntry = await readJSON(namedFile, null);
+  if (namedEntry?.origin) {
+    const expected = ready[0]?.live;
+    if (!expected) named = { status: legacy.length ? 'legacy-runtime' : 'backend-unavailable', url: namedEntry.origin + '/prototype/workbench.html' };
+    else {
+      try { await verifyWorkbenchUrl(namedEntry.origin + '/prototype/workbench.html', expected); named = { status: 'ready', url: namedEntry.origin + '/prototype/workbench.html' }; }
+      catch (error) { named = { status: 'mismatch', url: namedEntry.origin + '/prototype/workbench.html', error: error.message }; }
+    }
+  }
+  const runtimeStatus = legacy.length ? 'legacy' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : 'stopped';
+  return {
+    expectedRuntime: runtimeIdentity(),
+    project: { id: project.projectId, kind: project.kind, root: openedRoot, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, main: project.binding?.main || null, bindingRequired: project.bindingRequired },
+    runtime: { status: runtimeStatus, services: inventory.records.map(publicService), named },
+    ...binding,
+    workbenchUrl: binding.session?.workbenchUrl || named.url || null,
+    session: { ...binding.session, verified: binding.session.bound && runtimeStatus === 'ready' && (!namedEntry || named.status === 'ready') },
+    migrationRequired: legacy.length > 0 || duplicates || named.status === 'mismatch',
+    migrationPlan: [...legacy, ...(duplicates ? ready.slice(1) : [])].map(item => ({
+      retireKey: publicService(item).retireKey,
+      root: item.live?.root || item.state?.root || null,
+      reason: item.status === 'legacy' ? 'incompatible-runtime' : 'duplicate-project-owner',
+    })),
+  };
+}
+
+async function migrateServices(root, retireKeys) {
+  const project = await resolveProject(root);
+  if (project.kind !== 'git') throw new MapError('MIGRATION_UNSUPPORTED', 'Legacy multi-worktree migration requires a Git project', 409);
+  const inventory = await serviceInventory(project);
+  const requested = new Set(String(retireKeys || '').split(',').map(value => value.trim()).filter(Boolean));
+  if (!requested.size) throw new MapError('MIGRATION_CONFIRMATION_REQUIRED', 'Pass the exact comma-separated pid:instance retire keys from workbench --diagnose', 409);
+  const candidates = inventory.records.filter(item => item.belongs && item.live && requested.has(`${item.live.pid}:${item.live.instance}`));
+  if (candidates.length !== requested.size) throw new MapError('MIGRATION_TARGET_CHANGED', 'A requested service identity is missing or changed; diagnose again', 409);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDir = path.join(project.sharedDir, 'migration-backups', timestamp);
+  await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
+  const manifest = [];
+  for (const item of candidates) {
+    const serviceRoot = await fs.realpath(item.live.root || item.state.root);
+    const source = path.join(serviceRoot, '.codex/context');
+    const target = path.join(backupDir, createHash('sha256').update(serviceRoot).digest('hex').slice(0, 16));
+    await fs.cp(source, target, { recursive: true, errorOnExist: true, force: false });
+    manifest.push({ retireKey: `${item.live.pid}:${item.live.instance}`, source, target, status: item.status });
+  }
+  await atomicWrite(path.join(backupDir, 'manifest.json'), encode({ projectId: project.projectId, createdAt: new Date().toISOString(), services: manifest }));
+  for (const item of candidates) {
+    const current = await health(item.state);
+    if (!current || current.pid !== item.live.pid || current.instance !== item.live.instance) throw new MapError('MIGRATION_TARGET_CHANGED', 'Service identity changed after backup; nothing further was signalled', 409, { backupDir });
+  }
+  for (const item of candidates) process.kill(item.live.pid, 'SIGTERM');
+  const deadline = Date.now() + 12000;
+  for (const item of candidates) {
+    while (Date.now() < deadline && await health(item.state)) await pause(50);
+    if (await health(item.state)) throw new MapError('MIGRATION_STOP_TIMEOUT', 'A backed-up service did not stop after SIGTERM; it was not force-killed', 503, { backupDir, retireKey: `${item.live.pid}:${item.live.instance}` });
+  }
+  return { migrated: true, backupDir, retired: manifest.map(item => item.retireKey), restartRequired: false, next: 'Run workbench with the intended Session; one compatible project service will be created if needed.' };
+}
+
+async function stateForWorkbenchUrl(project, value) {
+  let target;
+  try { target = new URL(String(value)); } catch { throw new MapError('INVALID_WORKBENCH_URL', 'Provide the complete project workbench URL', 400); }
+  if (target.protocol !== 'http:' || !(target.hostname === '127.0.0.1' || target.hostname === 'localhost' || target.hostname.endsWith('.localhost'))) {
+    throw new MapError('INVALID_WORKBENCH_URL', 'A local workbench URL must use http and localhost', 400);
+  }
+  let response, advertised;
+  try {
+    ({ response, value: advertised } = await readWorkbenchHealth(target));
+  } catch (cause) { throw new MapError('WORKBENCH_UNAVAILABLE', `The supplied workbench URL is unavailable: ${cause.message}`, 503); }
+  if (!response.ok || !compatibleRuntime(advertised)) throw new MapError('LEGACY_SERVICE', 'The supplied URL is not a compatible Context Guard workbench', 409);
+  if (advertised.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'The supplied URL belongs to a different Git project', 409, { expectedProjectId: project.projectId, actualProjectId: advertised.projectId });
+  const state = await readJSON(projectStatePath(project), null);
+  const stateHealth = state && await health(state);
+  if (!stateHealth || stateHealth.instance !== advertised.instance) throw new MapError('WORKBENCH_IDENTITY_MISMATCH', 'The URL is not the service registered for this Git project', 409);
+  return state;
+}
+
 export async function ensureServer(root, port = 8877) {
   root = await resolveProjectRoot(root);
   await initialize(root);
   root = await fs.realpath(root);
   const project = await ensureProjectBinding(await resolveProject(root));
   const sharedState = projectStatePath(project);
-  const sameProject = async live => live?.projectId
-    ? live.projectId === project.projectId
-    : !!live?.root && await fs.realpath(live.root).catch(() => null) === root;
-  const worktreeRoots = await listWorktrees(project);
-  const stateFiles = [...new Set([sharedState, ...worktreeRoots.map(statePath)])];
-  let state = null, live = null;
-  for (const file of stateFiles) {
-    const candidate = await readJSON(file, null);
-    const candidateLive = candidate && await health(candidate);
-    if (!candidateLive) continue;
-    if (candidateLive.projectId === project.projectId) { state = candidate; live = candidateLive; break; }
-    if (!candidateLive.projectId && candidateLive.root && worktreeRoots.includes(await fs.realpath(candidateLive.root).catch(() => ''))) {
-      throw new MapError('LEGACY_SERVICE', 'An older worktree-scoped service is active. Export its cache and stop it before starting the project workbench.', 409, { root: candidateLive.root });
-    }
-  }
-  if (await sameProject(live)) {
-    if (live.protocol !== 2 || !state.adminToken) throw new MapError('LEGACY_SERVICE', 'Old read-only service is active. Export its cache before stopping it and starting the Node workbench.', 409);
+  const inventory = await serviceInventory(project);
+  const liveProject = inventory.records.filter(item => item.belongs && item.live);
+  const legacy = liveProject.filter(item => item.status === 'legacy');
+  if (legacy.length) throw new MapError('LEGACY_SERVICE', 'An incompatible worktree service is active. Run workbench --diagnose, export its cache, then use the explicit migration command.', 409, { services: legacy.map(publicService) });
+  const ready = liveProject.filter(item => item.status === 'ready');
+  if (ready.length > 1) throw new MapError('DUPLICATE_SERVICE', 'More than one compatible service owns this Git project. Run workbench --diagnose and migrate exact instances; no process was stopped.', 409, { services: ready.map(publicService) });
+  let state = ready[0]?.state || null, live = ready[0]?.live || null;
+  if (state && live) {
+    if (!state.adminToken) throw new MapError('LEGACY_SERVICE', 'Workbench state lacks its local CLI capability; migrate it explicitly', 409);
     if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
     return state;
   }
@@ -67,7 +192,7 @@ export async function ensureServer(root, port = 8877) {
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
     await pause(60); state = await readJSON(sharedState, null).catch(() => null) || await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
-    if (live?.protocol === 2 && await sameProject(live)) return state;
+    if (compatibleRuntime(live) && live.projectId === project.projectId) return state;
   }
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
@@ -83,7 +208,7 @@ export async function stopServer(root) {
   const sharedState = projectStatePath(project);
   const state = await readJSON(sharedState, null) || await readJSON(statePath(root), null);
   if (!state || !await health(state)) return { stopped: false };
-  if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
+  if (!compatibleRuntime(await health(state))) throw new MapError('LEGACY_SERVICE', 'Export and migrate the old service with its original identity before stopping it');
   await request(state, '/api/stop', { method: 'POST', body: {} });
   const deadline = Date.now() + 12000;
   // A stop acknowledgement is not a released project lock. Do not let the next
@@ -135,8 +260,14 @@ async function main(args) {
   if (command === 'workbench' && opt.stop) {
     return stopServer(root);
   }
+  if (command === 'workbench' && (opt.migrate || opt._[0] === 'migrate')) {
+    return migrateServices(root, opt.retire);
+  }
   if (command === 'workbench' && opt['binding-status']) {
-    return bindingStatus(await resolveProject(root), String(opt.session || ''));
+    return diagnoseWorkbench(root, String(opt.session || ''));
+  }
+  if (command === 'workbench' && (opt.diagnose || opt._[0] === 'status')) {
+    return diagnoseWorkbench(root, String(opt.session || process.env.CODEX_THREAD_ID || ''));
   }
   if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
     const project = await saveMainBinding(root, {
@@ -155,15 +286,25 @@ async function main(args) {
   if (command !== 'workbench' && !isMaintenance && (!sessionId || !(await bindingStatus(project, sessionId)).session.bound)) {
     throw new MapError('SESSION_BINDING_REQUIRED', 'Ask which workbench to bind to; confirm with workbench --session. No service or map was created.', 409);
   }
-  const state = await ensureServer(root, Number(opt.port ?? 8877));
+  const state = opt['workbench-url']
+    ? await stateForWorkbenchUrl(project, opt['workbench-url'])
+    : await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') {
-    if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } });
+    const bindInput = opt.session ? { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } : null;
+    if (bindInput) await request(state, '/api/session-prepare', { method: 'POST', body: bindInput });
     const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
-    const result = opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
-      ? { url: state.url, projectRoot: state.root }
-      : await namedWorkbench(state, request, { name: opt.name });
+    const result = opt['workbench-url']
+      ? { url: String(opt['workbench-url']), projectRoot: state.root }
+      : opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
+        ? { url: state.url, projectRoot: state.root }
+        : await namedWorkbench(state, request, { name: opt.name });
+    await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
+    if (bindInput) await request(state, '/api/session', { method: 'POST', body: { ...bindInput, workbenchUrl: result.url } });
     const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
-    return { ...result, ...claim, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
+    const url = new URL(result.url);
+    if (opt.session) url.searchParams.set('session', String(opt.session));
+    const receipt = opt.session ? await diagnoseWorkbench(root, String(opt.session)) : null;
+    return { ...result, url: url.href, ...claim, root, projectId: state.projectId, source: refreshed.source, ...runtimeIdentity(), ...(receipt ? { binding: receipt.session, runtime: receipt.runtime } : {}) };
   }
   let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {

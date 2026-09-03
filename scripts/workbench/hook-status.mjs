@@ -4,9 +4,12 @@ import { fileURLToPath } from 'node:url';
 export function summarizeHooks(result, target) {
   const expected = path.join(target, 'scripts/context_guard_hook.py').replaceAll('\\', '/');
   const hooks = (result.data || []).flatMap(item => item.hooks || []).filter(item => String(item.command || '').replaceAll('\\', '/').includes(expected));
-  const events = new Set(hooks.filter(item => item.enabled && item.trustStatus === 'trusted').map(item => item.eventName));
+  // app-server reports lower camelCase names while hooks.json uses PascalCase.
+  // Event identity is case-insensitive; enabled and trust state are not.
+  const eventKey = value => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const events = new Set(hooks.filter(item => item.enabled && item.trustStatus === 'trusted').map(item => eventKey(item.eventName)));
   const required = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt'];
-  return { trusted: required.every(event => events.has(event)), hooks: hooks.map(({ eventName, enabled, trustStatus }) => ({ eventName, enabled, trustStatus })), missing: required.filter(event => !events.has(event)) };
+  return { trusted: required.every(event => events.has(eventKey(event))), hooks: hooks.map(({ eventName, enabled, trustStatus }) => ({ eventName, enabled, trustStatus })), missing: required.filter(event => !events.has(eventKey(event))) };
 }
 export function inspectHooks(root, target, command = 'codex') {
   return new Promise(resolve => {

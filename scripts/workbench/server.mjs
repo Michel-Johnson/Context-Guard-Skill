@@ -12,6 +12,7 @@ import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
 import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
 import { memoryRequest, sessionMemoryDir } from './memory.mjs';
+import { runtimeIdentity } from './runtime.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -49,7 +50,10 @@ async function queueCodexMessage({ sessionId, message, root }) {
   });
 }
 export async function health(state) {
-  try { const res = await fetch(new URL('/__context_guard/health', state.url), { signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
+  // Migration may ask an older service to drain after this probe. Do not leave
+  // a pooled keep-alive socket that makes its graceful `server.close()` wait
+  // for our own diagnostic connection (observed on macOS runners).
+  try { const res = await fetch(new URL('/__context_guard/health', state.url), { headers: { Connection: 'close' }, signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
 }
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
@@ -88,6 +92,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const mainDir = path.join(project.sharedDir, 'main');
     const mainFile = path.join(mainDir, 'map.json');
     await fs.mkdir(mainDir, { recursive: true });
+    if (project.bindingRequired) {
+      if (!await readJSON(mainFile, null)) await atomicWrite(mainFile, encode({ v: 1, project: path.basename(project.worktreeRoot), bootstrap: 'pending', flows: [], root: null }));
+      return { ...source, status: 'binding-required', needsReconcile: true };
+    }
     try {
       const { snapshot } = await memoryRequest(project, 'main');
       if (!snapshot) throw new MapError('BASELINE_PENDING', 'No main baseline has been published', 409);
@@ -134,6 +142,31 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!requested.startsWith('session:') || !access.binding(requested.slice('session:'.length))) throw new MapError('UNKNOWN_VIEW', 'Select a registered Session view', 404);
     return requested;
   }
+  async function ensureSessionMap(sessionProject, sessionId) {
+    const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
+    const baseFile = path.join(dir, 'base-main.json');
+    const [existing, baseline] = await Promise.all([readJSON(file, null), readJSON(baseFile, null)]);
+    let main = null;
+    try { main = (await memoryRequest(project, 'main')).snapshot; }
+    catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
+    if (!existing) {
+      const seed = main?.memory?.map || await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
+      if (main) await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      await atomicWrite(file, encode(seed));
+    } else if (main && !baseline?.map) {
+      const legacySeed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'), null);
+      if (hash(encode(existing)) === hash(encode(main.memory.map))) {
+        await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      } else if (legacySeed && hash(encode(existing)) === hash(encode(legacySeed))) {
+        await atomicWrite(path.join(dir, 'before-main-baseline.json'), encode(existing));
+        await atomicWrite(file, encode(main.memory.map));
+        await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
+      } else {
+        throw new MapError('SESSION_BASELINE_REQUIRED', 'Session cache predates the confirmed main baseline and contains changes; preserve it and reconcile explicitly', 409);
+      }
+    }
+    return { dir, file };
+  }
   async function storeFor(viewId) {
     if (viewId === 'main') return stores.get(viewId);
     const sessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
@@ -142,15 +175,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const sessionProject = await resolveProject(binding.worktreeRoot);
     if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
     if (stores.has(viewId)) return stores.get(viewId);
-    const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
-    if (!await readJSON(file, null)) {
-      let seed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
-      try {
-        const { snapshot } = await memoryRequest(project, 'main');
-        if (snapshot) { seed = snapshot.memory.map; await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: snapshot.version, map: seed })); }
-      } catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
-      await atomicWrite(file, encode(seed));
-    }
+    const { dir, file } = await ensureSessionMap(sessionProject, sessionId);
     return createStore(viewId, sessionProject.worktreeRoot, { file, runtime: path.join(dir, 'sync'), eventsFile: path.join(dir, 'changes.jsonl'), projectionRoot: dir });
   }
   function sourceFor(viewId) {
@@ -215,6 +240,30 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (!actor) throw new MapError('UNAUTHORIZED', 'Missing or expired capability', 401);
     return actor;
   }
+  async function preparedSessionBinding(input) {
+    const sessionId = typeof input?.sessionId === 'string' ? input.sessionId.trim() : '';
+    if (!sessionId) throw new MapError('SESSION_REQUIRED', 'A real lifecycle Session ID is required', 400);
+    const sessionProject = await resolveProject(input.worktreeRoot || root);
+    if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
+    const previous = access.binding(sessionId);
+    const sameWorktree = previous && (previous.worktreeId === sessionProject.worktreeId
+      || !previous.gitDir && previous.worktreeRoot === sessionProject.worktreeRoot);
+    if (previous && !sameWorktree) {
+      if (!input.allowRebind) throw new MapError('SESSION_ALREADY_BOUND', 'Session is already bound to another worktree; require explicit user confirmation and --rebind', 409, {
+        worktreeRoot: previous.worktreeRoot,
+        bindingState: await fs.realpath(previous.worktreeRoot || '').then(() => 'other-worktree').catch(() => 'stale'),
+      });
+    }
+    let workbenchUrl = previous?.workbenchUrl || null;
+    if (input.workbenchUrl) {
+      const candidate = new URL(String(input.workbenchUrl));
+      candidate.search = ''; candidate.hash = '';
+      const allowedOrigin = candidate.origin === base || candidate.origin === namedEntry?.origin;
+      if (!allowedOrigin || candidate.pathname !== '/prototype/workbench.html') throw new MapError('INVALID_WORKBENCH_URL', 'Binding URL must be this project workbench page', 400);
+      workbenchUrl = candidate.href;
+    }
+    return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId, { workbenchUrl }) };
+  }
   const isHuman = actor => { if (actor.kind !== 'human') throw new MapError('FORBIDDEN', 'Requires the workbench capability', 403); };
   try {
     const previousSource = await readJSON(sourceFile, null);
@@ -255,8 +304,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
-        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, pid: process.pid, protocol: 2, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
-        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, protocol: 2 });
+        if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
+        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, ...runtimeIdentity() });
         if (['/api/named-entry', '/api/open-claim'].includes(route) && req.method === 'POST') {
           if (!direct || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req);
@@ -270,22 +319,28 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           await atomicWrite(namedFile, encode(namedEntry));
           return send(res, 200, { proxyToken: namedEntry.proxyToken });
         }
-        if (route === '/api/session' && req.method === 'POST') {
+        if (['/api/session-prepare', '/api/session'].includes(route) && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req);
-          const sessionProject = await resolveProject(input.worktreeRoot || root);
-          if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
-          const previous = access.binding(input.sessionId);
-          if (previous && previous.worktreeRoot !== sessionProject.worktreeRoot) {
-            if (!input.allowRebind) throw new MapError('SESSION_ALREADY_BOUND', 'Session is already bound to another worktree; require explicit user confirmation and --rebind', 409, { worktreeRoot: previous.worktreeRoot });
-            const view = `session:${input.sessionId}`;
+          const prepared = await preparedSessionBinding(input);
+          if (route === '/api/session-prepare') return send(res, 200, { prepared: true, binding: prepared.binding, previous: prepared.previous || null });
+          if (prepared.previous && !prepared.sameWorktree) {
+            const view = `session:${prepared.sessionId}`;
             await fence(view);
-            for (const [credential, actor] of agentTokens) if (actor.sessionId === input.sessionId) agentTokens.delete(credential);
+            for (const [credential, actor] of agentTokens) if (actor.sessionId === prepared.sessionId) agentTokens.delete(credential);
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
-          const actor = await access.register(input.sessionId, await sessionBinding(sessionProject, input.sessionId));
-          if (project.kind === 'git') await storeFor(`session:${input.sessionId}`);
+          const sessionFiles = project.kind === 'git' ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
+          const actor = await access.register(prepared.sessionId, prepared.binding);
+          if (sessionFiles && !stores.has(`session:${prepared.sessionId}`)) {
+            await createStore(`session:${prepared.sessionId}`, prepared.sessionProject.worktreeRoot, {
+              file: sessionFiles.file,
+              runtime: path.join(sessionFiles.dir, 'sync'),
+              eventsFile: path.join(sessionFiles.dir, 'changes.jsonl'),
+              projectionRoot: sessionFiles.dir,
+            });
+          }
           const credential = token(); agentTokens.set(credential, actor);
           return send(res, 200, { token: credential, actor });
         }
@@ -412,7 +467,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         let file, contentType;
         if (route === '/' || route === '/prototype/workbench.html') {
           const html = await fs.readFile(path.join(skillRoot, 'prototype/workbench.html'), 'utf8');
-          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, protocol: 2 }).replace(/</g, '\\u003c');
+          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, ...runtimeIdentity() }).replace(/</g, '\\u003c');
           const nonce = token();
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
@@ -433,7 +488,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       catch (e) { if (e.code !== 'EADDRINUSE' || attempt >= 20 || port === 0) throw e; }
     }
     base = `http://127.0.0.1:${server.address().port}`;
-    const state = { protocol: 2, root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, sharedDir: project.sharedDir, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };
+    const state = { ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, pid: process.pid, instance, url: base + '/prototype/workbench.html', adminToken };
     await atomicWrite(sharedState, encode(state));
     if (sharedState !== statePath(root)) await atomicWrite(statePath(root), encode(state));
     stopAccessWatch = access.watch(() => broadcast('access', {}));

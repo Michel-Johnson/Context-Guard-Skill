@@ -29,13 +29,14 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 ```bash
 context-guard workbench --binding-status --root /path/to/project --session <真实-session-id>
-context-guard workbench --root /path/to/project --session <真实-session-id>
+context-guard workbench --root /path/to/project --session <真实-session-id> --workbench-url http://项目名.localhost:1355/prototype/workbench.html
+context-guard workbench --diagnose --root /path/to/project --session <真实-session-id>
 # 仅在用户明确确认迁移已有绑定后使用：
 context-guard workbench --root /other/worktree --session <真实-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
 
-本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。同项目共用服务，但每个 Session 仍须明确绑定。兼容命令 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 只选择服务目标，不代替 Session 绑定、不合并 Map；Session 记录仍保留在各自工作树。旧服务可用 `--direct` 继续直连。
+本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。同项目共用服务，但每个 Session 仍须明确绑定。绑定先校验域名、项目、后端实例和运行时能力，成功后才落盘；返回地址带 Session 参数，其他任务变活跃不会自动切换当前页面。兼容命令 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 只选择服务目标，不代替 Session 绑定、不合并 Map。旧或重复服务先用 `--diagnose` 清点，再按输出的精确 `pid:instance` 执行 `workbench migrate --retire ...`；迁移先做私有备份且不会强杀进程。
 
 详见[命名工作台](references/named-workbench.md)。精简路由存储基于 Portless 0.15.6，遵循 Apache-2.0；[第三方声明](THIRD_PARTY_NOTICES.md)与许可证随安装包分发。
 

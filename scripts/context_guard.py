@@ -1039,7 +1039,7 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
         pass
 
 
-def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True) -> str | None:
+def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, raise_errors: bool = False) -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
@@ -1052,6 +1052,8 @@ def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_
         return url
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"[context-guard] Node workbench: {exc}", file=sys.stderr)
+        if raise_errors:
+            raise
         return None
 
 
@@ -1088,6 +1090,7 @@ def main() -> int:
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
     parser.add_argument("--binding-status", action="store_true")
+    parser.add_argument("--workbench-url")
     parser.add_argument("--bind-main")
     parser.add_argument("--local-main")
     parser.add_argument("--remote", default="origin")
@@ -1228,7 +1231,7 @@ def main() -> int:
     if args.command == "workbench":
         if args.binding_status or args.bind_main or args.local_main or args.session:
             command = ["workbench", "--root", str(root)]
-            for key, value in [("binding-status", args.binding_status), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
+            for key, value in [("binding-status", args.binding_status), ("workbench-url", args.workbench_url), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
                 if value:
                     command.append("--" + key)
                     if value is not True:
