@@ -137,21 +137,20 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .lang-toggle button.on,.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
 button.dir-toggle{
   position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:stretch;
-  height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);min-width:108px;padding:3px;gap:0;
-  border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;
+  width:56px;height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);min-width:0;padding:3px;gap:0;
+  border:2px solid var(--line-ink);border-radius:999px;overflow:hidden;flex:0 0 auto;
   box-sizing:border-box;box-shadow:var(--shadow-sm);background:var(--paper);color:var(--ink);
   cursor:pointer;user-select:none;-webkit-user-select:none}
-html[lang="en"] button.dir-toggle{min-width:152px}
 button.dir-toggle:hover,button.dir-toggle:focus,button.dir-toggle:active{
   background:var(--paper);color:var(--ink);transform:none;box-shadow:var(--shadow-sm)}
 .dir-toggle .dir-thumb{
   position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/2);
-  background:var(--yellow);border-radius:5px;pointer-events:none;
+  background:var(--yellow);border-radius:999px;pointer-events:none;
   transition:transform .18s ease}
 .dir-toggle.is-tb .dir-thumb{transform:translateX(100%)}
 .dir-toggle .dir-opt{
   position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-  padding:0 8px;font-size:12.5px;font-weight:700;line-height:1;color:var(--muted);white-space:nowrap}
+  padding:0;font-size:10px;font-weight:800;line-height:1;color:var(--muted);white-space:nowrap}
 .dir-toggle .dir-opt.on{color:var(--ink);font-weight:800}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
@@ -1163,8 +1162,8 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
   <div class="top-tools">
     <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
       <span class="dir-thumb" aria-hidden="true"></span>
-      <span class="dir-opt on" data-dir="lr" data-i18n="dirLr">左右</span>
-      <span class="dir-opt" data-dir="tb" data-i18n="dirTb">上下</span>
+      <span class="dir-opt on" data-dir="lr">左右</span>
+      <span class="dir-opt" data-dir="tb">上下</span>
     </button>
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>

@@ -297,6 +297,8 @@ try {
     await dirToggle.waitFor({ state: 'visible' });
     assert.equal(await preview.locator('#dir-toggle button').count(), 0);
     assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
+    const dirW = await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().width));
+    assert.ok(dirW <= 64, `layout slider should stay compact, got ${dirW}`);
     const lrSpread = await preview.evaluate(() => {
       const root = document.querySelector('.node.root').getBoundingClientRect();
       const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
