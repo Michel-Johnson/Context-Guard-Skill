@@ -50,7 +50,7 @@ cases = json.load(sys.stdin)
 print(json.dumps([{"denied": bool(module.forbidden_direct_write(item, root)), "paths": module.tool_paths(item, root)} for item in cases]))
 `;
 const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-B', '-c', code, hook, root], {
-  encoding: 'utf8', input: JSON.stringify(cases.map(item => item[1])), timeout: 15_000,
+  encoding: 'utf8', input: JSON.stringify(cases.map(item => item[1])), timeout: 15_000, windowsHide: true,
 });
 assert.equal(result.status, 0, result.stderr || String(result.error));
 const observations = JSON.parse(result.stdout);

@@ -439,11 +439,26 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     stopAccessWatch = access.watch(() => broadcast('access', {}));
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
     const mainRefresh = setInterval(() => { if (project.kind === 'git') refreshProject().catch(() => {}); }, 30000); mainRefresh.unref();
+    let ownershipChecks = 0, ownershipCheckRunning = false;
+    const ownershipWatch = setInterval(async () => {
+      if (close.promise || ownershipCheckRunning) return;
+      ownershipCheckRunning = true;
+      try {
+        const owner = await readJSON(sharedState, null);
+        if (owner?.instance === instance) ownershipChecks = 0;
+        else if (++ownershipChecks >= 2) await close();
+      } catch {
+        // A transient unreadable state file must not terminate a healthy server.
+        ownershipChecks = 0;
+      } finally { ownershipCheckRunning = false; }
+    }, 500);
+    ownershipWatch.unref();
     function close() {
       if (close.promise) return close.promise;
       close.promise = (async () => {
         clearInterval(heartbeat);
         clearInterval(mainRefresh);
+        clearInterval(ownershipWatch);
         await refreshing?.catch(() => {});
         stopAccessWatch();
         stopCloudWatch();

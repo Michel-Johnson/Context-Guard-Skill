@@ -97,6 +97,7 @@ test('Codex database discovery hides its child process and reuses rows until the
     codexDb: database,
     sqliteCommand: 'sqlite3-test',
     querySqlite: async () => null,
+    allowExternalSqlite: true,
     execFile: async (command, args, options) => {
       calls.push({ command, args, options });
       return { stdout: JSON.stringify([{ id: 'codex-db', name: '数据库任务', created_at: 1, updated_at: 2, rollout_path: rollout }]) };
@@ -115,6 +116,22 @@ test('Codex database discovery hides its child process and reuses rows until the
   await fs.appendFile(database, '-changed');
   await access.discoverCodexSessions();
   assert.equal(calls.length, 2, 'database changes must refresh the cached query');
+});
+
+test('supported Node.js does not fall back to an external SQLite process', async () => {
+  const f = await fixture();
+  const database = path.join(f.root, 'state.sqlite');
+  await fs.writeFile(database, 'not-a-database');
+  let externalCalls = 0;
+  const access = await new Access(f.root, {
+    codexDb: database,
+    nodeVersion: '22.5.0',
+    querySqlite: async () => null,
+    execFile: async () => { externalCalls++; throw new Error('external SQLite must not run'); },
+  }).init();
+
+  assert.deepEqual(await access.discoverCodexSessions(), []);
+  assert.equal(externalCalls, 0);
 });
 
 test('Node SQLite discovery reads Codex sessions without starting an external process', async t => {

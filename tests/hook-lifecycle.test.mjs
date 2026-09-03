@@ -286,15 +286,35 @@ test('fixture cleanup stops the detached workbench before removing its directory
   await assert.rejects(fs.access(project), { code: 'ENOENT' });
 });
 
+test('detached workbench exits when its project state is removed', async t => {
+  const project = await fixture();
+  let pid = null;
+  t.after(async () => {
+    if (pid && processIsAlive(pid)) {
+      try { process.kill(pid); } catch {}
+      await waitForProcessExit(pid).catch(() => {});
+    }
+    await fs.rm(project, { recursive: true, force: true });
+  });
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
+  const state = JSON.parse(await fs.readFile(path.join(project, '.codex/context/private/workbench.json'), 'utf8'));
+  pid = state.pid;
+  assert.equal(processIsAlive(pid), true);
+
+  await fs.unlink(path.join(project, '.codex/context/private/workbench.json'));
+  await waitForProcessExit(pid);
+  pid = null;
+  await fs.rm(project, { recursive: true, force: true });
+});
+
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {
   const project = await fixture();
   let workbenchPid = null;
   t.after(async () => {
-    try {
-      if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
-    } finally {
-      await fs.rm(project, { recursive: true, force: true });
-    }
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    await fs.rm(project, { recursive: true, force: true });
   });
   const session = 'hook-session-two';
   await confirmBinding(project, session);
@@ -311,7 +331,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const port = await freePort();
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
   const archiveDenied = spawnSync(python, [contextScript, 'archive-session', '--root', project, '--session', session,
-    '--summary', '未授权归档', '--files', 'src/index.mjs'], { cwd: project, encoding: 'utf8' });
+    '--summary', '未授权归档', '--files', 'src/index.mjs'], { cwd: project, encoding: 'utf8', windowsHide: true });
   assert.notEqual(archiveDenied.status, 0);
   assert.match(archiveDenied.stderr, /archive-session failed/);
   assert.doesNotMatch(archiveDenied.stderr, /Traceback/);

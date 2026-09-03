@@ -45,6 +45,7 @@ const installJob = ci.slice(ci.indexOf("  install:"), ci.indexOf("  browser:"));
 requireMatch(installJob, /os:\s*windows-latest/, "Install CI must retain the Windows runner for workbench process regressions.");
 requireMatch(installJob, /run:\s*npm test/, "The Windows install matrix must run the complete test suite.");
 requireMatch(packageJson.scripts.test, /tests\/hook-lifecycle\.test\.mjs/, "npm test must retain the detached workbench cleanup regression.");
+requireMatch(packageJson.scripts.test, /verify-hidden-processes\.mjs/, "npm test must enforce hidden Windows child processes.");
 
 for (const [name, content] of [["CI", ci], ["CD", publish]]) {
   const gate = content.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');

@@ -123,7 +123,7 @@ test('concurrent separate launchers reuse one daemon without replacing an occupi
   const port = occupied.address().port;
   const code = `import {ensureNamedProxy} from ${JSON.stringify(new URL('../scripts/workbench/named.mjs', import.meta.url).href)}; console.log(JSON.stringify(await ensureNamedProxy({dir:process.argv[1],port:Number(process.argv[2])})));`;
   const states = await Promise.all(Array.from({ length: 5 }, () => new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, ['--input-type=module', '-e', code, dir, String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(process.execPath, ['--input-type=module', '-e', code, dir, String(port)], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let output = '', error = ''; p.stdout.on('data', d => output += d); p.stderr.on('data', d => error += d); p.on('error', reject); p.on('exit', c => c === 0 ? resolve(JSON.parse(output)) : reject(new Error(error)));
   }))).catch(async error => {
     // Synthetic fixture diagnostics only; never publish proxy capabilities.
@@ -171,7 +171,7 @@ test('published state is not healthy until initialization finishes, including sl
 });
 test('explicit linked-worktree binding reuses server and hook context without overwriting maps', async t => {
   const root = await fixture(t), source = path.join(root, 'linked'), foreign = await fixture(t);
-  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe', windowsHide: true });
   git('init'); git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture');
   git('worktree', 'add', '--detach', source, 'HEAD');
   await assert.rejects(bindProject(source, foreign));
@@ -181,13 +181,13 @@ test('explicit linked-worktree binding reuses server and hook context without ov
   await bindProject(source, root, { keepLocal: true });
   assert.equal(await resolveProjectRoot(source), root);
   assert.equal(await fs.readFile(mapFile, 'utf8'), '{"local":"preserved"}');
-  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/sync/client.mjs'), 'status', '--root', source], { encoding: 'utf8' });
+  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/sync/client.mjs'), 'status', '--root', source], { encoding: 'utf8', windowsHide: true });
   assert.equal(cloud.status, 1); assert.match(cloud.stdout, /BOUND_SYNC_UNSUPPORTED/);
   const results = await Promise.all([ensureServer(root, 0), ensureServer(source, 0)]); t.after(() => stopServer(root));
   assert.equal(results[0].instance, results[1].instance);
   const python = process.platform === 'win32' ? 'python' : 'python3';
   const hook = path.join(cwd, 'scripts/context_guard_hook.py');
-  const child = spawn(python, [hook, 'session-start', '--platform', 'codex'], { cwd: source, env: { ...process.env, CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CODEX_THREAD_ID: 'bound-test' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(python, [hook, 'session-start', '--platform', 'codex'], { cwd: source, env: { ...process.env, CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CODEX_THREAD_ID: 'bound-test' }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   child.stdout.resume(); let err = ''; child.stderr.on('data', d => err += d); child.stdin.end(JSON.stringify({ cwd: source, session_id: 'bound-test' }));
   const [exit] = await once(child, 'exit'); assert.equal(exit, 0, err);
   assert.match(await fs.readFile(path.join(source, '.codex/context/sessions.jsonl'), 'utf8'), /bound-test/);
@@ -196,15 +196,15 @@ test('explicit linked-worktree binding reuses server and hook context without ov
 });
 test('real SessionStart injects named URL and automatic browser opener is claimed only once', async t => {
   const root = await fixture(t, 'Hook Project'), dir = path.join(root, 'proxy');
-  execFileSync('git', ['init', '-b', 'trunk'], { cwd: root, stdio: 'pipe' });
-  execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: root, stdio: 'pipe', windowsHide: true });
+  execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe', windowsHide: true });
   await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
   const proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
   t.after(() => stopServer(root));
   const python = process.platform === 'win32' ? 'python' : 'python3';
   const env = { ...process.env, CONTEXT_GUARD_NAMED_STATE_DIR: dir, CONTEXT_GUARD_NAMED_WORKBENCH: '1', CONTEXT_GUARD_DISABLE_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1' };
   const run = (args, input = '') => new Promise((resolve, reject) => {
-    const child = spawn(python, args, { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] }); let stdout = '', stderr = '';
+    const child = spawn(python, args, { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d); child.stderr.on('data', d => stderr += d); child.on('error', reject);
     child.on('exit', code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr))); child.stdin.end(input);
   });
@@ -224,7 +224,7 @@ test('real SessionStart injects named URL and automatic browser opener is claime
 
 test('named entry keeps Git Session views isolated and survives a backend worktree change', async t => {
   const root = await fixture(t, 'Shared Project'), other = path.join(root, 'linked');
-  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe', windowsHide: true });
   git('init', '-b', 'trunk');
   git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture');
   git('worktree', 'add', '-b', 'feature', other);
