@@ -477,7 +477,7 @@ try {
     assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
     recordCheck('phone-preview-banners-hidden');
     recordCheck('phone-add-child-hidden');
-    await preview.goto(`http://127.0.0.1:${port}/workbench.html?gallery=1`);
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=1`);
     await preview.waitForSelector('.g-item');
     const gallery = await preview.evaluate(() => {
       const items = [...document.querySelectorAll('.g-item')];

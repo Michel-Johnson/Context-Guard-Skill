@@ -12,7 +12,8 @@
 (function(){
   var q = new URLSearchParams(location.search);
   var preview = q.has("preview");
-  var gallery = q.has("gallery");
+  /* htmlpreview 会把整段 raw URL 塞进 search，q.has("gallery") 会认不出来。 */
+  var gallery = q.has("gallery") || /[?&#]gallery=/.test(location.href);
   window.__CG_GALLERY = gallery;
   if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
