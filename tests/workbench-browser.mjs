@@ -302,6 +302,8 @@ try {
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
     assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    const barBg = await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.equal(barBg, 'rgb(50, 54, 57)', `live top bar stays charcoal ${barBg}`);
     const context = await preview.evaluate(() => {
       const crumbs = document.querySelector('.nav-crumbs');
       const here = crumbs.querySelector('.here');

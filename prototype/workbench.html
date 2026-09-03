@@ -89,7 +89,7 @@ body::before{
 }
 
 header.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:10px 13px;
-  padding:10px 18px;background:var(--paper);border-bottom:2px solid var(--line-ink);flex-wrap:nowrap;cursor:default}
+  padding:10px 18px;background:#323639;border-bottom:2px solid #1c1e20;flex-wrap:nowrap;cursor:default}
 header.top .brand{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center}
 header.top h1{margin:0;font-size:16px}
 .repo-menu{display:none;position:absolute;left:0;top:100%;margin-top:8px;z-index:40;min-width:280px;
@@ -115,13 +115,13 @@ header.top h1{margin:0;font-size:16px}
   border:2px solid transparent}
 .nav-crumbs .here.switch{cursor:pointer;gap:6px}
 .nav-crumbs .here .caret{font-size:11px;color:var(--muted)}
-.nav-crumbs .sep{color:var(--line)}
+.nav-crumbs .sep{color:#9a9590}
 .session-chip{display:none}
 .tray-btn,.auth-btn{
   height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0 12px;font-size:12.5px;line-height:1;
   display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 auto}
 #btn-auth{width:var(--chrome-btn-h);padding:0;font-size:16px}
-.repo-status{font-size:12px;color:var(--muted);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-status{font-size:12px;color:#c4c0b8;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repo-status.ok{color:var(--green)}
 .repo-status.err{color:var(--red)}
 .lang-toggle,.rel-toggle{
@@ -151,10 +151,10 @@ button.dir-toggle:hover,button.dir-toggle:focus,button.dir-toggle:active{
   position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
   padding:0;font-size:10px;font-weight:800;line-height:1;color:var(--ink);white-space:nowrap}
 .dir-toggle .dir-opt.on{color:var(--ink)}
-#rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+#rel-hint{display:none;font-size:12px;font-weight:700;color:#c4c0b8;white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
 body.rel-mode{background:#f3eee4}
-body.rel-mode header.top{background:#f3eee4}
+body.rel-mode header.top{background:#323639}
 body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transform:translateX(-50%)}
 .first-use{display:none;position:fixed;inset:var(--chrome-top) 0 0 0;z-index:26;
   align-items:center;justify-content:center;background:rgba(254,250,242,.82);cursor:default}
@@ -550,7 +550,7 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel li:not(.on) .claim{pointer-events:none;text-decoration:none}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
 body.bug-path-mode{background:#f7f1e6}
-body.bug-path-mode header.top{background:#f7f1e6}
+body.bug-path-mode header.top{background:#323639}
 body.bug-path-mode .node .add-child{display:none}
 body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0 #c45c4a}
 body.bug-path-mode .dir-toggle,
