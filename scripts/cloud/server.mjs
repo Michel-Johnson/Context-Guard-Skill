@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, validate, MapError } from '../../prototype/map-model.mjs';
+import { atomicWrite } from '../workbench/io.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -14,13 +15,6 @@ const digest = value => createHash('sha256').update(String(value)).digest('hex')
 const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
 
-async function atomicWrite(file, value) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
-  await fs.writeFile(temporary, value, { mode: 0o600 });
-  await fs.rename(temporary, file);
-}
-
 async function readJson(file, fallback) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }
@@ -28,7 +22,17 @@ async function readJson(file, fallback) {
 
 async function readJsonLines(file) {
   const text = await fs.readFile(file, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
-  return text.split('\n').filter(Boolean).map(line => JSON.parse(line));
+  const lines = text.split('\n').filter(Boolean), values = [];
+  for (let index = 0; index < lines.length; index++) {
+    try { values.push(JSON.parse(lines[index])); }
+    catch (error) {
+      if (index !== lines.length - 1) throw error;
+      // A crash can leave only the last append incomplete. Repair that tail from
+      // the already validated prefix before transaction recovery appends again.
+      await atomicWrite(file, values.length ? `${values.map(value => JSON.stringify(value)).join('\n')}\n` : '');
+    }
+  }
+  return values;
 }
 
 async function appendJsonLine(file, value) {
@@ -36,6 +40,13 @@ async function appendJsonLine(file, value) {
   const handle = await fs.open(file, 'a', 0o600);
   try { await handle.writeFile(`${JSON.stringify(value)}\n`); await handle.sync(); }
   finally { await handle.close(); }
+}
+
+async function durableUnlink(file) {
+  await fs.unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+  if (process.platform === 'win32') return;
+  const directory = await fs.open(path.dirname(file), 'r');
+  try { await directory.sync(); } finally { await directory.close(); }
 }
 
 function safeEqual(left, right) {
@@ -96,11 +107,31 @@ function overviewDocument(projects) {
 function reconcileOverview(stored, projects) {
   const generated = overviewDocument(projects);
   if (!stored?.document?.root) return generated;
+  const savedChildren = Array.isArray(stored.document.root.children) ? stored.document.root.children : [];
+  const byProject = new Map(savedChildren.map(node => [node?.cloudProjectId || (String(node?.id || '').startsWith('P_') ? String(node.id).slice(2) : ''), node]).filter(([id]) => id));
+  const managedIds = new Set(projects.map(project => project.id));
+  const projectChildren = generated.root.children.map(generatedNode => {
+    const saved = byProject.get(generatedNode.cloudProjectId);
+    if (!saved) return generatedNode;
+    return {
+      ...generatedNode,
+      ...saved,
+      id: generatedNode.id,
+      cloudProjectId: generatedNode.cloudProjectId,
+      // Connection state belongs to the registry. Human-authored fields remain.
+      state: generatedNode.state,
+      children: Array.isArray(saved.children) ? saved.children : [],
+    };
+  });
+  const customChildren = savedChildren.filter(node => {
+    const id = node?.cloudProjectId || (String(node?.id || '').startsWith('P_') ? String(node.id).slice(2) : '');
+    return !id || !managedIds.has(id);
+  });
   return {
     ...stored.document,
     project: '项目地图',
     bootstrap: 'ready',
-    root: { ...stored.document.root, id: 'T0', children: generated.root.children },
+    root: { ...stored.document.root, id: 'T0', children: [...projectChildren, ...customChildren] },
   };
 }
 
@@ -161,17 +192,20 @@ export async function startCloudServer({
   privateAccess = process.env.CONTEXT_GUARD_CLOUD_PRIVATE === '1',
   secureCookies = process.env.CONTEXT_GUARD_CLOUD_SECURE_COOKIES === '1',
   publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
+  faultInjector = async () => {},
 } = {}) {
   const registryFile = path.join(dataDir, 'projects.json');
   const mapsDir = path.join(dataDir, 'maps');
   const eventsDir = path.join(dataDir, 'events');
   const operationsDir = path.join(dataDir, 'operations');
   const worksDir = path.join(dataDir, 'works');
+  const transactionsDir = path.join(dataDir, 'transactions');
   const overviewFile = path.join(mapsDir, 'project-overview.json');
   const directoryClients = new Set();
   const workbenchClients = new Set();
   const projectClients = new Map();
   const tails = new Map();
+  let registryTail = Promise.resolve();
   let registry = await readJson(registryFile, null);
   if (!registry) {
     registry = { v: 2, projects: [compactProject({ id: 'context-guard', name: 'Context Guard', description: 'Context Guard 项目地图' })] };
@@ -183,11 +217,27 @@ export async function startCloudServer({
   const eventsFile = id => path.join(eventsDir, `${id}.jsonl`);
   const workFile = (id, workId) => path.join(worksDir, id, `${digest(workId)}.json`);
   const operationFile = (scope, operationId) => path.join(operationsDir, `${digest(`${scope}:${operationId}`)}.json`);
+  const transactionFile = (scope, operationId) => path.join(transactionsDir, `${digest(`${scope}:${operationId}`)}.json`);
   const serial = (id, task) => {
     const next = (tails.get(id) || Promise.resolve()).then(task);
     tails.set(id, next.catch(() => {}));
     return next;
   };
+  const mutateRegistry = task => {
+    const next = registryTail.then(async () => {
+      const result = await task();
+      await atomicWrite(registryFile, json(registry));
+      return result;
+    });
+    registryTail = next.catch(() => {});
+    return next;
+  };
+  const updateRegistryProject = patch => mutateRegistry(() => {
+    const project = projectById(patch.id);
+    if (!project) throw new MapError('RECOVERY_REQUIRED', 'Transaction project is missing from the registry', 503);
+    Object.assign(project, patch);
+    return project;
+  });
   const send = (res, status, body, headers = {}) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
     res.end(JSON.stringify(body));
@@ -229,13 +279,88 @@ export async function startCloudServer({
       res.write(`id: ${event.seq}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
     }
   };
-  const appendEvent = async (id, input) => {
-    const event = { ...input, projectId: id, seq: (await currentSeq(id)) + 1, eventId: input.eventId || randomUUID(), at: now() };
-    await appendJsonLine(eventsFile(id), event);
-    broadcastProject(event);
-    broadcastDirectory('map', { projectId: id, seq: event.seq, version: event.version, type: event.type });
+  const createEvent = async (id, input) => ({
+    ...input,
+    projectId: id,
+    seq: (await currentSeq(id)) + 1,
+    eventId: input.eventId || randomUUID(),
+    at: input.at || now(),
+  });
+  const appendEventRecord = async event => {
+    const events = await readEvents(event.projectId);
+    const previous = events.find(item => item.eventId === event.eventId);
+    if (previous) {
+      if (digest(JSON.stringify(previous)) !== digest(JSON.stringify(event))) throw new MapError('RECOVERY_REQUIRED', 'Event identity has conflicting content', 503, { eventId: event.eventId });
+      return previous;
+    }
+    const lastSeq = events.at(-1)?.seq || 0;
+    if (lastSeq + 1 !== event.seq) throw new MapError('RECOVERY_REQUIRED', 'Event sequence cannot be recovered automatically', 503, { expectedSeq: lastSeq + 1, eventSeq: event.seq });
+    await appendJsonLine(eventsFile(event.projectId), event);
     return event;
   };
+  const broadcastEvent = event => {
+    broadcastProject(event);
+    broadcastDirectory('map', { projectId: event.projectId, seq: event.seq, version: event.version, type: event.type, at: event.at });
+  };
+  const recoverTransaction = async transaction => {
+    if (transaction?.v !== 1 || !transaction.scope || !transaction.operationId || !transaction.event) {
+      throw new MapError('RECOVERY_REQUIRED', 'Cloud transaction record is invalid', 503);
+    }
+    const file = transactionFile(transaction.scope, transaction.operationId);
+    await appendEventRecord(transaction.event);
+    await faultInjector('event-persisted', transaction);
+    if (transaction.map) {
+      const target = transaction.map.target === 'overview' ? overviewFile : mapFile(transaction.map.projectId);
+      const stored = await readJson(target, null);
+      if (stored?.version !== transaction.map.next.version) {
+        if ((stored?.version ?? null) !== (transaction.map.previousVersion ?? null)) {
+          throw new MapError('RECOVERY_REQUIRED', 'Map changed while a durable transaction was pending', 503, { projectId: transaction.event.projectId });
+        }
+        await atomicWrite(target, json(transaction.map.next));
+      }
+    }
+    await faultInjector('map-persisted', transaction);
+    if (transaction.registryProject) {
+      await updateRegistryProject(transaction.registryProject);
+    }
+    if (transaction.work) {
+      const target = workFile(transaction.work.projectId, transaction.work.workId);
+      const stored = await readJson(target, null);
+      const storedDigest = stored === null ? null : digest(JSON.stringify(stored));
+      const nextDigest = digest(JSON.stringify(transaction.work.next));
+      if (storedDigest !== nextDigest) {
+        if (storedDigest !== (transaction.work.previousDigest ?? null)) {
+          throw new MapError('RECOVERY_REQUIRED', 'Development window changed while a durable transaction was pending', 503, { workId: transaction.work.workId });
+        }
+        await atomicWrite(target, json(transaction.work.next));
+      }
+    }
+    await faultInjector('work-persisted', transaction);
+    if (transaction.receipt) {
+      const target = operationFile(transaction.receipt.scope, transaction.operationId);
+      const stored = await readJson(target, null);
+      if (stored && stored.requestDigest !== transaction.receipt.value.requestDigest) {
+        throw new MapError('RECOVERY_REQUIRED', 'Operation receipt conflicts with a pending transaction', 503);
+      }
+      if (!stored) await atomicWrite(target, json(transaction.receipt.value));
+    }
+    await faultInjector('receipt-persisted', transaction);
+    await durableUnlink(file);
+  };
+  const recoverTransactions = async projectId => {
+    const names = await fs.readdir(transactionsDir).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+    for (const name of names.filter(name => name.endsWith('.json')).sort()) {
+      const file = path.join(transactionsDir, name), transaction = await readJson(file, null);
+      if (!transaction || projectId && transaction.event?.projectId !== projectId) continue;
+      await recoverTransaction(transaction);
+    }
+  };
+  const persistTransaction = async transaction => {
+    await atomicWrite(transactionFile(transaction.scope, transaction.operationId), json(transaction));
+    await faultInjector('transaction-prepared', transaction);
+    await recoverTransaction(transaction);
+  };
+  await recoverTransactions();
   const projectSnapshot = async project => {
     const events = await readEvents(project.id);
     const stored = await readJson(mapFile(project.id), null);
@@ -271,6 +396,7 @@ export async function startCloudServer({
   };
   const commitProject = (project, input, actor = { kind: 'human', sessionId: 'cloud-sync' }) => serial(project.id, async () => {
     const operationId = validateOperationId(input);
+    await recoverTransactions(project.id);
     const receiptPath = operationFile(project.id, operationId);
     const requestDigest = digest(JSON.stringify({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
     const receipt = await readJson(receiptPath, null);
@@ -283,20 +409,25 @@ export async function startCloudServer({
     const applied = applyOperations(current.document || emptyProjectDocument(project), input.operations, actor);
     validate(applied.doc);
     const version = versionOf(applied.doc);
-    const event = await appendEvent(project.id, {
+    const event = await createEvent(project.id, {
       type: 'map.committed', operationId, actor, baseVersion: current.version, version,
       operations: input.operations, scope: scopeOfOperations(input.operations, input.scope),
     });
     const next = { projectId: project.id, version, seq: event.seq, document: applied.doc, updatedAt: event.at };
-    await atomicWrite(mapFile(project.id), json(next));
-    Object.assign(project, { status: 'connected', updatedAt: event.at }); await atomicWrite(registryFile, json(registry));
-    const result = { committed: true, operationId, projectId: project.id, version, seq: event.seq, nodeIds: applied.resultIds };
-    await atomicWrite(receiptPath, json({ requestDigest, result }));
+    const result = { committed: true, operationId, projectId: project.id, version, seq: event.seq, nodeIds: applied.resultIds, persistedAt: event.at };
+    await persistTransaction({
+      v: 1, scope: project.id, operationId, event,
+      map: { target: 'project', projectId: project.id, previousVersion: current.version, next },
+      registryProject: { id: project.id, status: 'connected', updatedAt: event.at },
+      receipt: { scope: project.id, value: { requestDigest, result } },
+    });
+    broadcastEvent(event);
     await broadcastWorkbench(`project:${project.id}`, project);
     return result;
   });
   const saveSnapshot = (project, input) => serial(project.id, async () => {
     const operationId = validateOperationId(input);
+    await recoverTransactions(project.id);
     const receiptPath = operationFile(`${project.id}:snapshot`, operationId);
     const requestDigest = digest(JSON.stringify({ baseVersion: input.baseVersion ?? null, document: input.document }));
     const receipt = await readJson(receiptPath, null);
@@ -308,12 +439,16 @@ export async function startCloudServer({
     const current = await projectSnapshot(project);
     if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Map changed; choose pull or push explicitly', 409, { currentVersion: current.version, currentSeq: current.seq });
     const version = versionOf(input.document);
-    const event = await appendEvent(project.id, { type: 'map.snapshot', operationId, actor: { kind: 'sync', sessionId: String(input.sessionId || '') }, baseVersion: current.version, version, operations: [], scope: normalizeScope({ wildcard: true }) });
+    const event = await createEvent(project.id, { type: 'map.snapshot', operationId, actor: { kind: 'sync', sessionId: String(input.sessionId || '') }, baseVersion: current.version, version, operations: [], scope: normalizeScope({ wildcard: true }) });
     const next = { projectId: project.id, version, seq: event.seq, document: input.document, updatedAt: event.at };
-    await atomicWrite(mapFile(project.id), json(next));
-    Object.assign(project, { status: 'connected', updatedAt: event.at }); await atomicWrite(registryFile, json(registry));
-    const result = { committed: true, operationId, projectId: project.id, version, seq: event.seq, snapshot: true };
-    await atomicWrite(receiptPath, json({ requestDigest, result }));
+    const result = { committed: true, operationId, projectId: project.id, version, seq: event.seq, snapshot: true, persistedAt: event.at };
+    await persistTransaction({
+      v: 1, scope: `${project.id}:snapshot`, operationId, event,
+      map: { target: 'project', projectId: project.id, previousVersion: current.version, next },
+      registryProject: { id: project.id, status: 'connected', updatedAt: event.at },
+      receipt: { scope: `${project.id}:snapshot`, value: { requestDigest, result } },
+    });
+    broadcastEvent(event);
     await broadcastWorkbench(`project:${project.id}`, project);
     return result;
   });
@@ -356,6 +491,7 @@ export async function startCloudServer({
           const input = await requestBody(req);
           if (project) return send(res, 200, await commitProject(project, input, { kind: 'human', sessionId: 'cloud-workbench' }));
           const result = await serial('overview', async () => {
+            await recoverTransactions('overview');
             const operationId = validateOperationId(input), receiptPath = operationFile('overview', operationId);
             const requestDigest = digest(JSON.stringify({ baseVersion: input.baseVersion, operations: input.operations }));
             const previous = await readJson(receiptPath, null);
@@ -363,9 +499,20 @@ export async function startCloudServer({
             const current = await workbenchSnapshot('overview', null);
             if (input.baseVersion !== current.version) throw new MapError('VERSION_CONFLICT', 'Map changed; reload before committing', 409, { currentVersion: current.version });
             const applied = applyOperations(current.document, input.operations, { kind: 'human', sessionId: 'cloud-workbench' }); validate(applied.doc);
-            const next = { projectId: 'overview', version: versionOf(applied.doc), document: applied.doc, updatedAt: now() };
-            const saved = { committed: true, operationId, version: next.version, nodeIds: applied.resultIds };
-            await atomicWrite(overviewFile, json(next)); await atomicWrite(receiptPath, json({ requestDigest, result: saved }));
+            const stored = await readJson(overviewFile, null), version = versionOf(applied.doc);
+            const event = await createEvent('overview', {
+              type: 'map.committed', operationId, actor: { kind: 'human', sessionId: 'cloud-workbench' },
+              baseVersion: current.version, version, operations: input.operations,
+              scope: scopeOfOperations(input.operations),
+            });
+            const next = { projectId: 'overview', version, seq: event.seq, document: applied.doc, updatedAt: event.at };
+            const saved = { committed: true, operationId, version, seq: event.seq, nodeIds: applied.resultIds, persistedAt: event.at };
+            await persistTransaction({
+              v: 1, scope: 'overview', operationId, event,
+              map: { target: 'overview', previousVersion: stored?.version ?? null, next },
+              receipt: { scope: 'overview', value: { requestDigest, result: saved } },
+            });
+            broadcastEvent(event);
             return saved;
           });
           await broadcastWorkbench('overview', null); return send(res, 200, result);
@@ -378,7 +525,7 @@ export async function startCloudServer({
       if (route === '/.codex/context/map.json' && req.method === 'GET') {
         requirePrivateRead(req, url);
         const page = String(req.headers.referer || '').match(/\/projects\/([^/?#]+)/);
-        if (!page) return send(res, 200, overviewDocument(registry.projects));
+        if (!page) return send(res, 200, (await workbenchSnapshot('overview', null)).document);
         const project = projectById(decodeURIComponent(page[1]));
         if (!project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const snapshot = await projectSnapshot(project);
@@ -393,8 +540,11 @@ export async function startCloudServer({
       if (route === '/api/projects' && req.method === 'POST') {
         requireAdmin(req, url);
         const rawToken = newToken(), project = compactProject(await requestBody(req), digest(rawToken));
-        if (projectById(project.id)) throw new MapError('PROJECT_EXISTS', 'Project already exists', 409);
-        registry.projects.push(project); await atomicWrite(registryFile, json(registry)); broadcastDirectory('projects', { projectId: project.id });
+        await mutateRegistry(() => {
+          if (projectById(project.id)) throw new MapError('PROJECT_EXISTS', 'Project already exists', 409);
+          registry.projects.push(project);
+        });
+        broadcastDirectory('projects', { projectId: project.id });
         return send(res, 201, { project: publicProject(project), syncToken: rawToken });
       }
       const projectRoute = route.match(/^\/api\/projects\/([^/]+)(?:\/(map|snapshot|commits|events|changes|enrollments|work\/prepare|work\/finish|work\/checkpoint))?$/);
@@ -404,7 +554,8 @@ export async function startCloudServer({
         const action = projectRoute[2];
         if (!action && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { project: publicProject(project) }); }
         if (action === 'enrollments' && req.method === 'POST') {
-          requireAdmin(req, url); const syncToken = newToken(); project.tokenHash = digest(syncToken); project.updatedAt = now(); await atomicWrite(registryFile, json(registry));
+          requireAdmin(req, url); const syncToken = newToken();
+          await updateRegistryProject({ id: project.id, tokenHash: digest(syncToken), updatedAt: now() });
           return send(res, 201, { projectId: project.id, syncToken });
         }
         if (action === 'map' && req.method === 'GET') { if (privateAccess) { const credential = bearer(req, url); if (!(adminToken && safeEqual(credential, adminToken)) && !(project.tokenHash && safeEqual(digest(credential), project.tokenHash))) requirePrivateRead(req, url); } return send(res, 200, await projectSnapshot(project)); }
@@ -430,6 +581,7 @@ export async function startCloudServer({
         if (action === 'work/prepare' && req.method === 'POST') {
           const input = await requestBody(req);
           const result = await serial(project.id, async () => {
+            await recoverTransactions(project.id);
             const workId = String(input.workId || randomUUID());
             if (!/^[\w:.-]{8,160}$/.test(workId)) throw new MapError('INVALID_WORK_ID', 'Use a stable workId (8–160 characters)');
             const existing = await readJson(workFile(project.id, workId), null);
@@ -437,15 +589,21 @@ export async function startCloudServer({
             const snapshot = await projectSnapshot(project);
             const scope = normalizeScope(input.scope);
             if (!scope.nodeIds.length && !scope.paths.length) scope.wildcard = true;
-            const event = await appendEvent(project.id, { type: 'work.started', workId, actor: { kind: 'agent', sessionId: String(input.sessionId || '') }, version: snapshot.version, scope });
+            const event = await createEvent(project.id, { type: 'work.started', workId, actor: { kind: 'agent', sessionId: String(input.sessionId || '') }, version: snapshot.version, scope });
             const work = { workId, projectId: project.id, sessionId: String(input.sessionId || ''), status: 'working', baseSeq: event.seq, baseVersion: snapshot.version, scope, startedAt: event.at };
-            await atomicWrite(workFile(project.id, workId), json(work)); return work;
+            await persistTransaction({
+              v: 1, scope: `work:${project.id}`, operationId: workId, event,
+              work: { projectId: project.id, workId, previousDigest: null, next: work },
+            });
+            broadcastEvent(event);
+            return work;
           });
           return send(res, 200, result);
         }
         if ((action === 'work/checkpoint' || action === 'work/finish') && req.method === 'POST') {
           const input = await requestBody(req), workId = String(input.workId || '');
           const result = await serial(project.id, async () => {
+            await recoverTransactions(project.id);
             const work = await readJson(workFile(project.id, workId), null);
             if (!work) throw new MapError('WORK_NOT_FOUND', 'Prepare this development window first', 404);
             if (work.status === 'completed') return work.result;
@@ -468,11 +626,16 @@ export async function startCloudServer({
               const applied = applyOperations(current.document || emptyProjectDocument(project), input.operations, { kind: 'human', sessionId: work.sessionId });
               validate(applied.doc); document = applied.doc; version = versionOf(document); nodeIds = applied.resultIds;
             }
-            const event = await appendEvent(project.id, { type: 'work.completed', workId, operationId: input.operationId || `finish:${workId}`, actor: { kind: 'agent', sessionId: work.sessionId }, baseVersion: current.version, version, operations: input.operations || [], scope });
-            if (document) await atomicWrite(mapFile(project.id), json({ projectId: project.id, version, seq: event.seq, document, updatedAt: event.at }));
+            const event = await createEvent(project.id, { type: 'work.completed', workId, operationId: input.operationId || `finish:${workId}`, actor: { kind: 'agent', sessionId: work.sessionId }, baseVersion: current.version, version, operations: input.operations || [], scope });
             const completed = { workId, projectId: project.id, status: 'completed', version, seq: event.seq, nodeIds, completedAt: event.at, rebased: current.version !== work.baseVersion };
-            work.status = 'completed'; work.result = completed; work.completedAt = event.at; await atomicWrite(workFile(project.id, workId), json(work));
-            Object.assign(project, { status: 'connected', updatedAt: event.at }); await atomicWrite(registryFile, json(registry));
+            const nextWork = { ...work, status: 'completed', result: completed, completedAt: event.at };
+            await persistTransaction({
+              v: 1, scope: `work:${project.id}`, operationId: `finish:${workId}`, event,
+              ...(document ? { map: { target: 'project', projectId: project.id, previousVersion: current.version, next: { projectId: project.id, version, seq: event.seq, document, updatedAt: event.at } } } : {}),
+              work: { projectId: project.id, workId, previousDigest: digest(JSON.stringify(work)), next: nextWork },
+              registryProject: { id: project.id, status: 'connected', updatedAt: event.at },
+            });
+            broadcastEvent(event);
             await broadcastWorkbench(`project:${project.id}`, project); return completed;
           });
           return send(res, 200, result);
