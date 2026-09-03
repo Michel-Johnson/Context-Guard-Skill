@@ -1074,7 +1074,7 @@ def main() -> int:
                 args.decisions, args.next_steps, args.files, args.input,
             )
             return 0
-        except (OSError, ValueError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             print(f"[context-guard] archive-session failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "write-candidates":

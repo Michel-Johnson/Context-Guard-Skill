@@ -89,6 +89,35 @@ test('Codex installs exactly the eleven supported Context Guard hooks except Ses
   assert.equal(config.hooks.SessionEnd, undefined);
 });
 
+test('an initialized Git source checkout can use its own real Map without enabling plain install folders', async t => {
+  const source = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-self-source-'));
+  const installed = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-self-installed-'));
+  t.after(() => Promise.all([source, installed].map(root => fs.rm(root, { recursive: true, force: true }))));
+  for (const root of [source, installed]) {
+    await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
+    await fs.copyFile(hookScript, path.join(root, 'scripts/context_guard_hook.py'));
+    await fs.copyFile(contextScript, path.join(root, 'scripts/context_guard.py'));
+  }
+  await fs.writeFile(path.join(source, '.git'), 'gitdir: test\n');
+  run('python3', [path.join(source, 'scripts/context_guard.py'), 'init', '--root', source], { cwd: source });
+  run('python3', [path.join(installed, 'scripts/context_guard.py'), 'init', '--root', installed], { cwd: installed });
+
+  const sourceHook = run('python3', [path.join(source, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+    cwd: source, env: { PWD: source, CODEX_WORKSPACE_ROOT: source, CODEX_PROJECT_ROOT: source, CODEX_CWD: source, WORKSPACE_ROOT: source, PROJECT_ROOT: source },
+    input: JSON.stringify({ session_id: 'source-session', cwd: source, source: 'startup', is_background_agent: true }),
+  });
+  assert.match(sourceHook.stdout, /Context Guard Map snapshot/);
+  assert.match(await fs.readFile(path.join(source, '.codex/context/sessions.jsonl'), 'utf8'), /source-session/);
+
+  const installedHook = run('python3', [path.join(installed, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+    cwd: installed, env: { PWD: installed, CODEX_WORKSPACE_ROOT: installed, CODEX_PROJECT_ROOT: installed, CODEX_CWD: installed, WORKSPACE_ROOT: installed, PROJECT_ROOT: installed },
+    input: JSON.stringify({ session_id: 'installed-session', cwd: installed, source: 'startup', is_background_agent: true }),
+  });
+  assert.doesNotMatch(installedHook.stdout, /Context Guard Map snapshot/);
+  const installedSessions = await fs.readFile(path.join(installed, '.codex/context/sessions.jsonl'), 'utf8').catch(() => '');
+  assert.doesNotMatch(installedSessions, /installed-session/);
+});
+
 test('hooks keep an auditable plan across prompt, tools, compaction, interrupt and stop', async t => {
   const project = await fixture();
   t.after(() => fs.rm(project, { recursive: true, force: true }));
@@ -203,11 +232,22 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.match(denied.json.hookSpecificOutput.decision.message, /N1/);
 
   const ctx = path.join(project, '.codex/context');
-  await fs.mkdir(path.join(ctx, 'sessions'), { recursive: true });
-  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
   const port = await freePort();
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
   t.after(() => spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], { encoding: 'utf8' }));
+  const archiveDenied = spawnSync('python3', [contextScript, 'archive-session', '--root', project, '--session', session,
+    '--summary', '未授权归档', '--files', 'src/index.mjs'], { cwd: project, encoding: 'utf8' });
+  assert.notEqual(archiveDenied.status, 0);
+  assert.match(archiveDenied.stderr, /archive-session failed/);
+  assert.doesNotMatch(archiveDenied.stderr, /Traceback/);
+
+  const initialState = JSON.parse(await fs.readFile(path.join(ctx, 'private/workbench.json'), 'utf8'));
+  const initialBootstrap = await fetch(new URL('/__context_guard/bootstrap', initialState.url)).then(response => response.json());
+  const initialGrant = await fetch(new URL('/api/access', initialState.url), {
+    method: 'POST', headers: { Authorization: `Bearer ${initialBootstrap.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: session, nodes: ['N1'] }),
+  });
+  assert.equal(initialGrant.status, 200);
 
   const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'todo-turn', prompt: '后续开发通知模块' });
   const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];

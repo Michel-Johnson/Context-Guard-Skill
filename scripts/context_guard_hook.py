@@ -100,6 +100,10 @@ def parse_hook_payload(raw: str) -> object:
         return {}
 
 
+def initialized_source_project(root: Path) -> bool:
+    return (root / ".git").exists() and (root / ".codex" / "context" / "map.json").is_file()
+
+
 def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
     payload = parse_hook_payload(raw)
     candidates: list[tuple[Path, str]] = []
@@ -112,7 +116,7 @@ def event_root(raw: str, cwd: Path) -> tuple[Path, str]:
     candidates.append((cwd, "process cwd"))
     for path, source in candidates:
         root = folder_root(path)
-        if not is_context_guard_skill_path(root):
+        if not is_context_guard_skill_path(root) or initialized_source_project(root):
             return root, source
     return folder_root(cwd), "process cwd"
 
@@ -628,7 +632,7 @@ def main() -> int:
     root, root_source = event_root(raw, Path.cwd())
     ctx = context_folder(root)
 
-    if is_context_guard_skill_path(root):
+    if is_context_guard_skill_path(root) and not initialized_source_project(root):
         hook_log("[context-guard] apparent root is the skill directory; skipping writes.")
         return hook_response(platform, event)
     current_session_id = session_id(payload, platform, ctx, event)
