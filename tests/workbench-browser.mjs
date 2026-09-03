@@ -500,6 +500,45 @@ try {
     assert.equal(gallery.stages, 50, `each draft must show the full workbench ${JSON.stringify(gallery)}`);
     assert.equal(gallery.oneCard, true, 'each draft has one context card');
     assert.equal(gallery.title, '工作台风格 · 50 版');
+    const frozen = await preview.evaluate(() => {
+      const pick = id => {
+        const item = document.querySelector('#v' + id);
+        const cs = el => getComputedStyle(el);
+        const map = item.querySelector('.map');
+        const root = item.querySelector('.root');
+        const mod = item.querySelector('.mod');
+        const insp = item.querySelector('.insp');
+        const bar = item.querySelector('.bar');
+        const note = item.querySelector('.note');
+        const act = item.querySelector('.acts span');
+        return {
+          mapBg: cs(map).backgroundColor,
+          rootBg: cs(root).backgroundColor,
+          modBg: cs(mod).backgroundColor,
+          inspBg: cs(insp).backgroundColor,
+          inspBorder: cs(insp).borderLeftColor,
+          noteBg: cs(note).backgroundColor,
+          actH: Math.round(act.getBoundingClientRect().height),
+          barBg: cs(bar).backgroundColor
+        };
+      };
+      return { a: pick('01'), b: pick('12'), c: pick('32'), d: pick('25') };
+    });
+    assert.equal(frozen.a.mapBg, 'rgb(254, 250, 242)', `live canvas cream ${frozen.a.mapBg}`);
+    assert.equal(frozen.a.rootBg, 'rgb(255, 243, 191)');
+    assert.equal(frozen.a.modBg, 'rgb(243, 234, 214)');
+    assert.equal(frozen.a.inspBg, 'rgb(254, 250, 242)');
+    assert.equal(frozen.a.noteBg, 'rgb(255, 255, 255)');
+    assert.equal(frozen.a.actH, 36);
+    for (const other of [frozen.b, frozen.c, frozen.d]) {
+      assert.equal(other.mapBg, frozen.a.mapBg, `map must stay live ${JSON.stringify(other)}`);
+      assert.equal(other.rootBg, frozen.a.rootBg);
+      assert.equal(other.modBg, frozen.a.modBg);
+      assert.equal(other.inspBg, frozen.a.inspBg);
+      assert.equal(other.noteBg, frozen.a.noteBg);
+    }
+    assert.notEqual(frozen.a.barBg, frozen.b.barBg, 'ink bar still differs from live chrome');
+    assert.notEqual(frozen.a.barBg, frozen.c.barBg, 'blueprint bar still differs from live chrome');
     recordCheck('chrome-gallery-50');
   } finally {
     await preview.close();
