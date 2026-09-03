@@ -1,7 +1,10 @@
 # Workbench / Agent interface (local Node protocol 2)
 
-The authoritative document is `<project>/.codex/context/map.json`. Browser storage
-contains recovery drafts and UI preferences, never a second authoritative map.
+For a Git project, one service owns all linked worktrees. The All Sessions baseline
+is stored in the Git common directory under `context-guard/main/map.json`; each
+Session remains bound to the authoritative `.codex/context/map.json` inside the
+worktree where it started. Browser storage contains recovery drafts and UI
+preferences, never an authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
 The server, submissions and live notifications run on Node 18 or newer; no new
 runtime dependency is required.
@@ -20,6 +23,19 @@ the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit me
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
 session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
 Do not substitute the visible demo session label or invent a human identity.
+
+The workbench session picker changes data sources, not only the authorization
+overlay. `All Sessions` reads the main baseline; `session:<id>` reads that Session's
+bound worktree. Starting from a feature worktree still seeds a new main baseline
+from the checked-out main worktree. If no main worktree is available, the service
+stays usable but marks the baseline as requiring reconciliation. GitHub `origin`
+and its advertised default branch are the automatic binding; otherwise the
+lifecycle context instructs the Agent to ask the user instead of inferring one.
+
+Linked worktrees also share the Cloud project credential from the Git common
+directory. Their Cloud cursor, work windows, local Map and recovery files remain
+worktree-local, so multiple Sessions can synchronize independently to the same
+online canonical Map.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
 connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
@@ -218,7 +234,8 @@ security sandbox**: a program with the user's full filesystem/browser access can
 read credentials, edit the map or impersonate browser actions. Do not expose the
 port or use it to isolate a hostile Agent running as the same OS user.
 
-One Node instance owns a project. An identified old Python service is not silently
+One Node instance owns a project (all linked worktrees resolve to the same project
+lock and state file). An identified old Python service is not silently
 killed: export its cache and stop it using the old entry before starting Node.
 `context-guard workbench --root ... --stop` waits for connected page checkpoints;
 dirty pages must be saved or explicitly resolved first.

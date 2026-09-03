@@ -264,6 +264,46 @@ def language_setup_context(root: Path, ctx: Path) -> str:
     )
 
 
+def project_binding_context(root: Path) -> str:
+    """Ask for a main baseline only when Git cannot identify a GitHub main."""
+    try:
+        inside = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"], cwd=root,
+            capture_output=True, text=True, timeout=2, check=True,
+        ).stdout.strip()
+        if inside != "true":
+            return ""
+        remote = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"], cwd=root,
+            capture_output=True, text=True, timeout=2, check=False,
+        ).stdout.strip()
+        github = re.match(r"^(?:https?://|ssh://git@|git@)github\.com(?::|/)[^/]+/[^/]+?(?:\.git)?$", remote, re.I)
+        symbolic = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            cwd=root, capture_output=True, text=True, timeout=2, check=False,
+        ).stdout.strip()
+        has_main = bool(symbolic)
+        if not has_main:
+            for branch in ("main", "master"):
+                result = subprocess.run(
+                    ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}^{{commit}}"],
+                    cwd=root, capture_output=True, text=True, timeout=2, check=False,
+                )
+                if result.returncode == 0:
+                    has_main = True
+                    break
+        if github and has_main:
+            return ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    quoted_root = json.dumps(str(root))
+    return (
+        "Context Guard cannot identify a GitHub origin/main baseline for this Git project. "
+        "Before treating All Sessions as authoritative, ask the user which remote and main branch define the project; "
+        f"do not infer them. Project root: {quoted_root}."
+    )
+
+
 def lifecycle_context(root: Path, workbench_url: str | None, current_session_id: str) -> str:
     quoted_root = '"' + str(root).replace('"', '\\"') + '"'
     workbench = f" Workbench: {workbench_url}." if workbench_url else ""
@@ -322,7 +362,17 @@ def append_user_message(ctx: Path, text: str) -> str:
 
 
 def sync_configured(ctx: Path) -> bool:
-    return (ctx / "private" / "cloud-sync" / "config.json").is_file()
+    if (ctx / "private" / "cloud-sync" / "config.json").is_file():
+        return True
+    root = ctx.parent.parent
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
+            capture_output=True, text=True, timeout=2, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return (Path(common).resolve() / "context-guard" / "cloud-sync" / "config.json").is_file()
 
 
 def sync_command(root: Path, action: str, current_session_id: str = "", paths: list[str] | None = None) -> dict[str, object]:
@@ -463,13 +513,14 @@ def main() -> int:
             url = start_workbench(
                 root,
                 open_browser=start_reason not in {"resume", "clear", "compact"},
+                session_id=current_session_id,
             )
             if sync_configured(ctx):
                 sync_command(root, "ensure")
         hook_log(
             f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})"
         )
-        contexts = [language_setup_context(root, ctx), lifecycle_context(root, url, current_session_id)]
+        contexts = [language_setup_context(root, ctx), project_binding_context(root), lifecycle_context(root, url, current_session_id)]
         playbook = ctx / "tasks" / "J2.md"
         if playbook.is_file():
             contexts.append(

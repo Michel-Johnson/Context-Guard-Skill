@@ -38,7 +38,8 @@ export class Access {
   constructor(root, options = {}) {
     this.root = root;
     this.ctx = path.join(root, '.codex/context');
-    this.file = path.join(this.ctx, 'sessions/workbench-access.json');
+    this.file = options.file || path.join(this.ctx, 'sessions/workbench-access.json');
+    this.bindingsFile = options.bindingsFile || path.join(this.ctx, 'sessions/workbench-bindings.json');
     this.sessionsFile = path.join(this.ctx, 'sessions.jsonl');
     this.codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
     this.codexDb = options.codexDb || null;
@@ -47,9 +48,16 @@ export class Access {
     this.rolloutStates = new Map();
     this.queue = Promise.resolve();
   }
-  async init() { this.data = await readJSON(this.file, { sessions: {} }); return this; }
-  async hookSessionRegistry() {
-    const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+  async init() {
+    this.data = await readJSON(this.file, { sessions: {} });
+    this.bindings = await readJSON(this.bindingsFile, { sessions: {} });
+    return this;
+  }
+  binding(sessionId) { return this.bindings.sessions[sessionId] || null; }
+  bindingRoots() { return [...new Set([this.root, ...Object.values(this.bindings.sessions).map(item => item?.worktreeRoot).filter(Boolean)])]; }
+  async hookSessionRegistry(root = this.root) {
+    const sessionsFile = path.join(root, '.codex/context/sessions.jsonl');
+    const text = await fs.readFile(sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
     const sessions = new Map();
     for (const line of text.split('\n').filter(Boolean)) {
       try {
@@ -68,6 +76,7 @@ export class Access {
           firstSeen: previous?.firstSeen || at,
           lastSeen: at,
           lastEvent: typeof event.event === 'string' ? event.event : previous?.lastEvent || 'unknown',
+          worktreeRoot: root,
         });
       } catch {}
     }
@@ -131,12 +140,15 @@ export class Access {
     this.rolloutStates.set(file, next);
     return next;
   }
-  async discoverCodexSessions() {
-    if (this.codexSessions) return this.codexSessions(this.root);
+  async discoverCodexSessions(roots = [this.root]) {
+    if (this.codexSessions) {
+      const batches = await Promise.all(roots.map(root => this.codexSessions(root)));
+      return batches.flat();
+    }
     const database = await this.stateDatabase();
     if (!database) return [];
-    const cwd = this.root.replaceAll("'", "''");
-    const sql = `select id, name, title, created_at, updated_at, rollout_path from threads where cwd='${cwd}' and thread_source='user' and archived=0 order by updated_at desc limit 100`;
+    const escaped = roots.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
+    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
     try {
       const { stdout } = await execFileAsync(this.sqliteCommand, ['-readonly', '-json', database, sql], { encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024 });
       const rows = stdout.trim() ? JSON.parse(stdout) : [];
@@ -150,12 +162,15 @@ export class Access {
           firstSeen: isoTime(row.created_at),
           lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
           lastEvent: state.lastEvent,
+          worktreeRoot: String(row.cwd || ''),
         };
       }));
     } catch { return []; }
   }
   async sessionRegistry() {
-    const [hookSessions, codexSessions] = await Promise.all([this.hookSessionRegistry(), this.discoverCodexSessions()]);
+    const roots = this.bindingRoots();
+    const [hookBatches, codexSessions] = await Promise.all([Promise.all(roots.map(root => this.hookSessionRegistry(root))), this.discoverCodexSessions(roots)]);
+    const hookSessions = hookBatches.flat();
     const sessions = new Map(hookSessions.map(item => [item.id, item]));
     for (const discovered of codexSessions) {
       if (!discovered?.id) continue;
@@ -168,7 +183,7 @@ export class Access {
         lastSeen: [previous?.lastSeen, discovered.lastSeen].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
       });
     }
-    return [...sessions.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+    return [...sessions.values()].map(item => ({ ...item, ...(this.binding(item.id) || {}) })).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
   }
   async recordedSessionIds() {
     const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
@@ -186,8 +201,10 @@ export class Access {
       grants: this.data.sessions,
     };
   }
-  async knownSessions() {
-    return (await this.sessionRegistry()).map(item => item.id);
+  async knownSessions(root = null) {
+    if (!root) return (await this.sessionRegistry()).map(item => item.id);
+    const [hook, codex] = await Promise.all([this.hookSessionRegistry(root), this.discoverCodexSessions([root])]);
+    return [...new Set([...hook, ...codex].map(item => item.id))];
   }
   watch(onChange) {
     let timer, checking = false, signature;
@@ -211,9 +228,19 @@ export class Access {
     const interval = setInterval(inspect, 750); interval.unref?.();
     return () => { clearTimeout(timer); clearInterval(interval); unwatchFile(this.sessionsFile, inspect); };
   }
-  async register(sessionId) {
-    if (!(await this.knownSessions()).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Codex project', 403);
-    return { kind: 'agent', sessionId };
+  async register(sessionId, binding = {}) {
+    const worktreeRoot = binding.worktreeRoot || this.binding(sessionId)?.worktreeRoot || this.root;
+    if (!(await this.knownSessions(worktreeRoot)).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
+    const stored = {
+      ...(this.binding(sessionId) || {}),
+      ...binding,
+      sessionId,
+      worktreeRoot,
+      updatedAt: new Date().toISOString(),
+    };
+    this.bindings.sessions[sessionId] = stored;
+    await atomicWrite(this.bindingsFile, encode(this.bindings));
+    return { kind: 'agent', sessionId, ...(stored.projectId ? { projectId: stored.projectId } : {}), ...(stored.worktreeId ? { worktreeId: stored.worktreeId } : {}) };
   }
   grants(sessionId) { return this.data.sessions[sessionId]?.nodes || []; }
   async grant(sessionId, nodes, version) {

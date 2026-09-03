@@ -772,8 +772,19 @@ def running_workbench(root: Path) -> dict[str, object] | None:
     if not isinstance(state, dict) or not isinstance(state.get("url"), str):
         return None
     health = workbench_health(str(state["url"]))
-    if not health or health.get("root") != str(root.resolve()):
+    if not health:
         return None
+    if health.get("root") != str(root.resolve()):
+        try:
+            common = subprocess.run(
+                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                cwd=root, capture_output=True, text=True, timeout=2, check=True,
+            ).stdout.strip()
+            project_id = "git-" + hashlib.sha256(str(Path(common).resolve()).encode()).hexdigest()[:20]
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if health.get("projectId") != project_id:
+            return None
     return state
 
 
@@ -813,13 +824,16 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
         pass
 
 
-def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True) -> str | None:
+def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, session_id: str = "") -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
     init_context(root)
     try:
-        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port)])
+        args = ["workbench", "--root", str(root), "--port", str(port)]
+        if session_id:
+            args.extend(["--session", session_id])
+        result = run_node_workbench(args)
         url = result["url"]
         maybe_open_browser(url, open_browser)
         return url

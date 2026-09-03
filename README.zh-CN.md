@@ -23,7 +23,9 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 **云端：** Cloud 首页只汇集多个项目入口，每个项目独立维护自己的 Map。公开页面只读；通过工作台令牌授权后的 Cloud 工作台可以编辑。项目使用独立同步令牌和事件流，不共享管理令牌。
 
-**本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。Node 服务会自动把编辑保存到本地 map.json，也会把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
+**本地：** 一个项目只有一个工作台，即使 Git 项目有多个 linked worktree。每个生命周期 Session 都绑定到启动它的 worktree；选择该 Session 时显示对应 worktree 的临时 Map，**所有会话**只显示跟随 GitHub `origin/main` 的项目基线，不吸收尚未合并的 worktree Map。无法识别 GitHub 和默认分支时，Hook 会让 Agent 询问用户主基线，而不是自行猜测。Node 服务会自动持久化编辑并把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
+
+**云端绑定：** 同一 Git 项目的所有 worktree 共用一个 Cloud 项目凭据；游标、开发窗口和恢复状态仍分别保存在各 worktree/Session，本地临时状态最终对齐同一张线上 Map。
 
 ```bash
 context-guard workbench --root /path/to/project

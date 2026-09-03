@@ -321,10 +321,10 @@ try {
   await title.dispatchEvent('compositionend'); await openSyncSettings(); await page.locator('#cg-sync-reload').click(); await synchronized();
   await second.close();
   // A network failure retains the same request; retry saves it without duplication.
-  await page.route('**/api/commit', route => route.abort('connectionfailed'));
+  await page.route('**/api/commit*', route => route.abort('connectionfailed'));
   await title.fill('断线期间的草稿'); await title.press('Tab'); await page.waitForSelector('#cg-sync[data-status="offline"]', { state: 'attached' });
   assert.notEqual((await read()).root.children[0].title, '断线期间的草稿');
-  await page.unroute('**/api/commit'); await openSyncSettings(); await page.locator('#cg-sync-retry').click(); await synchronized();
+  await page.unroute('**/api/commit*'); await openSyncSettings(); await page.locator('#cg-sync-retry').click(); await synchronized();
   assert.equal((await read()).root.children[0].title, '断线期间的草稿'); recordCheck('network-retry');
   // Five simultaneously open frontends share one authoritative map. Only the
   // connected pages with unsaved edits may fence Agent reads; closed tabs must

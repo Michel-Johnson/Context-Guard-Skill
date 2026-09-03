@@ -28,7 +28,9 @@ Skill installation. Browser tests use bundled Chromium, not a signed-in browser.
   boundaries; actual npm package contents, lifecycle hooks, language setup,
   session/message/bad-case persistence; workbench/inbox checks including
   interrupted writes, version conflicts, exact acknowledgements, project path
-  aliases, Windows short-path watchers and stop-then-restart behavior.
+  aliases, linked-worktree project identity, one-service reuse, main/Session data
+  isolation, shared Cloud binding, Windows short-path watchers and stop-then-restart
+  behavior.
 - `npm run test:browser`: a real SessionStart hook creates a synthetic session in
   an outside-checkout temporary project. The real page and public CLI check
   bidirectional persistence, human-only proposal confirmation, inbox redelivery,

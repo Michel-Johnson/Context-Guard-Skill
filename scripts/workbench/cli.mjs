@@ -4,7 +4,8 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { startServer, statePath, health, skillRoot } from './server.mjs';
+import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
+import { resolveProject, listWorktrees } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
@@ -32,10 +33,26 @@ async function initialize(root) {
 export async function ensureServer(root, port = 8877) {
   await initialize(root);
   root = await fs.realpath(root);
-  const sameRoot = async live => live?.root && await fs.realpath(live.root).catch(() => null) === root;
-  let state = await readJSON(statePath(root), null), live = state && await health(state);
-  if (await sameRoot(live)) {
+  const project = await resolveProject(root);
+  const sharedState = projectStatePath(project);
+  const sameProject = async live => live?.projectId
+    ? live.projectId === project.projectId
+    : !!live?.root && await fs.realpath(live.root).catch(() => null) === root;
+  const worktreeRoots = await listWorktrees(project);
+  const stateFiles = [...new Set([sharedState, ...worktreeRoots.map(statePath)])];
+  let state = null, live = null;
+  for (const file of stateFiles) {
+    const candidate = await readJSON(file, null);
+    const candidateLive = candidate && await health(candidate);
+    if (!candidateLive) continue;
+    if (candidateLive.projectId === project.projectId) { state = candidate; live = candidateLive; break; }
+    if (!candidateLive.projectId && candidateLive.root && worktreeRoots.includes(await fs.realpath(candidateLive.root).catch(() => ''))) {
+      throw new MapError('LEGACY_SERVICE', 'An older worktree-scoped service is active. Export its cache and stop it before starting the project workbench.', 409, { root: candidateLive.root });
+    }
+  }
+  if (await sameProject(live)) {
     if (live.protocol !== 2 || !state.adminToken) throw new MapError('LEGACY_SERVICE', 'Old read-only service is active. Export its cache before stopping it and starting the Node workbench.', 409);
+    if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
     return state;
   }
   const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a');
@@ -43,8 +60,8 @@ export async function ensureServer(root, port = 8877) {
   child.unref(); await log.close();
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
-    await pause(60); state = await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
-    if (live?.protocol === 2 && await sameRoot(live)) return state;
+    await pause(60); state = await readJSON(sharedState, null).catch(() => null) || await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
+    if (live?.protocol === 2 && await sameProject(live)) return state;
   }
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
@@ -55,7 +72,10 @@ export async function request(state, route, { token = state.adminToken, method =
   return result;
 }
 export async function stopServer(root) {
-  const state = await readJSON(statePath(root), null);
+  root = await fs.realpath(root);
+  const project = await resolveProject(root);
+  const sharedState = projectStatePath(project);
+  const state = await readJSON(sharedState, null) || await readJSON(statePath(root), null);
   if (!state || !await health(state)) return { stopped: false };
   if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
   await request(state, '/api/stop', { method: 'POST', body: {} });
@@ -63,8 +83,8 @@ export async function stopServer(root) {
   // A stop acknowledgement is not a released project lock. Do not let the next
   // command race the old process while it flushes writes and closes sockets.
   for (;;) {
-    const current = await readJSON(statePath(root), null);
-    const lock = await readJSON(path.join(root, '.codex/context/private/node-workbench.lock'), null);
+    const current = await readJSON(sharedState, null);
+    const lock = await readJSON(projectLockPath(project), null);
     if (current?.instance !== state.instance && lock?.instance !== state.instance) return { stopped: true };
     if (Date.now() >= deadline) throw new MapError('STOP_FAILED', 'Workbench has not finished shutting down; project lock preserved', 503);
     await pause(25);
@@ -85,14 +105,18 @@ async function main(args) {
     return stopServer(root);
   }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
-  if (command === 'workbench') return { url: state.url, root, protocol: 2 };
+  if (command === 'workbench') {
+    if (opt.session) await request(state, '/api/session', { method: 'POST', body: { sessionId: opt.session, worktreeRoot: root } });
+    const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
+    return { url: state.url, root, projectId: state.projectId, source: refreshed.source, protocol: 2 };
+  }
   let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
     sessionId = `maintenance-${process.pid}-${randomUUID()}`;
     await fs.appendFile(path.join(root, '.codex/context/sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'maintenance', session_id: sessionId, platform: 'cli' }) + '\n');
   }
   if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Pass the real lifecycle --session ID (or CODEX_THREAD_ID)');
-  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId } });
+  const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
   if (['inbox', 'ack', 'watch'].includes(action)) {

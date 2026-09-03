@@ -18,7 +18,7 @@ export class WorkbenchSync {
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
     this.revision = 0; this.cachedDiff = null;
-    this.composing = false; this.inputDraft = null; this.activeSession = ALL_SESSIONS; this.sessions = []; this.grants = {}; this.captureKey = null;
+    this.composing = false; this.inputDraft = null; this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
@@ -39,12 +39,16 @@ export class WorkbenchSync {
     });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
-  endpoint(route) { return `${this.config?.apiBase || ''}${route}`; }
+  endpoint(route) {
+    const endpoint = `${this.config?.apiBase || ''}${route}`;
+    if (!route.startsWith('/api/')) return endpoint;
+    return `${endpoint}${endpoint.includes('?') ? '&' : '?'}view=${encodeURIComponent(this.viewId || 'main')}`;
+  }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST') {
     const response = await fetch(this.endpoint(route), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
     const result = await response.json();
-    if (!response.ok) { const e = new Error(result.error?.message || 'Request failed'); Object.assign(e, result.error); throw e; }
+    if (!response.ok) { const e = new Error(result.error?.message || 'Request failed'); Object.assign(e, result.error, { serverResponse: true }); throw e; }
     return result;
   }
   operations() {
@@ -92,7 +96,7 @@ export class WorkbenchSync {
     if (!this.config) return false;
     try {
       const state = await this.call('/api/state');
-      this.doc = state.doc; this.version = state.version; this.captureKey = 'cg-sync-draft:' + this.config.root;
+      this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
       if (state.error) throw new Error(state.error?.message || '服务需要恢复');
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         this.initializationRequired = true;
@@ -106,14 +110,16 @@ export class WorkbenchSync {
       const restored = stored(this.captureKey), legacy = stored('cg-workbench-maps-v16');
       this.recovery = restored; this.legacy = legacy;
       this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
-      this.setStatus('synced', restored || legacy ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : '');
+      const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
+      this.setStatus('synced', restored || legacy ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
       return true;
     } catch (e) { this.setStatus('error', e.message); return false; }
   }
   connect() {
     this.events?.close();
     const query = new URLSearchParams({ clientId: this.id }); if (this.config.token) query.set('token', this.config.token);
-    this.events = new EventSource(`${this.endpoint('/api/events')}?${query}`, { withCredentials: true });
+    const endpoint = this.endpoint('/api/events');
+    this.events = new EventSource(`${endpoint}${endpoint.includes('?') ? '&' : '?'}${query}`, { withCredentials: true });
     this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
     this.events.addEventListener('access', () => this.refreshAccess());
     this.events.addEventListener('cloud-sync', e => this.renderCloudStatus(JSON.parse(e.data)));
@@ -130,6 +136,7 @@ export class WorkbenchSync {
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
   async receive(state) {
+    if (state.viewId && state.viewId !== this.viewId) return;
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) return;
@@ -143,7 +150,7 @@ export class WorkbenchSync {
     if (generation !== this.loadGeneration) return;
     if (current.error || current.recovery || !current.doc) { this.setStatus('error', current.error?.message || '服务需要恢复'); return; }
     if (this.dirty()) { this.setStatus('conflict'); return; }
-    this.doc = current.doc; this.version = current.version; this.a.apply(this.doc); this.baseTree = copy(this.a.getRoot()); this.revision++;
+    this.doc = current.doc; this.version = current.version; this.source = current.source || null; this.a.apply(this.doc); this.baseTree = copy(this.a.getRoot()); this.revision++;
     await this.presence(); this.setStatus('synced');
   }
   async flush() {
@@ -161,7 +168,7 @@ export class WorkbenchSync {
         this.version = result.version; this.baseTree = sentTree; this.revision++;
         this.doc = { ...this.doc, root: copy(sentTree) }; this.pendingRequest = null;
         this.setStatus('persisted');
-      } catch (e) { this.saveDraft(); this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : e.code ? 'error' : 'offline', e.message); }
+      } catch (e) { this.saveDraft(); this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : e.serverResponse ? 'error' : 'offline', e.message); }
     })();
     await this.inflight; this.inflight = null;
     if (['conflict', 'offline', 'error'].includes(this.status)) return;
@@ -220,9 +227,9 @@ export class WorkbenchSync {
     if (!this.config) return;
     if (this.dirty()) { this.saveDraft(); this.export(); }
     const current = await this.call('/api/state'); if (current.error || !current.doc?.root) { this.setStatus('error', current.error?.message || '地图根节点尚未初始化'); return; }
-    this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version;
+    this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version; this.source = current.source || null;
     this.a.apply(current.doc); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
-    this.captureKey ||= 'cg-sync-draft:' + this.config.root;
+    this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
     await this.presence(); this.setStatus('synced', '旧草稿副本仍保留');
   }
@@ -252,6 +259,7 @@ export class WorkbenchSync {
   async refreshAccess() {
     if (!this.config) return;
     const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
+    this.project = data.project || this.project || null;
     const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
     this.sessions = sessions; this.grants = data.grants || {};
     const current = sessions.find(item => item.id === this.activeSession);
@@ -267,7 +275,7 @@ export class WorkbenchSync {
     })];
     select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
-    this.a.setAccess(this.grants?.[this.activeSession]?.nodes || [], this.activeSession, active, this.activeSession === ALL_SESSIONS);
+    this.a.setAccess(this.grants?.[this.activeSession]?.nodes || [], this.activeSession, active, this.activeSession === ALL_SESSIONS, this.project?.main || null);
   }
   renderCloudStatus(status) {
     if (!this.cloudIndicator) return;
@@ -284,9 +292,17 @@ export class WorkbenchSync {
   }
   async selectSession(sessionId) {
     if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId)) return false;
+    if (this.dirty()) {
+      await this.flush();
+      if (this.dirty()) { this.setStatus(this.status, '当前视图仍有未保存内容，暂不能切换'); return false; }
+    }
+    const nextView = sessionId === ALL_SESSIONS || this.project?.kind !== 'git' ? 'main' : `session:${sessionId}`;
     this.activeSession = sessionId;
     this.manualSession = true;
-    await this.refreshAccess();
+    if (nextView !== this.viewId) {
+      this.events?.close(); this.events = null; this.viewId = nextView; this.captureKey = null;
+      await this.reload();
+    } else await this.refreshAccess();
     return true;
   }
   isAllSessions() { return this.activeSession === ALL_SESSIONS; }

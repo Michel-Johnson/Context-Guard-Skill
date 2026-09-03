@@ -23,7 +23,9 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
+**Local:** one project has one workbench, even when Git has several linked worktrees. Every lifecycle Session is bound to the worktree where it started. Selecting that Session shows its temporary worktree Map; **All Sessions** shows the project baseline associated with GitHub `origin/main` and never absorbs an unmerged worktree Map. If GitHub and the default branch cannot be identified, the hook asks the user to define the main baseline instead of guessing. The Node service automatically persists edits and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
+
+**Cloud binding:** all worktrees of one Git project share the same Cloud project credential. Cursor, work-window and recovery state remain local to each worktree/Session, while the online Map is the common canonical Map.
 
 ```bash
 context-guard workbench --root /path/to/project

@@ -60,6 +60,8 @@ When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎
 
 First session language: when `.codex/context/preferences.json` has `record_language: unset`, ask the user whether project context should be recorded in 中文 or English before substantive project work. Do not infer the answer. Persist it with `context-guard set-language --root <project> --language <zh-or-en>`. Do not ask again after it is set.
 
+Project/worktree model: treat linked Git worktrees as one project and one workbench. A Session is bound to the worktree where its lifecycle starts, and its Map actions stay on that worktree view. The human-only All Sessions view follows the project main baseline and must not absorb unmerged worktree changes. Prefer GitHub `origin` plus its advertised default branch; if they cannot be identified, ask the human which remote/main branch is authoritative and do not guess. When Cloud Sync is configured, linked worktrees share the Cloud project binding but retain separate temporary sync/work state.
+
 ### First use
 
 First use (no map yet): talk with the human layer by layer. First offer several ways to cut L1, or a larger set of candidate modules whose titles a person can read in seconds. After they lock L1 (about 4–8), design L2, then L3. Write `architecture.md` as you go. Submit L1 proposals with `owns` paths and have the human confirm them in the workbench. Later sessions open that map. Do not dump a full tree, a directory listing, or one node per file.
