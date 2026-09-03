@@ -446,6 +446,19 @@ try {
     assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
     recordCheck('phone-preview-banners-hidden');
     recordCheck('phone-add-child-hidden');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?gallery=1`);
+    await preview.waitForSelector('.g-item');
+    const gallery = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const bars = items.filter(el => el.querySelector('.g-chrome .bar'));
+      return { n: items.length, uniq: new Set(names).size, bars: bars.length, title: document.querySelector('.g-bar b')?.textContent };
+    });
+    assert.equal(gallery.n, 50, `chrome gallery should show 50 drafts ${JSON.stringify(gallery)}`);
+    assert.equal(gallery.uniq, 50);
+    assert.equal(gallery.bars, 50);
+    assert.equal(gallery.title, '顶栏 · 50 版');
+    recordCheck('chrome-gallery-50');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));
