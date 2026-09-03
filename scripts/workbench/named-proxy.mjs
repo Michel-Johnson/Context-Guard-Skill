@@ -22,11 +22,14 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const routes = new RouteStore(dir), instance = secret(), adminToken = secret();
   routes.loadRoutes(); // Fail closed on corrupted persisted state, without overwriting it.
-  let base;
+  let base, ready = false;
   const sockets = new Set();
   const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
   const server = http.createServer(async (req, res) => {
     try {
+      // The state rename precedes its directory fsync. A launcher can discover
+      // this listener during that await, before initialization has completed.
+      if (!ready) return send(res, 503, { error: 'Proxy initializing' });
       if (req.headers.host === new URL(base).host) {
         if (req.headers.origin && req.headers.origin !== base) return send(res, 403, { error: 'Origin rejected' });
         if (req.url === '/__cg_proxy/health' && req.method === 'GET') return send(res, 200, { kind: 'context-guard-named', version: 1, instance });
@@ -76,10 +79,12 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
   try { await atomicWrite(stateFile, encode(state)); } catch (e) { server.close(); throw e; }
   let closing;
   const close = () => closing ||= (async () => {
+    ready = false;
     const stopped = new Promise(resolve => server.close(resolve));
     for (const socket of sockets) socket.destroy(); await stopped;
     if ((await readJSON(stateFile, null))?.instance === instance) await fs.unlink(stateFile);
   })();
+  ready = true;
   return { state, server, close };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

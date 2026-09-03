@@ -121,7 +121,12 @@ test('concurrent separate launchers reuse one daemon without replacing an occupi
   const states = await Promise.all(Array.from({ length: 5 }, () => new Promise((resolve, reject) => {
     const p = spawn(process.execPath, ['--input-type=module', '-e', code, dir, String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', error = ''; p.stdout.on('data', d => output += d); p.stderr.on('data', d => error += d); p.on('error', reject); p.on('exit', c => c === 0 ? resolve(JSON.parse(output)) : reject(new Error(error)));
-  })));
+  }))).catch(async error => {
+    // Synthetic fixture diagnostics only; never publish proxy capabilities.
+    const log = await fs.readFile(path.join(dir, 'proxy.log'), 'utf8').catch(() => '');
+    const codes = [...new Set(log.match(/\bE[A-Z]{3,}\b/g) || [])];
+    throw new Error(`${error.message}; daemon error codes: ${codes.join(',') || 'none'}`);
+  });
   assert.equal(new Set(states.map(s => s.instance)).size, 1);
   assert.notEqual(Number(new URL(states[0].base).port), port);
   t.after(async () => {
@@ -130,6 +135,35 @@ test('concurrent separate launchers reuse one daemon without replacing an occupi
     for (let i = 0; i < 100; i++) { try { await fs.access(path.join(dir, 'proxy.json')); } catch { return; } await new Promise(r => setTimeout(r, 20)); }
     throw new Error('Proxy did not stop');
   });
+});
+test('published state is not healthy until initialization finishes, including slow disk flush', async t => {
+  const dir = await fixture(t), originalOpen = fs.open;
+  let release, flushing;
+  const blocked = new Promise(r => release = r), reached = new Promise(r => flushing = r);
+  fs.open = async (...args) => {
+    const handle = await originalOpen(...args);
+    // Delay the state file flush (portable to Windows, which skips dir fsync).
+    if (String(args[0]).startsWith(path.join(dir, 'proxy.json.'))) {
+      const sync = handle.sync.bind(handle);
+      handle.sync = async () => { flushing(); await blocked; await sync(); };
+    }
+    return handle;
+  };
+  t.after(async () => { release(); fs.open = originalOpen; await (await starting).close(); });
+  // A known port lets us probe during the state write, not after start returns.
+  const probe = http.createServer(); await new Promise(r => probe.listen(0, '127.0.0.1', r));
+  const port = probe.address().port; await new Promise(r => probe.close(r));
+  const starting = startNamedProxy({ dir, port });
+  await reached;
+  const base = `http://127.0.0.1:${port}`;
+  assert.equal((await call(base, '/__cg_proxy/health')).status, 503);
+  assert.equal((await call(base, '/__cg_proxy/stop', { method: 'POST' })).status, 503);
+  release(); const proxy = await starting; t.after(() => proxy.close());
+  assert.equal((await call(base, '/__cg_proxy/health')).status, 200);
+  assert.equal((await call(base, '/__cg_proxy/stop', { method: 'POST', headers: { Authorization: `Bearer ${proxy.state.adminToken}` } })).status, 202);
+  await proxy.close();
+  await assert.rejects(fs.access(path.join(dir, 'proxy.json')), { code: 'ENOENT' });
+  await assert.rejects(call(base, '/__cg_proxy/health'));
 });
 test('explicit linked-worktree binding reuses server and hook context without overwriting maps', async t => {
   const root = await fixture(t), source = path.join(root, 'linked'), foreign = await fixture(t);
