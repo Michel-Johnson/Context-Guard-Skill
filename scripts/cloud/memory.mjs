@@ -16,8 +16,39 @@ function validateOptions({ dataDir, adminToken }) {
   if (!path.isAbsolute(dataDir)) throw new Error('Private data directory must be absolute and outside source control');
 }
 
-const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, receipts: {} });
+const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, receipts: {}, history: [] });
 const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
+
+function appendHistory(state, { scope, action, snapshot, previousVersion = null, actor = { kind: 'agent' }, at = new Date().toISOString() }) {
+  state.history ||= [];
+  const entry = {
+    id: hash(encode({ revision: state.revision, scope, action, version: snapshot?.version || null, at })),
+    revision: state.revision,
+    scope,
+    action,
+    version: snapshot?.version || null,
+    previousVersion,
+    at,
+    actor,
+    snapshot: structuredClone(snapshot),
+  };
+  state.history.push(entry);
+  return entry;
+}
+
+function scopeValue(state, scope) {
+  if (scope === 'main') return state.main;
+  if (scope === 'preferences') return state.preferences;
+  if (scope.startsWith('session:')) return state.sessions[scope.slice('session:'.length)] || null;
+  throw new MapError('INVALID_SCOPE', 'Use main, preferences, or session:<id>', 400);
+}
+
+function setScopeValue(state, scope, snapshot) {
+  if (scope === 'main') state.main = snapshot;
+  else if (scope === 'preferences') state.preferences = snapshot;
+  else if (scope.startsWith('session:')) state.sessions[scope.slice('session:'.length)] = snapshot;
+  else throw new MapError('INVALID_SCOPE', 'Use main, preferences, or session:<id>', 400);
+}
 
 export async function readMemoryProject({ dataDir, adminToken, projects = {} }, projectId) {
   validateOptions({ dataDir, adminToken });
@@ -46,6 +77,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), memory: { ...current.memory, map: applied.doc }, updatedAt };
     state.sessions[sessionId] = snapshot;
     state.revision++;
+    appendHistory(state, { scope: `session:${sessionId}`, action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, sessionId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
     state.receipts[receiptKey] = { fingerprint, result };
     await atomicWrite(file, encode(state));
@@ -59,7 +91,7 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
   return async (req, res) => {
     const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); return true; };
     const url = new URL(req.url, 'http://localhost');
-    const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)|publish)$/);
+    const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)|publish|history|restore)$/);
     if (!route) return false;
     try {
       const [, projectId, scope, rawSession] = route;
@@ -75,6 +107,14 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
       const initial = initialMemoryState();
       if (req.method === 'GET') {
         const state = await readJSON(file, initial);
+        if (scope === 'history') {
+          const historyScope = String(url.searchParams.get('scope') || 'main');
+          scopeValue(state, historyScope);
+          const after = Math.max(0, Number(url.searchParams.get('after') || 0));
+          const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') || 100)));
+          const history = (state.history || []).filter(entry => entry.scope === historyScope && entry.revision > after).slice(-limit);
+          return send(200, { projectId, scope: historyScope, revision: state.revision, history });
+        }
         if (scope === 'main') return send(200, { projectId, snapshot: state.main });
         if (scope === 'preferences') return send(200, { projectId, preferences: state.preferences });
         if (rawSession) return send(200, { projectId, snapshot: state.sessions[sessionId] || null });
@@ -88,23 +128,29 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
       if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
       const result = await withFileLock(file + '.lock', async () => {
         const state = await readJSON(file, initial), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
-        if (scope === 'publish' && !admin) throw new MapError('FORBIDDEN', 'Main publication requires publisher/admin authorization', 403);
+        if ((scope === 'publish' || scope === 'restore' && ['main', 'preferences'].includes(input.scope)) && !admin) throw new MapError('FORBIDDEN', 'Main publication and restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
           if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
           return state.receipts[key].result;
         }
         let snapshot;
+        let historyScope = scope;
+        let historyAction = 'write';
+        let previousVersion = null;
         if (scope === 'preferences') {
           if (!['zh', 'en'].includes(input.language)) throw new MapError('INVALID_LANGUAGE', 'Use zh or en');
           if ((state.preferences?.version || null) !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Preferences changed', 409);
+          previousVersion = state.preferences?.version || null;
           snapshot = { language: input.language, version: hash(encode(input)) }; state.preferences = snapshot;
         } else if (rawSession) {
           const id = sessionId;
           if ((state.sessions[id]?.version || null) !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Session memory changed', 409);
+          previousVersion = state.sessions[id]?.version || null;
           validateMemory(input.memory);
           if (!/^[a-f0-9]{40,64}$/.test(input.sourceCommit || '')) throw new MapError('INVALID_COMMIT', 'Source commit required');
           snapshot = { sessionId: id, version: hash(encode(input)), sourceCommit: input.sourceCommit, baseMainVersion: input.baseMainVersion ?? null, memory: input.memory, updatedAt: new Date().toISOString() };
           state.sessions[id] = snapshot;
+          historyScope = `session:${id}`;
         } else if (scope === 'publish') {
           if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
           if (!project.root || !project.ref) throw new MapError('MAIN_BINDING_REQUIRED', 'Configure the server repository mirror and authoritative ref', 409);
@@ -116,6 +162,7 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
           if (mainSha !== input.expectedMainSha) throw new MapError('MAIN_ADVANCED', 'Main changed; review the new commit before publication', 409);
           try { await git(project.root, ['merge-base', '--is-ancestor', session.sourceCommit, mainSha]); }
           catch { throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409); }
+          previousVersion = state.main?.version || null;
           snapshot = {
             ...session,
             version: hash(encode(input)),
@@ -126,9 +173,29 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
             publishedAt: new Date().toISOString(),
           };
           state.main = snapshot;
+          historyScope = 'main';
+          historyAction = 'publish';
+        } else if (scope === 'restore') {
+          historyScope = String(input.scope || '');
+          const current = scopeValue(state, historyScope);
+          if (!current) throw new MapError('NOT_FOUND', 'Current memory scope is empty', 404);
+          if (current.version !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Memory changed; reload history before restoring', 409);
+          const target = (state.history || []).find(entry => entry.scope === historyScope && entry.version === input.targetVersion);
+          if (!target?.snapshot) throw new MapError('HISTORY_NOT_FOUND', 'Requested memory version is not available', 404);
+          previousVersion = current.version;
+          const restoredAt = new Date().toISOString();
+          snapshot = {
+            ...structuredClone(target.snapshot),
+            version: hash(encode({ operationId: input.operationId, scope: historyScope, previousVersion, targetVersion: target.version, restoredAt })),
+            updatedAt: restoredAt,
+            restoredFrom: target.version,
+          };
+          setScopeValue(state, historyScope, snapshot);
+          historyAction = 'restore';
         } else throw new MapError('READ_ONLY_MAIN', 'Publish a verified Session; main cannot be written directly', 403);
         state.revision++;
-        const result = { committed: true, projectId, snapshot, revision: state.revision };
+        const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: { kind: admin ? 'admin' : 'agent' }, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
+        const result = { committed: true, projectId, snapshot, revision: state.revision, history };
         state.receipts[key] = { fingerprint, result };
         // Snapshot and receipt share one durable replace: a retry after a crash cannot duplicate the write.
         await atomicWrite(file, encode(state));
