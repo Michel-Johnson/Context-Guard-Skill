@@ -174,7 +174,9 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results, adds the summary to existing owning Map nodes, and creates a human-confirmed proposal for changed files not yet covered by the Map.
+Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results and adds the summary to accepted Map nodes covered by `owns`. Unowned files remain unclassified. Use `archive-session --input ...` to explicitly assign support files to an existing node or submit an evidence-backed new-node proposal for human confirmation.
+
+Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes to the Agent at reasoning boundaries; run Cloud Sync `prepare` only at the first mutation of a plan; and check conflicts before requiring `sync finish`. New user requirements are classified semantically into Map TODOs. `TODO.md` stays human-owned. Hook events carry stable IDs and occurrence/recording timestamps.
 
 ## Main Files
 

@@ -42,7 +42,7 @@ context-guard map operation --root "/path/to/project" --session "actual-hook-ses
   "operationId": "a-unique-id-kept-for-retries",
   "baseVersion": "version-returned-by-read",
   "operations": [
-    {"type":"create","parentId":"M1","node":{"id":"N100","title":"New proposal","kind":"work","purpose":"What this node does"}},
+    {"type":"create","parentId":"M1","node":{"id":"N100","title":"Notifications","kind":"work","purpose":"Own outbound delivery","owns":["src/notifications/index.mjs"],"memories":[{"text":"Introduces outbound delivery","paths":["src/notifications/index.mjs"],"proposalEvidence":{"parentId":"M1","basis":"new-module","reason":"Adds a separate runtime boundary and entry point","files":["src/notifications/index.mjs"]}}]}},
     {"type":"update","id":"N21","fields":{"purpose":"Revised purpose"}}
   ]
 }
@@ -55,8 +55,11 @@ Operations are atomic with respect to other supported submissions:
   `map apply` request. It never replaces a nonempty map. Fresh initialization now
   creates the minimal root automatically.
 
-- `create`: unique `node.id`, existing `parentId`, editable node fields. Agent
-  creation always produces an Agent proposal; it cannot self-confirm.
+- `create`: unique `node.id`, existing `parentId`, editable node fields. Human creation
+  may be minimal. Agent creation requires a concise `title` and `purpose`, valid `owns`,
+  and a memory containing `proposalEvidence` (`parentId`, `basis`, `reason`, `files`) with
+  at least one implementation file. Duplicate active titles and overlapping pending
+  proposals are rejected. A valid Agent create is still only a proposal; it cannot self-confirm.
 - `update`: `id`, `fields`. Agent may edit its own unconfirmed proposal or a node
   explicitly granted to its actual session by the human in the workbench.
 - `move`: `id`, `parentId`. Both source and destination must be authorized. Root
@@ -66,7 +69,7 @@ Operations are atomic with respect to other supported submissions:
 - `attach-bug`: narrow compatibility operation adding a uniquely identified bug
   stub; it does not authorize changing other fields or proposal approval.
 
-Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `bugs`,
+Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `todos`, `bugs`,
 `dormant`, `files`, `owns`. `proposal` and `isNew` changes require the workbench.
 The tree uses `children` and may contain legacy `_inbox` children. IDs are unique
 across both. Existing unknown metadata is preserved. Own paths are relative to
@@ -85,8 +88,17 @@ it performs one versioned Map reconciliation:
 
 - Files covered by `owns` add the archive summary as one memory on the longest-matching
   node. Exact-file ownership wins over directory ownership.
-- Files with no owner create one deterministic `proposed` work node under the root with
-  the files in `owns`. The Agent cannot accept that proposal.
+- Files with no accepted owner remain `unclassified`; absence of an `owns` match is not
+  evidence that a new product responsibility exists, so it never creates a node by itself.
+- Tests, docs, generated files, and configuration outside an existing node's `owns` may be
+  assigned with an explicit `assignments` item containing `nodeId`, `reason`, and `files`.
+  The target must be an accepted node, the files must be part of this archive, and the
+  Session still needs its normal grant to update that node.
+- A new node requires an explicit `proposal` with `parentId`, `title`, `purpose`, `reason`,
+  `basis`, and `files`. `basis` is one of `new-module`, `new-interface`, `new-component`, or
+  `new-responsibility`; supporting-only changes cannot be the sole evidence. The parent must
+  be accepted, accepted titles cannot be duplicated, overlapping proposals are deduplicated,
+  and the Agent cannot accept its own proposal.
 - The Session ID, normalized file set, and archive content form the idempotency key, so
   retrying the same archive cannot duplicate memories or nodes. Later work in the same
   Session may add another memory for the same files when its archive content differs.
@@ -95,9 +107,32 @@ it performs one versioned Map reconciliation:
   Session archive unwritten so the same command can be retried.
 
 The underlying command is `context-guard map reconcile --root <project> --session
-<actual-session-id> --input <json>`. Agents normally use `archive-session` instead of
-calling it directly. It derives operations from the current Map and commits them through
-the same local protocol; it never reads or updates a legacy roadmap file.
+<actual-session-id> --input <json>`. Agents normally use `archive-session`; optional
+governance JSON is passed with `archive-session --input <json-file-or->`:
+
+```json
+{
+  "assignments": [
+    {
+      "nodeId": "workbench",
+      "reason": "Regression test for the workbench implementation",
+      "files": ["tests/workbench-browser.mjs"]
+    }
+  ],
+  "proposal": {
+    "parentId": "T0",
+    "title": "Notifications",
+    "purpose": "Own outbound notification delivery",
+    "reason": "Introduces a separate runtime boundary and public entry point",
+    "basis": "new-module",
+    "files": ["src/notifications/index.mjs"]
+  }
+}
+```
+
+Omit either top-level field when it is not needed. Reconciliation derives operations from
+the current Map and commits them through the same local protocol; it never reads or updates
+a legacy roadmap file.
 
 ## States, errors and recovery
 
@@ -163,6 +198,11 @@ may repeat a report. Agent actions must still use stable operation IDs. Own-sess
 writes advance the observation baseline without triggering a self-response loop.
 Other-session, human and external-file actions remain observable.
 
+Active Codex hooks call this inbox at session start, on each user prompt, and after
+compaction. They expose a pending receipt and changed node IDs to the Agent but do
+not acknowledge it. This makes another Agent's committed Map changes visible at a
+reasoning boundary without treating file events as model wake-ups.
+
 These commands use the existing authenticated changes API and verify the actual
 disk hash. They do not send page checkpoints, blur inputs, read browser storage,
 or certify that an uncommitted browser draft is saved. Before making any change,
@@ -186,6 +226,26 @@ The adapter needs no new server endpoint and works with an already-running Node
 protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack
 workflow; they are not an alternative idle-task scheduler.
+
+## Prompt signals and Map TODOs
+
+`UserPromptSubmit` stores a stable private signal ID. The Agent classifies it by
+meaning, not keyword matching:
+
+```sh
+context-guard record-todo --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "New requirement" --description "Acceptance details"
+context-guard record-bad-case --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "Failure" --phenomenon "What failed"
+context-guard resolve-signal --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --kind task
+```
+
+`record-todo` requires the real lifecycle session and an explicit grant for the
+target node. It creates one idempotent `todos[]` entry bound to that session and
+signal, with creation/update timestamps. Retrying cannot duplicate it. Bad cases
+resolve their signal only after the Map attachment succeeds. `TODO.md` remains a
+human-owned file and the hook denies Agent writes to it.
 
 ## Cache migration and external saves
 

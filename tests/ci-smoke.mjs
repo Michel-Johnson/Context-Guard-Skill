@@ -331,12 +331,21 @@ async function main() {
   assert.equal((await fetch(automaticUrl)).status, 200);
   run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /unclassified files: scripts\/context_guard\.py/);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.length, 0, "unclassified files must not create Map nodes");
+  const archiveGovernance = path.join(temporaryRoot, "archive-governance.json");
+  fs.writeFileSync(archiveGovernance, JSON.stringify({ proposal: {
+    parentId: "T0", title: "Context CLI", purpose: "提供 Context Guard 命令入口", reason: "新增独立命令职责且当前 Map 没有对应节点",
+    basis: "new-interface", files: ["scripts/context_guard.py"]
+  } }));
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
   const archivedMap = readJson(path.join(project, ".codex/context/map.json"));
   const archiveProposal = archivedMap.root.children.find(node => node.proposal === "proposed" && node.owns?.includes("scripts/context_guard.py"));
-  assert.ok(archiveProposal, "archive-session should propose a node for files missing from the Map");
+  assert.ok(archiveProposal, "archive-session should only create an explicit evidence-backed proposal");
   assert.equal(archiveProposal.proposedBy, "session-three");
-  assert.match(archiveProposal.memories[0].text, /CI 主链路通过/);
-  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.match(archiveProposal.memories[0].text, /建立 Context CLI 节点/);
+  assert.equal(archiveProposal.memories[0].proposalEvidence.basis, "new-interface");
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
   assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.filter(node => node.id === archiveProposal.id).length, 1);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
 

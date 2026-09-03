@@ -11,7 +11,13 @@ import { isolatedEnvironment, run, rpcClient } from "./client-protocol.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const versions = JSON.parse(fs.readFileSync(new URL("../client-versions.json", import.meta.url), "utf8"));
-const events = { SessionStart: "sessionStart", UserPromptSubmit: "userPromptSubmit", Stop: "stop", SubagentStart: "subagentStart", SubagentStop: "subagentStop" };
+export const codexEvents = {
+  SessionStart: "sessionStart", SubagentStart: "subagentStart", UserPromptSubmit: "userPromptSubmit",
+  PreToolUse: "preToolUse", PermissionRequest: "permissionRequest", PostToolUse: "postToolUse",
+  PreCompact: "preCompact", PostCompact: "postCompact", SubagentStop: "subagentStop",
+  Stop: "stop", Interrupt: "interrupt",
+};
+const claudeEvents = ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"];
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const contextPath = (project) => path.join(project, ".codex", "context");
 
@@ -38,7 +44,8 @@ export function assertInside(root, target) {
 export function verifyInstalled(skill, config, client) {
   for (const file of installedFiles) assert.ok(fs.statSync(path.join(skill, file)).isFile(), `Missing installed file: ${file}`);
   for (const file of forbiddenInstalledPaths) assert.ok(!fs.existsSync(path.join(skill, file)), `Development file leaked: ${file}`);
-  const names = client === "cursor" ? ["sessionStart", "beforeSubmitPrompt", "stop", "subagentStart", "subagentStop"] : Object.keys(events);
+  const names = client === "cursor" ? ["sessionStart", "beforeSubmitPrompt", "stop", "subagentStart", "subagentStop"]
+    : client === "codex" ? Object.keys(codexEvents) : claudeEvents;
   for (const name of names) {
     const groups = config.hooks?.[name] || [];
     const handlers = client === "cursor" ? groups : groups.flatMap((group) => group.hooks || []);
@@ -52,7 +59,7 @@ export function verifyCodexDiscovery(result, project, skill, hooksPath) {
   assert.ok(skills.skills.some((item) => item.name === "context-guard" && item.enabled === true && path.resolve(item.path) === path.join(skill, "SKILL.md")), "Codex did not discover the installed Skill");
   const hooks = result.hooks.data.find((item) => path.resolve(item.cwd) === path.resolve(project));
   assert.ok(hooks && hooks.errors.length === 0, "Codex hook discovery returned errors");
-  for (const event of Object.values(events)) {
+  for (const event of Object.values(codexEvents)) {
     assert.ok(hooks.hooks.some((item) => item.eventName === event && item.enabled && item.handlerType === "command" && item.command.includes("context_guard_hook.py") && item.command.includes("--platform codex") && path.resolve(item.sourcePath) === hooksPath), `Codex did not discover hook: ${event}`);
   }
   return hooks.hooks.filter((item) => item.command.includes("context_guard_hook.py")).map(({ eventName, trustStatus }) => ({ eventName, trustStatus }));

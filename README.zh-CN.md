@@ -174,7 +174,9 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果：已覆盖文件的摘要写入对应 Map 节点，没有节点覆盖的修改会自动生成待用户确认的新节点提案。
+运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果，并把摘要写入由 `owns` 覆盖的已确认 Map 节点。没有节点覆盖的修改保持“未分类”，不会自动生成节点；只有通过 `archive-session --input ...` 显式归属配套文件，或提交带证据的新职责节点提案，才会改变 Map，提案仍需用户确认。
+
+Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在会话开始、用户输入和压缩恢复时把真实 Map、授权、待办/坏例和其他 Session 的变更送给 Agent；在计划首次修改前只做一次云端 `prepare`，完成后检查冲突并要求 `sync finish`。用户的新要求由 Agent 按语义写入 Map TODO；`TODO.md` 只允许用户维护。所有 Hook 事件都有事件编号和发生/记录时间。
 
 ## 主要文件
 
