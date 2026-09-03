@@ -483,12 +483,23 @@ try {
       const items = [...document.querySelectorAll('.g-item')];
       const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
       const bars = items.filter(el => el.querySelector('.g-chrome .bar'));
-      return { n: items.length, uniq: new Set(names).size, bars: bars.length, title: document.querySelector('.g-bar b')?.textContent };
+      const stages = items.filter(el => el.querySelector('.g-chrome .stage .map') && el.querySelector('.g-chrome .insp'));
+      const cards = items.map(el => el.querySelectorAll('.bar .here').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        bars: bars.length,
+        stages: stages.length,
+        oneCard: cards.every(n => n === 1),
+        title: document.querySelector('.g-bar b')?.textContent
+      };
     });
     assert.equal(gallery.n, 50, `chrome gallery should show 50 drafts ${JSON.stringify(gallery)}`);
     assert.equal(gallery.uniq, 50);
     assert.equal(gallery.bars, 50);
-    assert.equal(gallery.title, '顶栏 · 50 版');
+    assert.equal(gallery.stages, 50, `each draft must show the full workbench ${JSON.stringify(gallery)}`);
+    assert.equal(gallery.oneCard, true, 'each draft has one context card');
+    assert.equal(gallery.title, '工作台风格 · 50 版');
     recordCheck('chrome-gallery-50');
   } finally {
     await preview.close();

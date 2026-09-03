@@ -827,7 +827,7 @@ html.design-gallery #design-gallery{display:block;padding:0 0 80px;position:rela
   padding:12px 18px;background:#fffdf8;border-bottom:2px solid #2d2d2d}
 .g-bar b{font-size:15px}
 .g-bar .hint{color:#746c60;font-size:12.5px;font-weight:700}
-.g-scroll{display:flex;flex-direction:column;gap:52px;max-width:1100px;margin:28px auto 0;padding:0 18px}
+.g-scroll{display:flex;flex-direction:column;gap:56px;max-width:1120px;margin:28px auto 0;padding:0 18px}
 .g-num{font-size:13px;font-weight:800;margin:0 0 12px;color:#746c60;letter-spacing:.04em}
 html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;left:auto;
   pointer-events:none;overflow:hidden;box-sizing:border-box}
@@ -843,330 +843,346 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
 .g-mock h2{margin:0;font-size:18px}
 .g-lead{margin:8px 0 0;color:#746c60;font-size:12px;line-height:1.45;font-family:Georgia,"Songti SC",serif}
 
-html.design-gallery .g-mock.g-chrome{width:100%;height:auto;background:#f4eee3;border:1px solid #d7ccb8;border-radius:14px;
-  overflow:hidden;box-shadow:0 12px 28px rgba(45,45,45,.07)}
+html.design-gallery .g-mock.g-chrome{
+  --g-bg:#efe8d8; --g-bar:#fffdf8; --g-map:#fefaf2; --g-insp:#fffdf8;
+  --g-ink:#2d2d2d; --g-muted:#746c60; --g-line:#2d2d2d; --g-hair:#d7ccb8;
+  --g-root:#ffe66d; --g-node:#fff; --g-card:#e4ebf4; --g-card-ink:#2d5da1;
+  --g-note:#fff; --g-empty:#b7aea0; --g-chip:#fff3bf; --g-chip-ink:#8a6d1f;
+  --g-border:2px solid var(--g-line); --g-shadow:2px 2px 0 var(--g-line);
+  --g-radius:10px; --g-font:"IBM Plex Sans","Noto Sans SC",sans-serif;
+  --g-note-font:Georgia,"Noto Serif SC",serif;
+  width:100%;height:500px;display:flex;flex-direction:column;
+  background:var(--g-bg);color:var(--g-ink);border:1px solid var(--g-hair);
+  border-radius:14px;overflow:hidden;box-shadow:0 12px 28px rgba(45,45,45,.07);
+  font-family:var(--g-font)}
 .g-chrome .bar{display:flex;align-items:center;gap:10px;box-sizing:border-box;width:100%;
-  font-family:"IBM Plex Sans","Noto Sans SC",sans-serif;color:#2d2d2d;overflow:hidden;min-height:40px}
-.g-chrome .ttl{margin:0;font-size:14px;font-weight:600;white-space:nowrap}
-.g-chrome .caret{opacity:.4;font-size:10px;font-style:normal;margin-left:3px}
-.g-chrome .here{font-size:12.5px;white-space:nowrap}
+  min-height:44px;padding:0 14px;background:var(--g-bar);color:var(--g-ink);
+  border-bottom:1px solid var(--g-hair);overflow:hidden;flex:0 0 auto}
+.g-chrome .here{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;
+  background:var(--g-card);color:var(--g-card-ink);border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
+.g-chrome .caret{opacity:.45;font-size:10px;font-style:normal}
 .g-chrome .sp{flex:1 1 auto;min-width:8px}
-.g-chrome .tools{display:flex;align-items:center;gap:8px;margin-left:auto;flex:0 0 auto}
-.g-chrome .peek{height:78px;position:relative;background-color:#fefaf2;
-  background-image:radial-gradient(#d4cbb8 .7px,transparent 1px);background-size:16px 16px}
-.g-chrome .peek .dotn{position:absolute;left:36px;top:24px;padding:6px 10px;background:#ffe66d;
-  border:1.5px solid #2d2d2d;border-radius:8px;font-size:11px;font-weight:800}
-.g-chrome .k,.g-chrome .bug,.g-chrome .gear,.g-chrome .rel,.g-chrome .dir{white-space:nowrap}
+.g-chrome .tools{display:flex;align-items:center;gap:8px;margin-left:auto;flex:0 0 auto;white-space:nowrap;font-size:12.5px}
+.g-chrome .stage{display:flex;flex:1;min-height:0}
+.g-chrome .map{flex:1;min-width:0;position:relative;display:flex;align-items:center;gap:22px;
+  padding:22px 18px;background-color:var(--g-map);
+  background-image:radial-gradient(var(--g-hair) .7px,transparent 1px);background-size:16px 16px}
+.g-chrome .root,.g-chrome .mod{box-sizing:border-box;border:var(--g-border);box-shadow:var(--g-shadow);border-radius:var(--g-radius)}
+.g-chrome .root{width:168px;padding:10px 12px;background:var(--g-root);flex:0 0 auto}
+.g-chrome .root b,.g-chrome .mod b{display:block;font-size:13px;line-height:1.2}
+.g-chrome .root span,.g-chrome .mod span{display:block;margin-top:4px;font-size:11px;line-height:1.35;color:var(--g-muted)}
+.g-chrome .kids{display:flex;flex-direction:column;gap:8px}
+.g-chrome .mod{width:210px;padding:8px 10px;background:var(--g-node)}
+.g-chrome .insp{width:248px;flex:0 0 248px;box-sizing:border-box;padding:14px 12px 18px;
+  background:var(--g-insp);border-left:1px solid var(--g-hair);overflow:hidden}
+.g-chrome .who{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
+.g-chrome .who h2{margin:0;font-size:18px;font-weight:700}
+.g-chrome .st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--g-chip);color:var(--g-chip-ink)}
+.g-chrome .acts{display:flex;gap:6px;margin:0 0 12px}
+.g-chrome .acts span{display:inline-flex;align-items:center;height:28px;padding:0 10px;font-size:12px;font-weight:700;
+  border:var(--g-border);border-radius:8px;background:var(--g-bar);box-shadow:var(--g-shadow)}
+.g-chrome .note{background:var(--g-note);border:1px solid var(--g-hair);border-radius:10px;padding:8px 10px 10px;margin:0 0 8px}
+.g-chrome .note .add{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+.g-chrome .note p{margin:0 0 4px;font-size:12.5px;line-height:1.45;font-family:var(--g-note-font)}
+.g-chrome .note .empty{color:var(--g-empty);font-style:italic}
 
 /* 01 现况粗框 */
-.g-lay-01 .bar{height:52px;padding:0 18px;background:#fffdf8;border-bottom:2px solid #2d2d2d;gap:13px}
-.g-lay-01 .here{height:36px;padding:0 12px;display:inline-flex;align-items:center;gap:6px;background:#e4ebf4;color:#2d5da1;border-radius:8px;font-weight:700}
-.g-lay-01 .here .caret{font-size:11px;opacity:.5}
-.g-lay-01 .box{height:36px;padding:0 12px;display:inline-flex;align-items:center;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;box-shadow:2px 2px 0 #2d2d2d;font-size:12.5px;font-weight:700}
+.g-lay-01{--g-font:"Comic Neue","Noto Sans SC",sans-serif;--g-shadow:2px 2px 0 #2d2d2d}
+.g-lay-01 .bar{min-height:52px;border-bottom:2px solid #2d2d2d}
+.g-lay-01 .tools .box{height:36px;padding:0 12px;display:inline-flex;align-items:center;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;box-shadow:2px 2px 0 #2d2d2d;font-size:12.5px;font-weight:700}
 .g-lay-01 .dir{width:60px;padding:3px;display:grid;grid-template-columns:1fr 1fr;position:relative;font-size:10px}
 .g-lay-01 .dir i{position:absolute;right:3px;top:3px;bottom:3px;width:calc(50% - 3px);background:#ffe66d;border:2px solid #2d2d2d;border-radius:5px}
 .g-lay-01 .sq{width:36px;padding:0;justify-content:center}
 
-/* 02 细线字钮 */
-.g-lay-02 .bar{height:48px;padding:0 20px;background:#fffdf8;border-bottom:1px solid #e4dccb}
-.g-lay-02 .here{color:#2d5da1;font-weight:600}
-.g-lay-02 .tools span{font-size:12.5px;color:#5a5348;padding:4px 8px;border:1px solid #e4dccb;border-radius:6px;background:transparent}
+/* 02 细线 */
+.g-lay-02{--g-border:1px solid #cfc6b4;--g-shadow:none;--g-radius:8px;--g-hair:#e4dccb}
+.g-lay-02 .tools span{padding:4px 8px;border:1px solid #e4dccb;border-radius:6px;color:#5a5348}
 
 /* 03 纯文字 */
-.g-lay-03 .bar{height:44px;padding:0 22px;background:#fefaf2;border-bottom:1px solid #ece6d8}
-.g-lay-03 .ttl{font-weight:500}
-.g-lay-03 .here{color:#746c60}
-.g-lay-03 .tools{gap:18px;font-size:13px;color:#5a5348}
-.g-lay-03 .bug b{color:#e24b4b;font-weight:700}
+.g-lay-03{--g-border:0;--g-shadow:none;--g-card:transparent;--g-insp:#fefaf2;--g-note:transparent;--g-hair:#ece6d8}
+.g-lay-03 .here{padding:0;height:auto}
+.g-lay-03 .root,.g-lay-03 .mod{border-bottom:1px solid #ece6d8;border-radius:0;padding:8px 0}
+.g-lay-03 .insp .note{border:0;padding:8px 0}
+.g-lay-03 .acts span{border:0;box-shadow:none;padding:0 8px 0 0}
+.g-lay-03 .bug b{color:#e24b4b}
 
-/* 04 静音圆标 */
-.g-lay-04 .bar{height:50px;padding:0 18px;background:#fffef9}
-.g-lay-04 .here{font-size:12px;color:#746c60}
-.g-lay-04 .ico{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#f3ead6;font-size:13px;color:#5a5348}
-.g-lay-04 .bug{background:#f8e4dc;color:#e24b4b}
+/* 04 圆标 */
+.g-lay-04{--g-shadow:none;--g-border:1px solid #e4dccb;--g-radius:14px}
+.g-lay-04 .ico{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#f3ead6;font-size:13px}
+.g-lay-04 .ico.bug{background:#f8e4dc;color:#e24b4b}
+.g-lay-04 .note{border-radius:16px}
 
 /* 05 浮岛 */
-.g-lay-05{background:#efe8d8 !important;padding:10px 12px 0;border:0 !important;box-shadow:none !important}
-.g-lay-05 .bar{height:44px;padding:0 16px;background:#fffdf8;border-radius:14px;box-shadow:0 8px 24px rgba(45,45,45,.08);border:1px solid #efe6d2}
-.g-lay-05 .here{font-weight:600;color:#2d5da1}
-.g-lay-05 .tools{gap:14px;font-size:12.5px;color:#746c60}
-.g-lay-05 .peek{border-radius:0 0 14px 14px}
+.g-lay-05{--g-bg:#efe8d8;--g-shadow:0 8px 20px rgba(45,45,45,.08);--g-border:1px solid #efe6d2;--g-radius:14px}
+.g-lay-05 .bar{margin:10px 10px 0;width:calc(100% - 20px);border:1px solid #efe6d2;border-radius:14px;border-bottom:1px solid #efe6d2;box-shadow:0 8px 24px rgba(45,45,45,.08)}
+.g-lay-05 .insp{margin:10px 10px 10px 0;border:1px solid #efe6d2;border-radius:14px;border-left:1px solid #efe6d2}
 
-/* 06 左右两岛 */
-.g-lay-06{background:#efe8d8 !important;padding:10px 12px 0;border:0 !important;box-shadow:none !important}
-.g-lay-06 .bar{background:transparent;gap:8px;height:44px;padding:0}
+/* 06 两岛 */
+.g-lay-06{--g-bg:#efe8d8;--g-shadow:0 6px 18px rgba(45,45,45,.06);--g-border:0;--g-radius:12px}
+.g-lay-06 .bar{background:transparent;border:0;padding:10px 12px 0;gap:8px}
 .g-lay-06 .island{height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fff;border-radius:12px;box-shadow:0 6px 18px rgba(45,45,45,.06)}
-.g-lay-06 .island.r{margin-left:auto;gap:12px;font-size:12.5px;color:#5a5348}
+.g-lay-06 .island.r{margin-left:auto}
+.g-lay-06 .root,.g-lay-06 .mod,.g-lay-06 .note{box-shadow:0 6px 18px rgba(45,45,45,.06)}
 
 /* 07 两行 */
-.g-lay-07 .bar{display:block;padding:0;background:#fffdf8;border-bottom:1px solid #ece6d8}
-.g-lay-07 .r1{display:flex;align-items:baseline;gap:10px;padding:8px 18px 2px}
-.g-lay-07 .r1 .ttl{font-size:13px;color:#746c60;font-weight:500}
-.g-lay-07 .r2{display:flex;align-items:center;padding:0 18px 10px;gap:12px}
-.g-lay-07 .here{font-size:16px;font-weight:700}
-.g-lay-07 .tools{gap:16px;font-size:12.5px;color:#5a5348}
+.g-lay-07 .bar{display:block;min-height:0;padding:0}
+.g-lay-07 .r1{display:flex;padding:6px 16px 0;font-size:11px;color:#746c60}
+.g-lay-07 .r2{display:flex;align-items:center;padding:4px 16px 8px;gap:10px}
+.g-lay-07 .tools{margin-left:auto}
 
-/* 08 面包屑当家 */
-.g-lay-08 .bar{height:46px;padding:0 20px;background:#fff;border-bottom:1px solid #eee}
-.g-lay-08 .path{font-size:13.5px;font-weight:500}
-.g-lay-08 .path em{font-style:normal;color:#b7aea0;margin:0 8px}
-.g-lay-08 .path b{font-weight:700}
-.g-lay-08 .tools{gap:16px;font-size:12px;color:#888}
+/* 08 路径 */
+.g-lay-08{--g-bar:#fff;--g-insp:#fff;--g-shadow:none;--g-border:1px solid #eee}
+.g-lay-08 .here{background:transparent;padding:0;color:#2d5da1}
 
-/* 09 居中刊头 */
-.g-lay-09 .bar{height:52px;padding:0 16px;background:#fffdf8;position:relative;border-bottom:1px solid #e8dfcc}
-.g-lay-09 .side{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#5a5348;z-index:1}
-.g-lay-09 .ttl{position:absolute;left:50%;transform:translateX(-50%);font-family:"IBM Plex Serif","Noto Serif SC",serif;font-weight:600}
+/* 09 刊头居中工具 */
+.g-lay-09{--g-font:"IBM Plex Serif","Noto Serif SC",serif}
+.g-lay-09 .bar{position:relative;justify-content:flex-end}
+.g-lay-09 .here{position:absolute;left:14px}
 
-/* 10 IDE 条 */
-.g-lay-10 .bar{height:36px;padding:0 10px;background:#3c3c3c;color:#ccc;gap:8px}
+/* 10 IDE */
+.g-lay-10{--g-bar:#3c3c3c;--g-ink:#ddd;--g-muted:#9a9a9a;--g-map:#1e1e1e;--g-insp:#252526;--g-bg:#1e1e1e;
+  --g-root:#3c3c3c;--g-node:#2d2d2d;--g-note:#2d2d2d;--g-hair:#333;--g-line:#555;--g-card:#094771;--g-card-ink:#9cdcfe;
+  --g-border:1px solid #555;--g-shadow:none;--g-chip:#3c3c3c;--g-chip-ink:#ccc;--g-font:ui-monospace,Menlo,monospace;--g-empty:#6e6e6e}
+.g-lay-10 .bar{min-height:36px;font-size:12px}
 .g-lay-10 .dots{display:flex;gap:5px}
 .g-lay-10 .dots i{width:10px;height:10px;border-radius:50%;background:#ff5f57;display:block}
 .g-lay-10 .dots i:nth-child(2){background:#febc2e}
 .g-lay-10 .dots i:nth-child(3){background:#28c840}
-.g-lay-10 .ttl{font-size:12px;font-weight:500;font-family:ui-monospace,Menlo,monospace;color:#ddd}
-.g-lay-10 .here{font-size:11px;color:#9cdcfe}
-.g-lay-10 .tools{gap:12px;font-size:11px;color:#bbb}
 
-/* 11 报纸报头 */
-.g-lay-11 .bar{display:block;padding:10px 22px 8px;background:#f7f3e8;border-bottom:3px double #2d2d2d}
-.g-lay-11 .kicker{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:#888;text-align:center}
-.g-lay-11 .ttl{font-family:"Libre Baskerville","Noto Serif SC",serif;font-size:22px;text-align:center;font-weight:400;margin:2px 0 6px}
-.g-lay-11 .row{display:flex;justify-content:space-between;font-size:11px;color:#5a5348}
+/* 11 报纸 */
+.g-lay-11{--g-bar:#f7f3e8;--g-map:#f7f3e8;--g-insp:#f7f3e8;--g-bg:#f7f3e8;--g-font:"Libre Baskerville","Noto Serif SC",serif;
+  --g-shadow:none;--g-border:1px solid #c9c0a8;--g-radius:0;--g-root:#f7f3e8;--g-node:#f7f3e8;--g-note:#f7f3e8;--g-card:transparent;--g-card-ink:#2d2d2d}
+.g-lay-11 .bar{display:block;padding:8px 18px 6px;border-bottom:3px double #2d2d2d;min-height:0}
+.g-lay-11 .kicker{font-size:9px;letter-spacing:.2em;text-transform:uppercase;text-align:center;color:#888}
+.g-lay-11 .row{display:flex;justify-content:space-between;font-size:11px;margin-top:4px}
+.g-lay-11 .here{display:flex;justify-content:center;height:auto;padding:2px 0;font-size:22px;font-weight:400}
 
 /* 12 墨条 */
-.g-lay-12 .bar{height:48px;padding:0 18px;background:#1c1a17;color:#f3ead6}
-.g-lay-12 .here{color:#ffe66d;font-weight:600}
-.g-lay-12 .tools{gap:16px;font-size:12.5px;color:#cfc6b4}
+.g-lay-12{--g-bar:#1c1a17;--g-ink:#f3ead6;--g-muted:#cfc6b4;--g-card:#3a3220;--g-card-ink:#ffe66d;
+  --g-map:#2a261f;--g-insp:#1c1a17;--g-bg:#1c1a17;--g-root:#3a3220;--g-node:#2a261f;--g-note:#2a261f;
+  --g-hair:#3a3220;--g-line:#f3ead6;--g-border:1px solid #5a4a20;--g-shadow:none;--g-chip:#5a4a20;--g-chip-ink:#ffe66d;--g-empty:#8a8070}
 .g-lay-12 .bug{color:#ff8a80}
 
-/* 13 浅托盘 */
-.g-lay-13{background:#efe6d2 !important;padding:8px;border:0 !important}
-.g-lay-13 .bar{height:42px;padding:0 14px;background:#fffdf8;border-radius:10px}
-.g-lay-13 .here{background:#f3ead6;padding:3px 9px;border-radius:999px;font-size:12px}
-.g-lay-13 .tools span{font-size:12px;color:#746c60}
+/* 13 托盘 */
+.g-lay-13{--g-bg:#efe6d2;--g-shadow:none;--g-border:1px solid #e4dccb;--g-radius:12px}
+.g-lay-13 .bar{margin:8px;width:calc(100% - 16px);border-radius:10px;border:0}
+.g-lay-13 .here{border-radius:999px;background:#f3ead6;color:#5a5348}
 
-/* 14 左色签 */
-.g-lay-14 .bar{height:48px;padding:0 18px 0 14px;background:#fff;border-left:6px solid #ffe66d;border-bottom:1px solid #eee}
-.g-lay-14 .ttl{letter-spacing:-.02em}
-.g-lay-14 .tools{gap:14px;font-size:12.5px;color:#666}
+/* 14 色签 */
+.g-lay-14{--g-bar:#fff;--g-insp:#fff;--g-shadow:none;--g-border:1px solid #eee}
+.g-lay-14 .bar{border-left:6px solid #ffe66d;padding-left:12px}
+.g-lay-14 .insp{border-left:6px solid #ffe66d}
 
-/* 15 分段一条 */
-.g-lay-15 .bar{height:50px;padding:0 16px;background:#f2f2f7}
+/* 15 分段 */
+.g-lay-15{--g-bar:#f2f2f7;--g-map:#f2f2f7;--g-insp:#f2f2f7;--g-shadow:none;--g-border:0;--g-radius:12px;
+  --g-root:#fff;--g-node:#fff;--g-note:#fff;--g-hair:#e5e5ea}
 .g-lay-15 .seg{display:flex;background:#e5e5ea;border-radius:9px;padding:2px}
 .g-lay-15 .seg span{padding:6px 10px;font-size:12px;font-weight:700;border-radius:7px;color:#555}
 .g-lay-15 .seg .on{background:#fff}
 
-/* 16 瑞士留白 */
-.g-lay-16 .bar{height:64px;padding:0 28px;background:#fff;border-bottom:1px solid #f0f0f0}
-.g-lay-16 .ttl{font-weight:500;letter-spacing:-.03em}
-.g-lay-16 .here{font-weight:400;color:#999;font-size:12px}
-.g-lay-16 .tools{gap:22px;font-size:12px;font-weight:500;letter-spacing:.04em;color:#888}
+/* 16 瑞士 */
+.g-lay-16{--g-bar:#fff;--g-map:#fff;--g-insp:#fff;--g-bg:#fff;--g-shadow:none;--g-border:0;--g-radius:0;
+  --g-root:#fff;--g-node:#fff;--g-note:#fff;--g-hair:#f0f0f0;--g-card:transparent}
+.g-lay-16 .bar{min-height:64px;padding:0 28px}
+.g-lay-16 .here{padding:0;font-weight:500;letter-spacing:-.03em;font-size:16px;color:#2d2d2d}
+.g-lay-16 .tools{gap:22px;letter-spacing:.04em;font-size:12px;color:#888}
+.g-lay-16 .root,.g-lay-16 .mod{border-top:1px solid #eee;border-radius:0;padding:10px 0}
 
 /* 17 和纸 */
-.g-lay-17 .bar{height:50px;padding:0 18px;background:#f6efe4;border-bottom:1px solid #e2d3c0}
+.g-lay-17{--g-bar:#f6efe4;--g-map:#f6efe4;--g-insp:#f6efe4;--g-bg:#f6efe4;--g-font:"Noto Serif SC",serif;
+  --g-shadow:none;--g-border:1px solid #e2d3c0;--g-root:#f6efe4;--g-node:#f6efe4;--g-note:#f3ead6;--g-card:transparent;--g-card-ink:#2d2d2d}
 .g-lay-17 .seal{width:22px;height:22px;border-radius:50%;background:#c23b3b;color:#fff;display:grid;place-items:center;font-size:10px;font-weight:800}
-.g-lay-17 .ttl{font-family:"Noto Serif SC",serif;font-weight:600}
-.g-lay-17 .tools{gap:14px;font-size:12px;color:#8a6a4a}
 
-/* 18 毛玻璃 */
-.g-lay-18{background:#efe8d8 !important}
-.g-lay-18 .bar{height:48px;padding:0 16px;background:rgba(255,253,248,.72);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.5)}
-.g-lay-18 .here{opacity:.7}
-.g-lay-18 .tools span{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.55);font-size:13px}
+/* 18 玻璃 */
+.g-lay-18{--g-bar:rgba(255,253,248,.72);--g-insp:rgba(255,253,248,.72);--g-shadow:none;--g-border:1px solid rgba(255,255,255,.6);--g-radius:12px}
+.g-lay-18 .bar{backdrop-filter:blur(10px)}
+.g-lay-18 .tools span{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.55)}
 
-/* 19 线圈本 */
-.g-lay-19 .bar{height:52px;padding:0 16px 0 48px;background:#fffdf8;position:relative;border-bottom:1px dashed #d7ccb8}
+/* 19 线圈 */
+.g-lay-19{--g-shadow:none;--g-border:1px dashed #d7ccb8}
+.g-lay-19 .bar{padding-left:48px;position:relative}
 .g-lay-19 .rings{position:absolute;left:12px;top:8px;display:flex;flex-direction:column;gap:6px}
 .g-lay-19 .rings i{width:14px;height:14px;border-radius:50%;border:2px solid #9a9084;background:#efe8d8}
-.g-lay-19 .tools{gap:12px;font-size:12.5px}
 
 /* 20 图例 */
-.g-lay-20 .bar{height:48px;padding:0 16px;background:#faf6ec;border-bottom:1px solid #e6dcc4}
+.g-lay-20{--g-bar:#faf6ec;--g-map:#faf6ec;--g-insp:#faf6ec;--g-shadow:none;--g-border:1px solid #e6dcc4}
 .g-lay-20 .leg{font-size:10px;letter-spacing:.16em;color:#9a9084;font-weight:800}
-.g-lay-20 .sym{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#5a5348}
+.g-lay-20 .sym{display:inline-flex;align-items:center;gap:5px;font-size:12px}
 .g-lay-20 .sym i{width:8px;height:8px;border-radius:2px;background:#ffe66d;border:1px solid #2d2d2d}
 
-/* 21 印章题 */
-.g-lay-21 .bar{height:56px;padding:0 16px;background:#fffef9}
-.g-lay-21 .chop{width:36px;height:36px;border:2px solid #c23b3b;color:#c23b3b;display:grid;place-items:center;font-family:"Noto Serif SC",serif;font-size:13px;font-weight:700;transform:rotate(-8deg)}
-.g-lay-21 .ttl{font-family:"Noto Serif SC",serif;font-size:16px}
-.g-lay-21 .tools{gap:14px;font-size:12px;color:#888}
+/* 21 印章 */
+.g-lay-21{--g-font:"Noto Serif SC",serif;--g-shadow:none;--g-border:1px solid #e8dfcc}
+.g-lay-21 .chop{width:36px;height:36px;border:2px solid #c23b3b;color:#c23b3b;display:grid;place-items:center;font-size:13px;font-weight:700;transform:rotate(-8deg)}
 
 /* 22 终端 */
-.g-lay-22 .bar{height:40px;padding:0 12px;background:#0d1117;color:#8be9a4;font-family:ui-monospace,Menlo,monospace;font-size:12px}
-.g-lay-22 .ttl{font-weight:400;color:#79c0ff}
-.g-lay-22 .here{color:#8be9a4}
-.g-lay-22 .tools{gap:14px;color:#8b949e}
+.g-lay-22{--g-bar:#0d1117;--g-map:#0d1117;--g-insp:#0d1117;--g-bg:#0d1117;--g-ink:#8be9a4;--g-muted:#8b949e;
+  --g-card:#0d1117;--g-card-ink:#79c0ff;--g-root:#161b22;--g-node:#161b22;--g-note:#161b22;--g-hair:#21262d;
+  --g-line:#30363d;--g-border:1px solid #30363d;--g-shadow:none;--g-font:ui-monospace,Menlo,monospace;--g-chip:#21262d;--g-chip-ink:#8be9a4;--g-empty:#6e7681}
 
 /* 23 大标题 */
-.g-lay-23 .bar{height:58px;padding:0 20px;background:#f2f2f7}
-.g-lay-23 .ttl{font-size:20px;font-weight:700;letter-spacing:-.03em}
-.g-lay-23 .here{display:none}
-.g-lay-23 .tools{gap:6px}
-.g-lay-23 .tools span{font-size:13px;color:#007aff;padding:6px 8px}
+.g-lay-23{--g-bar:#f2f2f7;--g-map:#f2f2f7;--g-insp:#f2f2f7;--g-shadow:none;--g-border:0;--g-radius:12px;
+  --g-root:#fff;--g-node:#fff;--g-note:#fff;--g-hair:#e5e5ea;--g-card:transparent;--g-card-ink:#111}
+.g-lay-23 .here{font-size:20px;height:auto;padding:0;font-weight:700;letter-spacing:-.03em}
+.g-lay-23 .tools span{color:#007aff;padding:6px 8px}
 
-/* 24 文件名居中 */
-.g-lay-24 .bar{height:44px;padding:0 12px;background:#2c2c2c;color:#eee;position:relative}
-.g-lay-24 .side{font-size:12px;color:#bbb;z-index:1}
-.g-lay-24 .ttl{position:absolute;left:50%;transform:translateX(-50%);font-size:12.5px;font-weight:500;background:#3a3a3a;padding:4px 14px;border-radius:6px}
+/* 24 Figma 深 */
+.g-lay-24{--g-bar:#2c2c2c;--g-map:#1e1e1e;--g-insp:#2c2c2c;--g-bg:#1e1e1e;--g-ink:#eee;--g-muted:#bbb;
+  --g-card:#3a3a3a;--g-card-ink:#eee;--g-root:#3a3a3a;--g-node:#2c2c2c;--g-note:#3a3a3a;--g-hair:#444;
+  --g-border:1px solid #444;--g-shadow:none;--g-chip:#444;--g-chip-ink:#ddd;--g-empty:#888}
+.g-lay-24 .bar{position:relative;justify-content:flex-end}
+.g-lay-24 .here{position:absolute;left:50%;transform:translateX(-50%)}
 
 /* 25 无边 */
-.g-lay-25 .bar{height:46px;padding:0 22px;background:#fff}
-.g-lay-25 .ttl{font-size:15px;font-weight:600}
-.g-lay-25 .here{color:#a8a29a}
-.g-lay-25 .tools{gap:18px;font-size:13px;color:#78716c}
+.g-lay-25{--g-bar:#fff;--g-map:#fff;--g-insp:#fff;--g-bg:#fff;--g-shadow:none;--g-border:0;--g-radius:0;
+  --g-root:#fff;--g-node:#fff;--g-note:#fff;--g-hair:#f5f5f4;--g-card:transparent;--g-card-ink:#1c1917}
+.g-lay-25 .here{padding:0;font-size:15px}
+.g-lay-25 .tools{gap:18px;color:#78716c}
 
-/* 26 深色紧凑 */
-.g-lay-26 .bar{height:40px;padding:0 14px;background:#0f0f10;color:#e5e5e5;gap:14px}
-.g-lay-26 .ttl{font-size:12.5px;font-weight:500}
-.g-lay-26 .here{font-size:11.5px;color:#a1a1aa}
-.g-lay-26 .tools span{font-size:11.5px;color:#a1a1aa;padding:3px 8px;border-radius:4px;background:#1c1c1f}
+/* 26 Linear */
+.g-lay-26{--g-bar:#0f0f10;--g-map:#0f0f10;--g-insp:#0f0f10;--g-bg:#0f0f10;--g-ink:#e5e5e5;--g-muted:#a1a1aa;
+  --g-card:#1c1c1f;--g-card-ink:#e5e5e5;--g-root:#1c1c1f;--g-node:#1c1c1f;--g-note:#1c1c1f;--g-hair:#1c1c1f;
+  --g-border:1px solid #27272a;--g-shadow:none;--g-radius:8px;--g-chip:#27272a;--g-chip-ink:#a1a1aa;--g-empty:#71717a}
+.g-lay-26 .bar{min-height:40px}
+.g-lay-26 .tools span{padding:3px 8px;border-radius:4px;background:#1c1c1f;font-size:11.5px}
 .g-lay-26 .bug{color:#fb7185;background:#2a1518}
 
-/* 27 衬线刊 */
-.g-lay-27 .bar{height:54px;padding:0 22px;background:#fffdf8;border-bottom:1px solid #e8dfcc}
-.g-lay-27 .ttl{font-family:"IBM Plex Serif","Noto Serif SC",serif;font-size:18px;font-weight:600}
-.g-lay-27 .here{font-family:"IBM Plex Serif",serif;font-style:italic;color:#746c60}
+/* 27 衬线 */
+.g-lay-27{--g-font:"IBM Plex Serif","Noto Serif SC",serif;--g-shadow:none;--g-border:1px solid #e8dfcc}
+.g-lay-27 .here{font-size:16px;height:auto;background:transparent;padding:0;color:#2d2d2d;font-weight:600}
 .g-lay-27 .tools{gap:16px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#9a9084}
 
 /* 28 图标带字 */
-.g-lay-28 .bar{height:56px;padding:0 16px;background:#fff}
-.g-lay-28 .tools{gap:4px}
+.g-lay-28 .bar{min-height:56px}
 .g-lay-28 .ic{display:flex;flex-direction:column;align-items:center;gap:2px;width:44px;color:#5a5348}
 .g-lay-28 .ic b{font-size:14px;font-weight:500}
-.g-lay-28 .ic u{font-size:9px;text-decoration:none;letter-spacing:.04em}
+.g-lay-28 .ic u{font-size:9px;text-decoration:none}
 
 /* 29 单胶囊 */
-.g-lay-29 .bar{height:52px;padding:0 14px;background:#f6f1e6}
+.g-lay-29{--g-bar:#f6f1e6;--g-radius:12px;--g-shadow:none;--g-border:1px solid #efe6d2}
 .g-lay-29 .cap{display:flex;align-items:center;gap:2px;background:#fff;border-radius:999px;padding:3px;box-shadow:0 1px 3px #0001}
 .g-lay-29 .cap span{padding:6px 11px;font-size:12px;border-radius:999px;color:#5a5348}
 .g-lay-29 .cap .on{background:#2d2d2d;color:#fff}
+.g-lay-29 .here{border-radius:999px}
 
-/* 30 顶黄线 */
-.g-lay-30 .bar{height:48px;padding:0 18px;background:#fffdf8;border-top:4px solid #ffe66d;border-bottom:1px solid #efe6d2}
-.g-lay-30 .tools{gap:14px;font-size:12.5px}
+/* 30 黄线 */
+.g-lay-30 .bar{border-top:4px solid #ffe66d}
+.g-lay-30 .insp{border-top:4px solid #ffe66d}
 
-/* 31 折角纸 */
-.g-lay-31 .bar{height:50px;padding:0 22px 0 16px;background:#fffef9;position:relative;border-bottom:1px solid #eee}
+/* 31 折角 */
+.g-lay-31{--g-shadow:none;--g-border:1px solid #eee}
+.g-lay-31 .bar{position:relative}
 .g-lay-31 .fold{position:absolute;right:0;top:0;border:10px solid #efe8d8;border-bottom-color:#e4dccb;border-left-color:#e4dccb;border-top-color:transparent;border-right-color:transparent}
-.g-lay-31 .tools{gap:14px;font-size:12.5px}
 
 /* 32 蓝图 */
-.g-lay-32 .bar{height:46px;padding:0 16px;background:#0b3d5c;color:#9fe7ff;font-family:ui-monospace,Menlo,monospace;
-  background-image:linear-gradient(rgba(159,231,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(159,231,255,.12) 1px,transparent 1px);background-size:20px 20px}
-.g-lay-32 .ttl{font-size:12px;font-weight:400}
-.g-lay-32 .here{color:#fff}
-.g-lay-32 .tools{gap:14px;font-size:11px}
+.g-lay-32{--g-bar:#0b3d5c;--g-map:#0b3d5c;--g-insp:#0b3d5c;--g-bg:#0b3d5c;--g-ink:#9fe7ff;--g-muted:#7ec8e0;
+  --g-card:transparent;--g-card-ink:#fff;--g-root:#0b3d5c;--g-node:#0b3d5c;--g-note:#0b3d5c;--g-hair:#1a5a7a;
+  --g-line:#9fe7ff;--g-border:1px solid #9fe7ff;--g-shadow:none;--g-font:ui-monospace,Menlo,monospace;
+  --g-chip:#0b3d5c;--g-chip-ink:#9fe7ff;--g-empty:#5aa0b8}
+.g-lay-32 .bar,.g-lay-32 .map{background-image:linear-gradient(rgba(159,231,255,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(159,231,255,.12) 1px,transparent 1px);background-size:20px 20px}
+.g-lay-32 .here{padding:0;height:auto;font-weight:400}
 
 /* 33 展签 */
-.g-lay-33 .bar{height:52px;padding:0 20px;background:#fafafa;border-left:10px solid #2d2d2d}
+.g-lay-33{--g-bar:#fafafa;--g-map:#fafafa;--g-insp:#fafafa;--g-shadow:none;--g-border:1px solid #e5e5e5;--g-radius:0}
+.g-lay-33 .bar{border-left:10px solid #2d2d2d;padding-left:14px}
+.g-lay-33 .insp{border-left:10px solid #2d2d2d}
 .g-lay-33 .k{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#999}
-.g-lay-33 .ttl{font-size:16px;font-weight:600}
-.g-lay-33 .tools{gap:16px;font-size:12px;color:#888}
 
 /* 34 票根 */
-.g-lay-34 .bar{height:50px;padding:0 0 0 16px;background:#fff;border-bottom:1px dashed #bbb}
-.g-lay-34 .sn{margin-left:auto;padding:0 14px;border-left:1px dashed #bbb;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#888;height:100%;display:flex;align-items:center}
-.g-lay-34 .tools{margin:0 12px 0 auto;gap:12px;font-size:12px}
+.g-lay-34{--g-shadow:none;--g-border:1px dashed #bbb;--g-radius:0}
+.g-lay-34 .bar{padding-right:0}
+.g-lay-34 .sn{padding:0 14px;border-left:1px dashed #bbb;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#888;height:100%;display:flex;align-items:center}
 
-/* 35 中间跳转槽 */
-.g-lay-35 .bar{height:50px;padding:0 14px;background:#fffdf8}
-.g-lay-35 .jump{flex:1;max-width:320px;margin:0 auto;height:32px;border-radius:8px;background:#f3ead6;color:#9a9084;display:flex;align-items:center;padding:0 12px;font-size:12.5px}
-.g-lay-35 .tools{gap:10px;font-size:12px}
+/* 35 跳转 */
+.g-lay-35 .jump{flex:1;max-width:280px;margin:0 auto;height:32px;border-radius:8px;background:#f3ead6;color:#9a9084;display:flex;align-items:center;padding:0 12px;font-size:12.5px}
 
-/* 36 状态一句 */
-.g-lay-36 .bar{height:46px;padding:0 18px;background:#fff}
+/* 36 状态句 */
+.g-lay-36{--g-bar:#fff;--g-insp:#fff;--g-shadow:none;--g-border:1px solid #eee}
 .g-lay-36 .sent{font-size:13px;color:#5a5348}
-.g-lay-36 .sent b{font-weight:700;color:#2d2d2d}
 .g-lay-36 .sent .bad{color:#e24b4b}
 
-/* 37 底贴页签 */
-.g-lay-37 .bar{display:block;background:#fffdf8;padding:0;border-bottom:0}
+/* 37 页签 */
+.g-lay-37 .bar{display:block;padding:0;min-height:0}
 .g-lay-37 .r1{display:flex;align-items:center;padding:8px 16px 0;gap:10px}
 .g-lay-37 .tabs{display:flex;gap:2px;padding:8px 16px 0;border-bottom:1px solid #e8dfcc}
 .g-lay-37 .tabs span{padding:7px 12px;font-size:12px;color:#888}
-.g-lay-37 .tabs .on{background:#fefaf2;border:1px solid #e8dfcc;border-bottom-color:#fefaf2;border-radius:8px 8px 0 0;color:#2d2d2d;font-weight:700;margin-bottom:-1px}
+.g-lay-37 .tabs .on{background:var(--g-map);border:1px solid #e8dfcc;border-bottom-color:var(--g-map);border-radius:8px 8px 0 0;color:#2d2d2d;font-weight:700;margin-bottom:-1px}
 
-/* 38 双细线 */
-.g-lay-38 .bar{height:50px;padding:0 20px;background:#fffdf8;border-top:1px solid #2d2d2d;border-bottom:3px double #2d2d2d}
-.g-lay-38 .here{font-style:italic;color:#746c60}
-.g-lay-38 .tools{gap:18px;font-size:12px}
+/* 38 双线 */
+.g-lay-38 .bar{border-top:1px solid #2d2d2d;border-bottom:3px double #2d2d2d}
+.g-lay-38 .insp{border-left:3px double #2d2d2d}
 
-/* 39 软色片 */
-.g-lay-39 .bar{height:50px;padding:0 14px;background:#fff}
-.g-lay-39 .here{background:#e4ebf4;color:#2d5da1;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600}
-.g-lay-39 .chip{padding:4px 10px;border-radius:999px;font-size:12px;background:#f3ead6;color:#5a5348}
+/* 39 软片 */
+.g-lay-39{--g-shadow:none;--g-border:0;--g-radius:12px;--g-hair:#f0ebe0}
+.g-lay-39 .here,.g-lay-39 .chip{border-radius:999px}
+.g-lay-39 .chip{padding:4px 10px;font-size:12px;background:#f3ead6;color:#5a5348}
 .g-lay-39 .chip.bug{background:#f8e4dc;color:#c23b3b}
+.g-lay-39 .root,.g-lay-39 .mod,.g-lay-39 .note{box-shadow:0 1px 2px #0001}
 
-/* 40 几何标 */
-.g-lay-40 .bar{height:48px;padding:0 16px;background:#fffef9}
+/* 40 几何 */
+.g-lay-40{--g-shadow:none;--g-border:1.5px solid #2d2d2d;--g-radius:2px}
 .g-lay-40 .mark{width:10px;height:10px;background:#ffe66d;border:1.5px solid #2d2d2d;transform:rotate(8deg)}
-.g-lay-40 .ttl{font-weight:500}
-.g-lay-40 .tools{gap:16px;font-size:12.5px;color:#746c60}
+.g-lay-40 .here{background:transparent;padding:0;color:#2d2d2d;border-radius:0}
 
 /* 41 罗盘 */
-.g-lay-41 .bar{height:50px;padding:0 16px;background:#faf6ec}
+.g-lay-41{--g-bar:#faf6ec;--g-map:#faf6ec;--g-insp:#faf6ec}
 .g-lay-41 .comp{width:34px;height:34px;border-radius:50%;border:1.5px solid #2d2d2d;display:grid;place-items:center;font-size:9px;font-weight:800;background:#fff;line-height:1.1;text-align:center}
-.g-lay-41 .tools{gap:14px;font-size:12.5px}
 
 /* 42 微字 */
-.g-lay-42 .bar{height:42px;padding:0 24px;background:#fffdf8;border-bottom:1px solid #f0ebe0}
-.g-lay-42 .ttl{font-size:12px;font-weight:500;color:#746c60}
-.g-lay-42 .here{font-size:12px}
+.g-lay-42{--g-shadow:none;--g-border:1px solid #f0ebe0}
+.g-lay-42 .bar{min-height:42px;padding:0 24px}
+.g-lay-42 .here{height:auto;padding:0;background:transparent;font-size:12px;font-weight:500;color:#746c60}
 .g-lay-42 .tools{gap:16px;font-size:11px;color:#9a9084}
 
 /* 43 巨题 */
-.g-lay-43 .bar{height:66px;padding:0 20px;background:#fff}
-.g-lay-43 .ttl{font-size:26px;font-weight:700;letter-spacing:-.04em}
-.g-lay-43 .tools{gap:12px;font-size:11px;color:#aaa}
+.g-lay-43{--g-bar:#fff;--g-insp:#fff;--g-shadow:none;--g-border:0}
+.g-lay-43 .bar{min-height:66px;padding:0 20px}
+.g-lay-43 .here{height:auto;padding:0;background:transparent;font-size:26px;font-weight:700;letter-spacing:-.04em;color:#111}
+.g-lay-43 .tools{font-size:11px;color:#aaa}
 
-/* 44 几乎空白 */
-.g-lay-44 .bar{height:44px;padding:0 20px;background:#fefaf2}
-.g-lay-44 .ttl{font-weight:400;font-size:14px}
+/* 44 空白 */
+.g-lay-44{--g-shadow:none;--g-border:0;--g-card:transparent;--g-card-ink:#2d2d2d}
+.g-lay-44 .here{padding:0;background:transparent;font-weight:400}
 .g-lay-44 .more{font-size:18px;letter-spacing:.2em;color:#bbb;margin-left:auto}
+.g-lay-44 .acts,.g-lay-44 .note .add{opacity:.35}
 
 /* 45 书脊 */
-.g-lay-45 .bar{height:48px;padding:0 16px 0 0;background:#fffdf8}
-.g-lay-45 .spine{width:42px;height:100%;background:#2d2d2d;color:#ffe66d;display:grid;place-items:center;font-size:11px;font-weight:800;letter-spacing:.08em}
-.g-lay-45 .tools{gap:14px;font-size:12.5px}
+.g-lay-45 .bar{padding-left:0}
+.g-lay-45 .spine{width:42px;height:100%;background:#2d2d2d;color:#ffe66d;display:grid;place-items:center;font-size:11px;font-weight:800}
+.g-lay-45 .insp{border-left:42px solid #2d2d2d}
 
 /* 46 比例尺 */
-.g-lay-46 .bar{height:48px;padding:0 16px;background:#faf6ec}
+.g-lay-46{--g-bar:#faf6ec;--g-map:#faf6ec;--g-insp:#faf6ec}
 .g-lay-46 .rule{display:flex;height:18px;border:1px solid #2d2d2d;border-radius:3px;overflow:hidden;font-size:9px;font-weight:800}
 .g-lay-46 .rule span{padding:0 8px;display:flex;align-items:center}
 .g-lay-46 .rule .on{background:#ffe66d}
-.g-lay-46 .tools{gap:12px;font-size:12px}
 
-/* 47 手写题 */
-.g-lay-47 .bar{height:54px;padding:0 18px;background:#fffceb}
-.g-lay-47 .ttl{font-family:"Comic Neue","Noto Sans SC",cursive;font-size:20px;font-weight:700}
-.g-lay-47 .here{font-family:"Comic Neue",cursive;color:#8a6d1f}
-.g-lay-47 .tools{gap:14px;font-size:13px;font-family:"Comic Neue",cursive}
+/* 47 手写 */
+.g-lay-47{--g-bar:#fffceb;--g-map:#fffceb;--g-insp:#fffceb;--g-font:"Comic Neue","Noto Sans SC",cursive;
+  --g-note-font:"Comic Neue",cursive;--g-shadow:2px 3px 0 rgba(0,0,0,.12);--g-border:1.5px solid #2d2d2d}
+.g-lay-47 .here{background:transparent;font-size:20px;height:auto;padding:0;color:#2d2d2d}
 
-/* 48 淡彩分层 */
-.g-lay-48 .bar{height:50px;padding:0 16px;background:linear-gradient(#fff6e5,#fffdf8);border-bottom:1px solid #e6d3a8}
-.g-lay-48 .here{color:#8a6d1f;font-weight:600}
-.g-lay-48 .tools span{font-size:12px;color:#8a6d1f;padding:5px 9px;background:#fff;border:1px solid #e6d3a8;border-radius:7px}
+/* 48 淡彩 */
+.g-lay-48{--g-bar:#fff6e5;--g-map:#fffdf8;--g-insp:#fff6e5;--g-hair:#e6d3a8;--g-card-ink:#8a6d1f;
+  --g-border:1px solid #e6d3a8;--g-shadow:none;--g-radius:8px}
+.g-lay-48 .tools span{padding:5px 9px;background:#fff;border:1px solid #e6d3a8;border-radius:7px;color:#8a6d1f}
 
-/* 49 收入菜单 */
-.g-lay-49 .bar{height:48px;padding:0 16px;background:#fffdf8;border-bottom:1px solid #ece6d8}
-.g-lay-49 .here{color:#2d5da1;font-weight:600}
+/* 49 菜单 */
 .g-lay-49 .menu{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:16px;color:#746c60}
 
-/* 50 一条金线 */
-.g-lay-50 .bar{height:46px;padding:0 22px;background:#fffdf8;border-bottom:1px solid #d4a017}
-.g-lay-50 .ttl{font-weight:500}
-.g-lay-50 .here{color:#d4a017;font-size:12px}
-.g-lay-50 .tools{gap:18px;font-size:12px;color:#9a9084}
+/* 50 金线 */
+.g-lay-50{--g-hair:#d4a017;--g-card:transparent;--g-card-ink:#d4a017;--g-shadow:none;--g-border:1px solid #d4a017}
+.g-lay-50 .bar{border-bottom:1px solid #d4a017}
+.g-lay-50 .here{padding:0;height:auto}
+.g-lay-50 .insp{border-left:1px solid #d4a017}
+
 
 </style>
 </head>
 <body>
 <div id="design-gallery">
   <div class="g-bar">
-    <b>顶栏 · 50 版</b>
-    <span class="hint">往下滑动。每一张顶栏结构都不一样。看中了把编号发我，例如「顶栏 17」。不用点。</span>
+    <b>工作台风格 · 50 版</b>
+    <span class="hint">往下滑动。每一张是整页：一张 context card、画布、检查器。看中了把编号发我，例如「风格 17」。不用点。</span>
   </div>
   <div class="g-scroll" id="g-scroll"></div>
 </div>
@@ -6195,114 +6211,116 @@ function renderAll(){
   persist();
 }
 function bootDesignGallery(){
-  document.title = "顶栏 · 50 版";
-  const peek = `<div class="peek" aria-hidden="true"><span class="dotn">Context Guard</span></div>`;
+  document.title = "工作台风格 · 50 版";
+  const card = `<span class="here">Context Guard <i class="caret">▾</i></span>`;
+  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><i class="st">已做未测</i></div><div class="acts"><span>＋ 模块</span><span>＋ 子节点</span></div><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
+  const shell = bar => `<div class="bar">${bar}</div>${stage}`;
   const L = [];
-  const add = (id, name, html) => L.push({id, name, html});
+  const add = (id, name, bar) => L.push({id, name, html: shell(bar)});
 
   add("01", "现况粗框",
-    `<div class="bar"><span class="here">Context Guard <i class="caret">▾</i></span><span class="sp"></span><div class="tools"><span class="box dir"><i></i><span>左右</span><span>上下</span></span><span class="box">关系</span><span class="box sq">🔑</span><span class="box">🐞 Bug (1)</span><span class="box sq">⚙</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span class="box dir"><i></i><span>左右</span><span>上下</span></span><span class="box">关系</span><span class="box sq">🔑</span><span class="box">🐞 Bug (1)</span><span class="box sq">⚙</span></div>`);
   add("02", "细线字钮",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图 <i class="caret">▾</i></b><span class="here">Context Guard</span><span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("03", "纯文字",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图 <i class="caret">▾</i></b><span class="here">/ Context Guard</span><span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug <b>1</b></span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug <b>1</b></span><span>设置</span></div>`);
   add("04", "静音圆标",
-    `<div class="bar"><b class="ttl">架构导图</b><span class="here">Context Guard</span><span class="sp"></span><div class="tools"><span class="ico">↕</span><span class="ico">⇄</span><span class="ico">🔑</span><span class="ico bug">1</span><span class="ico">⚙</span></div></div>`);
-  add("05", "浮岛顶栏",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span class="ico">↕</span><span class="ico">⇄</span><span class="ico">🔑</span><span class="ico bug">1</span><span class="ico">⚙</span></div>`);
+  add("05", "浮岛",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
   add("06", "左右两岛",
-    `<div class="bar"><div class="island"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span></div><div class="island r"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
-  add("07", "名字一行工具一行",
-    `<div class="bar"><div class="r1"><span class="ttl">Context Guard 架构导图 ▾</span></div><div class="r2"><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div></div>`);
-  add("08", "面包屑当顶栏",
-    `<div class="bar"><div class="path">架构导图 <em>/</em> <b>Context Guard</b></div><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
-  add("09", "居中刊头",
-    `<div class="bar"><div class="side">Context Guard ▾</div><b class="ttl">架构导图</b><div class="side tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug</span><span>⚙</span></div></div>`);
-  add("10", "IDE 标题条",
-    `<div class="bar"><span class="dots"><i></i><i></i><i></i></span><b class="ttl">workbench.html — Context Guard</b><span class="here">map</span><div class="tools"><span>TB</span><span>Rel</span><span>Auth</span><span>Bug</span><span>⚙</span></div></div>`);
+    `<div class="island">${card}</div><div class="island r"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("07", "两行",
+    `<div class="r1">项目</div><div class="r2">${card}<div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+  add("08", "路径",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("09", "刊头",
+    `${card}<div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug</span><span>⚙</span></div>`);
+  add("10", "IDE",
+    `<span class="dots"><i></i><i></i><i></i></span>${card}<div class="tools"><span>TB</span><span>Rel</span><span>Auth</span><span>Bug</span><span>⚙</span></div>`);
   add("11", "报纸报头",
-    `<div class="bar"><div class="kicker">Project memory · Thursday</div><b class="ttl">Context Guard</b><div class="row"><span>架构导图</span><span>上下 · 关系 · 授权 · Bug 1 · 设置</span></div></div>`);
+    `<div class="kicker">Project memory · Thursday</div>${card}<div class="row"><span>上下</span><span>关系 · 授权 · Bug 1 · 设置</span></div>`);
   add("12", "深色墨条",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">当前节点</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div>`);
   add("13", "浅托盘",
-    `<div class="bar"><b class="ttl">架构导图 ▾</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
-  add("14", "左边一条色签",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("14", "左边色签",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("15", "分段一条",
-    `<div class="bar"><b class="ttl">架构导图</b><span class="sp"></span><div class="seg"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="seg"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div>`);
   add("16", "瑞士留白",
-    `<div class="bar"><b class="ttl">Context Guard</b><span class="here">架构导图</span><div class="tools"><span>LAYOUT</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>LAYOUT</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div>`);
   add("17", "和纸红印",
-    `<div class="bar"><span class="seal">守</span><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>虫 1</span><span>设</span></div></div>`);
+    `<span class="seal">守</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>虫 1</span><span>设</span></div>`);
   add("18", "毛玻璃",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
   add("19", "线圈本",
-    `<div class="bar"><div class="rings"><i></i><i></i></div><b class="ttl">架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<div class="rings"><i></i><i></i></div>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("20", "地图图例",
-    `<div class="bar"><span class="leg">LEGEND</span><b class="ttl">Context Guard</b><span class="sym"><i></i>当前</span><div class="tools"><span class="sym">↕ 上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
+    `<span class="leg">LEGEND</span>${card}<span class="sp"></span><div class="tools"><span class="sym"><i></i>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
   add("21", "印章题名",
-    `<div class="bar"><span class="chop">守</span><b class="ttl">架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<span class="chop">守</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("22", "终端条",
-    `<div class="bar"><b class="ttl">cg@workbench</b><span class="here">~/Context-Guard</span><div class="tools"><span>--tb</span><span>rel</span><span>auth</span><span>bug:1</span><span>cfg</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>--tb</span><span>rel</span><span>auth</span><span>bug:1</span><span>cfg</span></div>`);
   add("23", "大标题导航",
-    `<div class="bar"><b class="ttl">Context Guard</b><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div>`);
   add("24", "文件名居中",
-    `<div class="bar"><span class="side">☰ 架构导图</span><b class="ttl">Context Guard</b><div class="side tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div></div>`);
+    `<span class="side">☰</span>${card}<div class="tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
   add("25", "无边框",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("26", "深色紧凑",
-    `<div class="bar"><b class="ttl">Context Guard</b><span class="here">架构导图</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div>`);
   add("27", "衬线刊头",
-    `<div class="bar"><b class="ttl">Context Guard</b><span class="here">人与 Agent 共用的项目记忆</span><div class="tools"><span>Layout</span><span>Edges</span><span>Key</span><span>Bugs</span><span>More</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>Layout</span><span>Edges</span><span>Key</span><span>Bugs</span><span>More</span></div>`);
   add("28", "图标带小字",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span class="ic"><b>↕</b><u>上下</u></span><span class="ic"><b>⇄</b><u>关系</u></span><span class="ic"><b>🔑</b><u>授权</u></span><span class="ic"><b>🐞</b><u>Bug</u></span><span class="ic"><b>⚙</b><u>设置</u></span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span class="ic"><b>↕</b><u>上下</u></span><span class="ic"><b>⇄</b><u>关系</u></span><span class="ic"><b>🔑</b><u>授权</u></span><span class="ic"><b>🐞</b><u>Bug</u></span><span class="ic"><b>⚙</b><u>设置</u></span></div>`);
   add("29", "单胶囊",
-    `<div class="bar"><b class="ttl">架构导图 ▾</b><span class="here">Context Guard</span><div class="cap"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="cap"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div>`);
   add("30", "顶上一根黄线",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
   add("31", "折角纸",
-    `<div class="bar"><span class="fold"></span><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<span class="fold"></span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("32", "蓝图",
-    `<div class="bar"><b class="ttl">ARCH / CONTEXT GUARD</b><span class="here">SHEET 01</span><div class="tools"><span>TB</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>TB</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div>`);
   add("33", "展签",
-    `<div class="bar"><div><div class="k">Node map</div><b class="ttl">Context Guard</b></div><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<div><div class="k">Node map</div>${card}</div><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("34", "票根",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span></div><span class="sn">No. 0823</span></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span></div><span class="sn">No. 0823</span>`);
   add("35", "中间跳转槽",
-    `<div class="bar"><b class="ttl">导图 ▾</b><div class="jump">跳到模块…</div><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>1</span><span>⚙</span></div></div>`);
+    `${card}<div class="jump">跳到模块…</div><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
   add("36", "状态当一句",
-    `<div class="bar"><b class="ttl">Context Guard</b><span class="sent">正在看 <b>Context Guard</b> · 上下布局 · <span class="bad">1 个 Bug</span></span><div class="tools"><span>关系</span><span>授权</span><span>设置</span></div></div>`);
+    `${card}<span class="sent">上下布局 · <span class="bad">1 个 Bug</span></span><div class="tools"><span>关系</span><span>授权</span><span>设置</span></div>`);
   add("37", "底下贴页签",
-    `<div class="bar"><div class="r1"><b class="ttl">Context Guard 架构导图 ▾</b><span class="sp"></span><span>🔑</span><span>⚙</span></div><div class="tabs"><span>上下</span><span>关系</span><span class="on">Bug 1</span></div></div>`);
+    `<div class="r1">${card}<span class="sp"></span><span>🔑</span><span>⚙</span></div><div class="tabs"><span>上下</span><span>关系</span><span class="on">Bug 1</span></div>`);
   add("38", "双细线古典",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("39", "软色片",
-    `<div class="bar"><b class="ttl">架构导图 ▾</b><span class="here">Context Guard</span><div class="tools"><span class="chip">上下</span><span class="chip">关系</span><span class="chip">授权</span><span class="chip bug">Bug 1</span><span class="chip">设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span class="chip">上下</span><span class="chip">关系</span><span class="chip">授权</span><span class="chip bug">Bug 1</span><span class="chip">设置</span></div>`);
   add("40", "几何小标",
-    `<div class="bar"><i class="mark"></i><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<i class="mark"></i>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("41", "罗盘布局",
-    `<div class="bar"><span class="comp">北<br>南</span><b class="ttl">Context Guard</b><span class="here">架构导图</span><div class="tools"><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<span class="comp">北<br>南</span>${card}<span class="sp"></span><div class="tools"><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("42", "微字大气",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("43", "巨大标题",
-    `<div class="bar"><b class="ttl">Guard</b><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div>`);
   add("44", "几乎空白",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="more">···</span></div>`);
+    `${card}<span class="more">···</span>`);
   add("45", "左边书脊",
-    `<div class="bar"><span class="spine">CG</span><b class="ttl">架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `<span class="spine">CG</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("46", "比例尺",
-    `<div class="bar"><b class="ttl">Context Guard</b><div class="rule"><span>左右</span><span class="on">上下</span></div><div class="tools"><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div></div>`);
+    `${card}<div class="rule"><span>左右</span><span class="on">上下</span></div><div class="tools"><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
   add("47", "手写题头",
-    `<div class="bar"><b class="ttl">Context Guard</b><span class="here">架构导图</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("48", "淡彩分层",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
   add("49", "工具收进菜单",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图 ▾</b><span class="here">Context Guard</span><div class="tools"><span class="menu">···</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span class="menu">···</span></div>`);
   add("50", "一条金线",
-    `<div class="bar"><b class="ttl">Context Guard 架构导图</b><span class="here">Context Guard</span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
 
   document.getElementById("g-scroll").innerHTML = L.map(v =>
-    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-chrome g-lay-${v.id}">${v.html}${peek}</aside></article>`
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-chrome g-lay-${v.id}">${v.html}</aside></article>`
   ).join("");
 }
 async function boot(){
