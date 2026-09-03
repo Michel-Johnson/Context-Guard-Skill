@@ -222,7 +222,13 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
 
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {
   const project = await fixture();
-  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  t.after(async () => {
+    spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    await fs.rm(project, { recursive: true, force: true });
+  });
   const session = 'hook-session-two';
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
@@ -236,7 +242,6 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const ctx = path.join(project, '.codex/context');
   const port = await freePort();
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
-  t.after(() => spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], { encoding: 'utf8' }));
   const archiveDenied = spawnSync(python, [contextScript, 'archive-session', '--root', project, '--session', session,
     '--summary', '未授权归档', '--files', 'src/index.mjs'], { cwd: project, encoding: 'utf8' });
   assert.notEqual(archiveDenied.status, 0);
