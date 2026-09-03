@@ -314,6 +314,13 @@ try {
     });
     assert.ok(lrSpread.dx > lrSpread.dy, `first layer left-right should sit children to the side ${JSON.stringify(lrSpread)}`);
     await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
+    await preview.waitForFunction(() => {
+      const thumb = document.querySelector('#dir-toggle .dir-thumb').getBoundingClientRect();
+      const lr = document.querySelector('#dir-toggle [data-dir="lr"]').getBoundingClientRect();
+      const tb = document.querySelector('#dir-toggle [data-dir="tb"]').getBoundingClientRect();
+      const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+      return overlap(thumb, lr) > overlap(thumb, tb);
+    });
     const tbSpread = await preview.evaluate(() => {
       const root = document.querySelector('.node.root').getBoundingClientRect();
       const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
