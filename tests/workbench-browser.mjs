@@ -299,6 +299,14 @@ try {
     assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
     const dirW = await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().width));
     assert.ok(dirW <= 64, `layout slider should stay compact, got ${dirW}`);
+    const coverLr = await dirToggle.evaluate(() => {
+      const thumb = document.querySelector('#dir-toggle .dir-thumb').getBoundingClientRect();
+      const lr = document.querySelector('#dir-toggle [data-dir="lr"]').getBoundingClientRect();
+      const tb = document.querySelector('#dir-toggle [data-dir="tb"]').getBoundingClientRect();
+      const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+      return { overLr: overlap(thumb, lr), overTb: overlap(thumb, tb) };
+    });
+    assert.ok(coverLr.overTb > coverLr.overLr, `slider should cover 上下 when 左右 is current ${JSON.stringify(coverLr)}`);
     const lrSpread = await preview.evaluate(() => {
       const root = document.querySelector('.node.root').getBoundingClientRect();
       const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();

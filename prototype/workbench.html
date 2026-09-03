@@ -137,21 +137,21 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .lang-toggle button.on,.rel-toggle button.on{background:var(--yellow);color:var(--ink);font-weight:800}
 button.dir-toggle{
   position:relative;display:grid;grid-template-columns:1fr 1fr;align-items:stretch;
-  width:56px;height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);min-width:0;padding:3px;gap:0;
-  border:2px solid var(--line-ink);border-radius:999px;overflow:hidden;flex:0 0 auto;
+  width:60px;height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);min-width:0;padding:3px;gap:0;
+  border:2px solid var(--line-ink);border-radius:8px;overflow:hidden;flex:0 0 auto;
   box-sizing:border-box;box-shadow:var(--shadow-sm);background:var(--paper);color:var(--ink);
   cursor:pointer;user-select:none;-webkit-user-select:none}
 button.dir-toggle:hover,button.dir-toggle:focus,button.dir-toggle:active{
   background:var(--paper);color:var(--ink);transform:none;box-shadow:var(--shadow-sm)}
 .dir-toggle .dir-thumb{
-  position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/2);
-  background:var(--yellow);border-radius:999px;pointer-events:none;
-  transition:transform .18s ease}
-.dir-toggle.is-tb .dir-thumb{transform:translateX(100%)}
+  position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/2);z-index:2;
+  background:var(--yellow);border:2px solid var(--line-ink);border-radius:5px;pointer-events:none;
+  box-sizing:border-box;transform:translateX(100%);transition:transform .18s ease}
+.dir-toggle.is-tb .dir-thumb{transform:none}
 .dir-toggle .dir-opt{
   position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
-  padding:0;font-size:10px;font-weight:800;line-height:1;color:var(--muted);white-space:nowrap}
-.dir-toggle .dir-opt.on{color:var(--ink);font-weight:800}
+  padding:0;font-size:10px;font-weight:800;line-height:1;color:var(--ink);white-space:nowrap}
+.dir-toggle .dir-opt.on{color:var(--ink)}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
 body.rel-mode{background:#f3eee4}
