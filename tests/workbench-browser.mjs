@@ -411,6 +411,15 @@ try {
     );
     assert.ok(ghostPlus.length, 'phone nodes have add-child');
     assert.ok(ghostPlus.every(o => o === 0), `unselected pluses must be hidden on phone, got ${ghostPlus.join(',')}`);
+    const banners = await preview.evaluate(() => {
+      const vh = window.innerHeight, vw = window.innerWidth;
+      return [...document.querySelectorAll('.theme-preview-banner, .phone-preview-banner')].map(el => {
+        const s = getComputedStyle(el), r = el.getBoundingClientRect();
+        const shown = s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+        return { shown, h: Math.round(r.height), w: Math.round(r.width), covers: shown && (r.height > vh * 0.2 || r.width > vw * 0.45) };
+      });
+    });
+    assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
     recordCheck('phone-add-child-hidden');
   } finally {
     await preview.close();

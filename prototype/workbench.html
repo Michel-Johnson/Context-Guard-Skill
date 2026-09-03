@@ -449,11 +449,11 @@ html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
 
 .theme-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
-  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm);width:max-content;height:auto;max-width:calc(100vw - 24px)}
 html.theme-preview .theme-preview-banner{display:block}
 .phone-preview-banner{display:none;position:fixed;left:12px;bottom:12px;z-index:35;
   padding:6px 10px;background:#fff;border:2px solid var(--line-ink);border-radius:8px;
-  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm)}
+  font-size:12px;font-weight:700;box-shadow:var(--shadow-sm);width:max-content;height:auto;max-width:calc(100vw - 24px)}
 html.phone-preview .phone-preview-banner{display:block}
 html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 
@@ -809,10 +809,7 @@ html.cg-phone .file-name{max-width:min(160px,46vw)}
 html.cg-phone .plus-btn{width:36px;height:36px}
 html.cg-phone .note-add{min-height:36px}
 html.cg-phone .dot-pick{min-height:40px}
-html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{
-  left:8px;right:auto;bottom:auto;top:calc(var(--chrome-top) + 8px);max-width:calc(100% - 16px)
-}
-html.cg-phone.theme-preview.phone-preview .phone-preview-banner{top:calc(var(--chrome-top) + 44px)}
+html.cg-phone .theme-preview-banner,html.cg-phone .phone-preview-banner{display:none !important}
 html.cg-phone .drawer h2{font-size:18px}
 
 html.design-gallery,html.design-gallery body{
