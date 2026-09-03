@@ -153,7 +153,6 @@ button.dir-toggle:hover,button.dir-toggle:focus,button.dir-toggle:active{
   position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
   padding:0 8px;font-size:12.5px;font-weight:700;line-height:1;color:var(--muted);white-space:nowrap}
 .dir-toggle .dir-opt.on{color:var(--ink);font-weight:800}
-.dir-toggle.is-catalog{display:none}
 #rel-hint{display:none;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
 body.rel-mode #rel-hint{display:inline}
 body.rel-mode{background:#f3eee4}
@@ -4729,7 +4728,6 @@ function renderNav(){
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
     document.getElementById("auth-count").textContent = sessionAuth.size;
-    document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
     if(here0) el.scrollLeft = Math.max(0, here0.offsetLeft + here0.offsetWidth - el.clientWidth);
@@ -4743,7 +4741,6 @@ function renderNav(){
   el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   document.getElementById("tray-count").textContent = cancelledList().length;
   document.getElementById("auth-count").textContent = sessionAuth.size;
-  document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
   if(here) el.scrollLeft = Math.max(0, here.offsetLeft + here.offsetWidth - el.clientWidth);
@@ -5094,7 +5091,6 @@ function renderMap(){
     }
   }
   function useSpreadGrid(){
-    if(isCatalogView()) return true;
     if(!relationMode) return false;
     const kids = visibleChildren(root);
     return kids.length>=2 && kids.every(c=>c.kind==="module");

@@ -293,6 +293,26 @@ try {
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
     const previewChrome = await chromeHeights(preview);
     assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    const dirToggle = preview.locator('#dir-toggle');
+    await dirToggle.waitFor({ state: 'visible' });
+    assert.equal(await preview.locator('#dir-toggle button').count(), 0);
+    assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
+    const lrSpread = await preview.evaluate(() => {
+      const root = document.querySelector('.node.root').getBoundingClientRect();
+      const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return { dx: kid.x - root.x, dy: kid.y - root.y };
+    });
+    assert.ok(lrSpread.dx > lrSpread.dy, `first layer left-right should sit children to the side ${JSON.stringify(lrSpread)}`);
+    await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
+    const tbSpread = await preview.evaluate(() => {
+      const root = document.querySelector('.node.root').getBoundingClientRect();
+      const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return { dx: kid.x - root.x, dy: kid.y - root.y, tb: document.body.classList.contains('layout-tb') };
+    });
+    assert.equal(tbSpread.tb, true);
+    assert.ok(tbSpread.dy > 20, `first layer top-down should sit children below ${JSON.stringify(tbSpread)}`);
+    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
+    recordCheck('layout-dir-on-first-layer');
     await preview.locator('#btn-rel').click();
     await preview.locator('.node[data-id="M2"]').click();
     await preview.locator('.flow-lab').first().waitFor({ state: 'visible' });
@@ -342,10 +362,6 @@ try {
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
     await child.click();
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
-    const dirToggle = preview.locator('#dir-toggle');
-    await dirToggle.waitFor({ state: 'visible' });
-    assert.equal(await preview.locator('#dir-toggle button').count(), 0);
-    assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
     await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
