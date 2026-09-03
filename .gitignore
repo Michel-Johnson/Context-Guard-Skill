@@ -22,6 +22,7 @@ secrets.json
 coverage/
 .pytest_cache/
 **/__pycache__/
+temp/
 
 # Product branch does not carry test trees. Use cursor/test-layout-f54e.
 fixtures/

@@ -773,6 +773,24 @@ def record_bad_case(
 ) -> tuple[str, Path]:
     init_context(root)
     ctx = context_dir(root)
+    events = read_json(ctx / "bad-case-events.json", [])
+    if not isinstance(events, list):
+        events = []
+    if signal_id:
+        prior = next((item for item in events if isinstance(item, dict) and item.get("signal_id") == signal_id), None)
+        if prior and re.fullmatch(r"B\d+", str(prior.get("case") or "")):
+            existing_id = str(prior["case"])
+            existing_path = ctx / "bugs" / f"{existing_id}.md"
+            if existing_path.is_file():
+                print(f"[context-guard] recorded bad case: {existing_id} ({existing_path}) [duplicate]")
+                return existing_id, existing_path
+        runtime = read_hook_runtime(root, session_id)
+        signals = runtime.get("signals") if isinstance(runtime.get("signals"), list) else []
+        signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
+        if not signal:
+            raise ValueError(f"unknown prompt signal: {signal_id}")
+        if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "bad-case"}:
+            raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
     map_doc = read_json(ctx / "map.json", {})
     map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
     if node and find_map_node(map_root, node) is None:
@@ -848,9 +866,6 @@ def record_bad_case(
         node,
         session_id,
     )
-    events = read_json(ctx / "bad-case-events.json", [])
-    if not isinstance(events, list):
-        events = []
     events.append({
         "at": utc_now(),
         "event": "occurrence",

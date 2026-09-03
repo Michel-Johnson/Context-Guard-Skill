@@ -193,7 +193,7 @@ def payload_time(payload: object) -> str:
 def event_identity(payload: object, event: str, current_session_id: str) -> tuple[str, str, str]:
     turn_id = payload_value(payload, ("turn_id", "turnId"))
     call_id = payload_value(payload, ("tool_use_id", "toolUseId", "call_id", "callId", "agent_id", "agentId"))
-    marker = payload_value(payload, ("trigger", "source", "reason", "hook_event_name"))
+    marker = payload_value(payload, ("trigger", "source", "reason"))
     prompt_hash = hashlib.sha256(prompt_text(json.dumps(payload, ensure_ascii=False)).encode("utf-8")).hexdigest() if isinstance(payload, dict) else ""
     key = json.dumps([current_session_id, event, turn_id, call_id, marker, prompt_hash], ensure_ascii=False, separators=(",", ":"))
     return f"hook-{hashlib.sha256(key.encode('utf-8')).hexdigest()[:24]}", turn_id, call_id
@@ -208,7 +208,7 @@ def map_entries(node: object):
             yield from map_entries(child)
 
 
-def map_snapshot(root: Path, ctx: Path, current_session_id: str) -> dict[str, object]:
+def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     map_file = ctx / "map.json"
     document = read_json(map_file, {})
     nodes = list(map_entries(document.get("root"))) if isinstance(document, dict) else []
@@ -270,9 +270,8 @@ def map_inbox(root: Path, ctx: Path, current_session_id: str) -> dict[str, objec
 
 
 def map_context(root: Path, ctx: Path, current_session_id: str) -> tuple[str, dict[str, object]]:
-    snapshot = map_snapshot(root, ctx, current_session_id)
+    snapshot = map_snapshot(ctx, current_session_id)
     inbox = map_inbox(root, ctx, current_session_id)
-    snapshot["inbox"] = inbox
     grants = snapshot["grant_nodes"]
     todos = snapshot["todos"]
     bugs = snapshot["bugs"]
@@ -342,14 +341,19 @@ def owner_nodes(paths: list[str], snapshot: dict[str, object]) -> dict[str, str]
     return found
 
 
-def forbidden_direct_write(payload: object) -> str:
+def forbidden_direct_write(payload: object, root: Path) -> str:
     if not mutating_tool(payload) or not isinstance(payload, dict):
         return ""
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     command = str(tool_input.get("command") or tool_input.get("cmd") or "")
-    if re.search(r"(?:^|[/\\])\.codex[/\\]context[/\\]map\.json\b", command):
+    paths = {
+        normalized[2:] if normalized.startswith("./") else normalized
+        for item in tool_paths(payload, root)
+        for normalized in [item.replace("\\", "/")]
+    }
+    if ".codex/context/map.json" in paths or re.search(r"(?:^|[/\\])\.codex[/\\]context[/\\]map\.json\b", command):
         return "Direct map.json writes are forbidden; use context-guard map read/apply/reconcile."
-    if re.search(r"(?:^|[/\\])TODO\.md\b", command, re.IGNORECASE):
+    if any(item.lower().endswith("todo.md") for item in paths) or re.search(r"(?:^|[/\\])TODO\.md\b", command, re.IGNORECASE):
         return "TODO.md is human-owned; record Agent work in the authorized Map node instead."
     return ""
 
@@ -703,7 +707,7 @@ def main() -> int:
     if event == "pre-tool-use":
         if not mutating_tool(payload):
             return hook_response(platform, event)
-        forbidden = forbidden_direct_write(payload)
+        forbidden = forbidden_direct_write(payload, root)
         if forbidden:
             append_session_event(root, event, platform, current_session_id, session_details(audit_details(
                 payload, event, current_session_id, runtime, {"result": "denied", "error": "DIRECT_CONTEXT_WRITE"},
@@ -711,7 +715,7 @@ def main() -> int:
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": forbidden}}, ensure_ascii=False))
             return 0
         paths = tool_paths(payload, root)
-        snapshot = map_snapshot(root, ctx, current_session_id)
+        snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
         missing = sorted(set(owners.values()) - active_grants(snapshot))
         if missing:
@@ -761,7 +765,7 @@ def main() -> int:
 
     if event == "permission-request":
         paths = tool_paths(payload, root)
-        snapshot = map_snapshot(root, ctx, current_session_id)
+        snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
         missing = sorted(set(owners.values()) - active_grants(snapshot))
         append_session_event(root, event, platform, current_session_id, session_details(audit_details(

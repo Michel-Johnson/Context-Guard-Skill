@@ -158,6 +158,8 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
     '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交未保存', '--trigger', '提交工作台',
     '--cause', '待确认', '--guard', '生命周期回归测试']);
+  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+    '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交未保存']);
   map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
   assert.equal(map.root.children[0].bugs.length, 1);
   assert.equal(map.root.children[0].bugs[0].sessions[0], session);
@@ -200,4 +202,10 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   });
   assert.equal(directMap.json.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(directMap.json.hookSpecificOutput.permissionDecisionReason, /map\.json/);
+
+  const directMapWrite = hook('PreToolUse', project, session, {
+    tool_name: 'Write', tool_use_id: 'direct-map-write',
+    tool_input: { path: path.join(project, '.codex/context/map.json'), content: '{}' },
+  });
+  assert.equal(directMapWrite.json.hookSpecificOutput.permissionDecision, 'deny');
 });
