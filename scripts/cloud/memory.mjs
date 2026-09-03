@@ -1,4 +1,4 @@
-// Private memory service. Deliberately separate from the public Map API.
+// Private memory API. It can run alone or be mounted by the Cloud service.
 import http from 'node:http';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -11,17 +11,20 @@ import { validateMemory } from '../workbench/memory-schema.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
 const validSessionId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\u0000-\u001f\u007f]/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
-export async function startMemoryServer({ dataDir, adminToken, projects = {}, host = '127.0.0.1', port = 0 } = {}) {
+function validateOptions({ dataDir, adminToken }) {
   if (!dataDir || !adminToken) throw new Error('Explicit private data directory and admin token required');
   if (!path.isAbsolute(dataDir)) throw new Error('Private data directory must be absolute and outside source control');
-  if (!['127.0.0.1', '::1', 'localhost'].includes(host)) throw new Error('Private memory service must listen on loopback behind an authenticated TLS endpoint');
+}
+
+export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {}) {
+  validateOptions({ dataDir, adminToken });
   const git = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
-  const server = http.createServer(async (req, res) => {
-    const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); };
+  return async (req, res) => {
+    const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); return true; };
+    const url = new URL(req.url, 'http://localhost');
+    const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)|publish)$/);
+    if (!route) return false;
     try {
-      const url = new URL(req.url, 'http://localhost');
-      const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)|publish)$/);
-      if (!route) throw new MapError('NOT_FOUND', 'Unknown memory endpoint', 404);
       const [, projectId, scope, rawSession] = route;
       const sessionId = rawSession ? decodeURIComponent(rawSession) : '';
       if (rawSession && !validSessionId(sessionId)) {
@@ -63,7 +66,7 @@ export async function startMemoryServer({ dataDir, adminToken, projects = {}, ho
           if ((state.sessions[id]?.version || null) !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Session memory changed', 409);
           validateMemory(input.memory);
           if (!/^[a-f0-9]{40,64}$/.test(input.sourceCommit || '')) throw new MapError('INVALID_COMMIT', 'Source commit required');
-          snapshot = { sessionId: id, version: hash(encode(input)), sourceCommit: input.sourceCommit, baseMainVersion: input.baseMainVersion ?? null, memory: input.memory };
+          snapshot = { sessionId: id, version: hash(encode(input)), sourceCommit: input.sourceCommit, baseMainVersion: input.baseMainVersion ?? null, memory: input.memory, updatedAt: new Date().toISOString() };
           state.sessions[id] = snapshot;
         } else if (scope === 'publish') {
           if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
@@ -96,6 +99,19 @@ export async function startMemoryServer({ dataDir, adminToken, projects = {}, ho
       });
       send(200, result);
     } catch (error) { send(error.status || 500, { error: { code: error.code || 'MEMORY_ERROR', message: error instanceof MapError ? error.message : 'Memory request failed; data preserved' } }); }
+    return true;
+  };
+}
+
+export async function startMemoryServer({ dataDir, adminToken, projects = {}, host = '127.0.0.1', port = 0 } = {}) {
+  validateOptions({ dataDir, adminToken });
+  if (!['127.0.0.1', '::1', 'localhost'].includes(host)) throw new Error('Private memory service must listen on loopback behind an authenticated TLS endpoint');
+  const handler = createMemoryHandler({ dataDir, adminToken, projects });
+  const server = http.createServer(async (req, res) => {
+    if (!await handler(req, res)) {
+      res.writeHead(404, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Unknown memory endpoint' } }));
+    }
   });
   server.requestTimeout = 20000;
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
