@@ -8,6 +8,8 @@ import sys
 TEST_MARK = "test-layout"
 PRODUCT_TESTS = {
     "tests/ci-smoke.mjs",
+    "tests/cloud-sync-client.test.mjs",
+    "tests/cloud-workbench.test.mjs",
     "tests/workbench-sync.test.mjs",
     "tests/workbench-inbox.test.mjs",
     "tests/workbench-browser.mjs",
