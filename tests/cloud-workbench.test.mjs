@@ -26,6 +26,7 @@ test('cloud workbench exposes a multi-project registry and guarded writes', asyn
   assert.equal(projectPage.status, 200); assert.match(await projectPage.text(), /Context Guard · 工作台原型/);
   const overview = await fetch(f.url + '/.codex/context/map.json', { headers: { Referer: f.url + '/' } }).then(response => response.json());
   assert.equal(overview.root.title, '项目地图'); assert.deepEqual(overview.root.children.map(node => node.title), ['Context Guard']);
+  assert.equal(overview.root.children[0].cloudProjectId, 'context-guard');
   const projectMap = await fetch(f.url + '/.codex/context/map.json', { headers: { Referer: f.url + '/projects/context-guard' } }).then(response => response.json());
   assert.equal(projectMap.root.title, 'Context Guard');
   const denied = await request(f.url, '/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'second', name: 'Second' }) });
@@ -62,4 +63,86 @@ test('the reused workbench can edit and persist the project overview map', async
   assert.equal(saved.body.doc.root.purpose, '已在线编辑');
   const access = await request(f.url, '/api/workbench/overview/api/access', { headers: { Authorization: 'Bearer test-token' } });
   assert.deepEqual(access.body, { sessions: [], grants: {}, currentSessionId: null });
+});
+
+test('cloud bootstrap never exposes an administrative credential', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const bootstrap = await request(f.url, '/api/workbench/overview/bootstrap');
+  assert.equal(bootstrap.response.status, 200);
+  assert.equal(bootstrap.body.token, undefined);
+  const page = await fetch(f.url + '/').then(response => response.text());
+  assert.doesNotMatch(page, /test-token/);
+  const denied = await request(f.url, '/api/workbench/overview/api/state');
+  assert.equal(denied.response.status, 401);
+  const login = await fetch(f.url + '/auth?token=test-token&next=/', { redirect: 'manual' });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const authorized = await request(f.url, '/api/workbench/overview/api/state', { headers: { Cookie: cookie } });
+  assert.equal(authorized.response.status, 200);
+});
+
+test('project commits are serialized so only one same-base writer wins', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const seed = await request(f.url, '/api/projects/context-guard/commits', {
+    method: 'POST', headers,
+    body: JSON.stringify({ baseVersion: null, operationId: 'concurrent-seed', operations: [{ type: 'initialize', project: 'Context Guard', node: { id: 'T0', title: 'Context Guard', kind: 'module', state: 'dirty', children: [] } }] }),
+  });
+  const commit = operationId => request(f.url, '/api/projects/context-guard/commits', {
+    method: 'POST', headers,
+    body: JSON.stringify({ baseVersion: seed.body.version, operationId, operations: [{ type: 'update', id: 'T0', fields: { purpose: operationId } }] }),
+  });
+  const results = await Promise.all([commit('concurrent-a'), commit('concurrent-b')]);
+  assert.deepEqual(results.map(item => item.response.status).sort(), [200, 409]);
+});
+
+test('project token can replay ordered events without crossing projects', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const admin = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const enrollment = await request(f.url, '/api/projects/context-guard/enrollments', { method: 'POST', headers: admin, body: '{}' });
+  assert.equal(enrollment.response.status, 201);
+  const projectHeaders = { Authorization: `Bearer ${enrollment.body.syncToken}`, 'Content-Type': 'application/json' };
+  const first = await request(f.url, '/api/projects/context-guard/commits', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ baseVersion: null, operationId: 'events-seed', sessionId: 'session-a', operations: [{ type: 'initialize', project: 'Context Guard', node: { id: 'T0', title: 'Context Guard', kind: 'module', state: 'dirty', children: [] } }] }),
+  });
+  const second = await request(f.url, '/api/projects/context-guard/commits', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ baseVersion: first.body.version, operationId: 'events-update', sessionId: 'session-a', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'event stream' } }] }),
+  });
+  assert.equal(second.response.status, 200);
+  const replay = await request(f.url, '/api/projects/context-guard/changes?after=1', { headers: { Authorization: `Bearer ${enrollment.body.syncToken}` } });
+  assert.deepEqual(replay.body.events.map(event => event.seq), [2]);
+  assert.equal(replay.body.events[0].operationId, 'events-update');
+  const created = await request(f.url, '/api/projects', { method: 'POST', headers: admin, body: JSON.stringify({ id: 'other', name: 'Other' }) });
+  const crossed = await request(f.url, '/api/projects/other/changes?after=0', { headers: { Authorization: `Bearer ${enrollment.body.syncToken}` } });
+  assert.equal(crossed.response.status, 401);
+  assert.ok(created.body.syncToken);
+});
+
+test('development windows rebase disjoint changes and block overlapping changes', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const admin = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const enrollment = await request(f.url, '/api/projects/context-guard/enrollments', { method: 'POST', headers: admin, body: '{}' });
+  const headers = { Authorization: `Bearer ${enrollment.body.syncToken}`, 'Content-Type': 'application/json' };
+  const document = {
+    v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [],
+    root: { id: 'T0', title: 'Context Guard', kind: 'module', state: 'dirty', children: [
+      { id: 'N1', title: 'One', kind: 'work', state: 'dirty', children: [] },
+      { id: 'N2', title: 'Two', kind: 'work', state: 'dirty', children: [] },
+    ] },
+  };
+  await request(f.url, '/api/projects/context-guard/snapshot', { method: 'POST', headers, body: JSON.stringify({ baseVersion: null, operationId: 'work-seed', document }) });
+  const prepare = (workId, nodeId) => request(f.url, '/api/projects/context-guard/work/prepare', { method: 'POST', headers, body: JSON.stringify({ workId, sessionId: workId, scope: { nodeIds: [nodeId] } }) });
+  const finish = (workId, nodeId, purpose) => request(f.url, '/api/projects/context-guard/work/finish', { method: 'POST', headers, body: JSON.stringify({ workId, operationId: `finish-${workId}`, operations: [{ type: 'update', id: nodeId, fields: { purpose } }], scope: { nodeIds: [nodeId] } }) });
+  await prepare('work-a-0001', 'N1');
+  await prepare('work-b-0002', 'N2');
+  assert.equal((await finish('work-b-0002', 'N2', 'changed by B')).response.status, 200);
+  const rebased = await finish('work-a-0001', 'N1', 'changed by A');
+  assert.equal(rebased.response.status, 200); assert.equal(rebased.body.rebased, true);
+  await prepare('work-c-0003', 'N1');
+  await prepare('work-d-0004', 'N1');
+  assert.equal((await finish('work-d-0004', 'N1', 'changed by D')).response.status, 200);
+  const conflict = await finish('work-c-0003', 'N1', 'changed by C');
+  assert.equal(conflict.response.status, 409); assert.equal(conflict.body.error.code, 'WORK_IMPACT');
+  assert.equal(conflict.body.error.impacts.length, 1);
 });

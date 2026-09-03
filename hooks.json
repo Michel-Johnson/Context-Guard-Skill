@@ -37,6 +37,32 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py pre-tool-use --platform codex",
+            "timeout": 20,
+            "statusMessage": "Preparing cloud development window"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|apply_patch|Edit|Write|mcp__.*(write|edit|delete|move).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./scripts/context_guard_hook.py post-tool-use --platform codex",
+            "timeout": 20,
+            "statusMessage": "Recording cloud development scope"
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "hooks": [
