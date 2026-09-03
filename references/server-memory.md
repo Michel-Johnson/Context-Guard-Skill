@@ -4,10 +4,51 @@ Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
-**Status: required behavior, not an implemented service contract.** The current
-Cloud interface synchronizes Maps and events; the local workbench uses a local
-Map document. Neither implements the complete contract below.
-Implementation, migration and acceptance remain open in `CI_todo.md`.
+**Status: private service/client implementation with automated local acceptance;
+real deployment and historical migration require separate approval.** The existing
+public Cloud Map service is not this backend. Never direct private Session uploads
+at its public endpoints. Runtime adoption and migration remain in `CI_todo.md`.
+
+## Runtime interface
+
+Run `node scripts/cloud/memory.mjs` with `CONTEXT_GUARD_MEMORY_CONFIG` pointing to a
+private JSON configuration outside source control: an absolute `dataDir`,
+`adminToken`, optional loopback `host`/`port`, and `projects`. The service rejects
+non-loopback listeners. Each project maps its ID to a scoped `token`
+and an administrator-configured repository mirror `root`, authoritative `ref`,
+optional `remote` to fetch on publication, and public repository identifier.
+Use a TLS reverse proxy or SSH loopback tunnel; the client rejects non-loopback
+plain HTTP, URL credentials, redirects, and credentials in query parameters.
+
+Configure a client using `context-guard memory configure --root <project> --input
+<private-file>` containing `url`, `projectId`, `token`. It verifies the endpoint
+before replacing existing configuration. Never put the credential on the command
+line, in a node, in a Session record, or in Git. Configure publisher credentials
+only in an authorized publication environment, not every Agent worktree.
+
+The authenticated API is `/v1/projects/<id>/main`, `/preferences`,
+`/sessions/<session-id>`, and `/publish`. Public Cloud routes do not expose these
+records. Session writes carry `operationId`, `baseVersion`, `baseMainVersion`,
+`sourceCommit`, and `memory:{map,records}`. Snapshot and idempotency receipt are
+committed in one fsynced atomic replacement under a per-project lock. A reused ID
+with different content fails. Private/runtime paths are rejected by a strict record
+allowlist; retain records without retention pruning. Do not upload secret content.
+
+`memory prepare` fetches versioned main/Session records and preserves conflicting
+local edits. `memory sync` uploads only to the current bound Session and replays an
+uncertain durable queued operation before generating a new one. `memory rebase`
+merges disjoint main changes into the Session, backs up the old map, and rejects
+overlapping changes for explicit reconciliation. Archive invokes sync when configured;
+failure preserves the local draft and is reported, not treated as success.
+
+`memory publish --input <private-request>` requires publisher/admin credentials,
+`operationId`, `baseVersion`, `sessionId`, `sessionVersion`, `expectedMainSha`.
+The server checks the actual configured mirror/ref and verifies Session source
+ancestry; the Session must already be reconciled to the current main-memory version.
+Main advancement, unmerged source or concurrent publication fails without changing
+the baseline. Workbench refreshes the baseline every 30 seconds and shows stale or
+unavailable status instead of overwriting the last good snapshot. Repositories
+without a configured authoritative ref cannot publish.
 
 ## Authority and storage
 

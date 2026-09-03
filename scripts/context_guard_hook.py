@@ -17,9 +17,10 @@ from pathlib import Path, PureWindowsPath
 from context_guard import append_session_event
 from context_guard import add_prompt_signal
 from context_guard import context_dir as context_folder
-from context_guard import configure_stdio, folder_root, init_context, is_context_guard_skill_path
+from context_guard import configure_stdio, ensure_session_file, folder_root, init_context, is_context_guard_skill_path
 from context_guard import read_hook_runtime, read_json, read_preferences, start_workbench, utc_now
-from context_guard import write_hook_runtime, write_json
+from context_guard import safe_identifier, write_hook_runtime, write_json
+from context_guard import run_node_workbench
 
 
 WORKSPACE_KEYS = {
@@ -214,9 +215,19 @@ def map_entries(node: object):
 
 def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     map_file = ctx / "map.json"
+    access_file = ctx / "sessions" / "workbench-access.json"
+    probe = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ctx.parent.parent, capture_output=True, text=True, timeout=5, check=False)
+    if probe.returncode == 0:
+        shared = Path(probe.stdout.strip()) / "context-guard"
+        bindings = read_json(shared / "workbench-bindings.json", {})
+        bound = bindings.get("sessions", {}).get(current_session_id, {})
+        if bound.get("worktreeRoot") == str(ctx.parent.parent.resolve()):
+            scope = hashlib.sha256((current_session_id + "\0" + bound.get("worktreeId", "")).encode()).hexdigest()
+            map_file = shared / "session-memory" / scope / "map.json"
+            access_file = shared / "workbench-access.json"
     document = read_json(map_file, {})
     nodes = list(map_entries(document.get("root"))) if isinstance(document, dict) else []
-    access = read_json(ctx / "sessions" / "workbench-access.json", {})
+    access = read_json(access_file, {})
     sessions = access.get("sessions") if isinstance(access, dict) and isinstance(access.get("sessions"), dict) else {}
     grant_record = sessions.get(current_session_id) if isinstance(sessions, dict) else {}
     grants = grant_record.get("nodes") if isinstance(grant_record, dict) and isinstance(grant_record.get("nodes"), list) else []
@@ -316,6 +327,8 @@ def audit_details(payload: object, event: str, current_session_id: str, runtime:
         "turn_id": turn_id or None,
         "plan_id": plan.get("id") if isinstance(plan, dict) else None,
         "tool_call_id": call_id or None,
+        "hook_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "context_emitted": event in {"session-start", "user-prompt-submit", "post-compact"},
     }
     if extra:
         details.update(extra)
@@ -345,11 +358,44 @@ def owner_nodes(paths: list[str], snapshot: dict[str, object]) -> dict[str, str]
     return found
 
 
+def tool_command(payload: dict) -> str:
+    value = payload.get("tool_input")
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("command") or value.get("cmd") or value.get("patch") or value.get("input") or "")
+    return ""
+
+
+def patch_targets(payload: dict) -> list[str] | None:
+    name = str(payload.get("tool_name") or payload.get("toolName") or "")
+    if name.rsplit(".", 1)[-1] != "apply_patch":
+        return None
+    command = tool_command(payload).replace("\r\n", "\n").strip()
+    if not (command.startswith("*** Begin Patch\n") and command.endswith("\n*** End Patch")):
+        return None
+    return re.findall(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE)
+
+
 def forbidden_direct_write(payload: object, root: Path) -> str:
     if not mutating_tool(payload) or not isinstance(payload, dict):
         return ""
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-    command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+    command = tool_command(payload)
+    targets = patch_targets(payload)
+    if targets is not None:
+        # Only patch headers designate writes. Hunk text may discuss protected paths.
+        # Prefix each target so the path check also covers another worktree.
+        checked_paths = []
+        for item in targets:
+            normalized = os.path.normpath(item.strip().replace("\\", "/")).replace("\\", "/")
+            checked_paths.append("/" + normalized.lstrip("/"))
+            candidate = Path(normalized).expanduser()
+            try:
+                resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+            except (OSError, ValueError, RuntimeError):
+                return "Cannot resolve patch target; verify the target path before writing."
+            checked_paths.append(resolved.as_posix())
+        command = "\n".join(checked_paths)
     paths = {
         normalized[2:] if normalized.startswith("./") else normalized
         for item in tool_paths(payload, root)
@@ -357,7 +403,7 @@ def forbidden_direct_write(payload: object, root: Path) -> str:
     }
     if ".codex/context/map.json" in paths or re.search(r"(?:^|[/\\])\.codex[/\\]context[/\\]map\.json\b", command):
         return "Direct map.json writes are forbidden; use context-guard map read/apply/reconcile."
-    if any(item.lower().endswith("todo.md") for item in paths) or re.search(r"(?:^|[/\\])TODO\.md\b", command, re.IGNORECASE):
+    if any(item.rsplit("/", 1)[-1].lower() == "todo.md" for item in paths) or re.search(r"(?:^|[/\\])TODO\.md\b", command, re.IGNORECASE):
         return "TODO.md is human-owned; record Agent work in the authorized Map node instead."
     return ""
 
@@ -498,7 +544,7 @@ def redact(text: str) -> str:
     return text
 
 
-def append_user_message(ctx: Path, text: str) -> str:
+def append_user_message(ctx: Path, text: str, current_session_id: str) -> str:
     text = (text or "").strip()
     if not text:
         return "empty"
@@ -508,15 +554,27 @@ def append_user_message(ctx: Path, text: str) -> str:
         path.write_text("# User Message Memory\n\n## Recent User Signals\n\n", encoding="utf-8")
     body = path.read_text(encoding="utf-8")
     line = "- " + redact(text).replace("\n", " ")
-    if line in body:
-        return "duplicate"
-    marker = "## Recent User Signals"
-    if marker in body:
-        body = body.replace(marker, marker + "\n\n" + line, 1)
-    else:
-        body += "\n" + line + "\n"
-    path.write_text(body, encoding="utf-8")
-    return "recorded"
+    recorded = False
+    if line not in body:
+        marker = "## Recent User Signals"
+        if marker in body:
+            body = body.replace(marker, marker + "\n\n" + line, 1)
+        else:
+            body += "\n" + line + "\n"
+        path.write_text(body, encoding="utf-8")
+        recorded = True
+    session_path = ctx / "sessions" / f"{safe_identifier(current_session_id)}.md"
+    if session_path.is_file():
+        session_body = session_path.read_text(encoding="utf-8")
+        session_marker = "## User Signals"
+        if line not in session_body:
+            if session_marker in session_body:
+                session_body = session_body.replace(session_marker, session_marker + "\n\n" + line, 1)
+            else:
+                session_body += ("\n" if session_body.endswith("\n") else "\n\n") + session_marker + "\n\n" + line + "\n"
+            session_path.write_text(session_body, encoding="utf-8")
+            recorded = True
+    return "recorded" if recorded else "duplicate"
 
 
 def sync_configured(ctx: Path) -> bool:
@@ -576,9 +634,8 @@ def tool_paths(payload: object, root: Path) -> list[str]:
                 walk(child)
 
     walk(payload.get("tool_input", {}))
-    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
-    command = str(tool_input.get("command") or tool_input.get("cmd") or "")
-    for match in re.finditer(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", command, re.MULTILINE):
+    command = tool_command(payload)
+    for match in re.finditer(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE):
         add(match.group(1).strip())
     return sorted(found)
 
@@ -637,6 +694,7 @@ def main() -> int:
         return hook_response(platform, event)
     current_session_id = session_id(payload, platform, ctx, event)
     current_session_name = session_display_name(payload, platform, root, current_session_id)
+    memory_notice = ""
 
     def session_details(details: dict[str, object] | None = None) -> dict[str, object]:
         result = dict(details or {})
@@ -645,14 +703,53 @@ def main() -> int:
             result["thread_name"] = current_session_name
         return result
 
+    # Binding precedes initialization, memory reads, and service startup.
+    # The unbound lifecycle record is registration evidence, not project memory.
+    if event in {"session-start", "user-prompt-submit", "post-compact"}:
+        try:
+            binding = run_node_workbench(["workbench", "--binding-status", "--root", str(root), "--session", current_session_id])
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            return hook_response(platform, event, "Context Guard binding could not be read. Preserve existing data; do not treat this as first use or start a replacement workbench.")
+        if not binding.get("session", {}).get("bound"):
+            ctx.mkdir(parents=True, exist_ok=True)
+            registration = {
+                "at": utc_now(), "event": event, "platform": platform,
+                "session_id": current_session_id, "thread_name": current_session_name,
+                "binding": "required",
+            }
+            registration.update(audit_details(payload, event, current_session_id, {}, {"root_source": root_source}))
+            with (ctx / "sessions.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(registration, ensure_ascii=False) + "\n")
+            main_notice = "First ask which remote/branch is authoritative; persist with workbench --bind-main or --local-main. " if binding.get("bindingRequired") else ""
+            return hook_response(platform, event, main_notice + f"This Session is not bound. Ask the user whether to bind to project {binding.get('projectId')}, or which workbench to use. After confirmation run context-guard workbench --root {json.dumps(str(root))} --session {json.dumps(current_session_id)}. Do not initialize a map, read project memory, or auto-open another workbench before confirmation. Binding is not a node permission grant.")
+        try:
+            memory = run_node_workbench(["memory", "prepare", "--root", str(root), "--session", current_session_id])
+            if memory.get("current"):
+                hook_log(f"[context-guard] server memory confirmed: {memory.get('sessionVersion')}; cache: {memory.get('cache')}")
+                memory_notice = f"Server memory version confirmed. Read the Session/main records from {memory.get('cache')}; do not substitute local history."
+            else:
+                memory_notice = "Private memory server is not configured. For server-authoritative projects, local records are unsynced drafts only; source-only work may continue."
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            return hook_response(platform, event, "Context Guard server memory is unavailable or conflicting. Local data is an unsynced draft, not confirmed memory. Preserve it and reconcile; source-only work can continue.")
+    if event not in {"session-start", "user-prompt-submit", "post-compact"}:
+        try:
+            binding = run_node_workbench(["workbench", "--binding-status", "--root", str(root), "--session", current_session_id])
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            return hook_response(platform, event, "Context Guard binding unavailable; no project initialization performed.")
+        if not binding.get("session", {}).get("bound"):
+            forbidden = forbidden_direct_write(payload, root) if event == "pre-tool-use" else ""
+            if forbidden:
+                print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": forbidden}}))
+                return 0
+            return hook_response(platform, event, "Context Guard Session is unbound; confirm its workbench before project work. No map was initialized.")
     created = init_context(root)
+    ensure_session_file(root, current_session_id, platform)
     runtime = read_hook_runtime(root, current_session_id)
 
     if event == "session-start":
         url = None
         if not (isinstance(payload, dict) and payload.get("is_background_agent") is True):
-            start_reason = payload_value(payload, ("source", "reason", "session_start_type")).lower()
-            url = start_workbench(root, open_browser=start_reason not in {"resume", "clear", "compact"})
+            url = start_workbench(root, open_browser=False)
             if sync_configured(ctx):
                 sync_command(root, "ensure")
         context_text, snapshot = map_context(root, ctx, current_session_id)
@@ -673,7 +770,7 @@ def main() -> int:
             })),
         )
         hook_log(f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})")
-        contexts = [language_setup_context(root, ctx), context_text, lifecycle_context(root, url, current_session_id)]
+        contexts = [memory_notice, language_setup_context(root, ctx), context_text, lifecycle_context(root, url, current_session_id)]
         playbook = ctx / "tasks" / "J2.md"
         if playbook.is_file():
             contexts.append(
@@ -807,7 +904,7 @@ def main() -> int:
         runtime["current_turn_id"] = turn_id or None
         runtime["last_prompt_signal"] = signal.get("id") if signal else None
         write_hook_runtime(root, current_session_id, runtime)
-        status = append_user_message(ctx, prompt)
+        status = append_user_message(ctx, prompt, current_session_id)
         context_text, snapshot = map_context(root, ctx, current_session_id)
         append_session_event(
             root,
@@ -831,7 +928,7 @@ def main() -> int:
             "use record-bad-case with the same --signal for a credible failure; or use resolve-signal --kind task|ignore. "
             "The hook captures the signal but never guesses from keywords."
         )
-        return hook_response(platform, event, notice)
+        return hook_response(platform, event, memory_notice + "\n\n" + notice)
 
     if event == "pre-compact":
         plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
@@ -854,7 +951,7 @@ def main() -> int:
         )))
         plan = compact.get("active_plan") if isinstance(compact, dict) else None
         restored = f"Restored plan: {plan.get('id')} with paths {', '.join(plan.get('actual_paths') or plan.get('paths') or [])}." if isinstance(plan, dict) else "No active development plan was present before compaction."
-        return hook_response(platform, event, context_text + "\n\n" + restored)
+        return hook_response(platform, event, memory_notice + "\n\n" + context_text + "\n\n" + restored)
 
     if event == "interrupt":
         runtime["interrupted"] = {

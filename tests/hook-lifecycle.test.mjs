@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
+import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
@@ -47,6 +48,14 @@ async function fixture() {
   const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hooks-'));
   await fs.mkdir(path.join(project, 'src'), { recursive: true });
   return project;
+}
+async function confirmBinding(root, session) {
+  const project = await resolveProject(root);
+  const file = sessionBindingsPath(project);
+  const existing = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{"sessions":{}}'));
+  existing.sessions[session] = await sessionBinding(project, session);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(existing));
 }
 
 async function freePort() {
@@ -141,8 +150,7 @@ test('an initialized Git source checkout can use its own real Map without enabli
     cwd: source, env: { PWD: source, CODEX_WORKSPACE_ROOT: source, CODEX_PROJECT_ROOT: source, CODEX_CWD: source, WORKSPACE_ROOT: source, PROJECT_ROOT: source },
     input: JSON.stringify({ session_id: 'source-session', cwd: source, source: 'startup', is_background_agent: true }),
   });
-  assert.match(sourceHook.stdout, /Context Guard Map snapshot/);
-  assert.match(await fs.readFile(path.join(source, '.codex/context/sessions.jsonl'), 'utf8'), /source-session/);
+  assert.match(sourceHook.stdout, /binding could not be read/);
 
   const installedHook = run(python, [path.join(installed, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: installed, env: { PWD: installed, CODEX_WORKSPACE_ROOT: installed, CODEX_PROJECT_ROOT: installed, CODEX_CWD: installed, WORKSPACE_ROOT: installed, PROJECT_ROOT: installed },
@@ -157,6 +165,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   const project = await fixture();
   t.after(() => fs.rm(project, { recursive: true, force: true }));
   const session = 'hook-session-one';
+  await confirmBinding(project, session);
 
   const started = hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   assert.match(started.json.hookSpecificOutput.additionalContext, /Context Guard Map snapshot/);
@@ -225,6 +234,7 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   }).then(response => response.json());
 
   const session = 'hook-cloud-session';
+  await confirmBinding(project, session);
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
   await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
@@ -287,6 +297,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
     }
   });
   const session = 'hook-session-two';
+  await confirmBinding(project, session);
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
 
@@ -342,7 +353,9 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(badEvents[0].signal_id, badSignal);
 
   const otherSession = 'hook-session-other';
+  await confirmBinding(project, otherSession);
   hook('SessionStart', project, otherSession, { source: 'startup', is_background_agent: true });
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', otherSession]);
   const workbenchState = JSON.parse(await fs.readFile(path.join(ctx, 'private/workbench.json'), 'utf8'));
   const bootstrap = await fetch(new URL('/__context_guard/bootstrap', workbenchState.url)).then(response => response.json());
   const grant = await fetch(new URL('/api/access', workbenchState.url), {

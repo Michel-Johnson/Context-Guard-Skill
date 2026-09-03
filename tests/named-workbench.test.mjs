@@ -9,10 +9,14 @@ import { startServer } from '../scripts/workbench/server.mjs';
 import { ensureServer, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
-import { bindProject, resolveProjectRoot, projectName } from '../scripts/workbench/project.mjs';
+import { bindProject, resolveProjectRoot, projectName, saveMainBinding } from '../scripts/workbench/project.mjs';
 import { RouteStore } from '../scripts/workbench/portless-routes.mjs';
 
 const cwd = process.cwd();
+// Non-Git fixtures must not inherit the development repository enclosing temp/.
+const previousCeiling = process.env.GIT_CEILING_DIRECTORIES;
+process.env.GIT_CEILING_DIRECTORIES = path.join(cwd, 'temp');
+after(() => { if (previousCeiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES; else process.env.GIT_CEILING_DIRECTORIES = previousCeiling; });
 const fixtureRoots = [];
 after(async () => { for (const root of fixtureRoots) await fs.rm(root, { recursive: true, force: true }); });
 async function fixture(t, name = 'Example Project') {
@@ -186,12 +190,15 @@ test('explicit linked-worktree binding reuses server and hook context without ov
   const child = spawn(python, [hook, 'session-start', '--platform', 'codex'], { cwd: source, env: { ...process.env, CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CODEX_THREAD_ID: 'bound-test' }, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.resume(); let err = ''; child.stderr.on('data', d => err += d); child.stdin.end(JSON.stringify({ cwd: source, session_id: 'bound-test' }));
   const [exit] = await once(child, 'exit'); assert.equal(exit, 0, err);
-  assert.match(await fs.readFile(path.join(root, '.codex/context/sessions.jsonl'), 'utf8'), /bound-test/);
+  assert.match(await fs.readFile(path.join(source, '.codex/context/sessions.jsonl'), 'utf8'), /bound-test/);
+  assert.doesNotMatch(await fs.readFile(path.join(root, '.codex/context/sessions.jsonl'), 'utf8'), /bound-test/);
   assert.equal(await fs.readFile(mapFile, 'utf8'), '{"local":"preserved"}');
 });
 test('real SessionStart injects named URL and automatic browser opener is claimed only once', async t => {
   const root = await fixture(t, 'Hook Project'), dir = path.join(root, 'proxy');
-  execFileSync('git', ['init'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: root, stdio: 'pipe' });
+  execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: root, stdio: 'pipe' });
+  await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
   const proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
   t.after(() => stopServer(root));
   const python = process.platform === 'win32' ? 'python' : 'python3';
@@ -201,9 +208,46 @@ test('real SessionStart injects named URL and automatic browser opener is claime
     child.stdout.on('data', d => stdout += d); child.stderr.on('data', d => stderr += d); child.on('error', reject);
     child.on('exit', code => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr))); child.stdin.end(input);
   });
-  const hook = await run([path.join(cwd, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], JSON.stringify({ cwd: root, session_id: 'named-hook' }));
+  const hookArgs = [path.join(cwd, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'];
+  const payload = JSON.stringify({ cwd: root, session_id: 'named-hook' });
+  const unbound = await run(hookArgs, payload);
+  assert.match(unbound.stdout + unbound.stderr, /not bound/);
+  await assert.rejects(fs.access(path.join(root, '.codex/context/private/workbench.json')));
+  const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
+  await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'named-hook', worktreeRoot: root } });
+  const hook = await run(hookArgs, payload);
   assert.match(hook.stdout + hook.stderr, /http:\/\/hook-project\.localhost:\d+\/prototype\/workbench.html/);
   // Use a spy, not the user's browser, but exercise the real Python opener path.
   const code = `import sys,os,json; sys.path.insert(0,${JSON.stringify(path.join(cwd, 'scripts'))}); import context_guard as c; from pathlib import Path; os.environ.pop('CI',None); os.environ.pop('CONTEXT_GUARD_HEADLESS',None); calls=[]; c.webbrowser.open=lambda *a,**k:calls.append(a[0]); c.start_workbench(Path.cwd()); c.start_workbench(Path.cwd()); print(json.dumps(calls))`;
   const opened = await run(['-c', code]); assert.equal(JSON.parse(opened.stdout).length, 1);
+});
+
+test('named entry keeps Git Session views isolated and survives a backend worktree change', async t => {
+  const root = await fixture(t, 'Shared Project'), other = path.join(root, 'linked');
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
+  git('init', '-b', 'trunk');
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture');
+  git('worktree', 'add', '-b', 'feature', other);
+  await fs.mkdir(path.join(other, '.codex/context'), { recursive: true });
+  await fs.copyFile(path.join(root, '.codex/context/map.json'), path.join(other, '.codex/context/map.json'));
+  await fs.copyFile(path.join(root, '.codex/context/sessions.jsonl'), path.join(other, '.codex/context/sessions.jsonl'));
+  await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
+  const dir = path.join(root, 'proxy'), proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
+  const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
+  const named = await namedWorkbench(backend.state, request, { dir });
+  const one = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-0', worktreeRoot: root } });
+  const two = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-1', worktreeRoot: other } });
+  const headers = actor => ({ Authorization: `Bearer ${actor.token}`, Origin: new URL(named.url).origin, 'Content-Type': 'application/json' });
+  const first = await call(named.url, '/api/state', { headers: headers(one) });
+  await backend.access.grant('test-0', ['T0'], first.data.version);
+  const saved = await call(named.url, '/api/commit', { method: 'POST', headers: headers(one), body: { baseVersion: first.data.version, operationId: 'named-isolated', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'only-first-session' } }] } });
+  assert.equal(saved.status, 200);
+  assert.notEqual((await call(named.url, '/api/state', { headers: headers(two) })).data.doc.root.purpose, 'only-first-session');
+  const all = await call(named.url, '/api/state', { headers: { Authorization: `Bearer ${backend.humanToken}` } });
+  assert.equal(all.data.doc.root, null);
+  await backend.close();
+  const restarted = await startServer({ root: other, port: 0 }); t.after(() => restarted.close());
+  const restored = await namedWorkbench(restarted.state, request, { dir });
+  assert.equal(restored.url, named.url);
+  assert.equal((await call(restored.url, '/__context_guard/health')).status, 200);
 });

@@ -131,7 +131,9 @@ def context_dir(root: Path) -> Path:
         return (folder / result.stdout.strip()).resolve(strict=True)
     if git_common(root) != git_common(target) or not (target / ".codex/context/map.json").is_file():
         raise ValueError("Bound worktree must reference an existing Map in the same Git repository")
-    return target / ".codex" / "context"
+    # A legacy project binding selects the service, never another worktree's
+    # Session storage. Preserve the source records and registration evidence.
+    return root / ".codex" / "context"
 
 
 def normalize_record_language(language: str) -> str:
@@ -182,8 +184,12 @@ def write_json(path: Path, value: object) -> None:
 
 
 def read_preferences(ctx: Path) -> dict[str, str]:
-    data = read_json(ctx / "preferences.json", {})
-    return data if isinstance(data, dict) else {}
+    local = ctx / "preferences.json"
+    data = json.loads(local.read_text(encoding="utf-8")) if local.exists() else {}
+    if not isinstance(data, dict):
+        raise ValueError("Invalid preferences; repair the file instead of repeating setup")
+    shared = run_node_workbench(["preferences", "--root", str(ctx.parent.parent)])
+    return {**data, **shared}
 
 
 def write_preferences(ctx: Path, preferences: dict[str, str]) -> None:
@@ -273,9 +279,10 @@ def init_context(root: Path) -> list[Path]:
 
 
 def set_record_language(root: Path, language: str) -> Path:
+    normalized = normalize_record_language(language)
+    run_node_workbench(["preferences", "--root", str(root), "--language", normalized])
     init_context(root)
     ctx = context_dir(root)
-    normalized = normalize_record_language(language)
     preferences = default_preferences()
     preferences.update(read_preferences(ctx))
     preferences["record_language"] = normalized
@@ -565,6 +572,12 @@ def archive_session(
             f"{len(reconciliation.get('unclassified') or reconciliation.get('uncovered') or [])} unclassified file(s), "
             f"{'1 proposed node' if proposed_id else 'no node proposal'}"
         )
+    memory = run_node_workbench(["memory", "status", "--root", str(root), "--session", session_id])
+    if memory.get("current"):
+        receipt = run_node_workbench(["memory", "sync", "--root", str(root), "--session", session_id])
+        print(f"[context-guard] server archive acknowledged: {receipt.get('snapshot', {}).get('version')}")
+    else:
+        print("[context-guard] server memory not configured; local archive remains unsynced")
     return path
 
 
@@ -994,6 +1007,11 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--binding-status", action="store_true")
+    parser.add_argument("--bind-main")
+    parser.add_argument("--local-main")
+    parser.add_argument("--remote", default="origin")
+    parser.add_argument("--rebind", action="store_true")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8877)
     parser.add_argument("--title", default="")
@@ -1107,6 +1125,18 @@ def main() -> int:
             print(f"[context-guard] write-candidates failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "workbench":
+        if args.binding_status or args.bind_main or args.local_main or args.session:
+            command = ["workbench", "--root", str(root)]
+            for key, value in [("binding-status", args.binding_status), ("bind-main", args.bind_main), ("local-main", args.local_main), ("remote", args.remote), ("session", args.session), ("rebind", args.rebind)]:
+                if value:
+                    command.append("--" + key)
+                    if value is not True:
+                        command.append(str(value))
+            result = run_node_workbench(command)
+            print(json.dumps(result, ensure_ascii=False))
+            if result.get("url"):
+                maybe_open_browser(result["url"], not args.no_open)
+            return 0
         if args.stop:
             stopped = stop_workbench(root)
             print(f"[context-guard] workbench: {'stopped' if stopped else 'not running'}")

@@ -6,11 +6,11 @@ import { MapError, validate, applyOperations, diffTrees } from '../../prototype/
 import { hash, encode, atomicWrite, readJSON } from './io.mjs';
 
 export class MapStore extends EventEmitter {
-  constructor(root, { fault = async () => {}, project = async () => {} } = {}) {
+  constructor(root, { fault = async () => {}, project = async () => {}, file, runtime, eventsFile } = {}) {
     super(); this.root = root; this.ctx = path.join(root, '.codex/context');
-    this.file = path.join(this.ctx, 'map.json'); this.runtime = path.join(this.ctx, 'private/sync');
+    this.file = file || path.join(this.ctx, 'map.json'); this.runtime = runtime || path.join(this.ctx, 'private/sync');
     this.pendingFile = path.join(this.runtime, 'pending.json');
-    this.eventsFile = path.join(this.ctx, 'sessions/workbench-changes.jsonl');
+    this.eventsFile = eventsFile || path.join(this.ctx, 'sessions/workbench-changes.jsonl');
     this.tail = Promise.resolve(); this.fault = fault; this.project = project;
     this.version = null; this.doc = null; this.error = null; this.blocked = null; this.projection = { status: 'pending' };
   }
@@ -22,7 +22,8 @@ export class MapStore extends EventEmitter {
     this.cursor = this.events.at(-1)?.cursor || null;
     await this.recover(); await this.refresh();
     // libuv must receive the long, canonical path on Windows (TEMP may be 8.3).
-    this.watcher = watch(await fs.realpath(this.ctx), (_event, filename) => {
+    this.watchRoot = await fs.realpath(path.dirname(this.file));
+    this.watcher = watch(this.watchRoot, (_event, filename) => {
       // Generated indexes live in the same directory. Their events must neither
       // postpone map detection nor trigger repeated reads of a large map.
       if (filename && String(filename) !== 'map.json') return;

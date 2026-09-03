@@ -19,8 +19,9 @@ Runtime routes are private local state, not project memory or files to commit.
 
 ## Multiple sessions and worktrees
 
-Sessions in one folder reuse its workbench. A second Git worktree must be
-**explicitly** bound to the worktree containing the desired existing Map:
+Linked Git worktrees share one project service, but every Session must be
+explicitly bound with `workbench --root <worktree> --session <actual-session-id>`.
+The legacy service-target command remains available:
 
 ```sh
 context-guard workbench bind --root /path/to/second-worktree --project-root /path/to/map-worktree
@@ -31,21 +32,25 @@ same-name folders and different repositories are not silently joined. Binding
 chains are rejected. Stop any service in the second worktree first, after saving
 its drafts. The target Map must already exist; this command does not create one.
 If the second worktree has its own Map, binding fails unless `--keep-local` is
-explicitly provided. That flag preserves its files unchanged but leaves that
-local Map inactive; it does not merge or delete data.
+explicitly provided. That flag preserves its files unchanged; it does not merge
+or delete data, and does not authorize a Session binding.
 
-After binding, the CLI and Python lifecycle records use the target's local Map
-and context storage. Actual session IDs remain separate; hook events retain the
-source `worktree_root`. Existing records in the second worktree are not migrated.
-Restart/re-enter its session so the lifecycle hook can record it in the selected
-workbench. This is a local Map binding, not implementation of the private-server
-memory contract, Session/main publication, or Cloud migration.
+The target selects only the service. Python lifecycle records stay in the source
+worktree; the service keeps Maps isolated by Session/worktree identity. Existing
+records are not migrated to the target. Unbound hooks ask for confirmation and do
+not start a service or open a browser. All Sessions remains the read-only published
+main baseline, never the target worktree's unmerged Map. See `server-memory.md`
+for the private-memory deployment and publication boundary.
 
-Automatic opening is claimed atomically by the backend: live workbench pages
+The named entry and project identity are shared in the Git common directory, so
+restarting the backend from another linked worktree retains the project's URL.
+
+When opening is requested, it is claimed atomically by the backend: live workbench pages
 suppress another open, and parallel first starts share a five-second opening
 window. A failed browser launch can therefore delay a retry for five seconds.
 An explicit CLI command still prints the URL for manual opening. Headless/CI and
-resume/compact hooks do not open a browser.
+resume/compact hooks do not open a browser. SessionStart validates the binding and
+injects the URL without automatically opening another page.
 
 ## Process lifecycle and compatibility
 

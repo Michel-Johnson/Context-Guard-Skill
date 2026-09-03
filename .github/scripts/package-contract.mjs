@@ -1,8 +1,12 @@
 export const packedFiles = [
+  "scripts/workbench/hook-status.mjs",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/memory.mjs",
+  "scripts/workbench/memory-schema.mjs",
+  "scripts/cloud/memory.mjs",
   "references/named-workbench.md",
   "THIRD_PARTY_NOTICES.md",
   "licenses/Portless-Apache-2.0.txt",
-  "scripts/workbench/project.mjs",
   "scripts/workbench/named.mjs",
   "scripts/workbench/named-proxy.mjs",
   "scripts/workbench/portless-routes.mjs",
@@ -40,10 +44,13 @@ export const packedFiles = [
 ];
 
 export const installedFiles = [
+  "scripts/workbench/hook-status.mjs",
+  "scripts/workbench/project.mjs",
+  "scripts/workbench/memory.mjs",
+  "scripts/workbench/memory-schema.mjs",
   "references/named-workbench.md",
   "THIRD_PARTY_NOTICES.md",
   "licenses/Portless-Apache-2.0.txt",
-  "scripts/workbench/project.mjs",
   "scripts/workbench/named.mjs",
   "scripts/workbench/named-proxy.mjs",
   "scripts/workbench/portless-routes.mjs",

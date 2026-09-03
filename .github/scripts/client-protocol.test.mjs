@@ -6,7 +6,7 @@ import path from "node:path";
 import http from "node:http";
 import { once } from "node:events";
 import { isolatedEnvironment, allowedMethods, run, rpcClient } from "./client-protocol.mjs";
-import { assertInside, codexEvents, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
+import { assertInside, codexEvents, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyNativeUnboundSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
 import { installedFiles } from "./package-contract.mjs";
 
 function scratch(t) {
@@ -104,6 +104,15 @@ test("native initialization requires real-shaped session evidence, not just file
   fs.writeFileSync(path.join(ctx, "sessions", "test-session.md"), "fixture");
   assert.equal(verifyNativeSession(root, "claude").length, 1);
   assert.throws(() => verifyNativeSession(root, "codex"), /No native SessionStart evidence/);
+});
+
+test("native unbound evidence never stands in for initialized project memory", (t) => {
+  const root = scratch(t), ctx = path.join(root, ".codex", "context");
+  fs.mkdirSync(ctx, { recursive: true });
+  fs.writeFileSync(path.join(ctx, "sessions.jsonl"), JSON.stringify({ platform: "claude", event: "session-start", root_source: "hook payload", session_id: "test-session", binding: "required", hook_sha256: "a".repeat(64), context_emitted: true }));
+  assert.equal(verifyNativeUnboundSession(root, "claude").length, 1);
+  fs.writeFileSync(path.join(ctx, "map.json"), "{}");
+  assert.throws(() => verifyNativeUnboundSession(root, "claude"), /must not initialize/);
 });
 
 test("workbench checks health, project, PID, page and instance reuse", async (t) => {

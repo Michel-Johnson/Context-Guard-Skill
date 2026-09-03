@@ -8,11 +8,11 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 ## 能做什么
 
-- **四块**：会话、坏例、任务、地图，都在当前项目的 `.codex/context/`
+- **四块**：会话、坏例、任务、地图；当前项目的 `.codex/context/` 保存本地草稿和缓存
 - **首次建图**：人和 Agent 先商量第一层怎么切（可以先给几种拆法或较多候选），定了再拆第二层、第三层。卡名要一眼能看懂。之后会话打开这张图
 - **人看工作台**：`prototype/workbench.html`。Agent 读小索引，不读整张地图
 - **用户原话**：写进 `user-messages.md`；密钥只在 `private/`
-- **记录语言**：按文件夹选中文或英文
+- **记录语言**：按项目选择中文或英文，同一 Git 项目的各个工作树共享
 - **生命周期**：首次 Session 自动建档、记录用户消息，并在识别到 bad case 后通过统一命令落盘
 
 第一版**没有** Roadmap HTML、测试中台、功能链。
@@ -23,16 +23,19 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 **云端：** Cloud 首页只汇集多个项目入口，每个项目独立维护自己的 Map。公开页面只读；通过工作台令牌授权后的 Cloud 工作台可以编辑。项目使用独立同步令牌和事件流，不共享管理令牌。
 
-**本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。Node 服务会自动把编辑保存到本地 map.json，也会把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
+**本地：** 每次生命周期回复先校验真实 Session 的绑定。未绑定时询问要使用哪个项目工作台，不建图、不启动服务、也不自动打开浏览器。用户确认后，同一 Git 项目的多个工作树复用一个服务，但各自 Session 视图隔离。也可以手动启动或停止工作台。
 
-**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 只读服务器上与已合并主分支对应的基线。这是确定的目标规范，不代表当前本地工作台或仅 Map 同步已经实现；完整记忆同步和迁移仍待开发，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
+**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 只读服务器上与已合并主分支对应的基线。私有服务/客户端和本地自动化验收已实现；真实部署、原生 Hook 信任验证和历史迁移仍需另行批准，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
 
 ```bash
-context-guard workbench --root /path/to/project
+context-guard workbench --binding-status --root /path/to/project --session <真实-session-id>
+context-guard workbench --root /path/to/project --session <真实-session-id>
+# 仅在用户明确确认迁移已有绑定后使用：
+context-guard workbench --root /other/worktree --session <真实-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
 
-本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。多个 session 复用已有页面；不同 Git worktree 可通过 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 明确绑定，不自动合并 Map。旧服务可用 `--direct` 继续直连。
+本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。同项目共用服务，但每个 Session 仍须明确绑定。兼容命令 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 只选择服务目标，不代替 Session 绑定、不合并 Map；Session 记录仍保留在各自工作树。旧服务可用 `--direct` 继续直连。
 
 详见[命名工作台](references/named-workbench.md)。精简路由存储基于 Portless 0.15.6，遵循 Apache-2.0；[第三方声明](THIRD_PARTY_NOTICES.md)与许可证随安装包分发。
 

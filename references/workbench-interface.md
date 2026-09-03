@@ -1,12 +1,16 @@
 # Workbench / Agent interface (local Node protocol 2)
 
-This reference describes the current local document backend. For projects whose
-policy selects server-backed development memory, `references/server-memory.md`
-defines the required authority and isolation. That backend is still pending;
-do not commit `.codex` as a workaround or claim local reads are server-confirmed
-memory.
+This reference describes the local workbench and isolated Git Session caches.
+`references/server-memory.md` defines the private memory service, publication and
+migration boundary. An implemented client is not evidence of deployment: do not
+claim server-confirmed memory until that project's authenticated read succeeds.
 
-The authoritative document is `<project>/.codex/context/map.json`. Browser storage
+Linked worktrees use the Git common directory for shared bindings and one service.
+Session maps and journals are separated by Session/worktree identity; legacy local
+maps are only seeds for explicitly bound local Sessions. All Sessions reads the
+private server's published main baseline and preserves its last valid version
+on disconnect. It never reads Git-tracked memory or imports an unmerged feature map.
+Non-Git local folders retain the single-document workflow. Browser storage
 contains recovery drafts and UI preferences, never a second authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
 The server, submissions and live notifications run on Node 18 or newer; no new
@@ -31,6 +35,16 @@ the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit me
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
 session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
 Do not substitute the visible demo session label or invent a human identity.
+
+At SessionStart and every prompt, use `workbench --binding-status --session <id>`.
+Unbound means ask the user, then bind with `workbench --session <id>`; a broken
+binding/service means repair, not create another workbench. Main branch selection
+uses advertised GitHub origin/HEAD, or explicit `--bind-main <branch> --remote <name>`
+or `--local-main <branch>`. No main/master fallback. Existing confirmed language
+is project-scoped and inherited by new worktrees. An ordinary bind cannot move an
+already bound Session. After explicit user confirmation, `workbench --session <id>
+--rebind` preserves prior data, invalidates old capabilities and discards the old
+view/store cache.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
 connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
