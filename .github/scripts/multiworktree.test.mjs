@@ -136,13 +136,19 @@ test('a supplied workbench URL is verified before the Session binding is committ
   assert.match(JSON.parse(pythonAccepted.stdout).url, /\.localhost:/);
 });
 test('a legacy worktree seed is replaced by the confirmed main baseline without overwriting divergent Session edits', async t => {
-  const { dir, root, other } = await fixture(t);
+  const { dir, root, other } = await fixture(t, false);
+  let memory, workbench;
+  t.after(async () => {
+    await workbench?.close();
+    await memory?.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
   await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
   await initialize(root); await initialize(other);
   const mainSha = await git(root, 'rev-parse', 'HEAD');
   const mainMap = { v: 1, project: 'example', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Full main', kind: 'module', children: [{ id: 'M1', title: 'Inherited module', kind: 'module', children: [] }] } };
   const options = { dataDir: path.join(dir, 'baseline-memory'), adminToken: randomUUID(), projects: { example: { token: randomUUID(), root, ref: 'refs/heads/trunk' } } };
-  const memory = await startMemoryServer(options); t.after(() => memory.close());
+  memory = await startMemoryServer(options);
   const saved = await call(memory, '/v1/projects/example/sessions/publisher', options.projects.example.token, { operationId: 'baseline-session', baseVersion: null, baseMainVersion: null, sourceCommit: mainSha, memory: { map: mainMap, records: {} } });
   assert.equal(saved.status, 200, JSON.stringify(saved));
   const published = await call(memory, '/v1/projects/example/publish', options.adminToken, { operationId: 'baseline-publish', baseVersion: null, sessionId: 'publisher', sessionVersion: saved.data.snapshot.version, expectedMainSha: mainSha });
@@ -158,7 +164,7 @@ test('a legacy worktree seed is replaced by the confirmed main baseline without 
   const divergentDir = sessionMemoryDir(project, 'divergent-seed'), divergentMap = structuredClone(legacyMap);
   divergentMap.root.title = 'Unsynced Session edit';
   await fs.mkdir(divergentDir, { recursive: true }); await fs.writeFile(path.join(divergentDir, 'map.json'), JSON.stringify(divergentMap));
-  const workbench = await startServer({ root, port: 0 }); t.after(() => workbench.close());
+  workbench = await startServer({ root, port: 0 });
   const migrated = await call(workbench, '/api/session', workbench.state.adminToken, { sessionId: 'legacy-seed', worktreeRoot: other });
   assert.equal(migrated.status, 200, JSON.stringify(migrated));
   assert.equal((await call(workbench, '/api/state', migrated.data.token)).data.doc.root.children[0].id, 'M1');
