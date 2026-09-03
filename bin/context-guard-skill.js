@@ -29,6 +29,7 @@ Usage:
   context-guard doctor [--platform auto|all|codex|cursor|claude] [--root <project>]
                        [--target <dir>] [--hooks-target <file>] [--config-target <file>] [--json]
   context-guard path
+  context-guard sync connect|status|prepare|finish [args...]
   context-guard <context_guard.py command> [args...]
 
 Examples:
@@ -463,8 +464,8 @@ function doctor(args) {
   let platforms = selectedPlatforms(options.platform);
   if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") platforms = ["codex"];
   const eventNames = {
-    codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "SubagentStop", "Stop"],
-    claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "SubagentStop", "Stop"],
+    codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
+    claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
     cursor: ["sessionStart", "subagentStart", "beforeSubmitPrompt", "subagentStop", "stop"]
   };
   for (const platform of platforms) {
@@ -524,6 +525,10 @@ if (!command || command === "-h" || command === "--help" || command === "help") 
   console.log(sourceSkillDir);
 } else if (command === "doctor") {
   doctor(rest);
+} else if (command === "sync") {
+  const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "sync", "client.mjs"), ...rest], { stdio: "inherit", windowsHide: true });
+  if (result.error) fail(result.error.message);
+  process.exit(result.status === null ? 1 : result.status);
 } else if (command === "map" || command === "workbench") {
   const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "workbench", "cli.mjs"), command, ...rest], { stdio: "inherit", windowsHide: true });
   process.exit(result.status ?? 1);

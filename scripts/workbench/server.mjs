@@ -1,5 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -63,7 +64,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   const adminToken = token(), humanToken = token(), agentTokens = new Map(), peers = new Map();
   const access = await new Access(root).init();
-  let stopAccessWatch = () => {};
+  let stopAccessWatch = () => {}, stopCloudWatch = () => {};
   let projectionQueue = Promise.resolve();
   const store = new MapStore(root, { fault, project: (doc, version) => {
     const job = projectionQueue.then(() => store.version === version ? generateProjections(root, doc, version, () => store.version === version) : false);
@@ -76,6 +77,23 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       if (peer.res.writableLength > 2 * 1024 * 1024) { peer.res.destroy(); continue; }
       peer.res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
     }
+  }
+  async function cloudSyncStatus() {
+    const dir = path.join(ctx, 'private/cloud-sync');
+    const config = await readJSON(path.join(dir, 'config.json'), null);
+    const state = await readJSON(path.join(dir, 'state.json'), null);
+    const serviceState = await readJSON(path.join(dir, 'service.json'), null);
+    let serviceAlive = false;
+    if (serviceState?.pid) try { process.kill(serviceState.pid, 0); serviceAlive = true; } catch {}
+    return {
+      configured: !!config,
+      ...(config ? { projectId: config.projectId, url: config.url } : {}),
+      status: !config ? 'disabled' : state?.status || 'connecting',
+      cursor: state?.cursor || 0,
+      receivedCursor: state?.receivedCursor || 0,
+      conflict: state?.conflict || null,
+      serviceAlive,
+    };
   }
   function pendingPeers() { return [...peers.values()].filter(p => p.dirty || !p.res || p.res.destroyed).map(p => p.id); }
   async function fence() {
@@ -104,6 +122,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const isHuman = actor => { if (actor.kind !== 'human') throw new MapError('FORBIDDEN', 'Requires the workbench capability', 403); };
   try {
     await store.init();
+    const cloudSyncDir = path.join(ctx, 'private/cloud-sync');
+    await fs.mkdir(cloudSyncDir, { recursive: true });
+    const cloudWatcher = watch(cloudSyncDir, () => {
+      clearTimeout(cloudWatcher.timer);
+      cloudWatcher.timer = setTimeout(() => cloudSyncStatus().then(status => broadcast('cloud-sync', status)).catch(() => {}), 30);
+    });
+    stopCloudWatch = () => { clearTimeout(cloudWatcher.timer); cloudWatcher.close(); };
     server = http.createServer(async (req, res) => {
       try {
         if (req.headers.host !== new URL(base).host) throw new MapError('HOST_REJECTED', 'Invalid Host', 403);
@@ -122,6 +147,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         if (route.startsWith('/api/')) {
           const actor = auth(req, url);
+          if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus()); }
           if (route === '/api/events' && req.method === 'GET') {
             isHuman(actor); const id = url.searchParams.get('clientId');
             if (!id || id.length > 100) throw new MapError('INVALID_CLIENT', 'Invalid clientId');
@@ -259,13 +285,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       close.promise = (async () => {
         clearInterval(heartbeat);
         stopAccessWatch();
+        stopCloudWatch();
         // Stop accepting reconnects before draining events or slow projections.
         const disconnected = new Promise((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve());
         });
         for (const p of peers.values()) p.res?.end();
-        // Node 18 does not reap idle keep-alive sockets in server.close().
+        // A CLI stop owns this loopback server and must not leave undici/Node 24
+        // keep-alive connections holding the project lock after the response.
         server.closeIdleConnections?.();
+        server.closeAllConnections?.();
         await disconnected;
         await store.close(); await projectionQueue;
         if ((await readJSON(statePath(root), null))?.instance === instance) await fs.unlink(statePath(root));
@@ -276,5 +305,5 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
     return { state, store, access, server, close, humanToken };
-  } catch (e) { stopAccessWatch(); await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
+  } catch (e) { stopAccessWatch(); stopCloudWatch(); await store.close(); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
 }

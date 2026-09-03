@@ -120,6 +120,12 @@ header.top h1 .caret{font-size:11px;color:var(--muted)}
 .session-status.active{border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
 .session-status.stopped::before{content:"✓";color:var(--green);font-size:15px;font-weight:900;line-height:1}
 .session-status.empty{display:none}
+.cloud-sync-status{width:28px;height:28px;display:inline-grid;place-items:center;flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+.cloud-sync-status[hidden]{display:none}
+.cloud-sync-status::before{font-size:16px;font-weight:900;line-height:1}
+.cloud-sync-status.syncing::before{content:"";width:13px;height:13px;border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
+.cloud-sync-status.synced::before{content:"✓";color:var(--green)}
+.cloud-sync-status.conflict::before,.cloud-sync-status.error::before{content:"!";color:var(--red)}
 .session-menu{position:fixed;z-index:70;width:max-content;min-width:210px;max-width:min(360px,calc(100vw - 16px));padding:5px;background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow)}
 .session-menu[hidden]{display:none}
 .session-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:340px;padding:8px 10px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--ink);text-align:left;white-space:nowrap}
@@ -920,6 +926,7 @@ html.design-gallery .g-mock{display:block !important;position:relative;top:auto;
       </button>
       <div class="session-menu" id="session-menu" role="listbox" aria-label="Agent 会话" hidden></div>
     </div>
+    <span id="cloud-sync-status" class="cloud-sync-status" role="status" aria-label="云端同步状态" hidden></span>
     <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
     <span id="repo-status" class="repo-status" hidden></span>
     <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
@@ -5345,6 +5352,9 @@ function renderMap(){
 function onNodeClick(e, n){
   if(!n) return;
   e.stopPropagation();
+  if(window.__CG_SERVER?.root==="cloud:overview" && n.cloudProjectId){
+    location.href="/projects/"+encodeURIComponent(n.cloudProjectId); return;
+  }
   if(lensMode && n.id!==data.id){
     /* 搁板模式：点头上的候选挂卡 = 退回搁板；点主节点不动 */
     if(isProposed(n) && n.id!==viewRootId){ detachLensNode(n); return; }

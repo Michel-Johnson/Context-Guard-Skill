@@ -21,7 +21,7 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
+**Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
 **Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
 
@@ -198,3 +198,7 @@ See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 ## Local workbench synchronization
 
 Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
+
+## Cloud event synchronization
+
+Cloud Sync receives project-scoped SSE events instead of periodically replacing every Map. Run `context-guard sync prepare` before development and `context-guard sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified. See the [Cloud Sync interface](references/cloud-sync-interface.md).
