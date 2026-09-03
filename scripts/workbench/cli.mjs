@@ -245,6 +245,11 @@ async function main(args) {
     if (opt._[0] === 'prepare') return prepareMemory(project, session);
     if (opt._[0] === 'rebase') return rebaseMemory(project, session);
     if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
+    if (opt._[0] === 'history') {
+      const scope = String(opt.scope || (session ? `session:${session}` : 'main'));
+      return memoryRequest(project, `history?scope=${encodeURIComponent(scope)}&after=${encodeURIComponent(opt.after || 0)}&limit=${encodeURIComponent(opt.limit || 100)}`);
+    }
+    if (opt._[0] === 'restore') return memoryRequest(project, 'restore', await inputJSON(opt.input));
     return memoryStatus(project, session);
   }
   if (command === 'serve') {
