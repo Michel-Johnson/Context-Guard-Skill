@@ -577,7 +577,12 @@ test('CLI entrypoints work through filesystem aliases, including Windows path ca
   t.after(() => dispose(project));
   for (const file of [workbenchCli, path.join(repository, 'scripts/sync/client.mjs')]) {
     let alias;
-    if (process.platform === 'win32') alias = file.toUpperCase();
+    if (process.platform === 'win32') {
+      // Windows resolves directory components case-insensitively, but Node's
+      // ESM loader still classifies the final extension textually. Keep `.mjs`
+      // intact so this exercises path casing instead of an unrelated loader rule.
+      alias = path.join(path.dirname(file).toUpperCase(), path.basename(file));
+    }
     else {
       alias = path.join(project, `${path.basename(path.dirname(file))}-alias.mjs`);
       await fs.symlink(file, alias);
