@@ -60,6 +60,7 @@ export const installedFiles = [
 ];
 
 export const forbiddenInstalledPaths = [
+  "scripts/cloud",
   "tests",
   "fixtures",
   ".github",
