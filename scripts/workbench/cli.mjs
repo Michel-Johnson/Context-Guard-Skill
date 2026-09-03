@@ -10,6 +10,8 @@ import { MapError } from '../../prototype/map-model.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
 import { isolationFile, sessionContext } from './scopes.mjs';
+import { resolveProjectRoot, bindProject } from './project.mjs';
+import { namedWorkbench } from './named.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -31,6 +33,7 @@ async function initialize(root) {
   throw new Error('Python is still required for project initialization');
 }
 export async function ensureServer(root, port = 8877) {
+  root = await resolveProjectRoot(root);
   await initialize(root);
   root = await fs.realpath(root);
   const sameRoot = async live => live?.root && await fs.realpath(live.root).catch(() => null) === root;
@@ -39,7 +42,8 @@ export async function ensureServer(root, port = 8877) {
     if (live.protocol !== 2 || !state.adminToken) throw new MapError('LEGACY_SERVICE', 'Old read-only service is active. Export its cache before stopping it and starting the Node workbench.', 409);
     return state;
   }
-  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a');
+  await fs.mkdir(path.join(root, '.codex/context/private'), { recursive: true, mode: 0o700 });
+  const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a', 0o600);
   const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
   const deadline = Date.now() + 12000;
@@ -56,6 +60,7 @@ export async function request(state, route, { token = state.adminToken, method =
   return result;
 }
 export async function stopServer(root) {
+  root = await resolveProjectRoot(root);
   const state = await readJSON(statePath(root), null);
   if (!state || !await health(state)) return { stopped: false };
   if (state.protocol !== 2) throw new MapError('LEGACY_SERVICE', 'Stop the old service with its original CLI after exporting cache');
@@ -76,7 +81,13 @@ async function inputJSON(file) {
   let text = ''; for await (const chunk of process.stdin) text += chunk; return JSON.parse(text);
 }
 async function main(args) {
-  const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  const [command, ...rest] = args, opt = options(rest);
+  const sourceRoot = path.resolve(opt.root || process.cwd());
+  if (command === 'workbench' && opt._[0] === 'bind') {
+    if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');
+    return bindProject(sourceRoot, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });
+  }
+  const root = await resolveProjectRoot(sourceRoot);
   if (command === 'serve') {
     const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1' });
     process.on('SIGTERM', () => running.close()); process.on('SIGINT', () => running.close());
@@ -86,7 +97,13 @@ async function main(args) {
     return stopServer(root);
   }
   const state = await ensureServer(root, Number(opt.port ?? 8877));
-  if (command === 'workbench') return { url: state.url, root, protocol: 2 };
+  if (command === 'workbench') {
+    const result = opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
+      ? { url: state.url, projectRoot: root }
+      : await namedWorkbench(state, request, { name: opt.name });
+    const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
+    return { ...result, ...claim, root: sourceRoot, protocol: 2 };
+  }
   if (command === 'map' && opt._[0] === 'isolate') {
     if (!opt['base-version']) throw new MapError('VERSION_REQUIRED', 'Pass --base-version from map read; existing records will remain legacy-unverified');
     return request(state, '/api/isolation', { method: 'POST', body: { baseVersion: opt['base-version'] } });

@@ -139,7 +139,8 @@ keys.
 - Session token: read/write only one Session Map; generated once and kept in private local config.
 - Workbench token: browser editing only; exchanged for an HttpOnly cookie at
   `/auth?token=...&next=/`.
-- Public pages and project directory are read-only.
+- In private mode, pages and the project directory require the workbench cookie;
+  scoped API clients use their project or Session token.
 
 The bootstrap response and generated HTML must never contain an admin or project
 token.

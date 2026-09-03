@@ -646,6 +646,7 @@ def main() -> int:
 
     def session_details(details: dict[str, object] | None = None) -> dict[str, object]:
         result = dict(details or {})
+        result["worktree_root"] = str(root)
         if current_session_name:
             result["thread_name"] = current_session_name
         return result

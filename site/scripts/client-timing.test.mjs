@@ -83,7 +83,7 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
 });
 
-test("工作台和客户端镜头逐帧重绘，不缩放合成纹理", () => {
+test("工作台和客户端镜头使用稳定的双倍栅格，避免缩放重排和低清放大", () => {
   const stageSource = readFileSync(new URL("../src/stage.css", import.meta.url), "utf8");
   const planeRule = stageSource.match(/\.tour-plane\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.doesNotMatch(planeRule, /will-change\s*:\s*transform/);
@@ -93,15 +93,18 @@ test("工作台和客户端镜头逐帧重绘，不缩放合成纹理", () => {
   assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
   assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
   assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
-  assert.match(workbenchSource, /node\.style\.zoom = String\(pose\.scale\)/);
-  assert.match(workbenchSource, /node\.style\.left = `\$\{x \/ pose\.scale\}px`/);
+  assert.match(workbenchSource, /const CAMERA_RASTER_SCALE = 2/);
+  assert.match(workbenchSource, /node\.style\.zoom = String\(CAMERA_RASTER_SCALE\)/);
+  assert.match(workbenchSource, /pose\.scale \/ CAMERA_RASTER_SCALE/);
   assert.match(workbenchSource, /requestAnimationFrame\(animate\)/);
-  assert.doesNotMatch(workbenchSource, /scale\(\$\{pose\.scale/);
 
   const viewportSource = readFileSync(new URL("../src/NativeViewport.tsx", import.meta.url), "utf8");
-  assert.match(viewportSource, /plane\.current\.style\.zoom = String\(pose\.scale\)/);
-  assert.match(viewportSource, /plane\.current\.style\.left = `\$\{x \/ pose\.scale\}px`/);
-  assert.doesNotMatch(viewportSource, /rasterizedCamera|scale\(\$\{rasterPose/);
+  assert.match(viewportSource, /rasterizedCamera\(\{ \.\.\.pose, x, y \}\)/);
+  assert.match(viewportSource, /plane\.current\.style\.zoom = String\(nativeRasterScale\)/);
+
+  const cameraSource = readFileSync(new URL("../src/native-camera.ts", import.meta.url), "utf8");
+  assert.match(cameraSource, /nativeRasterScale = 2/);
+  assert.match(cameraSource, /scale: pose\.scale \/ nativeRasterScale/);
 });
 
 test("工作台六个章节完成后自动顺序循环，减少动态时不自动切换", () => {

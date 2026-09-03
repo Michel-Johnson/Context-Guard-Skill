@@ -169,6 +169,9 @@ export async function startCloudServer({
   adminToken = process.env.CONTEXT_GUARD_CLOUD_TOKEN || '',
   browserToken = process.env.CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN || adminToken,
   sourceRepositories = repositoryConfig(process.env.CONTEXT_GUARD_CLOUD_REPOSITORIES),
+  privateAccess = process.env.CONTEXT_GUARD_CLOUD_PRIVATE === '1',
+  secureCookies = process.env.CONTEXT_GUARD_CLOUD_SECURE_COOKIES === '1',
+  publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
 } = {}) {
   const sessionMaps = new CloudSessionMaps(dataDir);
   const registryFile = path.join(dataDir, 'projects.json');
@@ -202,7 +205,7 @@ export async function startCloudServer({
     res.end(JSON.stringify(body));
   };
   const redirect = (res, location, headers = {}) => { res.writeHead(302, { Location: location, 'Cache-Control': 'no-store', ...headers }); res.end(); };
-  const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/` });
+  const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureCookies ? '; Secure' : ''}` });
   const requestBody = async req => {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new MapError('CONTENT_TYPE', 'Use application/json', 415);
     const chunks = []; let size = 0;
@@ -227,6 +230,7 @@ export async function startCloudServer({
     const credential = bearer(req, url) || decodeURIComponent(cookieValue(req));
     if (!browserToken || !(safeEqual(credential, browserToken) || adminToken && safeEqual(credential, adminToken))) throw new MapError('UNAUTHORIZED', 'Open /auth?token=... before editing the cloud workbench', 401);
   };
+  const requirePrivateRead = (req, url) => { if (privateAccess) requireWorkbench(req, url); };
   const readEvents = id => readJsonLines(eventsFile(id));
   const currentSeq = async id => (await readEvents(id)).at(-1)?.seq || 0;
   const broadcastDirectory = (event, body) => {
@@ -342,6 +346,7 @@ export async function startCloudServer({
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
+      if (publicOrigin && req.headers.origin && req.headers.origin !== publicOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
       const scopedRoute = route.match(/^\/api\/projects\/([^/]+)\/scopes\/(enable|session|state|commit|refresh|publish)$/);
       if (scopedRoute) {
         const project = projectById(decodeURIComponent(scopedRoute[1]));
@@ -389,7 +394,7 @@ export async function startCloudServer({
         if (!browserToken || !safeEqual(url.searchParams.get('token'), browserToken)) throw new MapError('UNAUTHORIZED', 'Invalid workbench token', 401);
         const next = url.searchParams.get('next') || '/';
         if (!next.startsWith('/') || next.startsWith('//')) throw new MapError('INVALID_REDIRECT', 'Invalid redirect');
-        return redirect(res, next, { 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/` });
+        return redirect(res, next, workbenchCookie());
       }
       const workbench = route.match(/^\/api\/workbench\/(overview|projects\/([^/]+))(\/.*)$/);
       if (workbench) {
@@ -397,7 +402,7 @@ export async function startCloudServer({
         const project = workbench[2] ? projectById(decodeURIComponent(workbench[2])) : null;
         if (workbench[2] && !project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) });
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
         requireWorkbench(req, url);
         const sessionId = url.searchParams.get('session');
         if (action === '/api/state' && req.method === 'GET') return send(res, 200, { ...(await workbenchState(scope, project, sessionId)), actor: { kind: 'human', sessionId: 'cloud-workbench' }, grants: [] }, workbenchCookie());
@@ -458,9 +463,10 @@ export async function startCloudServer({
         if (action === '/api/projections' && req.method === 'POST') return send(res, 200, { status: 'ready', sourceVersion: (await workbenchState(scope, project)).version });
         throw new MapError('NOT_FOUND', 'Unsupported cloud workbench route', 404);
       }
-      if (route === '/api/health' && req.method === 'GET') return send(res, 200, { ok: true, service: 'context-guard-cloud', protocol: 3, projects: registry.projects.length });
-      if (route === '/.codex/context/preferences.json' && req.method === 'GET') return send(res, 200, { display_language: 'zh' });
+      if (route === '/api/health' && req.method === 'GET') return send(res, 200, { ok: true, service: 'context-guard-cloud', protocol: 3, ...(privateAccess ? {} : { projects: registry.projects.length }) });
+      if (route === '/.codex/context/preferences.json' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { display_language: 'zh' }); }
       if (route === '/.codex/context/map.json' && req.method === 'GET') {
+        requirePrivateRead(req, url);
         const page = String(req.headers.referer || '').match(/\/projects\/([^/?#]+)/);
         if (!page) return send(res, 200, overviewDocument(registry.projects));
         const project = projectById(decodeURIComponent(page[1]));
@@ -469,10 +475,11 @@ export async function startCloudServer({
         return send(res, 200, snapshot.document || placeholderProjectDocument(project));
       }
       if (route === '/api/events' && req.method === 'GET') {
+        requirePrivateRead(req, url);
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
         directoryClients.add(res); res.write('retry: 1000\nevent: ready\ndata: {}\n\n'); req.on('close', () => directoryClients.delete(res)); return;
       }
-      if (route === '/api/projects' && req.method === 'GET') return send(res, 200, { projects: registry.projects.map(publicProject) });
+      if (route === '/api/projects' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { projects: registry.projects.map(publicProject) }); }
       if (route === '/api/projects' && req.method === 'POST') {
         requireAdmin(req, url);
         const rawToken = newToken(), project = compactProject(await requestBody(req), digest(rawToken));
@@ -485,12 +492,12 @@ export async function startCloudServer({
         const project = projectById(decodeURIComponent(projectRoute[1]));
         if (!project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const action = projectRoute[2];
-        if (!action && req.method === 'GET') return send(res, 200, { project: publicProject(project) });
+        if (!action && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { project: publicProject(project) }); }
         if (action === 'enrollments' && req.method === 'POST') {
           requireAdmin(req, url); const syncToken = newToken(); project.tokenHash = digest(syncToken); project.updatedAt = now(); await atomicWrite(registryFile, json(registry));
           return send(res, 201, { projectId: project.id, syncToken });
         }
-        if (action === 'map' && req.method === 'GET') return send(res, 200, await projectSnapshot(project));
+        if (action === 'map' && req.method === 'GET') { if (privateAccess) { const credential = bearer(req, url); if (!(adminToken && safeEqual(credential, adminToken)) && !(project.tokenHash && safeEqual(digest(credential), project.tokenHash))) requirePrivateRead(req, url); } return send(res, 200, await projectSnapshot(project)); }
         requireProject(req, url, project);
         if (req.method !== 'GET' && await sessionMaps.enabled(project.id)) throw new MapError('SESSION_REQUIRED', 'This project uses Session Maps; upgrade the client and use the scopes API', 409);
         if (action === 'snapshot' && req.method === 'POST') return send(res, 200, await saveSnapshot(project, await requestBody(req)));
@@ -563,10 +570,12 @@ export async function startCloudServer({
         }
       }
       if (req.method === 'GET' && /\/(map-model|workbench-sync)\.mjs$/.test(route)) {
+        requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
       if (req.method === 'GET' && (route === '/' || route === '/prototype/' || route === '/workbench.html' || /^\/projects\/[^/]+$/.test(route))) {
+        requirePrivateRead(req, url);
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';

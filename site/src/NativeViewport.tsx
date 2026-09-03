@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMotionValueEvent, type MotionValue } from "motion/react";
 import { usageTiming, type ConversationTiming } from "./app-usage";
-import { advanceCamera, cameraSettled, frameCamera, nativeHeight, stillCamera, type Box, type CameraMotion } from "./native-camera";
+import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera, type Box, type CameraMotion } from "./native-camera";
 
 export function NativeViewport({ children, clock, full, reduced = false, sourceWidth = 1280, focusPane, timing = usageTiming, turnKey = "" }: {
   children: ReactNode;
@@ -76,12 +76,13 @@ export function NativeViewport({ children, clock, full, reduced = false, sourceW
     const ratio = window.devicePixelRatio || 1;
     const x = Math.round(pose.x * ratio) / ratio;
     const y = Math.round(pose.y * ratio) / ratio;
+    const rasterPose = rasterizedCamera({ ...pose, x, y });
     const paint = `${x}:${y}:${pose.scale}`;
     if (plane.current && paint !== lastPaint.current) {
-      plane.current.style.zoom = String(pose.scale);
-      plane.current.style.left = `${x / pose.scale}px`;
-      plane.current.style.top = `${y / pose.scale}px`;
-      plane.current.style.transform = "none";
+      plane.current.style.zoom = String(nativeRasterScale);
+      plane.current.style.left = "0px";
+      plane.current.style.top = "0px";
+      plane.current.style.transform = `translate3d(${rasterPose.x}px, ${rasterPose.y}px, 0) scale(${rasterPose.scale})`;
       lastPaint.current = paint;
     }
     return settled;

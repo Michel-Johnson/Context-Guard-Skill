@@ -19,7 +19,7 @@ let passed = false;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || repositoryRoot,
-    env: { ...process.env, ...options.env },
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', ...options.env },
     input: options.input,
     encoding: "utf8",
     windowsHide: true
@@ -79,7 +79,7 @@ async function main() {
   const serviceUnit = fs.readFileSync(cloudService, "utf8");
   for (const required of [
     "EnvironmentFile=-%h/.config/context-guard-cloud.env",
-    "CONTEXT_GUARD_CLOUD_HOST=0.0.0.0",
+    "CONTEXT_GUARD_CLOUD_HOST=127.0.0.1",
     "CONTEXT_GUARD_CLOUD_PORT=8788",
     "CONTEXT_GUARD_CLOUD_DATA=%h/context-guard-cloud-data",
     "scripts/cloud/server.mjs"

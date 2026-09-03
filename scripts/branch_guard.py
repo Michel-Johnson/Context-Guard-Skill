@@ -14,6 +14,7 @@ PRODUCT_TESTS = {
     "tests/workbench-inbox.test.mjs",
     "tests/hook-lifecycle.test.mjs",
     "tests/session-maps.test.mjs",
+    "tests/named-workbench.test.mjs",
     "tests/workbench-browser.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",

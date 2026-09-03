@@ -8,6 +8,14 @@ For private development memory, first read `references/server-memory.md`.
 The Cloud process speaks HTTP only to its reverse proxy. Public access must use
 HTTPS and private-read mode; never expose the backend port itself.
 
+For an Internet-facing installation, set `CONTEXT_GUARD_CLOUD_PRIVATE=1`,
+`CONTEXT_GUARD_CLOUD_SECURE_COOKIES=1`, and the exact HTTPS origin in
+`CONTEXT_GUARD_CLOUD_ORIGIN`. Terminate TLS at a reverse proxy and forward only
+to the loopback Cloud port. The health endpoint remains public but does not list
+projects; maps, the project directory, UI assets, events, and editing all require
+the existing workbench cookie or a scoped project token. Never expose the
+backend port in a host firewall.
+
 ## 1. Prepare the server
 
 The server needs Linux, Git, Node.js 18 or newer, npm, curl, and systemd user
