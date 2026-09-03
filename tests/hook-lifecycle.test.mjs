@@ -3,11 +3,12 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 
-const repository = path.resolve(import.meta.dirname, '..');
+const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
 const contextScript = path.join(repository, 'scripts/context_guard.py');
 const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
@@ -248,6 +249,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
     body: JSON.stringify({ sessionId: session, nodes: ['N1'] }),
   });
   assert.equal(initialGrant.status, 200);
+  run(process.execPath, [workbenchCli, 'map', 'inbox', '--root', project, '--session', session, '--start']);
 
   const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'todo-turn', prompt: '后续开发通知模块' });
   const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
