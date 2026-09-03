@@ -216,7 +216,16 @@ function copySkill(target) {
     const from = path.join(sourceSkillDir, entry);
     if (!fs.existsSync(from)) continue;
     const to = path.join(target, entry);
-    fs.cpSync(from, to, { recursive: true });
+    const options = entry === "scripts"
+      ? {
+          recursive: true,
+          filter(source) {
+            const relative = path.relative(from, source);
+            return relative === "" || relative.split(path.sep)[0] !== "cloud";
+          }
+        }
+      : { recursive: true };
+    fs.cpSync(from, to, options);
   }
 }
 
