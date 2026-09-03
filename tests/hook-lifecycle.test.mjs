@@ -303,9 +303,10 @@ test('detached workbench exits when its project state is removed', async t => {
   pid = state.pid;
   assert.equal(processIsAlive(pid), true);
 
-  await fs.rm(project, { recursive: true, force: true });
+  await fs.unlink(path.join(project, '.codex/context/private/workbench.json'));
   await waitForProcessExit(pid);
   pid = null;
+  await fs.rm(project, { recursive: true, force: true });
 });
 
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {
