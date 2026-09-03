@@ -166,7 +166,7 @@ async function main(args) {
   }
   throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, record-todo, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === ownFile) {
+if (process.argv[1] && await fs.realpath(process.argv[1]).catch(() => '') === await fs.realpath(ownFile)) {
   try { const result = await main(process.argv.slice(2)); if (result !== undefined) console.log(JSON.stringify(result)); }
   catch (e) { console.log(JSON.stringify({ error: { code: e.code || 'ERROR', message: e.message, ...e.details } })); process.exitCode = 1; }
 }

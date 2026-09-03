@@ -248,14 +248,15 @@ async function main() {
       })
     });
   }
-  run(python, [hookScript, "stop", "--platform", "cursor"], {
+  const cursorStop = run(python, [hookScript, "stop", "--platform", "cursor"], {
     cwd: unrelatedCwd,
     env: hookEnvironment,
     input: "\uFEFF" + JSON.stringify({ workspace_roots: [project], conversation_id: "session-one", generation_id: "generation-1" })
   });
   const cursorEvents = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse);
-  assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop"]);
+  assert.equal(JSON.parse(cursorStop.stdout).decision, "block", "unclassified prompts cannot silently complete");
+  assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop-blocked"]);
   assert.ok(cursorEvents.every(({ session_id }) => session_id === "session-one"), "turns must keep the client's conversation ID");
   assert.ok(cursorEvents.filter(({ event }) => event === "user-prompt-submit").every(({ message_status }) => message_status === "recorded"));
   const cursorMemory = fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8");
@@ -303,7 +304,7 @@ async function main() {
     .trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessionEvents.some((event) => event.event === "session-start" && event.session_id === "session-one"));
   assert.ok(sessionEvents.some((event) => event.event === "user-prompt-submit"));
-  assert.ok(sessionEvents.some((event) => event.event === "stop"));
+  assert.ok(sessionEvents.some((event) => event.event === "stop-blocked"));
 
   const fallbackProject = path.join(temporaryRoot, "fallback-project");
   fs.mkdirSync(fallbackProject);
