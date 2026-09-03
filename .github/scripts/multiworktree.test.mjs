@@ -130,6 +130,26 @@ test('private memory requires authentication, isolates Sessions, verifies merge 
   assert.equal((await call(service, base + 'main', token)).data.snapshot.mainSha, featureSha);
   assert.equal((await call(service, base + 'sessions/three', token, { ...input, operationId: 'private', memory: { ...memory, records: { 'private/credentials.json': 'not allowed' } } })).data.error.code, 'PRIVATE_PATH');
 });
+test('memory CLI lists history and restores a Session with version protection', async t => {
+  const { dir, root } = await fixture(t);
+  const options = { dataDir: path.join(dir, 'history-memory'), adminToken: randomUUID(), projects: { example: { token: randomUUID() } } };
+  const service = await startMemoryServer(options); t.after(() => service.close());
+  const token = options.projects.example.token;
+  const map = title => ({ v: 1, project: 'example', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } });
+  const first = await call(service, '/v1/projects/example/sessions/one', token, { operationId: 'cli-first', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map: map('First'), records: {} } });
+  const second = await call(service, '/v1/projects/example/sessions/one', token, { operationId: 'cli-second', baseVersion: first.data.snapshot.version, baseMainVersion: null, sourceCommit: 'b'.repeat(40), memory: { map: map('Second'), records: {} } });
+  const invoke = (args, input) => run(process.execPath, [path.join(repo, 'scripts/workbench/cli.mjs'), ...args, '--root', root], root, input);
+  const configured = await invoke(['memory', 'configure', '--input', '-'], JSON.stringify({ url: service.url, projectId: 'example', token }));
+  assert.equal(configured.code, 0, configured.stderr);
+  const history = await invoke(['memory', 'history', '--scope', 'session:one']);
+  assert.equal(history.code, 0, history.stderr);
+  assert.deepEqual(JSON.parse(history.stdout).history.map(entry => entry.version), [first.data.snapshot.version, second.data.snapshot.version]);
+  const restored = await invoke(['memory', 'restore', '--input', '-'], JSON.stringify({ operationId: 'cli-restore', scope: 'session:one', baseVersion: second.data.snapshot.version, targetVersion: first.data.snapshot.version }));
+  assert.equal(restored.code, 0, restored.stderr);
+  assert.equal(JSON.parse(restored.stdout).snapshot.memory.map.root.title, 'First');
+  const stale = await invoke(['memory', 'restore', '--input', '-'], JSON.stringify({ operationId: 'cli-stale', scope: 'session:one', baseVersion: second.data.snapshot.version, targetVersion: first.data.snapshot.version }));
+  assert.notEqual(stale.code, 0); assert.match(stale.stdout, /VERSION_CONFLICT/);
+});
 test('view reload clears pending state so following updates are consumed', async () => {
   const sync = Object.create(WorkbenchSync.prototype);
   Object.assign(sync, { config: { root: 'test' }, viewId: 'session:one', initializationRequired: true, events: {}, revision: 0, dirty: () => false, panel: { querySelector: () => ({ hidden: false }) }, a: { apply() {}, getRoot: () => ({ id: 'T0' }) }, presence: async () => {}, setStatus() {} });

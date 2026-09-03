@@ -29,13 +29,21 @@ line, in a node, in a Session record, or in Git. Configure publisher credentials
 only in an authorized publication environment, not every Agent worktree.
 
 The authenticated API is `/v1/projects/<id>/main`, `/preferences`,
-`/sessions/<session-id>`, and `/publish`. Public Cloud routes do not expose these
+`/sessions/<session-id>`, `/publish`, `/history`, and `/restore`. Public Cloud routes do not expose these
 records. Session writes carry `operationId`, `baseVersion`, `baseMainVersion`,
 `sourceCommit`, and `memory:{map,records}`. Snapshot and idempotency receipt are
 committed in one fsynced atomic replacement under a per-project lock. A reused ID
 with different content fails. Private/runtime paths are rejected by a strict record
 allowlist; retain records without retention pruning. Session snapshots include the
 server write time. Do not upload secret content.
+
+Every acknowledged write appends an immutable, server-timestamped history entry
+containing the full memory snapshot. `memory history --scope main` or `--scope
+session:<id>` reads it. `memory restore --input <private-request>` creates a new
+version from `targetVersion`; it never rewinds the revision counter. The request
+must include `operationId`, `scope`, `baseVersion`, and `targetVersion`. A stale
+`baseVersion` fails instead of overwriting a newer human or Agent edit. Restoring
+Main or preferences requires the administrator credential.
 
 `memory prepare` fetches versioned main/Session records and preserves conflicting
 local edits. `memory sync` uploads only to the current bound Session and replays an

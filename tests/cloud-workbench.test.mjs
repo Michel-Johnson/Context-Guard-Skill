@@ -99,6 +99,51 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
 });
 
+test('private Session history is timestamped, restorable, durable, and CAS protected', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-memory-history-'));
+  const memoryConfig = {
+    dataDir: path.join(dataDir, 'memory'),
+    adminToken: 'memory-admin',
+    projects: { 'context-guard': { token: 'project-memory-token' } },
+  };
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const headers = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
+  const map = title => ({ v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } });
+  const first = await request(service.url, '/v1/projects/context-guard/sessions/session-history', {
+    method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'history-one', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map: map('First version'), records: {} } }),
+  });
+  const second = await request(service.url, '/v1/projects/context-guard/sessions/session-history', {
+    method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'history-two', baseVersion: first.body.snapshot.version, baseMainVersion: null, sourceCommit: 'b'.repeat(40), memory: { map: map('Second version'), records: {} } }),
+  });
+  const history = await request(service.url, '/v1/projects/context-guard/history?scope=session%3Asession-history', { headers });
+  assert.equal(history.response.status, 200);
+  assert.deepEqual(history.body.history.map(entry => entry.snapshot.memory.map.root.title), ['First version', 'Second version']);
+  for (const entry of history.body.history) assert.equal(entry.at, new Date(entry.at).toISOString());
+  const restored = await request(service.url, '/v1/projects/context-guard/restore', {
+    method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'restore-first', scope: 'session:session-history', baseVersion: second.body.snapshot.version, targetVersion: first.body.snapshot.version }),
+  });
+  assert.equal(restored.response.status, 200, JSON.stringify(restored.body));
+  assert.equal(restored.body.snapshot.memory.map.root.title, 'First version');
+  assert.equal(restored.body.snapshot.restoredFrom, first.body.snapshot.version);
+  assert.notEqual(restored.body.snapshot.version, first.body.snapshot.version);
+  const stale = await request(service.url, '/v1/projects/context-guard/restore', {
+    method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'stale-restore', scope: 'session:session-history', baseVersion: second.body.snapshot.version, targetVersion: first.body.snapshot.version }),
+  });
+  assert.equal(stale.response.status, 409); assert.equal(stale.body.error.code, 'VERSION_CONFLICT');
+  await service.close();
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  const reloaded = await request(service.url, '/v1/projects/context-guard/sessions/session-history', { headers });
+  assert.equal(reloaded.body.snapshot.version, restored.body.snapshot.version);
+  assert.equal(reloaded.body.snapshot.memory.map.root.title, 'First version');
+  const reloadedHistory = await request(service.url, '/v1/projects/context-guard/history?scope=session%3Asession-history', { headers });
+  assert.deepEqual(reloadedHistory.body.history.map(entry => entry.action), ['write', 'write', 'restore']);
+});
+
 test('cloud commit is idempotent and rejects stale map versions', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
