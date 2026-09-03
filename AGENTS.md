@@ -1,5 +1,7 @@
 # This repository
 
+动手前先读仓库根目录的 `RULE.md` 和 `CI_todo.md`。
+
 Product vs test branches and security checks: `docs/development-security.md`.
 
 - **Product / main**: workbench, skill, product scripts, and approved CI/CD automation. Keep `tests/ci-smoke.mjs` and `.github/`; exclude them from the npm package through `package.json.files` and the package contract.

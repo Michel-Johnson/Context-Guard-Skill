@@ -23,6 +23,7 @@ export class WorkbenchSync {
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
     this.notice = document.createElement('span'); this.notice.className = 'sync-notice'; this.notice.setAttribute('role', 'status'); this.notice.hidden = true;
+    this.cloudIndicator = document.getElementById('cloud-sync-status');
     document.getElementById('btn-settings').after(this.notice);
     this.panel.querySelector('#cg-sync-retry').onclick = () => this.retry();
     this.panel.querySelector('#cg-sync-initialize').onclick = () => this.initializeCurrent();
@@ -34,14 +35,14 @@ export class WorkbenchSync {
     window.addEventListener('beforeunload', e => { if (this.dirty()) { this.saveDraft(); e.preventDefault(); e.returnValue = ''; } });
     window.addEventListener('pagehide', () => {
       if (!this.config || this.dirty()) return;
-      fetch(this.endpoint('/api/presence'), { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
+      fetch(this.endpoint('/api/presence'), { method: 'POST', headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
     });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
   endpoint(route) { return `${this.config?.apiBase || ''}${route}`; }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST') {
-    const response = await fetch(this.endpoint(route), { method, headers: { Authorization: `Bearer ${this.config.token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const response = await fetch(this.endpoint(route), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
     const result = await response.json();
     if (!response.ok) { const e = new Error(result.error?.message || 'Request failed'); Object.assign(e, result.error); throw e; }
     return result;
@@ -96,7 +97,7 @@ export class WorkbenchSync {
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         this.initializationRequired = true;
         this.panel.querySelector('#cg-sync-initialize').hidden = false;
-        this.connect(); await this.refreshAccess();
+        this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
         this.setStatus('error', '尚未创建真实地图；可将当前页面设为真实地图');
         return false;
       }
@@ -104,16 +105,18 @@ export class WorkbenchSync {
       this.a.apply(state.doc); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const restored = stored(this.captureKey), legacy = stored('cg-workbench-maps-v16');
       this.recovery = restored; this.legacy = legacy;
-      this.connect(); await this.refreshAccess();
+      this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
       this.setStatus('synced', restored || legacy ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : '');
       return true;
     } catch (e) { this.setStatus('error', e.message); return false; }
   }
   connect() {
     this.events?.close();
-    this.events = new EventSource(`${this.endpoint('/api/events')}?token=${encodeURIComponent(this.config.token)}&clientId=${this.id}`);
+    const query = new URLSearchParams({ clientId: this.id }); if (this.config.token) query.set('token', this.config.token);
+    this.events = new EventSource(`${this.endpoint('/api/events')}?${query}`, { withCredentials: true });
     this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
     this.events.addEventListener('access', () => this.refreshAccess());
+    this.events.addEventListener('cloud-sync', e => this.renderCloudStatus(JSON.parse(e.data)));
     this.events.addEventListener('checkpoint', async e => {
       const { checkpoint } = JSON.parse(e.data);
       if (!this.composing && document.activeElement?.isContentEditable) document.activeElement.blur();
@@ -122,7 +125,7 @@ export class WorkbenchSync {
     });
     this.events.onerror = async () => {
       if (this.dirty()) this.saveDraft(); this.setStatus('offline');
-      try { const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store' }); const config = await response.json(); if (config.token !== this.config.token) { this.config = config; this.connect(); } } catch {}
+      try { const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin' }); const config = await response.json(); if (JSON.stringify(config) !== JSON.stringify(this.config)) { this.config = config; this.connect(); } } catch {}
     };
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
@@ -265,6 +268,19 @@ export class WorkbenchSync {
     select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
     this.a.setAccess(this.grants?.[this.activeSession]?.nodes || [], this.activeSession, active, this.activeSession === ALL_SESSIONS);
+  }
+  renderCloudStatus(status) {
+    if (!this.cloudIndicator) return;
+    if (!status?.configured) { this.cloudIndicator.hidden = true; return; }
+    const value = status.status === 'synced' ? 'synced' : ['conflict', 'error'].includes(status.status) ? status.status : 'syncing';
+    this.cloudIndicator.hidden = false; this.cloudIndicator.className = `cloud-sync-status ${value}`;
+    const label = value === 'synced' ? '云端已同步' : value === 'syncing' ? '云端同步中' : value === 'conflict' ? '云端同步冲突' : '云端同步失败';
+    this.cloudIndicator.setAttribute('aria-label', label); this.cloudIndicator.title = label;
+  }
+  async refreshCloudStatus() {
+    if (this.config?.root?.startsWith('cloud:')) { this.renderCloudStatus({ configured: true, status: 'synced' }); return; }
+    try { this.renderCloudStatus(await this.call('/api/cloud-sync')); }
+    catch { if (this.cloudIndicator) this.cloudIndicator.hidden = true; }
   }
   async selectSession(sessionId) {
     if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId)) return false;

@@ -5,7 +5,7 @@ description: "Keep folder-scoped project memory: sessions, bugs, tasks, and the 
 
 # Context Guard
 
-Human–agent project memory for Codex, Cursor, and Claude. Hooks activate it; the agent records; the human confirms proposals in the local HTML workbench. Static/cloud views are read-only and chat assent does not grant browser write authority.
+Human–agent project memory for Codex, Cursor, and Claude. Hooks activate it; the agent records; the human confirms proposals in an authorized HTML workbench. Static views are read-only and chat assent does not grant browser write authority.
 
 ## When to use
 
@@ -38,6 +38,18 @@ For ongoing observation, initialize `map inbox --start` once for the actual sess
 
 At each supported lifecycle point hooks provide the interface commands and a disk observation. Before tools act on map state, use a fresh CLI read/checkpoint. To wake an idle Codex desktop task, use its supported in-thread heartbeat automation to consume the inbox; file events alone cannot wake the model. Minute-based scheduling is not a guarantee of instant response. Do not start another model process to impersonate the current task, or create automations without the user's request.
 
+### Cloud-connected projects
+
+Cloud is a multi-project directory; each project still owns an independent Map.
+When `.codex/context/private/cloud-sync/config.json` exists, run
+`context-guard sync prepare --root <project> --session <actual-session-id>`
+before development and `context-guard sync finish ...` after verification.
+Remote events enter a durable private inbox immediately but must not interrupt
+the Agent one by one. Disjoint changes rebase; `WORK_IMPACT` leaves the work
+unverified until it is reconciled. Hooks automate checkpoints where supported,
+but the server transaction is the correctness boundary. Read
+`references/cloud-sync-interface.md` for connection, event and recovery rules.
+
 ### Bugs — record fast
 
 When you find a bug: next `B` id, thin `bugs/{id}.md` plus `fixes/{id}.md` (`怎么修` is `未修` if still open), stub on that map node’s `bugs[]`, request versioned indexes; commit/push only when explicitly authorized. Prefer `context-guard record-bad-case` when that command is available. Tell the human the id. On GitHack they can see the open-bug list after push. Status changes: human says so in chat (cloud) or writes back from the local workbench (local). Do not create `bad-cases.md`.
@@ -52,7 +64,7 @@ When a credible failure or user-reported bad case appears, record it immediately
 
 For first-use mapping, write an Agent-produced JSON through `context-guard write-candidates --root <project> --input <file-or->`; invalid lens/candidate structures are rejected before the workbench reads them. Before the final response, explicitly archive durable session results once with `context-guard archive-session --root <project> --session <actual-session-id> --summary <summary> --decisions <decisions> --next <next-steps> --files <comma-separated>`. Pass every repo-relative file changed by this Agent. The archive command automatically appends the summary only to accepted nodes covered by `owns`. An uncovered file is unclassified and must not create a Map node by itself. If a test, document, or configuration file belongs to an existing node but is outside its `owns`, pass `--input <json-file-or->` with an `assignments` item containing `nodeId`, `reason`, and `files`. Propose a node only for a genuinely independent module, interface, component, or responsibility; the `proposal` input must contain `parentId`, `title`, `purpose`, `reason`, `basis`, and `files`, include non-supporting implementation evidence, and still requires human confirmation. Authorization, validation, `UI_PENDING`, and version conflicts fail the archive visibly; never claim the Map was updated after a failed command. This is Agent-driven and never a Stop-hook gate.
 
-CLI: `context-guard init`, `set-language`, `doctor`, `workbench`, `map read/status/changes/inbox/ack/watch/apply/operation/projections/reconcile`, `record-bad-case`, `record-bad-case-fix`, `write-candidates`, and `archive-session`. People look at the workbench, not a generated roadmap page. Do not read or update a legacy `.codex/context/roadmap.md`.
+CLI: `context-guard init`, `set-language`, `doctor`, `workbench`, `sync connect/ensure/status/pull/prepare/track/checkpoint/finish`, `map read/status/changes/inbox/ack/watch/apply/operation/projections/reconcile`, `record-bad-case`, `record-bad-case-fix`, `write-candidates`, and `archive-session`. People look at the workbench, not a generated roadmap page. Do not read or update a legacy `.codex/context/roadmap.md`.
 
 ## What not to do
 
