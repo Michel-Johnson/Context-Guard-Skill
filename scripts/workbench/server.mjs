@@ -50,7 +50,10 @@ async function queueCodexMessage({ sessionId, message, root }) {
   });
 }
 export async function health(state) {
-  try { const res = await fetch(new URL('/__context_guard/health', state.url), { signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
+  // Migration may ask an older service to drain after this probe. Do not leave
+  // a pooled keep-alive socket that makes its graceful `server.close()` wait
+  // for our own diagnostic connection (observed on macOS runners).
+  try { const res = await fetch(new URL('/__context_guard/health', state.url), { headers: { Connection: 'close' }, signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
 }
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
