@@ -291,8 +291,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           server.close(error => error ? reject(error) : resolve());
         });
         for (const p of peers.values()) p.res?.end();
-        // Node 18 does not reap idle keep-alive sockets in server.close().
+        // A CLI stop owns this loopback server and must not leave undici/Node 24
+        // keep-alive connections holding the project lock after the response.
         server.closeIdleConnections?.();
+        server.closeAllConnections?.();
         await disconnected;
         await store.close(); await projectionQueue;
         if ((await readJSON(statePath(root), null))?.instance === instance) await fs.unlink(statePath(root));
