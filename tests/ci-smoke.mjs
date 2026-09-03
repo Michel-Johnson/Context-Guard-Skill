@@ -74,6 +74,18 @@ function installedPath(home) {
 
 async function main() {
   const python = findPython();
+  const cloudService = path.join(repositoryRoot, "deploy", "context-guard-cloud.service");
+  assert.ok(fs.existsSync(cloudService), "repository must include the Cloud systemd service");
+  const serviceUnit = fs.readFileSync(cloudService, "utf8");
+  for (const required of [
+    "EnvironmentFile=-%h/.config/context-guard-cloud.env",
+    "CONTEXT_GUARD_CLOUD_HOST=0.0.0.0",
+    "CONTEXT_GUARD_CLOUD_PORT=8788",
+    "CONTEXT_GUARD_CLOUD_DATA=%h/context-guard-cloud-data",
+    "scripts/cloud/server.mjs"
+  ]) {
+    assert.ok(serviceUnit.includes(required), `Cloud systemd service must configure ${required}`);
+  }
   const packedDirectory = path.join(temporaryRoot, "packed");
   const consumerDirectory = path.join(temporaryRoot, "consumer");
   const npmCache = path.join(temporaryRoot, "npm-cache");
@@ -99,7 +111,14 @@ async function main() {
   const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
   const hookScript = path.join(packageDirectory, "scripts", "context_guard_hook.py");
   const cloudDeploymentGuide = path.join(packageDirectory, "references", "cloud-deployment.md");
-  checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  const syntheticCache = path.join(packageDirectory, "scripts", "__pycache__");
+  fs.mkdirSync(syntheticCache, { recursive: true });
+  fs.writeFileSync(path.join(syntheticCache, "context_guard.cpython-test.pyc"), "synthetic cache");
+  try {
+    checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  } finally {
+    fs.rmSync(syntheticCache, { recursive: true, force: true });
+  }
   assert.equal(countSkillFiles(packageDirectory), 1, "published package must contain one skill");
   assert.ok(fs.existsSync(cloudDeploymentGuide), "published package must include the cloud deployment guide");
   const deploymentGuide = fs.readFileSync(cloudDeploymentGuide, "utf8");

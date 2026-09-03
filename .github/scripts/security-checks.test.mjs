@@ -47,9 +47,10 @@ const privateKey = crypto.generateKeyPairSync("rsa", { modulusLength: 1024 }).pr
 try {
   getScanner();
   check("forbidden paths and explicit safe examples", () => {
-    for (const name of [".codex/context/map.json", "nested/.codex/session.md", ".env", ".env.production", ".npmrc", "id_rsa", "key.key", "secrets.json", "output/report.json", "node_modules/file.js", "../escape", "a\\b"]) assert.equal(forbiddenPath(name), true);
+    for (const name of [".codex/context/map.json", "nested/.codex/session.md", ".env", ".env.production", ".npmrc", "id_rsa", "key.key", "secrets.json", "output/report.json", "temp/experiment.txt", "node_modules/file.js", "../escape", "a\\b"]) assert.equal(forbiddenPath(name), true);
     for (const name of ["README.md", ".env.example", "agents/openai.yaml", ".github/scripts/security-checks.test.mjs"]) assert.equal(forbiddenPath(name), false);
     assert.equal(forbiddenPath(".github/scripts/check.mjs", true), true);
+    assert.match(fs.readFileSync(path.join(toolRoot, ".gitignore"), "utf8"), /^temp\/$/m);
   });
   const root = createRepository("index");
   check("clean staged snapshot", () => snapshot(root));
@@ -174,6 +175,18 @@ try {
     write(existing, ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n");
     assert.notEqual(cli("security-hooks.mjs", ["install"], existing).status, 0);
     assert.equal(fs.readFileSync(path.join(existing, ".git/hooks/pre-commit"), "utf8"), "#!/bin/sh\nexit 0\n");
+  });
+  check("approved Cloud tests pass the product branch guard", () => {
+    const product = createRepository("cloud-product-tests");
+    for (const name of ["tests/cloud-sync-client.test.mjs", "tests/cloud-workbench.test.mjs"]) {
+      write(product, name, "// approved product test\n");
+    }
+    git(product, "add", "tests");
+    const python = pythonInvocation();
+    const result = spawnSync(python.command, [...python.prefix, path.join(toolRoot, "scripts", "branch_guard.py")], {
+      cwd: product, env, encoding: "utf8", windowsHide: true, timeout: 120_000
+    });
+    assert.equal(result.status, 0, result.stderr);
   });
   const npm = npmInvocation();
   const packed = JSON.parse(run(npm.command, [...npm.args, "pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot], { cwd: toolRoot }))[0];

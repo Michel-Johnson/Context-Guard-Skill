@@ -7,17 +7,11 @@ import argparse
 import json
 import os
 import re
-import signal
-import socket
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 
 
 def configure_stdio() -> None:
@@ -26,41 +20,6 @@ def configure_stdio() -> None:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
-
-PARKED = (
-    "export-roadmap",
-    "create-branch-task",
-    "checkpoint-roadmap-node",
-    "subagent-register",
-    "subagent-complete",
-    "validate-bad-cases",
-    "validate-roadmap-maintenance",
-    "validate-feature-chains",
-    "test-hub-add",
-    "test-hub-list",
-    "test-hub-enable",
-    "test-hub-disable",
-    "test-hub-set-policy",
-    "test-hub-remove",
-    "feature-chain-add",
-    "feature-chain-propose",
-    "feature-chain-auto-propose",
-    "feature-chain-attach-bc",
-    "feature-chain-approve",
-    "feature-chain-dry-run",
-    "feature-chain-set-policy",
-    "feature-chain-set-checkpoint",
-    "feature-chain-suggest",
-    "feature-chain-plan",
-    "feature-chain-list",
-    "feature-chain-summary",
-    "feature-chain-overlap",
-    "feature-chain-coverage",
-    "feature-chain-candidates",
-    "show-test-hub",
-    "serve-test-hub",
-    "dev-complete",
-)
 
 INDEX_MD = """# Context Index
 
@@ -751,58 +710,6 @@ def record_bad_case_fix(
     return fix_path
 
 
-def workbench_state_path(root: Path) -> Path:
-    return context_dir(root) / "private" / "workbench.json"
-
-
-def workbench_health(url: str, timeout: float = 0.5, report_error: bool = False) -> dict[str, object] | None:
-    health_url = url.split("/prototype/", 1)[0].rstrip("/") + "/__context_guard/health"
-    try:
-        with urllib.request.urlopen(health_url, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            return data if isinstance(data, dict) else None
-    except (OSError, ValueError, urllib.error.URLError) as exc:
-        if report_error:
-            print(f"[context-guard] health request failed: {exc}", file=sys.stderr)
-        return None
-
-
-def running_workbench(root: Path) -> dict[str, object] | None:
-    state = read_json(workbench_state_path(root), {})
-    if not isinstance(state, dict) or not isinstance(state.get("url"), str):
-        return None
-    health = workbench_health(str(state["url"]))
-    if not health:
-        return None
-    if health.get("root") != str(root.resolve()):
-        try:
-            common = subprocess.run(
-                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                cwd=root, capture_output=True, text=True, timeout=2, check=True,
-            ).stdout.strip()
-            project_id = "git-" + hashlib.sha256(str(Path(common).resolve()).encode()).hexdigest()[:20]
-        except (OSError, subprocess.SubprocessError):
-            return None
-        if health.get("projectId") != project_id:
-            return None
-    return state
-
-
-def first_available_port(host: str, preferred: int) -> int:
-    for port in range(preferred, preferred + 21):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            try:
-                sock.bind((host, port))
-            except OSError:
-                continue
-            return port
-    raise OSError(f"no available port from {preferred} to {preferred + 20}")
-
-
-def workbench_url(host: str, port: int) -> str:
-    return f"http://{host}:{port}/prototype/workbench.html"
-
-
 def validate_workbench_host(host: str) -> None:
     if host not in {"127.0.0.1", "localhost"}:
         raise ValueError("workbench host must be 127.0.0.1 or localhost")
@@ -857,28 +764,18 @@ def show_roadmap(root: Path, should_open: bool) -> int:
     return 0
 
 
-def parked_command(name: str) -> int:
-    print(
-        f"[context-guard] `{name}` is parked. v1 is sessions / bugs / tasks / map. "
-        "See TODO.md at the repo root. Do not expand Test Hub or Roadmap HTML.",
-        file=sys.stderr,
-    )
-    return 2
-
-
 def main() -> int:
     configure_stdio()
     parser = argparse.ArgumentParser(description="Context Guard v1 utilities")
     parser.add_argument(
         "command",
         choices=[
-            "init", "set-language", "show-roadmap", "workbench", "record-bad-case",
-            "record-bad-case-fix", "archive-session", "write-candidates", *PARKED,
+            "init", "set-language", "workbench", "record-bad-case",
+            "record-bad-case-fix", "archive-session", "write-candidates",
         ],
     )
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--language", default=None)
-    parser.add_argument("--open", action="store_true")
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--stop", action="store_true")
@@ -907,8 +804,6 @@ def main() -> int:
     blocked = guard_implicit_skill_root(root, explicit)
     if blocked:
         return blocked
-    if args.command in PARKED:
-        return parked_command(args.command)
     if args.command == "init":
         created = init_context(root)
         print(f"[context-guard] context: {context_dir(root)}")
@@ -987,8 +882,6 @@ def main() -> int:
         except (OSError, ValueError) as exc:
             print(f"[context-guard] workbench failed: {exc}", file=sys.stderr)
             return 1
-    if args.command == "show-roadmap":
-        return show_roadmap(root, args.open and not args.no_open)
     return 2
 
 

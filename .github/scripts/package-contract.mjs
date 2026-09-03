@@ -62,6 +62,9 @@ export const installedFiles = [
 ];
 
 export const forbiddenInstalledPaths = [
+  "scripts/cloud",
+  "scripts/branch_guard.py",
+  "scripts/__pycache__",
   "tests",
   "fixtures",
   ".github",
