@@ -81,6 +81,98 @@ test('the reused workbench can edit and persist the project overview map', async
   assert.deepEqual(access.body, { sessions: [], grants: {}, currentSessionId: null });
 });
 
+test('overview project edits survive reconciliation and a server restart', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-overview-restart-'));
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const state = await request(service.url, '/api/workbench/overview/api/state', { headers });
+  const todo = { id: 'TD-human', title: 'Human todo', status: 'pending' };
+  const saved = await request(service.url, '/api/workbench/overview/api/commit', {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      baseVersion: state.body.version,
+      operationId: 'overview-project-edit',
+      operations: [{ type: 'update', id: 'P_context-guard', fields: { purpose: 'human description', todos: [todo] } }],
+    }),
+  });
+  assert.equal(saved.response.status, 200);
+  await service.close();
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  const reloaded = await request(service.url, '/api/workbench/overview/api/state', { headers });
+  const projectNode = reloaded.body.doc.root.children.find(node => node.cloudProjectId === 'context-guard');
+  assert.equal(projectNode.purpose, 'human description');
+  assert.deepEqual(projectNode.todos, [todo]);
+});
+
+test('acknowledged map edits are file-backed after restart and events carry server time', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-durable-map-'));
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  const commit = { baseVersion: null, operationId: 'durable-edit', operations: [{ type: 'initialize', project: 'Context Guard', node: { id: 'T0', title: 'Durable edit', kind: 'module', state: 'dirty', children: [] } }] };
+  const saved = await request(service.url, '/api/projects/context-guard/commits', { method: 'POST', headers, body: JSON.stringify(commit) });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.body.persistedAt, new Date(saved.body.persistedAt).toISOString());
+  const disk = JSON.parse(await fs.readFile(path.join(dataDir, 'maps/context-guard.json'), 'utf8'));
+  assert.equal(disk.document.root.title, 'Durable edit');
+  assert.equal(disk.updatedAt, saved.body.persistedAt);
+  const changes = await request(service.url, '/api/projects/context-guard/changes?after=0', { headers });
+  assert.equal(changes.body.events[0].at, saved.body.persistedAt);
+  await service.close();
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+  const reloaded = await request(service.url, '/api/projects/context-guard/map', { headers });
+  assert.equal(reloaded.body.document.root.title, 'Durable edit');
+  assert.equal(reloaded.body.version, saved.body.version);
+});
+
+test('prepared cloud transactions recover idempotently after interruption', async t => {
+  const stages = ['transaction-prepared', 'event-persisted', 'map-persisted', 'receipt-persisted'];
+  for (const stage of stages) {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), `context-guard-recover-${stage}-`));
+    let injected = false;
+    let service = await startCloudServer({
+      host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token',
+      faultInjector(point) {
+        if (!injected && point === stage) { injected = true; throw new Error(`interrupted at ${stage}`); }
+      },
+    });
+    try {
+      const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+      const commit = { baseVersion: null, operationId: `recover-${stage}`, operations: [{ type: 'initialize', project: 'Context Guard', node: { id: 'T0', title: stage, kind: 'module', state: 'dirty', children: [] } }] };
+      const interrupted = await request(service.url, '/api/projects/context-guard/commits', { method: 'POST', headers, body: JSON.stringify(commit) });
+      assert.equal(interrupted.response.status, 500, stage);
+      await service.close();
+      service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
+      const retried = await request(service.url, '/api/projects/context-guard/commits', { method: 'POST', headers, body: JSON.stringify(commit) });
+      assert.equal(retried.response.status, 200, stage);
+      const map = await request(service.url, '/api/projects/context-guard/map', { headers });
+      assert.equal(map.body.document.root.title, stage);
+      const events = await request(service.url, '/api/projects/context-guard/changes?after=0', { headers });
+      assert.equal(events.body.events.length, 1, stage);
+      assert.equal(events.body.events[0].at, retried.body.persistedAt, stage);
+      assert.deepEqual(await fs.readdir(path.join(dataDir, 'transactions')), [], stage);
+    } finally {
+      await service.close().catch(() => {});
+      await fs.rm(dataDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('concurrent projects keep every registry update on disk', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+  await request(f.url, '/api/projects', { method: 'POST', headers, body: JSON.stringify({ id: 'second', name: 'Second' }) });
+  const initialize = (id, title) => request(f.url, `/api/projects/${id}/commits`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ baseVersion: null, operationId: `initialize-${id}`, operations: [{ type: 'initialize', project: title, node: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }] }),
+  });
+  const results = await Promise.all([initialize('context-guard', 'Context Guard'), initialize('second', 'Second')]);
+  assert.deepEqual(results.map(result => result.response.status), [200, 200]);
+  const registry = JSON.parse(await fs.readFile(path.join(f.dataDir, 'projects.json'), 'utf8'));
+  assert.deepEqual(registry.projects.map(project => [project.id, project.status]), [['context-guard', 'connected'], ['second', 'connected']]);
+});
+
 test('cloud bootstrap never exposes an administrative credential', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const bootstrap = await request(f.url, '/api/workbench/overview/bootstrap');
