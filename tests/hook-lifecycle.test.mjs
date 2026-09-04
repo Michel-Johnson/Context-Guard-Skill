@@ -246,6 +246,47 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   }
 });
 
+test('read-only inspection remains available without a plan while writes stay gated', async t => {
+  const project = await fixture();
+  t.after(() => dispose(project));
+  const session = 'read-only-session';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await installMap(project);
+  await fs.writeFile(path.join(project, '.codex/context/sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
+
+  const commands = [
+    'sed -n \'1,20p\' RULE.md && cat CI_todo.md',
+    'rg -n "plan-start" scripts tests | head -20',
+    'git status --short && git diff --stat && git log -1 --oneline',
+    'git branch --show-current && git worktree list',
+    'ps aux | rg context-guard',
+    'lsof -nP -iTCP:1355 -sTCP:LISTEN',
+    'curl -fsS http://127.0.0.1:1355/api/health',
+    `node ${path.join(repository, 'bin/context-guard-skill.js')} workbench --diagnose --root ${project}`,
+    `node ${path.join(repository, 'bin/context-guard-skill.js')} workbench --binding-status --root ${project} --session ${session}`,
+    `node ${path.join(repository, 'bin/context-guard-skill.js')} plan-status --root ${project} --session ${session}`,
+  ];
+  for (const command of commands) {
+    const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
+    assert.equal(result.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
+
+  for (const command of ['touch src/new.txt', 'sed -ni s/a/b/ src/a.txt', 'git branch new-feature', 'curl -XPOST http://127.0.0.1/api/reset', 'rm context-guard plan-start']) {
+    const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
+    assert.equal(result.json.hookSpecificOutput.permissionDecision, 'deny', command);
+    assert.match(result.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
+  }
+
+  const protectedTextOnly = hook('PreToolUse', project, session, {
+    tool_name: 'apply_patch',
+    tool_input: `*** Begin Patch\n*** Add File: src/note.txt\n+Do not write .codex/context/map.json directly.\n*** End Patch`,
+  });
+  assert.equal(protectedTextOnly.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
+  assert.doesNotMatch(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /Direct map/);
+});
+
 test('configured Cloud hooks prepare once, track paths, checkpoint and require finish', async t => {
   const project = await fixture();
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hook-cloud-'));
@@ -566,6 +607,12 @@ with tempfile.TemporaryDirectory() as directory:
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'touch x'}})
     assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 fix.py'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git status --short'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md && rg -n hook scripts | head -5'}})
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rg --pre ./writer pattern .'}})
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'find . -delete'}})
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git diff --output=leak.patch'}})
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'curl --data x http://127.0.0.1/'}})
+    assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rm context-guard plan-start'}})
     assert hook.tool_paths({'tool_name':'apply_patch','tool_input':'*** Update File: src/a\\n*** Move to: src/b'}, root) == ['src/a', 'src/b']
 print('verified')
 `]);
