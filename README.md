@@ -225,7 +225,7 @@ See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 
 ## Local workbench synchronization
 
-Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
+Node now owns local map submissions, live page updates, and attachments. In a served workbench, human uploads are written as unique files under `docs/shots/`; the browser no longer needs project-directory permission, and only map-referenced files can be downloaded through the attachment endpoint. Its event journal is cursor-chain validated at startup: an interrupted final append is backed up and repaired with an explicit history-gap event, while interior corruption keeps the map read-only until a human confirms recovery in Settings. Agents cannot approve journal loss. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
 
 ## Cloud event synchronization
 

@@ -45,7 +45,7 @@
     "test:clients": "node .github/scripts/smoke-clients.mjs",
     "test:cd": "node .github/scripts/rehearse-cd.mjs",
     "test:sync": "node --test tests/workbench-sync.test.mjs tests/workbench-inbox.test.mjs",
-    "test:browser": "node tests/workbench-browser.mjs && node tests/cloud-workbench-browser.mjs && node tests/cloud-sync-browser.mjs",
+    "test:browser": "node tests/workbench-browser.mjs && node tests/cloud-workbench-browser.mjs && node tests/cloud-sync-browser.mjs && node tests/workbench-journal-recovery-browser.mjs",
     "cloud:start": "node scripts/cloud/server.mjs"
   },
   "engines": {

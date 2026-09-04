@@ -28,6 +28,9 @@ export class WorkbenchSync {
     this.urlPinned = Boolean(requestedSession);
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
+    this.repairButton = document.createElement('button'); this.repairButton.id = 'cg-sync-repair'; this.repairButton.hidden = true;
+    this.panel.querySelector('.sync-actions').append(this.repairButton);
+    this.repairButton.onclick = () => this.repair();
     document.getElementById('settings-menu').append(this.panel);
     this.notice = document.createElement('span'); this.notice.className = 'sync-notice'; this.notice.setAttribute('role', 'status'); this.notice.hidden = true;
     this.cloudIndicator = document.getElementById('cloud-sync-status');
@@ -75,6 +78,8 @@ export class WorkbenchSync {
     return !!(restored || legacy);
   }
   setStatus(status, message = '') {
+    if (this.serverRecovery && status === 'synced') { status = 'error'; message = this.serverRecovery.message || '服务只读，需要恢复'; }
+    if (!message && this.journal?.message) message = this.journal.message;
     this.status = status; this.panel.dataset.status = status;
     this.panel.querySelector('#cg-sync-status').textContent = labels[status] + (message ? ` · ${message}` : '');
     this.panel.querySelector('#cg-sync-version').textContent = this.version ? this.version.slice(0, 10) : '';
@@ -84,6 +89,26 @@ export class WorkbenchSync {
     this.notice.hidden = !this.config || !attention;
     this.notice.textContent = attention || '';
     this.notice.title = attention ? this.panel.querySelector('#cg-sync-status').textContent + '；请打开设置中的同步与恢复' : '';
+  }
+  recoveryState(state) {
+    this.serverRecovery = state.recovery || state.error || null;
+    this.journal = state.journal || null;
+    if (this.repairButton) {
+      this.repairButton.hidden = !this.serverRecovery;
+      this.repairButton.textContent = state.recovery?.source === 'journal' ? '保留当前地图并恢复日志（历史有缺口）' : '重读文件并尝试恢复';
+    }
+  }
+  async repair() {
+    try {
+      if (this.dirty()) { this.saveDraft(); this.export(); }
+      const current = await this.call('/api/state');
+      this.recoveryState(current);
+      const result = await this.call('/api/recover', { baseVersion: current.version, acceptJournalGap: current.recovery?.source === 'journal' });
+      this.recoveryState(result);
+      if (result.recovery || result.error) { this.setStatus('error', this.serverRecovery.message); return; }
+      if (this.dirty()) { this.setStatus('conflict', '服务已恢复；旧草稿已保留，请比较后再提交'); return; }
+      await this.reload();
+    } catch (error) { this.setStatus('error', error.message); }
   }
   saveDraft() {
     if (!this.captureKey) return;
@@ -119,9 +144,10 @@ export class WorkbenchSync {
     if (!this.config) return false;
     try {
       const state = await this.call('/api/state');
+      this.recoveryState(state);
       this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
       if (this.viewId.startsWith('session:')) this.pendingSession = '';
-      if (state.error) throw new Error(state.error?.message || '服务需要恢复');
+      if (state.error || state.recovery) throw new Error(state.error?.message || state.recovery?.message || '服务需要恢复');
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         const readOnlyMain = this.viewId === 'main' && state.source?.status !== 'local-folder';
         this.initializationRequired = true;
@@ -201,6 +227,7 @@ export class WorkbenchSync {
     if (this.pendingSession) return;
     if (state.viewId && state.viewId !== this.viewId) return;
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
+    this.recoveryState(state);
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) { await this.reload(); return; }
     if (state.version === this.version) {
@@ -211,6 +238,7 @@ export class WorkbenchSync {
     if (this.dirty()) { this.saveDraft(); this.setStatus('conflict'); return; }
     const current = await this.call('/api/state');
     if (generation !== this.loadGeneration) return;
+    this.recoveryState(current);
     if (current.error || current.recovery || !current.doc) { this.setStatus('error', current.error?.message || '服务需要恢复'); return; }
     if (this.dirty()) { this.setStatus('conflict'); return; }
     this.doc = current.doc; this.version = current.version; this.source = current.source || null; this.a.apply(this.doc); this.baseTree = copy(this.a.getRoot()); this.revision++;
@@ -218,7 +246,7 @@ export class WorkbenchSync {
   }
   async flush() {
     clearTimeout(this.timer);
-    if (!this.ready || this.composing || ['conflict', 'offline', 'error'].includes(this.status)) return;
+    if (!this.ready || this.serverRecovery || this.composing || ['conflict', 'offline', 'error'].includes(this.status)) return;
     if (this.inflight) { await this.inflight; if (!this.inflight && !['conflict', 'offline', 'error'].includes(this.status) && this.operations().length) return this.flush(); return; }
     const operations = this.operations(); if (!operations.length) { await this.presence(); return; }
     const sentTree = copy(this.a.getRoot());
@@ -251,6 +279,7 @@ export class WorkbenchSync {
         const result = await this.call('/api/commit', this.pendingRequest);
         if (!result.committed) throw new Error('操作未提交；请保留草稿后读取磁盘');
         const current = await this.call('/api/state');
+        this.recoveryState(current);
         this.version = result.version;
         // The request may predate later local typing. Never mark that later draft saved.
         const { applyOperations } = await import('./map-model.mjs');
@@ -259,6 +288,7 @@ export class WorkbenchSync {
         if (current.version !== result.version) { this.setStatus('conflict'); return; }
       } else {
         const current = await this.call('/api/state');
+        this.recoveryState(current);
         if (current.error || current.recovery) throw new Error(current.error?.message || '服务需要恢复');
         if (current.version !== this.version && this.dirty()) { this.setStatus('conflict'); return; }
         if (current.version !== this.version) { await this.receive(current); return; }
@@ -292,13 +322,14 @@ export class WorkbenchSync {
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     const current = await this.call('/api/state');
     if (generation !== this.loadGeneration) return;
-    if (current.error || !current.doc?.root) {
+    this.recoveryState(current);
+    if (current.error || current.recovery || !current.doc?.root) {
       const readOnlyMain = this.viewId === 'main' && current.source?.status !== 'local-folder';
       this.ready = false; this.initializationRequired = true; this.doc = current.doc; this.version = current.version;
       this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
       if (readOnlyMain) this.a.pending?.();
       if (!this.events) { this.connect(); await this.refreshAccess(); }
-      this.setStatus('error', current.error?.message || (readOnlyMain ? 'main 基线尚未发布' : '地图根节点尚未初始化')); return;
+      this.setStatus('error', current.error?.message || current.recovery?.message || (readOnlyMain ? 'main 基线尚未发布' : '地图根节点尚未初始化')); return;
     }
     this.initializationRequired = false;
     this.panel.querySelector('#cg-sync-initialize').hidden = true;
