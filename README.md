@@ -23,7 +23,7 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session asks which project workbench to use and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. You can also start or stop the workbench manually.
+**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session asks which project workbench to use and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. A private global registry outside the replaceable Skill install preserves project URLs and bindings across upgrades; a temporarily unavailable bound Session self-repairs by project identity instead of asking again.
 
 **Development policy for this repository:** source code follows the existing
 branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and

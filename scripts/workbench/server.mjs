@@ -49,12 +49,41 @@ async function queueCodexMessage({ sessionId, message, root }) {
     maxBuffer: 1024 * 1024,
   });
 }
-export async function health(state) {
-  // Migration may ask an older service to drain after this probe. Do not leave
-  // a pooled keep-alive socket that makes its graceful `server.close()` wait
-  // for our own diagnostic connection (observed on macOS runners).
-  try { const res = await fetch(new URL('/__context_guard/health', state.url), { headers: { Connection: 'close' }, signal: AbortSignal.timeout(600) }); return res.ok ? await res.json() : null; } catch { return null; }
+function loopbackJSON(target, { method = 'GET', headers = {}, body, timeout = 600 } = {}) {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => { if (!settled) { settled = true; resolve(value); } };
+    let req;
+    try {
+      req = http.request(target, { method, headers: { Connection: 'close', ...headers }, agent: false }, res => {
+        const chunks = [];
+        let size = 0;
+        res.on('data', chunk => {
+          size += chunk.length;
+          if (size > 1024 * 1024) { req.destroy(); finish(null); }
+          else chunks.push(chunk);
+        });
+        res.on('end', () => {
+          try { finish({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, value: JSON.parse(Buffer.concat(chunks).toString('utf8')) }); }
+          catch { finish(null); }
+        });
+        res.on('error', () => finish(null));
+      });
+      req.setTimeout(timeout, () => { req.destroy(); finish(null); });
+      req.on('error', () => finish(null));
+      if (body !== undefined) req.write(body);
+      req.end();
+    } catch { req?.destroy(); finish(null); }
+  });
 }
+export async function health(state) {
+  // A service may disappear between repeated migration probes. Node 24's
+  // pooled fetch/undici path can throw setTypeOfService EINVAL outside the
+  // request promise on macOS, so lifecycle control uses an unpooled socket.
+  const result = await loopbackJSON(new URL('/__context_guard/health', state.url));
+  return result?.ok ? result.value : null;
+}
+export { loopbackJSON };
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
