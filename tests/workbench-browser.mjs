@@ -131,15 +131,16 @@ try {
     const cs = getComputedStyle(s);
     const mark = getComputedStyle(s, '::before');
     const m = new DOMMatrix(mark.transform);
-    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, mark: mark.backgroundColor, content: mark.content, markRadius: mark.borderRadius, skewC: m.c };
+    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, size: cs.fontSize, mark: mark.backgroundColor, content: mark.content, markRadius: mark.borderRadius, skewC: m.c };
     s.remove();
     return out;
   });
   assert.equal(liveMark.bg, 'rgba(0, 0, 0, 0)', `live chip should not be a pill, got ${liveMark.bg}`);
   assert.equal(liveMark.radius, '0px');
   assert.equal(liveMark.color, 'rgb(45, 45, 45)');
+  assert.equal(liveMark.size, '14px');
   assert.equal(liveMark.mark, 'rgb(198, 237, 110)', `highlighter mark ${liveMark.mark}`);
-  assert.equal(liveMark.markRadius, '8px', 'live chip follows gallery 11 round marker');
+  assert.equal(liveMark.markRadius, '10px', 'live chip follows gallery 11 round marker, scaled up');
   assert.ok(Math.abs(liveMark.skewC - Math.tan(-4 * Math.PI / 180)) < 0.01, `round-head skew ${liveMark.skewC}`);
   recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
