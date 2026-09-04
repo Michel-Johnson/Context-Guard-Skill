@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
-import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
+import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot, loopbackJSON } from './server.mjs';
 import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
@@ -14,7 +14,8 @@ import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMe
 import { atomicWrite, encode } from './io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
 import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
-import { compatibleRuntime, runtimeIdentity } from './runtime.mjs';
+import { compatibleRuntime, runtimeIdentity, upgradeableRuntime } from './runtime.mjs';
+import { readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -50,7 +51,7 @@ export async function serviceInventory(project) {
       state,
       live,
       belongs,
-      status: !live ? 'dead' : !belongs ? 'foreign' : compatibleRuntime(live) ? 'ready' : 'legacy',
+      status: !live ? 'dead' : !belongs ? 'foreign' : compatibleRuntime(live) ? 'ready' : upgradeableRuntime(live) ? 'upgradeable' : 'legacy',
     });
   }
   const unique = [];
@@ -86,27 +87,42 @@ export async function diagnoseWorkbench(root, sessionId = '') {
   const inventory = await serviceInventory(project);
   const projectServices = inventory.records.filter(item => item.belongs && item.live);
   const ready = projectServices.filter(item => item.status === 'ready');
+  const upgradeable = projectServices.filter(item => item.status === 'upgradeable');
   const legacy = projectServices.filter(item => item.status === 'legacy');
   const duplicates = ready.length > 1;
   let named = { status: 'not-configured', url: null };
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(openedRoot, '.codex/context/private/named-entry.json');
+  const registry = await registeredProject(project).catch(() => null);
   const namedEntry = await readJSON(namedFile, null);
-  if (namedEntry?.origin) {
+  const canonicalOrigin = namedEntry?.origin || registry?.origin || '';
+  if (canonicalOrigin) {
     const expected = ready[0]?.live;
-    if (!expected) named = { status: legacy.length ? 'legacy-runtime' : 'backend-unavailable', url: namedEntry.origin + '/prototype/workbench.html' };
+    if (!expected) named = { status: legacy.length ? 'legacy-runtime' : upgradeable.length ? 'upgrade-required' : 'backend-unavailable', url: canonicalOrigin + '/prototype/workbench.html' };
     else {
-      try { await verifyWorkbenchUrl(namedEntry.origin + '/prototype/workbench.html', expected); named = { status: 'ready', url: namedEntry.origin + '/prototype/workbench.html' }; }
-      catch (error) { named = { status: 'mismatch', url: namedEntry.origin + '/prototype/workbench.html', error: error.message }; }
+      try { await verifyWorkbenchUrl(canonicalOrigin + '/prototype/workbench.html', expected); named = { status: 'ready', url: canonicalOrigin + '/prototype/workbench.html' }; }
+      catch (error) { named = { status: 'mismatch', url: canonicalOrigin + '/prototype/workbench.html', error: error.message }; }
     }
   }
-  const runtimeStatus = legacy.length ? 'legacy' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : 'stopped';
+  const runtimeStatus = legacy.length ? 'legacy' : upgradeable.length ? 'upgrade-required' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : 'stopped';
+  const namedRequired = process.env.CONTEXT_GUARD_NAMED_WORKBENCH !== '0';
+  const candidateUrl = namedRequired
+    ? named.url || binding.session?.workbenchUrl || null
+    : binding.session?.workbenchUrl || named.url || null;
+  let verified = false;
+  if (binding.session?.bound && candidateUrl && ready.length === 1 && !duplicates) {
+    try {
+      const target = new URL(candidateUrl);
+      if (namedRequired && !target.hostname.endsWith('.localhost')) throw new Error('Named project URL required');
+      await verifyWorkbenchUrl(candidateUrl, ready[0].live); verified = true;
+    } catch {}
+  }
   return {
     expectedRuntime: runtimeIdentity(),
     project: { id: project.projectId, kind: project.kind, root: openedRoot, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, main: project.binding?.main || null, bindingRequired: project.bindingRequired },
-    runtime: { status: runtimeStatus, services: inventory.records.map(publicService), named },
+    runtime: { status: runtimeStatus, services: inventory.records.map(publicService), named, registry },
     ...binding,
-    workbenchUrl: binding.session?.workbenchUrl || named.url || null,
-    session: { ...binding.session, verified: binding.session.bound && runtimeStatus === 'ready' && (!namedEntry || named.status === 'ready') },
+    workbenchUrl: candidateUrl,
+    session: { ...binding.session, verified },
     migrationRequired: legacy.length > 0 || duplicates || named.status === 'mismatch',
     migrationPlan: [...legacy, ...(duplicates ? ready.slice(1) : [])].map(item => ({
       retireKey: publicService(item).retireKey,
@@ -114,6 +130,27 @@ export async function diagnoseWorkbench(root, sessionId = '') {
       reason: item.status === 'legacy' ? 'incompatible-runtime' : 'duplicate-project-owner',
     })),
   };
+}
+
+async function stopUpgradeable(project, record) {
+  const state = record.state;
+  if (!state?.adminToken || !record.live?.instance) throw new MapError('LEGACY_SERVICE', 'The older workbench cannot be upgraded safely because its identity capability is incomplete', 409);
+  try { await request(state, '/api/stop', { method: 'POST', body: {} }); }
+  catch (error) {
+    // Another launcher may have won the same upgrade race. A disappeared or
+    // replaced instance is success for this launcher; only the unchanged old
+    // owner is a real stop failure.
+    const current = await health(state);
+    if (!current || current.instance !== record.live.instance) return;
+    throw new MapError('UPGRADE_PENDING', 'The older workbench could not be stopped safely. Save open page drafts and retry; no replacement was started.', 409, { cause: error.code || error.message });
+  }
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    const [live, lock] = await Promise.all([health(state), readJSON(projectLockPath(project), null)]);
+    if (!live && lock?.instance !== record.live.instance) return;
+    await pause(25);
+  }
+  throw new MapError('UPGRADE_PENDING', 'The older workbench has not released the project lock; no replacement was started', 503);
 }
 
 async function migrateServices(root, retireKeys) {
@@ -177,12 +214,18 @@ export async function ensureServer(root, port = 8877) {
   const liveProject = inventory.records.filter(item => item.belongs && item.live);
   const legacy = liveProject.filter(item => item.status === 'legacy');
   if (legacy.length) throw new MapError('LEGACY_SERVICE', 'An incompatible worktree service is active. Run workbench --diagnose, export its cache, then use the explicit migration command.', 409, { services: legacy.map(publicService) });
+  const upgradeable = liveProject.filter(item => item.status === 'upgradeable');
+  if (upgradeable.length > 1) throw new MapError('DUPLICATE_SERVICE', 'More than one older service owns this Git project. Diagnose and migrate exact instances.', 409, { services: upgradeable.map(publicService) });
+  if (upgradeable.length === 1) {
+    await stopUpgradeable(project, upgradeable[0]);
+  }
   const ready = liveProject.filter(item => item.status === 'ready');
   if (ready.length > 1) throw new MapError('DUPLICATE_SERVICE', 'More than one compatible service owns this Git project. Run workbench --diagnose and migrate exact instances; no process was stopped.', 409, { services: ready.map(publicService) });
   let state = ready[0]?.state || null, live = ready[0]?.live || null;
   if (state && live) {
     if (!state.adminToken) throw new MapError('LEGACY_SERVICE', 'Workbench state lacks its local CLI capability; migrate it explicitly', 409);
     if (sharedState !== statePath(root)) await fs.mkdir(path.dirname(statePath(root)), { recursive: true }).then(() => fs.writeFile(statePath(root), JSON.stringify(state, null, 2) + '\n'));
+    await rememberProject(project, { state: { ...state, ...live } });
     return state;
   }
   await fs.mkdir(path.join(root, '.codex/context/private'), { recursive: true, mode: 0o700 });
@@ -192,14 +235,24 @@ export async function ensureServer(root, port = 8877) {
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
     await pause(60); state = await readJSON(sharedState, null).catch(() => null) || await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
-    if (compatibleRuntime(live) && live.projectId === project.projectId) return state;
+    if (compatibleRuntime(live) && live.projectId === project.projectId) {
+      await rememberProject(project, { state: { ...state, ...live } });
+      return state;
+    }
   }
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
 export async function request(state, route, { token = state.adminToken, method = 'GET', body } = {}) {
-  const response = await fetch(new URL(route, state.url), { method, headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
-  const result = await response.json();
-  if (!response.ok) throw new MapError(result.error?.code || 'HTTP_ERROR', result.error?.message || response.statusText, response.status, result.error || {});
+  const encoded = body === undefined ? undefined : JSON.stringify(body);
+  const response = await loopbackJSON(new URL(route, state.url), {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(encoded === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(encoded) }) },
+    body: encoded,
+    timeout: 15000,
+  });
+  if (!response) throw new MapError('HTTP_ERROR', 'Workbench control request failed', 503);
+  const result = response.value;
+  if (!response.ok) throw new MapError(result.error?.code || 'HTTP_ERROR', result.error?.message || `HTTP ${response.status}`, response.status, result.error || {});
   return result;
 }
 export async function stopServer(root) {
@@ -227,6 +280,10 @@ async function inputJSON(file) {
 }
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
+    const registry = await readProjectRegistry();
+    return { count: registry.projects.length, projects: registry.projects };
+  }
   if (command === 'workbench' && opt._[0] === 'bind') {
     if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');
     return bindProject(root, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });

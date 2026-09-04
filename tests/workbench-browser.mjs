@@ -113,11 +113,11 @@ try {
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
   assert.equal(await page.locator('.session-chip').isVisible(), true);
   assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
-  assert.equal(await page.locator('#session-name').textContent(), '全部 Session');
+  assert.equal(await page.locator('#session-name').textContent(), '主工作台 · 全部 Session');
   assert.equal(await page.locator('#session-status').evaluate(el => el.classList.contains('empty')), true);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   assert.equal(await page.locator('#auth-count').count(), 0);
-  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '全部 Session');
+  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '主工作台 · 全部 Session');
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
   await page.locator('#session-chip').click();

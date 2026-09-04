@@ -188,6 +188,19 @@ test('newer stopped evidence wins over a stale active discovery for a bound Sess
   assert.equal(session.statusSeen, '2026-01-01T00:00:05Z');
 });
 
+test('a governance-blocked Stop is not shown as a still-running Agent Session', async () => {
+  const f = await fixture();
+  await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), [
+    JSON.stringify({ at: '2026-01-01T00:00:01Z', event: 'user-prompt-submit', platform: 'codex', session_id: 'blocked-stop' }),
+    JSON.stringify({ at: '2026-01-01T00:00:02Z', event: 'stop-blocked', platform: 'codex', session_id: 'blocked-stop' }),
+  ].join('\n') + '\n');
+  const access = await new Access(f.root, { codexSessions: async () => [] }).init();
+  await access.register('blocked-stop', { worktreeRoot: f.root });
+  const session = (await access.snapshot()).sessions[0];
+  assert.equal(session.status, 'stopped');
+  assert.equal(session.lastEvent, 'stop-blocked');
+});
+
 test('Bug handoff message carries the actionable Bug and node context', () => {
   const message = bugSessionMessage(
     { id: 'N1', title: '工作台同步' },

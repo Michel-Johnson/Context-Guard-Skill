@@ -1039,14 +1039,19 @@ def maybe_open_browser(url: str, enabled: bool) -> None:
         pass
 
 
-def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, raise_errors: bool = False) -> str | None:
+def start_workbench(root: Path, host: str = "127.0.0.1", port: int = 8877, open_browser: bool = True, raise_errors: bool = False,
+                    session_id: str = "") -> str | None:
     validate_workbench_host(host)
     if os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") == "1":
         return None
     init_context(root)
     try:
         should_open = open_browser and os.environ.get("CONTEXT_GUARD_HEADLESS") != "1" and not os.environ.get("CI")
-        result = run_node_workbench(["workbench", "--root", str(root), "--port", str(port), *(["--claim-open"] if should_open else [])])
+        result = run_node_workbench([
+            "workbench", "--root", str(root), "--port", str(port),
+            *(["--session", session_id] if session_id else []),
+            *(["--claim-open"] if should_open else []),
+        ])
         url = result["url"]
         maybe_open_browser(url, should_open and result.get("shouldOpen", False))
         return url

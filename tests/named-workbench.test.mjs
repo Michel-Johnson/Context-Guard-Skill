@@ -6,11 +6,12 @@ import http from 'node:http';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { ensureServer, stopServer, request } from '../scripts/workbench/cli.mjs';
+import { diagnoseWorkbench, ensureServer, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
-import { bindProject, resolveProjectRoot, projectName, saveMainBinding } from '../scripts/workbench/project.mjs';
+import { bindProject, resolveProjectRoot, projectId, projectName, resolveProject, saveMainBinding } from '../scripts/workbench/project.mjs';
 import { RouteStore } from '../scripts/workbench/portless-routes.mjs';
+import { readProjectRegistry } from '../scripts/workbench/registry.mjs';
 
 const cwd = process.cwd();
 // Non-Git fixtures must not inherit the development repository enclosing temp/.
@@ -97,6 +98,60 @@ test('backend port reuse fails closed without forwarding credentials; route can 
   const restored = await namedWorkbench(fresh.state, request, { dir });
   assert.equal(restored.url, named.url);
   assert.equal((await call(named.url, '/__context_guard/health')).status, 200);
+});
+test('global registry repairs a legacy worktree-owned name without creating a second project workbench', async t => {
+  const root = await fixture(t, 'Registry Project'), linked = path.join(root, 'linked');
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe', windowsHide: true });
+  git('init', '-b', 'trunk');
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture');
+  git('worktree', 'add', '-b', 'feature', linked);
+  await fs.mkdir(path.join(linked, '.codex/context'), { recursive: true });
+  await fs.copyFile(path.join(root, '.codex/context/map.json'), path.join(linked, '.codex/context/map.json'));
+  await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
+  const dir = path.join(root, 'global'), backend = await startServer({ root, port: 0 });
+  t.after(() => backend.close());
+  await fs.mkdir(dir, { recursive: true });
+  const project = await resolveProject(root), hostname = 'registry-project.localhost';
+  new RouteStore(dir).addRoute({
+    hostname, root, projectId: projectId(root), instance: backend.state.instance,
+    runtimeSchema: 3, port: Number(new URL(backend.state.url).port), proxyToken: 'x'.repeat(32),
+  });
+  const proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
+  const named = await namedWorkbench(backend.state, request, { dir });
+  assert.match(named.url, /registry-project\.localhost/);
+  const route = new RouteStore(dir).loadRoutes().find(item => item.hostname === hostname);
+  assert.equal(route.root, project.sharedDir);
+  assert.equal(route.projectKey, project.projectId);
+  const registered = (await readProjectRegistry({ dir })).projects.find(item => item.projectId === project.projectId);
+  assert.equal(registered.origin, new URL(named.url).origin);
+  assert.ok(registered.roots.includes(root));
+  assert.equal((await resolveProject(linked)).projectId, registered.projectId);
+  const listed = spawnSync(process.execPath, [path.join(cwd, 'scripts/workbench/cli.mjs'), 'workbench', '--list'], {
+    encoding: 'utf8', windowsHide: true, env: { ...process.env, CONTEXT_GUARD_NAMED_STATE_DIR: dir },
+  });
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.equal(JSON.parse(listed.stdout).count, 1);
+});
+test('a recognized installed runtime upgrade preserves the project and replaces only the old process', async t => {
+  const root = await fixture(t, 'Upgrade Project'), installed = path.join(root, 'installed-old');
+  await fs.cp(path.join(cwd, 'scripts'), path.join(installed, 'scripts'), { recursive: true });
+  await fs.cp(path.join(cwd, 'prototype'), path.join(installed, 'prototype'), { recursive: true });
+  const runtimeFile = path.join(installed, 'scripts/workbench/runtime.mjs');
+  const runtime = (await fs.readFile(runtimeFile, 'utf8'))
+    .replace("project-workbench-v4", "project-workbench-v3")
+    .replace(/\s*'global-project-registry',\r?\n/, '\n');
+  await fs.writeFile(runtimeFile, runtime);
+  const old = spawnSync(process.execPath, [path.join(installed, 'scripts/workbench/cli.mjs'), 'workbench', '--root', root, '--port', '0', '--direct'], {
+    encoding: 'utf8', windowsHide: true, timeout: 15_000,
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1' },
+  });
+  assert.equal(old.status, 0, old.stderr);
+  const oldResult = JSON.parse(old.stdout), before = await diagnoseWorkbench(root);
+  assert.equal(before.runtime.status, 'upgrade-required');
+  const upgraded = await ensureServer(root, 0); t.after(() => stopServer(root));
+  assert.notEqual(upgraded.instance, oldResult.instance);
+  assert.equal((await diagnoseWorkbench(root)).runtime.status, 'ready');
+  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v4');
 });
 test('proxy restart keeps persisted routes and one project closing cannot take down another', async t => {
   const { proxy, backend, named, dir } = await environment(t);
@@ -214,9 +269,13 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   assert.match(unbound.stdout + unbound.stderr, /not bound/);
   await assert.rejects(fs.access(path.join(root, '.codex/context/private/workbench.json')));
   const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
-  await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'named-hook', worktreeRoot: root } });
+  await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'named-hook', worktreeRoot: root, workbenchUrl: new URL('/prototype/workbench.html', backend.state.url).href } });
+  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, false);
   const hook = await run(hookArgs, payload);
   assert.match(hook.stdout + hook.stderr, /http:\/\/hook-project\.localhost:\d+\/prototype\/workbench.html/);
+  const repaired = await diagnoseWorkbench(root, 'named-hook');
+  assert.equal(repaired.session.verified, true);
+  assert.match(repaired.session.workbenchUrl, /hook-project\.localhost/);
   // Use a spy, not the user's browser, but exercise the real Python opener path.
   const code = `import sys,os,json; sys.path.insert(0,${JSON.stringify(path.join(cwd, 'scripts'))}); import context_guard as c; from pathlib import Path; os.environ.pop('CI',None); os.environ.pop('CONTEXT_GUARD_HEADLESS',None); calls=[]; c.webbrowser.open=lambda *a,**k:calls.append(a[0]); c.start_workbench(Path.cwd()); c.start_workbench(Path.cwd()); print(json.dumps(calls))`;
   const opened = await run(['-c', code]); assert.equal(JSON.parse(opened.stdout).length, 1);

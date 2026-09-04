@@ -14,7 +14,8 @@ export async function backendIdentity(route) {
     const value = await response.json();
     return response.ok && compatibleRuntime(value) && value.instance === route.instance
       && (value.namedRoot || value.root) === route.root
-      && (!route.runtimeSchema || value.runtimeSchema === route.runtimeSchema);
+      && (!route.runtimeSchema || value.runtimeSchema === route.runtimeSchema)
+      && (!route.projectKey || value.projectId === route.projectKey);
   } catch { return false; }
 }
 function headers(input) {
@@ -42,12 +43,13 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
         }
         if (req.url === '/__cg_proxy/routes' && req.method === 'POST') {
           let text = ''; for await (const chunk of req) { text += chunk; if (text.length > 16384) return send(res, 413, { error: 'Body too large' }); }
-          const route = JSON.parse(text);
+          const input = JSON.parse(text);
+          const { replace = null, ...route } = input;
           // Validate before probing; do not let the management endpoint probe arbitrary hosts.
           const { validRoute } = await import('./portless-routes.mjs');
           if (!validRoute(route)) return send(res, 400, { error: 'Invalid route' });
           if (!await backendIdentity(route)) return send(res, 409, { error: 'Backend identity changed' });
-          routes.addRoute(route);
+          routes.addRoute(route, { replace });
           return send(res, 200, { registered: true });
         }
         return send(res, 404, { error: 'Unknown proxy endpoint' });
