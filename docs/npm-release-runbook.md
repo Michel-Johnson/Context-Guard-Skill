@@ -61,6 +61,8 @@ References / 官方说明: [Dependabot automation](https://docs.github.com/en/co
 
 ## Release contract / 发布契约
 
+需要调用模型的三客户端真实对话验收是独立的手动 workflow，不属于每次发布的自动 CD，也不默认阻塞 `Required`。配置方法和验收边界见 [`docs/real-client-acceptance.md`](real-client-acceptance.md)。
+
 - A stable tag must use `vX.Y.Z` and match `package.json` exactly.
 - The target version must be unpublished and strictly newer than npm's current stable `latest` version.
 - The tagged commit must already be part of `main`.
