@@ -130,7 +130,8 @@ try {
     document.querySelector('#detail').appendChild(s);
     const cs = getComputedStyle(s);
     const mark = getComputedStyle(s, '::before');
-    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, mark: mark.backgroundColor, content: mark.content };
+    const m = new DOMMatrix(mark.transform);
+    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, mark: mark.backgroundColor, content: mark.content, markRadius: mark.borderRadius, skewC: m.c };
     s.remove();
     return out;
   });
@@ -138,6 +139,8 @@ try {
   assert.equal(liveMark.radius, '0px');
   assert.equal(liveMark.color, 'rgb(45, 45, 45)');
   assert.equal(liveMark.mark, 'rgb(198, 237, 110)', `highlighter mark ${liveMark.mark}`);
+  assert.equal(liveMark.markRadius, '8px', 'live chip follows gallery 11 round marker');
+  assert.ok(Math.abs(liveMark.skewC - Math.tan(-4 * Math.PI / 180)) < 0.01, `round-head skew ${liveMark.skewC}`);
   recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
@@ -818,6 +821,11 @@ try {
     assert.equal(frozenChip.chipColor, 'rgb(45, 45, 45)');
     assert.equal(frozenChip.radius, '0px');
     assert.equal(frozenChip.mark, 'rgb(198, 237, 110)');
+    const picked = await preview.evaluate(() => {
+      const b = getComputedStyle(document.querySelector('#v11 .who .chip'), '::before');
+      return { rad: b.borderRadius };
+    });
+    assert.equal(picked.rad, '8px', 'gallery 11 is the round-head marker');
     const upright = await preview.evaluate(() => {
       const check = sel => {
         const item = document.querySelector(sel);
