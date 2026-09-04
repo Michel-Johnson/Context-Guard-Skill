@@ -22,6 +22,9 @@ export class WorkbenchSync {
     const requestedSession = new URLSearchParams(location.search).get('session') || '';
     this.composing = false; this.inputDraft = null; this.activeSession = requestedSession || ALL_SESSIONS; this.viewId = requestedSession ? `session:${requestedSession}` : 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
     this.manualSession = Boolean(requestedSession);
+    this.pendingSession = requestedSession || '';
+    this.refreshingAccess = null;
+    this.accessRefreshQueued = false;
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
@@ -116,6 +119,7 @@ export class WorkbenchSync {
     try {
       const state = await this.call('/api/state');
       this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
+      if (this.viewId.startsWith('session:')) this.pendingSession = '';
       if (state.error) throw new Error(state.error?.message || '服务需要恢复');
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         const readOnlyMain = this.viewId === 'main' && state.source?.status !== 'local-folder';
@@ -136,11 +140,24 @@ export class WorkbenchSync {
       return true;
     } catch (e) {
       if (e.code === 'UNKNOWN_VIEW' && this.activeSession !== ALL_SESSIONS) {
-        this.activeSession = ALL_SESSIONS;
+        if (!this.config?.root?.startsWith('cloud:')) {
+          this.activeSession = ALL_SESSIONS;
+          this.pendingSession = '';
+          this.viewId = 'main';
+          this.manualSession = false;
+          this.captureKey = null;
+          return this.start();
+        }
+        this.pendingSession = this.activeSession;
         this.viewId = 'main';
-        this.manualSession = false;
         this.captureKey = null;
-        return this.start();
+        this.ready = false;
+        this.a.pending?.();
+        this.connect();
+        await this.refreshAccess();
+        await this.refreshCloudStatus();
+        this.setStatus('loading', '当前 Session 正在同步到 Cloud');
+        return false;
       }
       this.setStatus('error', e.message); return false;
     }
@@ -151,7 +168,7 @@ export class WorkbenchSync {
     const endpoint = this.endpoint('/api/events');
     this.events = new EventSource(`${endpoint}${endpoint.includes('?') ? '&' : '?'}${query}`, { withCredentials: true });
     this.events.addEventListener('state', e => this.receive(JSON.parse(e.data)).catch(err => this.setStatus('error', err.message)));
-    this.events.addEventListener('access', () => this.refreshAccess());
+    this.events.addEventListener('access', () => this.refreshAccess().catch(err => this.setStatus('error', err.message)));
     this.events.addEventListener('cloud-sync', e => this.renderCloudStatus(JSON.parse(e.data)));
     this.events.addEventListener('checkpoint', async e => {
       const { checkpoint } = JSON.parse(e.data);
@@ -176,6 +193,10 @@ export class WorkbenchSync {
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
   async receive(state) {
+    // While a Cloud deep link waits for its Session snapshot, this connection is
+    // intentionally subscribed to Main only so it can receive project access
+    // events. Main state must not make the pending Session look synchronized.
+    if (this.pendingSession) return;
     if (state.viewId && state.viewId !== this.viewId) return;
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
@@ -311,16 +332,44 @@ export class WorkbenchSync {
   }
   async refreshAccess() {
     if (!this.config) return;
+    if (this.refreshingAccess) { this.accessRefreshQueued = true; return this.refreshingAccess; }
+    this.refreshingAccess = (async () => {
+      do {
+        this.accessRefreshQueued = false;
+        await this.refreshAccessNow();
+      } while (this.accessRefreshQueued);
+    })();
+    try { return await this.refreshingAccess; } finally { this.refreshingAccess = null; }
+  }
+  async refreshAccessNow() {
     const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
     this.project = data.project || this.project || null;
     const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
-    this.sessions = sessions; this.grants = data.grants || {};
+    this.grants = data.grants || {};
     const current = sessions.find(item => item.id === this.activeSession);
     // A browser belongs to the Session explicitly present in its URL or selected
     // by the human. Activity in another task must never silently switch maps.
-    if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.manualSession = false; }
+    if (this.pendingSession && current) {
+      const target = this.pendingSession;
+      this.pendingSession = '';
+      this.activeSession = target;
+      this.events?.close(); this.events = null;
+      this.viewId = `session:${target}`; this.captureKey = null;
+      setTimeout(() => this.reload().catch(error => this.setStatus('error', error.message)), 0);
+      return;
+    }
+    if (this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession) {
+      this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.manualSession = false;
+    }
+    const pendingMeta = this.pendingSession && !current
+      ? { id: this.pendingSession, name: '当前 Session', platform: 'agent', status: 'syncing', bindingState: 'pending', lastSeen: '' }
+      : null;
+    this.sessions = pendingMeta ? [...sessions, pendingMeta] : sessions;
     const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '主工作台 · 全部 Session';
-    const options = [all, ...sessions.map(item => {
+    const pending = this.pendingSession && !current ? (() => {
+      const option = document.createElement('option'); option.value = this.pendingSession; option.textContent = '当前 Session · 同步中'; option.disabled = true; return option;
+    })() : null;
+    const options = [all, ...(pending ? [pending] : []), ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
       const displayName = [item.name || `${item.platform || 'Agent'} Session`, item.worktreeName, item.branch].filter(Boolean).join(' · ');
       option.textContent = displayName; option.title = `${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
@@ -338,7 +387,7 @@ export class WorkbenchSync {
     this.cloudIndicator.setAttribute('aria-label', label); this.cloudIndicator.title = label;
   }
   async refreshCloudStatus() {
-    if (this.config?.root?.startsWith('cloud:')) { this.renderCloudStatus({ configured: true, status: 'synced' }); return; }
+    if (this.config?.root?.startsWith('cloud:')) { this.renderCloudStatus({ configured: true, status: this.pendingSession ? 'syncing' : 'synced' }); return; }
     try { this.renderCloudStatus(await this.call('/api/cloud-sync')); }
     catch { if (this.cloudIndicator) this.cloudIndicator.hidden = true; }
   }
@@ -350,6 +399,7 @@ export class WorkbenchSync {
     }
     const nextView = sessionId === ALL_SESSIONS || this.project?.kind !== 'git' ? 'main' : `session:${sessionId}`;
     this.activeSession = sessionId;
+    this.pendingSession = '';
     this.manualSession = true;
     if (nextView !== this.viewId) {
       this.events?.close(); this.events = null; this.viewId = nextView; this.captureKey = null;

@@ -437,7 +437,13 @@ async function main(args) {
       await atomicWrite(memoryConfigPath(project), encode(config));
       return { configured: true, verified: (await memoryStatus(project, session)).current };
     }
-    if (opt._[0] === 'sync') return synchronizeMemory(root, session);
+    const client = {
+      hookEvent: opt['hook-event'] || '',
+      eventId: opt['event-id'] || '',
+      occurredAt: opt['occurred-at'] || '',
+      cursor: opt.cursor ?? null,
+    };
+    if (opt._[0] === 'sync') return synchronizeMemory(root, session, client);
     if (opt._[0] === 'prepare') return prepareMemory(project, session);
     if (opt._[0] === 'rebase') return rebaseMemory(project, session, { adoptMain: !!opt['adopt-main'] });
     if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));

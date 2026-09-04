@@ -161,6 +161,48 @@ test('a supplied workbench URL is verified before the Session binding is committ
   assert.equal(pythonAccepted.code, 0, pythonAccepted.stderr);
   assert.match(JSON.parse(pythonAccepted.stdout).url, /\.localhost:/);
 });
+test('a later lifecycle hook heals an unavailable Cloud Session without a sync daemon', async t => {
+  const { dir, root } = await fixture(t, false);
+  let memory;
+  t.after(async () => {
+    await memory?.close().catch(() => {});
+    await stopServer(root).catch(() => {});
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  await saveMainBinding(root, { mode: 'local', branch: 'trunk' });
+  await initialize(root);
+  const sessionId = 'hook-cloud-heal';
+  const firstSeen = await hook(root, sessionId, 'session-start');
+  assert.match(firstSeen.stdout, /no established workbench/i);
+  const local = await startServer({ root, port: 0 });
+  const registered = await call(local, '/api/session', local.state.adminToken, { sessionId, worktreeRoot: root });
+  assert.equal(registered.status, 200, JSON.stringify(registered));
+  await local.close();
+
+  const project = await resolveProject(root);
+  const memoryOptions = { dataDir: path.join(dir, 'hook-memory'), adminToken: randomUUID(), projects: { example: { token: randomUUID() } } };
+  memory = await startMemoryServer(memoryOptions);
+  const memoryPort = new URL(memory.url).port;
+  await fs.mkdir(project.sharedDir, { recursive: true });
+  await fs.writeFile(memoryConfigPath(project), JSON.stringify({ url: memory.url, projectId: 'example', token: memoryOptions.projects.example.token }));
+  await memory.close(); memory = null;
+
+  const unavailable = await hook(root, sessionId, 'session-start');
+  assert.match(unavailable.stdout, /Cloud Session registration is pending/i);
+  memory = await startMemoryServer({ ...memoryOptions, port: Number(memoryPort) });
+  const healed = await hook(root, sessionId, 'user-prompt-submit');
+  assert.equal(healed.code, 0, healed.stderr);
+  assert.doesNotMatch(healed.stdout, /synchronization is pending/i);
+  const remote = await call(memory, '/v1/projects/example/sessions/' + sessionId, memoryOptions.projects.example.token);
+  assert.equal(remote.status, 200, JSON.stringify(remote));
+  assert.equal(remote.data.snapshot.sessionId, sessionId);
+  assert.equal(remote.data.snapshot.lastSync.sessionId, sessionId);
+  assert.equal(remote.data.snapshot.lastSync.hookEvent, 'UserPromptSubmit');
+  assert.match(remote.data.snapshot.lastSync.eventId, /^hook-/);
+  assert.equal(Number.isNaN(Date.parse(remote.data.snapshot.lastSync.occurredAt)), false);
+  assert.ok(remote.data.snapshot.memory.records['sessions.jsonl'].includes(sessionId));
+  assert.equal((await bindingStatus(await resolveProject(root), sessionId)).session.bound, true);
+});
 test('a legacy worktree seed is replaced by the confirmed main baseline without overwriting divergent Session edits', async t => {
   const { dir, root, other } = await fixture(t, false);
   let memory, workbench;
