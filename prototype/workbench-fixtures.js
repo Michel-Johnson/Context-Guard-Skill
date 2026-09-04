@@ -456,8 +456,108 @@ const CONTEXT_GUARD_MAP = {
           "desc": "检查器编辑和建图确认必须留在页面里",
           "status": "open",
           "files": [],
-          "sessions": ["S-0823"],
+          "sessions": ["S-live"],
           "record": ".codex/context/bugs/B20.md"
+        },
+        {
+          "id": "B40",
+          "title": "顶栏还没人认领",
+          "desc": "待处理：没有 Session",
+          "status": "open",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B40.md"
+        },
+        {
+          "id": "B41",
+          "title": "发出去了但没送到",
+          "desc": "待处理 · 发送失败",
+          "status": "open",
+          "files": [],
+          "sessions": [],
+          "dispatch": {"status": "failed", "at": "2026-09-01T00:00:00.000Z"},
+          "record": ".codex/context/bugs/B41.md"
+        },
+        {
+          "id": "B42",
+          "title": "当前窗口正在改检查器",
+          "desc": "处理中 · 活着的会话",
+          "status": "open",
+          "files": [],
+          "sessions": ["S-live"],
+          "record": ".codex/context/bugs/B42.md"
+        },
+        {
+          "id": "B43",
+          "title": "昨晚那次做完人走了",
+          "desc": "待接手：会话已停",
+          "status": "open",
+          "files": [],
+          "sessions": ["S-dead"],
+          "record": ".codex/context/bugs/B43.md"
+        },
+        {
+          "id": "B44",
+          "title": "两个会话都还挂着",
+          "desc": "处理中 · 一个活一个停",
+          "status": "open",
+          "files": [],
+          "sessions": ["S-live", "S-dead"],
+          "record": ".codex/context/bugs/B44.md"
+        },
+        {
+          "id": "B45",
+          "title": "修完在写记忆",
+          "desc": "收尾中",
+          "status": "pending",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B45.md"
+        },
+        {
+          "id": "B46",
+          "title": "测试已经过了",
+          "desc": "已修复",
+          "status": "fixed",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B46.md"
+        },
+        {
+          "id": "B47",
+          "title": "人点过可以关",
+          "desc": "已解决",
+          "status": "resolved",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B47.md"
+        },
+        {
+          "id": "B48",
+          "title": "这期先不做",
+          "desc": "已延期",
+          "status": "deferred",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B48.md"
+        },
+        {
+          "id": "B49",
+          "title": "设计如此不改",
+          "desc": "不处理",
+          "status": "wontfix",
+          "files": [],
+          "sessions": [],
+          "record": ".codex/context/bugs/B49.md"
+        },
+        {
+          "id": "B50",
+          "title": "手机竖屏时抽屉把手被底栏挡住，标题折成两行看点和分配会不会挤掉",
+          "desc": "长标题",
+          "status": "open",
+          "files": [],
+          "sessions": ["S-live"],
+          "record": ".codex/context/bugs/B50.md"
         }
       ],
       "dormant": [],

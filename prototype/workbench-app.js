@@ -1162,6 +1162,11 @@ function seedDemoSessionMetas(){
   });
   workbenchSync.sessions = list;
 }
+function installPreviewBugs(){
+  if(window.__CG_SERVER) return;
+  seedDemoSessionMetas();
+  ensureDemoBugs(data);
+}
 function adoptTree(tree){
   const src = clone(tree);
   Object.keys(data).forEach(k=>delete data[k]);
@@ -2128,7 +2133,7 @@ function bugSessionsOf(bug){
   return bug.sessions;
 }
 function sessionMetaOf(sessionId){
-  return normalizeSessions(workbenchSync?.sessions||[]).find(item=>sessionIdOf(item)===sessionId) || null;
+  return normalizeSessions([...(workbenchSync?.sessions||[]), ...DEMO_SESSION_METAS]).find(item=>sessionIdOf(item)===sessionId) || null;
 }
 function sessionDisplayName(sessionId){
   const meta = sessionMetaOf(sessionId);
@@ -4544,6 +4549,7 @@ async function boot(){
     document.body.append(notice);
     await loadMapFromHttp();
     authUnlockAll();
+    installPreviewBugs();
     applyRelationDeepLink();
     renderAll(); fitView(); return;
   }
@@ -4577,10 +4583,7 @@ async function boot(){
   }
   syncThemePicks();
   if(window.__CG_PREVIEW || !window.__CG_SERVER) authUnlockAll();
-  if(!window.__CG_SERVER){
-    seedDemoSessionMetas();
-    ensureDemoBugs(data);
-  }
+  installPreviewBugs();
   applyRelationDeepLink();
   renderAll();
   finishDrawerChrome();
