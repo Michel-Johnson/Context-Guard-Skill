@@ -447,6 +447,28 @@ try {
     await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
     assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
     await preview.locator('#btn-auth').click();
+    if (await preview.locator('.nav-crumbs a').count()) {
+      await preview.locator('.nav-crumbs a').first().click();
+      await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    }
+    await preview.locator('.node.root .add-child').click();
+    const rootPick = preview.locator('.node.root .add-pick');
+    assert.equal(await rootPick.evaluate(el => getComputedStyle(el).display), 'flex', 'plus must open a kind picker');
+    assert.equal(await preview.locator('[data-ed="compose-title"]').count(), 0, 'plus must not start compose until a kind is chosen');
+    assert.equal(await preview.locator('.nav-crumbs a').count(), 0, 'plus must not enter a module');
+    const pickShadow = await rootPick.evaluate(el => getComputedStyle(el).boxShadow);
+    assert.ok(pickShadow === 'none' || pickShadow === '', `kind picker must have no shadow, got ${pickShadow}`);
+    await rootPick.locator('[data-add="work"]').click();
+    assert.equal((await preview.locator('[data-ed="compose-title"]').textContent())?.trim(), '子节点名称');
+    await preview.locator('[data-act="compose-cancel"]').click();
+    await preview.locator('.node.root .add-child').click();
+    await preview.locator('.node.root .add-pick [data-add="module"]').click();
+    assert.equal((await preview.locator('[data-ed="compose-title"]').textContent())?.trim(), '模块名称');
+    await preview.locator('[data-act="compose-cancel"]').click();
+    await preview.locator('.node[data-id="M1"] .add-child').click();
+    assert.equal(await preview.locator('.nav-crumbs a').count(), 0, 'plus on a child module must not drill in');
+    assert.equal(await preview.locator('.node[data-id="M1"].picking .add-pick').count(), 1);
+    recordCheck('map-plus-picks-kind');
     const chromeGap = await preview.evaluate(() => {
       const header = document.querySelector('header.top').getBoundingClientRect();
       const vp = document.getElementById('viewport').getBoundingClientRect();

@@ -282,7 +282,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   border-radius:4px;white-space:nowrap;pointer-events:none;box-sizing:border-box}
 .node.ghost{opacity:.8;border-style:dashed;box-shadow:none}
 .node.ghost.module{background:#f4f1ea}
-.node.ghost .add-child{display:none}
+.node.ghost .add-child,.node.ghost .add-pick{display:none}
 .node.rel-dim{opacity:.16;filter:grayscale(.55) brightness(.82)}
 .node.rel-dim.selected,.node.rel-hot.selected{opacity:1;filter:none}
 .node.rel-hot{opacity:1;filter:none}
@@ -291,7 +291,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
   box-shadow:none;font-size:12px;font-weight:700;line-height:1.35;pointer-events:none}
 #dot-hint[hidden]{display:none}
 body.rel-mode .node.rel-dim:hover{opacity:.4;filter:grayscale(.2) brightness(.96)}
-body.rel-mode .node .add-child{display:none}
+body.rel-mode .node .add-child,body.rel-mode .node .add-pick{display:none}
 /* ===== 节点：小圆角胶囊 ===== */
 .node{position:absolute;display:flex;align-items:center;gap:6px;white-space:nowrap;
   width:max-content;max-width:280px;word-break:keep-all;overflow:visible;
@@ -506,13 +506,28 @@ body.auth-mode .node:hover{border-color:var(--auth);box-shadow:0 2px 8px rgba(12
 .node .add-child{position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:18px;height:18px;
   border-radius:50%;border:2px solid;border-color:inherit;background:inherit;color:inherit;
   font-size:12px;font-weight:600;line-height:14px;text-align:center;opacity:1;box-shadow:none;
-  transition:opacity .15s}
+  cursor:pointer;transition:opacity .15s}
+.node .add-pick{
+  display:none;position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  z-index:6;flex-direction:column;align-items:stretch;gap:2px;min-width:92px;padding:4px;
+  background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:none;color:var(--ink)}
+.node .add-pick button{
+  display:flex;align-items:center;justify-content:center;margin:0;height:auto;min-height:0;
+  padding:7px 10px;border:2px solid transparent;border-radius:8px;background:transparent;
+  box-shadow:none;font-size:12.5px;font-weight:700;line-height:1.2;color:var(--ink);cursor:pointer}
+.node .add-pick button:hover,.node .add-pick button:focus{
+  background:var(--module-soft);transform:none;box-shadow:none;border-color:transparent}
+.node.picking{z-index:5}
+.node.picking .add-child{opacity:1}
+.node.picking .add-pick{display:flex}
+body.layout-tb .node .add-pick{
+  left:50%;top:auto;right:auto;bottom:-12px;transform:translate(-50%,100%)}
 @media (hover:hover) and (pointer:fine){
   .node .add-child{opacity:0}
-  .node:hover .add-child{opacity:.9}
+  .node:hover .add-child,.node.picking .add-child{opacity:.9}
 }
-.node .add-child:hover{opacity:1}
-body.auth-mode .node .add-child{display:none}
+.node .add-child:hover,.node.picking .add-child{opacity:1}
+body.auth-mode .node .add-child,body.auth-mode .node .add-pick{display:none}
 
 /* ---------- 已取消托盘 ---------- */
 .tray{position:fixed;left:16px;top:calc(var(--chrome-top) + 8px);z-index:29;width:330px;background:var(--paper);
@@ -556,7 +571,7 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel .empty{color:var(--muted);font-size:12.5px;padding:8px 12px;border-bottom:0}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:#f7f1e6}
-body.bug-path-mode .node .add-child{display:none}
+body.bug-path-mode .node .add-child,body.bug-path-mode .node .add-pick{display:none}
 body.bug-path-mode .node.bug-target{border-color:var(--red);box-shadow:3px 3px 0 #c45c4a}
 body.bug-path-mode .dir-toggle,
 body.bug-path-mode .rel-toggle,
@@ -793,8 +808,9 @@ html.cg-phone .tray{
 }
 html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
 html.cg-phone .node .add-child{width:22px;height:22px;line-height:18px;font-size:13px;right:-11px;opacity:0;pointer-events:none}
-html.cg-phone .node.selected .add-child{opacity:1;pointer-events:auto}
+html.cg-phone .node.selected .add-child,html.cg-phone .node.picking .add-child{opacity:1;pointer-events:auto}
 html.cg-phone .node .add-child:after{content:"";position:absolute;inset:-12px}
+html.cg-phone .node .add-pick button{min-height:var(--chrome-btn-h)}
 html.cg-phone body.layout-tb .node .add-child{bottom:-11px}
 html.cg-phone .node:hover,html.cg-phone .node.module:hover{transform:none}
 html.cg-phone .first-use.open{align-items:flex-start;overflow:auto;padding:12px 0 calc(16px + var(--safe-bottom))}
@@ -1355,6 +1371,8 @@ const I18N = {
     join:"加入", hide:"隐藏", restore:"恢复",
     acceptLayer:"本层全部加入", grant:"授权", enter:"进入",
     plusModule:"＋ 模块", plusChild:"＋ 子节点",
+    addChildTitle:"新增模块或节点",
+    addKindModule:"模块", addKindNode:"节点",
     moduleName:"模块名称", childName:"子节点名称",
     memory:"记忆", ideas:"Idea", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
     addMem:"添加记忆", addIdea:"添加 Idea", addBug:"添加 Bug",
@@ -1448,6 +1466,8 @@ const I18N = {
     join:"Add", hide:"Hide", restore:"Restore",
     acceptLayer:"Add all in this layer", grant:"Authorize", enter:"Enter",
     plusModule:"＋ Module", plusChild:"＋ Child",
+    addChildTitle:"Add a module or a node",
+    addKindModule:"Module", addKindNode:"Node",
     moduleName:"Module name", childName:"Child name",
     memory:"Memory", ideas:"Idea", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addBug:"Add bug",
@@ -3135,8 +3155,14 @@ let authMode = false;
 let composingId = null;
 let composingKind = "work";
 let composeParent = null;
+let addPickId = null;
 function clearCompose(){
   workbenchSync?.setInputDraft(null); composingId = null; composingKind = "work"; composeParent = null; }
+function closeAddPick(){
+  if(!addPickId) return;
+  addPickId = null;
+  document.querySelectorAll(".node.picking").forEach(el=>el.classList.remove("picking"));
+}
 let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
@@ -4694,6 +4720,7 @@ function renderBugPanel(){
 }
 
 function enterView(id, opts){
+  closeAddPick();
   if(bugPathMode){
     bugPathMode = false;
     bugFocus = null;
@@ -4793,7 +4820,7 @@ document.getElementById("first-use-cut-back").onclick = ()=>{
   currentRepo().firstUseOpen = true;
   setOverlay(true, false);
 };
-document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); });
+document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); closeAddPick(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
 document.getElementById("settings-wrap").onclick = e=>e.stopPropagation();
 document.getElementById("btn-settings").onclick = e=>{
@@ -4914,7 +4941,11 @@ function nodeHtml(n, isViewRoot, ghost){
         ? `<span class="join-spin" aria-hidden="true"></span>`
         : `<span class="new-dot"></span>`)
     : "";
-  const add = ghost || isProposed(n) ? "" : `<span class="add-child" title="${escAttr(t("addModule"))}">＋</span>`;
+  const add = ghost || isProposed(n) ? "" : `<span class="add-child" role="button" title="${escAttr(t("addChildTitle"))}" aria-haspopup="menu" aria-expanded="${addPickId===n.id?"true":"false"}">＋</span>
+      <div class="add-pick" role="menu">
+        <button type="button" data-add="module">${t("addKindModule")}</button>
+        <button type="button" data-add="work">${t("addKindNode")}</button>
+      </div>`;
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
@@ -4961,6 +4992,7 @@ function renderMap(){
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
       (n.id===selectedId && !isCancelled(n)?" selected":"") +
+      (addPickId===n.id?" picking":"") +
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
@@ -5346,7 +5378,24 @@ function onNodeClick(e, n){
   if(authMode){
     toggleAuth(n); return;
   }
-  if(e.target.classList.contains("add-child")){ addModule(n); return; }
+  const pickBtn = e.target.closest && e.target.closest("[data-add]");
+  if(pickBtn && e.target.closest(".add-pick")){
+    const kind = pickBtn.dataset.add;
+    addPickId = null;
+    if(kind==="module") addModule(n);
+    else addChild(n);
+    return;
+  }
+  if(e.target.closest && e.target.closest(".add-child")){
+    if(addPickId===n.id){ addPickId=null; renderAll(); return; }
+    if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+    addPickId = n.id;
+    selectedId = n.id;
+    renderAll();
+    return;
+  }
+  if(e.target.closest && e.target.closest(".add-pick")) return;
+  closeAddPick();
   if(bugPathMode){
     selectedId = n.id;
     renderAll();
@@ -5409,6 +5458,7 @@ function cancelProposal(n){
 function startCompose(node, kind){
   if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
+  addPickId = null;
   composeParent = node;
   selectedId = node.id;
   composingId = node.id;
@@ -6105,6 +6155,7 @@ function endPointer(e){
 vp.addEventListener("pointerdown", e=>{
   if(window.__CG_GALLERY) return;
   hideDotHint();
+  if(!e.target.closest(".add-child") && !e.target.closest(".add-pick")) closeAddPick();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
   if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
