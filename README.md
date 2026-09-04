@@ -23,7 +23,7 @@ People look at the map in `prototype/workbench.html`. Agents read the small inde
 
 **Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session asks which project workbench to use and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. A private global registry outside the replaceable Skill install preserves project URLs and bindings across upgrades; a temporarily unavailable bound Session self-repairs by project identity instead of asking again.
+**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session first checks the global live inventory and offers the matching readable named URL; it still waits for confirmation and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. A private global registry outside the replaceable Skill install preserves project URLs and bindings across upgrades; live probes keep registered, running, stopped, legacy and duplicate states distinct, and a temporarily unavailable bound Session self-repairs by project identity instead of asking again.
 
 **Development policy for this repository:** source code follows the existing
 branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
@@ -36,6 +36,7 @@ Other projects do not automatically inherit this repository's server configurati
 
 ```bash
 context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
+context-guard workbench --list --root /path/to/project
 context-guard workbench --root /path/to/project --session <actual-session-id> --workbench-url http://project-name.localhost:1355/prototype/workbench.html
 context-guard workbench --diagnose --root /path/to/project --session <actual-session-id>
 # only after explicit confirmation to move an existing binding:

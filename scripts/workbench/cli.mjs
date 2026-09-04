@@ -15,7 +15,8 @@ import { atomicWrite, encode } from './io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
 import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
 import { compatibleRuntime, runtimeIdentity, upgradeableRuntime } from './runtime.mjs';
-import { readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
+import { globalWorkbenchDirectory, readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
+import { RouteStore } from './portless-routes.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function options(args) {
   const opts = { _: [] };
@@ -25,16 +26,26 @@ function options(args) {
   }
   return opts;
 }
-async function initialize(root) {
-  try { await fs.access(path.join(root, '.codex/context/map.json')); return; } catch {}
-  const commands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
-  for (const command of commands) {
-    const result = spawnSync(command, [path.join(skillRoot, 'scripts/context_guard.py'), 'init', '--root', root], { encoding: 'utf8', windowsHide: true });
-    if (result.error?.code === 'ENOENT') continue;
-    if (result.status === 0) return;
-    throw new Error(result.stderr || 'Project initialization failed');
-  }
-  throw new Error('Python is still required for project initialization');
+function processAlive(pid) {
+  if (!Number.isInteger(pid) || pid < 1) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code !== 'ESRCH'; }
+}
+async function inspectState(file, state, projectId, worktreeRoots = []) {
+  if (!state || typeof state.url !== 'string') return null;
+  const live = await health(state);
+  const liveRoot = live?.root ? await fs.realpath(live.root).catch(() => live.root) : null;
+  const sameInstance = !!state.instance && live?.instance === state.instance;
+  const sameRoot = !!liveRoot && worktreeRoots.includes(liveRoot);
+  const belongs = live ? live.projectId === projectId || sameInstance && sameRoot || (!live.projectId && sameRoot) : true;
+  const ownerAlive = !live && processAlive(state.pid);
+  return {
+    file, state, live, belongs, ownerAlive,
+    status: !live ? ownerAlive ? 'unknown' : 'dead'
+      : !belongs ? 'foreign'
+        : compatibleRuntime(live) ? 'ready'
+          : upgradeableRuntime(live) ? 'upgradeable' : 'legacy',
+  };
 }
 export async function serviceInventory(project) {
   const worktreeRoots = await listWorktrees(project);
@@ -42,26 +53,16 @@ export async function serviceInventory(project) {
   const records = [];
   for (const file of stateFiles) {
     const state = await readJSON(file, null);
-    if (!state) continue;
-    const live = await health(state);
-    const liveRoot = live?.root ? await fs.realpath(live.root).catch(() => live.root) : null;
-    const belongs = live?.projectId === project.projectId || (!live?.projectId && liveRoot && worktreeRoots.includes(liveRoot));
-    records.push({
-      file,
-      state,
-      live,
-      belongs,
-      status: !live ? 'dead' : !belongs ? 'foreign' : compatibleRuntime(live) ? 'ready' : upgradeableRuntime(live) ? 'upgradeable' : 'legacy',
-    });
+    const record = await inspectState(file, state, project.projectId, worktreeRoots);
+    if (record) records.push(record);
   }
   const unique = [];
   for (const record of records) {
-    const identity = record.live?.instance || `${record.state?.pid || ''}:${record.state?.url || record.file}`;
-    if (!unique.some(item => item.identity === identity)) unique.push({ ...record, identity });
+    const identity = record.live?.instance || record.state?.instance || `${record.state?.pid || ''}:${record.state?.url || record.file}`;
+    if (!unique.some(item => item.identity === identity)) unique.push({ ...record, identity, sources: ['state'] });
   }
   return { worktreeRoots, records: unique };
 }
-
 function publicService(record) {
   return {
     stateFile: record.file,
@@ -79,6 +80,144 @@ function publicService(record) {
     retireKey: record.live?.pid && record.live?.instance ? `${record.live.pid}:${record.live.instance}` : null,
   };
 }
+async function firstResolvableProject(roots) {
+  for (const root of roots) {
+    if (typeof root !== 'string' || !path.isAbsolute(root)) continue;
+    try { return await resolveProject(root); } catch {}
+  }
+  return null;
+}
+function routeOrigin(route, proxy) {
+  if (!proxy?.base) return '';
+  try { return `http://${route.hostname}:${new URL(proxy.base).port}`; } catch { return ''; }
+}
+async function inspectRoute(route, origin, projectId) {
+  const directState = { url: `http://127.0.0.1:${route.port}/prototype/workbench.html`, instance: route.instance, root: route.root };
+  const direct = await inspectState(`route:${route.hostname}`, directState, projectId, [route.root]);
+  let named = { status: 'stale', url: origin || null };
+  if (origin) {
+    try {
+      const { response, value } = await readWorkbenchHealth(origin);
+      if (response.ok) {
+        const matchesProject = !route.projectKey || value?.projectId === route.projectKey;
+        const matchesInstance = value?.instance === route.instance;
+        named = { status: matchesProject && matchesInstance ? 'ready' : 'mismatch', url: origin };
+      }
+    } catch {}
+  }
+  return { direct, named };
+}
+async function projectDisplayName(record, routes, roots) {
+  if (record?.name) return record.name;
+  if (routes[0]?.hostname) return routes[0].hostname.replace(/\.localhost$/, '');
+  for (const root of roots) {
+    const map = await readJSON(path.join(root, '.codex/context/map.json'), null).catch(() => null);
+    if (typeof map?.project === 'string' && map.project.trim()) return map.project.trim();
+  }
+  return roots[0] ? path.basename(roots[0]) : 'unknown-project';
+}
+function publicProject(project) {
+  return {
+    name: project.name,
+    url: project.url || null,
+    status: project.status,
+    backendStatus: project.backendStatus,
+    routeStatus: project.routeStatus,
+    registered: project.registered,
+    runningInstances: project.runningInstances,
+    needsAttention: project.status !== 'ready' && project.status !== 'stopped',
+  };
+}
+export async function globalWorkbenchInventory({ dir = globalWorkbenchDirectory(), currentRoot = '' } = {}) {
+  const registry = await readProjectRegistry({ dir });
+  const routes = new RouteStore(dir).loadRoutes();
+  const proxy = await readJSON(path.join(dir, 'proxy.json'), null);
+  const projects = new Map(registry.projects.map(record => [record.projectId, { record, routes: [] }]));
+  await Promise.all(routes.map(async route => {
+    let key = route.projectKey || '';
+    if (!key) key = (await firstResolvableProject([route.root]))?.projectId || `route:${route.hostname}`;
+    const target = projects.get(key) || { record: null, routes: [] };
+    target.routes.push(route); projects.set(key, target);
+  }));
+  let currentProjectId = '';
+  if (currentRoot) currentProjectId = (await resolveProject(currentRoot).catch(() => null))?.projectId || '';
+  const inspected = await Promise.all([...projects.entries()].map(async ([key, entry]) => {
+    const roots = [...new Set([...(entry.record?.roots || []), ...entry.routes.map(route => route.root)])];
+    const resolved = await firstResolvableProject(roots);
+    let records = [];
+    if (resolved && (resolved.projectId === key || !entry.record)) {
+      records = (await serviceInventory(resolved).catch(() => ({ records: [] }))).records;
+    } else if (entry.record?.stateFile) {
+      const state = await readJSON(entry.record.stateFile, null);
+      const record = await inspectState(entry.record.stateFile, state, key, roots);
+      if (record) records.push({ ...record, identity: record.live?.instance || record.state?.instance || entry.record.stateFile, sources: ['registry'] });
+    }
+    const routeResults = await Promise.all(entry.routes.map(route => inspectRoute(
+      route,
+      entry.record?.origin && new URL(entry.record.origin).hostname === route.hostname ? entry.record.origin : routeOrigin(route, proxy),
+      key,
+    )));
+    for (let index = 0; index < routeResults.length; index++) {
+      const record = routeResults[index].direct;
+      if (!record) continue;
+      const identity = record.live?.instance || record.state?.instance || `route:${entry.routes[index].hostname}`;
+      const existing = records.find(item => item.identity === identity);
+      if (existing) existing.sources = [...new Set([...(existing.sources || []), 'route'])];
+      else records.push({ ...record, identity, sources: ['route'] });
+    }
+    const owned = records.filter(record => record.belongs && record.live);
+    const unknown = records.filter(record => record.belongs && record.status === 'unknown');
+    const ready = owned.filter(record => record.status === 'ready');
+    const legacy = owned.filter(record => ['legacy', 'upgradeable'].includes(record.status));
+    const namedReady = routeResults.some(result => result.named.status === 'ready');
+    const namedMismatch = routeResults.some(result => result.named.status === 'mismatch');
+    const routeStatus = namedReady ? 'ready' : namedMismatch ? 'mismatch' : entry.routes.length ? 'stale' : 'missing';
+    const backendStatus = owned.length > 1 ? 'duplicate' : ready.length ? 'ready' : legacy.length ? 'legacy' : unknown.length ? 'unknown' : 'stopped';
+    const status = backendStatus === 'duplicate' ? 'duplicate'
+      : backendStatus === 'legacy' ? 'legacy'
+        : backendStatus === 'unknown' ? 'unknown'
+          : backendStatus === 'stopped' ? entry.routes.length ? 'route-stale' : 'stopped'
+            : routeStatus === 'ready' ? 'ready' : routeStatus === 'mismatch' ? 'route-mismatch' : 'direct-only';
+    const origin = entry.record?.origin || routeResults.find(result => result.named.url)?.named.url || '';
+    return {
+      projectId: key,
+      name: await projectDisplayName(entry.record, entry.routes, roots),
+      url: origin ? new URL('/prototype/workbench.html', origin).href : null,
+      status, backendStatus, routeStatus,
+      registered: !!entry.record,
+      runningInstances: owned.length,
+      records,
+      current: key === currentProjectId,
+    };
+  }));
+  const runningIdentities = new Set();
+  for (const project of inspected) for (const record of project.records) {
+    if (record.belongs && record.live) runningIdentities.add(record.live.instance || record.identity);
+  }
+  const projectsPublic = inspected.map(publicProject).sort((a, b) => a.name.localeCompare(b.name));
+  const current = inspected.find(project => project.current);
+  return {
+    registeredCount: registry.projects.length,
+    projectCount: inspected.length,
+    runningCount: runningIdentities.size,
+    readyCount: inspected.filter(project => project.status === 'ready').length,
+    stoppedCount: inspected.filter(project => project.status === 'stopped').length,
+    attentionCount: inspected.filter(project => project.status !== 'ready' && project.status !== 'stopped').length,
+    projects: projectsPublic,
+    currentProject: current ? publicProject(current) : null,
+  };
+}
+async function initialize(root) {
+  try { await fs.access(path.join(root, '.codex/context/map.json')); return; } catch {}
+  const commands = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+  for (const command of commands) {
+    const result = spawnSync(command, [path.join(skillRoot, 'scripts/context_guard.py'), 'init', '--root', root], { encoding: 'utf8', windowsHide: true });
+    if (result.error?.code === 'ENOENT') continue;
+    if (result.status === 0) return;
+    throw new Error(result.stderr || 'Project initialization failed');
+  }
+  throw new Error('Python is still required for project initialization');
+}
 
 export async function diagnoseWorkbench(root, sessionId = '') {
   const openedRoot = await fs.realpath(path.resolve(root));
@@ -89,6 +228,7 @@ export async function diagnoseWorkbench(root, sessionId = '') {
   const ready = projectServices.filter(item => item.status === 'ready');
   const upgradeable = projectServices.filter(item => item.status === 'upgradeable');
   const legacy = projectServices.filter(item => item.status === 'legacy');
+  const unknown = inventory.records.filter(item => item.belongs && item.status === 'unknown');
   const duplicates = ready.length > 1;
   let named = { status: 'not-configured', url: null };
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(openedRoot, '.codex/context/private/named-entry.json');
@@ -103,7 +243,7 @@ export async function diagnoseWorkbench(root, sessionId = '') {
       catch (error) { named = { status: 'mismatch', url: canonicalOrigin + '/prototype/workbench.html', error: error.message }; }
     }
   }
-  const runtimeStatus = legacy.length ? 'legacy' : upgradeable.length ? 'upgrade-required' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : 'stopped';
+  const runtimeStatus = legacy.length ? 'legacy' : upgradeable.length ? 'upgrade-required' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : unknown.length ? 'unknown' : 'stopped';
   const namedRequired = process.env.CONTEXT_GUARD_NAMED_WORKBENCH !== '0';
   const candidateUrl = namedRequired
     ? named.url || binding.session?.workbenchUrl || null
@@ -281,8 +421,7 @@ async function inputJSON(file) {
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
-    const registry = await readProjectRegistry();
-    return { count: registry.projects.length, projects: registry.projects };
+    return globalWorkbenchInventory({ currentRoot: root });
   }
   if (command === 'workbench' && opt._[0] === 'bind') {
     if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');

@@ -7,12 +7,13 @@ import http from 'node:http';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { diagnoseWorkbench, ensureServer, stopServer, request } from '../scripts/workbench/cli.mjs';
+import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
 import { bindProject, resolveProjectRoot, projectId, projectName, resolveProject, saveMainBinding } from '../scripts/workbench/project.mjs';
 import { RouteStore } from '../scripts/workbench/portless-routes.mjs';
 import { readProjectRegistry } from '../scripts/workbench/registry.mjs';
+import { rememberProject } from '../scripts/workbench/registry.mjs';
 
 const cwd = process.cwd();
 // Non-Git fixtures must not inherit the development repository enclosing temp/.
@@ -44,6 +45,18 @@ function call(url, route, { method = 'GET', headers = {}, body } = {}) {
     const req = http.request({ hostname: '127.0.0.1', port: u.port, path: route, method, headers: { Host: u.host, ...headers } }, res => {
       let text = ''; res.on('data', d => text += d); res.on('end', () => { let data; try { data = JSON.parse(text); } catch { data = text; } resolve({ status: res.statusCode, data }); });
     }); req.on('error', reject); req.end(body === undefined ? undefined : JSON.stringify(body));
+  });
+}
+function cliJSON(args, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(cwd, 'scripts/workbench/cli.mjs'), ...args], {
+      cwd, env: { ...process.env, ...env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', chunk => stdout += chunk);
+    child.stderr.on('data', chunk => stderr += chunk);
+    child.on('error', reject);
+    child.on('exit', code => code === 0 ? resolve(JSON.parse(stdout)) : reject(new Error(stderr || stdout)));
   });
 }
 test('named HTTP entry preserves authentication, Origin/Host checks, session registration and writes', async t => {
@@ -127,11 +140,107 @@ test('global registry repairs a legacy worktree-owned name without creating a se
   assert.equal(registered.origin, new URL(named.url).origin);
   assert.ok(registered.roots.includes(root));
   assert.equal((await resolveProject(linked)).projectId, registered.projectId);
-  const listed = spawnSync(process.execPath, [path.join(cwd, 'scripts/workbench/cli.mjs'), 'workbench', '--list'], {
-    encoding: 'utf8', windowsHide: true, env: { ...process.env, CONTEXT_GUARD_NAMED_STATE_DIR: dir },
+  const inventory = await cliJSON(['workbench', '--list', '--root', linked], { CONTEXT_GUARD_NAMED_STATE_DIR: dir });
+  assert.equal(inventory.registeredCount, 1);
+  assert.equal(inventory.runningCount, 1);
+  assert.equal(inventory.readyCount, 1);
+  assert.equal(inventory.projects[0].status, 'ready');
+  assert.equal('projectId' in inventory.projects[0], false);
+  assert.equal('instance' in inventory.projects[0], false);
+});
+test('global inventory separates registered, running, legacy, stopped and unknown workbenches', async t => {
+  const dir = path.join(await fixture(t, 'Inventory State'), 'global');
+  const proxy = await startNamedProxy({ dir, port: 0 }); t.after(() => proxy.close());
+
+  const readyRoot = await fixture(t, 'Ready Project');
+  const ready = await startServer({ root: readyRoot, port: 0 }); t.after(() => ready.close());
+  await namedWorkbench(ready.state, request, { dir });
+
+  const legacyRoot = await fixture(t, 'Legacy Project');
+  const legacyProject = await resolveProject(legacyRoot);
+  const legacyInstance = 'l'.repeat(40);
+  const legacy = http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({
+      protocol: 1, runtimeSchema: 1, buildId: 'legacy-workbench', capabilities: [],
+      projectId: legacyProject.projectId, instance: legacyInstance, pid: process.pid,
+      root: legacyRoot, namedRoot: legacyRoot,
+    }));
   });
-  assert.equal(listed.status, 0, listed.stderr);
-  assert.equal(JSON.parse(listed.stdout).count, 1);
+  await new Promise(resolve => legacy.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => legacy.close(resolve)));
+  new RouteStore(dir).addRoute({
+    hostname: 'legacy-project.localhost', root: legacyRoot, projectId: projectId(legacyRoot),
+    instance: legacyInstance, port: legacy.address().port, proxyToken: 'l'.repeat(32),
+  });
+
+  const stoppedRoot = await fixture(t, 'Stopped Project');
+  const stoppedProject = await resolveProject(stoppedRoot);
+  const stopped = await startServer({ root: stoppedRoot, port: 0 });
+  await rememberProject(stoppedProject, { dir, state: stopped.state });
+  await stopped.close();
+
+  const unknownRoot = await fixture(t, 'Unknown Project');
+  const unknownProject = await resolveProject(unknownRoot);
+  const portProbe = http.createServer();
+  await new Promise(resolve => portProbe.listen(0, '127.0.0.1', resolve));
+  const unusedPort = portProbe.address().port;
+  await new Promise(resolve => portProbe.close(resolve));
+  const unknownState = {
+    url: `http://127.0.0.1:${unusedPort}/prototype/workbench.html`,
+    pid: process.pid, instance: 'u'.repeat(40), root: unknownRoot,
+  };
+  await fs.mkdir(path.join(unknownRoot, '.codex/context/private'), { recursive: true });
+  await fs.writeFile(path.join(unknownRoot, '.codex/context/private/workbench.json'), JSON.stringify(unknownState));
+  await rememberProject(unknownProject, { dir, state: unknownState });
+
+  const inventory = await globalWorkbenchInventory({ dir, currentRoot: readyRoot });
+  assert.equal(inventory.registeredCount, 3);
+  assert.equal(inventory.projectCount, 4);
+  assert.equal(inventory.runningCount, 2);
+  assert.equal(inventory.readyCount, 1);
+  assert.equal(inventory.currentProject.name, 'ready-project');
+  assert.equal(inventory.currentProject.status, 'ready');
+  assert.equal(inventory.projects.find(project => project.name === 'legacy-project').status, 'legacy');
+  assert.equal(inventory.projects.find(project => project.name === 'legacy-project').registered, false);
+  assert.equal(inventory.projects.find(project => project.name === 'Stopped Project').status, 'stopped');
+  assert.equal(inventory.projects.find(project => project.name === 'Unknown Project').status, 'unknown');
+
+  await ready.close();
+  const afterStop = await globalWorkbenchInventory({ dir, currentRoot: readyRoot });
+  assert.equal(afterStop.runningCount, 1);
+  assert.equal(afterStop.currentProject.status, 'route-stale');
+});
+test('global inventory reports two backends for one Git project as a duplicate', async t => {
+  const root = await fixture(t, 'Duplicate Project'), linked = path.join(root, 'linked');
+  const git = (...args) => execFileSync('git', args, { cwd: root, stdio: 'pipe', windowsHide: true });
+  git('init', '-b', 'main');
+  git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-m', 'fixture');
+  git('worktree', 'add', '-b', 'feature', linked);
+  await fs.mkdir(path.join(linked, '.codex/context/private'), { recursive: true });
+  await fs.copyFile(path.join(root, '.codex/context/map.json'), path.join(linked, '.codex/context/map.json'));
+  const project = await resolveProject(root), dir = path.join(root, 'global');
+  const identity = (instance, serviceRoot) => ({
+    protocol: 2, runtimeSchema: 3, buildId: 'project-workbench-v4',
+    capabilities: ['git-common-dir-project', 'named-origin-verification', 'prepared-session-binding', 'private-main-baseline', 'stable-worktree-identity', 'global-project-registry'],
+    projectId: project.projectId, instance, pid: process.pid, root: serviceRoot, namedRoot: project.sharedDir,
+  });
+  const services = [];
+  for (const [instance, serviceRoot] of [['a'.repeat(40), root], ['b'.repeat(40), linked]]) {
+    const server = http.createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(identity(instance, serviceRoot))); });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => server.close(resolve)));
+    services.push({ url: `http://127.0.0.1:${server.address().port}/prototype/workbench.html`, pid: process.pid, instance, root: serviceRoot });
+  }
+  await fs.mkdir(project.sharedDir, { recursive: true });
+  await fs.writeFile(path.join(project.sharedDir, 'workbench.json'), JSON.stringify(services[0]));
+  await fs.writeFile(path.join(linked, '.codex/context/private/workbench.json'), JSON.stringify(services[1]));
+  await rememberProject(project, { dir, state: services[0] });
+  const inventory = await globalWorkbenchInventory({ dir, currentRoot: linked });
+  assert.equal(inventory.registeredCount, 1);
+  assert.equal(inventory.runningCount, 2);
+  assert.equal(inventory.currentProject.status, 'duplicate');
+  assert.equal(inventory.currentProject.runningInstances, 2);
 });
 test('a recognized installed runtime upgrade preserves the project and replaces only the old process', async t => {
   const root = await fixture(t, 'Upgrade Project'), installed = path.join(root, 'installed-old');
@@ -297,8 +406,12 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   assert.match(unbound.stdout + unbound.stderr, /not bound/);
   await assert.rejects(fs.access(path.join(root, '.codex/context/private/workbench.json')));
   const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
+  const known = await namedWorkbench(backend.state, request, { dir });
+  const offered = await run(hookArgs, payload);
+  assert.match(offered.stdout + offered.stderr, new RegExp(known.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(offered.stdout + offered.stderr, /matching project workbench is running/);
   await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'named-hook', worktreeRoot: root, workbenchUrl: new URL('/prototype/workbench.html', backend.state.url).href } });
-  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, false);
+  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true);
   const hook = await run(hookArgs, payload);
   assert.match(hook.stdout + hook.stderr, /http:\/\/hook-project\.localhost:\d+\/prototype\/workbench.html/);
   const repaired = await diagnoseWorkbench(root, 'named-hook');

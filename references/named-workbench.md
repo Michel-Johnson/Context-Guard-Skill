@@ -48,8 +48,18 @@ also records every established local project, its known worktree roots and its
 canonical URL. It lives outside the replaceable Skill directory, so reinstalling
 or upgrading the Skill does not erase bindings or create a second workbench.
 Restarting the backend from another linked worktree retains the project's URL.
-Inspect the private catalog without starting a project service with
-`context-guard workbench --list`.
+Inspect every known project without starting or stopping a service with
+`context-guard workbench --list --root /path/to/current/project`. The command
+does not equate historical registration with liveness: it probes the backend
+and named route, includes route-only legacy instances, deduplicates the same
+physical instance across linked worktrees, and returns separate
+`registeredCount`, `runningCount`, `readyCount`, `stoppedCount`, and
+`attentionCount` values. Project entries expose readable names, canonical URLs
+and states (`ready`, `direct-only`, `legacy`, `duplicate`, `route-stale`,
+`route-mismatch`, `stopped`, or `unknown`) without user-facing Session, Git or
+backend instance identifiers. `unknown` means a recorded owner process is still
+alive but did not answer the bounded health probe; it must not be treated as
+stopped or replaced automatically.
 
 When opening is requested, it is claimed atomically by the backend: live workbench pages
 suppress another open, and parallel first starts share a five-second opening
