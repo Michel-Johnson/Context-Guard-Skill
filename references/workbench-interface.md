@@ -43,11 +43,15 @@ Session IDs as user-facing labels or fallback text.
 At SessionStart and every prompt, use `workbench --binding-status --session <id>`.
 The result separates the binding record (`current`, `moved`, `other-worktree`,
 `stale`, or `project-mismatch`) from runtime verification (`ready`, `stopped`,
-`legacy`, `duplicate`, or `named-mismatch`). Unbound means ask the user for the
-project workbench URL, then bind with `workbench --session <id> --workbench-url
-<confirmed-url>`. The URL must resolve to the same Git project, backend instance,
-and compatible runtime. A broken binding/service means repair, not create another
-workbench. For an existing bound Session, a missing/stale canonical URL or a
+`legacy`, `duplicate`, `unknown`, or `named-mismatch`). Before asking about an
+unbound Session, `workbench --list --root <project>` builds a fresh global
+inventory from the persistent project catalog, named routes and verified backend
+states. A unique ready match is presented by readable project URL and still needs
+human confirmation; a stopped match is reused after confirmation; legacy,
+duplicate, mismatched and unknown matches require diagnosis and never create a
+second service. The confirmed URL must resolve to the same Git project, backend
+instance, and compatible runtime. A broken binding/service means repair, not
+create another workbench. For an existing bound Session, a missing/stale canonical URL or a
 recognized older runtime is repaired by `workbench --session <id>` using the global
 project registry; it is not a reason to ask the user to bind again. Unknown legacy
 or duplicate owners remain explicit migration errors. Main branch selection
@@ -74,6 +78,14 @@ explicit `workbench migrate --root ... --retire <keys>` command copies every
 target's `.codex/context` into the private Git-common-dir migration backup before
 sending only `SIGTERM`; identity changes abort, timeouts never escalate to a
 force-kill, and unknown state files are preserved.
+
+`workbench --list` is a read-only global observation, not a cleanup command. Its
+`registeredCount` is the persistent catalog size, while `runningCount` is the
+number of distinct backends that answered the identity probe, including legacy
+backends. `readyCount` counts projects whose compatible backend and named route
+are both usable. The shared named proxy is infrastructure and is never counted as
+a project workbench. A stale route remains visible for diagnosis instead of being
+deleted silently.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
 connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed

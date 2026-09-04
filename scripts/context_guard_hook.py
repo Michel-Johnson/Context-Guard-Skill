@@ -1044,6 +1044,16 @@ def main() -> int:
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
             return hook_response(platform, event, "Context Guard binding could not be read. Preserve existing data; do not treat this as first use or start a replacement workbench.")
         if not binding.get("session", {}).get("bound"):
+            current_workbench = None
+            try:
+                inventory = run_node_workbench(["workbench", "--list", "--root", str(root)])
+                candidate = inventory.get("currentProject")
+                if isinstance(candidate, dict):
+                    current_workbench = candidate
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+                # Binding diagnosis remains authoritative for this Session. A
+                # failed global inventory must not create or select a service.
+                current_workbench = None
             ctx.mkdir(parents=True, exist_ok=True)
             registration = {
                 "at": utc_now(), "event": event, "platform": platform,
@@ -1057,9 +1067,37 @@ def main() -> int:
             previous = binding.get("session", {})
             target = previous.get("worktreeRoot")
             prior = f" It is currently recorded against {target}; use --rebind only after explicit confirmation." if target else ""
+            if current_workbench:
+                status = str(current_workbench.get("status") or "unknown")
+                url = str(current_workbench.get("url") or "")
+                readable = f" at {url}" if url else ""
+                if status == "ready" and url:
+                    return hook_response(
+                        platform, event,
+                        main_notice + f"This Session is not bound to the current worktree.{prior} "
+                        f"The matching project workbench is running{readable}. Ask whether to bind this Session to that URL. "
+                        f"After confirmation run {context_guard_cli()} workbench --root {json.dumps(str(root))} "
+                        f"--session {json.dumps(current_session_id)} --workbench-url {json.dumps(url)}. "
+                        "Do not create another workbench. Binding is not a node permission grant.",
+                    )
+                if status in {"legacy", "duplicate", "unknown", "route-mismatch"}:
+                    return hook_response(
+                        platform, event,
+                        main_notice + f"This Session is not bound to the current worktree.{prior} "
+                        f"The matching project workbench{readable} is {status}. Do not create or bind another service. "
+                        f"Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))} and resolve that runtime first.",
+                    )
+                return hook_response(
+                    platform, event,
+                    main_notice + f"This Session is not bound to the current worktree.{prior} "
+                    f"The existing project workbench record{readable} is {status}. Ask whether to reuse this project workbench. "
+                    f"After confirmation run {context_guard_cli()} workbench --root {json.dumps(str(root))} "
+                    f"--session {json.dumps(current_session_id)} to restore the same named entry. "
+                    "Do not create a second project identity. Binding is not a node permission grant.",
+                )
             return hook_response(platform, event, main_notice + f"This Session is not bound to the current worktree.{prior} Ask the user for the project workbench URL. After confirmation run {context_guard_cli()} workbench --root {json.dumps(str(root))} --session {json.dumps(current_session_id)} --workbench-url <confirmed-url>. If the user explicitly chooses this project but has no running URL, omit --workbench-url and create its single project service. Do not initialize a map, read project memory, or auto-open another workbench before confirmation. Binding is not a node permission grant.")
         runtime_status = str(binding.get("runtime", {}).get("status") or "")
-        if runtime_status in {"legacy", "duplicate"}:
+        if runtime_status in {"legacy", "duplicate", "unknown"}:
             return hook_response(platform, event, f"Context Guard binding exists, but the project workbench runtime is {runtime_status}. Do not create another service or ask to bind again. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))} and follow the explicit migration result.")
         if not binding.get("session", {}).get("verified") and os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") != "1":
             try:
