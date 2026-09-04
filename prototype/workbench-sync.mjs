@@ -14,6 +14,7 @@ function uniqueId() {
 export class WorkbenchSync {
   constructor(adapter) {
     this.a = adapter; this.config = window.__CG_SERVER;
+    this.backendInstance = String(this.config?.instance || '');
     this.id = uniqueId();
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
@@ -160,7 +161,17 @@ export class WorkbenchSync {
     });
     this.events.onerror = async () => {
       if (this.dirty()) this.saveDraft(); this.setStatus('offline');
-      try { const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin' }); const config = await response.json(); if (JSON.stringify(config) !== JSON.stringify(this.config)) { this.config = config; this.connect(); } } catch {}
+      try {
+        const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin' });
+        const config = await response.json(), nextInstance = String(config?.instance || '');
+        if (this.backendInstance && nextInstance && nextInstance !== this.backendInstance) {
+          this.events?.close(); this.events = null;
+          this.setStatus('error', '工作台后端实例已变更，请刷新页面');
+          return;
+        }
+        if (!this.backendInstance && nextInstance) this.backendInstance = nextInstance;
+        if (JSON.stringify(config) !== JSON.stringify(this.config)) { this.config = config; this.connect(); }
+      } catch {}
     };
     this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
