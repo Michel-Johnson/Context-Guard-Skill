@@ -720,6 +720,9 @@ html[lang="en"] .mem-body .txt[data-ed="idea"]:empty:before{content:"Write an id
 .ed:focus{background:var(--green-soft);box-shadow:inset 0 -2px 0 var(--green)}
 .ed.ghost{color:var(--muted)}
 .ed.ghost:focus{color:var(--ink)}
+.text-link{color:#2467a6;text-decoration:underline;text-decoration-thickness:1px;
+  text-underline-offset:2px;overflow-wrap:anywhere;cursor:pointer}
+.text-link:hover{color:#174a7a}
 h2 .ed{flex:1 1 auto;min-width:4em;min-height:1.2em;padding:2px 4px}
 .sec-block{margin-top:0;padding:16px 0 12px;border-top:1px solid var(--line)}
 .sec-add{display:inline-flex;align-items:center;gap:6px}
