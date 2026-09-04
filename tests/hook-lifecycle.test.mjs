@@ -239,13 +239,17 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.match(subagentStopped.json.systemMessage, /subagent boundary/);
   const interrupted = hook('Interrupt', project, session);
   assert.match(interrupted.json.systemMessage, /interrupted plan state/);
-  const blocked = hook('Stop', project, session, { stop_hook_active: false });
-  assert.equal(blocked.json.decision, 'block');
-  assert.equal(blocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
-  assert.doesNotMatch(JSON.stringify(blocked.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
-  const repeatedBlock = hook('Stop', project, session, { stop_hook_active: true });
-  assert.equal(repeatedBlock.json.systemMessage, 'Context Guard is still finishing the current task. No user action is required.');
-  assert.doesNotMatch(JSON.stringify(repeatedBlock.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const deferred = hook('Stop', project, session, { stop_hook_active: false });
+  assert.deepEqual(deferred.json, {});
+  assert.doesNotMatch(deferred.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const repeatedStop = hook('Stop', project, session, { stop_hook_active: true });
+  assert.deepEqual(repeatedStop.json, {});
+  assert.doesNotMatch(repeatedStop.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const resumed = hook('UserPromptSubmit', project, session, { turn_id: 'resume-turn', prompt: '继续' });
+  assert.match(resumed.json.hookSpecificOutput.additionalContext, /Active plan: plan-[a-f0-9]+/);
+  assert.match(resumed.json.hookSpecificOutput.additionalContext, /Resume it before starting unrelated work/);
+  const resumeSignal = resumed.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
+  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', resumeSignal, '--kind', 'task']);
   assert.throws(() => archivePlan(project, session), /subagent_review/);
   archivePlan(project, session, 'src/scratch.txt', { subagent_review: { 'agent-one': 'Reviewed paths and test evidence; no additional changes' } });
   finishPlan(project, session);
@@ -347,10 +351,9 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   hook('PostToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs') },
   });
-  const blocked = hook('Stop', project, session, { stop_hook_active: false });
-  assert.equal(blocked.json.decision, 'block');
-  assert.equal(blocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
-  assert.doesNotMatch(JSON.stringify(blocked.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const deferred = hook('Stop', project, session, { stop_hook_active: false });
+  assert.deepEqual(deferred.json, {});
+  assert.doesNotMatch(deferred.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
   const beforeFinish = await syncStatus(project);
   const active = beforeFinish.works.find(item => item.sessionId === session);
   assert.equal(active.status, 'working');
