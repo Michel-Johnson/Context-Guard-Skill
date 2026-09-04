@@ -19,8 +19,12 @@ Runtime routes are private local state, not project memory or files to commit.
 
 ## Multiple sessions and worktrees
 
-Linked Git worktrees share one project service, but every Session must be
-explicitly bound with `workbench --root <worktree> --session <actual-session-id>`.
+Linked Git worktrees share one project service. Bindings are keyed by the real
+Session ID, never by branch: two Sessions on one branch remain independent. Once
+a project workbench has been established, a new unbound Session automatically
+reuses the unique matching registered workbench. Human confirmation is required
+only for the project's first workbench, an ambiguous/mismatched candidate, or an
+explicit move of an already-bound Session to another worktree.
 The legacy service-target command remains available:
 
 ```sh
@@ -37,8 +41,9 @@ or delete data, and does not authorize a Session binding.
 
 The target selects only the service. Python lifecycle records stay in the source
 worktree; the service keeps Maps isolated by Session/worktree identity. Existing
-records are not migrated to the target. Unbound hooks ask for confirmation and do
-not start a service or open a browser. All Sessions remains the read-only published
+records are not migrated to the target. First-use or ambiguous hooks ask for
+confirmation and do not guess a service or open a browser. A unique established
+project binding is reused automatically. All Sessions remains the read-only published
 main baseline, never the target worktree's unmerged Map. See `server-memory.md`
 for the private-memory deployment and publication boundary.
 

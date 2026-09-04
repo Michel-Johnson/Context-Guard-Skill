@@ -1,6 +1,6 @@
 export const WORKBENCH_PROTOCOL = 2;
-export const WORKBENCH_RUNTIME_SCHEMA = 3;
-export const WORKBENCH_BUILD = 'project-workbench-v4';
+export const WORKBENCH_RUNTIME_SCHEMA = 4;
+export const WORKBENCH_BUILD = 'project-workbench-v5';
 export const WORKBENCH_CAPABILITIES = Object.freeze([
   'git-common-dir-project',
   'named-origin-verification',
@@ -8,6 +8,8 @@ export const WORKBENCH_CAPABILITIES = Object.freeze([
   'private-main-baseline',
   'stable-worktree-identity',
   'global-project-registry',
+  'session-auto-binding',
+  'dynamic-session-access',
 ]);
 
 export function runtimeIdentity() {

@@ -20,6 +20,28 @@ function validateOptions({ dataDir, adminToken }) {
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
 const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
 const memoryHubs = new WeakMap();
+
+function publicationRecord(value = {}) {
+  return {
+    sessionId: value.sessionId,
+    sessionVersion: value.sessionVersion,
+    sourceCommit: value.sourceCommit,
+    mainSha: value.mainSha,
+    mainVersion: value.mainVersion,
+    publishedAt: value.publishedAt,
+    generation: Number.isInteger(value.generation) && value.generation > 0 ? value.generation : 1,
+  };
+}
+
+function publicationHistory(closed) {
+  if (!closed) return [];
+  if (Array.isArray(closed.publications) && closed.publications.length) return closed.publications.map(publicationRecord);
+  return [publicationRecord(closed)];
+}
+
+function nextSessionGeneration(closed) {
+  return publicationHistory(closed).reduce((maximum, item) => Math.max(maximum, item.generation || 1), 0) + 1;
+}
 function memoryHub(configuration) {
   let hub = memoryHubs.get(configuration);
   if (!hub) { hub = new EventEmitter(); hub.setMaxListeners(0); memoryHubs.set(configuration, hub); }
@@ -101,15 +123,15 @@ export async function memoryPublicationStatus(configuration, projectId, sessionI
   const project = configuration.projects?.[projectId];
   if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   const state = await readMemoryProject(configuration, projectId);
-  const closed = state.closedSessions?.[sessionId];
-  if (closed) return { projectId, sessionId, status: 'published', ...closed };
   const session = state.sessions?.[sessionId];
+  const closed = state.closedSessions?.[sessionId];
+  if (!session && closed) return { projectId, sessionId, status: 'published', ...closed };
   if (!session) return { projectId, sessionId, status: 'missing' };
   if (!project.root || !project.ref) return { projectId, sessionId, status: 'unavailable', reason: 'MAIN_BINDING_REQUIRED', sessionVersion: session.version };
   if (refresh && project.remote) await gitCommand(project.root, ['fetch', '--quiet', project.remote]);
   const mainSha = await gitCommand(project.root, ['rev-parse', '--verify', `${project.ref}^{commit}`]);
   const baseVersion = state.main?.version || null;
-  const common = { projectId, sessionId, sessionVersion: session.version, baseVersion, baseMainVersion: session.baseMainVersion ?? null, sourceCommit: session.sourceCommit, mainSha };
+  const common = { projectId, sessionId, generation: session.generation || 1, sessionVersion: session.version, baseVersion, baseMainVersion: session.baseMainVersion ?? null, sourceCommit: session.sourceCommit, mainSha };
   if (session.baseMainVersion !== baseVersion) return { ...common, status: 'conflict', reason: 'MAIN_MEMORY_ADVANCED' };
   return { ...common, status: await mergedIntoMain(project, session.sourceCommit, mainSha) ? 'ready' : 'waiting', reason: null };
 }
@@ -149,7 +171,8 @@ export async function publishSessionMemory(configuration, projectId, input, acto
       publishedAt,
     };
     state.main = snapshot;
-    state.closedSessions[input.sessionId] = { sessionId: input.sessionId, sessionVersion: session.version, sourceCommit: session.sourceCommit, mainSha, mainVersion: snapshot.version, publishedAt };
+    const publication = publicationRecord({ sessionId: input.sessionId, sessionVersion: session.version, sourceCommit: session.sourceCommit, mainSha, mainVersion: snapshot.version, publishedAt, generation: session.generation || 1 });
+    state.closedSessions[input.sessionId] = { ...publication, publications: [...publicationHistory(state.closedSessions[input.sessionId]), publication] };
     delete state.sessions[input.sessionId];
     state.revision++;
     const history = appendHistory(state, { scope: 'main', action: 'publish', snapshot, previousVersion, actor, at: publishedAt });
@@ -169,9 +192,6 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
   const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
     state.closedSessions ||= {};
-    if (state.closedSessions[sessionId]) throw new MapError('SESSION_CLOSED', 'This Session Map was published and closed; start a new Session from the latest main baseline', 410);
-    const current = state.sessions[sessionId];
-    if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
     if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
     const receiptKey = hash(`workbench:${sessionId}:${input.operationId}`);
     const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
@@ -179,6 +199,9 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
       return { result: state.receipts[receiptKey].result, event: null };
     }
+    const current = state.sessions[sessionId];
+    if (!current && state.closedSessions[sessionId]) throw new MapError('SESSION_REOPEN_REQUIRED', 'Publish closed this Session generation; reopen it from the latest main snapshot before editing', 409);
+    if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
     if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Session Map changed; reload before committing', 409, { currentVersion: current.version });
     // The project credential already authorizes this private Session scope. Keep
     // the real actor in history, but do not reapply local node grants on Cloud.
@@ -300,14 +323,29 @@ export function createMemoryHandler(configuration = {}) {
           snapshot = { language: input.language, version: hash(encode(input)) }; state.preferences = snapshot;
         } else if (rawSession) {
           const id = sessionId;
-          if (state.closedSessions[id]) throw new MapError('SESSION_CLOSED', 'This Session Map was published and closed; start a new Session from the latest main baseline', 410);
-          if ((state.sessions[id]?.version || null) !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Session memory changed', 409);
-          previousVersion = state.sessions[id]?.version || null;
+          const current = state.sessions[id] || null;
+          const closed = state.closedSessions[id] || null;
+          if ((current?.version || null) !== (input.baseVersion ?? null)) throw new MapError('VERSION_CONFLICT', 'Session memory changed', 409);
+          const reopening = !current && !!closed;
+          if (reopening && (input.baseMainVersion ?? null) !== (state.main?.version || null)) {
+            throw new MapError('SESSION_BASELINE_CONFLICT', 'Reopen the Session from the latest published main snapshot', 409, { mainVersion: state.main?.version || null });
+          }
+          previousVersion = current?.version || null;
           validateMemory(input.memory);
           if (!/^[a-f0-9]{40,64}$/.test(input.sourceCommit || '')) throw new MapError('INVALID_COMMIT', 'Source commit required');
-          snapshot = { sessionId: id, version: hash(encode(input)), sourceCommit: input.sourceCommit, baseMainVersion: input.baseMainVersion ?? null, memory: input.memory, updatedAt: new Date().toISOString() };
+          snapshot = {
+            sessionId: id,
+            version: hash(encode(input)),
+            sourceCommit: input.sourceCommit,
+            baseMainVersion: input.baseMainVersion ?? null,
+            memory: input.memory,
+            updatedAt: new Date().toISOString(),
+            generation: current?.generation || (reopening ? nextSessionGeneration(closed) : 1),
+            ...(reopening ? { reopenedFrom: closed.mainVersion || null } : {}),
+          };
           state.sessions[id] = snapshot;
           historyScope = `session:${id}`;
+          historyAction = reopening ? 'reopen' : 'write';
         } else if (scope === 'restore') {
           historyScope = String(input.scope || '');
           const current = scopeValue(state, historyScope);
@@ -333,7 +371,7 @@ export function createMemoryHandler(configuration = {}) {
         const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
           projectId,
           scope: historyScope,
-          type: historyAction === 'restore' ? 'session.restored' : 'session.snapshot',
+          type: historyAction === 'restore' ? 'session.restored' : historyAction === 'reopen' ? 'session.reopened' : 'session.snapshot',
           operationId: input.operationId,
           baseVersion: previousVersion,
           version: snapshot.version,

@@ -107,17 +107,8 @@ export class MemorySyncCoordinator extends EventEmitter {
 
   async initialize() {
     let remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
-    if (!remote) {
-      const main = (await this.request(this.project, 'main')).snapshot;
-      const input = {
-        operationId: `session-init:${this.sessionId}:${randomUUID()}`,
-        baseVersion: null,
-        baseMainVersion: main?.version || null,
-        sourceCommit: this.project.head,
-        memory: { map: this.store.doc, records: {} },
-      };
-      remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`, input)).snapshot;
-    }
+    if (!remote) remote = await this.createSessionGeneration();
+    if (!remote || this.status.conflict) return;
     validate(remote.memory.map);
     const base = await readJSON(this.baseFile, null);
     if (!base) {
@@ -136,6 +127,52 @@ export class MemorySyncCoordinator extends EventEmitter {
     if (this.status.conflict) return;
     await this.persist({ status: 'syncing', serverVersion: remote.version, error: null, conflict: null });
     await this.queueLocal();
+  }
+
+  async createSessionGeneration() {
+    const scope = `sessions/${encodeURIComponent(this.sessionId)}`;
+    const existing = (await this.request(this.project, scope)).snapshot;
+    if (existing) return existing;
+    const main = (await this.request(this.project, 'main')).snapshot;
+    let base = await readJSON(this.baseFile, null);
+    if (main?.memory?.map) {
+      if (!base) {
+        if (!equalDocument(this.store.doc, main.memory.map)) {
+          await this.saveConflict('SESSION_MAIN_BASELINE_REQUIRED', null, this.store.doc, main.memory.map);
+          return null;
+        }
+        await atomicWrite(this.baseFile, encode(main.memory.map));
+        base = main.memory.map;
+      } else if (!equalDocument(base, main.memory.map)) {
+        const localOperations = documentOperations(base, this.store.doc);
+        const mainOperations = documentOperations(base, main.memory.map);
+        if (operationsOverlap(localOperations, mainOperations)) {
+          await this.saveConflict('MAIN_ADVANCED_BEFORE_SESSION_REOPEN', base, this.store.doc, main.memory.map);
+          return null;
+        }
+        if (mainOperations.length) await this.applyRemoteDocument(applyOperations(this.store.doc, mainOperations, { kind: 'human', sessionId: 'cloud-sync' }).doc, `main-rebase:${main.version}`);
+      }
+    }
+    const input = {
+      operationId: `session-init:${this.sessionId}:${randomUUID()}`,
+      baseVersion: null,
+      baseMainVersion: main?.version || null,
+      sourceCommit: this.project.head,
+      memory: { map: structuredClone(this.store.doc), records: {} },
+    };
+    let remote;
+    try { remote = (await this.request(this.project, scope, input)).snapshot; }
+    catch (error) {
+      if (error.code !== 'VERSION_CONFLICT') throw error;
+      remote = (await this.request(this.project, scope)).snapshot;
+      if (!remote) throw error;
+      await this.reconcileRemote(remote, this.status.cursor || 0);
+      return remote;
+    }
+    await atomicWrite(this.baseFile, encode(remote.memory.map));
+    await fs.unlink(this.outboxFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    await this.persist({ status: 'synced', pending: 0, serverVersion: remote.version, error: null, conflict: null, lastSyncedAt: remote.updatedAt });
+    return remote;
   }
 
   async queueLocal() {
@@ -178,6 +215,10 @@ export class MemorySyncCoordinator extends EventEmitter {
       await this.persist({ status: equalDocument(acknowledged, this.store.doc) ? 'synced' : 'syncing', pending: 0, lastSyncedAt: result.persistedAt || new Date().toISOString() });
       if (!equalDocument(acknowledged, this.store.doc)) await this.queueLocal();
     } catch (error) {
+      if (error.code === 'SESSION_REOPEN_REQUIRED') {
+        await this.createSessionGeneration();
+        return;
+      }
       if (error.code === 'VERSION_CONFLICT') {
         const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
         await this.reconcileRemote(remote, this.status.cursor || 0);

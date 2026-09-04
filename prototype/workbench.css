@@ -80,6 +80,8 @@ header.top h1{margin:0;font-size:16px}
 .session-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:340px;padding:8px 10px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--ink);text-align:left;white-space:nowrap}
 .session-menu button:hover{background:var(--module-soft);transform:none;box-shadow:none}
 .session-menu button[aria-selected="true"]{background:var(--module-soft)}
+.session-menu button:disabled{opacity:.55;cursor:not-allowed}
+.session-menu button:disabled:hover{background:transparent}
 .session-menu .session-option-name{overflow:hidden;text-overflow:ellipsis}
 .bug-assign-dialog{width:min(520px,calc(100vw - 28px));padding:0;border:2px solid var(--line-ink);border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow)}
 .bug-assign-dialog::backdrop{background:rgba(35,31,25,.28)}

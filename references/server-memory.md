@@ -83,15 +83,19 @@ without a configured authoritative ref cannot publish.
 
 The project page reports publication as waiting for Git merge, ready, conflicting,
 unavailable, or published. The publish control becomes active only in a ready
-Session view. A published Main view is read-only; further changes belong in a new
-Session.
+Session view. A published Main view is read-only; further changes belong in the
+next development generation of a Session Map.
 
-Successful publication closes and removes that Session Map branch in the same
-durable server transaction. Its immutable history, publication receipt, source
-commit, and resulting Main version remain available for audit. Replaying the
-same operation ID returns the original receipt, while every new write using the
-closed Session ID fails. New development must use a new Session seeded from the
-latest published Main Map.
+Successful publication closes and removes only the active generation of that
+Session Map in the same durable server transaction. Its immutable history,
+publication receipt, source commit, generation number and resulting Main version
+remain available for audit. The same real Session ID may start a later generation
+by sending a complete snapshot with `baseVersion:null` and `baseMainVersion` equal
+to the latest published Main version. A stale baseline is rejected. A Map patch
+before that full reopen returns `SESSION_REOPEN_REQUIRED`; the background workbench
+coordinator performs the reopen and rebases disjoint Main changes automatically.
+Overlapping changes remain a visible conflict. Replaying an operation ID from an
+older generation returns its original receipt and never mutates the active one.
 
 ## Authority and storage
 

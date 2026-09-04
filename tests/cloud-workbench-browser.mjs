@@ -123,6 +123,14 @@ try {
   record('Persistent cookie keeps login across refresh and a reopened page');
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Main map/);
+  assert.equal(await page.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
+  assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
+  await page.locator('#session-chip').click();
+  assert.equal(await page.locator('#session-menu .session-option-name').filter({ hasText: '当前会话' }).count(), 0, 'Cloud overview/project pages have no actual current Session');
+  assert.equal(await page.locator('#session-menu [data-session="session-one"] .session-option-name').textContent(), 'agent 会话');
+  assert.doesNotMatch(await page.locator('#session-menu').textContent(), /session-one/);
+  assert.doesNotMatch((await page.locator('#cg-sync-session option').allTextContents()).join(' '), /session-one/);
+  await page.locator('#session-chip').click();
   record('Main is the default view');
   await page.locator('.cloud-overview-link').click();
   await page.waitForURL(`${service.url}/`);
@@ -132,10 +140,28 @@ try {
   await synchronized();
   record('Project page has a stable route back to the overview');
 
+  const relationPage = await context.newPage();
+  await relationPage.goto(`${service.url}/projects/context-guard?relation=T0#cloud-relation-contract`);
+  await relationPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.body.classList.contains('rel-mode'));
+  assert.equal(await relationPage.locator('#btn-rel').getAttribute('aria-pressed'), 'true');
+  await relationPage.locator('#session-chip').click();
+  await relationPage.locator('#session-menu [data-session="session-one"]').click();
+  await relationPage.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one' && !document.body.classList.contains('rel-mode'));
+  const switchedRelationUrl = new URL(relationPage.url());
+  assert.equal(switchedRelationUrl.searchParams.get('session'), 'session-one');
+  assert.equal(switchedRelationUrl.searchParams.has('relation'), false);
+  assert.equal(switchedRelationUrl.hash, '#cloud-relation-contract');
+  await relationPage.reload();
+  await relationPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === 'session-one');
+  assert.equal(await relationPage.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
+  await relationPage.close();
+  record('Relation mode requires an explicit action or deep link and resets on Session switch');
+
   await page.locator('#session-chip').click();
   await page.locator('#session-menu [data-session="session-one"]').click();
   await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one');
   await synchronized();
+  assert.equal(new URL(page.url()).searchParams.get('session'), 'session-one');
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map/);
   record('Session selector changes the Map scope');
 
@@ -216,6 +242,11 @@ try {
   await page.reload();
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
+  assert.equal(new URL(page.url()).searchParams.has('session'), false);
+  await page.locator('#session-chip').click();
+  assert.equal(await page.locator('#session-menu [data-session="session-one"]').count(), 0, 'a published Session leaves the active selector');
+  assert.equal(await page.locator('#cg-sync-session option[value="session-one"]').count(), 0);
+  await page.locator('#session-chip').click();
   record('Verified publication updates durable read-only Main without exposing an admin token');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });

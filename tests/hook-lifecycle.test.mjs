@@ -427,13 +427,19 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
 
+  // New bindings start with dynamic full access. Model a deliberate human
+  // restriction before exercising the deny path.
+  const ctx = path.join(project, '.codex/context');
+  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), JSON.stringify({
+    sessions: { [session]: { mode: 'explicit', nodes: [], version: null } },
+  }));
+
   const denied = hook('PermissionRequest', project, session, {
     tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/index.mjs') },
   });
   assert.equal(denied.json.hookSpecificOutput.decision.behavior, 'deny');
   assert.match(denied.json.hookSpecificOutput.decision.message, /N1/);
 
-  const ctx = path.join(project, '.codex/context');
   const port = await freePort();
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
   const archiveDenied = spawnSync(python, [contextScript, 'archive-session', '--root', project, '--session', session,

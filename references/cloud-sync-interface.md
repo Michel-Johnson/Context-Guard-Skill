@@ -92,6 +92,12 @@ Map writes carry a stable `operationId`, `baseVersion` and operations. Retrying
 the same body after a lost response returns the original receipt. Reusing the ID
 with different content is rejected.
 
+Publishing removes only the active generation. If that same real Session edits
+again, the workbench first creates its next generation from the latest Main
+snapshot, then resumes ordinary Map patches. `SESSION_REOPEN_REQUIRED` triggers
+this background path; `SESSION_BASELINE_CONFLICT` or overlapping Main/local fields
+preserve the local draft for review. Older generation receipts remain idempotent.
+
 ## Legacy project event protocol
 
 Each project event has a monotonically increasing `seq`, stable `eventId`,

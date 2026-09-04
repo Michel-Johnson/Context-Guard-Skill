@@ -5,7 +5,7 @@ import os from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { MapError } from '../../prototype/map-model.mjs';
+import { entries, MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
@@ -293,12 +293,36 @@ export class Access {
     }
     return [...ids];
   }
-  async snapshot() {
+  accessRecord(sessionId) {
+    const record = this.data.sessions[sessionId];
+    if (!record) return null;
+    return { mode: record.mode === 'all' ? 'all' : 'explicit', nodes: Array.isArray(record.nodes) ? record.nodes : [] };
+  }
+  grants(sessionId, document = null) {
+    const record = this.accessRecord(sessionId);
+    if (!record) return [];
+    if (record.mode !== 'all' || !document?.root) return [...record.nodes];
+    return [...entries(document.root).keys()];
+  }
+  async promoteLegacyFullGrant(sessionId, document) {
+    const record = this.data.sessions[sessionId];
+    if (!record || record.mode || !document?.root || !Array.isArray(record.nodes)) return false;
+    const current = [...entries(document.root).keys()];
+    if (record.nodes.length !== current.length || current.some(id => !record.nodes.includes(id))) return false;
+    await this.grant(sessionId, [], record.version || null, 'all');
+    return true;
+  }
+  async snapshot(document = null, currentSessionId = null) {
     const sessions = await this.sessionRegistry();
+    const grants = {};
+    for (const session of sessions) {
+      const record = this.accessRecord(session.id) || { mode: 'all', nodes: [] };
+      grants[session.id] = { ...this.data.sessions[session.id], mode: record.mode, nodes: this.grants(session.id, document) };
+    }
     return {
       sessions,
-      currentSessionId: (sessions.find(item => item.status === 'active') || sessions[0])?.id || null,
-      grants: this.data.sessions,
+      currentSessionId: sessions.some(item => item.id === currentSessionId) ? currentSessionId : null,
+      grants,
     };
   }
   async knownSessions(root = null) {
@@ -341,17 +365,23 @@ export class Access {
     };
     const next = this.queue.then(async () => {
       this.bindings.sessions[sessionId] = stored;
-      await atomicWrite(this.bindingsFile, encode(this.bindings));
+      const data = structuredClone(this.data);
+      if (!data.sessions[sessionId]) data.sessions[sessionId] = { mode: 'all', nodes: [], version: null, changedAt: new Date().toISOString() };
+      await Promise.all([
+        atomicWrite(this.bindingsFile, encode(this.bindings)),
+        atomicWrite(this.file, encode(data)),
+      ]);
+      this.data = data;
     });
     this.queue = next.catch(() => {}); await next;
     return { kind: 'agent', sessionId, ...(stored.projectId ? { projectId: stored.projectId } : {}), ...(stored.worktreeId ? { worktreeId: stored.worktreeId } : {}) };
   }
-  grants(sessionId) { return this.data.sessions[sessionId]?.nodes || []; }
-  async grant(sessionId, nodes, version) {
+  async grant(sessionId, nodes, version, mode = 'explicit') {
     await this.register(sessionId);
+    if (!['all', 'explicit'].includes(mode)) throw new MapError('INVALID_SCOPE', 'Use all or explicit Session scope');
     const next = this.queue.then(async () => {
       const data = structuredClone(this.data);
-      data.sessions[sessionId] = { nodes: [...new Set(nodes)], version, changedAt: new Date().toISOString() };
+      data.sessions[sessionId] = { mode, nodes: mode === 'all' ? [] : [...new Set(nodes)], version, changedAt: new Date().toISOString() };
       await atomicWrite(this.file, encode(data)); this.data = data;
     });
     this.queue = next.catch(() => {}); await next;

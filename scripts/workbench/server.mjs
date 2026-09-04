@@ -378,6 +378,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           }
           const sessionFiles = project.kind === 'git' ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
           const actor = await access.register(prepared.sessionId, prepared.binding);
+          if (sessionFiles) {
+            const sessionDocument = await readJSON(sessionFiles.file, null);
+            await access.promoteLegacyFullGrant(prepared.sessionId, sessionDocument);
+          }
           if (sessionFiles && !stores.has(`session:${prepared.sessionId}`)) {
             await createStore(`session:${prepared.sessionId}`, prepared.sessionProject.worktreeRoot, {
               file: sessionFiles.file,
@@ -431,7 +435,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             await activeStore.serial(() => activeStore.refresh());
             const state = stateFor(viewId, activeStore);
             if (url.searchParams.has('node')) { const entry = state.doc && entries(state.doc.root).get(url.searchParams.get('node')); if (!entry) throw new MapError('NOT_FOUND', 'Node missing', 404); delete state.doc; state.node = entry.node; state.parentId = entry.parent?.id || null; }
-            return send(res, 200, { ...state, viewId, actor, grants: access.grants(actor.sessionId), peers: viewPeers(viewId).map(({ id, dirty, version }) => ({ id, dirty, version })) });
+            return send(res, 200, { ...state, viewId, actor, grants: access.grants(actor.sessionId, activeStore.doc), peers: viewPeers(viewId).map(({ id, dirty, version }) => ({ id, dirty, version })) });
           }
           if (route === '/api/changes' && req.method === 'GET') { await activeStore.serial(() => activeStore.refresh()); return send(res, 200, activeStore.changes(url.searchParams.get('cursor'))); }
           if (route === '/api/operation' && req.method === 'GET') { const record = await activeStore.operation(url.searchParams.get('id') || ''); return send(res, 200, { found: !!record, result: record?.result, recovery: activeStore.blocked }); }
@@ -439,29 +443,36 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const input = await body(req);
             if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
             if (actor.kind === 'agent') await fence(viewId);
-            const result = await activeStore.commit(input, actor, () => access.grants(actor.sessionId), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
+            const result = await activeStore.commit(input, actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
-          if (route === '/api/access' && req.method === 'GET') { isHuman(actor); return send(res, 200, { ...(await access.snapshot()), project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } }); }
+          if (route === '/api/access' && req.method === 'GET') {
+            isHuman(actor);
+            const currentSessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : null;
+            return send(res, 200, { ...(await access.snapshot(activeStore.doc, currentSessionId)), project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } });
+          }
           if (route === '/api/access-plan' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
             await access.register(sessionId);
             await activeStore.serial(() => activeStore.refresh());
             const nodes = assignmentScope(activeStore.doc, String(input.nodeId || '').trim());
-            const granted = new Set(access.grants(sessionId));
+            const granted = new Set(access.grants(sessionId, activeStore.doc));
             return send(res, 200, { sessionId, nodeId: input.nodeId, nodes, missing: nodes.filter(id => !granted.has(id)) });
           }
           if (route === '/api/access' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             await activeStore.serial(async () => {
               await activeStore.refresh(); const ids = entries(activeStore.doc.root);
-              const requested = Array.isArray(input.addNodes)
-                ? [...new Set([...access.grants(input.sessionId), ...input.addNodes])]
+              const current = access.accessRecord(input.sessionId);
+              const mode = input.mode === 'all' || Array.isArray(input.addNodes) && current?.mode === 'all' ? 'all' : 'explicit';
+              const requested = mode === 'all' ? [] : Array.isArray(input.addNodes)
+                ? [...new Set([...access.grants(input.sessionId, activeStore.doc), ...input.addNodes])]
                 : input.nodes;
-              if (!Array.isArray(requested) || requested.some(id => !ids.has(id))) throw new MapError('INVALID_SCOPE', 'Unknown node in scope');
-              await access.grant(input.sessionId, requested, activeStore.version);
-              await activeStore.recordEvent({ operationId: randomUUID(), fromVersion: activeStore.version, version: activeStore.version, actor, actions: ['grant'], nodeIds: requested, sessionId: input.sessionId });
+              if (!['all', undefined].includes(input.mode) || !Array.isArray(requested) || requested.some(id => !ids.has(id))) throw new MapError('INVALID_SCOPE', 'Unknown node or access mode in scope');
+              await access.grant(input.sessionId, requested, activeStore.version, mode);
+              const effective = access.grants(input.sessionId, activeStore.doc);
+              await activeStore.recordEvent({ operationId: randomUUID(), fromVersion: activeStore.version, version: activeStore.version, actor, actions: ['grant'], nodeIds: effective, sessionId: input.sessionId, mode });
             });
             broadcast('access', {}); return send(res, 200, { saved: true });
           }
@@ -479,7 +490,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const bug = (node?.bugs || []).find(item => item?.id === bugId);
             const todo = (node?.todos || []).find(item => item?.id === todoId);
             if (!node || (!bug && !todo) || (bugId && todoId)) throw new MapError('NOT_FOUND', 'Work item or owner node is missing', 404);
-            if (!access.grants(sessionId).includes(nodeId)) throw new MapError('SESSION_SCOPE_REQUIRED', 'Authorize this node for the session before assigning work', 403);
+            if (!access.grants(sessionId, activeStore.doc).includes(nodeId)) throw new MapError('SESSION_SCOPE_REQUIRED', 'Authorize this node for the session before assigning work', 403);
             if (bug && ['resolved', 'dormant', 'wontfix'].includes(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
             if (todo?.status === 'done') throw new MapError('TODO_CLOSED', 'Completed TODOs cannot be assigned', 409);
             const message = bug ? bugSessionMessage(node, bug) : todoSessionMessage(node, todo);

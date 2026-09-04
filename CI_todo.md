@@ -34,6 +34,7 @@
 - [x] 私有记忆接口：鉴权、CAS、原子快照/回执、主分支祖先验证；公开 Map 接口隔离
 - [x] 用户服务器真实部署、TLS、仓库镜像刷新、SSE 快速重启及重启后持久化验收（`tests/cloud-workbench.test.mjs`；生产验收记录在私有 Session 记忆）
 - [x] 历史记忆清点、备份、迁移、版本覆盖核验及实际切换（生产验收记录在私有 Session 记忆）
+- [x] 同一真实 Session 发布后可从最新 Main 自动开启下一代 Session Map；旧回执保持幂等，过期基线和重叠改动明确冲突（`tests/cloud-workbench.test.mjs`、`tests/workbench-sync.test.mjs`）
 - [ ] 原生 Codex UI 中安装新版本、审阅 Hook 后验证实际上下文投递；doctor 只能证明输出已生成
 
 ## 项目命名工作台
@@ -43,6 +44,8 @@
 - [x] 同一 Git 仓库的显式 worktree 绑定、保留原 Map、拒绝跨仓库绑定；许可证随包及 Skill 安装验证
 - [x] 命名入口与 Session 隔离兼容、未绑定不启动、跨 worktree 重启保留项目命名入口
 - [x] 全局运行态清单合并项目注册表、命名路由和后端探测；区分 ready/stopped/legacy/duplicate/unknown，跨 worktree 按实例去重，未绑定 Hook 复用同项目命名地址（`tests/named-workbench.test.mjs`）
+- [x] 项目首次绑定仍需确认；后续真实 Session 按 Session ID 自动绑定唯一已建立工作台，并自动恢复兼容的停止服务；歧义、错配和真实迁移继续要求确认（`tests/named-workbench.test.mjs`、`tests/ci-smoke.mjs`）
+- [x] 新 Session 默认动态拥有自己的完整工作台权限（含未来节点），人工可收窄、撤销和恢复；Main 写入、发布和管理权限始终隔离（`.github/scripts/multiworktree.test.mjs`、`tests/workbench-sync.test.mjs`、`tests/hook-lifecycle.test.mjs`）
 - [ ] 各宿主应用实际投递 SessionStart、桌面浏览器启动失败反馈；处理函数测试不等于所有宿主端到端验收
 - [ ] macOS/Windows/Linux 浏览器的 `.localhost` DNS 解析与受管网络策略兼容；正式精简实现的长期 CPU/内存/物理 I/O 基准
 - [ ] 旧 Map-only Cloud Sync 与多个 worktree 的联调；旧服务目标绑定不代表服务器迁移完成
@@ -53,4 +56,5 @@
 - [x] 明确开发请求不重复索要计划确认；Context Guard 控制命令可经 Node/Python 正式入口和字面量 stdin 安全通道自举；PR 合入 main 后强制从合并版本更新本机 Skill，并通过安装入口执行真实功能验收（`tests/hook-lifecycle.test.mjs`）
 - [x] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层，并同时覆盖本地 CSP、Cloud 静态路由和官网演示构建（`prototype/workbench.css`、`prototype/workbench-fixtures.js`、`prototype/workbench-app.js`）
 - [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
+- [x] Session 下拉框按 ID 去重且不展示原始 ID，URL 固定当前会话，发布/关闭项移除、失效项禁用；关系模式默认关闭并在 Session 切换时退出（`tests/workbench-browser.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] 用统一清单约束自动测试、独立套件与 helper，禁止遗漏和 `.only`，并明确开发/Review/E2E 的责任边界（`tests/test-manifest.json`、`docs/test-governance.md`）

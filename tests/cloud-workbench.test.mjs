@@ -201,9 +201,10 @@ test('verified Session publication needs no exposed admin token and becomes the 
   const projectHeaders = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
   const browserHeaders = { Authorization: 'Bearer cloud-admin', 'Content-Type': 'application/json' };
   const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Published Session map', kind: 'module', state: 'dirty', children: [] } };
+  const sessionSeedInput = { operationId: 'publish-seed', baseVersion: null, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: { 'tasks/T1.md': 'done' } } };
   const seeded = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'publish-seed', baseVersion: null, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: { 'tasks/T1.md': 'done' } } }),
+    body: JSON.stringify(sessionSeedInput),
   });
   assert.equal(seeded.response.status, 200, JSON.stringify(seeded.body));
 
@@ -229,11 +230,16 @@ test('verified Session publication needs no exposed admin token and becomes the 
 
   const main = await request(service.url, '/v1/projects/context-guard/main', { headers: projectHeaders });
   assert.equal(main.body.snapshot.mainSha, featureSha);
-  const closedWrite = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
+  const closedMapWrite = await request(service.url, '/v1/projects/context-guard/sessions/session-publish/map', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'closed-write', baseVersion: seeded.body.snapshot.version, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: {} } }),
+    body: JSON.stringify({ operationId: 'closed-map-write', baseVersion: seeded.body.snapshot.version, operations: [{ type: 'update', id: 'T0', fields: { purpose: 'must not change' } }] }),
   });
-  assert.equal(closedWrite.response.status, 410); assert.equal(closedWrite.body.error.code, 'SESSION_CLOSED');
+  assert.equal(closedMapWrite.response.status, 409); assert.equal(closedMapWrite.body.error.code, 'SESSION_REOPEN_REQUIRED');
+  const staleReopen = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'stale-reopen', baseVersion: null, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: {} } }),
+  });
+  assert.equal(staleReopen.response.status, 409); assert.equal(staleReopen.body.error.code, 'SESSION_BASELINE_CONFLICT');
   const restoreDenied = await request(service.url, '/v1/projects/context-guard/restore', {
     method: 'POST', headers: projectHeaders,
     body: JSON.stringify({ operationId: 'restore-denied', scope: 'main', baseVersion: main.body.snapshot.version, targetVersion: main.body.snapshot.version }),
@@ -262,6 +268,31 @@ test('verified Session publication needs no exposed admin token and becomes the 
   assert.equal(advanced.response.status, 409); assert.equal(advanced.body.error.code, 'MAIN_ADVANCED');
   const preserved = await request(service.url, '/v1/projects/context-guard/sessions/session-advanced', { headers: projectHeaders });
   assert.equal(preserved.body.snapshot.version, second.body.snapshot.version);
+
+  const secondRoundMap = structuredClone(map);
+  secondRoundMap.root.purpose = 'second development round';
+  const reopened = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'second-round-seed', baseVersion: null, baseMainVersion: main.body.snapshot.version, sourceCommit: featureSha, memory: { map: secondRoundMap, records: {} } }),
+  });
+  assert.equal(reopened.response.status, 200, JSON.stringify(reopened.body));
+  assert.equal(reopened.body.snapshot.generation, 2);
+  assert.equal(reopened.body.snapshot.reopenedFrom, main.body.snapshot.version);
+  const reopenedStatus = await request(service.url, '/api/workbench/projects/context-guard/api/publication?view=session%3Asession-publish', { headers: browserHeaders });
+  assert.equal(reopenedStatus.body.status, 'ready'); assert.equal(reopenedStatus.body.generation, 2);
+  const oldWriteReplay = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(sessionSeedInput) });
+  assert.deepEqual(oldWriteReplay.body, seeded.body);
+  const oldPublishReplay = await request(service.url, '/v1/projects/context-guard/publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(publicationInput) });
+  assert.deepEqual(oldPublishReplay.body, published.body);
+  assert.equal((await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { headers: projectHeaders })).body.snapshot.version, reopened.body.snapshot.version);
+  const republished = await request(service.url, '/v1/projects/context-guard/publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'publish-main-second', baseVersion: main.body.snapshot.version, sessionId: 'session-publish', sessionVersion: reopened.body.snapshot.version, expectedMainSha: featureSha }),
+  });
+  assert.equal(republished.response.status, 200, JSON.stringify(republished.body));
+  assert.equal(republished.body.closedSession.generation, 2);
+  assert.equal(republished.body.closedSession.publications.length, 2);
+  assert.equal((await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { headers: projectHeaders })).body.snapshot, null);
 });
 
 test('private Session changes are durable, ordered, isolated, and replayed over SSE', async t => {
