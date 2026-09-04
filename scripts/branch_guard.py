@@ -18,6 +18,7 @@ PRODUCT_TESTS = {
     "tests/hook-lifecycle.test.mjs",
     "tests/hook-runtime-concurrency.test.mjs",
     "tests/named-workbench.test.mjs",
+    "tests/test-manifest.json",
     "tests/workbench-browser.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",

@@ -49,3 +49,4 @@
 
 - [ ] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层；迁移必须同时覆盖本地 CSP、Cloud 静态路由和官网演示构建，不能只拆文件
 - [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
+- [x] 用统一清单约束自动测试、独立套件与 helper，禁止遗漏和 `.only`，并明确开发/Review/E2E 的责任边界（`tests/test-manifest.json`、`docs/test-governance.md`）

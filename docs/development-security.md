@@ -22,6 +22,9 @@ is insufficient.
 Product branches retain approved `.github/` checks and the explicitly listed
 cross-platform product tests in `scripts/branch_guard.py`. Temporary experiments,
 fixtures, and fake repositories still belong only on the test branch.
+The formal test inventory itself is `tests/test-manifest.json` and is approved as
+product CI metadata; adding an executable test still requires the explicit branch
+guard entry where applicable.
 Temporary tests and fake repositories remain on `cursor/test-layout-f54e`; do not
 merge them into main. Product fixes belong on product branches. The existing
 `scripts/branch_guard.py` remains part of pre-commit validation.

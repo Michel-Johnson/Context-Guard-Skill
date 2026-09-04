@@ -65,6 +65,7 @@ requireMatch(packageJson.scripts.test, /security-checks\.test\.mjs/, "npm test m
 requireMatch(testRunner, /endsWith\("\.test\.mjs"\)/, "The Node test runner must discover every .test.mjs file.");
 requireMatch(testRunner, /security-checks\.test\.mjs/, "The only standalone test must be explicitly documented by the runner.");
 requireMatch(packageJson.scripts.test, /verify-hidden-processes\.mjs/, "npm test must enforce hidden Windows child processes.");
+requireMatch(packageJson.scripts.test, /verify-test-governance\.mjs/, "npm test must enforce the shared test manifest and style policy.");
 
 for (const [name, content] of [["CI", ci], ["CD", publish]]) {
   const gate = content.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');

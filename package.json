@@ -34,7 +34,7 @@
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",
-    "test": "node .github/scripts/security-checks.test.mjs && node .github/scripts/verify-hidden-processes.mjs && node .github/scripts/verify-workflows.mjs && node .github/scripts/run-node-tests.mjs && node tests/ci-smoke.mjs",
+    "test": "node .github/scripts/security-checks.test.mjs && node .github/scripts/verify-hidden-processes.mjs && node .github/scripts/verify-workflows.mjs && node .github/scripts/verify-test-governance.mjs && node .github/scripts/run-node-tests.mjs && node tests/ci-smoke.mjs",
     "security:setup": "node .github/scripts/security-tool.mjs",
     "security:test": "node .github/scripts/security-checks.test.mjs",
     "security:staged": "node .github/scripts/security-scan.mjs staged",
