@@ -637,14 +637,31 @@ button.trash:hover .lid,button.trash:focus .lid{transform:rotate(-28deg) transla
   button.trash .lid{transition:none}
   button.trash:hover .lid,button.trash:focus .lid{transform:none}
 }
-.state-chip{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;flex:0 0 auto}
-.state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
-.state-chip.success{background:var(--green-soft);color:var(--green)}
-.state-chip.failed{background:var(--red-soft);color:var(--red)}
-.state-chip.untested{background:#fff3bf;color:var(--focus)}
-.state-chip.module{background:var(--module-soft);color:var(--module)}
-.state-chip.proposed-chip{background:#eceee9;color:var(--muted)}
-.state-chip.noauth-chip{background:#eeeeec;color:#9a9d98}
+/* 荧光笔划在字上：字是墨，颜色是笔。 */
+.state-chip,
+.g-chrome .st,
+.g-add-mock .st,
+.g-tr-mock .st{
+  --mark:#ffe66d;
+  position:relative;isolation:isolate;z-index:0;overflow:visible;
+  font-size:11px;font-weight:700;font-style:normal;flex:0 0 auto;
+  padding:0 3px;border-radius:0;background:transparent;color:var(--ink);
+  line-height:1.45}
+.state-chip:before,
+.g-chrome .st:before,
+.g-add-mock .st:before,
+.g-tr-mock .st:before{
+  content:"";position:absolute;z-index:-1;pointer-events:none;
+  left:-2px;right:-2px;top:.32em;bottom:.08em;
+  background:var(--mark);border-radius:2px;transform:skewX(-8deg);opacity:.92}
+.state-chip.success{--mark:#c6ed6e}
+.state-chip.untested{--mark:#ffe66d}
+.state-chip.failed{--mark:#ffb3a6}
+.state-chip.dirty{--mark:#a8cfff}
+.state-chip.module{--mark:#f0e0b0}
+.state-chip.proposed-chip{--mark:#e4e2dc;color:var(--muted)}
+.state-chip.noauth-chip{--mark:#ecece8;color:#9a9d98}
+.g-chrome .st,.g-add-mock .st,.g-tr-mock .st{--mark:#ffe66d}
 .lead{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.45;font-family:var(--font-note);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   min-height:2.9em}
@@ -939,7 +956,6 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
 .g-chrome .who .sp{flex:1 1 auto;min-width:8px}
 .g-chrome .who .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto}
 .g-chrome .who .trash svg{width:18px;height:18px;display:block;overflow:visible}
-.g-chrome .st{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;background:#fff3bf;color:#8a6d1f}
 .g-chrome .add-hint{margin:0 0 12px;font-size:12px;font-weight:700;color:#746c60;line-height:1.4}
 .g-chrome .note{background:#fff;border:0;border-radius:12px;padding:12px 12px 10px;margin:0 0 10px}
 .g-chrome .note .add{display:block;font-size:13px;font-weight:800;margin:0 0 6px;color:#2d2d2d}
@@ -1190,7 +1206,6 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
   background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .g-add-mock h2{margin:4px 0 0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.g-add-mock .st{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;background:#fff3bf;color:#8a6d1f;flex:0 0 auto}
 .g-add-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45;font-family:Georgia,"Libre Baskerville","Songti SC",serif}
 .g-add-mock .slot{margin:10px 0 0;min-height:36px}
 .g-add-mock .note{background:#fff;border:0;border-radius:12px;padding:12px 12px 10px;margin:10px 0 0}
@@ -1277,7 +1292,6 @@ html.design-gallery .g-tr-mock{pointer-events:auto;overflow:visible;width:100%;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
 .g-tr-mock .who{display:flex;align-items:center;gap:8px;margin:0}
 .g-tr-mock h2{margin:0;font-size:18px;font-weight:700;flex:0 1 auto}
-.g-tr-mock .st{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;background:#fff3bf;color:#8a6d1f;flex:0 0 auto}
 .g-tr-mock .sp{flex:1 1 auto;min-width:8px}
 .g-tr-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45;
   font-family:Georgia,"Libre Baskerville","Songti SC",serif}
@@ -1411,100 +1425,71 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-mock .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto}
 .g-ch-mock .trash svg{width:18px;height:18px;display:block}
 .g-ch-mock .chip{
-  display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;
-  font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;line-height:1.45;
-  background:#efe6d2;color:#3a6e55}
+  --mark:#c6ed6e;--mark-u:#ffe66d;--mark-f:#ffb3a6;--mark-d:#a8cfff;
+  --mark-top:.32em;--mark-bot:.08em;--mark-x:-2px;--mark-skew:-8deg;--mark-rot:0deg;
+  --mark-op:.92;--mark-rad:2px;
+  position:relative;isolation:isolate;z-index:0;overflow:visible;
+  display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;
+  font-size:11px;font-weight:700;line-height:1.45;
+  padding:0 3px;border-radius:0;background:transparent;color:#2d2d2d}
+.g-ch-mock .chip:before{
+  content:"";position:absolute;z-index:-1;pointer-events:none;
+  left:var(--mark-x);right:var(--mark-r, var(--mark-x));top:var(--mark-top);bottom:var(--mark-bot);
+  background:var(--mark-fill, var(--mark));opacity:var(--mark-op);border-radius:var(--mark-rad);
+  transform:skewX(var(--mark-skew)) rotate(var(--mark-rot));box-shadow:var(--mark-shadow, none)}
+.g-ch-mock .chip.u{--mark:var(--mark-u)}
+.g-ch-mock .chip.f{--mark:var(--mark-f)}
+.g-ch-mock .chip.d{--mark:var(--mark-d)}
 .g-ch-mock .chip b{font-weight:800}
-.g-ch-mock .chip.u{background:#fff3bf;color:#8a6d1f}
-.g-ch-mock .chip.f{background:#f8e4dc;color:#e24b4b}
-.g-ch-mock .chip.d{background:#e4ebf4;color:#2d5da1}
-.g-ch-02 .chip{background:#d8eee0;color:#2f6a46;border-radius:999px}
-.g-ch-03 .chip{background:transparent;color:#3a6e55;border:1.5px solid #3a6e55;border-radius:999px;padding:0 8px}
-.g-ch-03 .chip.u{color:#8a6d1f;border-color:#c4a24a}
-.g-ch-03 .chip.f{color:#e24b4b;border-color:#e24b4b}
-.g-ch-03 .chip.d{color:#2d5da1;border-color:#2d5da1}
-.g-ch-04 .chip{border-radius:4px;background:#efe6d2;padding:2px 7px}
-.g-ch-05 .chip:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
-.g-ch-06 .chip{padding-left:6px}
-.g-ch-07 .chip{border-radius:2px;border:2px solid currentColor;background:#fffdf8;letter-spacing:.12em;font-weight:800;padding:2px 6px}
-.g-ch-08 .chip{background:transparent;padding:0;border-radius:0;font-weight:800}
-.g-ch-09 .chip{border:2px solid #2d2d2d;background:#efe6d2;border-radius:8px;color:#2d2d2d;padding:1px 8px}
-.g-ch-09 .chip.u{background:#fff3bf}.g-ch-09 .chip.f{background:#f8e4dc}.g-ch-09 .chip.d{background:#e4ebf4}
-.g-ch-10 .chip{border-radius:0 8px 8px 0;border-left:3px solid #3a6e55;background:#f3eee4;padding:2px 8px}
-.g-ch-10 .chip.u{border-left-color:#c4a24a}.g-ch-10 .chip.f{border-left-color:#e24b4b}.g-ch-10 .chip.d{border-left-color:#2d5da1}
-.g-ch-11 .chip{background:#3a6e55;color:#fffef9;border-radius:999px}
-.g-ch-11 .chip.u{background:#c4a24a;color:#2d2d2d}
-.g-ch-11 .chip.f{background:#e24b4b;color:#fffef9}
-.g-ch-11 .chip.d{background:#2d5da1;color:#fffef9}
-.g-ch-12 .chip{background:#fffdf8;border:1.5px dashed #3a6e55;border-radius:999px}
-.g-ch-12 .chip.u{border-color:#c4a24a}.g-ch-12 .chip.f{border-color:#e24b4b}.g-ch-12 .chip.d{border-color:#2d5da1}
-.g-ch-13 .chip{background:#fff3bf;color:#3a6e55;border-radius:999px}
-.g-ch-14 .chip{background:transparent;border:1px solid #c5bba8;color:#3a6e55;border-radius:999px;font-weight:500}
-.g-ch-15 .chip{border-radius:0;background:#efe6d2;padding:3px 8px;letter-spacing:.04em}
-.g-ch-16 .chip{font-weight:800;background:transparent;padding:0;font-size:12px}
-.g-ch-17 .chip{font-family:ui-monospace,Menlo,monospace;font-size:10px;background:#111;color:#9fe3b0;border-radius:4px;padding:3px 7px}
-.g-ch-17 .chip.u{color:#ffe66d}.g-ch-17 .chip.f{color:#ff8a8a}.g-ch-17 .chip.d{color:#9ec0ff}
-.g-ch-18 .chip{box-shadow:inset 0 0 0 1px #3a6e55, inset 0 0 0 3px #fffdf8;background:#efe6d2;padding:3px 10px;border-radius:999px}
-.g-ch-19 .chip{font-size:12px;padding:3px 10px;background:#d8eee0;border-radius:8px}
-.g-ch-20 .chip{background:#2d2d2d;color:#9fe3b0;border-radius:999px}
-.g-ch-20 .chip.u{color:#ffe66d}.g-ch-20 .chip.f{color:#ff8a8a}.g-ch-20 .chip.d{color:#9ec0ff}
-.g-ch-21 .chip{background:transparent;border-radius:0;border-top:2px solid #3a6e55;padding:2px 0 0;color:#3a6e55}
-.g-ch-21 .chip.u{border-top-color:#c4a24a;color:#8a6d1f}
-.g-ch-21 .chip.f{border-top-color:#e24b4b;color:#e24b4b}
-.g-ch-21 .chip.d{border-top-color:#2d5da1;color:#2d5da1}
-.g-ch-22 .chip{background:transparent;border-radius:0;border-bottom:2px solid currentColor;padding:0 0 1px}
-.g-ch-23 .chip{border-radius:2px 10px 2px 10px;background:#efe6d2;padding:2px 10px}
-.g-ch-24 .chip{width:22px;height:22px;padding:0;border-radius:50%;justify-content:center;font-size:11px;background:#3a6e55;color:#fff}
-.g-ch-24 .chip.u{background:#c4a24a;color:#2d2d2d}
-.g-ch-24 .chip.f{background:#e24b4b}.g-ch-24 .chip.d{background:#2d5da1}
-.g-ch-25 .chip{background:#1b1b1b;color:#7dff9a;font-family:ui-monospace,Menlo,monospace;border-radius:0;font-size:10px;padding:2px 8px}
-.g-ch-25 .chip:before{content:"$ "}
-.g-ch-26 .chip{background:transparent;border-radius:0;font-size:11px;letter-spacing:.08em;font-weight:700;border:1px solid #2d2d2d;padding:2px 6px}
-.g-ch-27 .chip{background:transparent;padding:0;border-radius:0;font-weight:500;letter-spacing:.18em;font-size:10px;color:#3a6e55}
-.g-ch-28 .chip{background:#fff3bf;border:2px solid #2d2d2d;border-radius:12px 4px 12px 4px;color:#2d2d2d;font-weight:700}
-.g-ch-29 .chip{background:#d8eee0;border-radius:999px;padding:1px 8px 1px 6px}
-.g-ch-30 .chip{background:linear-gradient(90deg,#3a6e55 42%,#efe6d2 42%);color:#2d2d2d;border-radius:999px;padding:2px 10px 2px 8px}
-.g-ch-30 .chip.u{background:linear-gradient(90deg,#c4a24a 42%,#fff3bf 42%)}
-.g-ch-30 .chip.f{background:linear-gradient(90deg,#e24b4b 42%,#f8e4dc 42%)}
-.g-ch-30 .chip.d{background:linear-gradient(90deg,#2d5da1 42%,#e4ebf4 42%)}
-.g-ch-31 .chip{padding:4px 6px;border-radius:6px;font-size:10px;writing-mode:horizontal-tb;background:#d8eee0}
-.g-ch-32 .chip{padding:4px 14px;border-radius:999px;font-size:12px;background:#efe6d2}
-.g-ch-33 .chip{border-radius:0;font-size:10px;background:#3a6e55;color:#fff;padding:3px 6px;letter-spacing:0;image-rendering:pixelated}
-html.g-kind-chip .g-ch-17 .chip,
-html.g-kind-chip .g-ch-25 .chip,
-html.g-kind-chip .g-ch-33 .chip{font-family:ui-monospace,Menlo,Consolas,monospace !important}
-.g-ch-34 .chip{position:relative;background:#efe6d2;border-radius:0 0 8px 0;padding:2px 10px 2px 8px}
-.g-ch-34 .chip:after{content:"";position:absolute;top:0;right:0;border:4px solid transparent;border-top-color:#c5bba8;border-right-color:#c5bba8}
-.g-ch-35 .chip{background:transparent;padding:0;border-radius:0}
-.g-ch-35 .chip:before{content:"";width:7px;height:7px;border-radius:50%;background:#3a6e55;box-shadow:0 0 0 2px #d8eee0}
-.g-ch-35 .chip.u:before{background:#c4a24a}.g-ch-35 .chip.f:before{background:#e24b4b}.g-ch-35 .chip.d:before{background:#2d5da1}
-.g-ch-36 .chip{background:#f7f0e2;color:#5a7a62;border:1px solid #e4d6b8;border-radius:2px;font-weight:500}
-.g-ch-37 .chip{background:#fffdf8;border:2px solid #3a6e55;border-radius:999px;color:#3a6e55}
-.g-ch-38 .chip{background:linear-gradient(#d8eee0 60%,#efe6d2 60%);border-radius:6px;padding:2px 8px}
-.g-ch-39 .chip{background:#3a6e55;color:#fffef9;border-radius:4px;font-size:10px;padding:3px 7px;letter-spacing:.06em}
-.g-ch-40 .chip{border:2px solid #3a6e55;background:#fffdf8;border-radius:2px;color:#3a6e55;font-weight:800;letter-spacing:.2em;padding:3px 5px;font-size:10px}
-.g-ch-41 .chip{background:transparent;border-bottom:1px dotted currentColor;border-radius:0;padding:0 0 1px}
-.g-ch-42 .chip{background:#d8eee0;border-radius:10px 2px 10px 2px;padding:2px 9px}
-.g-ch-43 .chip{background:#efe6d2;border-radius:999px;font-size:10px;letter-spacing:.04em}
-.g-ch-44 .chip{background:#f3eee4;border-radius:999px;padding:1px 8px 1px 6px}
-.g-ch-44 .chip:before{content:"";width:7px;height:7px;border-radius:50%;background:#6ed08a}
-.g-ch-44 .chip.u:before{background:#d4a017}.g-ch-44 .chip.f:before{background:#e24b4b}.g-ch-44 .chip.d:before{background:#3d7ee8}
-.g-ch-45 .chip{background:#fffdf8;box-shadow:0 0 0 1px #d7ccb8, 0 0 0 3px #d8eee0;border-radius:999px;color:#3a6e55}
-.g-ch-46 .chip{background:#fffdf8;border:2px solid #2d2d2d;border-radius:8px;box-shadow:2px 2px 0 #2d2d2d;color:#3a6e55;padding:1px 8px}
-.g-ch-46 .chip.u{color:#8a6d1f}.g-ch-46 .chip.f{color:#e24b4b}.g-ch-46 .chip.d{color:#2d5da1}
-.g-ch-47 .chip{background:transparent;border-radius:0;padding:0 0 3px;border-bottom:4px solid #d8eee0;color:#3a6e55}
-.g-ch-47 .chip.u{border-bottom-color:#fff3bf;color:#8a6d1f}
-.g-ch-47 .chip.f{border-bottom-color:#f8e4dc;color:#e24b4b}
-.g-ch-47 .chip.d{border-bottom-color:#e4ebf4;color:#2d5da1}
-.g-ch-48 .chip{background:transparent;color:transparent;-webkit-text-stroke:1px #3a6e55;font-weight:800;padding:0;border-radius:0}
-.g-ch-48 .chip.u{-webkit-text-stroke-color:#8a6d1f}
-.g-ch-48 .chip.f{-webkit-text-stroke-color:#e24b4b}
-.g-ch-48 .chip.d{-webkit-text-stroke-color:#2d5da1}
-.g-ch-49 .chip{background:#efe6d2;border-radius:0;padding:1px 10px;position:relative}
-.g-ch-49 .chip:before,.g-ch-49 .chip:after{content:"";position:absolute;top:50%;width:5px;height:5px;border:1.5px solid #3a6e55;border-radius:50%;background:#fefaf2}
-.g-ch-49 .chip:before{left:-3px;transform:translateY(-50%)}
-.g-ch-49 .chip:after{right:-3px;transform:translateY(-50%)}
-.g-ch-50 .chip{background:#cfe8d4;color:#1f4d32;border-radius:999px;font-weight:700}
+.g-ch-02 .chip{--mark-skew:-16deg}
+.g-ch-03 .chip{--mark-skew:0deg}
+.g-ch-04 .chip{--mark-top:.44em;--mark-bot:.22em}
+.g-ch-05 .chip{--mark-top:0;--mark-bot:0;--mark-skew:0deg;--mark-rad:3px}
+.g-ch-06 .chip{--mark-skew:-6deg;--mark-op:.88}
+.g-ch-07 .chip{--mark-op:.52}
+.g-ch-08 .chip{--mark-op:1}
+.g-ch-09 .chip{--mark-x:-7px}
+.g-ch-10 .chip{--mark-x:0px}
+.g-ch-11 .chip{--mark-rad:8px;--mark-skew:-4deg}
+.g-ch-12 .chip{--mark-rad:0;--mark-skew:-5deg}
+.g-ch-13 .chip{--mark-rot:-2deg}
+.g-ch-14 .chip{--mark-rot:2deg}
+.g-ch-mock.g-ch-15 .chip:after{content:"";position:absolute;z-index:-1;pointer-events:none;left:0;right:6px;top:.4em;bottom:.2em;background:#9fd65a;opacity:.4;border-radius:2px;transform:skewX(-14deg) rotate(.8deg)}
+.g-ch-16 .chip{--mark-fill:linear-gradient(90deg,var(--mark),transparent)}
+.g-ch-17 .chip{letter-spacing:.12em}
+.g-ch-18 .chip{letter-spacing:-.04em;padding:0 1px}
+.g-ch-19 .chip{font-size:13px}
+.g-ch-20 .chip{font-size:10px}
+.g-ch-21 .chip{--mark-top:.52em;--mark-bot:0}
+.g-ch-22 .chip{--mark-top:.08em;--mark-bot:.3em}
+.g-ch-23 .chip{--mark:#b8ff4a}
+.g-ch-24 .chip{padding:0 9px}
+.g-ch-25 .chip{padding:0 1px;--mark-x:-1px}
+.g-ch-26 .chip{--mark-top:.16em;--mark-bot:0;--mark-skew:-4deg}
+.g-ch-27 .chip{--mark-top:.5em;--mark-bot:.34em}
+.g-ch-28 .chip{--mark-shadow:0 0 0 1px rgba(45,45,45,.08)}
+.g-ch-29 .chip{--mark-skew:-11deg;font-size:12px}
+.g-ch-30 .chip{--mark-op:.38}
+.g-ch-31 .chip{--mark-rad:12px;--mark-skew:-3deg}
+.g-ch-32 .chip{--mark-r:14px}
+.g-ch-33 .chip{--mark-x:-11px}
+.g-ch-34 .chip{--mark-rad:40%;--mark-skew:-12deg}
+.g-ch-35 .chip{--mark-x:-6px;--mark-r:5px}
+.g-ch-36 .chip{--mark-x:5px;--mark-r:-6px}
+.g-ch-37 .chip{--mark-fill:linear-gradient(90deg,transparent,var(--mark) 18%,var(--mark) 82%,transparent)}
+.g-ch-38 .chip{--mark-top:.12em;--mark-bot:.04em}
+.g-ch-39 .chip{--mark-top:.64em;--mark-bot:0;--mark-skew:0deg;--mark-rad:1px}
+.g-ch-40 .chip{--mark-rad:0 10px 0 10px;--mark-skew:-6deg}
+.g-ch-41 .chip{font-weight:800;font-size:12px}
+.g-ch-42 .chip{font-weight:500}
+.g-ch-43 .chip{--mark:#d4e85a}
+.g-ch-44 .chip{--mark:#9ff0c8}
+.g-ch-45 .chip{--mark:#f3ff6a}
+.g-ch-46 .chip{--mark:#c8f53d}
+.g-ch-47 .chip{--mark-fill:repeating-linear-gradient(-18deg,var(--mark),var(--mark) 3px,#eaf8b8 3px,#eaf8b8 5px)}
+.g-ch-mock.g-ch-48 .chip:after{content:"";position:absolute;z-index:-1;left:-3px;right:8px;top:.22em;bottom:.28em;background:var(--mark);opacity:.35;transform:skewX(-18deg) rotate(-1.2deg)}
+.g-ch-49 .chip{--mark-shadow:1px 1px 0 rgba(45,45,45,.12)}
+.g-ch-50 .chip{--mark:#ccff00;--mark-op:1;--mark-skew:-10deg}
 </style>
 </head>
 <body>
@@ -6634,35 +6619,28 @@ function bootChipGallery(){
   const bar = document.querySelector("#design-gallery .g-bar");
   if(bar){
     bar.querySelector("b").textContent = "状态标签 · 50 版";
-    bar.querySelector(".hint").textContent = "往下滑动。字都是黑体、正的，没有斜体。标题行跟现在检查器一样，只换「测试通过」这粒标签；下面三粒是同一套的已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
+    bar.querySelector(".hint").textContent = "往下滑动。字是黑体、正的；颜色是荧光笔涂在字上，不是胶囊。标题行跟现在检查器一样，只换这一笔。下面三粒是已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
   }
   const trash = `<span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span>`;
   const names = [
-    ["01","现况胶囊"],["02","淡绿底"],["03","描边"],["04","小圆角方"],["05","前圆点"],
-    ["06","带对勾"],["07","印章"],["08","纯字"],["09","粗框"],["10","左色条"],
-    ["11","实心绿"],["12","虚线边"],["13","黄底绿字"],["14","细线胶囊"],["15","方标签"],
-    ["16","加粗字"],["17","终端绿"],["18","双层描边"],["19","稍大"],["20","深底"],
-    ["21","上边线"],["22","下划线"],["23","书签"],["24","圆徽章"],["25","命令行"],
-    ["26","报纸栏"],["27","瑞士字距"],["28","贴纸"],["29","勾加字"],["30","对切开"],
-    ["31","更紧"],["32","更松"],["33","像素"],["34","折角"],["35","色点"],
-    ["36","和纸"],["37","描边圆"],["38","两截底"],["39","小徽章"],["40","汉字印"],
-    ["41","点线下划"],["42","斜切角"],["43","略小字"],["44","绿灯"],["45","外圈"],
-    ["46","粗框阴影"],["47","底边"],["48","空心字"],["49","两端钉"],["50","更绿"]
+    ["01","腰涂微斜"],["02","更斜"],["03","不斜"],["04","只涂字腰"],["05","整格涂满"],
+    ["06","带对勾"],["07","淡涂"],["08","很浓"],["09","左右冒头"],["10","贴字"],
+    ["11","圆头笔"],["12","方头笔"],["13","上扬"],["14","下压"],["15","两笔叠"],
+    ["16","尾淡"],["17","字距松"],["18","字距紧"],["19","稍大"],["20","稍小"],
+    ["21","偏下划"],["22","偏上划"],["23","荧光绿"],["24","更宽"],["25","更窄"],
+    ["26","更厚"],["27","更薄"],["28","毛边"],["29","勾加字"],["30","半透明"],
+    ["31","大圆角"],["32","短涂"],["33","过冲"],["34","歪圆头"],["35","左侧重"],
+    ["36","右侧重"],["37","中间亮"],["38","竖向更满"],["39","底三分一"],["40","斜切角"],
+    ["41","加粗字"],["42","细字"],["43","黄绿"],["44","薄荷"],["45","柠檬"],
+    ["46","青柠"],["47","笔触纹理"],["48","三笔"],["49","纸上微影"],["50","最荧光"]
   ];
-  const okOf = id => {
-    if(id==="06"||id==="29") return `<b>✓</b>测试通过`;
-    if(id==="24") return "通";
-    if(id==="40") return "通";
-    if(id==="25") return "pass";
-    if(id==="17") return "OK";
-    return "测试通过";
-  };
-  const uOf = id => id==="24"?"未":id==="17"?"WAIT":id==="25"?"todo":id==="40"?"测":"已做未测";
-  const fOf = id => id==="24"?"败":id==="17"?"FAIL":id==="25"?"fail":id==="40"?"败":"测试未过";
-  const dOf = id => id==="24"?"新":id==="17"?"NEW":id==="25"?"init":id==="40"?"新":"未开发";
+  const okOf = id => (id==="06"||id==="29") ? `<b>✓</b>测试通过` : "测试通过";
+  const uOf = () => "已做未测";
+  const fOf = () => "测试未过";
+  const dOf = () => "未开发";
   document.getElementById("g-scroll").innerHTML = names.map(([id, name]) => {
     const chip = `<span class="chip">${okOf(id)}</span>`;
-    const alts = `<div class="alts"><span class="chip u">${uOf(id)}</span><span class="chip f">${fOf(id)}</span><span class="chip d">${dOf(id)}</span></div>`;
+    const alts = `<div class="alts"><span class="chip u">${uOf()}</span><span class="chip f">${fOf()}</span><span class="chip d">${dOf()}</span></div>`;
     return `<article class="g-item" id="v${id}"><div class="g-num">${id} · ${name}</div><aside class="g-mock g-ch-mock g-ch-${id}"><div class="who"><h2>冷启动</h2>${chip}<span class="sp"></span>${trash}</div><p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>${alts}</aside></article>`;
   }).join("");
 }
@@ -6737,7 +6715,7 @@ function bootTrashIconGallery(){
   add("49", "微微浮起", s(lidH+`<g class="can"><path d="M7 7.2h10l-1 12.6H8z"/></g>`+ribs2, 1.6));
   add("50", "圆盖探头", s(`<g class="lid"><rect x="8.4" y="3" width="7.2" height="2.2" rx="1.1" fill="currentColor" stroke="none"/><path d="M4.2 7.2h15.6"/></g>`+`<g class="can"><rect x="7" y="7.2" width="10" height="12.6" rx="3"/></g>`+ribs2));
 
-  const card = icon => `<div class="who"><h2>冷启动</h2><i class="st">已做未测</i><span class="sp"></span><button type="button" class="ico" aria-label="删除">${icon}</button></div>
+  const card = icon => `<div class="who"><h2>冷启动</h2><span class="st">已做未测</span><span class="sp"></span><button type="button" class="ico" aria-label="删除">${icon}</button></div>
     <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
     <p class="hint">指针放上去看动效。这里只换图标。</p>`;
   document.getElementById("g-scroll").innerHTML = L.map(v =>
@@ -6751,7 +6729,7 @@ function bootAddActionGallery(){
     bar.querySelector("b").textContent = "新增这一行 · 50 版";
     bar.querySelector(".hint").textContent = "往下滑动。标题、用途、记忆卡跟现在检查器一样，只有「新增 / 删除」这一行在换。看中了把编号发我，例如「新增 03」。不用点。";
   }
-  const frozen = slot => `<h2>冷启动 <i class="st">已做未测</i></h2>
+  const frozen = slot => `<h2>冷启动 <span class="st">已做未测</span></h2>
     <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
     <div class="slot">${slot}</div>
     <div class="note"><span class="add">记忆 ＋</span><p>npx/init/set-language 属于冷启动，不是 hook。</p></div>
@@ -6836,7 +6814,7 @@ function bootDesignGallery(){
   }
   document.title = "工作台风格 · 50 版";
   const card = `<span class="here">Context Guard <i class="caret">▾</i></span>`;
-  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><i class="st">已做未测</i><span class="sp"></span><span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span></div><p class="add-hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
+  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><span class="st">已做未测</span><span class="sp"></span><span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span></div><p class="add-hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
   const shell = bar => `<div class="bar">${bar}</div>${stage}`;
   const L = [];
   const add = (id, name, bar) => L.push({id, name, html: shell(bar)});

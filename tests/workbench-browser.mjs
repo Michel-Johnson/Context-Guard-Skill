@@ -123,6 +123,21 @@ try {
   await trashBtn.hover();
   const lidMove = await trashBtn.locator('.lid').evaluate(el => getComputedStyle(el).transform);
   assert.notEqual(lidMove, 'none', `lid should open on hover, got ${lidMove}`);
+  const liveMark = await page.evaluate(() => {
+    const s = document.createElement('span');
+    s.className = 'state-chip success';
+    s.textContent = '测试通过';
+    document.querySelector('#detail').appendChild(s);
+    const cs = getComputedStyle(s);
+    const mark = getComputedStyle(s, '::before');
+    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, mark: mark.backgroundColor, content: mark.content };
+    s.remove();
+    return out;
+  });
+  assert.equal(liveMark.bg, 'rgba(0, 0, 0, 0)', `live chip should not be a pill, got ${liveMark.bg}`);
+  assert.equal(liveMark.radius, '0px');
+  assert.equal(liveMark.color, 'rgb(45, 45, 45)');
+  assert.equal(liveMark.mark, 'rgb(198, 237, 110)', `highlighter mark ${liveMark.mark}`);
   recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
@@ -756,7 +771,9 @@ try {
         const c = el.querySelector('.who .chip');
         if (!c) return '';
         const s = getComputedStyle(c);
-        return [s.backgroundColor, s.color, s.borderRadius, s.fontSize, s.borderTopWidth, s.padding, c.textContent.trim()].join('|');
+        const b = getComputedStyle(c, '::before');
+        const a = getComputedStyle(c, '::after');
+        return [s.padding, s.fontSize, s.fontWeight, s.letterSpacing, b.backgroundColor, b.backgroundImage, b.transform, b.top, b.bottom, b.left, b.right, b.opacity, b.borderRadius, b.boxShadow, a.content].join('|');
       });
       const titles = items.map(el => el.querySelector('h2')?.textContent?.trim());
       const altN = items.map(el => el.querySelectorAll('.alts .chip').length);
@@ -783,17 +800,24 @@ try {
       const mock = item.querySelector('.g-ch-mock');
       const h2 = item.querySelector('h2');
       const chip = item.querySelector('.who .chip');
+      const csBefore = getComputedStyle(chip, '::before');
       return {
         bg: cs(mock).backgroundColor,
         h2: cs(h2).fontSize,
         text: chip?.textContent?.trim(),
-        chipBg: cs(chip).backgroundColor
+        chipBg: cs(chip).backgroundColor,
+        chipColor: cs(chip).color,
+        mark: csBefore.backgroundColor,
+        radius: cs(chip).borderRadius
       };
     });
     assert.equal(frozenChip.bg, 'rgb(254, 250, 242)');
     assert.equal(frozenChip.h2, '18px');
     assert.equal(frozenChip.text, '测试通过');
-    assert.equal(frozenChip.chipBg, 'rgb(239, 230, 210)');
+    assert.equal(frozenChip.chipBg, 'rgba(0, 0, 0, 0)');
+    assert.equal(frozenChip.chipColor, 'rgb(45, 45, 45)');
+    assert.equal(frozenChip.radius, '0px');
+    assert.equal(frozenChip.mark, 'rgb(198, 237, 110)');
     const upright = await preview.evaluate(() => {
       const check = sel => {
         const item = document.querySelector(sel);
