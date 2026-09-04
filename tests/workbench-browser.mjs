@@ -877,6 +877,8 @@ try {
     assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelDots)}`);
     await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
     await preview.waitForSelector('body.bug-path-mode');
+    assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
+    assert.equal(await preview.locator('.current-bead').count(), 0);
     const previewClaims = await preview.evaluate(() => {
       const rows = [...document.querySelectorAll('#bug-panel-list li[data-bug]')];
       return {
@@ -897,8 +899,6 @@ try {
     }));
     assert.equal(waitingClaim.buttons, 0);
     assert.match(waitingClaim.badge, /待处理|Waiting/);
-    assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
-    assert.equal(await preview.locator('.current-bead').count(), 0);
     await preview.locator('#btn-bug-exit').click();
     if (await preview.evaluate(() => document.body.classList.contains('bugs-open'))) {
       await preview.locator('#btn-bugs').click();
