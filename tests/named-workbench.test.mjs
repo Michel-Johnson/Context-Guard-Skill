@@ -139,7 +139,7 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   const runtimeFile = path.join(installed, 'scripts/workbench/runtime.mjs');
   const runtime = (await fs.readFile(runtimeFile, 'utf8'))
     .replace("project-workbench-v4", "project-workbench-v3")
-    .replace("  'global-project-registry',\n", '');
+    .replace(/\s*'global-project-registry',\r?\n/, '\n');
   await fs.writeFile(runtimeFile, runtime);
   const old = spawnSync(process.execPath, [path.join(installed, 'scripts/workbench/cli.mjs'), 'workbench', '--root', root, '--port', '0', '--direct'], {
     encoding: 'utf8', windowsHide: true, timeout: 15_000,
