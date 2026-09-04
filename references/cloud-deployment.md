@@ -147,7 +147,8 @@ project. To rotate a lost token, call
 
 Open the editable cloud workbench at `https://map.example.com/` and enter the
 configured browser password. A successful login stores an HttpOnly, SameSite
-cookie for 12 hours, so normal refreshes remain signed in. `POST /auth/logout`
+cookie for 30 days. Normal refreshes and reopened pages remain signed in, and
+authenticated workbench activity renews the same lifetime. `POST /auth/logout`
 clears it. Five wrong attempts from one backend connection address pause password
 login for five minutes.
 
