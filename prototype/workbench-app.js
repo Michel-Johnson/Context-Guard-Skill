@@ -4141,6 +4141,11 @@ function bootDesignGallery(){
     return;
   }
   document.title = "工作台风格 · 50 版";
+  const barEl = document.querySelector("#design-gallery .g-bar");
+  if(barEl){
+    barEl.querySelector("b").textContent = "工作台风格 · 50 版";
+    barEl.querySelector(".hint").textContent = "往下滑动。画布和右侧栏跟现在工作台一样，只有顶栏换风格。看中了把编号发我，例如「风格 17」。不用点。";
+  }
   const card = `<span class="here">Context Guard <i class="caret">▾</i></span>`;
   const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><span class="st">已做未测</span><span class="sp"></span><span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span></div><p class="add-hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
   const shell = bar => `<div class="bar">${bar}</div>${stage}`;
