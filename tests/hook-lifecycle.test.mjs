@@ -676,6 +676,16 @@ with tempfile.TemporaryDirectory() as directory:
         try: hook.checked_sync(root, 's', 'checkpoint')
         except ValueError: pass
         else: raise AssertionError('conflict accepted')
+    payload = {'session_id': 's', 'turn_id': 'turn-1', 'timestamp': '2026-09-04T12:00:00.000Z'}
+    with patch.object(hook, 'run_node_workbench', side_effect=[RuntimeError('offline'), {'committed': True}]) as memory_call:
+        assert hook.session_memory_sync(root, 's', 'user-prompt-submit', payload)['error']['code'] == 'MEMORY_SYNC_PENDING'
+        assert hook.session_memory_sync(root, 's', 'user-prompt-submit', payload)['committed'] is True
+        args = memory_call.call_args_list[-1].args[0]
+        assert args[:2] == ['memory', 'sync']
+        assert args[args.index('--session') + 1] == 's'
+        assert args[args.index('--hook-event') + 1] == 'UserPromptSubmit'
+        assert args[args.index('--occurred-at') + 1] == payload['timestamp']
+        assert args[args.index('--event-id') + 1].startswith('hook-')
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'touch x'}})
     assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 fix.py'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git status --short'}})

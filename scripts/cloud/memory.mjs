@@ -48,7 +48,7 @@ function memoryHub(configuration) {
   return hub;
 }
 
-function appendMemoryEvent(state, { projectId, scope, type, operationId, baseVersion = null, version = null, operations = null, actor, at }) {
+function appendMemoryEvent(state, { projectId, scope, type, operationId, baseVersion = null, version = null, operations = null, actor, client = null, at }) {
   state.events ||= [];
   state.eventCursors ||= {};
   const previousCursor = state.eventCursors[scope] || state.events.reduce((maximum, event) => (
@@ -68,6 +68,7 @@ function appendMemoryEvent(state, { projectId, scope, type, operationId, baseVer
     version,
     ...(operations ? { operations: structuredClone(operations) } : {}),
     actor,
+    ...(client ? { client: structuredClone(client) } : {}),
     at,
   };
   state.events.push(event);
@@ -332,6 +333,14 @@ export function createMemoryHandler(configuration = {}) {
           }
           previousVersion = current?.version || null;
           validateMemory(input.memory);
+          const client = input.client && typeof input.client === 'object' ? {
+            sessionId: String(input.client.sessionId || id).slice(0, 200),
+            hookEvent: String(input.client.hookEvent || '').slice(0, 80),
+            eventId: String(input.client.eventId || '').slice(0, 200),
+            occurredAt: String(input.client.occurredAt || '').slice(0, 80),
+            cursor: Number.isFinite(Number(input.client.cursor)) ? Number(input.client.cursor) : null,
+          } : null;
+          if (client && client.sessionId !== id) throw new MapError('SESSION_MISMATCH', 'Request Session does not match its sync context', 409);
           if (!/^[a-f0-9]{40,64}$/.test(input.sourceCommit || '')) throw new MapError('INVALID_COMMIT', 'Source commit required');
           snapshot = {
             sessionId: id,
@@ -341,6 +350,7 @@ export function createMemoryHandler(configuration = {}) {
             memory: input.memory,
             updatedAt: new Date().toISOString(),
             generation: current?.generation || (reopening ? nextSessionGeneration(closed) : 1),
+            ...(client ? { lastSync: client } : {}),
             ...(reopening ? { reopenedFrom: closed.mainVersion || null } : {}),
           };
           state.sessions[id] = snapshot;
@@ -365,7 +375,8 @@ export function createMemoryHandler(configuration = {}) {
           historyAction = 'restore';
         } else throw new MapError('READ_ONLY_MAIN', 'Publish a verified Session; main cannot be written directly', 403);
         state.revision++;
-        const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: { kind: admin ? 'admin' : 'agent' }, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
+        const requestActor = { kind: admin ? 'admin' : 'agent', ...(rawSession ? { sessionId } : {}) };
+        const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: requestActor, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
         const result = { committed: true, projectId, snapshot, revision: state.revision, history };
         state.receipts[key] = { fingerprint, result };
         const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
@@ -375,7 +386,8 @@ export function createMemoryHandler(configuration = {}) {
           operationId: input.operationId,
           baseVersion: previousVersion,
           version: snapshot.version,
-          actor: { kind: admin ? 'admin' : 'agent' },
+          actor: requestActor,
+          client: rawSession && input.client && typeof input.client === 'object' ? input.client : null,
           at: snapshot.updatedAt || new Date().toISOString(),
         }) : null;
         // Snapshot and receipt share one durable replace: a retry after a crash cannot duplicate the write.

@@ -109,7 +109,7 @@ export async function rebaseMemory(project, sessionId, { adoptMain = false } = {
     return { rebased: true, strategy: adoptMain ? 'adopt-main' : 'merge', mainVersion: main.version, sessionVersion: adopted?.snapshot?.version || status.session?.version || null, backup };
   });
 }
-export async function synchronizeMemory(root, sessionId) {
+export async function synchronizeMemory(root, sessionId, client = {}) {
   const project = await resolveProject(root);
   if (!(await bindingStatus(project, sessionId)).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the actual Session before synchronization', 409);
   const dir = sessionMemoryDir(project, sessionId), queue = path.join(dir, 'pending-upload.json');
@@ -135,8 +135,20 @@ export async function synchronizeMemory(root, sessionId) {
       }
     }
     const baseline = await readJSON(path.join(dir, 'base-main.json'), { version: null });
-    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records } };
+    const syncContext = {
+      sessionId,
+      hookEvent: String(client.hookEvent || '').slice(0, 80),
+      eventId: String(client.eventId || '').slice(0, 200),
+      occurredAt: String(client.occurredAt || new Date().toISOString()),
+      cursor: Number.isFinite(Number(client.cursor)) ? Number(client.cursor) : null,
+    };
+    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records }, client: syncContext };
     validateMemory(input.memory);
+    const unchanged = current.session
+      && current.session.sourceCommit === input.sourceCommit
+      && current.session.baseMainVersion === input.baseMainVersion
+      && encode(current.session.memory) === encode(input.memory);
+    if (unchanged) return { committed: true, synchronized: true, changed: false, projectId: current.session.projectId || null, snapshot: current.session };
     await atomicWrite(queue, encode(input));
     const result = await memoryRequest(project, scope, input);
     await atomicWrite(path.join(dir, 'server-receipt.json'), encode(result));

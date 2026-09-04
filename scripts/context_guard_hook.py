@@ -630,6 +630,20 @@ def sync_command(root: Path, action: str, current_session_id: str = "", paths: l
     return value
 
 
+def session_memory_sync(root: Path, current_session_id: str, event: str, payload: object) -> dict[str, object]:
+    """Persist this Session checkpoint directly; a later hook retries preserved local data."""
+    event_id, _, _ = event_identity(payload, event, current_session_id)
+    try:
+        return run_node_workbench([
+            "memory", "sync", "--root", str(root), "--session", current_session_id,
+            "--hook-event", HOOK_EVENT_NAMES.get(event, event),
+            "--event-id", event_id,
+            "--occurred-at", payload_time(payload),
+        ])
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        return {"error": {"code": "MEMORY_SYNC_PENDING", "message": str(error)[:500]}}
+
+
 def tool_paths(payload: object, root: Path) -> list[str]:
     if not isinstance(payload, dict):
         return []
@@ -1145,7 +1159,7 @@ def main() -> int:
             else:
                 memory_notice = "Private memory server is not configured. For server-authoritative projects, local records are unsynced drafts only; source-only work may continue."
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
-            return hook_response(platform, event, "Context Guard server memory is unavailable or conflicting. Local data is an unsynced draft, not confirmed memory. Preserve it and reconcile; source-only work can continue.")
+            memory_notice = "Context Guard server memory is unavailable or conflicting. Local data is an unsynced draft, not confirmed memory. The lifecycle event is still recorded locally and the next hook retries Cloud synchronization."
     if event not in {"session-start", "subagent-start", "user-prompt-submit", "post-compact"}:
         try:
             binding = run_node_workbench(["workbench", "--binding-status", "--root", str(root), "--session", current_session_id])
@@ -1177,6 +1191,9 @@ def main() -> int:
                     return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
             if sync_configured(ctx):
                 sync_command(root, "ensure", current_session_id)
+        synchronized_memory = session_memory_sync(root, current_session_id, event, payload)
+        if isinstance(synchronized_memory.get("error"), dict):
+            memory_notice = "Cloud Session registration is pending; the next lifecycle hook will retry automatically. Local records were preserved."
         context_text, snapshot = map_context(root, ctx, current_session_id)
         runtime["last_map_version"] = snapshot.get("version")
         runtime["last_cloud_cursor"] = snapshot.get("cloud_cursor")
@@ -1325,6 +1342,9 @@ def main() -> int:
                 "cloud_cursor": snapshot.get("cloud_cursor"),
             })),
         )
+        synchronized_memory = session_memory_sync(root, current_session_id, event, payload)
+        if isinstance(synchronized_memory.get("error"), dict):
+            memory_notice = "Cloud Session synchronization is pending; the next lifecycle hook will retry automatically. Local records were preserved."
         hook_log(f"[context-guard] user-messages: {status}")
         signal_id = str(signal.get("id")) if signal else "none"
         pending_ids = pending_signals(runtime)
@@ -1367,6 +1387,9 @@ def main() -> int:
         append_session_event(root, event, platform, current_session_id, session_details(audit_details(
             payload, event, current_session_id, runtime, {"result": "restored", "map_version": snapshot.get("version"), "cloud_cursor": snapshot.get("cloud_cursor")},
         )))
+        synchronized_memory = session_memory_sync(root, current_session_id, event, payload)
+        if isinstance(synchronized_memory.get("error"), dict):
+            memory_notice = "Cloud Session synchronization is pending; the next lifecycle hook will retry automatically. Local records were preserved."
         plan = runtime.get("active_plan")
         restored = f"Restored plan: {plan.get('id')} with paths {', '.join(plan.get('actual_paths') or plan.get('paths') or [])}." if isinstance(plan, dict) else "No active development plan was present before compaction."
         restored += " Pending signals: " + (", ".join(pending_signals(runtime)) or "none") + ". Use plan-status for recovery details."

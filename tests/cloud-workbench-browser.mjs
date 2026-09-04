@@ -132,6 +132,39 @@ try {
   assert.doesNotMatch((await page.locator('#cg-sync-session option').allTextContents()).join(' '), /session-one/);
   await page.locator('#session-chip').click();
   record('Main is the default view');
+
+  const pendingPage = await context.newPage();
+  const lateSessionId = `late-session-${process.pid}-${Date.now()}`;
+  await pendingPage.goto(`${service.url}/projects/context-guard?session=${lateSessionId}`);
+  await pendingPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, lateSessionId);
+  assert.equal(new URL(pendingPage.url()).searchParams.get('session'), lateSessionId);
+  assert.match(await pendingPage.locator('#cg-sync-status').textContent(), /正在同步到 Cloud/);
+  assert.equal(await pendingPage.locator('#cloud-sync-status').getAttribute('aria-label'), '云端同步中');
+  assert.equal(await pendingPage.locator(`#cg-sync-session option[value="${lateSessionId}"]`).count(), 1);
+  const lateMap = structuredClone(sessionMap);
+  lateMap.root.title = 'Late Session map';
+  const lateSession = await request(`${service.url}/v1/projects/context-guard/sessions/${lateSessionId}`, {
+    method: 'POST',
+    headers: headers('project-memory-token'),
+    body: JSON.stringify({
+      operationId: 'browser-late-session',
+      baseVersion: null,
+      baseMainVersion: baselinePublication.body.snapshot.version,
+      sourceCommit: featureSha,
+      memory: { map: lateMap, records: {} },
+      client: { sessionId: lateSessionId, hookEvent: 'SessionStart', eventId: 'hook-late-session', occurredAt: new Date().toISOString(), cursor: 0 },
+    }),
+  });
+  assert.equal(lateSession.response.status, 200, JSON.stringify(lateSession.body));
+  await pendingPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id && document.querySelector('#cg-sync')?.dataset.status === 'synced', lateSessionId);
+  await pendingPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Late Session map'));
+  assert.match(await pendingPage.locator('.node[data-id="T0"]').textContent(), /Late Session map/);
+  assert.equal(lateSession.body.snapshot.lastSync.sessionId, lateSessionId);
+  assert.equal(lateSession.body.snapshot.lastSync.hookEvent, 'SessionStart');
+  assert.equal(lateSession.body.snapshot.updatedAt, new Date(lateSession.body.snapshot.updatedAt).toISOString());
+  await pendingPage.close();
+  record('A pending Session deep link stays selected and opens automatically after Hook-style Cloud registration');
+
   await page.locator('.cloud-overview-link').click();
   await page.waitForURL(`${service.url}/`);
   assert.match(await page.locator('.node[data-id="P_context-guard"]').textContent(), /Context Guard/);

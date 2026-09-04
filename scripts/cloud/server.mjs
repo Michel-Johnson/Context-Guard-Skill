@@ -518,9 +518,18 @@ export async function startCloudServer({
       if (client.scope === `${scope}|${viewId}`) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
     }
   };
+  const broadcastWorkbenchAccess = project => {
+    const prefix = `project:${project.id}|`;
+    const payload = JSON.stringify({ projectId: project.id, at: new Date().toISOString() });
+    for (const client of workbenchClients) {
+      if (client.res.destroyed) { workbenchClients.delete(client); continue; }
+      if (client.scope.startsWith(prefix)) client.res.write(`event: access\ndata: ${payload}\n\n`);
+    }
+  };
   const stopMemoryEvents = memoryHandler?.onEvent(event => {
     const project = projectById(event.projectId);
     if (!project) return;
+    broadcastWorkbenchAccess(project);
     if (event.scope === 'main') broadcastWorkbench(`project:${project.id}`, project, 'main').catch(() => {});
     else if (event.scope?.startsWith('session:')) broadcastWorkbench(`project:${project.id}`, project, event.scope).catch(() => {});
   }) || (() => {});
