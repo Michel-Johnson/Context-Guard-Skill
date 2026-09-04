@@ -18,6 +18,28 @@ import { compatibleRuntime, runtimeIdentity, upgradeableRuntime } from './runtim
 import { globalWorkbenchDirectory, readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
 import { RouteStore } from './portless-routes.mjs';
 const ownFile = fileURLToPath(import.meta.url);
+function documentHasBug(doc, bugId) {
+  const pending = doc?.root ? [doc.root] : [];
+  while (pending.length) {
+    const node = pending.pop();
+    if ((node?.bugs || []).some(bug => bug?.id === bugId)) return true;
+    pending.push(...(node?.children || []));
+  }
+  return false;
+}
+export async function attachBugWithRecovery(call, sessionId, input) {
+  const operationId = `bug:${sessionId}:${input.bug.id}`;
+  const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
+  const snapshot = await call('/api/state');
+  if (prior.found && documentHasBug(snapshot.doc, input.bug.id)) return { ...prior.result, duplicate: true };
+  const recoveryKey = createHash('sha256').update(`${operationId}\0${snapshot.version}`).digest('hex').slice(0, 24);
+  const commitOperationId = prior.found ? `bug-recover:${recoveryKey}` : operationId;
+  const result = await call('/api/commit', {
+    method: 'POST',
+    body: { operationId: commitOperationId, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] },
+  });
+  return prior.found ? { ...result, recovered: true } : result;
+}
 function options(args) {
   const opts = { _: [] };
   for (let i = 0; i < args.length; i++) {
@@ -581,11 +603,7 @@ async function main(args) {
     return { ...result, todo };
   }
   if (action === 'attach-bug') {
-    const input = await inputJSON(opt.input), operationId = `bug:${sessionId}:${input.bug.id}`;
-    const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
-    if (prior.found) return { ...prior.result, duplicate: true };
-    const snapshot = await call('/api/state');
-    return call('/api/commit', { method: 'POST', body: { operationId, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
+    return attachBugWithRecovery(call, sessionId, await inputJSON(opt.input));
   }
   if (action === 'update-bug') {
     const input = await inputJSON(opt.input), operationId = `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`;

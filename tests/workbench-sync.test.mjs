@@ -7,7 +7,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
-import { diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
+import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
@@ -49,6 +49,29 @@ function agentProposal(id = 'N2', title = '提议', file = 'src/proposal.mjs') {
     },
   };
 }
+
+test('attach-bug recovers when an old operation receipt outlives the Map entry', async () => {
+  const sessionId = 'session-recovery', bug = { id: 'B4', title: '恢复坏例', status: 'open' };
+  let visible = false, commit;
+  const call = async (route, options = {}) => {
+    if (route.startsWith('/api/operation?')) return { found: true, result: { committed: true, version: 'old-version' } };
+    if (route === '/api/state') return {
+      version: visible ? 'restored-version' : 'missing-version',
+      doc: { root: { id: 'T0', bugs: [], children: [{ id: 'N1', bugs: visible ? [{ ...bug, sessions: [sessionId] }] : [], children: [] }] } },
+    };
+    if (route === '/api/commit') { commit = options.body; visible = true; return { committed: true, version: 'restored-version' }; }
+    throw new Error(`unexpected route ${route}`);
+  };
+  const recovered = await attachBugWithRecovery(call, sessionId, { node: 'N1', bug });
+  assert.equal(recovered.recovered, true);
+  assert.equal(commit.baseVersion, 'missing-version');
+  assert.match(commit.operationId, /^bug-recover:[a-f0-9]{24}$/);
+  assert.deepEqual(commit.operations, [{ type: 'attach-bug', id: 'N1', bug }]);
+  commit = undefined;
+  const duplicate = await attachBugWithRecovery(call, sessionId, { node: 'N1', bug });
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(commit, undefined);
+});
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 
 test('session registry exposes lifecycle state and filters maintenance actors', async () => {
