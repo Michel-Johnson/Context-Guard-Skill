@@ -1381,23 +1381,38 @@ html.design-gallery .g-tr-mock{pointer-events:auto;overflow:visible;width:100%;
 html.g-kind-chip .g-scroll{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
   gap:28px 22px;max-width:1120px}
-html.g-kind-chip,html.g-kind-chip *{font-style:normal}
+/* 整页黑体正字。Comic Neue / 宋体 / 衬线在中文里看起来像斜体。 */
+html.g-kind-chip{
+  --g-ch-sans:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-family:var(--g-ch-sans);
+  font-style:normal;
+  font-synthesis:none}
+html.g-kind-chip,
+html.g-kind-chip body,
+html.g-kind-chip .g-bar,
 html.g-kind-chip .g-num,
-html.design-gallery .g-ch-mock{
-  pointer-events:none;font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei","IBM Plex Sans",sans-serif}
+html.g-kind-chip .g-ch-mock,
+html.g-kind-chip .g-ch-mock h2,
+html.g-kind-chip .g-ch-mock .lead,
+html.g-kind-chip .g-ch-mock .chip{
+  font-family:var(--g-ch-sans) !important;
+  font-style:normal !important;
+  font-synthesis:none !important}
+html.g-kind-chip *{font-style:normal !important;font-synthesis:none !important}
+html.g-kind-chip .g-num,
+html.design-gallery .g-ch-mock{pointer-events:none}
 html.design-gallery .g-ch-mock{overflow:visible;width:100%;
   padding:16px 16px 20px;background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d}
 .g-ch-mock .who{display:flex;align-items:center;gap:8px;margin:0;flex-wrap:wrap}
 .g-ch-mock h2{margin:0;font-size:18px;font-weight:700}
 .g-ch-mock .sp{flex:1 1 auto;min-width:8px}
-.g-ch-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45;
-  font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.g-ch-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45}
 .g-ch-mock .alts{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
 .g-ch-mock .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto}
 .g-ch-mock .trash svg{width:18px;height:18px;display:block}
 .g-ch-mock .chip{
   display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;
-  font-size:11px;font-weight:600;font-style:normal;padding:1px 8px;border-radius:10px;line-height:1.45;
+  font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;line-height:1.45;
   background:#efe6d2;color:#3a6e55}
 .g-ch-mock .chip b{font-weight:800}
 .g-ch-mock .chip.u{background:#fff3bf;color:#8a6d1f}
@@ -1426,7 +1441,7 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-13 .chip{background:#fff3bf;color:#3a6e55;border-radius:999px}
 .g-ch-14 .chip{background:transparent;border:1px solid #c5bba8;color:#3a6e55;border-radius:999px;font-weight:500}
 .g-ch-15 .chip{border-radius:0;background:#efe6d2;padding:3px 8px;letter-spacing:.04em}
-.g-ch-16 .chip{font-family:Georgia,"Songti SC",serif;font-style:normal;font-weight:600;background:transparent;padding:0}
+.g-ch-16 .chip{font-weight:800;background:transparent;padding:0;font-size:12px}
 .g-ch-17 .chip{font-family:ui-monospace,Menlo,monospace;font-size:10px;background:#111;color:#9fe3b0;border-radius:4px;padding:3px 7px}
 .g-ch-17 .chip.u{color:#ffe66d}.g-ch-17 .chip.f{color:#ff8a8a}.g-ch-17 .chip.d{color:#9ec0ff}
 .g-ch-18 .chip{box-shadow:inset 0 0 0 1px #3a6e55, inset 0 0 0 3px #fffdf8;background:#efe6d2;padding:3px 10px;border-radius:999px}
@@ -1444,9 +1459,9 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-24 .chip.f{background:#e24b4b}.g-ch-24 .chip.d{background:#2d5da1}
 .g-ch-25 .chip{background:#1b1b1b;color:#7dff9a;font-family:ui-monospace,Menlo,monospace;border-radius:0;font-size:10px;padding:2px 8px}
 .g-ch-25 .chip:before{content:"$ "}
-.g-ch-26 .chip{background:transparent;border-radius:0;font-family:"Libre Baskerville",Georgia,serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid #2d2d2d;padding:2px 6px}
+.g-ch-26 .chip{background:transparent;border-radius:0;font-size:11px;letter-spacing:.08em;font-weight:700;border:1px solid #2d2d2d;padding:2px 6px}
 .g-ch-27 .chip{background:transparent;padding:0;border-radius:0;font-weight:500;letter-spacing:.18em;font-size:10px;color:#3a6e55}
-.g-ch-28 .chip{font-family:"Comic Neue","Noto Sans SC",cursive;background:#fff3bf;border:2px solid #2d2d2d;border-radius:12px 4px 12px 4px;color:#2d2d2d;font-weight:700}
+.g-ch-28 .chip{background:#fff3bf;border:2px solid #2d2d2d;border-radius:12px 4px 12px 4px;color:#2d2d2d;font-weight:700}
 .g-ch-29 .chip{background:#d8eee0;border-radius:999px;padding:1px 8px 1px 6px}
 .g-ch-30 .chip{background:linear-gradient(90deg,#3a6e55 42%,#efe6d2 42%);color:#2d2d2d;border-radius:999px;padding:2px 10px 2px 8px}
 .g-ch-30 .chip.u{background:linear-gradient(90deg,#c4a24a 42%,#fff3bf 42%)}
@@ -1454,7 +1469,10 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-30 .chip.d{background:linear-gradient(90deg,#2d5da1 42%,#e4ebf4 42%)}
 .g-ch-31 .chip{padding:4px 6px;border-radius:6px;font-size:10px;writing-mode:horizontal-tb;background:#d8eee0}
 .g-ch-32 .chip{padding:4px 14px;border-radius:999px;font-size:12px;background:#efe6d2}
-.g-ch-33 .chip{border-radius:0;font-family:ui-monospace,Menlo,monospace;font-size:10px;background:#3a6e55;color:#fff;padding:3px 6px;letter-spacing:0;image-rendering:pixelated}
+.g-ch-33 .chip{border-radius:0;font-size:10px;background:#3a6e55;color:#fff;padding:3px 6px;letter-spacing:0;image-rendering:pixelated}
+html.g-kind-chip .g-ch-17 .chip,
+html.g-kind-chip .g-ch-25 .chip,
+html.g-kind-chip .g-ch-33 .chip{font-family:ui-monospace,Menlo,Consolas,monospace !important}
 .g-ch-34 .chip{position:relative;background:#efe6d2;border-radius:0 0 8px 0;padding:2px 10px 2px 8px}
 .g-ch-34 .chip:after{content:"";position:absolute;top:0;right:0;border:4px solid transparent;border-top-color:#c5bba8;border-right-color:#c5bba8}
 .g-ch-35 .chip{background:transparent;padding:0;border-radius:0}
@@ -6616,16 +6634,16 @@ function bootChipGallery(){
   const bar = document.querySelector("#design-gallery .g-bar");
   if(bar){
     bar.querySelector("b").textContent = "状态标签 · 50 版";
-    bar.querySelector(".hint").textContent = "往下滑动。标题行跟现在检查器一样，只换「测试通过」这粒标签；下面三粒是同一套的已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
+    bar.querySelector(".hint").textContent = "往下滑动。字都是黑体、正的，没有斜体。标题行跟现在检查器一样，只换「测试通过」这粒标签；下面三粒是同一套的已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
   }
   const trash = `<span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span>`;
   const names = [
     ["01","现况胶囊"],["02","淡绿底"],["03","描边"],["04","小圆角方"],["05","前圆点"],
     ["06","带对勾"],["07","印章"],["08","纯字"],["09","粗框"],["10","左色条"],
     ["11","实心绿"],["12","虚线边"],["13","黄底绿字"],["14","细线胶囊"],["15","方标签"],
-    ["16","衬线"],["17","终端绿"],["18","双层描边"],["19","稍大"],["20","深底"],
+    ["16","加粗字"],["17","终端绿"],["18","双层描边"],["19","稍大"],["20","深底"],
     ["21","上边线"],["22","下划线"],["23","书签"],["24","圆徽章"],["25","命令行"],
-    ["26","报纸栏"],["27","瑞士字距"],["28","手写"],["29","勾加字"],["30","对切开"],
+    ["26","报纸栏"],["27","瑞士字距"],["28","贴纸"],["29","勾加字"],["30","对切开"],
     ["31","更紧"],["32","更松"],["33","像素"],["34","折角"],["35","色点"],
     ["36","和纸"],["37","描边圆"],["38","两截底"],["39","小徽章"],["40","汉字印"],
     ["41","点线下划"],["42","斜切角"],["43","略小字"],["44","绿灯"],["45","外圈"],

@@ -795,21 +795,38 @@ try {
     assert.equal(frozenChip.text, '测试通过');
     assert.equal(frozenChip.chipBg, 'rgb(239, 230, 210)');
     const upright = await preview.evaluate(() => {
-      const item = document.querySelector('#v09');
-      const cs = el => getComputedStyle(el);
+      const check = sel => {
+        const item = document.querySelector(sel);
+        const cs = el => getComputedStyle(el);
+        const els = {
+          h2: item.querySelector('h2'),
+          chip: item.querySelector('.who .chip'),
+          lead: item.querySelector('.lead'),
+          alt: item.querySelector('.alts .chip'),
+          num: item.querySelector('.g-num')
+        };
+        return Object.fromEntries(Object.entries(els).map(([k, el]) => {
+          const s = cs(el);
+          return [k, { style: s.fontStyle, family: s.fontFamily, synth: s.fontSynthesis }];
+        }));
+      };
       return {
-        h2: cs(item.querySelector('h2')).fontStyle,
-        chip: cs(item.querySelector('.who .chip')).fontStyle,
-        lead: cs(item.querySelector('.lead')).fontStyle,
-        alt: cs(item.querySelector('.alts .chip')).fontStyle,
-        num: cs(item.querySelector('.g-num')).fontStyle
+        iChips: document.querySelectorAll('i.chip').length,
+        v09: check('#v09'),
+        v16: check('#v16'),
+        v28: check('#v28')
       };
     });
-    assert.equal(upright.h2, 'normal');
-    assert.equal(upright.chip, 'normal');
-    assert.equal(upright.lead, 'normal');
-    assert.equal(upright.alt, 'normal');
-    assert.equal(upright.num, 'normal');
+    assert.equal(upright.iChips, 0, 'chips must be spans, not <i>');
+    for (const id of ['v09', 'v16', 'v28']) {
+      const block = upright[id];
+      for (const part of ['h2', 'chip', 'lead', 'alt', 'num']) {
+        assert.equal(block[part].style, 'normal', `${id} ${part} font-style`);
+        assert.match(block[part].family, /Noto Sans SC/, `${id} ${part} family ${block[part].family}`);
+        assert.doesNotMatch(block[part].family, /Comic Neue|Georgia|Libre Baskerville|Songti|cursive/i, `${id} ${part} still slanted family`);
+        assert.equal(block[part].synth, 'none', `${id} ${part} font-synthesis`);
+      }
+    }
     recordCheck('state-chip-gallery-50');
   } finally {
     await preview.close();
