@@ -63,19 +63,26 @@ export function mergeMemory(base, local, remote, at = 'map') {
   }
   throw new MapError('MEMORY_CONFLICT', `Both Session and main changed ${at}; preserve drafts and reconcile explicitly`, 409);
 }
-export async function rebaseMemory(project, sessionId) {
+export async function rebaseMemory(project, sessionId, { adoptMain = false } = {}) {
   const dir = sessionMemoryDir(project, sessionId), main = (await memoryRequest(project, 'main')).snapshot;
   if (!main) return { rebased: false, reason: 'no-published-main' };
   return withFileLock(path.join(dir, 'pending-upload.json.lock'), async () => {
     if (await readJSON(path.join(dir, 'pending-upload.json'), null)) throw new MapError('UPLOAD_PENDING', 'Replay the pending upload before rebasing', 409);
     const base = await readJSON(path.join(dir, 'base-main.json'), { version: null });
     const local = await readJSON(path.join(dir, 'map.json'));
-    const merged = mergeMemory(base.map, local, main.memory.map);
+    if (!base.map && !adoptMain) {
+      throw new MapError('SESSION_BASELINE_REQUIRED', 'Session has no confirmed main ancestor; rerun with --adopt-main only after reviewing the preserved Session draft', 409);
+    }
+    if (base.map && adoptMain) {
+      throw new MapError('BASELINE_ALREADY_CONFIRMED', 'Use ordinary memory rebase after a Session main ancestor is confirmed', 409);
+    }
+    const merged = adoptMain ? main.memory.map : mergeMemory(base.map, local, main.memory.map);
     validateMemory({ map: merged, records: {} });
-    await atomicWrite(path.join(dir, `before-rebase-${randomUUID()}.json`), encode(local));
+    const backup = path.join(dir, `${adoptMain ? 'before-main-adoption' : 'before-rebase'}-${randomUUID()}.json`);
+    await atomicWrite(backup, encode(local));
     await atomicWrite(path.join(dir, 'map.json'), encode(merged));
     await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: main.version, map: main.memory.map }));
-    return { rebased: true, mainVersion: main.version };
+    return { rebased: true, strategy: adoptMain ? 'adopt-main' : 'merge', mainVersion: main.version, backup };
   });
 }
 export async function synchronizeMemory(root, sessionId) {
