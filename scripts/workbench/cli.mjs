@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
-import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot } from './server.mjs';
+import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot, loopbackJSON } from './server.mjs';
 import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
@@ -243,9 +243,16 @@ export async function ensureServer(root, port = 8877) {
   throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
 }
 export async function request(state, route, { token = state.adminToken, method = 'GET', body } = {}) {
-  const response = await fetch(new URL(route, state.url), { method, headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
-  const result = await response.json();
-  if (!response.ok) throw new MapError(result.error?.code || 'HTTP_ERROR', result.error?.message || response.statusText, response.status, result.error || {});
+  const encoded = body === undefined ? undefined : JSON.stringify(body);
+  const response = await loopbackJSON(new URL(route, state.url), {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(encoded === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(encoded) }) },
+    body: encoded,
+    timeout: 15000,
+  });
+  if (!response) throw new MapError('HTTP_ERROR', 'Workbench control request failed', 503);
+  const result = response.value;
+  if (!response.ok) throw new MapError(result.error?.code || 'HTTP_ERROR', result.error?.message || `HTTP ${response.status}`, response.status, result.error || {});
   return result;
 }
 export async function stopServer(root) {
