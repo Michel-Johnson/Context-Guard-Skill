@@ -566,7 +566,8 @@ export async function startCloudServer({
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
-      if (allowedOrigin && req.headers.origin && canonicalOrigin(req.headers.origin) !== allowedOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
+      const passwordLoginRequest = route === '/auth/login' && req.method === 'POST';
+      if (!passwordLoginRequest && allowedOrigin && req.headers.origin && canonicalOrigin(req.headers.origin) !== allowedOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
       if (memoryHandler && await memoryHandler(req, res)) return;
       if (route === '/login' && req.method === 'GET') {
         if (!browserPasswordHash) throw new MapError('NOT_FOUND', 'Password login is not configured', 404);

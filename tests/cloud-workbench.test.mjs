@@ -100,6 +100,12 @@ test('private mode protects reads and uses secure cookies without leaking projec
     body: new URLSearchParams({ password: 'test-browser-password', next: '/' }),
   });
   assert.equal(normalizedOriginLogin.status, 302);
+  const opaqueOriginLogin = await fetch(service.url + '/auth/login', {
+    method: 'POST', redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'null' },
+    body: new URLSearchParams({ password: 'test-browser-password', next: '/' }),
+  });
+  assert.equal(opaqueOriginLogin.status, 302);
   const passwordCookie = passwordLogin.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: passwordCookie } })).status, 200);
   const logout = await fetch(service.url + '/auth/logout', { method: 'POST', redirect: 'manual', headers: { Cookie: passwordCookie, Origin: 'https://map.example.test' } });
