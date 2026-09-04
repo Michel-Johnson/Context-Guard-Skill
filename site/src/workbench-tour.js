@@ -374,8 +374,8 @@
         camera(null, true);
       }
       if (step === 2) {
-        await click("#bug-panel-list li.on [data-claim]");
-        camera(null, true);
+        await click("#bug-panel-list li.on .bug-status", true, () => {});
+        camera(document.querySelector("#bug-panel-list li.on"));
       }
       if (step === 3) {
         await click("#btn-bug-exit", true);

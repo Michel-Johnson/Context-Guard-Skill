@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { clients, getClients, installCommand, invocationPrompt } from "../src/clients.ts";
 import { conversationTiming, typedText, getUsages } from "../src/app-usage.ts";
 import { getFirstUseStory } from "../src/first-use-story.ts";
+import { debugSteps } from "../src/storyboard.ts";
 
 test("四客户端安装映射有效，Codex的两个入口使用同一平台", () => {
   assert.deepEqual(clients.map(c => c.label), ["Codex App", "Codex CLI", "Cursor", "Claude Code"]);
@@ -122,6 +123,9 @@ test("工作台六个章节完成后自动顺序循环，减少动态时不自�
   const tourSource = readFileSync(new URL("../src/workbench-tour.js", import.meta.url), "utf8");
   assert.match(tourSource, /if \(document\.querySelector\("#nav-crumbs a"\)\) await click\("#nav-crumbs a", true\)/);
   assert.match(tourSource, /send\("prepared"\);\s*send\("step", \{ step: first, complete: false \}\)/);
+  assert.doesNotMatch(tourSource, /#bug-panel-list li\.on \[data-claim\]/);
+  assert.match(tourSource, /#bug-panel-list li\.on \.bug-status/);
+  assert.equal(debugSteps[2], "看处理状态");
 });
 
 test("文字逐字增长，不产生半个Unicode字符", () => {

@@ -77,7 +77,7 @@ export type ChapterId = WorkbenchChapterId | "debug";
 export const debugSteps = [
   "查看 Bug",
   "定位链路",
-  "认领问题",
+  "看处理状态",
   "查看条目",
   "勾选处理",
   "转为休眠",
@@ -85,7 +85,7 @@ export const debugSteps = [
 export const debugCaptions = [
   "找到尚未处理的问题。",
   "沿链路定位到所属模块。",
-  "让当前会话关联到这个 Bug。",
+  "徽章和色点标出谁在处理、卡在哪一步。",
   "在模块里查看问题条目。",
   "勾选后进入原型的沉淀状态。",
   "转为休眠条目，等待下一次检索。",
