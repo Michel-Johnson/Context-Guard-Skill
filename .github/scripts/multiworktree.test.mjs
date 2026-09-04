@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolveProject, projectPreferences, saveMainBinding, sessionBinding, bindingStatus } from '../../scripts/workbench/project.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
-import { request } from '../../scripts/workbench/cli.mjs';
+import { request, stopServer } from '../../scripts/workbench/cli.mjs';
 import { namedWorkbench } from '../../scripts/workbench/named.mjs';
 import { startNamedProxy } from '../../scripts/workbench/named-proxy.mjs';
 import { WorkbenchSync } from '../../prototype/workbench-sync.mjs';
@@ -33,8 +33,11 @@ const hook = (root, id, event = 'session-start') => run(python, [path.join(hookR
 async function fixture(t, cleanup = true) {
   await fs.mkdir(path.join(repo, 'temp'), { recursive: true });
   const dir = await fs.mkdtemp(path.join(repo, 'temp/binding-'));
-  if (cleanup) t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const root = path.join(dir, 'repo'), other = path.join(dir, 'other'); await fs.mkdir(root);
+  if (cleanup) t.after(async () => {
+    await stopServer(root);
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
   await git(root, 'init', '-b', 'trunk'); await git(root, 'config', 'user.email', 'fixture@example.invalid'); await git(root, 'config', 'user.name', 'Fixture');
   await fs.writeFile(path.join(root, 'README.md'), 'fixture'); await git(root, 'add', 'README.md'); await git(root, 'commit', '-m', 'initial');
   await git(root, 'worktree', 'add', '-b', 'feature', other);
