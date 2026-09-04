@@ -53,6 +53,7 @@
 
 ## 架构与测试治理
 
+- [x] 明确开发请求不重复索要计划确认；Context Guard 控制命令可经 Node/Python 正式入口和字面量 stdin 安全通道自举；PR 合入 main 后强制从合并版本更新本机 Skill，并通过安装入口执行真实功能验收（`tests/hook-lifecycle.test.mjs`）
 - [x] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层，并同时覆盖本地 CSP、Cloud 静态路由和官网演示构建（`prototype/workbench.css`、`prototype/workbench-fixtures.js`、`prototype/workbench-app.js`）
 - [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
 - [x] Session 下拉框按 ID 去重且不展示原始 ID，URL 固定当前会话，发布/关闭项移除、失效项禁用；关系模式默认关闭并在 Session 切换时退出（`tests/workbench-browser.mjs`、`tests/cloud-workbench-browser.mjs`）
