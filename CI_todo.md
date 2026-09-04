@@ -44,3 +44,8 @@
 - [ ] macOS/Windows/Linux 浏览器的 `.localhost` DNS 解析与受管网络策略兼容；正式精简实现的长期 CPU/内存/物理 I/O 基准
 - [ ] 旧 Map-only Cloud Sync 与多个 worktree 的联调；旧服务目标绑定不代表服务器迁移完成
 - [ ] 启动器强制终止后空/损坏启动锁及遗留 reclaim 锁的显式恢复工具；当前失败关闭，不擅自删除未知锁
+
+## 架构与测试治理
+
+- [ ] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层；迁移必须同时覆盖本地 CSP、Cloud 静态路由和官网演示构建，不能只拆文件
+- [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）

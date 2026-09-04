@@ -109,6 +109,7 @@ try {
   recordCheck('empty-map-explicitly-initializes-current-workbench');
   await fs.writeFile(mapPath, encode(doc));
   await page.waitForFunction(() => document.querySelector('#repo-title')?.textContent?.includes('browser-test'));
+  await page.waitForFunction(() => document.querySelector('#cg-sync-status')?.textContent?.includes('旧缓存'));
   await synchronized();
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
   assert.equal(await page.locator('.session-chip').isVisible(), true);

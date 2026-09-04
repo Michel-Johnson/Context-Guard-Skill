@@ -1037,10 +1037,9 @@ html.design-gallery .g-mock{display:block !important;position:relative;top:auto;
 
 <script>
 /* ================= 假数据 ================= */
-const PINNED = [
-  "回复和记忆一律使用中文",
-  "记忆文件随 git 提交；密钥只留本地，永不入库"
-];
+// Real workbenches receive memory from their Map. Product defaults must not
+// impersonate user-authored records.
+const PINNED = [];
 
 const I18N = {
   zh: {
