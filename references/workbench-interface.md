@@ -240,6 +240,15 @@ hides the attachment controls again.
   completed. Preserve `.codex/context/private/sync`, restart/query the same ID;
   do not generate a fresh create operation. If the file matches neither recorded
   version, writes remain blocked for explicit reconciliation.
+- Journal startup validates every JSONL record and its chained cursor. A partial
+  final append or missing final newline is backed up and repaired automatically;
+  the next event records `journalGap:true` rather than pretending history is
+  continuous. Malformed interior records or cursor mismatches leave the map
+  readable but block all writes. Only the human workbench can choose Settings →
+  同步与恢复 → 保留当前地图并恢复日志, and it must submit the current map
+  version plus explicit acceptance of the historical gap. The original journal
+  is retained under private recovery storage. Agents cannot call this endpoint,
+  and a concurrent journal change aborts replacement instead of overwriting it.
 - `INVALID_MAP` / file missing: last valid display is retained with an error;
   it is not reported synchronized. Fix the external file to resume.
 - Index failure: read a node through the API. `map_owns.py` checks map source
