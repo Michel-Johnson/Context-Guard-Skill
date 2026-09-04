@@ -320,19 +320,19 @@ export async function startCloudServer({
     for await (const chunk of req) { size += chunk.length; if (size > 8 * 1024) throw new MapError('BODY_TOO_LARGE', 'Login request is too large', 413); chunks.push(chunk); }
     return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
   };
-  const bearer = (req, url) => req.headers.authorization?.replace(/^Bearer /, '') || url.searchParams.get('token') || '';
-  const requireAdmin = (req, url) => {
-    if (!adminToken || !safeEqual(bearer(req, url), adminToken)) throw new MapError('UNAUTHORIZED', 'An admin token is required', 401);
+  const bearer = req => req.headers.authorization?.replace(/^Bearer /, '') || '';
+  const requireAdmin = req => {
+    if (!adminToken || !safeEqual(bearer(req), adminToken)) throw new MapError('UNAUTHORIZED', 'An admin token is required', 401);
   };
-  const requireProject = (req, url, project) => {
-    const credential = bearer(req, url);
+  const requireProject = (req, _url, project) => {
+    const credential = bearer(req);
     if (adminToken && safeEqual(credential, adminToken)) return;
     if (!project.tokenHash || !safeEqual(digest(credential), project.tokenHash)) throw new MapError('UNAUTHORIZED', 'A project sync token is required', 401);
   };
   const cookieValue = req => String(req.headers.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith('cg_workbench='))?.slice('cg_workbench='.length) || '';
   const decodedCookieValue = req => { try { return decodeURIComponent(cookieValue(req)); } catch { return ''; } };
-  const hasWorkbenchAccess = (req, url) => {
-    const credential = bearer(req, url) || decodedCookieValue(req);
+  const hasWorkbenchAccess = req => {
+    const credential = bearer(req) || decodedCookieValue(req);
     return !!browserToken && (safeEqual(credential, browserToken) || adminToken && safeEqual(credential, adminToken));
   };
   const requireWorkbench = (req, url) => {
@@ -705,7 +705,7 @@ export async function startCloudServer({
           await updateRegistryProject({ id: project.id, tokenHash: digest(syncToken), updatedAt: now() });
           return send(res, 201, { projectId: project.id, syncToken });
         }
-        if (action === 'map' && req.method === 'GET') { if (privateAccess) { const credential = bearer(req, url); if (!(adminToken && safeEqual(credential, adminToken)) && !(project.tokenHash && safeEqual(digest(credential), project.tokenHash))) requirePrivateRead(req, url); } return send(res, 200, await projectSnapshot(project)); }
+        if (action === 'map' && req.method === 'GET') { if (privateAccess) { const credential = bearer(req); if (!(adminToken && safeEqual(credential, adminToken)) && !(project.tokenHash && safeEqual(digest(credential), project.tokenHash))) requirePrivateRead(req, url); } return send(res, 200, await projectSnapshot(project)); }
         requireProject(req, url, project);
         if (action === 'snapshot' && req.method === 'POST') return send(res, 200, await saveSnapshot(project, await requestBody(req)));
         if (action === 'commits' && req.method === 'POST') {
@@ -792,6 +792,16 @@ export async function startCloudServer({
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
+      }
+      if (req.method === 'GET' && /\/workbench-(?:app|fixtures)\.js$/.test(route)) {
+        requirePrivateRead(req, url);
+        const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
+      }
+      if (req.method === 'GET' && /\/workbench\.css$/.test(route)) {
+        requirePrivateRead(req, url);
+        const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
       if (req.method === 'GET' && (route === '/' || route === '/prototype/' || route === '/workbench.html' || /^\/projects\/[^/]+$/.test(route))) {
         if (privateAccess && browserPasswordHash && !hasWorkbenchAccess(req, url)) return redirect(res, `/login?next=${encodeURIComponent(`${route}${url.search}`)}`);

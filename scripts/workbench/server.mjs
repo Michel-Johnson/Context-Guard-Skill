@@ -520,6 +520,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
         }
         if (['/prototype/map-model.mjs', '/prototype/workbench-sync.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        else if (['/prototype/workbench-app.js', '/prototype/workbench-fixtures.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        else if (route === '/prototype/workbench.css') { file = path.join(skillRoot, route.slice(1)); contentType = 'text/css; charset=utf-8'; }
         else if (route === '/.codex/context/map.json') { file = mainStore.file; contentType = 'application/json; charset=utf-8'; }
         else if (['/.codex/context/preferences.json', '/.codex/context/candidates.json', '/.codex/context/l1-candidates.json'].includes(route)) { file = path.join(root, route.slice(1)); contentType = 'application/json; charset=utf-8'; }
         else throw new MapError('NOT_FOUND', 'File not exposed', 404);

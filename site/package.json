@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/prepare-workbench.mjs && vite --host 127.0.0.1",
     "build": "node scripts/prepare-workbench.mjs && tsc --noEmit && vite build",
+    "test": "node --experimental-strip-types --test scripts/client-timing.test.mjs scripts/native-camera.test.mjs",
     "test:camera": "node --experimental-strip-types --test scripts/native-camera.test.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },

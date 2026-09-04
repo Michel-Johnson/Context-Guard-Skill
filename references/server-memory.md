@@ -68,6 +68,13 @@ the baseline. Workbench refreshes the baseline every 30 seconds and shows stale 
 unavailable status instead of overwriting the last good snapshot. Repositories
 without a configured authoritative ref cannot publish.
 
+Successful publication closes and removes that Session Map branch in the same
+durable server transaction. Its immutable history, publication receipt, source
+commit, and resulting Main version remain available for audit. Replaying the
+same operation ID returns the original receipt, while every new write using the
+closed Session ID fails. New development must use a new Session seeded from the
+latest published Main Map.
+
 ## Authority and storage
 
 - GitHub is authoritative for source code, product documentation and formal tests.

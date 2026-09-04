@@ -119,6 +119,7 @@ test('private mode protects reads and uses secure cookies without leaking projec
   const cookie = login.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: cookie } })).status, 200);
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: cookie, Origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await fetch(service.url + '/api/projects?token=admin-test')).status, 401, 'API credentials must not be accepted from URLs');
 });
 
 test('one cloud process serves the private Main and Session memory API', async t => {

@@ -112,14 +112,15 @@ test('linked worktrees share one Cloud project binding but retain temporary sync
 });
 
 test('linked worktrees reuse one running workbench instance', async t => {
-  const fixture = await repository(); t.after(() => fixture.dispose());
+  const fixture = await repository(); let running;
+  t.after(async () => { await running?.close(); await fixture.dispose(); });
   await commitMainMap(fixture, 'main map');
   for (const [root, title] of [[fixture.worktree, 'feature map']]) {
     const context = path.join(root, '.codex/context');
     await fs.mkdir(path.join(context, 'private'), { recursive: true });
     await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }, null, 2) + '\n');
   }
-  const running = await startServer({ root: fixture.root, port: 0 }); t.after(() => running.close());
+  running = await startServer({ root: fixture.root, port: 0 });
   const reused = await ensureServer(fixture.worktree, 0);
   assert.equal(reused.projectId, running.project.projectId);
   assert.equal(reused.instance, running.state.instance);
@@ -130,7 +131,8 @@ test('linked worktrees reuse one running workbench instance', async t => {
 });
 
 test('binding status stays unbound until a Session explicitly registers', async t => {
-  const fixture = await repository(); t.after(() => fixture.dispose());
+  const fixture = await repository(); let running;
+  t.after(async () => { await running?.close(); await fixture.dispose(); });
   const context = path.join(fixture.worktree, '.codex/context');
   await fs.mkdir(path.join(context, 'private'), { recursive: true });
   await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'feature', kind: 'module', children: [] } }, null, 2) + '\n');
@@ -138,18 +140,19 @@ test('binding status stays unbound until a Session explicitly registers', async 
   await commitMainMap(fixture, 'main');
   const project = await resolveProject(fixture.worktree);
   assert.equal((await bindingStatus(project, 'session-feature')).session.bound, false);
-  const running = await startServer({ root: fixture.root, port: 0 }); t.after(() => running.close());
+  running = await startServer({ root: fixture.root, port: 0 });
   const response = await fetch(new URL('/api/session', running.state.url), { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'session-feature', worktreeRoot: fixture.worktree }) });
   assert.equal(response.status, 200);
   assert.equal((await bindingStatus(project, 'session-feature')).session.bound, true);
 });
 
 test('an unconfigured project never seeds All Sessions from a feature worktree', async t => {
-  const fixture = await repository({ remote: '', mainBranch: 'stable' }); t.after(() => fixture.dispose());
+  const fixture = await repository({ remote: '', mainBranch: 'stable' }); let running;
+  t.after(async () => { await running?.close(); await fixture.dispose(); });
   const context = path.join(fixture.worktree, '.codex/context');
   await fs.mkdir(path.join(context, 'private'), { recursive: true });
   await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'unmerged feature', kind: 'module', children: [] } }, null, 2) + '\n');
-  const running = await startServer({ root: fixture.worktree, port: 0 }); t.after(() => running.close());
+  running = await startServer({ root: fixture.worktree, port: 0 });
   const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
   const state = await response.json();
   assert.equal(state.doc.root, null);
@@ -157,7 +160,8 @@ test('an unconfigured project never seeds All Sessions from a feature worktree',
 });
 
 test('Session views read their worktree while All Sessions refuses a Git-file fallback', async t => {
-  const fixture = await repository(); t.after(() => fixture.dispose());
+  const fixture = await repository(); let running;
+  t.after(async () => { await running?.close(); await fixture.dispose(); });
   await commitMainMap(fixture, 'main map');
   const maps = [[fixture.root, 'main map', 'session-main'], [fixture.worktree, 'feature map', 'session-feature']];
   for (const [root, title, sessionId] of maps) {
@@ -166,7 +170,7 @@ test('Session views read their worktree while All Sessions refuses a Git-file fa
     await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }, null, 2) + '\n');
     await fs.writeFile(path.join(context, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), event: 'session-start', platform: 'codex', session_id: sessionId }) + '\n');
   }
-  const running = await startServer({ root: fixture.root, port: 0 }); t.after(() => running.close());
+  running = await startServer({ root: fixture.root, port: 0 });
   const origin = new URL(running.state.url).origin;
   const register = async (sessionId, worktreeRoot) => {
     const response = await fetch(origin + '/api/session', { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, worktreeRoot }) });
@@ -188,14 +192,15 @@ test('Session views read their worktree while All Sessions refuses a Git-file fa
 });
 
 test('All Sessions remains unavailable when Git advances without a published server baseline', async t => {
-  const fixture = await repository(); t.after(() => fixture.dispose());
+  const fixture = await repository(); let running;
+  t.after(async () => { await running?.close(); await fixture.dispose(); });
   await commitMainMap(fixture, 'main baseline');
   for (const [root, title] of [[fixture.root, 'uncommitted main edit'], [fixture.worktree, 'unmerged feature']]) {
     const context = path.join(root, '.codex/context');
     await fs.mkdir(path.join(context, 'private'), { recursive: true });
     await fs.writeFile(path.join(context, 'map.json'), JSON.stringify({ v: 1, project: 'fixture', bootstrap: 'ready', flows: [], root: { id: 'T0', title, kind: 'module', state: 'dirty', children: [] } }, null, 2) + '\n');
   }
-  const running = await startServer({ root: fixture.worktree, port: 0 }); t.after(() => running.close());
+  running = await startServer({ root: fixture.worktree, port: 0 });
   const response = await fetch(new URL('/api/state', running.state.url), { headers: { Authorization: `Bearer ${running.humanToken}` } });
   assert.equal(response.status, 200);
   const before = await response.json();

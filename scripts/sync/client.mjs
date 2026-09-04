@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { diffTrees, same, validate, MapError } from '../../prototype/map-model.mjs';
+import { withFileLock } from '../workbench/io.mjs';
 
 const ownFile = fileURLToPath(import.meta.url);
 const encode = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -62,19 +63,7 @@ async function readJson(file, fallback = null) {
 }
 
 async function withLock(root, task) {
-  const target = syncPaths(root).lock;
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  const deadline = Date.now() + 5000;
-  while (true) {
-    try { await fs.mkdir(target); break; }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (Date.now() >= deadline) throw new MapError('SYNC_BUSY', 'Another cloud sync operation is still running', 409);
-      await pause(25);
-    }
-  }
-  try { return await task(); }
-  finally { await fs.rm(target, { recursive: true, force: true }); }
+  return withFileLock(syncPaths(root).lock, task);
 }
 
 async function appendInbox(root, event) {
@@ -372,7 +361,7 @@ async function serve(root) {
   const previous = await readJson(paths.service);
   if (previous?.pid && previous.pid !== process.pid) try { process.kill(previous.pid, 0); throw new MapError('SYNC_SERVICE_RUNNING', 'Cloud sync listener is already running', 409); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   await atomicWrite(paths.service, encode({ pid: process.pid, startedAt: new Date().toISOString() }));
-  let closing = false, queued = Promise.resolve();
+  let closing = false, queued = Promise.resolve(), activeRequest = null;
   const consume = event => {
     queued = queued.then(() => withLock(root, async () => {
       const state = await readJson(paths.state, { cursor: 0 });
@@ -412,29 +401,39 @@ async function serve(root) {
       }).catch(() => {});
     }, 80);
   });
-  const stop = () => { closing = true; watcher.close(); };
+  const stop = () => { closing = true; activeRequest?.abort(); watcher.close(); };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
   try {
     while (!closing) {
       const state = await readJson(paths.state, { receivedCursor: 0 });
+      let requestTimeout;
       try {
+        activeRequest = new AbortController();
+        requestTimeout = setTimeout(() => activeRequest?.abort(), 60000);
         const response = await fetch(new URL(`/api/projects/${encodeURIComponent(config.projectId)}/events?after=${state.receivedCursor || 0}`, config.url), {
           headers: { Authorization: `Bearer ${config.token}` },
-          signal: AbortSignal.timeout(60000),
+          signal: activeRequest.signal,
         });
         if (!response.ok) throw new Error(`SSE failed: ${response.status}`);
         const decoder = new TextDecoder(); let buffer = '';
-        for await (const chunk of response.body) {
-          buffer += decoder.decode(chunk, { stream: true });
-          let boundary;
-          while ((boundary = buffer.indexOf('\n\n')) >= 0) {
-            const block = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
-            const data = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
-            if (data) consume(JSON.parse(data));
+        try {
+          for await (const chunk of response.body) {
+            buffer += decoder.decode(chunk, { stream: true });
+            let boundary;
+            while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+              const block = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+              const data = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+              if (data) consume(JSON.parse(data));
+            }
+            if (closing) break;
           }
-          if (closing) break;
+        } finally {
+          clearTimeout(requestTimeout);
+          activeRequest = null;
         }
       } catch {
+        clearTimeout(requestTimeout);
+        activeRequest = null;
         if (!closing) await pause(1000);
       }
     }

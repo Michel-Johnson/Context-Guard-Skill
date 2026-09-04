@@ -63,6 +63,12 @@ export class WorkbenchSync {
     return this.cachedDiff.operations;
   }
   dirty() { return !!this.inputDraft || this.composing || !!this.inflight || !!this.pendingRequest || this.operations().length > 0; }
+  loadRecovery() {
+    const restored = this.captureKey ? stored(this.captureKey) : null;
+    const legacy = stored('cg-workbench-maps-v16');
+    this.recovery = restored; this.legacy = legacy;
+    return !!(restored || legacy);
+  }
   setStatus(status, message = '') {
     this.status = status; this.panel.dataset.status = status;
     this.panel.querySelector('#cg-sync-status').textContent = labels[status] + (message ? ` · ${message}` : '');
@@ -121,11 +127,10 @@ export class WorkbenchSync {
       if (!state.doc?.root) throw new Error('地图根节点无效');
       this.initializationRequired = false;
       this.a.apply(state.doc); this.baseTree = copy(this.a.getRoot()); this.ready = true;
-      const restored = stored(this.captureKey), legacy = stored('cg-workbench-maps-v16');
-      this.recovery = restored; this.legacy = legacy;
+      const hasRecovery = this.loadRecovery();
       this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
-      this.setStatus('synced', restored || legacy ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
+      this.setStatus('synced', hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
       return true;
     } catch (e) { this.setStatus('error', e.message); return false; }
   }
@@ -257,7 +262,8 @@ export class WorkbenchSync {
     this.a.apply(current.doc); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
     this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
-    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : '旧草稿副本仍保留');
+    const hasRecovery = this.loadRecovery();
+    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : '');
   }
   async preview(input) {
     if (!this.config) throw new Error('请在本地 Node 工作台导入');
