@@ -269,7 +269,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .dot-pick .dot{width:10px;height:10px}
 
 /* ---------- 画布 ---------- */
-#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden;overflow:clip}
+#viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden;overflow:clip;contain:paint;isolation:isolate}
 .node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
@@ -6270,13 +6270,16 @@ function crossBug(node, bugId){
 let view = {x:36, y:24, k:1};
 function hideEdgeSlivers(){
   const vp = document.getElementById("viewport");
+  const header = document.querySelector("header.top");
   if(!vp || window.__CG_GALLERY) return;
   const box = vp.getBoundingClientRect();
+  const headerBottom = header && header.getClientRects().length ? header.getBoundingClientRect().bottom : box.top;
+  const clipTop = Math.max(box.top, headerBottom);
   vp.querySelectorAll("#nodes .node").forEach(el => {
     const r = el.getBoundingClientRect();
-    const visH = Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top);
-    const cutTop = r.top < box.top - 0.5;
-    el.classList.toggle("edge-sliver", cutTop && visH < 28);
+    const above = clipTop - r.top;
+    const below = r.bottom - clipTop;
+    el.classList.toggle("edge-sliver", above > 1 && below < Math.max(36, r.height * 0.55));
   });
 }
 function applyView(){
@@ -6497,8 +6500,9 @@ function syncChrome(){
   if(!h || !h.getClientRects().length) return;
   const box = h.getBoundingClientRect();
   const min = document.documentElement.classList.contains("cg-phone") ? 96 : 58;
-  const px = Math.max(min, Math.ceil(box.bottom));
+  const px = Math.max(min, Math.round(box.bottom));
   document.documentElement.style.setProperty("--chrome-top", px+"px");
+  hideEdgeSlivers();
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");

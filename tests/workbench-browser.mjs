@@ -583,19 +583,28 @@ try {
     const deadPill = await preview.evaluate(() => {
       const header = document.querySelector('header.top').getBoundingClientRect();
       const vp = document.getElementById('viewport').getBoundingClientRect();
-      const y = vp.top + 6;
-      const slivers = [];
+      const clipTop = Math.max(vp.top, header.bottom);
+      const slivers = [...document.querySelectorAll('#nodes .node')].flatMap(node => {
+        if (getComputedStyle(node).visibility === 'hidden') return [];
+        const r = node.getBoundingClientRect();
+        const above = clipTop - r.top;
+        const below = r.bottom - clipTop;
+        if (above > 1 && below > 0 && below < 36) return [{ vis: Math.round(below), id: node.dataset.id }];
+        return [];
+      });
+      const yHits = [];
       for (let x = 40; x <= 900; x += 16) {
-        const el = document.elementFromPoint(x, y);
+        const el = document.elementFromPoint(x, clipTop + 4);
         const node = el && el.closest && el.closest('#nodes .node');
         if (!node) continue;
         const r = node.getBoundingClientRect();
-        const visH = Math.min(r.bottom, vp.bottom) - Math.max(r.top, vp.top);
-        if (visH > 0 && visH < 28) slivers.push({ visH: Math.round(visH), id: node.dataset.id });
+        const visH = Math.min(r.bottom, vp.bottom) - Math.max(r.top, clipTop);
+        if (visH > 0 && visH < 36) yHits.push({ visH: Math.round(visH), id: node.dataset.id });
       }
-      return { y, headerBottom: header.bottom, vpTop: vp.top, slivers };
+      return { clipTop, headerBottom: header.bottom, vpTop: vp.top, slivers, yHits };
     });
     assert.equal(deadPill.slivers.length, 0, `thin clipped node must not show as a pill under the header ${JSON.stringify(deadPill)}`);
+    assert.equal(deadPill.yHits.length, 0, `no dead pill hit-test under the header ${JSON.stringify(deadPill)}`);
     recordCheck('static-preview-node-click');
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1&phone=1`);
     await preview.waitForSelector('.node .add-child');
