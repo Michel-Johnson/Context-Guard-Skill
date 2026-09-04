@@ -11,6 +11,7 @@ TEST_MARK = "test-layout"
 PRODUCT_TESTS = {
     "tests/ci-smoke.mjs",
     "tests/cloud-sync-client.test.mjs",
+    "tests/cloud-sync-browser.mjs",
     "tests/cloud-workbench.test.mjs",
     "tests/cloud-workbench-browser.mjs",
     "tests/workbench-sync.test.mjs",

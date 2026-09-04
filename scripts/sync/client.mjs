@@ -96,6 +96,24 @@ async function loadConfig(root) {
   return config;
 }
 
+async function managedMemoryState(root, sessionId = '') {
+  const [{ resolveProject }, { memoryConfigPath, sessionMemoryDir }] = await Promise.all([
+    import('../workbench/project.mjs'), import('../workbench/memory.mjs'),
+  ]);
+  const project = await resolveProject(root);
+  const config = await readJson(memoryConfigPath(project));
+  if (!config) return null;
+  const state = sessionId ? await readJson(path.join(sessionMemoryDir(project, sessionId), 'remote-sync/state.json')) : null;
+  return {
+    configured: true,
+    managedBy: 'workbench',
+    url: config.url,
+    projectId: config.projectId,
+    sessionId: sessionId || null,
+    state: state || { configured: true, status: 'connecting', pending: 0 },
+  };
+}
+
 async function cloudRequest(config, route, { method = 'GET', body, timeout = 15000 } = {}) {
   const response = await fetch(new URL(route, config.url), {
     method,
@@ -304,8 +322,10 @@ export async function finishSync({ root, sessionId }) {
   });
 }
 
-export async function syncStatus(root) {
+export async function syncStatus(root, sessionId = '') {
   root = await fs.realpath(path.resolve(root));
+  const managed = await managedMemoryState(root, sessionId);
+  if (managed) return managed;
   const paths = syncPaths(root);
   const config = await loadConfig(root).catch(error => error.code === 'SYNC_NOT_CONFIGURED' ? null : Promise.reject(error));
   const state = await readJson(paths.state), service = await readJson(paths.service);
@@ -320,8 +340,14 @@ export async function syncStatus(root) {
   };
 }
 
-export async function ensureService(root) {
+export async function ensureService(root, sessionId = '') {
   root = await fs.realpath(path.resolve(root));
+  const managed = sessionId ? await managedMemoryState(root, sessionId) : null;
+  if (managed) {
+    const { ensureServer } = await import('../workbench/cli.mjs');
+    const workbench = await ensureServer(root);
+    return { started: false, managedBy: 'workbench', pid: workbench?.state?.pid || workbench?.pid || null, state: managed.state };
+  }
   const paths = syncPaths(root), current = await readJson(paths.service);
   if (current?.pid) {
     try { process.kill(current.pid, 0); return { started: false, pid: current.pid }; } catch {}
@@ -421,9 +447,11 @@ async function serve(root) {
 async function main(args) {
   const [action = 'status', ...rest] = args, options = parseOptions(rest);
   const root = path.resolve(options.root || process.cwd());
+  const sessionId = String(options.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
+  if (action === 'ensure' && await managedMemoryState(await fs.realpath(root), sessionId)) return ensureService(root, sessionId);
+  if (action === 'status' && await managedMemoryState(await fs.realpath(root), sessionId)) return syncStatus(root, sessionId);
   const { resolveProjectRoot } = await import('../workbench/project.mjs');
   if (await resolveProjectRoot(root) !== await fs.realpath(root)) throw new MapError('BOUND_SYNC_UNSUPPORTED', 'Linked-worktree binding currently supports the local Map only. Cloud synchronization needs explicit worktree-aware support; no local or remote Map was changed');
-  const sessionId = String(options.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
   if (action === 'connect') {
     let inputToken = options.token;
     if (options['token-stdin']) {
@@ -434,8 +462,8 @@ async function main(args) {
     return connectSync({ root, url: options.url, projectId: options.project, token: inputToken, mode: options.pull ? 'pull' : options.push ? 'push' : 'safe' });
   }
   if (action === 'serve') return serve(root);
-  if (action === 'ensure') return ensureService(root);
-  if (action === 'status') return syncStatus(root);
+  if (action === 'ensure') return ensureService(root, sessionId);
+  if (action === 'status') return syncStatus(root, sessionId);
   if (action === 'pull') return pullSync(root);
   if (!sessionId) throw new MapError('SESSION_REQUIRED', 'Pass --session or a lifecycle session environment variable');
   const split = value => String(value || '').split(',').map(item => item.trim()).filter(Boolean);
