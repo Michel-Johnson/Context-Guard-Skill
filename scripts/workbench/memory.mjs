@@ -64,25 +64,49 @@ export function mergeMemory(base, local, remote, at = 'map') {
   throw new MapError('MEMORY_CONFLICT', `Both Session and main changed ${at}; preserve drafts and reconcile explicitly`, 409);
 }
 export async function rebaseMemory(project, sessionId, { adoptMain = false } = {}) {
-  const dir = sessionMemoryDir(project, sessionId), main = (await memoryRequest(project, 'main')).snapshot;
+  const dir = sessionMemoryDir(project, sessionId);
+  const status = await memoryStatus(project, sessionId), main = status.main;
   if (!main) return { rebased: false, reason: 'no-published-main' };
   return withFileLock(path.join(dir, 'pending-upload.json.lock'), async () => {
     if (await readJSON(path.join(dir, 'pending-upload.json'), null)) throw new MapError('UPLOAD_PENDING', 'Replay the pending upload before rebasing', 409);
+    const remoteSync = path.join(dir, 'remote-sync');
+    if (await readJSON(path.join(remoteSync, 'outbox.json'), null)) throw new MapError('UPLOAD_PENDING', 'Replay the workbench upload before rebasing', 409);
+    if (await readJSON(path.join(remoteSync, 'conflict.json'), null)) throw new MapError('MEMORY_CONFLICT', 'Review the preserved workbench conflict before rebasing', 409);
     const base = await readJSON(path.join(dir, 'base-main.json'), { version: null });
     const local = await readJSON(path.join(dir, 'map.json'));
     if (!base.map && !adoptMain) {
       throw new MapError('SESSION_BASELINE_REQUIRED', 'Session has no confirmed main ancestor; rerun with --adopt-main only after reviewing the preserved Session draft', 409);
     }
     if (base.map && adoptMain) {
-      throw new MapError('BASELINE_ALREADY_CONFIRMED', 'Use ordinary memory rebase after a Session main ancestor is confirmed', 409);
+      const entries = await fs.readdir(dir).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+      const interrupted = entries.some(name => name.startsWith('before-main-adoption-'))
+        && !await readJSON(path.join(dir, 'main-adoption-receipt.json'), null);
+      if (!interrupted) throw new MapError('BASELINE_ALREADY_CONFIRMED', 'Use ordinary memory rebase after a Session main ancestor is confirmed', 409);
     }
     const merged = adoptMain ? main.memory.map : mergeMemory(base.map, local, main.memory.map);
     validateMemory({ map: merged, records: {} });
     const backup = path.join(dir, `${adoptMain ? 'before-main-adoption' : 'before-rebase'}-${randomUUID()}.json`);
     await atomicWrite(backup, encode(local));
+    let adopted = null;
+    if (adoptMain) {
+      adopted = await memoryRequest(project, `sessions/${encodeURIComponent(sessionId)}`, {
+        operationId: `baseline-adopt:${sessionId}:${randomUUID()}`,
+        baseVersion: status.session?.version || null,
+        baseMainVersion: main.version,
+        sourceCommit: project.head,
+        memory: { map: merged, records: status.session?.memory?.records || {} },
+      });
+    }
     await atomicWrite(path.join(dir, 'map.json'), encode(merged));
     await atomicWrite(path.join(dir, 'base-main.json'), encode({ version: main.version, map: main.memory.map }));
-    return { rebased: true, strategy: adoptMain ? 'adopt-main' : 'merge', mainVersion: main.version, backup };
+    if (adopted) {
+      await atomicWrite(path.join(dir, 'server-receipt.json'), encode(adopted));
+      await atomicWrite(path.join(remoteSync, 'server-base.json'), encode(merged));
+      const previousState = await readJSON(path.join(remoteSync, 'state.json'), {});
+      await atomicWrite(path.join(remoteSync, 'state.json'), encode({ ...previousState, configured: true, status: 'synced', pending: 0, serverVersion: adopted.snapshot.version, error: null, conflict: null, lastSyncedAt: adopted.snapshot.updatedAt }));
+      await atomicWrite(path.join(dir, 'main-adoption-receipt.json'), encode({ mainVersion: main.version, sessionVersion: adopted.snapshot.version, backup, at: new Date().toISOString() }));
+    }
+    return { rebased: true, strategy: adoptMain ? 'adopt-main' : 'merge', mainVersion: main.version, sessionVersion: adopted?.snapshot?.version || status.session?.version || null, backup };
   });
 }
 export async function synchronizeMemory(root, sessionId) {

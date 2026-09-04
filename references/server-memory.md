@@ -59,7 +59,10 @@ merges disjoint main changes into the Session, backs up the old map, and rejects
 overlapping changes for explicit reconciliation. A legacy Session without a recorded
 main ancestor must not be guessed: after reviewing its preserved draft, explicitly run
 `memory rebase --adopt-main` to back it up and seed the Session from the published main
-Map. The command refuses this destructive strategy once a normal ancestor exists.
+Map. The same version-checked operation replaces the server Session snapshot while
+retaining its records, then aligns the workbench coordinator baseline so an older remote
+snapshot cannot immediately overwrite the adopted Map. The command refuses this
+destructive strategy once a normal ancestor exists.
 Archive invokes sync when configured; failure preserves the local draft and is reported,
 not treated as success.
 

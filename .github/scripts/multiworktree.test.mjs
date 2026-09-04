@@ -169,6 +169,11 @@ test('a legacy worktree seed is replaced by the confirmed main baseline without 
   const divergentDir = sessionMemoryDir(project, 'divergent-seed'), divergentMap = structuredClone(legacyMap);
   divergentMap.root.title = 'Unsynced Session edit';
   await fs.mkdir(divergentDir, { recursive: true }); await fs.writeFile(path.join(divergentDir, 'map.json'), JSON.stringify(divergentMap));
+  const remoteDivergent = await call(memory, '/v1/projects/example/sessions/divergent-seed', options.projects.example.token, {
+    operationId: 'divergent-session', baseVersion: null, baseMainVersion: null, sourceCommit: mainSha,
+    memory: { map: divergentMap, records: { 'sessions/divergent-seed.md': 'preserve me' } },
+  });
+  assert.equal(remoteDivergent.status, 200, JSON.stringify(remoteDivergent));
   workbench = await startServer({ root, port: 0 });
   const migrated = await call(workbench, '/api/session', workbench.state.adminToken, { sessionId: 'legacy-seed', worktreeRoot: other });
   assert.equal(migrated.status, 200, JSON.stringify(migrated));
@@ -188,6 +193,10 @@ test('a legacy worktree seed is replaced by the confirmed main baseline without 
   assert.deepEqual(await readJSON(adopted.backup), divergentMap);
   assert.deepEqual(await readJSON(path.join(divergentDir, 'map.json')), mainMap);
   assert.equal((await readJSON(path.join(divergentDir, 'base-main.json'))).version, published.data.snapshot.version);
+  const adoptedRemote = await call(memory, '/v1/projects/example/sessions/divergent-seed', options.projects.example.token);
+  assert.deepEqual(adoptedRemote.data.snapshot.memory.map, mainMap);
+  assert.equal(adoptedRemote.data.snapshot.memory.records['sessions/divergent-seed.md'], 'preserve me');
+  assert.equal((await readJSON(path.join(divergentDir, 'remote-sync/server-base.json'))).root.title, 'Full main');
   const rebound = await call(workbench, '/api/session', workbench.state.adminToken, { sessionId: 'divergent-seed', worktreeRoot: other });
   assert.equal(rebound.status, 200, JSON.stringify(rebound));
   assert.equal((await call(workbench, '/api/state', rebound.data.token)).data.doc.root.children[0].id, 'M1');

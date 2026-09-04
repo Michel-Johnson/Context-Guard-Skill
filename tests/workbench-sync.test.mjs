@@ -250,7 +250,12 @@ test('Workbench coordinator automatically syncs one Session in both directions a
   await fs.mkdir(sharedDir, { recursive: true });
   const configuration = { dataDir, adminToken: 'memory-admin', projects: { project: { token: 'project-token' } } };
   let service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port: 0 });
-  t.after(async () => { await service.close().catch(() => {}); });
+  let store, coordinator;
+  t.after(async () => {
+    await coordinator?.close().catch(() => {});
+    await store?.close().catch(() => {});
+    await service.close().catch(() => {});
+  });
   const port = Number(new URL(service.url).port);
   const project = { sharedDir, head: 'a'.repeat(40) };
   await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
@@ -258,7 +263,7 @@ test('Workbench coordinator automatically syncs one Session in both directions a
     operationId: 'coordinator-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
     memory: { map: f.doc, records: {} },
   });
-  const store = await new MapStore(f.root, {
+  store = await new MapStore(f.root, {
     file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'store-runtime'), eventsFile: path.join(f.root, 'store-events.jsonl'),
   }).init();
   const syncDir = path.join(f.root, 'session-sync');
@@ -268,7 +273,7 @@ test('Workbench coordinator automatically syncs one Session in both directions a
     if (holdAcknowledgement && String(args[1]).endsWith('/map')) await new Promise(resolve => { releaseAcknowledgement = resolve; });
     return result;
   };
-  let coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
+  coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
   await coordinator.start();
   await until(() => coordinator.snapshot().status === 'synced');
 
@@ -291,7 +296,7 @@ test('Workbench coordinator automatically syncs one Session in both directions a
   await service.close();
   await store.commit({ baseVersion: store.version, operationId: 'offline-session-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '断网期间保留' } }] }, human);
   await until(async () => !!await readJSON(path.join(syncDir, 'remote-sync/outbox.json'), null));
-  assert.equal(coordinator.snapshot().pending, 1);
+  await until(() => coordinator.snapshot().pending === 1);
   service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port });
   await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '断网期间保留', 6000);
   await until(() => coordinator.snapshot().status === 'synced');
