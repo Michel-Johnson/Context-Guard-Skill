@@ -386,7 +386,7 @@ try {
       return { dx: kid.x - root.x, dy: kid.y - root.y };
     });
     assert.ok(lrSpread.dx > lrSpread.dy, `first layer left-right should sit children to the side ${JSON.stringify(lrSpread)}`);
-    await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
+    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
     await preview.waitForFunction(() => {
       const thumb = document.querySelector('#dir-toggle .dir-thumb').getBoundingClientRect();
       const lr = document.querySelector('#dir-toggle [data-dir="lr"]').getBoundingClientRect();
@@ -470,10 +470,10 @@ try {
     assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
     assert.equal(await preview.locator('#detail button.trash').count(), 1);
     assert.equal(await preview.locator('#detail button.trash .lid').count(), 1);
-    await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
+    await dirToggle.click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
-    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
+    await dirToggle.click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), false);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), false);
     recordCheck('layout-dir-slide');
