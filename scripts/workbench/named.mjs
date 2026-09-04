@@ -11,7 +11,7 @@ import { globalWorkbenchDirectory, registeredProject, rememberProject } from './
 import { RouteStore } from './portless-routes.mjs';
 
 export const namedDirectory = globalWorkbenchDirectory;
-const PROXY_RUNTIME_SCHEMA = 2;
+const PROXY_RUNTIME_SCHEMA = 3;
 function alive(pid) { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } }
 async function proxyProbe(state) {
   if (!state || state.version !== 1 || !/^http:\/\/127\.0\.0\.1:\d+$/.test(state.base) || !state.adminToken) return false;

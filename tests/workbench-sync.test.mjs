@@ -361,6 +361,103 @@ test('Workbench coordinator automatically reopens the same Session after its pri
   assert.equal((await readMemoryProject(configuration, 'project')).closedSessions['reusable-session'].publications.length, 1);
 });
 
+test('Workbench coordinator migrates a confirmed legacy main baseline before reopening a Session', async t => {
+  const f = await fixture();
+  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'fixture@example.invalid');
+  git('config', 'user.name', 'Fixture');
+  git('add', '.codex/context/map.json');
+  git('commit', '-m', 'baseline');
+  const head = git('rev-parse', 'HEAD');
+  const sharedDir = path.join(f.root, 'legacy-shared');
+  const syncDir = path.join(f.root, 'legacy-session-sync');
+  const configuration = {
+    dataDir: path.join(f.root, 'legacy-memory'),
+    adminToken: 'memory-admin',
+    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
+  };
+  await fs.mkdir(sharedDir, { recursive: true });
+  const service = await startMemoryServer(configuration);
+  const project = { sharedDir, head };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  const seeded = await memoryRequest(project, 'sessions/legacy-session', {
+    operationId: 'legacy-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
+    memory: { map: f.doc, records: {} },
+  });
+  const published = await memoryRequest(project, 'publish', {
+    operationId: 'legacy-publish', baseVersion: null, sessionId: 'legacy-session',
+    sessionVersion: seeded.snapshot.version, expectedMainSha: head,
+  });
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'legacy-store-runtime'), eventsFile: path.join(f.root, 'legacy-store-events.jsonl'),
+  }).init();
+  await store.commit({
+    baseVersion: store.version, operationId: 'legacy-local-edit',
+    operations: [{ type: 'update', id: 'N1', fields: { title: '保留的本地开发' } }],
+  }, human);
+  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
+  await atomicWrite(path.join(syncDir, 'base-main.json'), encode({ version: published.snapshot.version, map: f.doc }));
+  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
+    code: 'SESSION_MAIN_BASELINE_REQUIRED', base: null, local: store.doc, remote: f.doc,
+    at: new Date().toISOString(),
+  }));
+  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
+    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
+    error: null, conflict: { code: 'SESSION_MAIN_BASELINE_REQUIRED', at: new Date().toISOString() },
+  }));
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'legacy-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'synced');
+  const reopened = (await memoryRequest(project, 'sessions/legacy-session')).snapshot;
+  assert.equal(reopened.generation, 2);
+  assert.equal(reopened.memory.map.root.children[0].title, '保留的本地开发');
+  assert.equal(coordinator.snapshot().conflict, null);
+  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
+  assert.deepEqual(await readJSON(path.join(syncDir, 'remote-sync/server-base.json')), reopened.memory.map);
+});
+
+test('Workbench coordinator clears a stale baseline conflict when the Session generation already exists', async t => {
+  const f = await fixture();
+  const sharedDir = path.join(f.root, 'legacy-active-shared');
+  const syncDir = path.join(f.root, 'legacy-active-session-sync');
+  const configuration = {
+    dataDir: path.join(f.root, 'legacy-active-memory'),
+    adminToken: 'memory-admin',
+    projects: { project: { token: 'project-token' } },
+  };
+  await fs.mkdir(sharedDir, { recursive: true });
+  const service = await startMemoryServer(configuration);
+  const project = { sharedDir, head: 'a'.repeat(40) };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  const remote = await memoryRequest(project, 'sessions/legacy-active-session', {
+    operationId: 'legacy-active-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
+    memory: { map: f.doc, records: {} },
+  });
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'legacy-active-store-runtime'), eventsFile: path.join(f.root, 'legacy-active-store-events.jsonl'),
+  }).init();
+  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
+  await atomicWrite(path.join(syncDir, 'base-main.json'), encode({ version: remote.snapshot.version, map: f.doc }));
+  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
+    code: 'SESSION_MAIN_BASELINE_REQUIRED', base: null, local: store.doc, remote: f.doc,
+    at: new Date().toISOString(),
+  }));
+  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
+    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
+    error: null, conflict: { code: 'SESSION_MAIN_BASELINE_REQUIRED', at: new Date().toISOString() },
+  }));
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'legacy-active-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'synced');
+  assert.equal(coordinator.snapshot().serverVersion, remote.snapshot.version);
+  assert.equal(coordinator.snapshot().conflict, null);
+  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
+  assert.deepEqual(await readJSON(path.join(syncDir, 'remote-sync/server-base.json')), f.doc);
+});
+
 test('Workbench coordinator preserves local, remote, and base documents on a same-field conflict', async t => {
   const f = await fixture();
   const sharedDir = path.join(f.root, 'conflict-shared'), dataDir = path.join(f.root, 'conflict-memory');

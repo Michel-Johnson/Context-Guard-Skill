@@ -282,7 +282,10 @@ test('a recognized older named proxy upgrades in place and preserves its route s
   const old = http.createServer((req, res) => {
     if (req.url === '/__cg_proxy/health') {
       res.setHeader('content-type', 'application/json');
-      return res.end(JSON.stringify({ kind: 'context-guard-named', version: 1, instance }));
+      return res.end(JSON.stringify({
+        kind: 'context-guard-named', version: 1, runtimeSchema: 2,
+        capabilities: ['project-key-routes'], instance,
+      }));
     }
     if (req.url === '/__cg_proxy/stop' && req.method === 'POST' && req.headers.authorization === `Bearer ${adminToken}`) {
       res.writeHead(202).end();
@@ -301,7 +304,7 @@ test('a recognized older named proxy upgrades in place and preserves its route s
     assert.equal(response.status, 202);
   });
   assert.notEqual(upgraded.instance, instance);
-  assert.equal(upgraded.runtimeSchema, 2);
+  assert.equal(upgraded.runtimeSchema, 3);
   assert.deepEqual(new RouteStore(dir).loadRoutes(), []);
 });
 test('corrupt routes fail closed without overwriting data, and names normalize deterministically', async t => {
