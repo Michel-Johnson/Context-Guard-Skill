@@ -694,6 +694,53 @@ try {
     assert.notEqual(addFrozen.s1, addFrozen.s2);
     assert.notEqual(addFrozen.s1, addFrozen.s3);
     recordCheck('add-row-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=trash`);
+    await preview.waitForSelector('.g-tr-mock');
+    const trashGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-tr-mock'));
+      const icons = items.map(el => el.querySelector('.ico')?.innerHTML || '');
+      const titles = items.map(el => el.querySelector('h2')?.textContent?.trim());
+      const pe = items[0] ? getComputedStyle(items[0].querySelector('.g-tr-mock')).pointerEvents : '';
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        iconUniq: new Set(icons).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        pe
+      };
+    });
+    assert.equal(trashGal.n, 50, `trash gallery should show 50 drafts ${JSON.stringify(trashGal)}`);
+    assert.equal(trashGal.uniq, 50);
+    assert.equal(trashGal.mocks, 50);
+    assert.ok(trashGal.iconUniq >= 40, `trash icons must differ, got ${trashGal.iconUniq}`);
+    assert.equal(trashGal.title, '垃圾桶图标 · 50 版');
+    assert.equal(trashGal.cold, true, 'title stays 冷启动');
+    assert.equal(trashGal.pe, 'auto', 'hover must reach the icon');
+    const frozenTrash = await preview.evaluate(() => {
+      const item = document.querySelector('#v01');
+      const cs = el => getComputedStyle(el);
+      const mock = item.querySelector('.g-tr-mock');
+      const ico = item.querySelector('.ico');
+      const h2 = item.querySelector('h2');
+      return {
+        bg: cs(mock).backgroundColor,
+        h2: cs(h2).fontSize,
+        icoH: Math.round(ico.getBoundingClientRect().height),
+        color: cs(ico).color
+      };
+    });
+    assert.equal(frozenTrash.bg, 'rgb(254, 250, 242)');
+    assert.equal(frozenTrash.h2, '18px');
+    assert.equal(frozenTrash.icoH, 36);
+    assert.equal(frozenTrash.color, 'rgb(226, 75, 75)');
+    await preview.locator('#v01 .ico').hover();
+    const lidMove = await preview.locator('#v01 .ico .lid').evaluate(el => getComputedStyle(el).transform);
+    assert.notEqual(lidMove, 'none', `lid should lift on hover, got ${lidMove}`);
+    recordCheck('trash-icon-gallery-50');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));
