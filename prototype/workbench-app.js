@@ -1109,37 +1109,58 @@ function restore(){
   }
   return false;
 }
-function demoOpenBug(id, title, desc, sessions){
+function demoBug(id, title, extra={}){
   return {
     id,
     title,
-    desc,
-    status: "open",
+    desc: extra.desc || "",
+    status: extra.status || "open",
     files: [],
-    sessions: sessions ? sessions.slice() : [],
-    record: ".codex/context/bugs/"+id+".md"
+    sessions: extra.sessions ? extra.sessions.slice() : [],
+    record: ".codex/context/bugs/"+id+".md",
+    ...(extra.dispatch ? {dispatch: extra.dispatch} : {})
   };
 }
+const DEMO_SESSION_METAS = [
+  {id:"S-live", status:"active", platform:"Cursor", name:"午后"},
+  {id:"S-dead", status:"stopped", platform:"Codex", name:"昨晚"}
+];
 const DEMO_OPEN_BUGS = [
-  { parentId:"M1", bug: demoOpenBug("B20", "原生 prompt 会打断看图", "检查器编辑和建图确认必须留在页面里", ["S-0823"]) },
-  { parentId:"N405", bug: demoOpenBug("B22", "齿轮挤", "顶栏设置按钮和旁边控件贴在一起，不好点", []) },
-  { parentId:"N406", bug: demoOpenBug("B23", "手机竖屏时抽屉把手被底栏挡住，拖不到最低", "底栏升起后把手落在安全区下面", ["S-0823"]) },
-  { parentId:"N407", bug: demoOpenBug("B24", "主题 44 完成度黄点看不清", "金色状态点叠在深色卡片上对比不够", ["S-0819"]) },
-  { parentId:"N409", bug: demoOpenBug("B25", "锁点太小", "授权锁点击热区只有圆点本身", ["S-0823"]) },
-  { parentId:"N410", bug: demoOpenBug("B26", "已取消托盘从设置打开后点空白关不掉", "托盘没有点外面关闭的路径", []) },
-  { parentId:"N411", bug: demoOpenBug("B27", "GitHack 斜杠分支打不开", "带 cursor/ 的预览地址被截断", ["S-0819","S-0821"]) },
-  { parentId:"N400", bug: demoOpenBug("B28", "检查器去掉模块芯片后空一截", "类型标签删了，标题上方还留着空白", ["S-0823","S-0819"]) }
+  { parentId:"M1", bug: demoBug("B20", "原生 prompt 会打断看图", {desc:"检查器编辑和建图确认必须留在页面里", sessions:["S-live"]}) },
+  { parentId:"M1", bug: demoBug("B40", "顶栏还没人认领", {desc:"待处理：没有 Session"}) },
+  { parentId:"M1", bug: demoBug("B41", "发出去了但没送到", {desc:"待处理 · 发送失败", dispatch:{status:"failed", at:"2026-09-01T00:00:00.000Z"}}) },
+  { parentId:"M1", bug: demoBug("B42", "当前窗口正在改检查器", {desc:"处理中 · 活着的会话", sessions:["S-live"]}) },
+  { parentId:"M1", bug: demoBug("B43", "昨晚那次做完人走了", {desc:"待接手：会话已停", sessions:["S-dead"]}) },
+  { parentId:"M1", bug: demoBug("B44", "两个会话都还挂着", {desc:"处理中 · 一个活一个停", sessions:["S-live","S-dead"]}) },
+  { parentId:"M1", bug: demoBug("B45", "修完在写记忆", {desc:"收尾中", status:"pending"}) },
+  { parentId:"M1", bug: demoBug("B46", "测试已经过了", {desc:"已修复", status:"fixed"}) },
+  { parentId:"M1", bug: demoBug("B47", "人点过可以关", {desc:"已解决", status:"resolved"}) },
+  { parentId:"M1", bug: demoBug("B48", "这期先不做", {desc:"已延期", status:"deferred"}) },
+  { parentId:"M1", bug: demoBug("B49", "设计如此不改", {desc:"不处理", status:"wontfix"}) },
+  { parentId:"M1", bug: demoBug("B50", "手机竖屏时抽屉把手被底栏挡住，标题折成两行看点和分配会不会挤掉", {desc:"长标题", sessions:["S-live"]}) }
 ];
 function ensureDemoBugs(tree){
   if(!tree) return;
+  let fallback = null;
+  walkAll(tree, n=>{ if(!fallback && n && n.id==="M1") fallback = n; });
+  if(!fallback) fallback = tree;
   DEMO_OPEN_BUGS.forEach(seed=>{
     let parent = null;
     walkAll(tree, n=>{ if(n && n.id===seed.parentId) parent = n; });
-    if(!parent) return;
+    if(!parent) parent = fallback;
     parent.bugs = parent.bugs || [];
     if(parent.bugs.some(b=>b && b.id===seed.bug.id)) return;
     parent.bugs.push(clone(seed.bug));
   });
+}
+function seedDemoSessionMetas(){
+  if(window.__CG_SERVER || !workbenchSync) return;
+  const list = workbenchSync.sessions || [];
+  const have = new Set(list.map(s=>s.id));
+  DEMO_SESSION_METAS.forEach(meta=>{
+    if(!have.has(meta.id)) list.push({...meta});
+  });
+  workbenchSync.sessions = list;
 }
 function adoptTree(tree){
   const src = clone(tree);
@@ -4556,6 +4577,10 @@ async function boot(){
   }
   syncThemePicks();
   if(window.__CG_PREVIEW || !window.__CG_SERVER) authUnlockAll();
+  if(!window.__CG_SERVER){
+    seedDemoSessionMetas();
+    ensureDemoBugs(data);
+  }
   applyRelationDeepLink();
   renderAll();
   finishDrawerChrome();
