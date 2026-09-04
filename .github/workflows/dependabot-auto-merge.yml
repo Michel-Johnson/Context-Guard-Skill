@@ -45,9 +45,7 @@ jobs:
       - name: 登记自动合并，等待 Required 等分支保护条件
         if: >-
           steps.metadata.outputs.package-ecosystem == 'github_actions' &&
-          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-           steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
-           steps.metadata.outputs.update-type == 'version-update:semver-major')
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -57,7 +55,5 @@ jobs:
       - name: 未知类型或其他依赖不登记自动合并
         if: >-
           steps.metadata.outputs.package-ecosystem != 'github_actions' ||
-          (steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
-           steps.metadata.outputs.update-type != 'version-update:semver-minor' &&
-           steps.metadata.outputs.update-type != 'version-update:semver-major')
+          steps.metadata.outputs.update-type != 'version-update:semver-patch'
         run: echo "This update is outside the auto-merge policy. Manual review and merge are required."
