@@ -13,6 +13,7 @@ const workflows = Object.fromEntries(
 const ci = workflows["ci.yml"];
 const publish = workflows["npm-publish.yml"];
 const clients = workflows["client-compatibility.yml"];
+const realClients = workflows["real-client-acceptance.yml"];
 const site = workflows["site-pages.yml"];
 const dependabot = workflows["dependabot-auto-merge.yml"];
 const testRunner = fs.readFileSync(".github/scripts/run-node-tests.mjs", "utf8");
@@ -86,6 +87,23 @@ if (oidcGrants.length !== 1) {
 forbidMatch(ci, /secrets\.|openai-api-key|--dangerously|--api-key|session\/prompt|turn\/start/, "No-dialogue client CI must not use AI credentials or generation.");
 forbidMatch(clients, /^\s*(?:pull_request_target|workflow_run):/m, "Client CI must not execute elevated untrusted workflows.");
 forbidMatch(clients, /^\s*(?:push|pull_request):\s*$/m, "The legacy client workflow must not duplicate pull-request or main CI.");
+requireMatch(realClients, /^\s*workflow_dispatch:\s*$/m, "Real-client acceptance must remain an explicit manual operation.");
+forbidMatch(realClients, /^\s*(?:push|pull_request|pull_request_target|workflow_run|schedule):/m,
+  "Credentialed real-client acceptance must not run automatically or on unreviewed code.");
+requireMatch(realClients, /^\s*environment:\s*skill-client-tests\s*$/m,
+  "Real-client credentials must be scoped to the protected skill-client-tests environment.");
+for (const client of ["codex", "cursor", "claude"]) {
+  requireMatch(realClients, new RegExp(`\\b${client}\\b`), `Missing real-client acceptance target: ${client}`);
+}
+requireMatch(realClients, /openai\/codex-action@[0-9a-f]{40}/,
+  "Codex acceptance must use the commit-pinned official credential-isolating Action.");
+requireMatch(realClients, /install-ci-client\.mjs/, "Cursor and Claude acceptance must reuse the pinned client installer.");
+requireMatch(realClients, /smoke-real-client\.mjs/, "Real clients must be driven by the observable-state harness.");
+requireMatch(realClients, /security-scan\.mjs package "\$PACKAGE_TARBALL"/,
+  "The real-client package must pass the final package security scan.");
+const realPackageJob = realClients.slice(realClients.indexOf("  package:"), realClients.indexOf("  clients:"));
+forbidMatch(realPackageJob, /secrets\.|CLIENT_API_KEY|OPENAI_API_KEY|CURSOR_API_KEY|ANTHROPIC_API_KEY/,
+  "Package creation and assertions must not receive model credentials.");
 for (const client of ["codex", "cursor", "claude"]) requireMatch(ci, new RegExp(`client: ${client}\\b`), `Missing real client: ${client}`);
 requireMatch(site, /^\s*push:\s*$/m, "Site deployment must run after main changes.");
 forbidMatch(site, /^\s*pull_request:\s*$/m, "Site deployment must not duplicate pull-request CI.");
@@ -101,4 +119,4 @@ const siteOidcGrants = site.match(/^\s*id-token:\s*write\s*$/gm) || [];
 if (siteOidcGrants.length !== 1 || site.indexOf("id-token: write") < site.indexOf("  deploy:")) {
   throw new Error("Only the site deploy job may receive id-token: write.");
 }
-console.log("Verified CI/CD/client triggers, no-dialogue scope, permissions, and Action SHA pins.");
+console.log("Verified CI/CD/client triggers, no-dialogue and manual real-client scope, permissions, and Action SHA pins.");

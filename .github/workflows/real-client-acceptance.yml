@@ -1,0 +1,131 @@
+name: 验收 | 三个真实客户端对话
+run-name: 验收 | 真实客户端 | ${{ github.ref_name }} | 手动运行
+
+on:
+  workflow_dispatch:
+
+# This workflow spends model quota and receives test credentials. It is manual
+# only and must never run unreviewed pull-request code.
+permissions:
+  contents: read
+
+concurrency:
+  group: real-client-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: 构建并验证唯一测试包
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: 准备锁定的安全扫描器
+        run: npm run security:setup
+      - name: 测试并打包当前提交
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          mkdir -p dist
+          npm pack --json --pack-destination dist > "$RUNNER_TEMP/real-client-pack.json"
+          node .github/scripts/verify-npm-package.mjs "$RUNNER_TEMP/real-client-pack.json"
+          node .github/scripts/verify-package-artifact.mjs dist --write-hash
+          node .github/scripts/security-scan.mjs package "$PACKAGE_TARBALL"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-real-client-package
+          path: |
+            dist/*.tgz
+            dist/package.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+  clients:
+    name: 真实对话 | ${{ matrix.client }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: skill-client-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [codex, cursor, claude]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-real-client-package
+          path: dist
+      - name: 校验共享测试包
+        run: node .github/scripts/verify-package-artifact.mjs dist
+      - name: 安装锁定版本的 Cursor 或 Claude CLI
+        if: matrix.client != 'codex'
+        run: node .github/scripts/install-ci-client.mjs "${{ matrix.client }}" "${{ runner.temp }}/real-client-tools"
+      - name: 配置 Codex 官方凭据隔离代理
+        if: matrix.client == 'codex'
+        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          safety-strategy: drop-sudo
+      - name: 确认 Cursor 或 Claude 测试凭据存在
+        if: matrix.client != 'codex'
+        shell: bash
+        env:
+          CLIENT_KEY: ${{ matrix.client == 'cursor' && secrets.CURSOR_API_KEY || secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$CLIENT_KEY" ]; then
+            echo "::error::skill-client-tests environment 缺少所选客户端凭据，真实验收没有运行。"
+            exit 1
+          fi
+      - name: 驱动真实会话并检查可观察结果
+        id: acceptance
+        env:
+          TEST_CLIENT: ${{ matrix.client }}
+          CLIENT_API_KEY: ${{ matrix.client == 'cursor' && secrets.CURSOR_API_KEY || matrix.client == 'claude' && secrets.ANTHROPIC_API_KEY || '' }}
+          CLIENT_MODEL: ${{ matrix.client == 'codex' && vars.CODEX_CI_MODEL || matrix.client == 'cursor' && vars.CURSOR_CI_MODEL || matrix.client == 'claude' && vars.CLAUDE_CI_MODEL || '' }}
+          CLIENT_COMMAND_FILE: ${{ runner.temp }}/real-client-tools/command.json
+        run: node .github/scripts/smoke-real-client.mjs
+      - name: 保存白名单内且已脱敏的验收证据
+        if: always() && steps.acceptance.outputs.evidence != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: real-client-${{ matrix.client }}
+          path: ${{ steps.acceptance.outputs.evidence }}
+          if-no-files-found: error
+          retention-days: 3
+
+  accepted:
+    name: 真实客户端验收结果
+    if: always()
+    needs: [package, clients]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: 要求打包和三个客户端全部成功
+        env:
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          CLIENT_RESULT: ${{ needs.clients.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PACKAGE_RESULT" = success
+          test "$CLIENT_RESULT" = success
