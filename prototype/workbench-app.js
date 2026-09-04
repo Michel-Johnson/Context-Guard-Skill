@@ -2534,6 +2534,7 @@ const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
 const currentsEl = document.getElementById("currents");
+const flowLabsEl = document.getElementById("flow-labs");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
@@ -2584,6 +2585,7 @@ function renderMap(){
 
   nodesEl.innerHTML = "";
   if(currentsEl) currentsEl.innerHTML = "";
+  if(flowLabsEl) flowLabsEl.innerHTML = "";
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
@@ -2875,24 +2877,94 @@ function renderMap(){
       const b = port(p2,s2,p1.x+s1.w/2,p1.y+s1.h/2);
       const dx=b.x-a.x, dy=b.y-a.y;
       const dist = Math.hypot(dx,dy)||1;
-      const bulge = Math.min(150, Math.max(56, dist*0.4));
-      const cx = (a.x+b.x)/2 - (dy/dist)*bulge;
-      const cy = (a.y+b.y)/2 + (dx/dist)*bulge;
-      const lx = 0.25*a.x + 0.5*cx + 0.25*b.x;
-      const ly = 0.25*a.y + 0.5*cy + 0.25*b.y;
-      return {d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`, lx, ly};
+      const bulge = Math.min(160, Math.max(64, dist*0.42));
+      const c = {x:(a.x+b.x)/2 - (dy/dist)*bulge, y:(a.y+b.y)/2 + (dx/dist)*bulge};
+      return {d:`M${a.x},${a.y} Q${c.x},${c.y} ${b.x},${b.y}`, a, b, c};
+    }
+    function quadAt(a,c,b,t){
+      const u=1-t;
+      return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y};
+    }
+    function labOverlapAmt(a,b,pad){
+      const ox = (a.w+b.w)/2 + pad - Math.abs(a.x-b.x);
+      const oy = (a.h+b.h)/2 + pad - Math.abs(a.y-b.y);
+      if(ox<=0 || oy<=0) return null;
+      return {ox, oy};
+    }
+    function unstackLabs(placed){
+      for(let n=0; n<8; n++){
+        let moved = false;
+        for(let i=0; i<placed.length; i++){
+          for(let j=i+1; j<placed.length; j++){
+            const a = placed[i], b = placed[j];
+            const hit = labOverlapAmt(a,b,6);
+            if(!hit) continue;
+            moved = true;
+            if(hit.oy <= hit.ox){
+              const s = a.y===b.y ? 1 : Math.sign(a.y-b.y);
+              a.y += s * hit.oy/2;
+              b.y -= s * hit.oy/2;
+            }else{
+              const s = a.x===b.x ? 1 : Math.sign(a.x-b.x);
+              a.x += s * hit.ox/2;
+              b.x -= s * hit.ox/2;
+            }
+          }
+        }
+        if(!moved) break;
+      }
+    }
+    function measureLab(text){
+      if(!flowLabsEl) return {w: Math.max(24, text.length*7), h:16};
+      const probe = document.createElement("span");
+      probe.className = "flow-lab";
+      probe.textContent = text;
+      probe.style.left = "-9999px";
+      probe.style.top = "0";
+      flowLabsEl.appendChild(probe);
+      const w = Math.max(probe.offsetWidth, 12);
+      const h = Math.max(probe.offsetHeight, 14);
+      probe.remove();
+      return {w, h};
     }
     paths = `<defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#5a7a62" stroke-width="1.2"/></marker></defs>` + paths;
+    const pendingLabs = [];
     (data.flows||[]).forEach(f=>{
       if(f.from!==relFocus && f.to!==relFocus) return;
       if(!pos.has(f.from) || !pos.has(f.to)) return;
       const curve = flowCurve(f.from, f.to);
       if(!curve) return;
       paths += `<path class="flow hot" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
-      if(f.label){
-        paths += `<text class="flow-lab" text-anchor="middle" x="${curve.lx.toFixed(1)}" y="${(curve.ly-4).toFixed(1)}">${esc(f.label)}</text>`;
-      }
+      if(f.label) pendingLabs.push({text:f.label, curve});
     });
+    if(flowLabsEl){
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+      const placed = pendingLabs.map(item=>{
+        const {w,h} = measureLab(item.text);
+        const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, 0.5);
+        const mid = {x:(item.curve.a.x+item.curve.b.x)/2, y:(item.curve.a.y+item.curve.b.y)/2};
+        const ox = item.curve.c.x-mid.x, oy = item.curve.c.y-mid.y;
+        const olen = Math.hypot(ox,oy)||1;
+        return {text:item.text, x:pt.x+(ox/olen)*10, y:pt.y+(oy/olen)*10, w, h};
+      });
+      unstackLabs(placed);
+      placed.forEach(box=>{
+        const el = document.createElement("span");
+        el.className = "flow-lab";
+        el.textContent = box.text;
+        el.style.left = box.x+"px";
+        el.style.top = box.y+"px";
+        flowLabsEl.appendChild(el);
+        maxX = Math.max(maxX, box.x+box.w/2);
+        maxY = Math.max(maxY, box.y+box.h/2);
+      });
+      extents = {w:maxX, h:maxY};
+      linksEl.setAttribute("width", maxX+140);
+      linksEl.setAttribute("height", maxY+140);
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+    }
   }
   linksEl.innerHTML = paths;
 }
