@@ -664,22 +664,162 @@ def tool_paths(payload: object, root: Path) -> list[str]:
     return sorted(found)
 
 
+def protocol_command(words: list[str], allowed: set[str]) -> bool:
+    """Recognize a Context Guard entry point without trusting its absolute path."""
+    if not words:
+        return False
+    entrypoints = {"context-guard", "context-guard-skill", "context_guard.py", "context-guard-skill.js"}
+    index = 0
+    if Path(words[0]).name in {"node", "node.exe", "python", "python3", "python.exe"}:
+        index = 1
+    return index < len(words) and Path(words[index]).name in entrypoints and index + 1 < len(words) and words[index + 1] in allowed
+
+
+def control_words(words: list[str]) -> bool:
+    """Protocol writes are their own audited recovery path, not product edits."""
+    return protocol_command(words, {
+        "plan-start", "plan-finish", "plan-status", "archive-session", "resolve-signal", "split-signal",
+        "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync",
+    })
+
+
+def shell_segments(command: str) -> list[list[str]] | None:
+    """Parse a conservative shell subset used for inspection pipelines."""
+    if not command.strip():
+        return []
+    if "\n" in command or "`" in command or "$(" in command:
+        return None
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segments: list[list[str]] = []
+    current: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"|", "||", "&&", ";"}:
+            if not current:
+                return None
+            segments.append(current)
+            current = []
+            index += 1
+            continue
+        if token in {">", ">>", ">&", "&>", "<<", "<<<"}:
+            # Discarding diagnostic noise is harmless; every other output target writes.
+            if current and current[-1].isdigit():
+                current.pop()
+            if token != ">" or index + 1 >= len(tokens) or tokens[index + 1] != "/dev/null":
+                return None
+            index += 2
+            continue
+        if token == "<":
+            if current and current[-1].isdigit():
+                current.pop()
+            if index + 1 >= len(tokens) or tokens[index + 1] in {"|", "||", "&&", ";"}:
+                return None
+            index += 2
+            continue
+        if "&" in token:
+            return None
+        current.append(token)
+        index += 1
+    if current:
+        segments.append(current)
+    return segments if segments else None
+
+
+def git_read_only(words: list[str]) -> bool:
+    if len(words) < 2:
+        return False
+    command_index = 2 if words[1] == "--no-pager" else 1
+    if command_index >= len(words) or words[command_index].startswith("-"):
+        return False
+    command = words[command_index]
+    arguments = words[command_index + 1:]
+    if any(item in {"--output", "--ext-diff", "--textconv", "--open-files-in-pager"} or item.startswith("--output=") for item in arguments):
+        return False
+    if command in {"status", "diff", "log", "show", "ls-files", "rev-parse", "describe", "blame", "grep"}:
+        return True
+    if command == "worktree":
+        return bool(arguments) and arguments[0] == "list"
+    if command == "remote":
+        return not arguments or arguments == ["-v"] or arguments == ["--verbose"]
+    if command == "branch":
+        mutating = {"-d", "-D", "-m", "-M", "-c", "-C", "-t", "-u", "--delete", "--move", "--copy", "--track", "--no-track", "--edit-description", "--set-upstream-to", "--unset-upstream"}
+        if any(item in mutating or any(item.startswith(flag + "=") for flag in mutating if flag.startswith("--")) for item in arguments):
+            return False
+        return not arguments or any(item in {"--show-current", "--list", "-a", "--all", "-r", "--remotes", "-v", "-vv", "--verbose"} for item in arguments)
+    return False
+
+
+def curl_read_only(words: list[str]) -> bool:
+    forbidden = {
+        "-d", "--data", "--data-ascii", "--data-binary", "--data-raw", "--data-urlencode",
+        "-F", "--form", "--form-string", "-T", "--upload-file", "-o", "--output", "-O",
+        "--remote-name", "--remote-header-name", "-K", "--config", "--remove-on-error",
+    }
+    index = 1
+    while index < len(words):
+        item = words[index]
+        if item in forbidden or any(item.startswith(flag + "=") for flag in forbidden if flag.startswith("--")):
+            return False
+        if item.startswith("-") and len(item) > 2 and not item.startswith("--") and any(flag in item[1:] for flag in "dFToOK"):
+            return False
+        if item in {"-X", "--request"}:
+            if index + 1 >= len(words) or words[index + 1].upper() not in {"GET", "HEAD"}:
+                return False
+            index += 1
+        elif item.startswith("-X") and len(item) > 2 and item[2:].upper() not in {"GET", "HEAD"}:
+            return False
+        elif item.startswith("--request=") and item.split("=", 1)[1].upper() not in {"GET", "HEAD"}:
+            return False
+        index += 1
+    return True
+
+
+def read_only_words(words: list[str]) -> bool:
+    if not words:
+        return False
+    if control_words(words):
+        return True
+    if protocol_command(words, {"workbench"}):
+        return "--diagnose" in words or "--binding-status" in words
+    executable = Path(words[0]).name
+    if executable in {"pwd", "ls", "cat", "head", "tail", "grep", "stat", "wc", "which", "type", "dirname", "basename", "realpath", "readlink", "printf", "echo", "true", "false"}:
+        return True
+    if executable == "rg":
+        return "--pre" not in words and not any(item.startswith("--pre=") for item in words)
+    if executable == "sed":
+        return not any(item.startswith("--in-place") or re.match(r"^-[^-]*i", item) for item in words[1:])
+    if executable == "find":
+        dangerous = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+        return not any(item in dangerous for item in words[1:])
+    if executable == "git":
+        return git_read_only(words)
+    if executable in {"ps", "pgrep", "lsof", "netstat", "ss"}:
+        return True
+    if executable == "kill":
+        return len(words) >= 3 and words[1] == "-0"
+    if executable in {"nc", "netcat"}:
+        return any(item == "-z" or (item.startswith("-") and "z" in item[1:]) for item in words[1:])
+    if executable == "curl":
+        return curl_read_only(words)
+    return False
+
+
+def read_only_shell(command: str) -> bool:
+    segments = shell_segments(command)
+    return segments is not None and all(read_only_words(segment) for segment in segments)
+
+
 def control_tool(payload: object) -> bool:
     """Only standalone protocol commands can recover a blocked lifecycle."""
-    command = tool_command(payload)
-    if re.search(r"[;&|<>`\n]|\$\(", command):
-        return False
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return False
-    for index, word in enumerate(words[:3]):
-        if Path(word).name in {"context-guard", "context-guard-skill", "context_guard.py", "context-guard-skill.js"}:
-            return index + 1 < len(words) and words[index + 1] in {
-                "plan-start", "plan-finish", "plan-status", "archive-session", "resolve-signal", "split-signal",
-                "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync",
-            }
-    return False
+    segments = shell_segments(tool_command(payload))
+    return bool(segments and len(segments) == 1 and control_words(segments[0]))
 
 
 def git_changed_paths(root: Path) -> list[str]:
@@ -716,21 +856,9 @@ def mutating_tool(payload: object) -> bool:
     if control_tool(payload):
         return False
     command = tool_command(payload).strip()
-    # Unknown scripts are potentially mutating. A deliberately small read-only
-    # allowlist avoids pretending arbitrary shell syntax has been scope checked.
-    if re.search(r"[;&|<>`\n]|\$\(", command):
-        return True
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return True
-    if not words:
-        return False
-    if words[0] in {"pwd", "ls", "cat", "head", "tail", "rg", "stat", "wc"}:
-        return False
-    if words[0] == "git" and len(words) > 1 and words[1] in {"status", "diff", "log", "show", "ls-files", "rev-parse"}:
-        return False
-    return True
+    # Unknown scripts stay potentially mutating. Inspection pipelines are allowed
+    # only when every command and redirection is independently read-only.
+    return not read_only_shell(command)
 
 
 def pending_signals(runtime: dict) -> list[str]:
