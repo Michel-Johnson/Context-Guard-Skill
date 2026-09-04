@@ -2486,13 +2486,14 @@ function renderBugPanel(){
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
     const sending = bugDispatching.has(item.bug.id);
-    const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
+    const state = bugProgress(item.bug);
+    const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
     const claim = on && !item.unassigned
       ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`
       : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
-      ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
+      <span class="bug-row">${dot}${claim}</span>
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach((li,index)=>{

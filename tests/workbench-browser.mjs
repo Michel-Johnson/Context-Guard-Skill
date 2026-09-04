@@ -300,6 +300,7 @@ try {
   const bugRow = page.locator('#bug-panel-list li').filter({ hasText: '处理状态测试' });
   await bugRow.waitFor();
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('待处理 · 发送中'));
+  assert.equal(await bugRow.locator('.bug-dot.waiting').count(), 1);
   await until(() => queuedMessages.length === 1);
   assert.equal((await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.length, 0);
   assert.deepEqual(new Set(running.access.grants(session)), new Set(['T0', 'N1']));
@@ -308,12 +309,14 @@ try {
   assert.match(queuedMessages[0].message, /N1/);
   releaseBugQueue();
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('处理中 · codex-basic-browser'));
+  assert.equal(await bugRow.locator('.bug-dot.processing').count(), 1);
   await until(async () => (await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.includes(session));
   await synchronized();
   const resolvedBug = await read();
   resolvedBug.root.children[0].bugs.find(bug => bug.title === '处理状态测试').status = 'resolved';
   await fs.writeFile(mapPath, encode(resolvedBug));
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('已解决'));
+  assert.equal(await bugRow.locator('.bug-dot.resolved').count(), 1);
   const cleanBug = await read(); cleanBug.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(cleanBug));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
@@ -795,6 +798,25 @@ try {
     await preview.locator('#btn-rel').click();
     recordCheck('relation-flow-labels');
     await preview.locator('#btn-bugs').click();
+    const panelDots = await preview.evaluate(() => [...document.querySelectorAll('#bug-panel-list li[data-bug]')].map(li => {
+      const badge = li.querySelector('.bug-status');
+      const dot = li.querySelector('.bug-dot');
+      const kindOf = el => [...(el?.classList || [])].find(c => c !== 'bug-status' && c !== 'bug-dot') || '';
+      return {
+        badge: kindOf(badge),
+        dot: kindOf(dot),
+        bg: dot ? getComputedStyle(dot).backgroundColor : ''
+      };
+    }));
+    assert.ok(panelDots.length, 'bug panel lists rows');
+    panelDots.forEach(row => {
+      assert.equal(row.dot, row.badge, `right-side dot must follow status ${JSON.stringify(row)}`);
+    });
+    const kinds = new Set(panelDots.map(row => row.badge));
+    const colors = new Set(panelDots.map(row => row.bg));
+    if (kinds.size > 1) {
+      assert.ok(colors.size > 1, `different statuses must not share one session-green ${JSON.stringify(panelDots)}`);
+    }
     await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
     await preview.waitForSelector('body.bug-path-mode');
     assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
