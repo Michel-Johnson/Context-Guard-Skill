@@ -119,6 +119,10 @@ try {
   assert.equal(actH, chrome[0], `inspector trash height ${actH} vs chrome ${chrome[0]}`);
   assert.equal(await page.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
   assert.ok((await page.locator('#detail .add-hint').textContent()).includes('去图上点'));
+  assert.equal(await trashBtn.locator('.lid').count(), 1, 'live trash uses the lid-open icon');
+  await trashBtn.hover();
+  const lidMove = await trashBtn.locator('.lid').evaluate(el => getComputedStyle(el).transform);
+  assert.notEqual(lidMove, 'none', `lid should open on hover, got ${lidMove}`);
   recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
@@ -465,6 +469,7 @@ try {
     assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
     assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
     assert.equal(await preview.locator('#detail button.trash').count(), 1);
+    assert.equal(await preview.locator('#detail button.trash .lid').count(), 1);
     await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
