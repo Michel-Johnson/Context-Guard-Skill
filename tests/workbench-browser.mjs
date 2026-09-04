@@ -794,6 +794,22 @@ try {
     assert.equal(frozenChip.h2, '18px');
     assert.equal(frozenChip.text, '测试通过');
     assert.equal(frozenChip.chipBg, 'rgb(239, 230, 210)');
+    const upright = await preview.evaluate(() => {
+      const item = document.querySelector('#v09');
+      const cs = el => getComputedStyle(el);
+      return {
+        h2: cs(item.querySelector('h2')).fontStyle,
+        chip: cs(item.querySelector('.who .chip')).fontStyle,
+        lead: cs(item.querySelector('.lead')).fontStyle,
+        alt: cs(item.querySelector('.alts .chip')).fontStyle,
+        num: cs(item.querySelector('.g-num')).fontStyle
+      };
+    });
+    assert.equal(upright.h2, 'normal');
+    assert.equal(upright.chip, 'normal');
+    assert.equal(upright.lead, 'normal');
+    assert.equal(upright.alt, 'normal');
+    assert.equal(upright.num, 'normal');
     recordCheck('state-chip-gallery-50');
   } finally {
     await preview.close();

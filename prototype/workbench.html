@@ -1381,20 +1381,23 @@ html.design-gallery .g-tr-mock{pointer-events:auto;overflow:visible;width:100%;
 html.g-kind-chip .g-scroll{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
   gap:28px 22px;max-width:1120px}
-html.design-gallery .g-ch-mock{pointer-events:none;overflow:visible;width:100%;
-  padding:16px 16px 20px;background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d;
-  font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+html.g-kind-chip,html.g-kind-chip *{font-style:normal}
+html.g-kind-chip .g-num,
+html.design-gallery .g-ch-mock{
+  pointer-events:none;font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei","IBM Plex Sans",sans-serif}
+html.design-gallery .g-ch-mock{overflow:visible;width:100%;
+  padding:16px 16px 20px;background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d}
 .g-ch-mock .who{display:flex;align-items:center;gap:8px;margin:0;flex-wrap:wrap}
 .g-ch-mock h2{margin:0;font-size:18px;font-weight:700}
 .g-ch-mock .sp{flex:1 1 auto;min-width:8px}
 .g-ch-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45;
-  font-family:Georgia,"Libre Baskerville","Songti SC",serif}
+  font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
 .g-ch-mock .alts{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
 .g-ch-mock .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto}
 .g-ch-mock .trash svg{width:18px;height:18px;display:block}
 .g-ch-mock .chip{
   display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;
-  font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;line-height:1.45;
+  font-size:11px;font-weight:600;font-style:normal;padding:1px 8px;border-radius:10px;line-height:1.45;
   background:#efe6d2;color:#3a6e55}
 .g-ch-mock .chip b{font-weight:800}
 .g-ch-mock .chip.u{background:#fff3bf;color:#8a6d1f}
@@ -6640,8 +6643,8 @@ function bootChipGallery(){
   const fOf = id => id==="24"?"败":id==="17"?"FAIL":id==="25"?"fail":id==="40"?"败":"测试未过";
   const dOf = id => id==="24"?"新":id==="17"?"NEW":id==="25"?"init":id==="40"?"新":"未开发";
   document.getElementById("g-scroll").innerHTML = names.map(([id, name]) => {
-    const chip = `<i class="chip">${okOf(id)}</i>`;
-    const alts = `<div class="alts"><i class="chip u">${uOf(id)}</i><i class="chip f">${fOf(id)}</i><i class="chip d">${dOf(id)}</i></div>`;
+    const chip = `<span class="chip">${okOf(id)}</span>`;
+    const alts = `<div class="alts"><span class="chip u">${uOf(id)}</span><span class="chip f">${fOf(id)}</span><span class="chip d">${dOf(id)}</span></div>`;
     return `<article class="g-item" id="v${id}"><div class="g-num">${id} · ${name}</div><aside class="g-mock g-ch-mock g-ch-${id}"><div class="who"><h2>冷启动</h2>${chip}<span class="sp"></span>${trash}</div><p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>${alts}</aside></article>`;
   }).join("");
 }
