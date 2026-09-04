@@ -630,14 +630,19 @@ try {
   const xss = await read(); xss.root.children[0].title = '<img src=x onerror="window.injected=true">'; await fs.writeFile(mapPath, encode(xss));
   await page.waitForFunction(() => document.querySelector('#detail [data-ed="title"]')?.textContent?.startsWith('<img'));
   assert.equal(await page.evaluate(() => !!window.injected), false); recordCheck('map-text-not-html');
-  // An existing page reconnects after server restart without losing its local draft.
-  const port = new URL(running.state.url).port; await running.close();
+  // An existing page detects a replaced backend and waits for an explicit refresh.
+  const port = new URL(running.state.url).port, previousInstance = running.state.instance; await running.close();
   await page.waitForSelector('#cg-sync[data-status="offline"]', { state: 'attached' });
   running = await startServer({ root, port: Number(port), messageQueue });
+  assert.notEqual(running.state.instance, previousInstance);
+  await page.waitForFunction(() => document.querySelector('#cg-sync-status')?.textContent?.includes('工作台后端实例已变更，请刷新页面'));
+  assert.equal(await page.locator('#cg-sync').getAttribute('data-status'), 'error');
+  await page.reload();
   await synchronized();
   assert.ok(running.access.grants(session).includes('N1'), 'session grants must survive workbench restart');
+  await page.locator('.node[data-id="N1"]').click();
   await title.fill('服务重启后保存'); await title.press('Tab'); await synchronized();
-  assert.equal((await read()).root.children[0].title, '服务重启后保存'); recordCheck('server-reconnect-and-grant-recovery');
+  assert.equal((await read()).root.children[0].title, '服务重启后保存'); recordCheck('server-instance-change-detected-and-manual-refresh-recovers');
   // Recovery import previews before writing, then applies only explicitly selected fields.
   stage = 'migration-preview';
   const migration = await read(); migration.root.children[0].purpose = '迁移已选择的用途';

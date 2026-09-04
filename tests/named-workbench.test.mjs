@@ -68,6 +68,9 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal((await call(named.url, '/__context_guard/bootstrap', { headers: { Host: `unknown.localhost:${new URL(named.url).port}` } })).status, 404);
   assert.equal((await call(backend.state.url, '/__context_guard/bootstrap', { headers: { Host: new URL(named.url).host } })).status, 403);
   const boot = await call(named.url, '/__context_guard/bootstrap');
+  assert.equal(boot.data.instance, backend.state.instance);
+  assert.equal(boot.data.buildId, 'project-workbench-v7');
+  assert.ok(boot.data.capabilities.includes('runtime-instance-check'));
   const auth = { Authorization: `Bearer ${boot.data.token}`, Origin: origin, 'Content-Type': 'application/json' };
   const before = await call(named.url, '/api/state', { headers: auth });
   assert.equal(before.status, 200);
@@ -252,8 +255,8 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   await fs.cp(path.join(cwd, 'prototype'), path.join(installed, 'prototype'), { recursive: true });
   const runtimeFile = path.join(installed, 'scripts/workbench/runtime.mjs');
   const runtime = (await fs.readFile(runtimeFile, 'utf8'))
-    .replace("project-workbench-v6", "project-workbench-v5")
-    .replace(/\s*'confirmed-main-baseline-migration',\r?\n/, '\n');
+    .replace("project-workbench-v7", "project-workbench-v6")
+    .replace(/\s*'runtime-instance-check',\r?\n/, '\n');
   await fs.writeFile(runtimeFile, runtime);
   const old = spawnSync(process.execPath, [path.join(installed, 'scripts/workbench/cli.mjs'), 'workbench', '--root', root, '--port', '0', '--direct'], {
     encoding: 'utf8', windowsHide: true, timeout: 15_000,
@@ -265,7 +268,7 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   const upgraded = await ensureServer(root, 0); t.after(() => stopServer(root));
   assert.notEqual(upgraded.instance, oldResult.instance);
   assert.equal((await diagnoseWorkbench(root)).runtime.status, 'ready');
-  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v6');
+  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v7');
 });
 test('proxy restart keeps persisted routes and one project closing cannot take down another', async t => {
   const { proxy, backend, named, dir } = await environment(t);
