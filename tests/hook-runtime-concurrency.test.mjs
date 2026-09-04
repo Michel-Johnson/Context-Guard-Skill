@@ -34,6 +34,13 @@ from context_guard import add_prompt_signal
 add_prompt_signal(Path(sys.argv[1]), "shared-session", sys.argv[2], "prompt " + sys.argv[2])
 `;
 
+const resolveSignal = `
+from pathlib import Path
+import sys
+from context_guard import resolve_prompt_signal
+resolve_prompt_signal(Path(sys.argv[1]), "shared-session", sys.argv[2], "task")
+`;
+
 test('same-Session prompt writers preserve every signal', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-runtime-race-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -48,6 +55,24 @@ test('same-Session prompt writers preserve every signal', async t => {
   const runtime = JSON.parse(await fs.readFile(path.join(runtimeDir, runtimeFiles[0]), 'utf8'));
   assert.equal(runtime.signals.length, writers.length);
   assert.equal(new Set(runtime.signals.map(signal => signal.id)).size, writers.length);
+});
+
+test('concurrent classification of one signal is idempotent and leaves no pending copy', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-runtime-resolve-race-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  assert.equal((await pythonProcess(addSignal, [root, 'shared-turn'])).code, 0);
+  const runtimeDir = path.join(root, '.codex/context/private/hook-runtime');
+  const runtimeFile = (await fs.readdir(runtimeDir)).find(file => file.endsWith('.json'));
+  const before = JSON.parse(await fs.readFile(path.join(runtimeDir, runtimeFile), 'utf8'));
+  const signalId = before.signals[0].id;
+
+  const resolvers = await Promise.all(Array.from({ length: 16 }, () => pythonProcess(resolveSignal, [root, signalId])));
+  for (const result of resolvers) assert.equal(result.code, 0, result.stderr);
+
+  const after = JSON.parse(await fs.readFile(path.join(runtimeDir, runtimeFile), 'utf8'));
+  assert.equal(after.signals.length, 1);
+  assert.equal(after.signals[0].status, 'resolved');
+  assert.equal(after.signals[0].kind, 'task');
 });
 
 test('a crashed lock owner cannot strand the Session', async t => {

@@ -32,14 +32,15 @@ function run(command, args, options = {}) {
 }
 
 function hook(event, project, sessionId, extra = {}) {
+  const { platform = 'codex', ...hookExtra } = extra;
   const payload = {
     session_id: sessionId,
     cwd: project,
     hook_event_name: event,
-    turn_id: extra.turn_id || 'turn-one',
-    ...extra,
+    turn_id: hookExtra.turn_id || 'turn-one',
+    ...hookExtra,
   };
-  const result = run(python, [hookScript, event.replaceAll(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''), '--platform', 'codex'], {
+  const result = run(python, [hookScript, event.replaceAll(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, ''), '--platform', platform], {
     cwd: project,
     input: JSON.stringify(payload),
   });
@@ -230,12 +231,16 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.match(interrupted.json.systemMessage, /interrupted plan state/);
   const blocked = hook('Stop', project, session, { stop_hook_active: false });
   assert.equal(blocked.json.decision, 'block');
-  assert.match(hook('Stop', project, session, { stop_hook_active: true }).json.systemMessage, /INCOMPLETE/);
+  assert.equal(blocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
+  assert.doesNotMatch(JSON.stringify(blocked.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const repeatedBlock = hook('Stop', project, session, { stop_hook_active: true });
+  assert.equal(repeatedBlock.json.systemMessage, 'Context Guard is still finishing the current task. No user action is required.');
+  assert.doesNotMatch(JSON.stringify(repeatedBlock.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
   assert.throws(() => archivePlan(project, session), /subagent_review/);
   archivePlan(project, session, 'src/scratch.txt', { subagent_review: { 'agent-one': 'Reviewed paths and test evidence; no additional changes' } });
   finishPlan(project, session);
   const stopped = hook('Stop', project, session, { stop_hook_active: true });
-  assert.match(stopped.json.systemMessage, /lifecycle completed/);
+  assert.deepEqual(stopped.json, {});
 
   const events = (await fs.readFile(path.join(project, '.codex/context/sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
   for (const event of events) {
@@ -334,7 +339,8 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   });
   const blocked = hook('Stop', project, session, { stop_hook_active: false });
   assert.equal(blocked.json.decision, 'block');
-  assert.match(blocked.json.reason, /plan-finish/);
+  assert.equal(blocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
+  assert.doesNotMatch(JSON.stringify(blocked.json), /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
   const beforeFinish = await syncStatus(project);
   const active = beforeFinish.works.find(item => item.sessionId === session);
   assert.equal(active.status, 'working');
@@ -348,7 +354,7 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   await fs.writeFile(runtimePath, beforeFlush);
   finishPlan(project, session);
   const stopped = hook('Stop', project, session, { stop_hook_active: true });
-  assert.match(stopped.json.systemMessage, /lifecycle completed/);
+  assert.deepEqual(stopped.json, {});
   const afterFinish = await syncStatus(project);
   assert.equal(afterFinish.works.find(item => item.sessionId === session).status, 'completed');
 });
@@ -507,11 +513,21 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const splitInput = JSON.stringify({ items: ['修复显示', '以后加快捷键', '保存失败'] });
   const children = JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout);
   assert.deepEqual(JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout), children);
-  assert.equal(hook('Stop', project, session).json.decision, 'block');
+  const cursorBlocked = hook('Stop', project, session, { platform: 'cursor' });
+  assert.equal(cursorBlocked.json.decision, 'block');
+  assert.equal(cursorBlocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
+  assert.doesNotMatch(cursorBlocked.stdout, /SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
+  const deferred = hook('Stop', project, session);
+  assert.deepEqual(deferred.json, {});
+  assert.doesNotMatch(deferred.stdout, /SIG-|Classify pending/);
+  const reminded = hook('UserPromptSubmit', project, session, { turn_id: 'mixed-reminder', prompt: '继续处理当前任务' });
+  for (const child of children) assert.match(reminded.json.hookSpecificOutput.additionalContext, new RegExp(child.id));
+  const reminderId = reminded.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
+  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', reminderId, '--kind', 'task']);
   run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', children[0].id, '--kind', 'task']);
   run('python3', [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', children[1].id, '--node', 'N1', '--title', '快捷键']);
   run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', children[2].id, '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交失败']);
-  assert.match(hook('Stop', project, session).json.systemMessage, /completed/);
+  assert.deepEqual(hook('Stop', project, session).json, {});
 
   const otherSession = 'hook-session-other';
   await confirmBinding(project, otherSession);
