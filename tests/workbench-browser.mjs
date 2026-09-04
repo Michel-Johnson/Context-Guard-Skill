@@ -859,15 +859,16 @@ try {
         bg: dot ? getComputedStyle(dot).backgroundColor : ''
       };
     }));
-    assert.ok(panelDots.length, 'bug panel lists rows');
+    assert.ok(panelDots.length >= 8, `preview should show a status board, got ${panelDots.length}`);
     panelDots.forEach(row => {
       assert.equal(row.dot, row.badge, `right-side dot must follow status ${JSON.stringify(row)}`);
     });
     const kinds = new Set(panelDots.map(row => row.badge));
     const colors = new Set(panelDots.map(row => row.bg));
-    if (kinds.size > 1) {
-      assert.ok(colors.size > 1, `different statuses must not share one session-green ${JSON.stringify(panelDots)}`);
-    }
+    ["waiting","processing","handoff","resolved","deferred"].forEach(kind => {
+      assert.ok(kinds.has(kind), `missing ${kind} in ${[...kinds].join(",")}`);
+    });
+    assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelDots)}`);
     await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
     await preview.waitForSelector('body.bug-path-mode');
     assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
