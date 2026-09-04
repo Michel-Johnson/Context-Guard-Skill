@@ -300,7 +300,7 @@ async function main(args) {
     }
     if (opt._[0] === 'sync') return synchronizeMemory(root, session);
     if (opt._[0] === 'prepare') return prepareMemory(project, session);
-    if (opt._[0] === 'rebase') return rebaseMemory(project, session);
+    if (opt._[0] === 'rebase') return rebaseMemory(project, session, { adoptMain: !!opt['adopt-main'] });
     if (opt._[0] === 'publish') return memoryRequest(project, 'publish', await inputJSON(opt.input));
     if (opt._[0] === 'history') {
       const scope = String(opt.scope || (session ? `session:${session}` : 'main'));

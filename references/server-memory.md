@@ -56,8 +56,12 @@ Main or preferences requires the administrator credential.
 local edits. `memory sync` uploads only to the current bound Session and replays an
 uncertain durable queued operation before generating a new one. `memory rebase`
 merges disjoint main changes into the Session, backs up the old map, and rejects
-overlapping changes for explicit reconciliation. Archive invokes sync when configured;
-failure preserves the local draft and is reported, not treated as success.
+overlapping changes for explicit reconciliation. A legacy Session without a recorded
+main ancestor must not be guessed: after reviewing its preserved draft, explicitly run
+`memory rebase --adopt-main` to back it up and seed the Session from the published main
+Map. The command refuses this destructive strategy once a normal ancestor exists.
+Archive invokes sync when configured; failure preserves the local draft and is reported,
+not treated as success.
 
 `memory publish --input <private-request>` requires publisher/admin credentials,
 `operationId`, `baseVersion`, `sessionId`, `sessionVersion`, `expectedMainSha`.

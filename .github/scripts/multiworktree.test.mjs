@@ -179,6 +179,18 @@ test('a legacy worktree seed is replaced by the confirmed main baseline without 
   assert.equal(rejected.status, 409); assert.equal(rejected.data.error.code, 'SESSION_BASELINE_REQUIRED');
   assert.equal((await bindingStatus(project, 'divergent-seed')).session.bound, false);
   assert.deepEqual(await readJSON(path.join(divergentDir, 'map.json')), divergentMap);
+  const refusedRebase = await cli(other, 'memory', 'rebase', '--session', 'divergent-seed');
+  assert.notEqual(refusedRebase.code, 0); assert.match(refusedRebase.stdout, /SESSION_BASELINE_REQUIRED/);
+  const adoptedResult = await cli(other, 'memory', 'rebase', '--session', 'divergent-seed', '--adopt-main');
+  assert.equal(adoptedResult.code, 0, adoptedResult.stdout);
+  const adopted = JSON.parse(adoptedResult.stdout);
+  assert.equal(adopted.strategy, 'adopt-main');
+  assert.deepEqual(await readJSON(adopted.backup), divergentMap);
+  assert.deepEqual(await readJSON(path.join(divergentDir, 'map.json')), mainMap);
+  assert.equal((await readJSON(path.join(divergentDir, 'base-main.json'))).version, published.data.snapshot.version);
+  const rebound = await call(workbench, '/api/session', workbench.state.adminToken, { sessionId: 'divergent-seed', worktreeRoot: other });
+  assert.equal(rebound.status, 200, JSON.stringify(rebound));
+  assert.equal((await call(workbench, '/api/state', rebound.data.token)).data.doc.root.children[0].id, 'M1');
 });
 test('private memory requires authentication, isolates Sessions, verifies merge and persists CAS receipts', async t => {
   const { dir, root, other } = await fixture(t);

@@ -174,11 +174,11 @@ test('connect requires an explicit pull or push when local and Cloud maps differ
 });
 
 test('ensure service resumes SSE from its durable cursor after restart', async t => {
-  const f = await fixture(); t.after(() => f.dispose());
+  const f = await fixture();
   const writer = await f.local(), listener = await f.local();
   const options = root => ({ root, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false });
   await connectSync(options(writer)); await connectSync(options(listener));
-  t.after(() => stopService(listener));
+  t.after(async () => { await stopService(listener); await f.dispose(); });
 
   const first = await ensureService(listener);
   assert.equal(first.started, true);
