@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { diffTrees, same, validate, MapError } from '../../prototype/map-model.mjs';
+import { withFileLock } from '../workbench/io.mjs';
 
 const ownFile = fileURLToPath(import.meta.url);
 const encode = value => `${JSON.stringify(value, null, 2)}\n`;
@@ -62,19 +63,7 @@ async function readJson(file, fallback = null) {
 }
 
 async function withLock(root, task) {
-  const target = syncPaths(root).lock;
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  const deadline = Date.now() + 5000;
-  while (true) {
-    try { await fs.mkdir(target); break; }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (Date.now() >= deadline) throw new MapError('SYNC_BUSY', 'Another cloud sync operation is still running', 409);
-      await pause(25);
-    }
-  }
-  try { return await task(); }
-  finally { await fs.rm(target, { recursive: true, force: true }); }
+  return withFileLock(syncPaths(root).lock, task);
 }
 
 async function appendInbox(root, event) {

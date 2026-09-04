@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startCloudServer } from '../scripts/cloud/server.mjs';
-import { connectSync, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
+import { checkpointSync, connectSync, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
 
 const node = (id, title) => ({ id, title, kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] });
 const document = () => ({
@@ -93,4 +93,23 @@ test('finish leaves overlapping development unverified with an impact list', asy
   await assert.rejects(() => finishSync({ root: a, sessionId: 'session-a' }), error => error.code === 'WORK_IMPACT' && error.details.impacts.length === 1);
   const status = await syncStatus(a);
   assert.equal(status.works.find(work => work.sessionId === 'session-a').status, 'conflict');
+});
+
+test('checkpoint reports conflicts without publishing the Session map', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const a = await f.local(), b = await f.local();
+  const options = root => ({ root, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false });
+  await connectSync(options(a)); await connectSync(options(b));
+  await prepareSync({ root: a, sessionId: 'session-a', nodeIds: ['N1'] });
+  await prepareSync({ root: b, sessionId: 'session-b', nodeIds: ['N1'] });
+  await edit(a, 'N1', 'draft from A');
+  await edit(b, 'N1', 'published from B'); await finishSync({ root: b, sessionId: 'session-b' });
+
+  const checked = await checkpointSync({ root: a, sessionId: 'session-a' });
+  assert.equal(checked.status, 'conflict');
+  assert.equal(checked.impacts.length, 1);
+  const remote = await fetch(f.cloud.url + '/api/projects/sync-fixture/map').then(response => response.json());
+  assert.equal(remote.document.root.children.find(item => item.id === 'N1').purpose, 'published from B');
+  const local = JSON.parse(await fs.readFile(path.join(a, '.codex/context/map.json'), 'utf8'));
+  assert.equal(local.root.children.find(item => item.id === 'N1').purpose, 'draft from A');
 });
