@@ -25,6 +25,7 @@ export class WorkbenchSync {
     this.pendingSession = requestedSession || '';
     this.refreshingAccess = null;
     this.accessRefreshQueued = false;
+    this.urlPinned = Boolean(requestedSession);
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     document.getElementById('settings-menu').append(this.panel);
@@ -145,6 +146,7 @@ export class WorkbenchSync {
           this.pendingSession = '';
           this.viewId = 'main';
           this.manualSession = false;
+          this.urlPinned = false;
           this.captureKey = null;
           return this.start();
         }
@@ -344,8 +346,11 @@ export class WorkbenchSync {
   async refreshAccessNow() {
     const data = await this.call('/api/access'); const select = this.panel.querySelector('#cg-sync-session');
     this.project = data.project || this.project || null;
-    const sessions = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
-    this.grants = data.grants || {};
+    const received = (data.sessions || []).map(item => typeof item === 'string' ? { id: item, name: '', platform: 'unknown', status: 'active', lastSeen: '' } : item);
+    const sessions = this.urlPinned
+      ? received.filter(item => item.id === this.activeSession || item.id === this.pendingSession)
+      : [...new Map([...this.sessions, ...received].map(item => [item.id, item])).values()];
+    this.grants = this.urlPinned ? (data.grants || {}) : { ...this.grants, ...(data.grants || {}) };
     const current = sessions.find(item => item.id === this.activeSession);
     // A browser belongs to the Session explicitly present in its URL or selected
     // by the human. Activity in another task must never silently switch maps.
@@ -369,7 +374,7 @@ export class WorkbenchSync {
     const pending = this.pendingSession && !current ? (() => {
       const option = document.createElement('option'); option.value = this.pendingSession; option.textContent = '当前 Session · 同步中'; option.disabled = true; return option;
     })() : null;
-    const options = [all, ...(pending ? [pending] : []), ...sessions.map(item => {
+    const options = [...(this.urlPinned ? [] : [all]), ...(pending ? [pending] : []), ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
       const displayName = [item.name || `${item.platform || 'Agent'} Session`, item.worktreeName, item.branch].filter(Boolean).join(' · ');
       option.textContent = displayName; option.title = `${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;

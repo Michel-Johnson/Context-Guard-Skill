@@ -15,7 +15,7 @@ import { memoryRequest, sessionMemoryDir } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
 import { syncPaths } from '../sync/client.mjs';
-import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
+import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
@@ -154,7 +154,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       ? async () => true
       : (doc, version) => {
           const previous = projectionQueues.get(viewId) || Promise.resolve();
-          const job = previous.then(() => target.version === version ? generateProjections(projectionRoot, doc, version, () => target.version === version) : false);
+          const projectionDoc = sessionId ? scopeDocumentToSession(doc, sessionId) : doc;
+          const job = previous.then(() => target.version === version ? generateProjections(projectionRoot, projectionDoc, version, () => target.version === version, { sessionId }) : false);
           projectionQueues.set(viewId, job.catch(() => {})); return job;
         };
     target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions });
@@ -433,23 +434,38 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (route === '/api/state' && req.method === 'GET') {
             if (actor.kind === 'agent') await fence(viewId);
             await activeStore.serial(() => activeStore.refresh());
+            const sessionId = actor.kind === 'agent' ? actor.sessionId : viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
             const state = stateFor(viewId, activeStore);
+            if (sessionId && state.doc) state.doc = scopeDocumentToSession(state.doc, sessionId);
             if (url.searchParams.has('node')) { const entry = state.doc && entries(state.doc.root).get(url.searchParams.get('node')); if (!entry) throw new MapError('NOT_FOUND', 'Node missing', 404); delete state.doc; state.node = entry.node; state.parentId = entry.parent?.id || null; }
             return send(res, 200, { ...state, viewId, actor, grants: access.grants(actor.sessionId, activeStore.doc), peers: viewPeers(viewId).map(({ id, dirty, version }) => ({ id, dirty, version })) });
           }
-          if (route === '/api/changes' && req.method === 'GET') { await activeStore.serial(() => activeStore.refresh()); return send(res, 200, activeStore.changes(url.searchParams.get('cursor'))); }
+          if (route === '/api/changes' && req.method === 'GET') {
+            await activeStore.serial(() => activeStore.refresh());
+            const changes = activeStore.changes(url.searchParams.get('cursor'));
+            const sessionId = actor.kind === 'agent' ? actor.sessionId : viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
+            return send(res, 200, sessionId ? scopeChangesToSession(changes, activeStore.doc, sessionId) : changes);
+          }
           if (route === '/api/operation' && req.method === 'GET') { const record = await activeStore.operation(url.searchParams.get('id') || ''); return send(res, 200, { found: !!record, result: record?.result, recovery: activeStore.blocked }); }
           if (route === '/api/commit' && req.method === 'POST') {
             const input = await body(req);
             if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
             if (actor.kind === 'agent') await fence(viewId);
-            const result = await activeStore.commit(input, actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
+            const sessionId = actor.kind === 'agent' ? actor.sessionId : viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
+            const scopedInput = sessionId ? { ...input, operations: restoreSessionWorkItemOperations(activeStore.doc, input.operations, sessionId) } : input;
+            const result = await activeStore.commit(scopedInput, actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
           if (route === '/api/access' && req.method === 'GET') {
             isHuman(actor);
             const currentSessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : null;
-            return send(res, 200, { ...(await access.snapshot(activeStore.doc, currentSessionId)), project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } });
+            const snapshot = await access.snapshot(activeStore.doc, currentSessionId);
+            const scopedSnapshot = currentSessionId ? {
+              ...snapshot,
+              sessions: snapshot.sessions.filter(item => item.id === currentSessionId),
+              grants: snapshot.grants[currentSessionId] ? { [currentSessionId]: snapshot.grants[currentSessionId] } : {},
+            } : snapshot;
+            return send(res, 200, { ...scopedSnapshot, project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } });
           }
           if (route === '/api/access-plan' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);

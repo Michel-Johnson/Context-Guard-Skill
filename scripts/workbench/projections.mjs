@@ -14,15 +14,24 @@ async function markdownIndex(ctx, folder, make) {
   }
   return result;
 }
-export async function generateProjections(root, doc, version, isCurrent = () => true) {
+export async function generateProjections(root, doc, version, isCurrent = () => true, { sessionId = '' } = {}) {
   if (!doc?.root) return false;
   const ctx = path.join(root, '.codex/context'), cards = path.join(ctx, 'cards');
   const statusFile = path.join(ctx, 'projection-status.json');
   await atomicWrite(statusFile, encode({ status: 'building', sourceVersion: version }));
   await fs.mkdir(cards, { recursive: true });
   const index = entries(doc.root), owns = [];
-  const bugs = await markdownIndex(ctx, 'bugs', (id, f, title) => ({ title, keys: (f.keys || '').split(/[,，]/).map(x => x.trim()).filter(Boolean), status: f.status || 'open', bug: `.codex/context/bugs/${id}.md`, fix: `.codex/context/fixes/${id}.md`, card: f.card || (f.node ? `.codex/context/cards/${f.node}.md` : '') }));
-  const tasks = await markdownIndex(ctx, 'tasks', (id, f, title) => ({ title, keys: (f.keys || '').split(/[,，]/).map(x => x.trim()).filter(Boolean), task: `.codex/context/tasks/${id}.md`, chain: (f.chain || '').split('>').map(x => x.trim()).filter(Boolean), card: f.card || '' }));
+  let bugs = await markdownIndex(ctx, 'bugs', (id, f, title) => ({ title, keys: (f.keys || '').split(/[,，]/).map(x => x.trim()).filter(Boolean), status: f.status || 'open', bug: `.codex/context/bugs/${id}.md`, fix: `.codex/context/fixes/${id}.md`, card: f.card || (f.node ? `.codex/context/cards/${f.node}.md` : '') }));
+  let tasks = await markdownIndex(ctx, 'tasks', (id, f, title) => ({ title, keys: (f.keys || '').split(/[,，]/).map(x => x.trim()).filter(Boolean), task: `.codex/context/tasks/${id}.md`, chain: (f.chain || '').split('>').map(x => x.trim()).filter(Boolean), card: f.card || '' }));
+  if (sessionId) {
+    const visibleBugs = new Set(), visibleTasks = new Set();
+    for (const { node } of entries(doc.root).values()) {
+      for (const item of node.bugs || []) visibleBugs.add(item.id);
+      for (const item of node.todos || []) visibleTasks.add(item.id);
+    }
+    bugs = Object.fromEntries(Object.entries(bugs).filter(([id]) => visibleBugs.has(id)));
+    tasks = Object.fromEntries(Object.entries(tasks).filter(([id]) => visibleTasks.has(id)));
+  }
   for (const [id, { node, parent }] of index) {
     if (!isCurrent()) return false;
     if (node.proposal === 'cancelled') continue;

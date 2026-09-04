@@ -15,7 +15,7 @@ import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '.
 import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
-import { applyOperations, assignmentScope, diffTrees, validate } from '../prototype/map-model.mjs';
+import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
@@ -738,10 +738,94 @@ test('projection retains legacy/manual content, includes state and bugs, detects
   card = await fs.readFile(path.join(f.ctx, 'cards/N1.md'), 'utf8'); assert.match(card, /后续人工补充/); assert.equal(card.split('人工笔记不能丢失').length, 2); assert.doesNotMatch(card, /version-one/);
 });
 
+test('Session projection indexes only work assigned to that Session', async () => {
+  const f = await fixture();
+  await fs.mkdir(path.join(f.ctx, 'bugs'), { recursive: true });
+  await fs.mkdir(path.join(f.ctx, 'tasks'), { recursive: true });
+  f.doc.root.children[0].bugs.push(
+    { id: 'B1', title: '当前 Bug', status: 'open', sessions: [agent.sessionId] },
+    { id: 'B2', title: '其他 Bug', status: 'open', sessions: ['other-session'] },
+  );
+  f.doc.root.children[0].todos = [
+    { id: 'TD1', title: '当前 TODO', status: 'processing', sessions: [agent.sessionId] },
+    { id: 'TD2', title: '其他 TODO', status: 'processing', sessions: ['other-session'] },
+  ];
+  await Promise.all([
+    fs.writeFile(path.join(f.ctx, 'bugs/B1.md'), '# B1 当前 Bug\n'),
+    fs.writeFile(path.join(f.ctx, 'bugs/B2.md'), '# B2 其他 Bug\n'),
+    fs.writeFile(path.join(f.ctx, 'tasks/TD1.md'), '# TD1 当前 TODO\n'),
+    fs.writeFile(path.join(f.ctx, 'tasks/TD2.md'), '# TD2 其他 TODO\n'),
+  ]);
+  const scoped = scopeDocumentToSession(f.doc, agent.sessionId);
+  await generateProjections(f.root, scoped, 'session-version', () => true, { sessionId: agent.sessionId });
+  const [bugs, tasks, card] = await Promise.all([
+    readJSON(path.join(f.ctx, 'bugs-index.json')),
+    readJSON(path.join(f.ctx, 'tasks-index.json')),
+    fs.readFile(path.join(f.ctx, 'cards/N1.md'), 'utf8'),
+  ]);
+  assert.deepEqual(Object.keys(bugs), ['B1']);
+  assert.deepEqual(Object.keys(tasks), ['TD1']);
+  assert.match(card, /B1: 当前 Bug/);
+  assert.doesNotMatch(card, /B2: 其他 Bug/);
+  assert.match(card, /TD1: 当前 TODO/);
+  assert.doesNotMatch(card, /TD2: 其他 TODO/);
+});
+
+test('Session work-item scope hides other assignments and preserves them during edits', () => {
+  const doc = {
+    v: 1,
+    project: 'scope-test',
+    unassigned_bugs: [{ id: 'B4', title: '未分配', status: 'open', sessions: [] }],
+    root: {
+      id: 'T0', title: '项目', kind: 'module', children: [{
+        id: 'N1', title: '节点', kind: 'work', proposal: 'accepted',
+        bugs: [
+          { id: 'B1', title: '我的', status: 'open', sessions: ['session-a'] },
+          { id: 'B2', title: '别人的', status: 'open', sessions: ['session-b'] },
+          { id: 'B3', title: '共同的', status: 'open', sessions: ['session-a', 'session-b'], dispatch: { session_id: 'session-b' } },
+        ],
+        todos: [
+          { id: 'TD1', title: '我的任务', status: 'processing', sessions: ['session-a'] },
+          { id: 'TD2', title: '别人的任务', status: 'processing', target_session: 'session-b', sessions: ['session-b'] },
+        ],
+        children: [],
+      }],
+    },
+  };
+  const scoped = scopeDocumentToSession(doc, 'session-a');
+  const node = scoped.root.children[0];
+  assert.deepEqual(node.bugs.map(item => item.id), ['B1', 'B3']);
+  assert.deepEqual(node.todos.map(item => item.id), ['TD1']);
+  assert.deepEqual(node.bugs[1].sessions, ['session-a']);
+  assert.equal(node.bugs[1].dispatch, undefined);
+  assert.deepEqual(scoped.unassigned_bugs, []);
+
+  node.bugs[0].title = '我的（已修改）';
+  node.bugs[1].sessions = [];
+  const operations = restoreSessionWorkItemOperations(doc, [{ type: 'update', id: 'N1', fields: { bugs: node.bugs } }], 'session-a');
+  const restored = operations[0].fields.bugs;
+  assert.equal(restored.find(item => item.id === 'B1').title, '我的（已修改）');
+  assert.deepEqual(restored.find(item => item.id === 'B2').sessions, ['session-b']);
+  assert.deepEqual(restored.find(item => item.id === 'B3').sessions, ['session-b']);
+  assert.throws(() => restoreSessionWorkItemOperations(doc, [{ type: 'update-bug', bug: { id: 'B2', status: 'resolved' } }], 'session-a'), { code: 'FORBIDDEN_WORK_ITEM' });
+  assert.throws(() => restoreSessionWorkItemOperations(doc, [{ type: 'update', id: 'N1', fields: { bugs: [{ id: 'B2', title: '伪造覆盖', status: 'open', sessions: ['session-a'] }] } }], 'session-a'), { code: 'FORBIDDEN_WORK_ITEM' });
+
+  const changes = scopeChangesToSession({ changes: [{ operations: [{ type: 'update', id: 'N1', fields: { bugs: doc.root.children[0].bugs } }] }] }, doc, 'session-a');
+  assert.deepEqual(changes.changes[0].operations[0].fields.bugs.map(item => item.id), ['B1', 'B3']);
+});
+
 test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation and migration preview', async () => {
   const f = await fixture(), delivered = [];
-  f.doc.root.children[0].bugs.push({ id: 'B1', title: '待分配', status: 'open', sessions: [] });
-  f.doc.root.children[0].todos = [{ id: 'TD1', title: '新需求', status: 'pending', sessions: [] }];
+  f.doc.root.children[0].bugs.push(
+    { id: 'B1', title: '待分配', status: 'open', sessions: [] },
+    { id: 'B2', title: '分配给当前 Session', status: 'open', sessions: [agent.sessionId] },
+    { id: 'B3', title: '分配给其他 Session', status: 'open', sessions: ['other-session'] },
+  );
+  f.doc.root.children[0].todos = [
+    { id: 'TD1', title: '新需求', status: 'pending', sessions: [] },
+    { id: 'TD2', title: '当前任务', status: 'processing', sessions: [agent.sessionId] },
+    { id: 'TD3', title: '其他任务', status: 'processing', sessions: ['other-session'] },
+  ];
   await fs.writeFile(path.join(f.ctx, 'map.json'), encode(f.doc));
   const running = await startServer({ root: f.root, port: 0, messageQueue: async payload => delivered.push(payload) });
   const base = new URL(running.state.url).origin;
@@ -760,7 +844,15 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.deepEqual(new Set(accessState.data.grants[agent.sessionId].nodes), new Set(['T0', 'N1']));
     const selectedAccess = await call(`/api/access?view=session%3A${agent.sessionId}`, running.humanToken);
     assert.equal(selectedAccess.data.currentSessionId, agent.sessionId);
+    assert.deepEqual(selectedAccess.data.sessions.map(item => item.id), [agent.sessionId]);
     const credential = registration.data.token;
+    const agentState = await call('/api/state', credential);
+    assert.deepEqual(agentState.data.doc.root.children[0].bugs.map(item => item.id), ['B2']);
+    assert.deepEqual(agentState.data.doc.root.children[0].todos.map(item => item.id), ['TD2']);
+    const selectedState = await call(`/api/state?view=session%3A${agent.sessionId}`, running.humanToken);
+    assert.deepEqual(selectedState.data.doc.root.children[0].bugs.map(item => item.id), ['B2']);
+    const globalState = await call('/api/state', running.humanToken);
+    assert.deepEqual(globalState.data.doc.root.children[0].bugs.map(item => item.id), ['B1', 'B2', 'B3']);
     assert.equal((await call('/api/session', running.state.adminToken, { sessionId: 'fake-session' })).status, 403);
     assert.equal((await call('/api/state', credential, null, { Origin: 'https://evil.invalid' })).status, 403);
     assert.equal((await call('/package.json', credential)).status, 404);
@@ -793,6 +885,13 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.equal(delivered.length, 2);
     assert.equal(delivered[1].todo.id, 'TD1');
     assert.match(delivered[1].message, /TODO: TD1 · 新需求/);
+    const beforeScopedEdit = await call('/api/state', credential);
+    const visibleBugs = beforeScopedEdit.data.doc.root.children[0].bugs;
+    visibleBugs[0].title = '当前 Session 已修改';
+    assert.equal((await call('/api/commit', credential, { baseVersion: beforeScopedEdit.data.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { bugs: visibleBugs } }] })).status, 200);
+    assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B1').title, '待分配');
+    assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B2').title, '当前 Session 已修改');
+    assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B3').title, '分配给其他 Session');
     assert.equal((await call('/api/commit', credential, edit(running.store, 'CLI权限'))).status, 200);
     await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] });
     assert.equal((await call('/api/commit', credential, edit(running.store, '已撤权'))).status, 403);
