@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
@@ -459,6 +460,41 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(map.root.children[0].bugs[0].sessions[0], session);
   const badEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
   assert.equal(badEvents[0].signal_id, badSignal);
+
+  const crashPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-crash-turn', prompt: '保存过程崩溃也必须恢复坏例' });
+  const crashSignal = crashPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  const crashArgs = [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', crashSignal,
+    '--node', 'N1', '--title', '坏例事务中断', '--phenomenon', '写到一半退出', '--trigger', '进程崩溃'];
+  const crashedOccurrence = spawnSync(python, crashArgs, {
+    cwd: project, encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, CONTEXT_GUARD_TESTING: '1', CONTEXT_GUARD_BAD_CASE_FAILPOINT: 'after-map' },
+  });
+  assert.equal(crashedOccurrence.status, 91);
+  run(python, crashArgs);
+  const transactionDir = path.join(ctx, 'private/bad-case-transactions');
+  assert.deepEqual(await fs.readdir(transactionDir), []);
+  map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  const recovered = map.root.children[0].bugs.find(item => item.title === '坏例事务中断');
+  assert.ok(recovered);
+  let recoveredEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
+  assert.equal(recoveredEvents.filter(item => item.case === recovered.id && item.event === 'occurrence').length, 1);
+  const recoveredRuntime = JSON.parse(await fs.readFile(path.join(ctx, 'private/hook-runtime', `${createHash('sha256').update(session).digest('hex')}.json`), 'utf8'));
+  assert.equal(recoveredRuntime.signals.find(item => item.id === crashSignal).status, 'resolved');
+
+  const fixArgs = [contextScript, 'record-bad-case-fix', '--root', project, '--session', session, '--case', recovered.id,
+    '--method', '重放持久事务', '--evidence', '崩溃测试通过', '--status', 'resolved'];
+  const crashedFix = spawnSync(python, fixArgs, {
+    cwd: project, encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, CONTEXT_GUARD_TESTING: '1', CONTEXT_GUARD_BAD_CASE_FAILPOINT: 'after-map' },
+  });
+  assert.equal(crashedFix.status, 91);
+  run(python, fixArgs);
+  assert.deepEqual(await fs.readdir(transactionDir), []);
+  map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  assert.equal(map.root.children[0].bugs.find(item => item.id === recovered.id).status, 'resolved');
+  recoveredEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
+  assert.equal(recoveredEvents.filter(item => item.case === recovered.id && item.event === 'fix').length, 1);
+
   const beforeConflict = await fs.readFile(path.join(ctx, 'map.json'), 'utf8');
   assert.throws(() => run('python3', [contextScript, 'record-todo', '--root', project, '--session', session,
     '--signal', badSignal, '--node', 'N1', '--title', 'must not write']), /already resolved as bad-case/);

@@ -18,7 +18,7 @@
 - [x] 同一 session 并行 Hook/CLI 以进程锁串行，崩溃自动释放；损坏状态保留并失败关闭（`tests/hook-runtime-concurrency.test.mjs`）
 - [ ] 任意脚本越出声明目录的实际修改追踪；当前明确标记范围未知并要求 Agent 复核，不声称已自动校验
 - [ ] 模型提供的分类、测试证据、节点评估的语义真实性：当前校验必填信息和成功回执，不能证明模型判断正确
-- [ ] Bad Case 本地多文件与远端 Map 的跨进程崩溃事务恢复；当前已防止跨 Session 编号竞争并保证单文件原子落盘，但进程中断仍可能留下可恢复的部分事务
+- [x] Bad Case 本地多文件与远端 Map 的跨进程崩溃事务恢复：持久事务日志、幂等重放、signal 收口及 occurrence/fix 中断测试（`tests/hook-lifecycle.test.mjs`）
 
 ## 工作树绑定与私有记忆
 
