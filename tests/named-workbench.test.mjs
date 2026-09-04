@@ -76,6 +76,10 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal((await call(named.url, '/api/state', { headers: auth })).data.doc.root.title, 'Saved through named entry');
   for (let i = 0; i < 5; i++) assert.ok((await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: `test-${i}` } })).token);
   const actor = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-0' } });
+  const defaultAccess = await call(named.url, '/api/access', { headers: auth });
+  assert.equal(defaultAccess.data.grants['test-0'].mode, 'all');
+  assert.deepEqual(defaultAccess.data.grants['test-0'].nodes, ['T0']);
+  assert.equal((await call(named.url, '/api/access', { method: 'POST', headers: auth, body: { sessionId: 'test-0', nodes: [] } })).status, 200);
   const denied = await call(named.url, '/api/commit', { method: 'POST', headers: { ...auth, Authorization: `Bearer ${actor.token}` }, body: { baseVersion: saved.data.version, operationId: 'ungranted-agent', operations: [{ type: 'update', id: 'T0', fields: { title: 'Must not change' } }] } });
   assert.equal(denied.status, 403);
   const otherRoot = await fixture(t, 'Other Project'), other = await startServer({ root: otherRoot, port: 0 }); t.after(() => other.close());
@@ -248,8 +252,8 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   await fs.cp(path.join(cwd, 'prototype'), path.join(installed, 'prototype'), { recursive: true });
   const runtimeFile = path.join(installed, 'scripts/workbench/runtime.mjs');
   const runtime = (await fs.readFile(runtimeFile, 'utf8'))
-    .replace("project-workbench-v4", "project-workbench-v3")
-    .replace(/\s*'global-project-registry',\r?\n/, '\n');
+    .replace("project-workbench-v5", "project-workbench-v4")
+    .replace(/\s*'session-auto-binding',\r?\n/, '\n');
   await fs.writeFile(runtimeFile, runtime);
   const old = spawnSync(process.execPath, [path.join(installed, 'scripts/workbench/cli.mjs'), 'workbench', '--root', root, '--port', '0', '--direct'], {
     encoding: 'utf8', windowsHide: true, timeout: 15_000,
@@ -261,7 +265,7 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   const upgraded = await ensureServer(root, 0); t.after(() => stopServer(root));
   assert.notEqual(upgraded.instance, oldResult.instance);
   assert.equal((await diagnoseWorkbench(root)).runtime.status, 'ready');
-  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v4');
+  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v5');
 });
 test('proxy restart keeps persisted routes and one project closing cannot take down another', async t => {
   const { proxy, backend, named, dir } = await environment(t);
@@ -403,20 +407,23 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   const hookArgs = [path.join(cwd, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'];
   const payload = JSON.stringify({ cwd: root, session_id: 'named-hook' });
   const unbound = await run(hookArgs, payload);
-  assert.match(unbound.stdout + unbound.stderr, /not bound/);
+  assert.match(unbound.stdout + unbound.stderr, /no established workbench/);
   await assert.rejects(fs.access(path.join(root, '.codex/context/private/workbench.json')));
   const backend = await startServer({ root, port: 0 }); t.after(() => backend.close());
   const known = await namedWorkbench(backend.state, request, { dir });
-  const offered = await run(hookArgs, payload);
-  assert.match(offered.stdout + offered.stderr, new RegExp(known.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(offered.stdout + offered.stderr, /matching project workbench is running/);
-  await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'named-hook', worktreeRoot: root, workbenchUrl: new URL('/prototype/workbench.html', backend.state.url).href } });
+  const automaticallyBound = await run(hookArgs, payload);
+  assert.match(automaticallyBound.stdout + automaticallyBound.stderr, new RegExp(known.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(automaticallyBound.stdout + automaticallyBound.stderr, /Ask the user/);
   assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true);
   const hook = await run(hookArgs, payload);
   assert.match(hook.stdout + hook.stderr, /http:\/\/hook-project\.localhost:\d+\/prototype\/workbench.html/);
   const repaired = await diagnoseWorkbench(root, 'named-hook');
   assert.equal(repaired.session.verified, true);
   assert.match(repaired.session.workbenchUrl, /hook-project\.localhost/);
+  await backend.close();
+  const restored = await run(hookArgs, payload);
+  assert.doesNotMatch(restored.stdout + restored.stderr, /Ask the user/);
+  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true);
   // Use a spy, not the user's browser, but exercise the real Python opener path.
   const code = `import sys,os,json; sys.path.insert(0,${JSON.stringify(path.join(cwd, 'scripts'))}); import context_guard as c; from pathlib import Path; os.environ.pop('CI',None); os.environ.pop('CONTEXT_GUARD_HEADLESS',None); calls=[]; c.webbrowser.open=lambda *a,**k:calls.append(a[0]); c.start_workbench(Path.cwd()); c.start_workbench(Path.cwd()); print(json.dumps(calls))`;
   const opened = await run(['-c', code]); assert.equal(JSON.parse(opened.stdout).length, 1);

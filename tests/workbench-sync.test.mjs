@@ -11,7 +11,7 @@ import { diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbenc
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
-import { startMemoryServer } from '../scripts/cloud/memory.mjs';
+import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
@@ -66,7 +66,9 @@ test('session registry exposes lifecycle state and filters maintenance actors', 
   assert.equal(snapshot.sessions[0].status, 'stopped');
   assert.equal(snapshot.sessions[1].status, 'active');
   assert.equal(snapshot.sessions[1].name, '真实会话名称');
-  assert.equal(snapshot.currentSessionId, agent.sessionId);
+  assert.equal(snapshot.currentSessionId, null);
+  assert.equal((await access.snapshot(null, agent.sessionId)).currentSessionId, agent.sessionId);
+  assert.equal(snapshot.grants[agent.sessionId].mode, 'all');
   assert.ok((await access.recordedSessionIds()).includes('maintenance-test'));
 });
 
@@ -80,7 +82,8 @@ test('Codex task discovery supplies real names and active/completed state withou
   await access.register('codex-active', { worktreeRoot: f.root });
   await access.register('codex-complete', { worktreeRoot: f.root });
   const snapshot = await access.snapshot();
-  assert.equal(snapshot.currentSessionId, 'codex-active');
+  assert.equal(snapshot.currentSessionId, null);
+  assert.equal((await access.snapshot(null, 'codex-active')).currentSessionId, 'codex-active');
   assert.deepEqual(snapshot.sessions.slice(0, 2).map(({ id, name, status }) => ({ id, name, status })), [
     { id: 'codex-active', name: '新任务', status: 'active' },
     { id: 'codex-complete', name: '已完成任务', status: 'stopped' },
@@ -312,6 +315,50 @@ test('Workbench coordinator automatically syncs one Session in both directions a
   await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '冷启动断网保留', 6000);
   await until(() => coordinator.snapshot().status === 'synced');
   await coordinator.close(); await store.close();
+});
+
+test('Workbench coordinator automatically reopens the same Session after its prior generation is published', async t => {
+  const f = await fixture();
+  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'fixture@example.invalid');
+  git('config', 'user.name', 'Fixture');
+  git('add', '.codex/context/map.json');
+  git('commit', '-m', 'baseline');
+  const head = git('rev-parse', 'HEAD');
+  const sharedDir = path.join(f.root, 'generation-shared');
+  const configuration = {
+    dataDir: path.join(f.root, 'generation-memory'),
+    adminToken: 'memory-admin',
+    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
+  };
+  await fs.mkdir(sharedDir, { recursive: true });
+  const service = await startMemoryServer(configuration);
+  const project = { sharedDir, head };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  const seeded = await memoryRequest(project, 'sessions/reusable-session', {
+    operationId: 'reusable-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
+    memory: { map: f.doc, records: {} },
+  });
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'generation-store-runtime'), eventsFile: path.join(f.root, 'generation-store-events.jsonl'),
+  }).init();
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'reusable-session', store, directory: path.join(f.root, 'generation-sync'), retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'synced');
+  const published = await memoryRequest(project, 'publish', {
+    operationId: 'reusable-publish', baseVersion: null, sessionId: 'reusable-session', sessionVersion: seeded.snapshot.version, expectedMainSha: head,
+  });
+  assert.equal((await memoryPublicationStatus(configuration, 'project', 'reusable-session')).status, 'published');
+  await store.commit({ baseVersion: store.version, operationId: 'second-round-local-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '第二轮开发' } }] }, human);
+  await until(async () => (await memoryRequest(project, 'sessions/reusable-session')).snapshot?.memory.map.root.children[0].title === '第二轮开发', 6000);
+  await until(() => coordinator.snapshot().status === 'synced');
+  const reopened = (await memoryRequest(project, 'sessions/reusable-session')).snapshot;
+  assert.equal(reopened.generation, 2);
+  assert.equal(reopened.reopenedFrom, published.snapshot.version);
+  assert.equal((await memoryPublicationStatus(configuration, 'project', 'reusable-session')).status, 'ready');
+  assert.equal((await readMemoryProject(configuration, 'project')).closedSessions['reusable-session'].publications.length, 1);
 });
 
 test('Workbench coordinator preserves local, remote, and base documents on a same-field conflict', async t => {
@@ -611,7 +658,11 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     const registration = await call('/api/session', running.state.adminToken, { sessionId: agent.sessionId }); assert.equal(registration.status, 200);
     const accessState = await call('/api/access', running.humanToken);
     assert.equal(accessState.data.sessions[0].id, agent.sessionId);
-    assert.equal(accessState.data.currentSessionId, agent.sessionId);
+    assert.equal(accessState.data.currentSessionId, null);
+    assert.equal(accessState.data.grants[agent.sessionId].mode, 'all');
+    assert.deepEqual(new Set(accessState.data.grants[agent.sessionId].nodes), new Set(['T0', 'N1']));
+    const selectedAccess = await call(`/api/access?view=session%3A${agent.sessionId}`, running.humanToken);
+    assert.equal(selectedAccess.data.currentSessionId, agent.sessionId);
     const credential = registration.data.token;
     assert.equal((await call('/api/session', running.state.adminToken, { sessionId: 'fake-session' })).status, 403);
     assert.equal((await call('/api/state', credential, null, { Origin: 'https://evil.invalid' })).status, 403);
@@ -635,10 +686,12 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     const plan = await call('/api/access-plan', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1' });
     assert.equal(plan.status, 200);
     assert.deepEqual(new Set(plan.data.nodes), new Set(['T0', 'N1']));
+    assert.deepEqual(plan.data.missing, []);
+    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 200);
+    assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] })).status, 200);
     const deniedMessage = await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' });
     assert.equal(deniedMessage.status, 403); assert.equal(deniedMessage.data.error.code, 'SESSION_SCOPE_REQUIRED');
-    assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, addNodes: plan.data.nodes })).status, 200);
-    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 200);
+    assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, mode: 'all' })).status, 200);
     assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', todoId: 'TD1' })).status, 200);
     assert.equal(delivered.length, 2);
     assert.equal(delivered[1].todo.id, 'TD1');

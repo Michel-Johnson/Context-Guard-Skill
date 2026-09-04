@@ -234,7 +234,7 @@ async function main() {
     }
   );
   const firstResponse = JSON.parse(firstStart.stdout);
-  assert.match(firstResponse.additional_context, /This Session is not bound/);
+  assert.match(firstResponse.additional_context, /no established workbench for automatic Session binding/);
   assert.ok(!fs.existsSync(path.join(project, ".codex", "context", "index.md")), "an unbound Session must not initialize project memory");
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "payload root must beat process cwd");
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions.jsonl")), "an unbound hook keeps only registration evidence");
@@ -280,10 +280,8 @@ async function main() {
     [hookScript, "session-start", "--platform", "codex"],
     { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-two" }) }
   );
-  assert.match(secondBindingPrompt.stdout, /This Session is not bound/);
-  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-two", "--port", String(bindingPort)], {
-    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
-  });
+  assert.doesNotMatch(secondBindingPrompt.stdout, /not bound|Ask (?:the user|which workbench)/);
+  assert.match(secondBindingPrompt.stdout, /Workbench: http:\/\//);
   const secondStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -343,10 +341,8 @@ async function main() {
     [hookScript, "session-start", "--platform", "codex"],
     { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-three" }) }
   );
-  assert.match(thirdBindingPrompt.stdout, /This Session is not bound/);
-  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-three", "--port", String(bindingPort)], {
-    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
-  });
+  assert.doesNotMatch(thirdBindingPrompt.stdout, /not bound|Ask (?:the user|which workbench)/);
+  assert.match(thirdBindingPrompt.stdout, /Workbench: http:\/\//);
   const automaticWorkbenchStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],

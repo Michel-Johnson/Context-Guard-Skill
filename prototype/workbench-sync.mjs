@@ -133,7 +133,16 @@ export class WorkbenchSync {
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
       this.setStatus('synced', hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
       return true;
-    } catch (e) { this.setStatus('error', e.message); return false; }
+    } catch (e) {
+      if (e.code === 'UNKNOWN_VIEW' && this.activeSession !== ALL_SESSIONS) {
+        this.activeSession = ALL_SESSIONS;
+        this.viewId = 'main';
+        this.manualSession = false;
+        this.captureKey = null;
+        return this.start();
+      }
+      this.setStatus('error', e.message); return false;
+    }
   }
   connect() {
     this.events?.close();

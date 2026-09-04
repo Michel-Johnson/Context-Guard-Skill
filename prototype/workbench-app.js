@@ -899,6 +899,8 @@ function syncBootstrapFromTree(){
 }
 let workbenchSync = null;
 let applyingServerMap = false;
+let renderedAccessSession = null;
+let hasRenderedAccessSession = false;
 function persist(){
   if(window.__CG_PREVIEW || applyingServerMap) return;
   snapshotRepo();
@@ -921,7 +923,8 @@ function persist(){
     const light = {v:2, repoId, st:{}};
     Object.values(catalog).forEach(r=>{ light.st[r.id] = r.bootstrap; });
     const next = "#cg2="+encodeURIComponent(JSON.stringify(light));
-    if(location.hash!==next) history.replaceState(null, "", next);
+    const currentHash=location.hash||"";
+    if((!currentHash || currentHash.startsWith("#cg2=")) && currentHash!==next) history.replaceState(null, "", next);
   }catch(e){}
   scheduleMapWrite();
 }
@@ -1178,18 +1181,137 @@ function renderRepoMenu(){
   });
 }
 function closeRepoMenu(){ document.getElementById("repo-menu").classList.remove("open"); }
-function sessionPrimaryLabel(meta){
-  if(!meta) return t("sessionNow");
-  const platform = String(meta.platform||"").trim();
-  const name = String(meta.name||"").trim();
-  const readableName = name && name!==String(meta.id||"") && name!==String(meta.shortId||"") ? name : "";
-  const readablePlatform = platform && platform!=="unknown" ? platform : "";
-  if(readableName) return readablePlatform ? `${readablePlatform}-${readableName}` : readableName;
-  return readablePlatform ? `${readablePlatform}-${t("sessionNow")}` : t("sessionNow");
+function sessionIdOf(meta){
+  return String(meta?.id||meta?.sessionId||"").trim();
 }
-function sessionMetaLabel(meta){
-  if(!meta) return "暂无 Agent 会话";
-  return [...new Set([sessionPrimaryLabel(meta),meta.worktreeName,meta.branch].filter(Boolean))].join(" · ");
+function sessionTimestamp(meta){
+  for(const value of [meta?.statusSeen,meta?.lastSeen,meta?.updatedAt,meta?.firstSeen]){
+    const parsed=Date.parse(value||"");
+    if(Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+function mergeSessionMeta(left,right){
+  const newer=sessionTimestamp(right)>=sessionTimestamp(left)?right:left;
+  const older=newer===right?left:right;
+  const merged={...older,...newer,id:sessionIdOf(newer)||sessionIdOf(older)};
+  for(const key of ["name","platform","status","statusSeen","lastSeen","firstSeen","bindingState","worktreeName","worktreeRoot","branch"]){
+    if(merged[key]===undefined || merged[key]===null || String(merged[key]).trim()==="") merged[key]=older[key];
+  }
+  return merged;
+}
+function isUnavailableSession(meta){
+  const status=String(meta?.status||"").trim().toLowerCase();
+  const binding=String(meta?.bindingState||"").trim().toLowerCase();
+  return ["closed","published","expired","deleted","invalid"].includes(status)
+    || ["closed","published","expired","deleted","invalid"].includes(binding);
+}
+function normalizeSessions(items){
+  const byId=new Map();
+  for(const raw of Array.isArray(items)?items:[]){
+    const meta=typeof raw==="string"?{id:raw,name:"",platform:"unknown",status:"active"}:raw;
+    const id=sessionIdOf(meta);
+    if(!id) continue;
+    const clean={...meta,id};
+    byId.set(id,byId.has(id)?mergeSessionMeta(byId.get(id),clean):clean);
+  }
+  return [...byId.values()].filter(meta=>!isUnavailableSession(meta));
+}
+function browserCurrentSessionId(){
+  const id=String(new URLSearchParams(location.search).get("session")||"").trim();
+  return id && id!=="__all__" ? id : null;
+}
+function readableSessionName(meta){
+  const id=sessionIdOf(meta), shortId=String(meta?.shortId||"").trim(), name=String(meta?.name||"").trim();
+  const placeholder=/^(?:agent\s*[=：:·-]\s*)?(?:当前会话|current session)$/i.test(name);
+  return name && name!==id && name!==shortId && !placeholder ? name : "";
+}
+function sessionBaseLabel(meta){
+  const id=sessionIdOf(meta), shortId=String(meta?.shortId||"").trim();
+  const humanValue=value=>{
+    const text=String(value||"").trim();
+    return text && text!==id && text!==shortId ? text : "";
+  };
+  const platform=String(meta?.platform||"").trim();
+  const readablePlatform=platform && platform!=="unknown" ? platform : "";
+  const name=readableSessionName(meta);
+  const worktree=humanValue(meta?.worktreeName);
+  const branch=humanValue(meta?.branch);
+  if(name) return [...new Set([readablePlatform?`${readablePlatform}-${name}`:name,worktree,branch].filter(Boolean))].join(" · ");
+  const context=[worktree,branch].filter((value,index,array)=>value && array.indexOf(value)===index);
+  if(context.length) return [readablePlatform,...context].filter(Boolean).join(" · ");
+  return `${readablePlatform||"Agent"} ${uiLang==="en"?"session":"会话"}`;
+}
+function sessionPrimaryLabel(meta,sessions=workbenchSync?.sessions||[]){
+  if(!meta) return uiLang==="en"?"No agent session":"暂无 Agent 会话";
+  const id=sessionIdOf(meta), base=sessionBaseLabel(meta);
+  const peers=normalizeSessions(sessions).filter(item=>sessionBaseLabel(item)===base).sort((a,b)=>sessionIdOf(a).localeCompare(sessionIdOf(b)));
+  const ordinal=peers.length>1 ? `${uiLang==="en"?"session":"会话"} ${Math.max(0,peers.findIndex(item=>sessionIdOf(item)===id))+1}` : "";
+  return [base,ordinal,id===browserCurrentSessionId()?t("sessionNow"):""].filter(Boolean).join(" · ");
+}
+function sessionMetaLabel(meta,sessions=workbenchSync?.sessions||[]){
+  return sessionPrimaryLabel(meta,sessions);
+}
+function sessionLifecycle(meta){
+  if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
+  const status=String(meta?.status||"").toLowerCase();
+  if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
+  if(["stopped","completed","done"].includes(status)) return {state:"stopped",label:"已完成",disabled:false};
+  return {state:"unknown",label:"状态未知",disabled:false};
+}
+function syncSessionSelect(){
+  const select=document.getElementById("cg-sync-session");
+  if(!select || !workbenchSync) return;
+  const sessions=normalizeSessions(workbenchSync.sessions);
+  const all=document.createElement("option"); all.value="__all__"; all.textContent=t("allSessions");
+  const options=sessions.map(meta=>{
+    const option=document.createElement("option");
+    option.value=sessionIdOf(meta); option.textContent=sessionMetaLabel(meta,sessions);
+    const lifecycle=sessionLifecycle(meta); option.disabled=lifecycle.disabled;
+    option.title=lifecycle.label;
+    return option;
+  });
+  select.replaceChildren(all,...options);
+  select.disabled=false;
+  select.value=workbenchSync.activeSession;
+}
+function setWorkbenchAccess(ids,session,meta,global,main){
+  sessionAuth.clear();
+  ids.forEach(id=>sessionAuth.add(id));
+  const sessions=normalizeSessions(workbenchSync?.sessions||[]);
+  if(workbenchSync) workbenchSync.sessions=sessions;
+  const activeMeta=global?null:sessions.find(item=>sessionIdOf(item)===session)||null;
+  const accessKey=global?"__all__":session;
+  const changedSession=hasRenderedAccessSession && renderedAccessSession!==accessKey;
+  const invalidPinnedSession=!hasRenderedAccessSession && global && new URLSearchParams(location.search).has("session");
+  if(changedSession || invalidPinnedSession){
+    clearRelationMode();
+    syncSessionQuery(accessKey);
+  }
+  renderedAccessSession=accessKey;
+  hasRenderedAccessSession=true;
+  const label=document.getElementById("session-name");
+  const status=document.getElementById("session-status");
+  const chip=document.getElementById("session-chip");
+  const lifecycle=activeMeta?sessionLifecycle(activeMeta):{state:"empty",label:"未挂载会话",disabled:false};
+  const displayName=global?t("allSessions"):sessionMetaLabel(activeMeta,sessions);
+  const state=global?"empty":lifecycle.state;
+  const stateLabel=global?t("globalSessionView"):lifecycle.label;
+  label.textContent=displayName;
+  label.title=global&&main?.branch
+    ? `${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`
+    : [stateLabel,activeMeta?sessionBaseLabel(activeMeta):""].filter(Boolean).join(" · ");
+  status.className=`session-status ${state}`;
+  status.setAttribute("aria-label",stateLabel);
+  status.title=stateLabel;
+  chip.disabled=false;
+  chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`);
+  syncSessionSelect();
+  renderSessionMenu();
+  refreshCloudPublication();
+  applyingServerMap=true;
+  try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }
+  finally{ applyingServerMap=false; }
 }
 function positionSessionMenu(){
   const chip = document.getElementById("session-chip");
@@ -1248,18 +1370,17 @@ async function publishCloudMain(){
 function renderSessionMenu(){
   const menu = document.getElementById("session-menu");
   if(!menu) return;
-  const sessions = workbenchSync?.sessions||[];
+  const sessions = normalizeSessions(workbenchSync?.sessions||[]);
   const main=workbenchSync?.project?.main;
   const mainHint=main?.branch?`${t("globalSessionView")} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:t("globalSessionView");
   const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(mainHint)}">
     <span class="session-option-name">${esc(t("allSessions"))}</span>
   </button>`;
   menu.innerHTML = all + sessions.map(meta=>{
-    const state = meta.bindingState==="stale" ? "unknown" : meta.status==="active" ? "active" : meta.status==="stopped" ? "stopped" : "unknown";
-    const stateLabel = meta.bindingState==="stale" ? "绑定已失效" : state==="active" ? "工作中" : state==="stopped" ? "已完成" : "状态未知";
-    return `<button type="button" role="option" data-session="${escAttr(meta.id)}" aria-selected="${meta.id===workbenchSync.activeSession}" title="${escAttr(stateLabel)}">
-      <span class="session-option-name">${esc(sessionMetaLabel(meta))}</span>
-      <span class="session-status ${state}" aria-label="${stateLabel}"></span>
+    const lifecycle=sessionLifecycle(meta), id=sessionIdOf(meta);
+    return `<button type="button" role="option" data-session="${escAttr(id)}" aria-selected="${id===workbenchSync.activeSession}" aria-disabled="${lifecycle.disabled}" ${lifecycle.disabled?"disabled":""} title="${escAttr(lifecycle.label)}">
+      <span class="session-option-name">${esc(sessionMetaLabel(meta,sessions))}</span>
+      <span class="session-status ${lifecycle.state}" aria-label="${lifecycle.label}"></span>
     </button>`;
   }).join("");
   menu.querySelectorAll("[data-session]").forEach(button=>{
@@ -1943,11 +2064,11 @@ function bugSessionsOf(bug){
   return bug.sessions;
 }
 function sessionMetaOf(sessionId){
-  return (workbenchSync?.sessions||[]).find(item=>item.id===sessionId) || null;
+  return normalizeSessions(workbenchSync?.sessions||[]).find(item=>sessionIdOf(item)===sessionId) || null;
 }
 function sessionDisplayName(sessionId){
   const meta = sessionMetaOf(sessionId);
-  return meta ? sessionPrimaryLabel(meta) : t("sessionNow");
+  return meta ? sessionPrimaryLabel(meta) : (uiLang==="en"?"Agent session":"Agent 会话");
 }
 function bugProgress(bug){
   const status = String(bug?.status||"open");
@@ -2030,16 +2151,47 @@ function focusedBug(){
   const loose = ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===bugFocus.bugId);
   return loose ? {node:n, bug:loose, unassigned:true} : null;
 }
-function clearRelationMode(){
-  if(!relationMode) return;
+function clearRelationQuery(){
+  const url=new URL(location.href);
+  if(!url.searchParams.has("relation")) return;
+  url.searchParams.delete("relation");
+  history.replaceState(history.state,"",`${url.pathname}${url.search}${url.hash}`);
+}
+function syncSessionQuery(sessionId){
+  const url=new URL(location.href);
+  if(sessionId && sessionId!=="__all__") url.searchParams.set("session",sessionId);
+  else url.searchParams.delete("session");
+  url.searchParams.delete("relation");
+  history.replaceState(history.state,"",`${url.pathname}${url.search}${url.hash}`);
+}
+function clearRelationMode(options={}){
+  const changed=relationMode || relAnchorId!==null;
   relationMode = false;
   relAnchorId = null;
+  if(options.clearDeepLink) clearRelationQuery();
   const btn = document.getElementById("btn-rel");
   if(btn){
     btn.classList.remove("on");
     btn.setAttribute("aria-pressed","false");
   }
   document.body.classList.remove("rel-mode");
+  return changed;
+}
+function applyRelationDeepLink(){
+  const relationId=String(new URLSearchParams(location.search).get("relation")||"").trim();
+  if(!relationId) return false;
+  const node=getNode(relationId);
+  if(!node || isCancelled(node)){
+    clearRelationMode({clearDeepLink:true});
+    return false;
+  }
+  relationMode=true;
+  relAnchorId=relationId;
+  selectedId=relationId;
+  const btn=document.getElementById("btn-rel");
+  if(btn){ btn.classList.add("on"); btn.setAttribute("aria-pressed","true"); }
+  document.body.classList.add("rel-mode");
+  return true;
 }
 function enterBugPath(nodeId, bugId){
   clearRelationMode();
@@ -2087,9 +2239,11 @@ function openBugPanel(open){
 
 function sessionOptionsHtml(selected, requireChoice){
   const empty = requireChoice ? `<option value="">${esc(t("chooseSession"))}</option>` : "";
-  return empty + (workbenchSync?.sessions||[]).map(meta=>
-    `<option value="${escAttr(meta.id)}" ${meta.id===selected?"selected":""}>${esc(sessionMetaLabel(meta))}</option>`
-  ).join("");
+  const sessions=normalizeSessions(workbenchSync?.sessions||[]);
+  return empty + sessions.map(meta=>{
+    const id=sessionIdOf(meta), lifecycle=sessionLifecycle(meta);
+    return `<option value="${escAttr(id)}" ${id===selected?"selected":""} ${lifecycle.disabled?"disabled":""}>${esc(sessionMetaLabel(meta,sessions))}</option>`;
+  }).join("");
 }
 
 function scopePreview(plan){
@@ -2514,12 +2668,17 @@ document.getElementById("lang-toggle").onclick = e=>{
 };
 document.getElementById("btn-rel").onclick = ()=>{
   if(bugPathMode) exitBugPath(true);
-  relationMode = !relationMode;
-  if(!relationMode) relAnchorId = null;
+  if(relationMode){
+    clearRelationMode({clearDeepLink:true});
+    renderAll();
+    fitView();
+    return;
+  }
+  relationMode = true;
   const btn = document.getElementById("btn-rel");
-  btn.classList.toggle("on", relationMode);
-  btn.setAttribute("aria-pressed", relationMode ? "true" : "false");
-  document.body.classList.toggle("rel-mode", relationMode);
+  btn.classList.add("on");
+  btn.setAttribute("aria-pressed", "true");
+  document.body.classList.add("rel-mode");
   renderAll();
   fitView();
 };
@@ -4317,13 +4476,14 @@ async function boot(){
     document.body.append(notice);
     await loadMapFromHttp();
     authUnlockAll();
+    applyRelationDeepLink();
     renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
     pending:()=>{ for(const id of ['nodes','links','currents']) document.getElementById(id)?.replaceChildren(); },
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session,meta,global,main)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?.status==="stopped"?"stopped":meta?"unknown":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":state==="unknown"?"状态未知":"未挂载会话"; label.textContent=displayName; label.title=global&&main?.branch?`${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:global?stateLabel:meta?.worktreeRoot||meta?.name||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); refreshCloudPublication(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:setWorkbenchAccess
   });
   const publishButton=document.getElementById("btn-publish-main");
   if(publishButton) publishButton.onclick=publishCloudMain;
@@ -4349,6 +4509,7 @@ async function boot(){
   }
   syncThemePicks();
   if(window.__CG_PREVIEW || !window.__CG_SERVER) authUnlockAll();
+  applyRelationDeepLink();
   renderAll();
   finishDrawerChrome();
   fitView();

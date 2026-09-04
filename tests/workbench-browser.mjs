@@ -111,7 +111,7 @@ try {
   const unbound = await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, thread_name: 'basic-browser', is_background_agent: true }), timeout: 20000,
   });
-  assert.match(unbound.stdout, /This Session is not bound/);
+  assert.match(unbound.stdout, /no established workbench for automatic Session binding/);
   const sessions = (await fs.readFile(path.join(ctx, 'sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessions.some(event => event.session_id === session && event.event === 'session-start'));
   await assert.rejects(fs.stat(path.join(ctx, 'sessions', `${session}.md`)), { code: 'ENOENT' });
@@ -151,8 +151,11 @@ try {
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   assert.equal(await page.locator('#auth-count').count(), 0);
   assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '主工作台 · 全部 Session');
+  assert.equal(await page.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
+  assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu [data-session]').count(), 2);
+  assert.equal(await page.locator('#session-menu .session-option-name').filter({ hasText: '当前会话' }).count(), 0, 'an unpinned browser must not invent a current Session');
   await page.locator('#session-chip').click();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 500).toISOString(), event: 'maintenance', platform: 'cli', session_id: 'maintenance-browser' })}\n`);
   const liveSession = 'browser-live-agent';
@@ -164,13 +167,102 @@ try {
   await pinnedPage.goto(`${running.state.url}?session=${encodeURIComponent(session)}`);
   await pinnedPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   assert.equal(await pinnedPage.locator('#cg-sync-session').inputValue(), session, 'a Session URL must not switch to a newer active task');
+  await pinnedPage.locator('#session-chip').click();
+  const pinnedCurrent = pinnedPage.locator('#session-menu [data-session]').filter({ hasText: '当前会话' });
+  assert.equal(await pinnedCurrent.count(), 1, 'only the URL-bound Session is the current Session');
+  assert.equal(await pinnedCurrent.getAttribute('data-session'), session);
   await pinnedPage.close();
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
+
+  const sameBranchA = 'browser-contract-a';
+  const sameBranchB = 'browser-contract-b';
+  const closedSession = 'browser-contract-closed';
+  const publishedSession = 'browser-contract-published';
+  const staleSession = 'browser-contract-stale';
+  const contractPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  contractPage.on('pageerror', error => errors.push(error.stack || error.message));
+  await contractPage.route('**/api/access*', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    const base = body.sessions.find(item => item.id === session);
+    assert.ok(base, 'the real Session must be present in the access contract');
+    body.currentSessionId = sameBranchB;
+    body.sessions = [
+      base,
+      { ...base, name: '', lastSeen: '2000-01-01T00:00:00.000Z' },
+      { id: sameBranchA, name: 'agent=当前会话', platform: 'cursor', status: 'active', bindingState: 'bound', worktreeName: 'shared-worktree', branch: 'feature/shared', lastSeen: '2026-01-02T00:00:00.000Z' },
+      { id: sameBranchB, name: 'agent=当前会话', platform: 'cursor', status: 'active', bindingState: 'bound', worktreeName: 'shared-worktree', branch: 'feature/shared', lastSeen: '2026-01-01T00:00:00.000Z' },
+      { id: closedSession, name: '', platform: 'codex', status: 'closed', bindingState: 'bound' },
+      { id: publishedSession, name: '', platform: 'codex', status: 'published', bindingState: 'bound' },
+      { id: staleSession, name: '', platform: 'codex', status: 'active', bindingState: 'stale', branch: 'feature/stale' },
+    ];
+    await route.fulfill({ response, json: body });
+  });
+  await contractPage.goto(`${running.state.url}?session=${encodeURIComponent(session)}`);
+  await contractPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
+  await contractPage.locator('#session-chip').click();
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${session}"]`).count(), 1, 'duplicate Session records are collapsed by sessionId');
+  const contractCurrent = contractPage.locator('#session-menu [data-session]').filter({ hasText: '当前会话' });
+  assert.equal(await contractCurrent.count(), 1);
+  assert.equal(await contractCurrent.getAttribute('data-session'), session, 'an API currentSessionId must not override the URL authority');
+  const labelA = await contractPage.locator(`#session-menu [data-session="${sameBranchA}"] .session-option-name`).textContent();
+  const labelB = await contractPage.locator(`#session-menu [data-session="${sameBranchB}"] .session-option-name`).textContent();
+  assert.match(labelA, /cursor · shared-worktree · feature\/shared · 会话 1/);
+  assert.match(labelB, /cursor · shared-worktree · feature\/shared · 会话 2/);
+  assert.notEqual(labelA, labelB, 'same-branch Sessions remain independently identifiable');
+  const visibleSessionText = `${await contractPage.locator('#session-menu').textContent()} ${(await contractPage.locator('#cg-sync-session option').allTextContents()).join(' ')}`;
+  assert.doesNotMatch(visibleSessionText, /agent=当前会话/);
+  for (const id of [session, sameBranchA, sameBranchB, closedSession, publishedSession, staleSession]) assert.doesNotMatch(visibleSessionText, new RegExp(id));
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${closedSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${publishedSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${staleSession}"]`).isDisabled(), true);
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${staleSession}"]`).getAttribute('title'), '绑定已失效');
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${session}"]`).count(), 1);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${closedSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${publishedSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${staleSession}"]`).getAttribute('disabled'), '');
+  await contractPage.close();
+
+  const invalidPinnedPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  invalidPinnedPage.on('pageerror', error => errors.push(error.stack || error.message));
+  await invalidPinnedPage.goto(`${running.state.url}?session=removed-session#invalid-session-contract`);
+  await invalidPinnedPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === '__all__');
+  const recoveredUrl = new URL(invalidPinnedPage.url());
+  assert.equal(recoveredUrl.searchParams.has('session'), false, 'a removed Session URL falls back to All Sessions');
+  assert.equal(recoveredUrl.hash, '#invalid-session-contract');
+  await invalidPinnedPage.close();
+
+  const relationUrl = new URL(running.state.url);
+  relationUrl.searchParams.set('session', session);
+  relationUrl.searchParams.set('relation', 'N1');
+  relationUrl.hash = '#relation-contract';
+  const relationPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
+  relationPage.on('pageerror', error => errors.push(error.stack || error.message));
+  await relationPage.goto(relationUrl.href);
+  await relationPage.waitForFunction(() => document.body.classList.contains('rel-mode'));
+  assert.equal(await relationPage.locator('#btn-rel').getAttribute('aria-pressed'), 'true');
+  await relationPage.locator('#session-chip').click();
+  await relationPage.locator(`#session-menu [data-session="${liveSession}"]`).click();
+  await relationPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id && !document.body.classList.contains('rel-mode'), liveSession);
+  const switchedRelationUrl = new URL(relationPage.url());
+  assert.equal(switchedRelationUrl.searchParams.get('session'), liveSession);
+  assert.equal(switchedRelationUrl.searchParams.has('relation'), false);
+  assert.equal(switchedRelationUrl.hash, '#relation-contract');
+  await relationPage.reload();
+  await relationPage.waitForFunction(id => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === id, liveSession);
+  assert.equal(await relationPage.locator('body').evaluate(el => el.classList.contains('rel-mode')), false, 'refresh without a relation deep link stays in the normal view');
+  await relationPage.close();
+  recordCheck('session-identity-lifecycle-and-relation-defaults');
+
   await running.access.grant(liveSession, ['N1'], running.store.version);
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu [data-session]').count(), 3);
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
+  assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false, 'a newly bound Session starts with full workbench access');
+  await running.access.grant(session, [], running.store.version);
+  await page.reload();
+  await page.waitForFunction(id => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === id, session);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), true);
   await page.locator('#session-chip').click();
   await page.locator(`#session-menu [data-session="${liveSession}"]`).click();
@@ -190,6 +282,7 @@ try {
   await page.locator('#session-chip').click();
   await page.locator('#session-menu [data-session="__all__"]').click();
   await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === '__all__');
+  assert.equal(new URL(page.url()).searchParams.has('session'), false, 'All Sessions removes the Session URL pin');
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   recordCheck('all-session-global-scope');
   await page.locator('.node[data-id="N1"]').click();
@@ -285,6 +378,9 @@ try {
   await page.waitForFunction(() => document.querySelector('#session-status')?.classList.contains('stopped'));
   assert.equal(await page.locator('#session-status').getAttribute('aria-label'), '已完成');
   recordCheck('icon-only-session-status');
+  await page.locator('#session-chip').click();
+  await page.locator('#session-menu [data-session="__all__"]').click();
+  await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === '__all__');
   assert.equal((await read()).root.title, '浏览器验收'); recordCheck('legacy-cache-not-written');
   const chrome = await chromeHeights(page);
   assert.ok(chrome.length >= 3, 'chrome buttons are on screen');

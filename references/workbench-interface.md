@@ -46,10 +46,12 @@ The result separates the binding record (`current`, `moved`, `other-worktree`,
 `legacy`, `duplicate`, `unknown`, or `named-mismatch`). Before asking about an
 unbound Session, `workbench --list --root <project>` builds a fresh global
 inventory from the persistent project catalog, named routes and verified backend
-states. A unique ready match is presented by readable project URL and still needs
-human confirmation; a stopped match is reused after confirmation; legacy,
-duplicate, mismatched and unknown matches require diagnosis and never create a
-second service. The confirmed URL must resolve to the same Git project, backend
+states. A unique ready or compatible stopped match already established for this
+Git project is reused automatically. Human confirmation is reserved for the
+project's first workbench, ambiguous/mismatched candidates, or moving an existing
+Session to another worktree. Bindings are keyed by Session ID; branch and worktree
+are metadata. Legacy, duplicate, mismatched and unknown matches require diagnosis
+and never create a second service. A confirmed URL must resolve to the same Git project, backend
 instance, and compatible runtime. A broken binding/service means repair, not
 create another workbench. For an existing bound Session, a missing/stale canonical URL or a
 recognized older runtime is repaired by `workbench --session <id>` using the global
@@ -141,10 +143,12 @@ The tree uses `children` and may contain legacy `_inbox` children. IDs are uniqu
 across both. Existing unknown metadata is preserved. Own paths are relative to
 the project; no API accepts an arbitrary file path to write.
 
-Human scope grants are explicit node IDs. Granting a child does not implicitly
-grant ancestors. The workbench can grant a module's current descendants; future
-children do not silently acquire permission. Revocation applies to queued writes
-before they commit. Confirmation and scope grant are distinct actions.
+A new Session receives a dynamic full-Session-Map grant, so accepted nodes created
+later are included without another prompt. The human can replace that default with
+an explicit node set, restore full scope, or revoke it; explicit child grants do
+not imply ancestors. Revocation applies to queued writes before they commit. These
+grants never authorize Main-map writes, publication or administration. Proposal
+confirmation and scope changes remain distinct actions.
 
 ## Archive-to-Map reconciliation
 
@@ -215,6 +219,11 @@ hides the attachment controls again.
   can still be pending/failed. The page acknowledges its applied version separately.
 - `VERSION_CONFLICT`: old base; preserve the draft, read changes/current node,
   reconcile, then submit a **new** operation ID. Never retry a stale whole map.
+- `SESSION_REOPEN_REQUIRED`: publication closed the active Session generation.
+  The background coordinator must fetch current Main and create the next full
+  Session generation before resuming patches; the Agent does not write sync code.
+- `SESSION_BASELINE_CONFLICT`: a full reopen did not name the latest published
+  Main version. Preserve the draft, fetch Main, and rebase or surface a conflict.
 - Uncertain network result: resend the **identical** request with the **same** ID.
   Results survive process restarts. Reusing an ID for different input is rejected.
 - `RECOVERY_REQUIRED`: a map write may have succeeded before result/event storage

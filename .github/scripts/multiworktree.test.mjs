@@ -55,7 +55,7 @@ test('unbound hooks ask before initialization; no main branch is guessed; langua
   const { root, other } = await fixture(t);
   const p = await resolveProject(root), q = await resolveProject(other);
   assert.equal(p.projectId, q.projectId); assert.equal(p.bindingRequired, true);
-  const first = await hook(root, 'one'); assert.equal(first.code, 0); assert.match(first.stdout, /not bound/);
+  const first = await hook(root, 'one'); assert.equal(first.code, 0); assert.match(first.stdout, /no established workbench/);
   await assert.rejects(fs.access(path.join(root, '.codex/context/map.json')));
   const mapRead = await cli(root, 'map', 'read', '--session', 'one'); assert.notEqual(mapRead.code, 0); assert.match(mapRead.stdout, /SESSION_BINDING_REQUIRED/);
   await assert.rejects(fs.access(path.join(p.sharedDir, 'workbench.json')));
@@ -89,11 +89,29 @@ test('bound worktrees share service; Session maps are isolated; rebind expires o
   const one = await bind(root, 'one'), two = await bind(other, 'two');
   const a = (await call(service, '/api/state', one)).data, b = (await call(service, '/api/state', two)).data;
   assert.equal(a.viewId, 'session:one'); assert.equal(b.viewId, 'session:two');
-  await service.access.grant('one', ['T0'], a.version);
-  assert.equal((await call(service, '/api/commit', one, { baseVersion: a.version, operationId: 'change-one', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'one-only' } }] })).status, 200);
+  assert.deepEqual(a.grants, ['T0']);
+  const changed = await call(service, '/api/commit', one, { baseVersion: a.version, operationId: 'change-one', operations: [{ type: 'update', id: 'T0', fields: { purpose: 'one-only' } }] });
+  assert.equal(changed.status, 200);
+  const created = await call(service, '/api/commit?view=session%3Aone', service.humanToken, {
+    baseVersion: changed.data.version,
+    operationId: 'create-future-node',
+    operations: [{ type: 'create', parentId: 'T0', node: { id: 'N1', title: 'Future node', kind: 'work' } }],
+  });
+  assert.equal(created.status, 200, JSON.stringify(created));
+  const expanded = (await call(service, '/api/state', one)).data;
+  assert.deepEqual(expanded.grants.sort(), ['N1', 'T0']);
+  const futureWrite = await call(service, '/api/commit', one, { baseVersion: expanded.version, operationId: 'future-node-write', operations: [{ type: 'update', id: 'N1', fields: { purpose: 'dynamic grant' } }] });
+  assert.equal(futureWrite.status, 200);
+  await service.access.grant('one', ['T0'], futureWrite.data.version);
+  const narrowed = await call(service, '/api/commit', one, { baseVersion: futureWrite.data.version, operationId: 'narrowed-node-write', operations: [{ type: 'update', id: 'N1', fields: { purpose: 'must fail' } }] });
+  assert.equal(narrowed.status, 403); assert.equal(narrowed.data.error.code, 'FORBIDDEN');
+  await service.access.grant('one', [], futureWrite.data.version, 'all');
+  assert.deepEqual((await call(service, '/api/state', one)).data.grants.sort(), ['N1', 'T0']);
   assert.notEqual((await call(service, '/api/state', two)).data.doc.root.purpose, 'one-only');
   const all = (await call(service, '/api/state', service.humanToken)).data;
   assert.equal(all.doc.root, null); assert.equal(all.source.needsReconcile, true);
+  const mainWrite = await call(service, '/api/commit', service.humanToken, { baseVersion: all.version, operationId: 'main-write', operations: [{ type: 'update', id: 'T0', fields: { title: 'must fail' } }] });
+  assert.equal(mainWrite.status, 403); assert.equal(mainWrite.data.error.code, 'READ_ONLY_MAIN');
   const reused = await cli(other, 'workbench', '--session', 'two'); assert.equal(reused.code, 0, reused.stdout);
   const reusedUrl = new URL(JSON.parse(reused.stdout).url); const serviceUrl = new URL(service.state.url);
   assert.equal(reusedUrl.origin + reusedUrl.pathname, serviceUrl.origin + serviceUrl.pathname); assert.equal(reusedUrl.searchParams.get('session'), 'two');
@@ -222,18 +240,31 @@ test('private memory requires authentication, isolates Sessions, verifies merge 
   const published = await call(service, base + 'publish', token, publish); assert.equal(published.status, 200, JSON.stringify(published));
   assert.equal(published.data.closedSession.sessionId, 'one');
   assert.equal((await call(service, base + 'sessions/one', token)).data.snapshot, null);
-  const closedWrite = await call(service, base + 'sessions/one', token, { ...input, operationId: 'write-after-publish', baseVersion: null });
-  assert.equal(closedWrite.status, 410); assert.equal(closedWrite.data.error.code, 'SESSION_CLOSED');
+  const closedMapWrite = await call(service, base + 'sessions/one/map', token, { operationId: 'map-after-publish', baseVersion: saved.data.snapshot.version, operations: [{ type: 'update', id: 'T0', fields: { title: 'must fail' } }] });
+  assert.equal(closedMapWrite.status, 409); assert.equal(closedMapWrite.data.error.code, 'SESSION_REOPEN_REQUIRED');
+  const staleReopen = await call(service, base + 'sessions/one', token, { ...input, operationId: 'stale-reopen', baseVersion: null });
+  assert.equal(staleReopen.status, 409); assert.equal(staleReopen.data.error.code, 'SESSION_BASELINE_CONFLICT');
+  const secondRoundMemory = { map: memory.map, records: { 'sessions/one.md': 'private Session one, second round' } };
+  const reopened = await call(service, base + 'sessions/one', token, { operationId: 'reopen-one', baseVersion: null, baseMainVersion: published.data.snapshot.version, sourceCommit: featureSha, memory: secondRoundMemory });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened));
+  assert.equal(reopened.data.snapshot.generation, 2);
+  assert.equal(reopened.data.snapshot.reopenedFrom, published.data.snapshot.version);
+  const republished = await call(service, base + 'publish', token, { operationId: 'republish-one', baseVersion: published.data.snapshot.version, sessionId: 'one', sessionVersion: reopened.data.snapshot.version, expectedMainSha: featureSha });
+  assert.equal(republished.status, 200, JSON.stringify(republished));
+  assert.equal(republished.data.closedSession.generation, 2);
+  assert.equal(republished.data.closedSession.publications.length, 2);
+  assert.deepEqual((await call(service, base + 'publish', token, publish)).data, published.data);
   const secondMemory = { map: memory.map, records: { 'sessions/two.md': 'private Session two' } };
-  const savedTwo = await call(service, base + 'sessions/two', token, { operationId: 'save-two', baseVersion: null, baseMainVersion: published.data.snapshot.version, sourceCommit: featureSha, memory: secondMemory });
-  const publishedTwo = await call(service, base + 'publish', token, { operationId: 'publish-two', baseVersion: published.data.snapshot.version, sessionId: 'two', sessionVersion: savedTwo.data.snapshot.version, expectedMainSha: featureSha });
+  const savedTwo = await call(service, base + 'sessions/two', token, { operationId: 'save-two', baseVersion: null, baseMainVersion: republished.data.snapshot.version, sourceCommit: featureSha, memory: secondMemory });
+  const publishedTwo = await call(service, base + 'publish', token, { operationId: 'publish-two', baseVersion: republished.data.snapshot.version, sessionId: 'two', sessionVersion: savedTwo.data.snapshot.version, expectedMainSha: featureSha });
   assert.equal(publishedTwo.status, 200, JSON.stringify(publishedTwo));
   assert.deepEqual(Object.keys(publishedTwo.data.snapshot.memory.records).sort(), ['sessions/one.md', 'sessions/two.md']);
   await service.close(); service = await startMemoryServer(options);
   assert.deepEqual((await call(service, base + 'sessions/one', token, input)).data, saved.data);
   assert.equal((await call(service, base + 'sessions/one', token, { ...input, memory: { ...memory, records: {} } })).data.error.code, 'ID_REUSED');
   const competing = await Promise.all(['a', 'b'].map(operationId => call(service, base + 'sessions/one', token, { ...input, operationId, baseVersion: saved.data.snapshot.version })));
-  assert.deepEqual(competing.map(r => r.status), [410, 410]);
+  assert.deepEqual(competing.map(r => r.status), [409, 409]);
+  assert.ok(competing.every(result => result.data.error.code === 'VERSION_CONFLICT'));
   assert.equal((await call(service, base + 'main', token)).data.snapshot.mainSha, featureSha);
   assert.equal((await call(service, base + 'sessions/three', token, { ...input, operationId: 'private', memory: { ...memory, records: { 'private/credentials.json': 'not allowed' } } })).data.error.code, 'PRIVATE_PATH');
 });
