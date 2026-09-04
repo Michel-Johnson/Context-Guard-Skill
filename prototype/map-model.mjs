@@ -119,6 +119,109 @@ export function assignmentScope(doc, nodeId) {
   }
   return [...scope];
 }
+
+const assignedSessions = item => Array.isArray(item?.sessions)
+  ? [...new Set(item.sessions.map(value => String(value || '').trim()).filter(Boolean))]
+  : [];
+
+export function workItemAssignedTo(item, sessionId) {
+  return Boolean(sessionId) && (assignedSessions(item).includes(sessionId) || String(item?.target_session || '').trim() === sessionId);
+}
+
+function visibleWorkItem(item, sessionId) {
+  const scoped = copy(item);
+  scoped.sessions = [sessionId];
+  if (Object.hasOwn(scoped, 'target_session')) scoped.target_session = sessionId;
+  if (scoped.dispatch?.session_id && scoped.dispatch.session_id !== sessionId) delete scoped.dispatch;
+  return scoped;
+}
+
+function scopedWorkItems(items, sessionId) {
+  return (items || []).filter(item => workItemAssignedTo(item, sessionId)).map(item => visibleWorkItem(item, sessionId));
+}
+
+export function scopeDocumentToSession(document, sessionId) {
+  const scoped = copy(document);
+  if (!scoped?.root || !sessionId) return scoped;
+  for (const { node } of entries(scoped.root).values()) {
+    if (Array.isArray(node.bugs)) node.bugs = scopedWorkItems(node.bugs, sessionId);
+    if (Array.isArray(node.todos)) node.todos = scopedWorkItems(node.todos, sessionId);
+  }
+  if (Array.isArray(scoped.unassigned_bugs)) scoped.unassigned_bugs = [];
+  return scoped;
+}
+
+function restoreWorkItems(existing = [], incoming = [], sessionId) {
+  const current = new Map(existing.map(item => [item?.id, item]));
+  const next = [];
+  const incomingIds = new Set(incoming.map(item => item?.id).filter(Boolean));
+  for (const item of existing) {
+    if (!workItemAssignedTo(item, sessionId)) next.push(copy(item));
+    else if (!incomingIds.has(item?.id)) {
+      const otherSessions = assignedSessions(item).filter(id => id !== sessionId);
+      if (otherSessions.length) next.push({ ...copy(item), sessions: otherSessions });
+    }
+  }
+  for (const item of incoming) {
+    const before = current.get(item?.id);
+    if (before && !workItemAssignedTo(before, sessionId)) throw new MapError('FORBIDDEN_WORK_ITEM', 'Session cannot replace a hidden work item', 403);
+    const otherSessions = assignedSessions(before).filter(id => id !== sessionId);
+    const keepsCurrent = !before || assignedSessions(item).includes(sessionId) || String(item?.target_session || '') === sessionId;
+    const restored = { ...copy(item), sessions: [...otherSessions, ...(keepsCurrent ? [sessionId] : [])] };
+    if (before && before.target_session && before.target_session !== sessionId && !keepsCurrent) restored.target_session = before.target_session;
+    else if (keepsCurrent && Object.hasOwn(item, 'target_session')) restored.target_session = sessionId;
+    if (before?.dispatch?.session_id && before.dispatch.session_id !== sessionId && !restored.dispatch) restored.dispatch = copy(before.dispatch);
+    next.push(restored);
+  }
+  return next;
+}
+
+function assignedBug(document, bugId, sessionId) {
+  if (!document?.root) return false;
+  for (const { node } of entries(document.root).values()) {
+    const bug = (node.bugs || []).find(item => item?.id === bugId);
+    if (bug) return workItemAssignedTo(bug, sessionId);
+  }
+  return false;
+}
+
+export function restoreSessionWorkItemOperations(document, operations, sessionId) {
+  if (!sessionId) return copy(operations);
+  const index = document?.root ? entries(document.root) : new Map();
+  return operations.map(operation => {
+    const op = copy(operation);
+    const node = index.get(op.id)?.node;
+    if (op.type === 'update' && node) {
+      if (Array.isArray(op.fields?.bugs)) op.fields.bugs = restoreWorkItems(node.bugs, op.fields.bugs, sessionId);
+      if (Array.isArray(op.fields?.todos)) op.fields.todos = restoreWorkItems(node.todos, op.fields.todos, sessionId);
+    }
+    if (op.type === 'create') for (const key of ['bugs', 'todos']) if (Array.isArray(op.node?.[key])) {
+      op.node[key] = op.node[key].map(item => ({ ...item, sessions: [sessionId], ...(Object.hasOwn(item, 'target_session') ? { target_session: sessionId } : {}) }));
+    }
+    if (op.type === 'attach-bug') op.bug = { ...op.bug, sessions: [sessionId] };
+    if (op.type === 'update-bug' && !assignedBug(document, op.bug?.id, sessionId)) throw new MapError('FORBIDDEN_WORK_ITEM', 'Session can only update bugs assigned to it', 403);
+    return op;
+  });
+}
+
+export function scopeChangesToSession(result, document, sessionId) {
+  const visibleBugIds = new Set();
+  if (document?.root) for (const { node } of entries(document.root).values()) {
+    for (const bug of node.bugs || []) if (workItemAssignedTo(bug, sessionId)) visibleBugIds.add(bug.id);
+  }
+  const changes = (result.changes || []).map(change => {
+    const operations = (change.operations || []).flatMap(operation => {
+      const op = copy(operation);
+      if (op.type === 'attach-bug') return workItemAssignedTo(op.bug, sessionId) ? [{ ...op, bug: visibleWorkItem(op.bug, sessionId) }] : [];
+      if (op.type === 'update-bug') return visibleBugIds.has(op.bug?.id) ? [op] : [];
+      if (op.type === 'update') for (const key of ['bugs', 'todos']) if (Array.isArray(op.fields?.[key])) op.fields[key] = scopedWorkItems(op.fields[key], sessionId);
+      if (op.type === 'create') for (const key of ['bugs', 'todos']) if (Array.isArray(op.node?.[key])) op.node[key] = scopedWorkItems(op.node[key], sessionId);
+      return [op];
+    });
+    return { ...change, operations, fields: (change.fields || []).filter(field => field !== 'unassigned_bugs') };
+  });
+  return { ...result, changes };
+}
 function checkFields(fields, allowed = editableFields) {
   if (!object(fields) || Object.keys(fields).some(key => !allowed.includes(key))) throw new MapError('INVALID_FIELDS', 'Unsupported field');
 }

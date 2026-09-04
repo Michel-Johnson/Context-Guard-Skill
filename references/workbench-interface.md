@@ -67,7 +67,9 @@ view/store cache.
 Binding is prepared before the named route is touched and committed only after
 the final URL has passed identity verification. The returned URL includes
 `?session=<id>` so that browser tab remains pinned to that Session; activity in
-another task never changes the selected map. Only explicit human selection does.
+another task never changes the selected map. A pinned page lists only that Session;
+use the unpinned main workbench when a human needs to switch between Sessions or
+inspect the global queue.
 The verified project URL is stored with the Session binding and is returned as
 `workbenchUrl` by binding status. The loopback backend URL is diagnostic-only and
 must not replace the named project URL in a user-facing binding.
@@ -149,6 +151,14 @@ an explicit node set, restore full scope, or revoke it; explicit child grants do
 not imply ancestors. Revocation applies to queued writes before they commit. These
 grants never authorize Main-map writes, publication or administration. Proposal
 confirmation and scope changes remain distinct actions.
+
+Work-item visibility is narrower than node access. A Session receives only Bugs and
+TODOs whose `sessions` or `target_session` includes that Session. Unassigned items
+and work assigned only to another Session remain available in the main workbench but
+are omitted from Session state reads, change payloads, generated cards and indexes.
+The server restores hidden work items when a scoped page saves a node, so editing an
+assigned item cannot erase another Session's work. A guessed hidden Bug ID cannot be
+updated or replaced through the scoped API.
 
 ## Archive-to-Map reconciliation
 

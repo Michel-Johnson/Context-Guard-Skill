@@ -192,6 +192,8 @@ try {
   const pinnedCurrent = pinnedPage.locator('#session-menu [data-session][aria-current="true"]');
   assert.equal(await pinnedCurrent.count(), 1, 'only the URL-bound Session is the current Session');
   assert.equal(await pinnedCurrent.getAttribute('data-session'), session);
+  assert.equal(await pinnedPage.locator('#session-menu [data-session]').count(), 1, 'a pinned Session cannot browse another Session or the global work-item queue');
+  assert.equal(await pinnedPage.locator('#cg-sync-session option').count(), 1);
   assert.doesNotMatch(await pinnedCurrent.locator('.session-option-name').textContent(), /当前会话/);
   await pinnedPage.close();
   assert.equal(await page.locator('#cg-sync-session option').filter({ hasText: 'maintenance-browser' }).count(), 0);
@@ -208,10 +210,11 @@ try {
     const body = await response.json();
     const base = body.sessions.find(item => item.id === session);
     assert.ok(base, 'the real Session must be present in the access contract');
+    const namedBase = { ...base, name: 'basic-browser', platform: 'codex' };
     body.currentSessionId = sameBranchB;
     body.sessions = [
-      base,
-      { ...base, name: '', lastSeen: '2000-01-01T00:00:00.000Z' },
+      { ...namedBase, name: '', lastSeen: '2000-01-01T00:00:00.000Z' },
+      namedBase,
       { id: sameBranchA, name: 'agent=当前会话', platform: 'cursor', status: 'active', bindingState: 'bound', worktreeName: 'shared-worktree', branch: 'feature/shared', lastSeen: '2026-01-02T00:00:00.000Z' },
       { id: sameBranchB, name: 'agent=当前会话', platform: 'cursor', status: 'active', bindingState: 'bound', worktreeName: 'shared-worktree', branch: 'feature/shared', lastSeen: '2026-01-01T00:00:00.000Z' },
       { id: closedSession, name: '', platform: 'codex', status: 'closed', bindingState: 'bound' },
@@ -220,13 +223,12 @@ try {
     ];
     await route.fulfill({ response, json: body });
   });
-  await contractPage.goto(`${running.state.url}?session=${encodeURIComponent(session)}`);
-  await contractPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
+  await contractPage.goto(running.state.url);
+  await contractPage.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === '__all__');
   await contractPage.locator('#session-chip').click();
   assert.equal(await contractPage.locator(`#session-menu [data-session="${session}"]`).count(), 1, 'duplicate Session records are collapsed by sessionId');
   const contractCurrent = contractPage.locator('#session-menu [data-session][aria-current="true"]');
-  assert.equal(await contractCurrent.count(), 1);
-  assert.equal(await contractCurrent.getAttribute('data-session'), session, 'an API currentSessionId must not override the URL authority');
+  assert.equal(await contractCurrent.count(), 0, 'an API currentSessionId must not invent a browser Session without a URL pin');
   const baseLabel = await contractPage.locator(`#session-menu [data-session="${session}"] .session-option-name`).textContent();
   assert.equal(baseLabel, 'codex-basic-browser');
   const labelA = await contractPage.locator(`#session-menu [data-session="${sameBranchA}"] .session-option-name`).textContent();
@@ -273,15 +275,12 @@ try {
   await relationPage.waitForFunction(() => document.body.classList.contains('rel-mode'));
   assert.equal(await relationPage.locator('#btn-rel').getAttribute('aria-pressed'), 'true');
   await relationPage.locator('#session-chip').click();
-  await relationPage.locator(`#session-menu [data-session="${liveSession}"]`).click();
-  await relationPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id && !document.body.classList.contains('rel-mode'), liveSession);
+  assert.equal(await relationPage.locator(`#session-menu [data-session="${liveSession}"]`).count(), 0);
+  assert.equal(await relationPage.locator('#session-menu [data-session="__all__"]').count(), 0);
   const switchedRelationUrl = new URL(relationPage.url());
-  assert.equal(switchedRelationUrl.searchParams.get('session'), liveSession);
-  assert.equal(switchedRelationUrl.searchParams.has('relation'), false);
+  assert.equal(switchedRelationUrl.searchParams.get('session'), session);
+  assert.equal(switchedRelationUrl.searchParams.get('relation'), 'N1');
   assert.equal(switchedRelationUrl.hash, '#relation-contract');
-  await relationPage.reload();
-  await relationPage.waitForFunction(id => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === id, liveSession);
-  assert.equal(await relationPage.locator('body').evaluate(el => el.classList.contains('rel-mode')), false, 'refresh without a relation deep link stays in the normal view');
   await relationPage.close();
   recordCheck('session-identity-lifecycle-and-relation-defaults');
 
@@ -295,6 +294,8 @@ try {
   await page.reload();
   await page.waitForFunction(id => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === id, session);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), true);
+  await page.goto(running.state.url);
+  await page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.querySelector('#cg-sync-session')?.value === '__all__');
   await page.locator('#session-chip').click();
   await page.locator(`#session-menu [data-session="${liveSession}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, liveSession);

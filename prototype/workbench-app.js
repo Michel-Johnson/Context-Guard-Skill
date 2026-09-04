@@ -1335,7 +1335,7 @@ function syncSessionSelect(){
     option.title=lifecycle.label;
     return option;
   });
-  select.replaceChildren(all,...options);
+  select.replaceChildren(...(workbenchSync.urlPinned?[]:[all]),...options);
   select.disabled=false;
   select.value=workbenchSync.activeSession;
 }
@@ -1440,7 +1440,7 @@ function renderSessionMenu(){
   const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(mainHint)}">
     <span class="session-option-name">${esc(t("allSessions"))}</span>
   </button>`;
-  menu.innerHTML = all + sessions.map(meta=>{
+  menu.innerHTML = (workbenchSync?.urlPinned?"":all) + sessions.map(meta=>{
     const lifecycle=sessionLifecycle(meta), id=sessionIdOf(meta), label=sessionLabelModel(meta,sessions);
     const current=id===browserCurrentSessionId();
     const title=[lifecycle.label,label.context].filter(Boolean).join(" · ");
