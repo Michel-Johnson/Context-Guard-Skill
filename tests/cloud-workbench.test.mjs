@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+
+const execFileAsync = promisify(execFile);
+const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
 
 async function fixture() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-'));
@@ -168,6 +173,95 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(editedRead.body.snapshot.memory.map.root.purpose, 'edited in cloud workbench');
   const cloudMap = await request(service.url, '/api/projects/context-guard/map');
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
+});
+
+test('verified Session publication needs no exposed admin token and becomes the read-only Main workbench', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-main-publication-'));
+  const repository = path.join(dataDir, 'repository');
+  await fs.mkdir(repository);
+  await git(repository, 'init', '-b', 'main');
+  await git(repository, 'config', 'user.name', 'Cloud Test');
+  await git(repository, 'config', 'user.email', 'cloud-test@example.invalid');
+  await fs.writeFile(path.join(repository, 'version.txt'), 'base\n');
+  await git(repository, 'add', 'version.txt');
+  await git(repository, 'commit', '-m', 'base');
+  const baseSha = await git(repository, 'rev-parse', 'HEAD');
+  await git(repository, 'switch', '-c', 'feature');
+  await fs.writeFile(path.join(repository, 'version.txt'), 'feature\n');
+  await git(repository, 'commit', '-am', 'feature');
+  const featureSha = await git(repository, 'rev-parse', 'HEAD');
+  await git(repository, 'switch', 'main');
+  const memoryConfig = {
+    dataDir: path.join(dataDir, 'memory'),
+    adminToken: 'memory-admin',
+    projects: { 'context-guard': { token: 'project-memory-token', root: repository, ref: 'refs/heads/main' } },
+  };
+  const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const projectHeaders = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
+  const browserHeaders = { Authorization: 'Bearer cloud-admin', 'Content-Type': 'application/json' };
+  const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Published Session map', kind: 'module', state: 'dirty', children: [] } };
+  const seeded = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'publish-seed', baseVersion: null, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: { 'tasks/T1.md': 'done' } } }),
+  });
+  assert.equal(seeded.response.status, 200, JSON.stringify(seeded.body));
+
+  const waiting = await request(service.url, '/api/workbench/projects/context-guard/api/publication?view=session%3Asession-publish', { headers: browserHeaders });
+  assert.equal(waiting.body.status, 'waiting');
+  assert.equal(waiting.body.mainSha, baseSha);
+  const premature = await request(service.url, '/v1/projects/context-guard/publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'publish-main', baseVersion: null, sessionId: 'session-publish', sessionVersion: seeded.body.snapshot.version, expectedMainSha: baseSha }),
+  });
+  assert.equal(premature.response.status, 409); assert.equal(premature.body.error.code, 'NOT_MERGED');
+
+  await git(repository, 'merge', '--ff-only', 'feature');
+  const ready = await request(service.url, '/api/workbench/projects/context-guard/api/publication?view=session%3Asession-publish', { headers: browserHeaders });
+  assert.equal(ready.body.status, 'ready'); assert.equal(ready.body.mainSha, featureSha);
+  const publicationInput = { operationId: 'publish-main', baseVersion: null, sessionId: 'session-publish', sessionVersion: seeded.body.snapshot.version, expectedMainSha: featureSha };
+  const published = await request(service.url, '/v1/projects/context-guard/publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(publicationInput) });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  assert.equal(published.body.snapshot.memory.map.root.title, 'Published Session map');
+  assert.equal(published.body.snapshot.publishedAt, new Date(published.body.snapshot.publishedAt).toISOString());
+  const replay = await request(service.url, '/v1/projects/context-guard/publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(publicationInput) });
+  assert.deepEqual(replay.body, published.body);
+
+  const main = await request(service.url, '/v1/projects/context-guard/main', { headers: projectHeaders });
+  assert.equal(main.body.snapshot.mainSha, featureSha);
+  const closedWrite = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'closed-write', baseVersion: seeded.body.snapshot.version, baseMainVersion: null, sourceCommit: featureSha, memory: { map, records: {} } }),
+  });
+  assert.equal(closedWrite.response.status, 410); assert.equal(closedWrite.body.error.code, 'SESSION_CLOSED');
+  const restoreDenied = await request(service.url, '/v1/projects/context-guard/restore', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'restore-denied', scope: 'main', baseVersion: main.body.snapshot.version, targetVersion: main.body.snapshot.version }),
+  });
+  assert.equal(restoreDenied.response.status, 403); assert.equal(restoreDenied.body.error.code, 'FORBIDDEN');
+  const directMain = await request(service.url, '/v1/projects/context-guard/main', { method: 'POST', headers: projectHeaders, body: JSON.stringify({ operationId: 'direct-main' }) });
+  assert.equal(directMain.response.status, 403); assert.equal(directMain.body.error.code, 'READ_ONLY_MAIN');
+
+  const mainWorkbench = await request(service.url, '/api/workbench/projects/context-guard/api/state?view=main', { headers: browserHeaders });
+  assert.equal(mainWorkbench.body.doc.root.title, 'Published Session map');
+  assert.equal(mainWorkbench.body.source.status, 'main');
+  const mainEdit = await request(service.url, '/api/workbench/projects/context-guard/api/commit?view=main', {
+    method: 'POST', headers: browserHeaders,
+    body: JSON.stringify({ operationId: 'main-edit', baseVersion: mainWorkbench.body.version, operations: [{ type: 'update', id: 'T0', fields: { title: 'must fail' } }] }),
+  });
+  assert.equal(mainEdit.response.status, 403); assert.equal(mainEdit.body.error.code, 'READ_ONLY_MAIN');
+
+  const second = await request(service.url, '/v1/projects/context-guard/sessions/session-advanced', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'advanced-seed', baseVersion: null, baseMainVersion: main.body.snapshot.version, sourceCommit: featureSha, memory: { map, records: {} } }),
+  });
+  const advanced = await request(service.url, '/v1/projects/context-guard/publish', {
+    method: 'POST', headers: projectHeaders,
+    body: JSON.stringify({ operationId: 'advanced-publish', baseVersion: main.body.snapshot.version, sessionId: 'session-advanced', sessionVersion: second.body.snapshot.version, expectedMainSha: 'f'.repeat(40) }),
+  });
+  assert.equal(advanced.response.status, 409); assert.equal(advanced.body.error.code, 'MAIN_ADVANCED');
+  const preserved = await request(service.url, '/v1/projects/context-guard/sessions/session-advanced', { headers: projectHeaders });
+  assert.equal(preserved.body.snapshot.version, second.body.snapshot.version);
 });
 
 test('private Session changes are durable, ordered, isolated, and replayed over SSE', async t => {

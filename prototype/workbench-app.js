@@ -72,6 +72,7 @@ const I18N = {
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
     leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败",
     allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
+    projectOverview:"项目总览",
     bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
     scopeRequired:"该 Session 尚未获得当前节点权限。确认后将授权当前节点、所有上级和直接关联节点，共 {n} 个新节点。",
     bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
@@ -175,6 +176,7 @@ const I18N = {
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
     leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed",
     allSessions:"Main workbench · All sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
+    projectOverview:"Projects",
     bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
     scopeRequired:"This session cannot access the current node. Confirm to authorize the node, its ancestors, and direct relations ({n} new nodes).",
     bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
@@ -1203,6 +1205,45 @@ function closeSessionMenu(){
   const chip = document.getElementById("session-chip");
   if(menu) menu.hidden = true;
   if(chip) chip.setAttribute("aria-expanded","false");
+}
+function renderCloudPublication(status){
+  const button=document.getElementById("btn-publish-main");
+  if(!button) return;
+  const visible=window.__CG_SERVER?.root?.startsWith("cloud:") && window.__CG_SERVER.root!=="cloud:overview" && status && status.status!=="unavailable";
+  button.hidden=!visible;
+  if(!visible) return;
+  const labels={empty:"Main 未发布",waiting:"待合入 Main",ready:"发布 Main",publishing:"发布中…",published:"Main 已发布",conflict:"需先同步 Main",missing:"Session 不存在",error:"发布失败"};
+  button.dataset.status=status.status;
+  button.textContent=labels[status.status]||"发布不可用";
+  button.disabled=status.status!=="ready";
+  const detail=status.reason||(status.mainSha?`main @ ${status.mainSha.slice(0,8)}`:"");
+  button.title=detail;
+  button.setAttribute("aria-label",detail?`${button.textContent}，${detail}`:button.textContent);
+}
+async function refreshCloudPublication(){
+  if(!workbenchSync || !window.__CG_SERVER?.root?.startsWith("cloud:") || window.__CG_SERVER.root==="cloud:overview"){
+    renderCloudPublication(null); return;
+  }
+  try{ renderCloudPublication(await workbenchSync.call("/api/publication")); }
+  catch(error){ renderCloudPublication({status:"error",reason:error.message}); }
+}
+async function publishCloudMain(){
+  const button=document.getElementById("btn-publish-main");
+  if(!workbenchSync || !button || button.dataset.status!=="ready" || workbenchSync.isAllSessions()) return;
+  if(workbenchSync.dirty()){
+    await workbenchSync.flush();
+    if(workbenchSync.dirty()){ workbenchSync.setStatus(workbenchSync.status,"请先保存当前 Session Map"); return; }
+  }
+  renderCloudPublication({status:"publishing"});
+  try{
+    const result=await workbenchSync.call("/api/publication",{operationId:crypto.randomUUID()});
+    if(!result.committed) throw new Error("Main 发布未提交");
+    await workbenchSync.selectSession("__all__");
+    renderCloudPublication({status:"published",mainSha:result.snapshot?.mainSha});
+  }catch(error){
+    await refreshCloudPublication();
+    workbenchSync.setStatus(workbenchSync.status,"Main 发布失败："+error.message);
+  }
 }
 function renderSessionMenu(){
   const menu = document.getElementById("session-menu");
@@ -2366,8 +2407,10 @@ function renderNav(){
     return;
   }
   const path = findPath(viewRootId);
+  const cloudProject = window.__CG_SERVER?.root?.startsWith("cloud:") && window.__CG_SERVER.root!=="cloud:overview";
+  const cloudHome = cloudProject ? `<a class="cloud-overview-link" href="/">${esc(t("projectOverview"))}</a><span class="sep">›</span>` : "";
   const switchable = canSwitchRepo();
-  el.innerHTML = path.map((n,i)=>{
+  el.innerHTML = cloudHome + path.map((n,i)=>{
     const last = i===path.length-1;
     if(last){
       const atRoot = i===0;
@@ -2380,7 +2423,7 @@ function renderNav(){
     }
     return `<a data-id="${n.id}">${crumbLabel(n)}</a><span class="sep">›</span>`;
   }).join("");
-  el.querySelectorAll("a").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+  el.querySelectorAll("a[data-id]").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
   const card = document.getElementById("context-card");
   if(card && path.length===1 && switchable) bindContextSwitch(card);
   document.getElementById("tray-count").textContent = cancelledList().length;
@@ -4280,8 +4323,10 @@ async function boot(){
     getRoot:()=>data,
     pending:()=>{ for(const id of ['nodes','links','currents']) document.getElementById(id)?.replaceChildren(); },
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:(ids,session,meta,global,main)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?.status==="stopped"?"stopped":meta?"unknown":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":state==="unknown"?"状态未知":"未挂载会话"; label.textContent=displayName; label.title=global&&main?.branch?`${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:global?stateLabel:meta?.worktreeRoot||meta?.name||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
+    setAccess:(ids,session,meta,global,main)=>{ sessionAuth.clear(); ids.forEach(id=>sessionAuth.add(id)); const label=document.getElementById("session-name"); const status=document.getElementById("session-status"); const chip=document.getElementById("session-chip"); const displayName=global?t("allSessions"):sessionMetaLabel(meta); const state=global?"empty":meta?.status==="active"?"active":meta?.status==="stopped"?"stopped":meta?"unknown":"empty"; const stateLabel=global?t("globalSessionView"):state==="active"?"工作中":state==="stopped"?"已完成":state==="unknown"?"状态未知":"未挂载会话"; label.textContent=displayName; label.title=global&&main?.branch?`${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:global?stateLabel:meta?.worktreeRoot||meta?.name||""; status.className=`session-status ${state}`; status.setAttribute("aria-label",stateLabel); status.title=stateLabel; chip.disabled=false; chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`); renderSessionMenu(); refreshCloudPublication(); applyingServerMap=true; try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }finally{ applyingServerMap=false; } }
   });
+  const publishButton=document.getElementById("btn-publish-main");
+  if(publishButton) publishButton.onclick=publishCloudMain;
   const connected=await workbenchSync.start();
   if(!connected){
     await loadMapFromHttp();

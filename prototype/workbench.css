@@ -462,6 +462,11 @@ html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 .sync-settings label{display:block;margin-top:12px;color:var(--muted)}
 .sync-settings select{display:block;width:100%;min-width:0;margin-top:5px;font:inherit}
 .sync-notice{margin-left:8px;color:var(--red);font-size:12px;white-space:nowrap}
+.publish-main{min-width:86px;white-space:nowrap}
+.publish-main[data-status="ready"]{background:var(--yellow)}
+.publish-main[data-status="published"]{color:var(--green);border-color:var(--green);background:var(--green-soft)}
+.publish-main[data-status="waiting"],.publish-main[data-status="conflict"],.publish-main[data-status="error"]{color:var(--focus);background:#fff3bf}
+.publish-main:disabled{cursor:default;opacity:.78;transform:none;box-shadow:var(--shadow-sm)}
 
 /* 授权模式 */
 body.auth-mode .node{cursor:cell}
