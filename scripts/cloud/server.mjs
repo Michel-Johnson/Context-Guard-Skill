@@ -18,6 +18,7 @@ const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
 const scrypt = promisify(cryptoScrypt);
 const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})$/;
+const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 
 export async function createWorkbenchPasswordHash(password) {
   const value = String(password || '');
@@ -305,7 +306,7 @@ export async function startCloudServer({
     res.end(body);
   };
   const redirect = (res, location, headers = {}) => { res.writeHead(302, { Location: location, 'Cache-Control': 'no-store', ...headers }); res.end(); };
-  const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureCookies ? '; Secure' : ''}` });
+  const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${workbenchCookieMaxAge}${secureCookies ? '; Secure' : ''}` });
   const clearWorkbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? '; Secure' : ''}` });
   const requestBody = async req => {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new MapError('CONTENT_TYPE', 'Use application/json', 415);

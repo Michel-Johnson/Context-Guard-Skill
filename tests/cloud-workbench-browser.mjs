@@ -26,6 +26,7 @@ sessionMap.root.purpose = 'private working state';
 
 let service;
 let browser;
+let context;
 let page;
 let passed = false;
 const checks = [];
@@ -69,7 +70,8 @@ try {
   assert.equal(seededSession.response.status, 200, JSON.stringify(seededSession.body));
 
   browser = await chromium.launch({ headless: true });
-  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  page = await context.newPage();
   page.setDefaultTimeout(10000);
   await page.goto(`${service.url}/projects/context-guard`);
   assert.equal(new URL(page.url()).pathname, '/login');
@@ -79,6 +81,16 @@ try {
     page.locator('button[type="submit"]').click(),
   ]);
   record('Unauthenticated users get a visible password login');
+  const authCookie = (await page.context().cookies()).find(cookie => cookie.name === 'cg_workbench');
+  assert.ok(authCookie?.httpOnly);
+  assert.ok(authCookie?.expires > Date.now() / 1000 + 29 * 24 * 60 * 60);
+  await page.reload();
+  assert.equal(new URL(page.url()).pathname, '/projects/context-guard');
+  const reopened = await page.context().newPage();
+  await reopened.goto(`${service.url}/projects/context-guard`);
+  assert.equal(new URL(reopened.url()).pathname, '/projects/context-guard');
+  await reopened.close();
+  record('Persistent cookie keeps login across refresh and a reopened page');
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Main map/);
   record('Main is the default view');
