@@ -256,6 +256,10 @@ function applyStaticI18n(){
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
   syncThemePicks();
+  const titleEl = document.getElementById("repo-title");
+  if(titleEl && catalog[repoId]){
+    titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
+  }
   if(typeof syncSplitChrome==="function") syncSplitChrome();
 }
 function readStoredUiLang(){
@@ -1147,6 +1151,9 @@ function renderFirstUseCopy(){
   document.getElementById("first-use-copy").textContent = t("firstCopy").replace("{name}", r.name);
 }
 function applyRepoChrome(){
+  const r = currentRepo();
+  const titleEl = document.getElementById("repo-title");
+  if(titleEl) titleEl.innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -1625,7 +1632,10 @@ function isProposed(n){
   return true;
 }
 function isAllSessionsView(){ return workbenchSync?.isAllSessions?.()===true; }
-function isAuth(n){ return isAllSessionsView() || sessionAuth.has(n.id); }
+function isAuth(n){
+  if(window.__CG_PREVIEW || !window.__CG_SERVER) return true;
+  return isAllSessionsView() || sessionAuth.has(n.id);
+}
 function authUnlockAll(){
   sessionAuth.clear();
   walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
@@ -4217,6 +4227,7 @@ async function boot(){
     phoneBanner.textContent = "电脑预览 · 强制宽屏布局";
   }
   syncThemePicks();
+  if(window.__CG_PREVIEW || !window.__CG_SERVER) authUnlockAll();
   renderAll();
   finishDrawerChrome();
   fitView();
