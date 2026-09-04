@@ -111,9 +111,9 @@ const charset = /<meta charset=["']utf-8["']>/i;
 const bootCall = /\bboot\(\);(?=\s*<\/script>\s*<\/body>)/;
 const applicationBoot = /\bboot\(\);\s*$/;
 const syncImport = 'try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }';
-const styleLink = '<link rel="stylesheet" href="./workbench.css">';
-const fixtureScript = '<script src="./workbench-fixtures.js"></script>';
-const applicationScript = '<script src="./workbench-app.js"></script>';
+const styleLink = '<link rel="stylesheet" href="./workbench.css?v=bug-board">';
+const fixtureScript = '<script src="./workbench-fixtures.js?v=bug-board"></script>';
+const applicationScript = '<script src="./workbench-app.js?v=bug-board"></script>';
 if (!charset.test(source) || !source.includes("</body>") || !applicationBoot.test(application) || !application.includes(syncImport)
   || !source.includes(styleLink) || !source.includes(fixtureScript) || !source.includes(applicationScript))
   throw new Error("产品 HTML 结构已改变，请重新核对演示接入。");
