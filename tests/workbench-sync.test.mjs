@@ -8,11 +8,14 @@ import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
+import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
+import { memoryRequest } from '../scripts/workbench/memory.mjs';
+import { startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, validate } from '../prototype/map-model.mjs';
-import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
@@ -219,6 +222,141 @@ test('TODO handoff message carries the development item and node context', () =>
   assert.match(message, /TD7 · 增加需求入口/);
   assert.match(message, /N1 · 工作台同步/);
   assert.match(message, /复用 Session 授权和消息发送/);
+});
+
+test('Session sync compares node fields and parses chunked SSE safely', () => {
+  assert.equal(operationsOverlap(
+    [{ type: 'update', id: 'N1', fields: { title: 'local' } }],
+    [{ type: 'update', id: 'N1', fields: { purpose: 'remote' } }],
+  ), false);
+  assert.equal(operationsOverlap(
+    [{ type: 'update', id: 'N1', fields: { title: 'local' } }],
+    [{ type: 'update', id: 'N1', fields: { title: 'remote' } }],
+  ), true);
+  assert.equal(operationsOverlap(
+    [{ type: 'delete', id: 'N1' }],
+    [{ type: 'update', id: 'N1', fields: { purpose: 'remote' } }],
+  ), true);
+  const parsed = parseSseBlocks('event: change\r\ndata: {"cursor":1}\r\n\r\nevent: change\ndata: {"cursor":');
+  assert.deepEqual(parsed.blocks, ['event: change\ndata: {"cursor":1}']);
+  assert.equal(parsed.rest, 'event: change\ndata: {"cursor":');
+});
+
+test('Workbench coordinator automatically syncs one Session in both directions and survives an outage', async t => {
+  const f = await fixture();
+  const sharedDir = path.join(f.root, 'shared');
+  const dataDir = path.join(f.root, 'memory-data');
+  await fs.mkdir(sharedDir, { recursive: true });
+  const configuration = { dataDir, adminToken: 'memory-admin', projects: { project: { token: 'project-token' } } };
+  let service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port: 0 });
+  t.after(async () => { await service.close().catch(() => {}); });
+  const port = Number(new URL(service.url).port);
+  const project = { sharedDir, head: 'a'.repeat(40) };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  await memoryRequest(project, 'sessions/session-sync', {
+    operationId: 'coordinator-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
+    memory: { map: f.doc, records: {} },
+  });
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'store-runtime'), eventsFile: path.join(f.root, 'store-events.jsonl'),
+  }).init();
+  const syncDir = path.join(f.root, 'session-sync');
+  let holdAcknowledgement = false, releaseAcknowledgement = null;
+  const request = async (...args) => {
+    const result = await memoryRequest(...args);
+    if (holdAcknowledgement && String(args[1]).endsWith('/map')) await new Promise(resolve => { releaseAcknowledgement = resolve; });
+    return result;
+  };
+  let coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'synced');
+
+  holdAcknowledgement = true;
+  await store.commit({ baseVersion: store.version, operationId: 'local-session-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '本地自动上传' } }] }, human);
+  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '本地自动上传');
+  await until(() => !!releaseAcknowledgement);
+  assert.equal(coordinator.snapshot().status, 'syncing', 'server persistence without an acknowledged response is not synced');
+  assert.equal(coordinator.snapshot().pending, 1);
+  holdAcknowledgement = false; releaseAcknowledgement();
+  await until(() => coordinator.snapshot().status === 'synced');
+
+  const remote = (await memoryRequest(project, 'sessions/session-sync')).snapshot;
+  await memoryRequest(project, 'sessions/session-sync/map', {
+    operationId: 'remote-session-edit', baseVersion: remote.version,
+    operations: [{ type: 'update', id: 'N1', fields: { purpose: '云端自动下发' } }],
+  });
+  await until(() => store.doc.root.children[0].purpose === '云端自动下发');
+
+  await service.close();
+  await store.commit({ baseVersion: store.version, operationId: 'offline-session-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '断网期间保留' } }] }, human);
+  await until(async () => !!await readJSON(path.join(syncDir, 'remote-sync/outbox.json'), null));
+  assert.equal(coordinator.snapshot().pending, 1);
+  service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port });
+  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '断网期间保留', 6000);
+  await until(() => coordinator.snapshot().status === 'synced');
+
+  // A process that starts while Cloud is unavailable must retry initialization,
+  // not wait forever for an SSE event that may never be emitted.
+  await coordinator.close(); await service.close();
+  await store.commit({ baseVersion: store.version, operationId: 'cold-offline-edit', operations: [{ type: 'update', id: 'N1', fields: { title: '冷启动断网保留' } }] }, human);
+  coordinator = new MemorySyncCoordinator({ project, sessionId: 'session-sync', store, directory: syncDir, request, retryMin: 25, retryMax: 100 });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'offline');
+  service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port });
+  await until(async () => (await memoryRequest(project, 'sessions/session-sync')).snapshot.memory.map.root.children[0].title === '冷启动断网保留', 6000);
+  await until(() => coordinator.snapshot().status === 'synced');
+  await coordinator.close(); await store.close();
+});
+
+test('Workbench coordinator preserves local, remote, and base documents on a same-field conflict', async t => {
+  const f = await fixture();
+  const sharedDir = path.join(f.root, 'conflict-shared'), dataDir = path.join(f.root, 'conflict-memory');
+  await fs.mkdir(sharedDir, { recursive: true });
+  const configuration = { dataDir, adminToken: 'memory-admin', projects: { project: { token: 'project-token' } } };
+  const service = await startMemoryServer({ ...configuration, host: '127.0.0.1', port: 0 });
+  t.after(async () => { await service.close().catch(() => {}); });
+  const project = { sharedDir, head: 'b'.repeat(40) };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  await memoryRequest(project, 'sessions/conflict-session', {
+    operationId: 'conflict-seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head,
+    memory: { map: f.doc, records: {} },
+  });
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'conflict-store-runtime'), eventsFile: path.join(f.root, 'conflict-store-events.jsonl'),
+  }).init();
+  const syncDir = path.join(f.root, 'conflict-session-sync');
+  let coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
+  await coordinator.start(); await until(() => coordinator.snapshot().status === 'synced'); await coordinator.close();
+
+  await store.commit({ baseVersion: store.version, operationId: 'conflict-local', operations: [{ type: 'update', id: 'N1', fields: { title: '本地标题' } }] }, human);
+  const remote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
+  await memoryRequest(project, 'sessions/conflict-session/map', {
+    operationId: 'disjoint-remote', baseVersion: remote.version,
+    operations: [{ type: 'update', id: 'N1', fields: { purpose: '云端用途' } }],
+  });
+  coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
+  await coordinator.start(); await until(() => coordinator.snapshot().status === 'synced');
+  let mergedRemote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
+  assert.equal(store.doc.root.children[0].title, '本地标题');
+  assert.equal(store.doc.root.children[0].purpose, '云端用途');
+  assert.equal(mergedRemote.memory.map.root.children[0].title, '本地标题');
+  assert.equal(mergedRemote.memory.map.root.children[0].purpose, '云端用途');
+  await coordinator.close();
+
+  await store.commit({ baseVersion: store.version, operationId: 'same-field-local', operations: [{ type: 'update', id: 'N1', fields: { title: '本地冲突标题' } }] }, human);
+  mergedRemote = (await memoryRequest(project, 'sessions/conflict-session')).snapshot;
+  await memoryRequest(project, 'sessions/conflict-session/map', {
+    operationId: 'same-field-remote', baseVersion: mergedRemote.version,
+    operations: [{ type: 'update', id: 'N1', fields: { title: '云端标题' } }],
+  });
+  coordinator = new MemorySyncCoordinator({ project, sessionId: 'conflict-session', store, directory: syncDir, retryMin: 25, retryMax: 100 });
+  await coordinator.start(); await until(() => coordinator.snapshot().status === 'conflict');
+  const conflict = await readJSON(path.join(syncDir, 'remote-sync/conflict.json'));
+  assert.equal(conflict.base.root.children[0].title, '本地标题');
+  assert.equal(conflict.local.root.children[0].title, '本地冲突标题');
+  assert.equal(conflict.remote.root.children[0].title, '云端标题');
+  assert.equal(store.doc.root.children[0].title, '本地冲突标题', 'conflict must not overwrite the local draft');
+  await coordinator.close(); await store.close();
 });
 
 test('assignment scope includes the node, ancestors and direct flow/also relations', () => {

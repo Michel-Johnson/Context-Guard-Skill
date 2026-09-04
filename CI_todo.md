@@ -6,7 +6,8 @@
 - [x] Cloud 工作台切换并编辑独立 Session Map，刷新恢复且不覆盖 Main（`tests/cloud-workbench-browser.mjs`）
 - [x] Cloud 未登录首页展示密码登录页；密码哈希、持久安全 Cookie、退出、错误限速及浏览器登录流程（`tests/cloud-workbench.test.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] 私有记忆写入保留带服务器时间的完整历史；恢复生成新版本并用 CAS 阻止静默覆盖（`tests/cloud-workbench.test.mjs`）
-- [ ] `sync serve/ensure` 长驻进程、断线重连和 SSE 游标恢复
+- [x] 工作台托管的 Session Map 后台同步：事件驱动上传/接收、持久 outbox、断线与冷启动恢复、SSE 游标续传、响应丢失幂等、字段级合并和三方冲突保留（`tests/workbench-sync.test.mjs`、`tests/cloud-workbench.test.mjs`、`tests/cloud-sync-browser.mjs`）
+- [ ] 删除或迁移旧 Map-only `sync serve/connect/pull` 协议；当前带 Session 的 `sync ensure/status` 已转交工作台，旧命令仍为兼容入口
 - [ ] `sync checkpoint` 独立行为
 - [x] 显式 `plan-start` / 工具观察 / Map 归档 / `plan-finish` / Stop 流程；Cloud 成功与完成后本地回执丢失重试（`tests/hook-lifecycle.test.mjs`）
 - [x] 工作台 Cloud 状态图标：编辑立即离开“已同步”，服务器确认后恢复“已同步”，并发覆盖显示“冲突”且保留草稿（`tests/cloud-workbench-browser.mjs`）

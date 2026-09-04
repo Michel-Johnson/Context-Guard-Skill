@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { startCloudServer } from '../scripts/cloud/server.mjs';
 import { connectSync, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
+import { atomicWrite, encode } from '../scripts/workbench/io.mjs';
+import { memoryConfigPath, sessionMemoryDir } from '../scripts/workbench/memory.mjs';
+import { resolveProject } from '../scripts/workbench/project.mjs';
 
 const node = (id, title) => ({ id, title, kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] });
 const document = () => ({
@@ -61,6 +64,22 @@ test('local clients connect and pull event-driven cloud state', async t => {
   assert.equal(status.state.status, 'synced');
   assert.equal(status.configured, true);
   assert.equal(JSON.stringify(status).includes(f.token), false);
+});
+
+test('sync status reports workbench-managed Session state without exposing its token', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-managed-sync-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = await resolveProject(root);
+  await atomicWrite(memoryConfigPath(project), encode({ url: 'https://map.example.test', projectId: 'managed-project', token: 'do-not-print' }));
+  const sessionDir = sessionMemoryDir(project, 'managed-session');
+  await atomicWrite(path.join(sessionDir, 'remote-sync/state.json'), encode({ configured: true, status: 'offline', pending: 1, cursor: 7 }));
+
+  const status = await syncStatus(root, 'managed-session');
+  assert.equal(status.managedBy, 'workbench');
+  assert.equal(status.state.status, 'offline');
+  assert.equal(status.state.pending, 1);
+  assert.equal(status.state.cursor, 7);
+  assert.equal(JSON.stringify(status).includes('do-not-print'), false);
 });
 
 test('prepare and finish rebase disjoint clients and preserve both edits', async t => {
