@@ -425,7 +425,7 @@ try {
   const actH = await trashBtn.evaluate(el => Math.round(el.getBoundingClientRect().height));
   assert.equal(actH, chrome[0], `inspector trash height ${actH} vs chrome ${chrome[0]}`);
   assert.equal(await page.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
-  assert.ok((await page.locator('#detail .add-hint').textContent()).includes('去图上点'));
+  assert.equal(await page.locator('#detail .add-hint').count(), 0, 'inspector does not show redundant add-node guidance');
   assert.equal(await trashBtn.locator('.lid').count(), 1, 'live trash uses the lid-open icon');
   await trashBtn.hover();
   const lidMove = await trashBtn.locator('.lid').evaluate(el => getComputedStyle(el).transform);
@@ -884,7 +884,7 @@ try {
     await child.click();
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
     assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
-    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
+    assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'child inspector omits redundant add-node guidance');
     assert.equal(await preview.locator('#detail button.trash').count(), 1);
     assert.equal(await preview.locator('#detail button.trash .lid').count(), 1);
     await dirToggle.click();
@@ -903,7 +903,7 @@ try {
       await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
     }
     assert.equal(await preview.locator('#detail button.trash').count(), 0, 'map root has no trash');
-    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
+    assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'root inspector omits redundant add-node guidance');
     await preview.locator('.node.root .add-child').click();
     const rootPick = preview.locator('.node.root .add-pick');
     assert.equal(await rootPick.evaluate(el => getComputedStyle(el).display), 'flex', 'plus must open a kind picker');
