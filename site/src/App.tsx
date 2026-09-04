@@ -7,11 +7,12 @@ import { Install } from "./Install";
 import { RecordGuide } from "./RecordGuide";
 import { ClientDemo } from "./ClientDemo";
 import { HeroWorkbenchVisual } from "./HeroWorkbenchVisual";
+import { DesignQuestions } from "./DesignQuestions";
 import type { ClientId } from "./clients";
 import { repository, type WorkbenchChapterId, type ChapterId } from "./storyboard";
 import { useLanguage } from "./i18n";
 
-const pageIds = ["home", "workbench", "clients", "memory", "debug", "install"] as const;
+const pageIds = ["home", "workbench", "clients", "memory", "decisions", "debug", "install"] as const;
 type PageId = (typeof pageIds)[number];
 
 const pageLabels: Record<PageId, string> = {
@@ -19,6 +20,7 @@ const pageLabels: Record<PageId, string> = {
   workbench: "工作台",
   clients: "App 调用",
   memory: "项目记忆",
+  decisions: "设计问答",
   debug: "Debug",
   install: "开始使用",
 };
@@ -209,6 +211,7 @@ export function App() {
             <a href="#workbench" aria-current={activePage === "workbench" ? "page" : undefined}>{t("工作台")}</a>
             <a href="#clients" aria-current={activePage === "clients" ? "page" : undefined}>{t("App 调用")}</a>
             <a href="#memory" aria-current={activePage === "memory" ? "page" : undefined}>{t("项目记忆")}</a>
+            <a href="#decisions" aria-current={activePage === "decisions" ? "page" : undefined}>{t("为什么")}</a>
             <a href="#debug" aria-current={activePage === "debug" ? "page" : undefined}>Debug</a>
           </nav>
           <div className="header-actions">
@@ -271,6 +274,9 @@ export function App() {
           </Page>
           <Page id="memory" active={activePage === "memory"}>
             <RecordGuide />
+          </Page>
+          <Page id="decisions" active={activePage === "decisions"}>
+            <DesignQuestions />
           </Page>
           <Page id="debug" active={activePage === "debug"}>
             <DebugDemo restartToken={debugRevision} reduced={reduced} />

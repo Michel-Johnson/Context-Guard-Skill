@@ -311,6 +311,142 @@ code,
   max-width: 210px;
   min-height: 44px;
 }
+.decision-section {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(24px, 4vh, 42px);
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+.decision-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+}
+.decision-kicker,
+.decision-number {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: .04em;
+}
+.decision-kicker {
+  margin-bottom: 10px;
+}
+.decision-heading h2 {
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.2;
+  letter-spacing: -1.5px;
+}
+.decision-intro {
+  max-width: 430px;
+  padding-bottom: 4px;
+  font-size: 16px;
+}
+.decision-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, .72fr) minmax(0, 1.55fr);
+  gap: 22px;
+  min-height: 0;
+}
+.decision-list {
+  align-self: stretch;
+  border-top: 1px solid var(--line);
+}
+.decision-list button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 70px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.4;
+  transition: color .18s, background .18s, border-color .18s;
+}
+.decision-list button > span {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.decision-list button:hover {
+  color: var(--text);
+}
+.decision-list button.active {
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: inset 2px 0 var(--amber);
+}
+.decision-answer {
+  min-height: 360px;
+  padding: clamp(26px, 4vh, 42px) clamp(28px, 4vw, 52px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.decision-answer h3 {
+  max-width: 760px;
+  margin-top: 14px;
+  font-size: clamp(23px, 2.25vw, 32px);
+  line-height: 1.35;
+  letter-spacing: -.8px;
+}
+.decision-thesis {
+  max-width: 760px;
+  margin-top: 22px;
+  color: var(--text);
+  font-size: 19px;
+  line-height: 1.55;
+}
+.decision-reason {
+  max-width: 760px;
+  margin-top: 14px;
+  font-size: 15px;
+}
+.decision-trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+.decision-trail span {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.decision-trail b {
+  padding: 8px 13px;
+  border: 1px solid #4a463b;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.decision-trail i {
+  color: var(--amber);
+  font-style: normal;
+}
+.decision-example {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 25px;
+  padding-top: 19px;
+  border-top: 1px solid var(--line);
+}
+.decision-example strong {
+  color: var(--amber);
+  font-size: 14px;
+  font-weight: 500;
+}
+.decision-example p {
+  font-size: 15px;
+  line-height: 1.65;
+}
 .install-section {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr;
@@ -564,6 +700,9 @@ code,
   padding: 0;
   border-top: 0;
 }
+.page-decisions .decision-section {
+  width: min(1120px, 100%);
+}
 .page-debug .debug-feature {
   grid-template-columns: 142px minmax(0, 1fr);
   gap: 16px;
@@ -715,6 +854,54 @@ code,
     font-size: 12px;
     min-height: 41px;
   }
+  .decision-section {
+    gap: 18px;
+  }
+  .decision-heading {
+    display: block;
+  }
+  .decision-heading h2 {
+    font-size: 28px;
+  }
+  .decision-intro {
+    display: none;
+  }
+  .decision-layout {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .decision-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .decision-list button {
+    min-height: 54px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .decision-answer {
+    min-height: 0;
+    padding: 22px;
+  }
+  .decision-answer h3 {
+    margin-top: 8px;
+    font-size: 21px;
+  }
+  .decision-thesis {
+    margin-top: 14px;
+    font-size: 16px;
+  }
+  .decision-reason {
+    margin-top: 9px;
+    font-size: 14px;
+  }
+  .decision-trail {
+    margin-top: 16px;
+  }
+  .decision-example {
+    margin-top: 16px;
+    padding-top: 14px;
+  }
   .install-section {
     grid-template-columns: 1fr;
     padding: 58px 0 42px;
@@ -789,6 +976,16 @@ code,
   .page-install .demo-boundary { margin-bottom: 16px; }
   .page-install .footer-brand { display: none; }
   .page-install .footer-links { justify-content: space-between; width: 100%; }
+  .decision-section { gap: 12px; }
+  .decision-kicker { margin-bottom: 6px; }
+  .decision-heading h2 { font-size: 26px; }
+  .decision-list button { min-height: 48px; }
+  .decision-answer { padding: 18px 22px; }
+  .decision-answer h3 { font-size: 20px; }
+  .decision-example { display: none; }
+  .decision-trail { gap: 7px; }
+  .decision-trail span { gap: 7px; }
+  .decision-trail b { padding: 6px 9px; font-size: 13px; }
 }
 @media (max-width: 380px) {
   .site {
