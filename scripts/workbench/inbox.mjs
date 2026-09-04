@@ -100,7 +100,7 @@ export class AgentInbox {
         if (event.fromVersion !== coveredVersion) chainBroken = true;
         coveredVersion = event.version;
       }
-      const journalGap = (reset && state.cursor !== null) || chainBroken || coveredVersion !== snap.version;
+      const journalGap = !!snap.journalGap || (reset && state.cursor !== null) || chainBroken || coveredVersion !== snap.version;
       if (!events.length && !journalGap) {
         await atomicWrite(this.file, encode({ ...state, cursor: snap.cursor, version: snap.version, baseline: snap.doc }));
         return { pending: false, cursor: snap.cursor, version: snap.version, ignoredOwnEvents: snap.changes.length };

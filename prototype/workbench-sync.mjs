@@ -93,8 +93,10 @@ export class WorkbenchSync {
   recoveryState(state) {
     this.serverRecovery = state.recovery || state.error || null;
     this.journal = state.journal || null;
-    this.repairButton.hidden = !this.serverRecovery;
-    this.repairButton.textContent = state.recovery?.source === 'journal' ? '保留当前地图并恢复日志（历史有缺口）' : '重读文件并尝试恢复';
+    if (this.repairButton) {
+      this.repairButton.hidden = !this.serverRecovery;
+      this.repairButton.textContent = state.recovery?.source === 'journal' ? '保留当前地图并恢复日志（历史有缺口）' : '重读文件并尝试恢复';
+    }
   }
   async repair() {
     try {
