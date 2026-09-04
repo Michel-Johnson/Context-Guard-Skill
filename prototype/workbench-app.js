@@ -81,7 +81,6 @@ const I18N = {
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
     forever:"永久删除", deleteAsk:"确定删掉？", delete:"删除",
-    addOnMap:"要加模块或节点，去图上点 ＋。这里不放按钮。",
     deleteAskKids:"下面还有 {n} 个子项。一起删，还是接到上一级？",
     deleteKeepKids:"接到上一级",
     deleteWithKids:"一起删",
@@ -185,7 +184,6 @@ const I18N = {
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
     forever:"Delete forever", deleteAsk:"Delete this?", delete:"Delete",
-    addOnMap:"To add a module or node, tap ＋ on the map. No buttons here.",
     deleteAskKids:"This still has {n} children. Reattach them, or delete together?",
     deleteKeepKids:"Reattach",
     deleteWithKids:"Delete all",
@@ -3619,7 +3617,7 @@ function renderDetail(){
         <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?t("moduleName"):t("childName")}</span>
         <button type="button" data-act="compose-ok" class="primary">${t("add")}</button>
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
-      </div>`: deleteAskId===node.id?"":`<p class="add-hint">${t("addOnMap")}</p>`}
+      </div>`:""}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
       <summary><span>${labels.memory}${node.memories.length?" "+node.memories.length:""}</span><button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">＋</button></summary>
