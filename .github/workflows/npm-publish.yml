@@ -12,7 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: npm-publish-${{ github.ref }}
+  # npm cannot publish two stable releases at once. GitHub queues this workflow.
+  group: npm-publish-stable
   cancel-in-progress: false
 
 env:
@@ -92,17 +93,9 @@ jobs:
             exit 1
           fi
 
-          npm view "$package_name" versions --json > "$RUNNER_TEMP/published-versions.json"
-          if node -e '
-            const fs = require("fs");
-            const version = process.argv[1];
-            const value = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-            const versions = Array.isArray(value) ? value : [value];
-            process.exit(versions.includes(version) ? 0 : 1);
-          ' "$package_version" "$RUNNER_TEMP/published-versions.json"; then
-            echo "$package_name@$package_version is already published." >&2
-            exit 1
-          fi
+
+      - name: CD | 确认版本未发布且严格高于 npm latest
+        run: node .github/scripts/release-checks.mjs guard
 
       - name: CD | 打包并检查发布文件与 SHA-256
         shell: bash
@@ -117,6 +110,9 @@ jobs:
         shell: bash
         run: node .github/scripts/security-scan.mjs package "$PACKAGE_TARBALL"
 
+      - name: CD | 固定当前 npm 版本作为升级基线
+        run: node .github/scripts/release-checks.mjs prepare-baseline dist/baseline
+
       - name: Store validated package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -124,6 +120,8 @@ jobs:
           path: |
             dist/*.tgz
             dist/package.sha256
+            dist/baseline/previous.tgz
+            dist/baseline/release.json
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -170,6 +168,9 @@ jobs:
       - name: CD | 验收 npm 全局安装与 npx 安装
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke"
 
+      - name: CD | 验收从当前 npm latest 升级且保留用户数据
+        run: node .github/scripts/smoke-upgrade-package.mjs "$PACKAGE_TARBALL" dist/baseline "${{ runner.temp }}/context-guard-cd-upgrade"
+
   windows-smoke:
     name: CD 2 | 发布包安装验收 - Windows
     needs: package
@@ -201,6 +202,9 @@ jobs:
 
       - name: CD | 验收 npm、npx 安装与 Hook
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-cd-smoke" --with-hooks
+
+      - name: CD | 验收从当前 npm latest 升级且保留用户数据
+        run: node .github/scripts/smoke-upgrade-package.mjs "$env:PACKAGE_TARBALL" dist/baseline "${{ runner.temp }}/context-guard-cd-upgrade"
 
   publish:
     name: CD 3 | 发布到 npm
@@ -249,6 +253,9 @@ jobs:
             exit 1
           }
 
+      - name: CD | 发布前再次确认版本仍可发布
+        run: node .github/scripts/release-checks.mjs guard
+
       - name: CD | 通过 OIDC 发布已验收的安装包
         run: npm publish "$PACKAGE_TARBALL" --access public
 
@@ -257,6 +264,9 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -268,6 +278,15 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
+
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-npm-package
+          path: dist
+
+      - name: CD | 比对 npm 下载包与发布前 SHA-256 并写入凭证
+        run: node .github/scripts/release-checks.mjs verify dist
 
       - name: CD | 从 npm 验证精确版本和 latest 安装
         shell: bash

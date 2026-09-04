@@ -26,6 +26,28 @@ function forbidMatch(content, pattern, message) {
   if (pattern.test(content)) throw new Error(message);
 }
 
+export function verifyReleaseHardening(publishContent) {
+  requireMatch(publishContent, /^\s*group:\s*npm-publish-stable\s*$/m, "CD releases must share one stable publication lock.");
+  requireMatch(publishContent, /^\s*cancel-in-progress:\s*false\s*$/m, "An in-flight publication must never be cancelled.");
+  forbidMatch(publishContent, /^\s*queue:\s*/m, "GitHub Actions concurrency does not support a queue key.");
+  requireMatch(publishContent, /release-checks\.mjs prepare-baseline dist\/baseline/, "CD must pin the currently published package for upgrade acceptance.");
+
+  const unixSmoke = publishContent.slice(publishContent.indexOf("  unix-smoke:"), publishContent.indexOf("  windows-smoke:"));
+  const windowsSmoke = publishContent.slice(publishContent.indexOf("  windows-smoke:"), publishContent.indexOf("  publish:"));
+  requireMatch(unixSmoke, /smoke-upgrade-package\.mjs/, "Unix CD must exercise an upgrade from the published baseline.");
+  requireMatch(windowsSmoke, /smoke-upgrade-package\.mjs/, "Windows CD must exercise an upgrade from the published baseline.");
+
+  const publishJob = publishContent.slice(publishContent.indexOf("  publish:"), publishContent.indexOf("  verify-published:"));
+  requireMatch(
+    publishJob,
+    /^\s*run:\s*node \.github\/scripts\/release-checks\.mjs guard\s*$[\s\S]{0,500}?^\s*run:\s*npm publish "\$PACKAGE_TARBALL" --access public\s*$/m,
+    "CD must repeat the registry version guard immediately before npm publish.",
+  );
+  const verifyJob = publishContent.slice(publishContent.indexOf("  verify-published:"));
+  requireMatch(verifyJob, /actions\/download-artifact@/, "Post-publish verification must download the validated artifact.");
+  requireMatch(verifyJob, /release-checks\.mjs verify dist/, "Post-publish verification must compare npm bytes with the validated artifact.");
+}
+
 for (const [name, content] of Object.entries(workflows)) {
   const uses = [...content.matchAll(/^\s*(?:-\s*)?uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
   for (const action of uses) {
@@ -82,6 +104,7 @@ const oidcGrants = publish.match(/^\s*id-token:\s*write\s*$/gm) || [];
 if (oidcGrants.length !== 1) {
   throw new Error(`Only the publish job may receive id-token: write; found ${oidcGrants.length} grants.`);
 }
+verifyReleaseHardening(publish);
 
 forbidMatch(ci, /secrets\.|openai-api-key|--dangerously|--api-key|session\/prompt|turn\/start/, "No-dialogue client CI must not use AI credentials or generation.");
 forbidMatch(clients, /^\s*(?:pull_request_target|workflow_run):/m, "Client CI must not execute elevated untrusted workflows.");

@@ -62,16 +62,22 @@ References / 官方说明: [Dependabot automation](https://docs.github.com/en/co
 ## Release contract / 发布契约
 
 - A stable tag must use `vX.Y.Z` and match `package.json` exactly.
+- The target version must be unpublished and strictly newer than npm's current stable `latest` version.
 - The tagged commit must already be part of `main`.
 - `.github/workflows/npm-publish.yml` builds one tarball, validates its exact contents, records its SHA-256, installs that same artifact on Ubuntu, macOS, and Windows, then publishes that artifact.
+- Each operating-system acceptance job also upgrades from a SHA-512/SHA-256-verified copy of the current npm `latest`. It rejects changes to user settings, project `.codex` context, or third-party hooks, and checks both global npm and npm-exec upgrade paths.
 - Only the `publish` job receives `id-token: write`. npm authentication uses Trusted Publishing; no long-lived `NPM_TOKEN` is required.
-- After publication, the workflow waits for the exact version and `latest`, then exercises both an exact global install and the documented unversioned `npx @michelj/context-guard install` path.
+- Immediately before publication, CD repeats the registry version guard to close the race between packaging and publishing.
+- After publication, the workflow downloads the npm tarball, proves its SHA-256 matches the pre-publish artifact, writes a receipt into the Actions summary, then exercises both an exact global install and the documented unversioned `npx @michelj/context-guard install` path.
 
 - 稳定标签必须使用 `vX.Y.Z`，并与 `package.json` 完全一致。
+- 目标版本必须尚未发布，并且严格高于 npm 当前稳定的 `latest` 版本。
 - 标签指向的提交必须已经属于 `main`。
 - `.github/workflows/npm-publish.yml` 只构建一个 tarball，校验精确内容并记录 SHA-256；Ubuntu、macOS、Windows 安装测试和 npm 发布复用同一份产物。
+- 每个系统还会从经过 SHA-512/SHA-256 校验的 npm 当前 `latest` 升级，确认用户设置、项目 `.codex` 上下文和第三方 Hook 不被改写，并覆盖 npm 全局升级与 npm-exec 升级。
 - 只有 `publish` job 拥有 `id-token: write`。npm 认证使用 Trusted Publishing，不保存长期 `NPM_TOKEN`。
-- 发布后会等待精确版本和 `latest` 生效，然后验证精确版本的全局安装，以及文档中的无版本 `npx @michelj/context-guard install`。
+- 真正发布前会再次执行 registry 版本门禁，避免打包与发布之间发生版本竞争。
+- 发布后会从 npm 下载 tarball，与发布前 SHA-256 精确比对并写入 Actions Summary 凭证；随后验证精确版本全局安装及无版本 `npx @michelj/context-guard install`。
 
 ## One-time configuration / 一次性配置
 
