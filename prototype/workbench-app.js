@@ -2360,7 +2360,6 @@ function renderNav(){
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
-    document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
     if(here0) el.scrollLeft = Math.max(0, here0.offsetLeft + here0.offsetWidth - el.clientWidth);
@@ -2385,7 +2384,6 @@ function renderNav(){
   const card = document.getElementById("context-card");
   if(card && path.length===1 && switchable) bindContextSwitch(card);
   document.getElementById("tray-count").textContent = cancelledList().length;
-  document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
   if(here) el.scrollLeft = Math.max(0, here.offsetLeft + here.offsetWidth - el.clientWidth);
