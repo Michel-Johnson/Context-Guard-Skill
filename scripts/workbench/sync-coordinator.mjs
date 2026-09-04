@@ -59,6 +59,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.project = project;
     this.sessionId = sessionId;
     this.store = store;
+    this.sessionDirectory = directory;
     this.directory = path.join(directory, 'remote-sync');
     this.stateFile = path.join(this.directory, 'state.json');
     this.baseFile = path.join(this.directory, 'server-base.json');
@@ -76,6 +77,23 @@ export class MemorySyncCoordinator extends EventEmitter {
       if (event.actor?.sessionId === 'cloud-sync') return;
       this.schedule(() => this.queueLocal()).catch(() => {});
     };
+  }
+
+  async knownBase() {
+    let base = await readJSON(this.baseFile, null);
+    if (!base) {
+      const confirmed = await readJSON(path.join(this.sessionDirectory, 'base-main.json'), null);
+      if (confirmed?.map) {
+        validate(confirmed.map);
+        base = confirmed.map;
+        await atomicWrite(this.baseFile, encode(base));
+      }
+    }
+    if (base && this.status.conflict?.code === 'SESSION_MAIN_BASELINE_REQUIRED') {
+      await fs.unlink(this.conflictFile).catch(error => { if (error.code !== 'ENOENT') throw error; });
+      await this.persist({ status: 'connecting', conflict: null, error: null });
+    }
+    return base;
   }
 
   snapshot() { return { ...this.status }; }
@@ -106,11 +124,11 @@ export class MemorySyncCoordinator extends EventEmitter {
   }
 
   async initialize() {
+    const base = await this.knownBase();
     let remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
     if (!remote) remote = await this.createSessionGeneration();
     if (!remote || this.status.conflict) return;
     validate(remote.memory.map);
-    const base = await readJSON(this.baseFile, null);
     if (!base) {
       if (equalDocument(this.store.doc, remote.memory.map)) {
         await atomicWrite(this.baseFile, encode(remote.memory.map));
@@ -134,7 +152,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     const existing = (await this.request(this.project, scope)).snapshot;
     if (existing) return existing;
     const main = (await this.request(this.project, 'main')).snapshot;
-    let base = await readJSON(this.baseFile, null);
+    let base = await this.knownBase();
     if (main?.memory?.map) {
       if (!base) {
         if (!equalDocument(this.store.doc, main.memory.map)) {

@@ -8,7 +8,7 @@ import { RouteStore } from './portless-routes.mjs';
 import { compatibleRuntime } from './runtime.mjs';
 
 const secret = () => randomBytes(32).toString('base64url');
-const PROXY_RUNTIME_SCHEMA = 2;
+const PROXY_RUNTIME_SCHEMA = 3;
 export async function backendIdentity(route) {
   try {
     const response = await fetch(`http://127.0.0.1:${route.port}/__context_guard/health`, { signal: AbortSignal.timeout(1000), redirect: 'error' });

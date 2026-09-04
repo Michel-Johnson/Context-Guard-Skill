@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { encode, pause, hash } from '../scripts/workbench/io.mjs';
+import { encode, pause, hash, readJSON } from '../scripts/workbench/io.mjs';
 import { isolatedEnvironment, run } from '../.github/scripts/client-protocol.mjs';
 import { chromium } from 'playwright';
 const workspace = fileURLToPath(new URL('../', import.meta.url));
@@ -101,6 +101,24 @@ async function bindSession(sessionId, worktreeRoot = root) {
   assert.equal(response.status, 200, JSON.stringify(result));
   return result;
 }
+async function stopIsolatedProxy() {
+  const file = path.join(env.HOME, '.context-guard/named-workbench/proxy.json');
+  const state = await readJSON(file, null);
+  if (!state?.base || !state.adminToken) return;
+  await new Promise((resolve, reject) => {
+    const request = http.request(new URL('/__cg_proxy/stop', state.base), {
+      method: 'POST', agent: false,
+      headers: { Authorization: `Bearer ${state.adminToken}`, Connection: 'close' },
+    }, response => {
+      response.resume();
+      response.on('end', () => response.statusCode === 202 ? resolve() : reject(new Error(`Proxy cleanup returned HTTP ${response.statusCode}`)));
+    });
+    request.setTimeout(2000, () => request.destroy(new Error('Proxy cleanup timed out')));
+    request.on('error', reject);
+    request.end();
+  });
+  await until(() => fs.stat(file).then(() => false, error => error.code === 'ENOENT' ? true : Promise.reject(error)), 4000);
+}
 try {
   await fs.mkdir(root);
   const python = (process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']).find(command => {
@@ -120,10 +138,11 @@ try {
   await fs.writeFile(mapPath, encode({ v: 1, project: 'browser-test', bootstrap: 'pending', flows: [], root: null }));
   running = await startServer({ root, port: 0, messageQueue });
   await bindSession(session);
-  await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
+  const boundHook = await run(python, [path.join(workspace, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: root, env, input: JSON.stringify({ cwd: root, session_id: session, thread_name: 'basic-browser', is_background_agent: true }), timeout: 20000,
   });
-  assert.ok((await fs.stat(path.join(ctx, 'sessions', `${session}.md`))).isFile());
+  const sessionRecord = await fs.stat(path.join(ctx, 'sessions', `${session}.md`)).catch(() => null);
+  assert.ok(sessionRecord?.isFile(), `bound SessionStart did not initialize Session memory: ${boundHook.stdout}`);
   await run(process.execPath, [path.join(workspace, 'bin/context-guard-skill.js'), 'set-language', '--root', root, '--language', 'zh'], { cwd: root, env });
   browser = await chromium.launch({ headless: true, env });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -1270,6 +1289,7 @@ try {
   try { if (browser) await browser.close(); }
   finally {
     if (running) await running.close();
+    await stopIsolatedProxy();
     await fs.writeFile(path.join(output, 'results.json'), encode({ passed, stage, checks, errors }));
     if (passed) {
       const resolved = await fs.realpath(sandbox), temporary = await fs.realpath(os.tmpdir());
