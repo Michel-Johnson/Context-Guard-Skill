@@ -2109,6 +2109,24 @@ function walkAll(node, fn, parents=[]){
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
 function currentSessionId(){ return isAllSessionsView() ? null : workbenchSync?.activeSession || null; }
+function canAssignBugSession(){
+  /* GitHack / static preview has no Agent session. Don't paint "分配 Session"
+     on every selected row — that is a claim action, not a status. Live
+     workbench still offers it in All Sessions so you can pick a handler. */
+  return !!currentSessionId() || !!window.__CG_SERVER;
+}
+function bugClaimControlHtml({selected, unassigned, mine, sending, inspector}){
+  if(unassigned) return inspector ? `<span class="muted">未挂节点</span>` : "";
+  if(!canAssignBugSession()) return "";
+  const sid = currentSessionId();
+  const label = sending ? t("bugSending") : sid ? (mine ? t("leave") : t("claim")) : t("assignSession");
+  if(selected){
+    const cls = inspector ? "quiet" : "claim";
+    const hook = inspector ? `data-act="claim"` : "data-claim";
+    return `<button type="button" class="${cls}" ${hook} ${sending?"disabled":""}>${label}</button>`;
+  }
+  return mine ? `<span class="claim">${esc(t("claim"))}</span>` : "";
+}
 const bugDispatching = new Set();
 const todoDispatching = new Set();
 function sessionColor(name){
@@ -2555,9 +2573,7 @@ function renderBugPanel(){
     const sending = bugDispatching.has(item.bug.id);
     const state = bugProgress(item.bug);
     const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
-    const claim = on && !item.unassigned
-      ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`
-      : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
+    const claim = bugClaimControlHtml({selected:on, unassigned:item.unassigned, mine, sending});
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
       <span class="bug-row">${dot}${claim}</span>
@@ -3484,7 +3500,7 @@ function renderDetail(){
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        ${hit && hit.unassigned ? `<span class="muted">未挂节点</span>` : `<button type="button" class="quiet" data-act="claim" ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`}
+        ${bugClaimControlHtml({selected:true, unassigned:hit && hit.unassigned, mine, sending, inspector:true})}
       </div>`;
     const claim = el.querySelector('[data-act="claim"]');
     if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await toggleBugSession(hit && hit.node, bug); };

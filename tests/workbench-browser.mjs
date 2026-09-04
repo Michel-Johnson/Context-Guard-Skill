@@ -877,6 +877,26 @@ try {
     assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelDots)}`);
     await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
     await preview.waitForSelector('body.bug-path-mode');
+    const previewClaims = await preview.evaluate(() => {
+      const rows = [...document.querySelectorAll('#bug-panel-list li[data-bug]')];
+      return {
+        buttons: document.querySelectorAll('#bug-panel-list [data-claim]').length,
+        assign: rows.filter(li => /分配 Session|Assign session/.test(li.textContent || '')).map(li => li.dataset.bug),
+        selected: document.querySelector('#bug-panel-list li.on .bug-status')?.textContent || '',
+        inspector: document.querySelector('#detail [data-act="claim"]')?.textContent || ''
+      };
+    });
+    assert.deepEqual(previewClaims.assign, [], `preview has no Agent session, so selected rows must not all say Assign session ${JSON.stringify(previewClaims)}`);
+    assert.equal(previewClaims.buttons, 0);
+    assert.equal(previewClaims.inspector, '');
+    assert.match(previewClaims.selected, /处理中|In progress/);
+    await preview.locator('#bug-panel-list li[data-bug="B40"]').click();
+    const waitingClaim = await preview.evaluate(() => ({
+      buttons: document.querySelectorAll('#bug-panel-list [data-claim]').length,
+      badge: document.querySelector('#bug-panel-list li.on .bug-status')?.textContent || ''
+    }));
+    assert.equal(waitingClaim.buttons, 0);
+    assert.match(waitingClaim.badge, /待处理|Waiting/);
     assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
     assert.equal(await preview.locator('.current-bead').count(), 0);
     await preview.locator('#btn-bug-exit').click();
