@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
-import { startCloudServer } from '../scripts/cloud/server.mjs';
+import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 
 const output = path.resolve(process.argv[2] || `output/playwright/browser-ci/cloud-${Date.now()}-${randomUUID()}`);
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-browser-'));
@@ -51,6 +51,7 @@ try {
     dataDir,
     adminToken: 'cloud-admin',
     browserToken: 'browser-token',
+    browserPasswordHash: await createWorkbenchPasswordHash('browser-password'),
     privateAccess: true,
     memoryConfig,
   });
@@ -70,7 +71,14 @@ try {
   browser = await chromium.launch({ headless: true });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.setDefaultTimeout(10000);
-  await page.goto(`${service.url}/auth?token=browser-token&next=/projects/context-guard`);
+  await page.goto(`${service.url}/projects/context-guard`);
+  assert.equal(new URL(page.url()).pathname, '/login');
+  await page.locator('input[name="password"]').fill('browser-password');
+  await Promise.all([
+    page.waitForURL(/\/projects\/context-guard$/),
+    page.locator('button[type="submit"]').click(),
+  ]);
+  record('Unauthenticated users get a visible password login');
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Main map/);
   record('Main is the default view');

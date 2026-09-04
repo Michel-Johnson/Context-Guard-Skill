@@ -4,6 +4,7 @@
 - [x] Cloud 项目总览重建时保留人工编辑、TODO 和自定义字段，重启后仍可恢复（`tests/cloud-workbench.test.mjs`）
 - [x] Cloud 与私有 Main/Session 记忆 API 可由同一进程、同一 Origin 提供，且 Session 不覆盖公共/Main Map（`tests/cloud-workbench.test.mjs`）
 - [x] Cloud 工作台切换并编辑独立 Session Map，刷新恢复且不覆盖 Main（`tests/cloud-workbench-browser.mjs`）
+- [x] Cloud 未登录首页展示密码登录页；密码哈希、持久安全 Cookie、退出、错误限速及浏览器登录流程（`tests/cloud-workbench.test.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] 私有记忆写入保留带服务器时间的完整历史；恢复生成新版本并用 CAS 阻止静默覆盖（`tests/cloud-workbench.test.mjs`）
 - [ ] `sync serve/ensure` 长驻进程、断线重连和 SSE 游标恢复
 - [ ] `sync checkpoint` 独立行为

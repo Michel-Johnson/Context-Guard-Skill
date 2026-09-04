@@ -1,7 +1,8 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, entries, validate, MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
@@ -15,6 +16,46 @@ const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
 const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
+const scrypt = promisify(cryptoScrypt);
+const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})$/;
+
+export async function createWorkbenchPasswordHash(password) {
+  const value = String(password || '');
+  if (!value || Buffer.byteLength(value) > 1024) throw new MapError('INVALID_PASSWORD', 'Password must contain 1–1024 bytes');
+  const salt = randomBytes(16);
+  const key = await scrypt(value, salt, 64);
+  return `scrypt$${salt.toString('base64url')}$${Buffer.from(key).toString('base64url')}`;
+}
+
+async function verifyWorkbenchPassword(password, encoded) {
+  const match = String(encoded || '').match(passwordHashPattern);
+  if (!match || Buffer.byteLength(String(password || '')) > 1024) return false;
+  const expected = Buffer.from(match[2], 'base64url');
+  const actual = Buffer.from(await scrypt(String(password || ''), Buffer.from(match[1], 'base64url'), expected.length));
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+const escapeHtml = value => String(value || '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+const validNext = value => {
+  const next = String(value || '/');
+  if (!next.startsWith('/') || next.startsWith('//')) throw new MapError('INVALID_REDIRECT', 'Invalid redirect');
+  return next;
+};
+
+function loginPage({ next = '/', error = '' } = {}) {
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · Context Guard</title><style>
+:root{font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2d2b28;background:#f7f2e8}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background-image:radial-gradient(#ded4c3 1px,transparent 1px);background-size:22px 22px}
+main{width:min(420px,100%);padding:34px;background:#fffdf8;border:3px solid #302f2d;border-radius:18px;box-shadow:7px 7px 0 #302f2d}
+h1{margin:0 0 8px;font-size:28px}p{margin:0 0 24px;color:#746d63}label{display:block;margin-bottom:8px;font-weight:700}
+input{width:100%;height:48px;padding:0 14px;border:2px solid #302f2d;border-radius:10px;font:inherit;background:#fff}input:focus{outline:3px solid #f1cc58;outline-offset:2px}
+button{width:100%;height:48px;margin-top:18px;border:2px solid #302f2d;border-radius:10px;background:#f7cf55;font:inherit;font-weight:800;cursor:pointer;box-shadow:3px 3px 0 #302f2d}
+.error{color:#b42318;margin:-10px 0 16px;font-weight:700}
+</style></head><body><main><h1>Context Guard</h1><p>输入密码进入项目地图</p>${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ''}
+<form method="post" action="/auth/login"><input type="hidden" name="next" value="${escapeHtml(next)}"><label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus><button type="submit">登录</button></form></main></body></html>`;
+}
 
 async function readJson(file, fallback) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); }
@@ -190,6 +231,7 @@ export async function startCloudServer({
   dataDir = process.env.CONTEXT_GUARD_CLOUD_DATA || path.join(root, '.cloud-data'),
   adminToken = process.env.CONTEXT_GUARD_CLOUD_TOKEN || '',
   browserToken = process.env.CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN || adminToken,
+  browserPasswordHash = process.env.CONTEXT_GUARD_CLOUD_PASSWORD_HASH || '',
   privateAccess = process.env.CONTEXT_GUARD_CLOUD_PRIVATE === '1',
   secureCookies = process.env.CONTEXT_GUARD_CLOUD_SECURE_COOKIES === '1',
   publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
@@ -208,7 +250,10 @@ export async function startCloudServer({
   const projectClients = new Map();
   const sockets = new Set();
   const tails = new Map();
+  const loginFailures = new Map();
   let registryTail = Promise.resolve();
+  if (browserPasswordHash && !passwordHashPattern.test(browserPasswordHash)) throw new MapError('INVALID_PASSWORD_HASH', 'Use a Context Guard scrypt password hash');
+  if (browserPasswordHash && !browserToken) throw new MapError('WORKBENCH_TOKEN_REQUIRED', 'Password login requires an independent workbench cookie token');
   const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
     ? await readJson(path.resolve(process.env.CONTEXT_GUARD_MEMORY_CONFIG), null)
     : null);
@@ -249,13 +294,24 @@ export async function startCloudServer({
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
     res.end(JSON.stringify(body));
   };
+  const sendHtml = (res, status, body, headers = {}) => {
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', ...headers });
+    res.end(body);
+  };
   const redirect = (res, location, headers = {}) => { res.writeHead(302, { Location: location, 'Cache-Control': 'no-store', ...headers }); res.end(); };
   const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureCookies ? '; Secure' : ''}` });
+  const clearWorkbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? '; Secure' : ''}` });
   const requestBody = async req => {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new MapError('CONTENT_TYPE', 'Use application/json', 415);
     const chunks = []; let size = 0;
     for await (const chunk of req) { size += chunk.length; if (size > 16 * 1024 * 1024) throw new MapError('BODY_TOO_LARGE', 'Request exceeds 16 MiB', 413); chunks.push(chunk); }
     try { return JSON.parse(Buffer.concat(chunks)); } catch { throw new MapError('INVALID_JSON', 'Malformed JSON', 400); }
+  };
+  const requestForm = async req => {
+    if (!String(req.headers['content-type'] || '').startsWith('application/x-www-form-urlencoded')) throw new MapError('CONTENT_TYPE', 'Use a form submission', 415);
+    const chunks = []; let size = 0;
+    for await (const chunk of req) { size += chunk.length; if (size > 8 * 1024) throw new MapError('BODY_TOO_LARGE', 'Login request is too large', 413); chunks.push(chunk); }
+    return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
   };
   const bearer = (req, url) => req.headers.authorization?.replace(/^Bearer /, '') || url.searchParams.get('token') || '';
   const requireAdmin = (req, url) => {
@@ -267,9 +323,24 @@ export async function startCloudServer({
     if (!project.tokenHash || !safeEqual(digest(credential), project.tokenHash)) throw new MapError('UNAUTHORIZED', 'A project sync token is required', 401);
   };
   const cookieValue = req => String(req.headers.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith('cg_workbench='))?.slice('cg_workbench='.length) || '';
+  const decodedCookieValue = req => { try { return decodeURIComponent(cookieValue(req)); } catch { return ''; } };
+  const hasWorkbenchAccess = (req, url) => {
+    const credential = bearer(req, url) || decodedCookieValue(req);
+    return !!browserToken && (safeEqual(credential, browserToken) || adminToken && safeEqual(credential, adminToken));
+  };
   const requireWorkbench = (req, url) => {
-    const credential = bearer(req, url) || decodeURIComponent(cookieValue(req));
-    if (!browserToken || !(safeEqual(credential, browserToken) || adminToken && safeEqual(credential, adminToken))) throw new MapError('UNAUTHORIZED', 'Open /auth?token=... before editing the cloud workbench', 401);
+    if (!hasWorkbenchAccess(req, url)) throw new MapError('UNAUTHORIZED', browserPasswordHash ? 'Sign in before editing the cloud workbench' : 'Open /auth?token=... before editing the cloud workbench', 401);
+  };
+  const loginKey = req => String(req.socket.remoteAddress || 'unknown');
+  const loginBlocked = req => {
+    const entry = loginFailures.get(loginKey(req));
+    if (!entry) return false;
+    if (entry.resetAt <= Date.now()) { loginFailures.delete(loginKey(req)); return false; }
+    return entry.count >= 5;
+  };
+  const recordLoginFailure = req => {
+    const key = loginKey(req), previous = loginFailures.get(key), current = previous?.resetAt > Date.now() ? previous : { count: 0, resetAt: Date.now() + 5 * 60_000 };
+    current.count += 1; loginFailures.set(key, current);
   };
   const requirePrivateRead = (req, url) => { if (privateAccess) requireWorkbench(req, url); };
   const readEvents = id => readJsonLines(eventsFile(id));
@@ -490,10 +561,27 @@ export async function startCloudServer({
       const route = url.pathname;
       if (publicOrigin && req.headers.origin && req.headers.origin !== publicOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
       if (memoryHandler && await memoryHandler(req, res)) return;
+      if (route === '/login' && req.method === 'GET') {
+        if (!browserPasswordHash) throw new MapError('NOT_FOUND', 'Password login is not configured', 404);
+        const next = validNext(url.searchParams.get('next') || '/');
+        if (hasWorkbenchAccess(req, url)) return redirect(res, next);
+        return sendHtml(res, 200, loginPage({ next }));
+      }
+      if (route === '/auth/login' && req.method === 'POST') {
+        if (!browserPasswordHash) throw new MapError('NOT_FOUND', 'Password login is not configured', 404);
+        const input = await requestForm(req), next = validNext(input.get('next') || '/');
+        if (loginBlocked(req)) return sendHtml(res, 429, loginPage({ next, error: '尝试次数过多，请五分钟后再试' }), { 'Retry-After': '300' });
+        if (!await verifyWorkbenchPassword(input.get('password'), browserPasswordHash)) {
+          recordLoginFailure(req);
+          return sendHtml(res, 401, loginPage({ next, error: '密码错误' }));
+        }
+        loginFailures.delete(loginKey(req));
+        return redirect(res, next, workbenchCookie());
+      }
+      if (route === '/auth/logout' && req.method === 'POST') return redirect(res, '/login', clearWorkbenchCookie());
       if (route === '/auth' && req.method === 'GET') {
         if (!browserToken || !safeEqual(url.searchParams.get('token'), browserToken)) throw new MapError('UNAUTHORIZED', 'Invalid workbench token', 401);
-        const next = url.searchParams.get('next') || '/';
-        if (!next.startsWith('/') || next.startsWith('//')) throw new MapError('INVALID_REDIRECT', 'Invalid redirect');
+        const next = validNext(url.searchParams.get('next') || '/');
         return redirect(res, next, workbenchCookie());
       }
       const workbench = route.match(/^\/api\/workbench\/(overview|projects\/([^/]+))(\/.*)$/);
@@ -692,6 +780,7 @@ export async function startCloudServer({
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
       if (req.method === 'GET' && (route === '/' || route === '/prototype/' || route === '/workbench.html' || /^\/projects\/[^/]+$/.test(route))) {
+        if (privateAccess && browserPasswordHash && !hasWorkbenchAccess(req, url)) return redirect(res, `/login?next=${encodeURIComponent(`${route}${url.search}`)}`);
         requirePrivateRead(req, url);
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
