@@ -217,10 +217,18 @@ try {
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('处理中 · codex-basic-browser'));
   await until(async () => (await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.includes(session));
   await synchronized();
+  assert.equal(await bugRow.locator('.sess-dot').count(), 0, 'processing Bug does not show a misleading green Session dot');
   const resolvedBug = await read();
-  resolvedBug.root.children[0].bugs.find(bug => bug.title === '处理状态测试').status = 'resolved';
+  const handledBug = resolvedBug.root.children[0].bugs.find(bug => bug.title === '处理状态测试');
+  handledBug.status = 'resolved';
+  resolvedBug.root.children[0].bugs.push({ id: 'B98', title: '仍待处理测试', status: 'open', sessions: [] });
   await fs.writeFile(mapPath, encode(resolvedBug));
-  await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('已解决'));
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll('#bug-panel-list li[data-bug]')];
+    return rows.some(row => row.textContent?.includes('仍待处理测试')) && rows.some(row => row.textContent?.includes('已解决'));
+  });
+  const orderedBugIds = await page.locator('#bug-panel-list li[data-bug]').evaluateAll(rows => rows.map(row => row.dataset.bug));
+  assert.ok(orderedBugIds.indexOf('B98') < orderedBugIds.indexOf(handledBug.id), 'unresolved Bug is listed before resolved Bug');
   const cleanBug = await read(); cleanBug.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(cleanBug));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
