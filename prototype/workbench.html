@@ -26,6 +26,7 @@
   }
   window.__CG_GALLERY_KIND = /^(add|insp|actions)$/i.test(galleryVal) ? "add"
     : /^(trash|bin|icon|del)$/i.test(galleryVal) ? "trash"
+    : /^(chip|tag|badge|state)$/i.test(galleryVal) ? "chip"
     : "bar";
   if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
@@ -1376,6 +1377,113 @@ html.design-gallery .g-tr-mock{pointer-events:auto;overflow:visible;width:100%;
 .g-tr-48 .ico:hover .paper{animation:gtr-fall .45s ease .08s both}
 .g-tr-49 .ico:hover svg{transform:translateY(-3px) scale(1.06)}
 .g-tr-50 .ico:hover .lid{transform:translateY(-3px) scaleX(1.08)}
+
+html.g-kind-chip .g-scroll{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:28px 22px;max-width:1120px}
+html.design-gallery .g-ch-mock{pointer-events:none;overflow:visible;width:100%;
+  padding:16px 16px 20px;background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d;
+  font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+.g-ch-mock .who{display:flex;align-items:center;gap:8px;margin:0;flex-wrap:wrap}
+.g-ch-mock h2{margin:0;font-size:18px;font-weight:700}
+.g-ch-mock .sp{flex:1 1 auto;min-width:8px}
+.g-ch-mock .lead{margin:6px 0 0;color:#746c60;font-size:12px;line-height:1.45;
+  font-family:Georgia,"Libre Baskerville","Songti SC",serif}
+.g-ch-mock .alts{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.g-ch-mock .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto}
+.g-ch-mock .trash svg{width:18px;height:18px;display:block}
+.g-ch-mock .chip{
+  display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;
+  font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;line-height:1.45;
+  background:#efe6d2;color:#3a6e55}
+.g-ch-mock .chip b{font-weight:800}
+.g-ch-mock .chip.u{background:#fff3bf;color:#8a6d1f}
+.g-ch-mock .chip.f{background:#f8e4dc;color:#e24b4b}
+.g-ch-mock .chip.d{background:#e4ebf4;color:#2d5da1}
+.g-ch-02 .chip{background:#d8eee0;color:#2f6a46;border-radius:999px}
+.g-ch-03 .chip{background:transparent;color:#3a6e55;border:1.5px solid #3a6e55;border-radius:999px;padding:0 8px}
+.g-ch-03 .chip.u{color:#8a6d1f;border-color:#c4a24a}
+.g-ch-03 .chip.f{color:#e24b4b;border-color:#e24b4b}
+.g-ch-03 .chip.d{color:#2d5da1;border-color:#2d5da1}
+.g-ch-04 .chip{border-radius:4px;background:#efe6d2;padding:2px 7px}
+.g-ch-05 .chip:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.g-ch-06 .chip{padding-left:6px}
+.g-ch-07 .chip{border-radius:2px;border:2px solid currentColor;background:#fffdf8;letter-spacing:.12em;font-weight:800;padding:2px 6px}
+.g-ch-08 .chip{background:transparent;padding:0;border-radius:0;font-weight:800}
+.g-ch-09 .chip{border:2px solid #2d2d2d;background:#efe6d2;border-radius:8px;color:#2d2d2d;padding:1px 8px}
+.g-ch-09 .chip.u{background:#fff3bf}.g-ch-09 .chip.f{background:#f8e4dc}.g-ch-09 .chip.d{background:#e4ebf4}
+.g-ch-10 .chip{border-radius:0 8px 8px 0;border-left:3px solid #3a6e55;background:#f3eee4;padding:2px 8px}
+.g-ch-10 .chip.u{border-left-color:#c4a24a}.g-ch-10 .chip.f{border-left-color:#e24b4b}.g-ch-10 .chip.d{border-left-color:#2d5da1}
+.g-ch-11 .chip{background:#3a6e55;color:#fffef9;border-radius:999px}
+.g-ch-11 .chip.u{background:#c4a24a;color:#2d2d2d}
+.g-ch-11 .chip.f{background:#e24b4b;color:#fffef9}
+.g-ch-11 .chip.d{background:#2d5da1;color:#fffef9}
+.g-ch-12 .chip{background:#fffdf8;border:1.5px dashed #3a6e55;border-radius:999px}
+.g-ch-12 .chip.u{border-color:#c4a24a}.g-ch-12 .chip.f{border-color:#e24b4b}.g-ch-12 .chip.d{border-color:#2d5da1}
+.g-ch-13 .chip{background:#fff3bf;color:#3a6e55;border-radius:999px}
+.g-ch-14 .chip{background:transparent;border:1px solid #c5bba8;color:#3a6e55;border-radius:999px;font-weight:500}
+.g-ch-15 .chip{border-radius:0;background:#efe6d2;padding:3px 8px;letter-spacing:.04em}
+.g-ch-16 .chip{font-family:Georgia,"Songti SC",serif;font-style:italic;font-weight:600;background:transparent;padding:0}
+.g-ch-17 .chip{font-family:ui-monospace,Menlo,monospace;font-size:10px;background:#111;color:#9fe3b0;border-radius:4px;padding:3px 7px}
+.g-ch-17 .chip.u{color:#ffe66d}.g-ch-17 .chip.f{color:#ff8a8a}.g-ch-17 .chip.d{color:#9ec0ff}
+.g-ch-18 .chip{box-shadow:inset 0 0 0 1px #3a6e55, inset 0 0 0 3px #fffdf8;background:#efe6d2;padding:3px 10px;border-radius:999px}
+.g-ch-19 .chip{font-size:12px;padding:3px 10px;background:#d8eee0;border-radius:8px}
+.g-ch-20 .chip{background:#2d2d2d;color:#9fe3b0;border-radius:999px}
+.g-ch-20 .chip.u{color:#ffe66d}.g-ch-20 .chip.f{color:#ff8a8a}.g-ch-20 .chip.d{color:#9ec0ff}
+.g-ch-21 .chip{background:transparent;border-radius:0;border-top:2px solid #3a6e55;padding:2px 0 0;color:#3a6e55}
+.g-ch-21 .chip.u{border-top-color:#c4a24a;color:#8a6d1f}
+.g-ch-21 .chip.f{border-top-color:#e24b4b;color:#e24b4b}
+.g-ch-21 .chip.d{border-top-color:#2d5da1;color:#2d5da1}
+.g-ch-22 .chip{background:transparent;border-radius:0;border-bottom:2px solid currentColor;padding:0 0 1px}
+.g-ch-23 .chip{border-radius:2px 10px 2px 10px;background:#efe6d2;padding:2px 10px}
+.g-ch-24 .chip{width:22px;height:22px;padding:0;border-radius:50%;justify-content:center;font-size:11px;background:#3a6e55;color:#fff}
+.g-ch-24 .chip.u{background:#c4a24a;color:#2d2d2d}
+.g-ch-24 .chip.f{background:#e24b4b}.g-ch-24 .chip.d{background:#2d5da1}
+.g-ch-25 .chip{background:#1b1b1b;color:#7dff9a;font-family:ui-monospace,Menlo,monospace;border-radius:0;font-size:10px;padding:2px 8px}
+.g-ch-25 .chip:before{content:"$ "}
+.g-ch-26 .chip{background:transparent;border-radius:0;font-family:"Libre Baskerville",Georgia,serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid #2d2d2d;padding:2px 6px}
+.g-ch-27 .chip{background:transparent;padding:0;border-radius:0;font-weight:500;letter-spacing:.18em;font-size:10px;color:#3a6e55}
+.g-ch-28 .chip{font-family:"Comic Neue","Noto Sans SC",cursive;background:#fff3bf;border:2px solid #2d2d2d;border-radius:12px 4px 12px 4px;color:#2d2d2d;font-weight:700}
+.g-ch-29 .chip{background:#d8eee0;border-radius:999px;padding:1px 8px 1px 6px}
+.g-ch-30 .chip{background:linear-gradient(90deg,#3a6e55 42%,#efe6d2 42%);color:#2d2d2d;border-radius:999px;padding:2px 10px 2px 8px}
+.g-ch-30 .chip.u{background:linear-gradient(90deg,#c4a24a 42%,#fff3bf 42%)}
+.g-ch-30 .chip.f{background:linear-gradient(90deg,#e24b4b 42%,#f8e4dc 42%)}
+.g-ch-30 .chip.d{background:linear-gradient(90deg,#2d5da1 42%,#e4ebf4 42%)}
+.g-ch-31 .chip{padding:4px 6px;border-radius:6px;font-size:10px;writing-mode:horizontal-tb;background:#d8eee0}
+.g-ch-32 .chip{padding:4px 14px;border-radius:999px;font-size:12px;background:#efe6d2}
+.g-ch-33 .chip{border-radius:0;font-family:ui-monospace,Menlo,monospace;font-size:10px;background:#3a6e55;color:#fff;padding:3px 6px;letter-spacing:0;image-rendering:pixelated}
+.g-ch-34 .chip{position:relative;background:#efe6d2;border-radius:0 0 8px 0;padding:2px 10px 2px 8px}
+.g-ch-34 .chip:after{content:"";position:absolute;top:0;right:0;border:4px solid transparent;border-top-color:#c5bba8;border-right-color:#c5bba8}
+.g-ch-35 .chip{background:transparent;padding:0;border-radius:0}
+.g-ch-35 .chip:before{content:"";width:7px;height:7px;border-radius:50%;background:#3a6e55;box-shadow:0 0 0 2px #d8eee0}
+.g-ch-35 .chip.u:before{background:#c4a24a}.g-ch-35 .chip.f:before{background:#e24b4b}.g-ch-35 .chip.d:before{background:#2d5da1}
+.g-ch-36 .chip{background:#f7f0e2;color:#5a7a62;border:1px solid #e4d6b8;border-radius:2px;font-weight:500}
+.g-ch-37 .chip{background:#fffdf8;border:2px solid #3a6e55;border-radius:999px;color:#3a6e55}
+.g-ch-38 .chip{background:linear-gradient(#d8eee0 60%,#efe6d2 60%);border-radius:6px;padding:2px 8px}
+.g-ch-39 .chip{background:#3a6e55;color:#fffef9;border-radius:4px;font-size:10px;padding:3px 7px;letter-spacing:.06em}
+.g-ch-40 .chip{border:2px solid #3a6e55;background:#fffdf8;border-radius:2px;color:#3a6e55;font-weight:800;letter-spacing:.2em;padding:3px 5px;font-size:10px}
+.g-ch-41 .chip{background:transparent;border-bottom:1px dotted currentColor;border-radius:0;padding:0 0 1px}
+.g-ch-42 .chip{background:#d8eee0;border-radius:10px 2px 10px 2px;padding:2px 9px}
+.g-ch-43 .chip{background:#efe6d2;border-radius:999px;font-size:10px;letter-spacing:.04em}
+.g-ch-44 .chip{background:#f3eee4;border-radius:999px;padding:1px 8px 1px 6px}
+.g-ch-44 .chip:before{content:"";width:7px;height:7px;border-radius:50%;background:#6ed08a}
+.g-ch-44 .chip.u:before{background:#d4a017}.g-ch-44 .chip.f:before{background:#e24b4b}.g-ch-44 .chip.d:before{background:#3d7ee8}
+.g-ch-45 .chip{background:#fffdf8;box-shadow:0 0 0 1px #d7ccb8, 0 0 0 3px #d8eee0;border-radius:999px;color:#3a6e55}
+.g-ch-46 .chip{background:#fffdf8;border:2px solid #2d2d2d;border-radius:8px;box-shadow:2px 2px 0 #2d2d2d;color:#3a6e55;padding:1px 8px}
+.g-ch-46 .chip.u{color:#8a6d1f}.g-ch-46 .chip.f{color:#e24b4b}.g-ch-46 .chip.d{color:#2d5da1}
+.g-ch-47 .chip{background:transparent;border-radius:0;padding:0 0 3px;border-bottom:4px solid #d8eee0;color:#3a6e55}
+.g-ch-47 .chip.u{border-bottom-color:#fff3bf;color:#8a6d1f}
+.g-ch-47 .chip.f{border-bottom-color:#f8e4dc;color:#e24b4b}
+.g-ch-47 .chip.d{border-bottom-color:#e4ebf4;color:#2d5da1}
+.g-ch-48 .chip{background:transparent;color:transparent;-webkit-text-stroke:1px #3a6e55;font-weight:800;padding:0;border-radius:0}
+.g-ch-48 .chip.u{-webkit-text-stroke-color:#8a6d1f}
+.g-ch-48 .chip.f{-webkit-text-stroke-color:#e24b4b}
+.g-ch-48 .chip.d{-webkit-text-stroke-color:#2d5da1}
+.g-ch-49 .chip{background:#efe6d2;border-radius:0;padding:1px 10px;position:relative}
+.g-ch-49 .chip:before,.g-ch-49 .chip:after{content:"";position:absolute;top:50%;width:5px;height:5px;border:1.5px solid #3a6e55;border-radius:50%;background:#fefaf2}
+.g-ch-49 .chip:before{left:-3px;transform:translateY(-50%)}
+.g-ch-49 .chip:after{right:-3px;transform:translateY(-50%)}
+.g-ch-50 .chip{background:#cfe8d4;color:#1f4d32;border-radius:999px;font-weight:700}
 </style>
 </head>
 <body>
@@ -6499,6 +6607,44 @@ function renderAll(){
   syncLinkRepoBtn();
   persist();
 }
+function bootChipGallery(){
+  document.title = "状态标签 · 50 版";
+  document.documentElement.classList.add("g-kind-chip");
+  const bar = document.querySelector("#design-gallery .g-bar");
+  if(bar){
+    bar.querySelector("b").textContent = "状态标签 · 50 版";
+    bar.querySelector(".hint").textContent = "往下滑动。标题行跟现在检查器一样，只换「测试通过」这粒标签；下面三粒是同一套的已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
+  }
+  const trash = `<span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span>`;
+  const names = [
+    ["01","现况胶囊"],["02","淡绿底"],["03","描边"],["04","小圆角方"],["05","前圆点"],
+    ["06","带对勾"],["07","印章"],["08","纯字"],["09","粗框"],["10","左色条"],
+    ["11","实心绿"],["12","虚线边"],["13","黄底绿字"],["14","细线胶囊"],["15","方标签"],
+    ["16","衬线斜体"],["17","终端绿"],["18","双层描边"],["19","稍大"],["20","深底"],
+    ["21","上边线"],["22","下划线"],["23","书签"],["24","圆徽章"],["25","命令行"],
+    ["26","报纸栏"],["27","瑞士字距"],["28","手写"],["29","勾加字"],["30","对切开"],
+    ["31","更紧"],["32","更松"],["33","像素"],["34","折角"],["35","色点"],
+    ["36","和纸"],["37","描边圆"],["38","两截底"],["39","小徽章"],["40","汉字印"],
+    ["41","点线下划"],["42","斜切角"],["43","略小字"],["44","绿灯"],["45","外圈"],
+    ["46","粗框阴影"],["47","底边"],["48","空心字"],["49","两端钉"],["50","更绿"]
+  ];
+  const okOf = id => {
+    if(id==="06"||id==="29") return `<b>✓</b>测试通过`;
+    if(id==="24") return "通";
+    if(id==="40") return "通";
+    if(id==="25") return "pass";
+    if(id==="17") return "OK";
+    return "测试通过";
+  };
+  const uOf = id => id==="24"?"未":id==="17"?"WAIT":id==="25"?"todo":id==="40"?"测":"已做未测";
+  const fOf = id => id==="24"?"败":id==="17"?"FAIL":id==="25"?"fail":id==="40"?"败":"测试未过";
+  const dOf = id => id==="24"?"新":id==="17"?"NEW":id==="25"?"init":id==="40"?"新":"未开发";
+  document.getElementById("g-scroll").innerHTML = names.map(([id, name]) => {
+    const chip = `<i class="chip">${okOf(id)}</i>`;
+    const alts = `<div class="alts"><i class="chip u">${uOf(id)}</i><i class="chip f">${fOf(id)}</i><i class="chip d">${dOf(id)}</i></div>`;
+    return `<article class="g-item" id="v${id}"><div class="g-num">${id} · ${name}</div><aside class="g-mock g-ch-mock g-ch-${id}"><div class="who"><h2>冷启动</h2>${chip}<span class="sp"></span>${trash}</div><p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>${alts}</aside></article>`;
+  }).join("");
+}
 function bootTrashIconGallery(){
   document.title = "垃圾桶图标 · 50 版";
   document.documentElement.classList.add("g-kind-trash");
@@ -6661,6 +6807,10 @@ function bootDesignGallery(){
   }
   if(window.__CG_GALLERY_KIND==="trash"){
     bootTrashIconGallery();
+    return;
+  }
+  if(window.__CG_GALLERY_KIND==="chip"){
+    bootChipGallery();
     return;
   }
   document.title = "工作台风格 · 50 版";

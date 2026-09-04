@@ -746,6 +746,55 @@ try {
     const lidMove = await preview.locator('#v01 .ico .lid').evaluate(el => getComputedStyle(el).transform);
     assert.notEqual(lidMove, 'none', `lid should lift on hover, got ${lidMove}`);
     recordCheck('trash-icon-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=chip`);
+    await preview.waitForSelector('.g-ch-mock');
+    const chipGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-ch-mock'));
+      const chips = items.map(el => {
+        const c = el.querySelector('.who .chip');
+        if (!c) return '';
+        const s = getComputedStyle(c);
+        return [s.backgroundColor, s.color, s.borderRadius, s.fontSize, s.borderTopWidth, s.padding, c.textContent.trim()].join('|');
+      });
+      const titles = items.map(el => el.querySelector('h2')?.textContent?.trim());
+      const altN = items.map(el => el.querySelectorAll('.alts .chip').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        chipUniq: new Set(chips).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        threeAlts: altN.every(n => n === 3)
+      };
+    });
+    assert.equal(chipGal.n, 50, `chip gallery should show 50 drafts ${JSON.stringify(chipGal)}`);
+    assert.equal(chipGal.uniq, 50);
+    assert.equal(chipGal.mocks, 50);
+    assert.ok(chipGal.chipUniq >= 40, `chips must differ, got ${chipGal.chipUniq}`);
+    assert.equal(chipGal.title, '状态标签 · 50 版');
+    assert.equal(chipGal.cold, true, 'title stays 冷启动');
+    assert.equal(chipGal.threeAlts, true, 'each draft shows the other three states');
+    const frozenChip = await preview.evaluate(() => {
+      const item = document.querySelector('#v01');
+      const cs = el => getComputedStyle(el);
+      const mock = item.querySelector('.g-ch-mock');
+      const h2 = item.querySelector('h2');
+      const chip = item.querySelector('.who .chip');
+      return {
+        bg: cs(mock).backgroundColor,
+        h2: cs(h2).fontSize,
+        text: chip?.textContent?.trim(),
+        chipBg: cs(chip).backgroundColor
+      };
+    });
+    assert.equal(frozenChip.bg, 'rgb(254, 250, 242)');
+    assert.equal(frozenChip.h2, '18px');
+    assert.equal(frozenChip.text, '测试通过');
+    assert.equal(frozenChip.chipBg, 'rgb(239, 230, 210)');
+    recordCheck('state-chip-gallery-50');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));
