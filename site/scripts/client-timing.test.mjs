@@ -58,7 +58,7 @@ test("Cursor在客户端窗口内接续工作台，其他入口仍可打开独�
   assert.match(journeySource, /state\.position\.index === chapters\.length - 1\)\s*openWorkbench\(\)/);
   assert.doesNotMatch(journeySource, /client-demo-progress/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "decisions", "debug", "install"\]/);
+  assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "debug", "decisions", "install"\]/);
   assert.ok(appSource.indexOf('<Page id="workbench"') < appSource.indexOf('<Page id="clients"'));
   assert.ok(appSource.indexOf('href="#workbench" aria-current') < appSource.indexOf('href="#clients" aria-current'));
   assert.match(appSource, /className="hero-demo-link" href="#workbench"/);
@@ -69,8 +69,8 @@ test("Cursor在客户端窗口内接续工作台，其他入口仍可打开独�
 test("设计问答独立成页，并以节点关系解释 Context 管理", async () => {
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const questionsSource = readFileSync(new URL("../src/design-questions.ts", import.meta.url), "utf8");
-  assert.ok(appSource.indexOf('<Page id="memory"') < appSource.indexOf('<Page id="decisions"'));
-  assert.ok(appSource.indexOf('<Page id="decisions"') < appSource.indexOf('<Page id="debug"'));
+  assert.ok(appSource.indexOf('<Page id="debug"') < appSource.indexOf('<Page id="decisions"'));
+  assert.ok(appSource.indexOf('<Page id="decisions"') < appSource.indexOf('<Page id="install"'));
   assert.match(appSource, /href="#decisions"/);
   assert.match(questionsSource, /为什么用节点图，而不是一篇长文或聊天摘要/);
   assert.match(questionsSource, /为什么 TODO 不是一个简单清单，而要挂载到节点上/);
