@@ -198,6 +198,10 @@ test('private memory requires authentication, isolates Sessions, verifies merge 
   assert.equal((await call(service, base + 'publish', options.adminToken, publish)).data.error.code, 'NOT_MERGED');
   await git(root, 'merge', '--ff-only', 'feature'); publish.expectedMainSha = featureSha;
   const published = await call(service, base + 'publish', options.adminToken, publish); assert.equal(published.status, 200, JSON.stringify(published));
+  assert.equal(published.data.closedSession.sessionId, 'one');
+  assert.equal((await call(service, base + 'sessions/one', token)).data.snapshot, null);
+  const closedWrite = await call(service, base + 'sessions/one', token, { ...input, operationId: 'write-after-publish', baseVersion: null });
+  assert.equal(closedWrite.status, 410); assert.equal(closedWrite.data.error.code, 'SESSION_CLOSED');
   const secondMemory = { map: memory.map, records: { 'sessions/two.md': 'private Session two' } };
   const savedTwo = await call(service, base + 'sessions/two', token, { operationId: 'save-two', baseVersion: null, baseMainVersion: published.data.snapshot.version, sourceCommit: featureSha, memory: secondMemory });
   const publishedTwo = await call(service, base + 'publish', options.adminToken, { operationId: 'publish-two', baseVersion: published.data.snapshot.version, sessionId: 'two', sessionVersion: savedTwo.data.snapshot.version, expectedMainSha: featureSha });
@@ -207,7 +211,7 @@ test('private memory requires authentication, isolates Sessions, verifies merge 
   assert.deepEqual((await call(service, base + 'sessions/one', token, input)).data, saved.data);
   assert.equal((await call(service, base + 'sessions/one', token, { ...input, memory: { ...memory, records: {} } })).data.error.code, 'ID_REUSED');
   const competing = await Promise.all(['a', 'b'].map(operationId => call(service, base + 'sessions/one', token, { ...input, operationId, baseVersion: saved.data.snapshot.version })));
-  assert.deepEqual(competing.map(r => r.status).sort(), [200, 409]);
+  assert.deepEqual(competing.map(r => r.status), [410, 410]);
   assert.equal((await call(service, base + 'main', token)).data.snapshot.mainSha, featureSha);
   assert.equal((await call(service, base + 'sessions/three', token, { ...input, operationId: 'private', memory: { ...memory, records: { 'private/credentials.json': 'not allowed' } } })).data.error.code, 'PRIVATE_PATH');
 });

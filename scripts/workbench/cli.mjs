@@ -436,12 +436,18 @@ async function main(args) {
     return { ...result, todo };
   }
   if (action === 'attach-bug') {
-    const input = await inputJSON(opt.input), snapshot = await call('/api/state');
-    return call('/api/commit', { method: 'POST', body: { operationId: `bug:${sessionId}:${input.bug.id}`, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
+    const input = await inputJSON(opt.input), operationId = `bug:${sessionId}:${input.bug.id}`;
+    const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
+    if (prior.found) return { ...prior.result, duplicate: true };
+    const snapshot = await call('/api/state');
+    return call('/api/commit', { method: 'POST', body: { operationId, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] } });
   }
   if (action === 'update-bug') {
-    const input = await inputJSON(opt.input), snapshot = await call('/api/state');
-    const result = await call('/api/commit', { method: 'POST', body: { operationId: `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
+    const input = await inputJSON(opt.input), operationId = `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`;
+    const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
+    if (prior.found) return { ...prior.result, duplicate: true };
+    const snapshot = await call('/api/state');
+    const result = await call('/api/commit', { method: 'POST', body: { operationId, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
     // The command updates both the live map and its generated indexes as one observable operation.
     await call('/api/projections', { method: 'POST', body: { wait: true } });
     return result;

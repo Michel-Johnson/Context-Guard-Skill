@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import functools
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import webbrowser
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -188,9 +192,27 @@ def read_input_json(input_path: str) -> object:
     return json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
 
 
-def write_json(path: Path, value: object) -> None:
+def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        if os.name != "nt":
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_json(path: Path, value: object) -> None:
+    atomic_write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
 def read_preferences(ctx: Path) -> dict[str, str]:
@@ -366,10 +388,140 @@ def hook_runtime_path(root: Path, session_id: str) -> Path:
     return context_dir(root) / "private" / "hook-runtime" / f"{digest}.json"
 
 
+_HOOK_RUNTIME_LOCKS: dict[str, dict[str, object]] = {}
+
+
+class _HookRuntimeLockLease:
+    def __init__(self, key: str):
+        self.key = key
+        self.closed = False
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        state = _HOOK_RUNTIME_LOCKS.get(self.key)
+        if not state:
+            return
+        count = int(state["count"]) - 1
+        if count > 0:
+            state["count"] = count
+            return
+        handle = state["handle"]
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            _HOOK_RUNTIME_LOCKS.pop(self.key, None)
+
+    def __enter__(self) -> "_HookRuntimeLockLease":
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def acquire_hook_runtime_lock(root: Path, session_id: str, timeout: float = 10.0) -> _HookRuntimeLockLease:
+    """Acquire a crash-safe, re-entrant process lock for one Session runtime."""
+    target = hook_runtime_path(root, session_id)
+    lock_path = target.with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    key = str(lock_path.resolve())
+    held = _HOOK_RUNTIME_LOCKS.get(key)
+    if held:
+        held["count"] = int(held["count"]) + 1
+        return _HookRuntimeLockLease(key)
+
+    handle = lock_path.open("a+b")
+    if os.name == "nt":
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except (BlockingIOError, OSError) as exc:
+            if isinstance(exc, OSError) and exc.errno not in {None, errno.EACCES, errno.EAGAIN}:
+                handle.close()
+                raise
+            if time.monotonic() >= deadline:
+                handle.close()
+                raise TimeoutError(f"timed out waiting for hook runtime lock: {lock_path}") from exc
+            time.sleep(0.02)
+    _HOOK_RUNTIME_LOCKS[key] = {"handle": handle, "count": 1}
+    return _HookRuntimeLockLease(key)
+
+
+@contextmanager
+def hook_runtime_lock(root: Path, session_id: str, timeout: float = 10.0):
+    lease = acquire_hook_runtime_lock(root, session_id, timeout)
+    try:
+        yield
+    finally:
+        lease.close()
+
+
+def serialize_hook_runtime(session_arg: int):
+    """Serialize a CLI operation that performs a runtime read-modify-write."""
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args, **kwargs):
+            root = args[0] if args else kwargs["root"]
+            session_id = args[session_arg] if len(args) > session_arg else kwargs.get("session_id", "")
+            if not session_id:
+                return function(*args, **kwargs)
+            with hook_runtime_lock(root, str(session_id)):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
+def serialize_named_lock(name: str):
+    """Serialize a project-wide registry update independently of Session IDs."""
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args, **kwargs):
+            root = args[0] if args else kwargs["root"]
+            with hook_runtime_lock(root, f"registry:{name}"):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
 def read_hook_runtime(root: Path, session_id: str) -> dict[str, object]:
-    value = read_json(hook_runtime_path(root, session_id), {})
+    target = hook_runtime_path(root, session_id)
+    if not target.exists():
+        value: object = {}
+    else:
+        try:
+            value = json.loads(target.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(f"hook runtime is unreadable; preserve and repair {target}") from exc
     if not isinstance(value, dict):
-        value = {}
+        raise ValueError(f"hook runtime must be a JSON object: {target}")
+    recorded_session = value.get("session_id")
+    if recorded_session not in {None, session_id}:
+        raise ValueError(f"hook runtime belongs to another Session: {target}")
+    if "signals" in value and not isinstance(value["signals"], list):
+        raise ValueError(f"hook runtime signals must be a list: {target}")
     value.setdefault("v", 1)
     value.setdefault("session_id", session_id)
     value.setdefault("signals", [])
@@ -381,10 +533,7 @@ def write_hook_runtime(root: Path, session_id: str, value: dict[str, object]) ->
     value["session_id"] = session_id
     value["updated_at"] = utc_now()
     target = hook_runtime_path(root, session_id)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, target)
+    atomic_write_text(target, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
     return target
 
 
@@ -395,6 +544,7 @@ def prompt_signal_id(session_id: str, turn_id: str, prompt: str) -> str:
     return f"SIG-{digest[:20]}"
 
 
+@serialize_hook_runtime(1)
 def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) -> dict[str, object]:
     runtime = read_hook_runtime(root, session_id)
     signals = runtime.get("signals")
@@ -422,6 +572,7 @@ def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) ->
     return signal
 
 
+@serialize_hook_runtime(1)
 def resolve_prompt_signal(
     root: Path,
     session_id: str,
@@ -451,6 +602,7 @@ def resolve_prompt_signal(
     return signal
 
 
+@serialize_hook_runtime(1)
 def split_signal(root: Path, session_id: str, signal_id: str, items: object) -> list[dict]:
     """The Agent separates meanings; the hook never guesses from keywords."""
     if not isinstance(items, list) or not 2 <= len(items) <= 20 or not all(isinstance(item, str) and item.strip() for item in items):
@@ -515,6 +667,7 @@ def session_platform(root: Path, session_id: str) -> str:
     return platform
 
 
+@serialize_hook_runtime(1)
 def archive_session(
     root: Path,
     session_id: str,
@@ -737,6 +890,7 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+@serialize_hook_runtime(4)
 def record_todo(
     root: Path,
     title: str,
@@ -790,6 +944,7 @@ def record_todo(
     return {"id": todo_id, "node": node_id, "version": result.get("version"), "duplicate": bool(result.get("duplicate"))}
 
 
+@serialize_hook_runtime(1)
 def resolve_signal(root: Path, session_id: str, signal_id: str, kind: str) -> dict[str, object]:
     if kind not in {"task", "ignore"}:
         raise ValueError("resolve-signal --kind must be task or ignore; use record-todo/record-bad-case for durable records")
@@ -820,12 +975,96 @@ def run_node_workbench(args: list[str], payload: object = None) -> dict:
 
 
 def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str, session_id: str) -> None:
+    if not node_id:
+        return
     args = ["attach-bug", "--root", str(ctx.parent.parent)]
     if session_id:
         args.extend(["--session", session_id])
     run_node_workbench(args, {"node": node_id, "bug": bug})
 
 
+def bad_case_transaction_dir(ctx: Path) -> Path:
+    return ctx / "private" / "bad-case-transactions"
+
+
+def bad_case_failpoint(stage: str) -> None:
+    if os.environ.get("CONTEXT_GUARD_TESTING") == "1" and os.environ.get("CONTEXT_GUARD_BAD_CASE_FAILPOINT") == stage:
+        os._exit(91)
+
+
+def remove_durable_file(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    if os.name != "nt" and path.parent.exists():
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
+def bad_case_transaction_path(ctx: Path, transaction_id: str) -> Path:
+    digest = hashlib.sha256(transaction_id.encode("utf-8")).hexdigest()
+    return bad_case_transaction_dir(ctx) / f"{digest}.json"
+
+
+def apply_bad_case_transaction(root: Path, transaction: dict[str, object], journal: Path) -> None:
+    ctx = context_dir(root)
+    operation = str(transaction.get("operation") or "")
+    bug_id = str(transaction.get("bug_id") or "")
+    session_id = str(transaction.get("session_id") or "")
+    if operation not in {"occurrence", "fix"} or not re.fullmatch(r"B\d+", bug_id):
+        raise ValueError(f"invalid bad-case recovery journal: {journal}")
+
+    bug_path = ctx / "bugs" / f"{bug_id}.md"
+    fix_path = ctx / "fixes" / f"{bug_id}.md"
+    atomic_write_text(bug_path, str(transaction["bug_text"]))
+    bad_case_failpoint("after-bug-file")
+    atomic_write_text(fix_path, str(transaction["fix_text"]))
+    bad_case_failpoint("after-fix-file")
+
+    index = read_json(ctx / "bugs-index.json", {})
+    if not isinstance(index, dict):
+        index = {}
+    index[bug_id] = transaction["index_entry"]
+    write_json(ctx / "bugs-index.json", index)
+    bad_case_failpoint("after-index")
+
+    map_bug = transaction.get("map_bug")
+    if operation == "occurrence" and isinstance(map_bug, dict):
+        attach_bug_to_map(ctx, map_bug, str(transaction.get("node") or ""), session_id)
+    elif operation == "fix":
+        update_bug_on_map(ctx, bug_id, str(transaction.get("status") or "fixed"), session_id)
+    bad_case_failpoint("after-map")
+
+    events = read_json(ctx / "bad-case-events.json", [])
+    if not isinstance(events, list):
+        events = []
+    event = transaction.get("event")
+    transaction_id = str(transaction.get("transaction_id") or "")
+    if isinstance(event, dict) and not any(isinstance(item, dict) and item.get("transaction_id") == transaction_id for item in events):
+        events.append(event)
+        write_json(ctx / "bad-case-events.json", events)
+    bad_case_failpoint("after-event")
+
+    signal_id = str(transaction.get("signal_id") or "")
+    if operation == "occurrence" and signal_id:
+        with hook_runtime_lock(root, session_id):
+            resolve_prompt_signal(root, session_id, signal_id, "bad-case", str(transaction.get("node") or ""), bug_id)
+    remove_durable_file(journal)
+
+
+def recover_bad_case_transactions(root: Path) -> None:
+    ctx = context_dir(root)
+    directory = bad_case_transaction_dir(ctx)
+    for journal in sorted(directory.glob("*.json")) if directory.exists() else []:
+        transaction = read_json(journal, None)
+        if not isinstance(transaction, dict):
+            raise ValueError(f"bad-case recovery journal is unreadable; preserve and repair {journal}")
+        apply_bad_case_transaction(root, transaction, journal)
+
+
+@serialize_named_lock("bad-case-registry")
+@serialize_hook_runtime(9)
 def record_bad_case(
     root: Path,
     title: str,
@@ -841,6 +1080,7 @@ def record_bad_case(
 ) -> tuple[str, Path]:
     init_context(root)
     ctx = context_dir(root)
+    recover_bad_case_transactions(root)
     events = read_json(ctx / "bad-case-events.json", [])
     if not isinstance(events, list):
         events = []
@@ -884,7 +1124,7 @@ def record_bad_case(
     ]
     if card_path:
         lines.append(f"- card: {card_path}")
-    bug_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    bug_text = "\n".join(lines) + "\n"
     fix_lines = [
         f"# {bug_id} {title.strip()}",
         "",
@@ -902,7 +1142,7 @@ def record_bad_case(
         "", "## 代码", "待补充",
         "", "## 证据", "待补充",
     ])
-    fix_path.write_text("\n".join(fix_lines) + "\n", encoding="utf-8")
+    fix_text = "\n".join(fix_lines) + "\n"
 
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict):
@@ -917,24 +1157,8 @@ def record_bad_case(
     }
     if card_path:
         entry["card"] = card_path
-    index[bug_id] = entry
-    write_json(ctx / "bugs-index.json", index)
-
-    attach_bug_to_map(
-        ctx,
-        {
-            "id": bug_id,
-            "title": title.strip(),
-            "desc": phenomenon.strip(),
-            "status": status,
-            "files": "",
-            "sessions": [session_id] if session_id else [],
-            "record": f".codex/context/bugs/{bug_id}.md",
-        },
-        node,
-        session_id,
-    )
-    events.append({
+    transaction_id = f"bad-case:{bug_id}:occurrence"
+    event = {
         "at": utc_now(),
         "event": "occurrence",
         "case": bug_id,
@@ -943,10 +1167,34 @@ def record_bad_case(
         "phenomenon": phenomenon.strip(),
         "trigger": trigger.strip(),
         "signal_id": signal_id or None,
-    })
-    write_json(ctx / "bad-case-events.json", events)
-    if signal_id:
-        resolve_prompt_signal(root, session_id, signal_id, "bad-case", node, bug_id)
+        "transaction_id": transaction_id,
+    }
+    transaction: dict[str, object] = {
+        "v": 1,
+        "transaction_id": transaction_id,
+        "operation": "occurrence",
+        "bug_id": bug_id,
+        "node": node,
+        "session_id": session_id,
+        "signal_id": signal_id,
+        "status": status,
+        "bug_text": bug_text,
+        "fix_text": fix_text,
+        "index_entry": entry,
+        "map_bug": {
+            "id": bug_id,
+            "title": title.strip(),
+            "desc": phenomenon.strip(),
+            "status": status,
+            "files": "",
+            "sessions": [session_id] if session_id else [],
+            "record": f".codex/context/bugs/{bug_id}.md",
+        },
+        "event": event,
+    }
+    journal = bad_case_transaction_path(ctx, transaction_id)
+    write_json(journal, transaction)
+    apply_bad_case_transaction(root, transaction, journal)
     print(f"[context-guard] recorded bad case: {bug_id} ({bug_path})")
     return bug_id, bug_path
 
@@ -965,6 +1213,8 @@ def update_bug_on_map(ctx: Path, bug_id: str, status: str, session_id: str) -> N
     run_node_workbench(args, {"bug": {"id": bug_id, "status": status}})
 
 
+@serialize_named_lock("bad-case-registry")
+@serialize_hook_runtime(5)
 def record_bad_case_fix(
     root: Path,
     bug_id: str,
@@ -975,6 +1225,7 @@ def record_bad_case_fix(
 ) -> Path:
     init_context(root)
     ctx = context_dir(root)
+    recover_bad_case_transactions(root)
     bug_id = bug_id.strip().upper()
     if not re.fullmatch(r"B\d+", bug_id):
         raise ValueError("case must use the B<number> identifier")
@@ -985,11 +1236,9 @@ def record_bad_case_fix(
     if not method.strip() or not evidence.strip():
         raise ValueError("record-bad-case-fix needs --method and --evidence")
     bug_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", bug_path.read_text(encoding="utf-8"), count=1)
-    bug_path.write_text(bug_text, encoding="utf-8")
     fix_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", fix_path.read_text(encoding="utf-8"), count=1)
     fix_text = replace_markdown_section(fix_text, "怎么修", method)
     fix_text = replace_markdown_section(fix_text, "证据", evidence)
-    fix_path.write_text(fix_text, encoding="utf-8")
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict) or not isinstance(index.get(bug_id), dict):
         raise ValueError(f"bad case is missing from bugs-index.json: {bug_id}")
@@ -998,12 +1247,8 @@ def record_bad_case_fix(
         sessions = index[bug_id].setdefault("sessions", [])
         if isinstance(sessions, list) and session_id not in sessions:
             sessions.append(session_id)
-    write_json(ctx / "bugs-index.json", index)
-    update_bug_on_map(ctx, bug_id, status, session_id)
-    events = read_json(ctx / "bad-case-events.json", [])
-    if not isinstance(events, list):
-        events = []
-    events.append({
+    transaction_id = f"bad-case:{bug_id}:fix:{hashlib.sha256(json.dumps([status, method.strip(), evidence.strip()], ensure_ascii=False).encode('utf-8')).hexdigest()[:16]}"
+    event = {
         "at": utc_now(),
         "event": "fix",
         "case": bug_id,
@@ -1011,8 +1256,23 @@ def record_bad_case_fix(
         "session_id": session_id or None,
         "method": method.strip(),
         "evidence": evidence.strip(),
-    })
-    write_json(ctx / "bad-case-events.json", events)
+        "transaction_id": transaction_id,
+    }
+    transaction: dict[str, object] = {
+        "v": 1,
+        "transaction_id": transaction_id,
+        "operation": "fix",
+        "bug_id": bug_id,
+        "session_id": session_id,
+        "status": status,
+        "bug_text": bug_text,
+        "fix_text": fix_text,
+        "index_entry": index[bug_id],
+        "event": event,
+    }
+    journal = bad_case_transaction_path(ctx, transaction_id)
+    write_json(journal, transaction)
+    apply_bad_case_transaction(root, transaction, journal)
     print(f"[context-guard] recorded bad case fix: {bug_id} ({fix_path})")
     return fix_path
 
