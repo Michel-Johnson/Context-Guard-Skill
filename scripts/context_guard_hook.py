@@ -670,9 +670,11 @@ def protocol_command(words: list[str], allowed: set[str]) -> bool:
         return False
     entrypoints = {"context-guard", "context-guard-skill", "context_guard.py", "context-guard-skill.js"}
     index = 0
-    if Path(words[0]).name in {"node", "node.exe", "python", "python3", "python.exe"}:
+    first = words[0].strip("\"'")
+    if Path(first).name in {"node", "node.exe", "python", "python3", "python.exe"}:
         index = 1
-    return index < len(words) and Path(words[index]).name in entrypoints and index + 1 < len(words) and words[index + 1] in allowed
+    entry = words[index].strip("\"'") if index < len(words) else ""
+    return index < len(words) and Path(entry).name in entrypoints and index + 1 < len(words) and words[index + 1] in allowed
 
 
 def control_words(words: list[str]) -> bool:
@@ -690,7 +692,9 @@ def shell_segments(command: str) -> list[list[str]] | None:
     if "\n" in command or "`" in command or "$(" in command:
         return None
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        # POSIX shlex consumes backslashes in an unquoted Windows path. Native
+        # shell syntax needs native token preservation so CLI paths remain valid.
+        lexer = shlex.shlex(command, posix=os.name != "nt", punctuation_chars=";&|<>")
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
