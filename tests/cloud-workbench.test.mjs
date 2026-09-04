@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startCloudServer } from '../scripts/cloud/server.mjs';
+import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 
 async function fixture() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-'));
@@ -68,13 +68,39 @@ test('cloud workbench exposes a multi-project registry and guarded writes', asyn
 
 test('private mode protects reads and uses secure cookies without leaking project count', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-private-cloud-'));
-  const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'admin-test', browserToken: 'browser-test', privateAccess: true, secureCookies: true, publicOrigin: 'https://map.example.test' });
+  const browserPasswordHash = await createWorkbenchPasswordHash('test-browser-password');
+  const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'admin-test', browserToken: 'browser-test', browserPasswordHash, privateAccess: true, secureCookies: true, publicOrigin: 'https://map.example.test' });
   t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
   const health = await request(service.url, '/api/health');
   assert.equal(health.response.status, 200); assert.equal(health.body.projects, undefined);
-  for (const route of ['/api/projects', '/.codex/context/map.json', '/', '/prototype/workbench-sync.mjs']) {
+  for (const route of ['/api/projects', '/.codex/context/map.json', '/prototype/workbench-sync.mjs']) {
     assert.equal((await fetch(service.url + route)).status, 401, route);
   }
+  const root = await fetch(service.url + '/', { redirect: 'manual' });
+  assert.equal(root.status, 302); assert.equal(root.headers.get('location'), '/login?next=%2F');
+  assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: 'cg_workbench=%E0%A4%A' } })).status, 401);
+  const loginPage = await fetch(service.url + '/login');
+  assert.equal(loginPage.status, 200); assert.match(await loginPage.text(), /输入密码进入项目地图/);
+
+  const submitPassword = password => fetch(service.url + '/auth/login', {
+    method: 'POST', redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://map.example.test' },
+    body: new URLSearchParams({ password, next: '/projects/context-guard' }),
+  });
+  const wrong = await submitPassword('wrong-password');
+  assert.equal(wrong.status, 401); assert.equal(wrong.headers.get('set-cookie'), null);
+  assert.doesNotMatch(await wrong.text(), /test-browser-password|browser-test/);
+  const passwordLogin = await submitPassword('test-browser-password');
+  assert.equal(passwordLogin.status, 302); assert.equal(passwordLogin.headers.get('location'), '/projects/context-guard');
+  assert.match(passwordLogin.headers.get('set-cookie'), /HttpOnly/); assert.match(passwordLogin.headers.get('set-cookie'), /Secure/);
+  const passwordCookie = passwordLogin.headers.get('set-cookie').split(';')[0];
+  assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: passwordCookie } })).status, 200);
+  const logout = await fetch(service.url + '/auth/logout', { method: 'POST', redirect: 'manual', headers: { Cookie: passwordCookie, Origin: 'https://map.example.test' } });
+  assert.equal(logout.status, 302); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
+
+  for (let attempt = 0; attempt < 5; attempt++) assert.equal((await submitPassword('still-wrong')).status, 401);
+  const limited = await submitPassword('test-browser-password');
+  assert.equal(limited.status, 429); assert.equal(limited.headers.get('retry-after'), '300');
   const login = await fetch(service.url + '/auth?token=browser-test&next=/', { redirect: 'manual' });
   assert.equal(login.status, 302); assert.match(login.headers.get('set-cookie'), /HttpOnly/); assert.match(login.headers.get('set-cookie'), /Secure/);
   const cookie = login.headers.get('set-cookie').split(';')[0];

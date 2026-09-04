@@ -128,6 +128,12 @@ memory. Use protected transport and keep server data and backups outside the
 source checkout. Credentials and machine-specific access/port/process state stay
 outside memory snapshots.
 
+Human browser access uses the Cloud password login and HttpOnly workbench cookie;
+it does not reuse an Agent, project-memory, or publisher token. Store only the
+salted password hash and the independent cookie token in protected server
+configuration. Unauthenticated HTML navigation goes to the login page, while
+unauthenticated API requests continue to fail with JSON `401` responses.
+
 Migration needs a separately approved deployment plan: inventory local records,
 preserve a backup, import into the correct project/Session scopes, verify content
 and version coverage, then switch reads to the server. Do not delete local data

@@ -40,12 +40,31 @@ Create `$HOME/.config/context-guard-cloud.env` with mode `0600`:
 ```dotenv
 CONTEXT_GUARD_CLOUD_TOKEN=<long-random-admin-token>
 CONTEXT_GUARD_CLOUD_WORKBENCH_TOKEN=<different-long-random-browser-token>
+CONTEXT_GUARD_CLOUD_PASSWORD_HASH=<scrypt-password-hash>
 CONTEXT_GUARD_MEMORY_CONFIG=/absolute/path/to/context-guard-memory.json
 ```
 
 Tokens are server secrets. Do not commit them, paste them into Map records, or
 put them in a service command line. Generate independent random values with a
 system password manager or `openssl rand -hex 32`.
+
+Generate the browser password hash without putting the password in shell history.
+The command reads one line from standard input and prints only the salted scrypt
+hash; store that hash as `CONTEXT_GUARD_CLOUD_PASSWORD_HASH`:
+
+```bash
+node --input-type=module -e '
+  import { createWorkbenchPasswordHash } from "./scripts/cloud/server.mjs";
+  let password = "";
+  for await (const chunk of process.stdin) password += chunk;
+  process.stdout.write(await createWorkbenchPasswordHash(password.replace(/\r?\n$/, "")) + "\n");
+'
+```
+
+Keep the password itself in the user's password manager. Cloud never writes it
+to disk. The hash enables the human login page, while the independent workbench
+token becomes the signed-in browser cookie and remains available for emergency
+token login. Agent sync and memory APIs continue to use their scoped tokens.
 
 When private Session memory is required, create the referenced JSON file with
 mode `0600`. Its `dataDir` must be absolute and outside the checkout:
@@ -126,7 +145,13 @@ in a secret manager and give it only to Agents that may synchronize this
 project. To rotate a lost token, call
 `POST /api/projects/<project-id>/enrollments` with the admin token.
 
-Open the editable cloud workbench once with:
+Open the editable cloud workbench at `https://map.example.com/` and enter the
+configured browser password. A successful login stores an HttpOnly, SameSite
+cookie for 12 hours, so normal refreshes remain signed in. `POST /auth/logout`
+clears it. Five wrong attempts from one backend connection address pause password
+login for five minutes.
+
+For emergency administration, the existing one-time token exchange remains:
 
 ```text
 http://<server>:8788/auth?token=<workbench-token>&next=/
