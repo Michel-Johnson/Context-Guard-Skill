@@ -374,10 +374,12 @@ file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sy
 when configured. Failure leaves the plan unfinished. Changes after archive
 require a new verified archive. `plan-status` returns the active plan, last
 completed plan and pending signals; use it after compact/interrupt or a retry.
-Stop blocks pending signals or active plans and never marks them complete itself.
-On a host's repeated Stop invocation, it reports `INCOMPLETE` without another
-forced retry, preserving unfinished state so the Agent can report a real blocker
-instead of entering an infinite loop.
+Stop never marks pending signals or active plans complete itself. Codex renders a
+Stop block reason as a user-visible hook message, so its adapter persists the
+unfinished state without emitting control text and restores the active plan on the
+next `UserPromptSubmit`. Hosts with a non-visible continuation contract may still
+block once; on a repeated Stop invocation they report `INCOMPLETE` without another
+forced retry, preserving unfinished state instead of entering an infinite loop.
 
 Limits: this is a cooperative Agent protocol, not a filesystem sandbox. Arbitrary
 scripts may modify paths outside the declared scope; their actual scope requires

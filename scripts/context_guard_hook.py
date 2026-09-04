@@ -1331,6 +1331,13 @@ def main() -> int:
         pending_notice = ", ".join(pending_ids[:20]) or "none"
         if len(pending_ids) > 20:
             pending_notice += f" (+{len(pending_ids) - 20} more; use plan-status for the complete list)"
+        plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
+        plan_notice = ""
+        if plan:
+            plan_notice = (
+                f" Active plan: {plan.get('id')} ({plan.get('summary') or 'unfinished'}). "
+                "Resume it before starting unrelated work; use plan-status for its paths and verification state."
+            )
         notice = (
             context_text + "\n\n" +
             f"User signal: {signal_id}. Pending user signals: {pending_notice}. "
@@ -1338,7 +1345,7 @@ def main() -> int:
             f"use `context-guard record-todo --root {json.dumps(str(root))} --session {json.dumps(current_session_id)} --signal {json.dumps(signal_id)} --node <id> --title <title> --description <details>` for a durable TODO; "
             "use record-bad-case with the same --signal for a credible failure; or use resolve-signal --kind task|ignore. "
             "For multiple meanings use split-signal --signal <id> --input <json> with items:[<text>,<text>], then classify every returned child signal. "
-            "The hook captures the signal but never guesses from keywords."
+            "The hook captures the signal but never guesses from keywords." + plan_notice
         )
         return hook_response(platform, event, memory_notice + "\n\n" + notice)
 
@@ -1398,17 +1405,17 @@ def main() -> int:
         plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
         # Codex renders Stop block reasons as a user-role hook_prompt. Cursor and
         # Claude still rely on the block contract to continue an unfinished turn.
-        blocked = bool(plan or (pending and platform != "codex"))
+        blocked = bool((plan or pending) and platform != "codex")
         # Stop checks local receipts only. Network work belongs to explicit plan
         # boundaries and cannot time out this short hook into false success.
-        result = "incomplete" if blocked else "deferred" if pending else "completed"
+        result = "incomplete" if blocked else "deferred" if (plan or pending) else "completed"
         append_session_event(root, "stop-blocked" if blocked else event, platform, current_session_id,
                              session_details(audit_details(payload, event, current_session_id, runtime,
                                                            {"result": result, "pending_signal_count": len(pending)})))
-        if not blocked:
-            # Pending signals are already durable and will be re-injected through
-            # the next UserPromptSubmit additionalContext. Blocking Stop would
-            # turn the internal signal IDs into a user-visible hook_prompt.
+        if platform == "codex" or not blocked:
+            # Pending signals and active plans are already durable and will be
+            # re-injected through the next UserPromptSubmit additionalContext.
+            # Any Codex Stop block text becomes a user-visible hook_prompt.
             print("{}")
         elif isinstance(payload, dict) and payload.get("stop_hook_active") is True:
             # Hosts may stop retrying hooks; allow reporting the blocker without
