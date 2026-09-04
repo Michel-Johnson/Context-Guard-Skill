@@ -580,6 +580,22 @@ try {
     assert.ok(headerCutsNode.vpTop + 0.51 >= headerCutsNode.headerBottom, `panning must not tuck the canvas under the header ${JSON.stringify(headerCutsNode)}`);
     assert.ok(headerCutsNode.overlapping > 0, `a node box must reach the header strip ${JSON.stringify(headerCutsNode)}`);
     assert.equal(headerCutsNode.hits.length, 0, `panning a node under the header must clip, not slice a dead pill ${JSON.stringify(headerCutsNode)}`);
+    const deadPill = await preview.evaluate(() => {
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const y = vp.top + 6;
+      const slivers = [];
+      for (let x = 40; x <= 900; x += 16) {
+        const el = document.elementFromPoint(x, y);
+        const node = el && el.closest && el.closest('#nodes .node');
+        if (!node) continue;
+        const r = node.getBoundingClientRect();
+        const visH = Math.min(r.bottom, vp.bottom) - Math.max(r.top, vp.top);
+        if (visH > 0 && visH < 28) slivers.push({ visH: Math.round(visH), id: node.dataset.id });
+      }
+      return { y, headerBottom: header.bottom, vpTop: vp.top, slivers };
+    });
+    assert.equal(deadPill.slivers.length, 0, `thin clipped node must not show as a pill under the header ${JSON.stringify(deadPill)}`);
     recordCheck('static-preview-node-click');
     await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1&phone=1`);
     await preview.waitForSelector('.node .add-child');

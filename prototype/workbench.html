@@ -270,6 +270,7 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 
 /* ---------- 画布 ---------- */
 #viewport{position:absolute;inset:var(--chrome-top) var(--drawer-width) 0 0;cursor:default;z-index:1;touch-action:none;overflow:hidden;overflow:clip}
+.node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #nodes{position:absolute;left:0;top:0;z-index:2}
@@ -6267,8 +6268,23 @@ function crossBug(node, bugId){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
+function hideEdgeSlivers(){
+  const vp = document.getElementById("viewport");
+  if(!vp || window.__CG_GALLERY) return;
+  const box = vp.getBoundingClientRect();
+  vp.querySelectorAll("#nodes .node").forEach(el => {
+    const r = el.getBoundingClientRect();
+    const visH = Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top);
+    const cutTop = r.top < box.top - 0.5;
+    el.classList.toggle("edge-sliver", cutTop && visH < 28);
+  });
+}
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
+  hideEdgeSlivers();
+}
+if(worldEl && window.MutationObserver){
+  new MutationObserver(() => hideEdgeSlivers()).observe(worldEl, { attributes:true, attributeFilter:["style"] });
 }
 /* 导图在顶栏和检查器让出的区域内居中；顶栏变高时用 --chrome-top 让位，不要把标题盖住。 */
 function chromeTop(){
