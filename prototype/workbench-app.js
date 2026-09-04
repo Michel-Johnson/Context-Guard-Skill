@@ -481,6 +481,25 @@ function esc(s){
 function escAttr(s){
   return esc(s).replace(/"/g,"&quot;");
 }
+function linkifyText(s){
+  const text = String(s ?? "");
+  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+  let html = "", offset = 0;
+  for(const match of text.matchAll(urlPattern)){
+    let url = match[0], trailing = "";
+    while(/[.,;:!?，。；：！？、]$/.test(url)){
+      trailing = url.slice(-1) + trailing;
+      url = url.slice(0, -1);
+    }
+    html += esc(text.slice(offset, match.index));
+    if(url){
+      html += `<a class="text-link" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer" contenteditable="false">${esc(url)}</a>`;
+    }
+    html += esc(trailing);
+    offset = match.index + match[0].length;
+  }
+  return html + esc(text.slice(offset));
+}
 function filePathOf(f){
   if(!f) return "";
   return typeof f==="string" ? f.trim() : String(f.path||"").trim();
@@ -3364,6 +3383,9 @@ function bindEdit(el, commit, multiline){
   if(!el) return;
   if(window.__CG_SERVER && !workbenchSync?.ready){ el.contentEditable="false"; return; }
   el.contentEditable="true"; el.spellcheck=false;
+  el.addEventListener("focus",()=>{
+    if(el.querySelector("a.text-link")) el.textContent = el.innerText || "";
+  });
   let composing=false;
   function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
   function save(blur=false){
@@ -3429,7 +3451,7 @@ function renderDetail(){
       <h2>${esc(node.title)}
         <span class="state-chip proposed-chip">${t("pendingChip")}</span>
       </h2>
-      ${node.purpose? `<p class="lead">${esc(node.purpose)}</p>`:""}
+      ${node.purpose? `<p class="lead">${linkifyText(node.purpose)}</p>`:""}
       ${evidence? `<div class="proposal-evidence">
         <p><b>${t("proposalReason")}：</b>${esc(evidence.reason||"")}</p>
         <p><b>${t("proposalBasis")}：</b>${esc(evidence.basis||"")}</p>
@@ -3465,12 +3487,12 @@ function renderDetail(){
 
   const memHtml = node.memories.length
     ? `<ul class="mem-list">`+node.memories.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${esc(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="mem" data-fi="${i}"><span class="txt ed" data-ed="mem" data-i="${i}">${linkifyText(m.text)}</span>${attachHtml("mem", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
   const ideaHtml = node.ideas.length
     ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${esc(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${linkifyText(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
       ).join("")+`</ul>`
     : "";
   const todoHtml = nodeTodos.length
@@ -3480,7 +3502,7 @@ function renderDetail(){
         return `<li class="${done?"todo-done":""}">
           <button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>
           <div class="todo-main">
-            <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${esc(todo.desc||todo.title||"")}</div>
+            <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${linkifyText(todo.desc||todo.title||"")}</div>
             ${todo.draft?"":todoProgressHtml(todo)}
             ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
           </div>
@@ -3533,7 +3555,7 @@ function renderDetail(){
   ].filter(Boolean).join("");
   el.innerHTML = `
     <h2 class="detail-head"><span class="head-main"><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</span>${trashBtn}</h2>
-    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
+    ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${linkifyText(node.purpose||"")}</p>`:""}
     ${actionBtns? `<div class="actions">${actionBtns}</div>`:""}
     ${deleteAskId===node.id? `<div class="delete-ask">
         <p>${t("deleteAskKids").replace("{n}", String(attachedChildren(node).length))}</p>
@@ -3569,8 +3591,8 @@ function renderDetail(){
       <summary>${labels.inherited} ${inhCount}</summary>
       <ul class="mem-list">
         ${PINNED.map((t,i)=>`<li><i class="dot success"></i><span class="txt ed" data-ed="pinned" data-i="${i}">${t}</span></li>`).join("")}
-        ${inherited.map((m,i)=>`<li><i class="dot ${escAttr(m.mem.state)}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${esc(m.mem.text)}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
-        ${alsoMems.map(m=>`<li><i class="dot ${escAttr(m.mem.state||"success")}"></i><span class="txt">${esc(m.mem.text||"")}</span></li>`).join("")}
+        ${inherited.map((m,i)=>`<li><i class="dot ${escAttr(m.mem.state)}"></i><div class="mem-body"><span class="txt ed" data-ed="inh" data-i="${i}">${linkifyText(m.mem.text)}</span>${(m.mem.files&&m.mem.files.length)?attachHtml("inh", i, m.mem, true):""}</div></li>`).join("")}
+        ${alsoMems.map(m=>`<li><i class="dot ${escAttr(m.mem.state||"success")}"></i><span class="txt">${linkifyText(m.mem.text||"")}</span></li>`).join("")}
       </ul>
     </details>
     ${node.dormant.length? `<details class="fold" data-fold="dormant" ${foldDormant?"open":""}>
