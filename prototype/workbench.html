@@ -612,6 +612,19 @@ body.drawer-resizing .bug-panel{pointer-events:none}
 .crumbs a{color:var(--green);text-decoration:none;cursor:pointer}
 .crumbs .sep{color:var(--line)}
 .drawer h2{margin:4px 0 0;font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700}
+.drawer h2.detail-head{flex-wrap:nowrap;justify-content:space-between;width:100%}
+.drawer h2 .head-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1}
+.add-hint{margin:10px 0 0;font-size:12px;font-weight:700;color:var(--muted);line-height:1.4}
+.delete-ask{margin:10px 0 0;padding:10px 12px;border:2px solid var(--line-ink);border-radius:10px;background:#fff;box-shadow:none}
+.delete-ask p{margin:0 0 8px;font-size:12.5px;font-weight:700;line-height:1.4;color:var(--ink)}
+.delete-ask .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button.trash{
+  width:var(--chrome-btn-h);height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0;
+  border:0;border-radius:8px;background:transparent;box-shadow:none;color:var(--red);
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+button.trash:hover,button.trash:focus{
+  background:var(--red-soft);color:var(--red);transform:none;box-shadow:none;border-color:transparent}
+button.trash svg{width:18px;height:18px;display:block}
 .state-chip{font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600;flex:0 0 auto}
 .state-chip.dirty,.state-chip.dirty{background:var(--blue-soft);color:var(--blue)}
 .state-chip.success{background:var(--green-soft);color:var(--green)}
@@ -635,7 +648,7 @@ html[lang="en"] .lead.ed:empty:before{content:"One-line purpose"}
 .note{margin:8px 0 0;font-size:12.5px;color:var(--muted)}
 .note.alert{color:var(--red)}
 .actions{display:flex;gap:6px;margin:10px 0 0;flex-wrap:wrap;align-items:center}
-.actions > button,.compose > button{
+.actions > button,.compose > button,.delete-ask .row button{
   height:var(--chrome-btn-h);min-height:var(--chrome-btn-h);padding:0 12px;line-height:1;
   display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}
 .files-row{margin-top:10px}
@@ -909,12 +922,12 @@ html.design-gallery .g-mock{position:relative;top:auto;right:auto;bottom:auto;le
 .g-chrome .insp{width:280px;flex:0 0 280px;box-sizing:border-box;padding:16px 16px 28px;
   background:#fefaf2;border-left:2px solid #2d2d2d;overflow:hidden;
   font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
-.g-chrome .who{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
+.g-chrome .who{display:flex;align-items:center;gap:8px;margin:0 0 10px}
 .g-chrome .who h2{margin:0;font-size:18px;font-weight:700}
+.g-chrome .who .sp{flex:1 1 auto;min-width:8px}
+.g-chrome .who .trash{width:36px;height:36px;color:#e24b4b;display:grid;place-items:center;flex:0 0 auto;font-size:16px}
 .g-chrome .st{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;background:#fff3bf;color:#8a6d1f}
-.g-chrome .acts{display:flex;gap:6px;margin:0 0 12px}
-.g-chrome .acts span{display:inline-flex;align-items:center;height:36px;padding:0 12px;font-size:13px;font-weight:700;
-  border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;box-shadow:2px 2px 0 #2d2d2d}
+.g-chrome .add-hint{margin:0 0 12px;font-size:12px;font-weight:700;color:#746c60;line-height:1.4}
 .g-chrome .note{background:#fff;border:0;border-radius:12px;padding:12px 12px 10px;margin:0 0 10px}
 .g-chrome .note .add{display:block;font-size:13px;font-weight:800;margin:0 0 6px;color:#2d2d2d}
 .g-chrome .note p{margin:0 0 4px;font-size:12.5px;line-height:1.45;font-family:Georgia,"Libre Baskerville","Songti SC",serif;color:#2d2d2d}
@@ -1456,6 +1469,10 @@ const I18N = {
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
     forever:"永久删除", deleteAsk:"确定删掉？", delete:"删除",
+    addOnMap:"要加模块或节点，去图上点 ＋。这里不放按钮。",
+    deleteAskKids:"下面还有 {n} 个子项。一起删，还是接到上一级？",
+    deleteKeepKids:"接到上一级",
+    deleteWithKids:"一起删",
     wasUnder:"原属：", root:"根",
     join:"加入", hide:"隐藏", restore:"恢复",
     acceptLayer:"本层全部加入", grant:"授权", enter:"进入",
@@ -1551,6 +1568,10 @@ const I18N = {
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
     forever:"Delete forever", deleteAsk:"Delete this?", delete:"Delete",
+    addOnMap:"To add a module or a node, click ＋ on the map. No button here.",
+    deleteAskKids:"This has {n} children. Delete them too, or attach them one level up?",
+    deleteKeepKids:"Attach one level up",
+    deleteWithKids:"Delete them too",
     wasUnder:"From: ", root:"root",
     join:"Add", hide:"Hide", restore:"Restore",
     acceptLayer:"Add all in this layer", grant:"Authorize", enter:"Enter",
@@ -3256,6 +3277,7 @@ let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
 let pendingDeleteId = null;
+let deleteAskId = null;
 let bugPathMode = false;
 let bugFocus = null;
 let bugPathReturn = null;
@@ -4810,6 +4832,7 @@ function renderBugPanel(){
 
 function enterView(id, opts){
   closeAddPick();
+  deleteAskId = null;
   if(bugPathMode){
     bugPathMode = false;
     bugFocus = null;
@@ -5530,6 +5553,7 @@ function cancelProposal(n){
   if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!n || n.id===data.id) return;
   clearCompose();
+  deleteAskId = null;
   const p = pathOf(n) || [];
   n.proposal = "cancelled"; n.isNew = false;
   let parent = p.length>1? p[p.length-2] : data;
@@ -5542,6 +5566,39 @@ function cancelProposal(n){
   liveViewRoot();
   selectedId = parent.id;
   renderAll();
+}
+function attachedChildren(n){
+  const kids = (n.children||[]).filter(c=>c && !isCancelled(c));
+  const inbox = (n._inbox||[]).filter(c=>c && !isCancelled(c));
+  return kids.concat(inbox);
+}
+function requestDelete(node){
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+  if(!node || node.id===data.id) return;
+  clearCompose();
+  const kids = attachedChildren(node);
+  if(!kids.length){ applyDelete(node, true); return; }
+  deleteAskId = node.id;
+  selectedId = node.id;
+  renderAll();
+}
+function applyDelete(node, withChildren){
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+  if(!node || node.id===data.id) return;
+  deleteAskId = null;
+  const path = pathOf(node) || [];
+  const parent = path.length>1 ? path[path.length-2] : null;
+  if(!parent) return;
+  if(!withChildren){
+    const keep = attachedChildren(node);
+    node.children = (node.children||[]).filter(c=>isCancelled(c));
+    node._inbox = (node._inbox||[]).filter(c=>isCancelled(c));
+    const idx = parent.children.indexOf(node);
+    if(idx>=0) parent.children.splice(idx, 0, ...keep);
+    else parent.children.push(...keep);
+    promoteFatWork(parent);
+  }
+  cancelProposal(node);
 }
 
 function startCompose(node, kind){
@@ -5759,24 +5816,31 @@ function renderDetail(){
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
+  const trashBtn = canDelete && !composing && deleteAskId!==node.id
+    ? `<button type="button" class="trash" data-act="delete" title="${t("delete")}" aria-label="${t("delete")}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9zM7 9h2v10H7V9z"/></svg></button>`
+    : "";
+  const actionBtns = [
+    pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:"",
+    noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:"",
+    relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""
+  ].filter(Boolean).join("");
   el.innerHTML = `
-    <h2><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</h2>
+    <h2 class="detail-head"><span class="head-main"><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</span>${trashBtn}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
-    <div class="actions">
-      ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
-      ${!cancelled? `
-        ${pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:""}
-        ${noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:""}
-        ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""}
-        ${composing?"":`<button type="button" data-act="module">${t("plusModule")}</button>
-        <button type="button" data-act="child">${t("plusChild")}</button>`}
-        ${canDelete? `<button type="button" data-act="delete" class="quiet">${t("delete")}</button>`:""}`:""}
-    </div>
+    ${actionBtns? `<div class="actions">${actionBtns}</div>`:""}
+    ${deleteAskId===node.id? `<div class="delete-ask">
+        <p>${t("deleteAskKids").replace("{n}", String(attachedChildren(node).length))}</p>
+        <div class="row">
+          <button type="button" data-act="delete-keep">${t("deleteKeepKids")}</button>
+          <button type="button" data-act="delete-all">${t("deleteWithKids")}</button>
+          <button type="button" class="quiet" data-act="delete-abort">${t("cancel")}</button>
+        </div>
+      </div>`:""}
     ${composing? `<div class="compose">
         <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?t("moduleName"):t("childName")}</span>
         <button type="button" data-act="compose-ok" class="primary">${t("add")}</button>
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
-      </div>`:""}
+      </div>`: deleteAskId===node.id?"":`<p class="add-hint">${t("addOnMap")}</p>`}
     ${filesHtml}
     <div class="note-stack">
       ${noteCardHtml({fold:"mem", title:labels.memory, addAct:"add-mem", addTitle:t("addMem"), items:memItems, listClass:"mem-list", expanded:foldMem, moreAct:"expand-mem"})}
@@ -5809,7 +5873,10 @@ function renderDetail(){
   if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
-  bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
+  bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); requestDelete(node); });
+  bindSilent(q('[data-act="delete-keep"]'), ()=> applyDelete(node, false));
+  bindSilent(q('[data-act="delete-all"]'), ()=> applyDelete(node, true));
+  bindSilent(q('[data-act="delete-abort"]'), ()=>{ deleteAskId = null; renderAll(); });
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
@@ -6397,7 +6464,7 @@ function bootDesignGallery(){
   }
   document.title = "工作台风格 · 50 版";
   const card = `<span class="here">Context Guard <i class="caret">▾</i></span>`;
-  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><i class="st">已做未测</i></div><div class="acts"><span>＋ 模块</span><span>＋ 子节点</span></div><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
+  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><i class="st">已做未测</i><span class="sp"></span><span class="trash" aria-hidden="true">🗑</span></div><p class="add-hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
   const shell = bar => `<div class="bar">${bar}</div>${stage}`;
   const L = [];
   const add = (id, name, bar) => L.push({id, name, html: shell(bar)});

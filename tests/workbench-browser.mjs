@@ -112,11 +112,13 @@ try {
   const chrome = await chromeHeights(page);
   assert.ok(chrome.length >= 3, 'chrome buttons are on screen');
   assert.equal(new Set(chrome).size, 1, `chrome button heights ${chrome.join(',')}`);
-  const moduleBtn = page.locator('#detail [data-act="module"]');
-  if (await moduleBtn.count()) {
-    const actH = await moduleBtn.evaluate(el => Math.round(el.getBoundingClientRect().height));
-    assert.equal(actH, chrome[0], `inspector ＋模块 height ${actH} vs chrome ${chrome[0]}`);
-  }
+  await page.locator('.node[data-id="N1"]').click();
+  const trashBtn = page.locator('#detail button.trash');
+  assert.equal(await trashBtn.count(), 1, 'non-root inspector has a delete trash');
+  const actH = await trashBtn.evaluate(el => Math.round(el.getBoundingClientRect().height));
+  assert.equal(actH, chrome[0], `inspector trash height ${actH} vs chrome ${chrome[0]}`);
+  assert.equal(await page.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
+  assert.ok((await page.locator('#detail .add-hint').textContent()).includes('去图上点'));
   recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
@@ -189,7 +191,10 @@ try {
   assert.ok(confirmation.events.some(event => event.actor.kind === 'human'));
   assert.equal((await cli('inbox')).receipt, confirmation.receipt);
   await cli('ack', undefined, ['--receipt', 'invalid-receipt'], 'RECEIPT_MISMATCH');
-  await page.locator('#detail [data-act="child"]').click(); await page.locator('[data-ed="compose-title"]').fill('人类新增子节点'); await page.locator('[data-act="compose-ok"]').click(); await synchronized();
+  await page.locator('.node[data-id="N2"] .add-child').click();
+  await page.locator('.node[data-id="N2"].picking .add-pick [data-add="work"]').click();
+  await page.locator('[data-ed="compose-title"]').fill('人类新增子节点');
+  await page.locator('[data-act="compose-ok"]').click(); await synchronized();
   await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.children.some(x => x.title === '人类新增子节点')); recordCheck('human-create');
   assert.equal((await cli('inbox')).receipt, confirmation.receipt, 'Unacknowledged delivery must survive a later edit');
   assert.equal((await cli('ack', undefined, ['--receipt', confirmation.receipt])).acknowledged, true);
@@ -280,6 +285,27 @@ try {
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
+  stage = 'delete-reparent';
+  const createdChild = (await read()).root.children.find(x => x.id === 'N2')?.children.find(x => x.title === '人类新增子节点');
+  assert.ok(createdChild, 'human-created child is still under N2');
+  await page.locator('.node[data-id="N2"]').click();
+  await page.locator('#detail button.trash').click();
+  assert.ok((await page.locator('#detail .delete-ask').textContent()).includes('接到上一级'));
+  await page.locator('#detail [data-act="delete-keep"]').click();
+  await synchronized();
+  await until(async () => {
+    const map = await read();
+    const n2 = map.root.children.find(x => x.id === 'N2');
+    const sibling = map.root.children.find(x => x.title === '人类新增子节点');
+    return n2?.proposal === 'cancelled' && sibling?.id === createdChild.id;
+  });
+  assert.equal((await read()).root.children.find(x => x.id === 'N2')?.children.some(x => x.title === '人类新增子节点'), false);
+  await page.locator(`.node[data-id="${createdChild.id}"]`).click();
+  await page.locator('#detail button.trash').click();
+  assert.equal(await page.locator('#detail .delete-ask').count(), 0, 'leaf delete must not ask about children');
+  await synchronized();
+  await until(async () => (await read()).root.children.find(x => x.id === createdChild.id)?.proposal === 'cancelled');
+  recordCheck('delete-reparent');
   stage = 'static-preview-clicks';
   const staticServer = await servePrototype();
   const preview = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -436,6 +462,9 @@ try {
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
     await child.click();
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
+    assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
+    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
+    assert.equal(await preview.locator('#detail button.trash').count(), 1);
     await dirToggle.locator('.dir-opt[data-dir="tb"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
@@ -451,6 +480,8 @@ try {
       await preview.locator('.nav-crumbs a').first().click();
       await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
     }
+    assert.equal(await preview.locator('#detail button.trash').count(), 0, 'map root has no trash');
+    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
     await preview.locator('.node.root .add-child').click();
     const rootPick = preview.locator('.node.root .add-pick');
     assert.equal(await rootPick.evaluate(el => getComputedStyle(el).display), 'flex', 'plus must open a kind picker');
@@ -577,7 +608,8 @@ try {
         const insp = item.querySelector('.insp');
         const bar = item.querySelector('.bar');
         const note = item.querySelector('.note');
-        const act = item.querySelector('.acts span');
+        const hint = item.querySelector('.add-hint');
+        const trash = item.querySelector('.who .trash');
         return {
           mapBg: cs(map).backgroundColor,
           rootBg: cs(root).backgroundColor,
@@ -585,7 +617,8 @@ try {
           inspBg: cs(insp).backgroundColor,
           inspBorder: cs(insp).borderLeftColor,
           noteBg: cs(note).backgroundColor,
-          actH: Math.round(act.getBoundingClientRect().height),
+          hint: hint?.textContent?.trim() || '',
+          trashH: Math.round(trash.getBoundingClientRect().height),
           barBg: cs(bar).backgroundColor
         };
       };
@@ -596,7 +629,8 @@ try {
     assert.equal(frozen.a.modBg, 'rgb(243, 234, 214)');
     assert.equal(frozen.a.inspBg, 'rgb(254, 250, 242)');
     assert.equal(frozen.a.noteBg, 'rgb(255, 255, 255)');
-    assert.equal(frozen.a.actH, 36);
+    assert.equal(frozen.a.hint, '要加模块或节点，去图上点 ＋。这里不放按钮。');
+    assert.equal(frozen.a.trashH, 36);
     for (const other of [frozen.b, frozen.c, frozen.d]) {
       assert.equal(other.mapBg, frozen.a.mapBg, `map must stay live ${JSON.stringify(other)}`);
       assert.equal(other.rootBg, frozen.a.rootBg);
