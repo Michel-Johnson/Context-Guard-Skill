@@ -5,6 +5,8 @@ import { clients, getClients, installCommand, invocationPrompt } from "../src/cl
 import { conversationTiming, typedText, getUsages } from "../src/app-usage.ts";
 import { getFirstUseStory } from "../src/first-use-story.ts";
 import { debugSteps } from "../src/storyboard.ts";
+import { designQuestions } from "../src/design-questions.ts";
+import { localizeData } from "../src/locale.ts";
 
 test("四客户端安装映射有效，Codex的两个入口使用同一平台", () => {
   assert.deepEqual(clients.map(c => c.label), ["Codex App", "Codex CLI", "Cursor", "Claude Code"]);
@@ -56,12 +58,26 @@ test("Cursor在客户端窗口内接续工作台，其他入口仍可打开独�
   assert.match(journeySource, /state\.position\.index === chapters\.length - 1\)\s*openWorkbench\(\)/);
   assert.doesNotMatch(journeySource, /client-demo-progress/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "debug", "install"\]/);
+  assert.match(appSource, /const pageIds = \["home", "workbench", "clients", "memory", "decisions", "debug", "install"\]/);
   assert.ok(appSource.indexOf('<Page id="workbench"') < appSource.indexOf('<Page id="clients"'));
   assert.ok(appSource.indexOf('href="#workbench" aria-current') < appSource.indexOf('href="#clients" aria-current'));
   assert.match(appSource, /className="hero-demo-link" href="#workbench"/);
   assert.match(appSource, /goToPage\(chapter === "debug" \? "debug" : "workbench"\)/);
   assert.doesNotMatch(appSource, /page-position/);
+});
+
+test("设计问答独立成页，并以节点关系解释 Context 管理", async () => {
+  const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const questionsSource = readFileSync(new URL("../src/design-questions.ts", import.meta.url), "utf8");
+  assert.ok(appSource.indexOf('<Page id="memory"') < appSource.indexOf('<Page id="decisions"'));
+  assert.ok(appSource.indexOf('<Page id="decisions"') < appSource.indexOf('<Page id="debug"'));
+  assert.match(appSource, /href="#decisions"/);
+  assert.match(questionsSource, /为什么用节点图，而不是一篇长文或聊天摘要/);
+  assert.match(questionsSource, /为什么 TODO 不是一个简单清单，而要挂载到节点上/);
+  assert.match(questionsSource, /trail: \["待办事项", "所属节点", "相关决定"\]/);
+  assert.equal(designQuestions.length, 4);
+  assert.ok(designQuestions.every((item) => item.trail.length === 3));
+  assert.doesNotMatch(JSON.stringify(localizeData("en", designQuestions)), /\p{Script=Han}/u);
 });
 
 test("首页使用真实双语工作台宣传图并移除重复辅助项", () => {
