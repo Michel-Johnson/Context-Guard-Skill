@@ -607,6 +607,59 @@ try {
     assert.notEqual(frozen.a.barBg, frozen.b.barBg, 'ink bar still differs from live chrome');
     assert.notEqual(frozen.a.barBg, frozen.c.barBg, 'blueprint bar still differs from live chrome');
     recordCheck('chrome-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=add`);
+    await preview.waitForSelector('.g-add-mock');
+    const addGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-add-mock'));
+      const slots = items.map(el => el.querySelector('.slot')?.innerHTML || '');
+      const titles = items.map(el => el.querySelector('h2')?.childNodes[0]?.textContent?.trim());
+      const notes = items.map(el => el.querySelectorAll('.note').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        slotUniq: new Set(slots).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        threeNotes: notes.every(n => n === 3)
+      };
+    });
+    assert.equal(addGal.n, 50, `add-row gallery should show 50 drafts ${JSON.stringify(addGal)}`);
+    assert.equal(addGal.uniq, 50);
+    assert.equal(addGal.mocks, 50);
+    assert.ok(addGal.slotUniq >= 48, `add slots must differ, got ${addGal.slotUniq}`);
+    assert.equal(addGal.title, '新增这一行 · 50 版');
+    assert.equal(addGal.cold, true, 'title stays 冷启动');
+    assert.equal(addGal.threeNotes, true, 'memory/idea/bug cards stay');
+    const addFrozen = await preview.evaluate(() => {
+      const pick = id => {
+        const item = document.querySelector('#v' + id);
+        const cs = el => getComputedStyle(el);
+        const mock = item.querySelector('.g-add-mock');
+        const lead = item.querySelector('.lead');
+        const note = item.querySelector('.note');
+        const h2 = item.querySelector('h2');
+        return {
+          bg: cs(mock).backgroundColor,
+          pad: cs(mock).padding,
+          lead: cs(lead).color,
+          noteBg: cs(note).backgroundColor,
+          h2: cs(h2).fontSize
+        };
+      };
+      const slot = id => document.querySelector('#v' + id + ' .slot').innerHTML;
+      return { a: pick('01'), b: pick('12'), c: pick('33'), s1: slot('01'), s2: slot('03'), s3: slot('09') };
+    });
+    assert.equal(addFrozen.a.bg, 'rgb(254, 250, 242)');
+    assert.equal(addFrozen.a.noteBg, 'rgb(255, 255, 255)');
+    assert.equal(addFrozen.a.h2, '18px');
+    assert.equal(addFrozen.b.bg, addFrozen.a.bg);
+    assert.equal(addFrozen.c.noteBg, addFrozen.a.noteBg);
+    assert.notEqual(addFrozen.s1, addFrozen.s2);
+    assert.notEqual(addFrozen.s1, addFrozen.s3);
+    recordCheck('add-row-gallery-50');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));
