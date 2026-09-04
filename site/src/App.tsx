@@ -12,7 +12,7 @@ import type { ClientId } from "./clients";
 import { repository, type WorkbenchChapterId, type ChapterId } from "./storyboard";
 import { useLanguage } from "./i18n";
 
-const pageIds = ["home", "workbench", "clients", "memory", "debug", "decisions", "install"] as const;
+const pageIds = ["home", "workbench", "clients", "memory", "debug", "install", "decisions"] as const;
 type PageId = (typeof pageIds)[number];
 
 const pageLabels: Record<PageId, string> = {
@@ -278,9 +278,6 @@ export function App() {
           <Page id="debug" active={activePage === "debug"}>
             <DebugDemo restartToken={debugRevision} reduced={reduced} />
           </Page>
-          <Page id="decisions" active={activePage === "decisions"}>
-            <DesignQuestions />
-          </Page>
           <Page id="install" active={activePage === "install"}>
             <div className="install-page-content">
               <Install clientId={clientId} onClientChange={setClientId} />
@@ -331,6 +328,9 @@ export function App() {
                 </div>
               </footer>
             </div>
+          </Page>
+          <Page id="decisions" active={activePage === "decisions"}>
+            <DesignQuestions />
           </Page>
           </div>
         </main>
