@@ -93,6 +93,12 @@ test('private mode protects reads and uses secure cookies without leaking projec
   const passwordLogin = await submitPassword('test-browser-password');
   assert.equal(passwordLogin.status, 302); assert.equal(passwordLogin.headers.get('location'), '/projects/context-guard');
   assert.match(passwordLogin.headers.get('set-cookie'), /HttpOnly/); assert.match(passwordLogin.headers.get('set-cookie'), /Secure/);
+  const normalizedOriginLogin = await fetch(service.url + '/auth/login', {
+    method: 'POST', redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://map.example.test:443/' },
+    body: new URLSearchParams({ password: 'test-browser-password', next: '/' }),
+  });
+  assert.equal(normalizedOriginLogin.status, 302);
   const passwordCookie = passwordLogin.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: passwordCookie } })).status, 200);
   const logout = await fetch(service.url + '/auth/logout', { method: 'POST', redirect: 'manual', headers: { Cookie: passwordCookie, Origin: 'https://map.example.test' } });

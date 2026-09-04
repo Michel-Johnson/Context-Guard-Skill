@@ -41,6 +41,10 @@ const validNext = value => {
   if (!next.startsWith('/') || next.startsWith('//')) throw new MapError('INVALID_REDIRECT', 'Invalid redirect');
   return next;
 };
+const canonicalOrigin = value => {
+  try { return new URL(String(value || '')).origin; }
+  catch { return ''; }
+};
 
 function loginPage({ next = '/', error = '' } = {}) {
   return `<!doctype html>
@@ -252,6 +256,8 @@ export async function startCloudServer({
   const tails = new Map();
   const loginFailures = new Map();
   let registryTail = Promise.resolve();
+  const allowedOrigin = canonicalOrigin(publicOrigin);
+  if (publicOrigin && !allowedOrigin) throw new MapError('INVALID_ORIGIN', 'CONTEXT_GUARD_CLOUD_ORIGIN must be an absolute HTTP(S) origin');
   if (browserPasswordHash && !passwordHashPattern.test(browserPasswordHash)) throw new MapError('INVALID_PASSWORD_HASH', 'Use a Context Guard scrypt password hash');
   if (browserPasswordHash && !browserToken) throw new MapError('WORKBENCH_TOKEN_REQUIRED', 'Password login requires an independent workbench cookie token');
   const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
@@ -559,7 +565,7 @@ export async function startCloudServer({
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
-      if (publicOrigin && req.headers.origin && req.headers.origin !== publicOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
+      if (allowedOrigin && req.headers.origin && canonicalOrigin(req.headers.origin) !== allowedOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
       if (memoryHandler && await memoryHandler(req, res)) return;
       if (route === '/login' && req.method === 'GET') {
         if (!browserPasswordHash) throw new MapError('NOT_FOUND', 'Password login is not configured', 404);
