@@ -6,7 +6,7 @@ import path from "node:path";
 import http from "node:http";
 import { once } from "node:events";
 import { isolatedEnvironment, allowedMethods, run, rpcClient } from "./client-protocol.mjs";
-import { assertInside, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
+import { assertInside, codexEvents, verifyInstalled, verifyCodexDiscovery, verifyNativeSession, verifyNativeUnboundSession, verifyWorkbench, isCursorAuthBoundary } from "./smoke-clients.mjs";
 import { installedFiles } from "./package-contract.mjs";
 
 function scratch(t) {
@@ -67,9 +67,9 @@ test("discovery checker rejects missing, disabled, wrong-path skills and hooks",
   const root = scratch(t), skill = path.join(root, "skill"), hooksPath = path.join(root, "hooks.json");
   const good = {
     skills: { data: [{ cwd: root, errors: [], skills: [{ name: "context-guard", enabled: true, path: path.join(skill, "SKILL.md") }] }] },
-    hooks: { data: [{ cwd: root, errors: [], hooks: ["sessionStart", "userPromptSubmit", "stop", "subagentStart", "subagentStop"].map((eventName) => ({ eventName, enabled: true, handlerType: "command", command: "python context_guard_hook.py --platform codex", sourcePath: hooksPath, trustStatus: "untrusted" })) }] }
+    hooks: { data: [{ cwd: root, errors: [], hooks: Object.values(codexEvents).map((eventName) => ({ eventName, enabled: true, handlerType: "command", command: "python context_guard_hook.py --platform codex", sourcePath: hooksPath, trustStatus: "untrusted" })) }] }
   };
-  assert.equal(verifyCodexDiscovery(good, root, skill, hooksPath).length, 5);
+  assert.equal(verifyCodexDiscovery(good, root, skill, hooksPath).length, 11);
   for (const mutate of [
     (value) => { value.skills.data[0].skills = []; },
     (value) => { value.skills.data[0].skills[0].enabled = false; },
@@ -104,6 +104,15 @@ test("native initialization requires real-shaped session evidence, not just file
   fs.writeFileSync(path.join(ctx, "sessions", "test-session.md"), "fixture");
   assert.equal(verifyNativeSession(root, "claude").length, 1);
   assert.throws(() => verifyNativeSession(root, "codex"), /No native SessionStart evidence/);
+});
+
+test("native unbound evidence never stands in for initialized project memory", (t) => {
+  const root = scratch(t), ctx = path.join(root, ".codex", "context");
+  fs.mkdirSync(ctx, { recursive: true });
+  fs.writeFileSync(path.join(ctx, "sessions.jsonl"), JSON.stringify({ platform: "claude", event: "session-start", root_source: "hook payload", session_id: "test-session", binding: "required", hook_sha256: "a".repeat(64), context_emitted: true }));
+  assert.equal(verifyNativeUnboundSession(root, "claude").length, 1);
+  fs.writeFileSync(path.join(ctx, "map.json"), "{}");
+  assert.throws(() => verifyNativeUnboundSession(root, "claude"), /must not initialize/);
 });
 
 test("workbench checks health, project, PID, page and instance reuse", async (t) => {

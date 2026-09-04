@@ -9,12 +9,16 @@ on:
     branches:
       - main
   push:
+    branches:
+      - main
+    tags:
+      - "*"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -88,7 +92,7 @@ jobs:
           compression-level: 0
 
   install:
-    name: CI 2 | 功能与安装测试 - ${{ matrix.name }}
+    name: CI 2 | 安装测试 - ${{ matrix.name }}
     needs: package
     strategy:
       fail-fast: false
@@ -133,14 +137,33 @@ jobs:
       - name: CI | 准备跨平台安全检查
         run: npm run security:setup
 
-      - name: CI | 验证三客户端生命周期
-        run: npm test
-
       - name: CI | 验证 npm 全局安装与 npx 安装
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-ci-smoke"
 
+  minimum-runtime:
+    name: CI 3 | 最低 Node 与 Python 版本
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup minimum Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "18"
+          package-manager-cache: false
+      - name: Setup minimum Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Prepare pinned security scanner
+        run: npm run security:setup
+      - name: Run the complete suite on minimum runtimes
+        run: npm test
+
   browser:
-    name: CI 3 | 工作台与 Agent 浏览器协作
+    name: CI 4 | 工作台与 Agent 浏览器协作
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -179,6 +202,79 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+  clients:
+    name: CI 5 | ${{ matrix.label }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - client: codex
+            label: Codex 无对话兼容
+          - client: claude
+            label: Claude 无对话兼容
+          - client: cursor
+            label: Cursor 无对话兼容
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Download validated package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: context-guard-ci-package
+          path: dist
+      - name: Verify the shared package
+        run: node .github/scripts/verify-package-artifact.mjs dist
+      - name: Install the pinned client in an isolated directory
+        run: node .github/scripts/install-ci-client.mjs "${{ matrix.client }}" "${{ runner.temp }}/client-tools"
+      - name: Check without conversations or credentials
+        run: node .github/scripts/smoke-clients.mjs --client "${{ matrix.client }}" --tools "${{ runner.temp }}/client-tools" --tarball "$PACKAGE_TARBALL" --evidence "${{ runner.temp }}/client-evidence"
+      - name: Save scoped results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: client-${{ matrix.client }}-no-dialogue
+          path: ${{ runner.temp }}/client-evidence
+          if-no-files-found: warn
+          retention-days: 3
+
+  site:
+    name: CI 6 | 官网构建与行为测试
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci --ignore-scripts
+      - name: Typecheck and build
+        working-directory: site
+        run: npm run build
+      - name: Check demo timing and camera
+        working-directory: site
+        run: node --experimental-strip-types --test scripts/client-timing.test.mjs scripts/native-camera.test.mjs
+
   required:
     # Keep this check name stable: main branch protection requires Required.
     name: Required
@@ -187,7 +283,10 @@ jobs:
       - security
       - package
       - install
+      - minimum-runtime
       - browser
+      - clients
+      - site
     runs-on: ubuntu-latest
     steps:
       - name: CI 4 | 汇总全部检查，决定是否允许合并
@@ -196,10 +295,16 @@ jobs:
           SECURITY_RESULT: ${{ needs.security.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
           INSTALL_RESULT: ${{ needs.install.result }}
+          MINIMUM_RUNTIME_RESULT: ${{ needs.minimum-runtime.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          CLIENTS_RESULT: ${{ needs.clients.result }}
+          SITE_RESULT: ${{ needs.site.result }}
         run: |
           set -euo pipefail
           test "$SECURITY_RESULT" = "success"
           test "$PACKAGE_RESULT" = "success"
           test "$INSTALL_RESULT" = "success"
+          test "$MINIMUM_RUNTIME_RESULT" = "success"
           test "$BROWSER_RESULT" = "success"
+          test "$CLIENTS_RESULT" = "success"
+          test "$SITE_RESULT" = "success"

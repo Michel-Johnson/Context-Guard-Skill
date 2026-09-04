@@ -20,6 +20,20 @@ const overview: Camera = {
   height: FRAME_HEIGHT,
   overview: true,
 };
+const CAMERA_DURATION = 850;
+const CAMERA_RASTER_SCALE = 2;
+
+type CameraPose = { x: number; y: number; scale: number };
+
+function paintCameraPose(node: HTMLDivElement, pose: CameraPose) {
+  const ratio = window.devicePixelRatio || 1;
+  const x = Math.round(pose.x * ratio) / ratio;
+  const y = Math.round(pose.y * ratio) / ratio;
+  node.style.zoom = String(CAMERA_RASTER_SCALE);
+  node.style.left = "0px";
+  node.style.top = "0px";
+  node.style.transform = `translate3d(${x / CAMERA_RASTER_SCALE}px,${y / CAMERA_RASTER_SCALE}px,0) scale(${pose.scale / CAMERA_RASTER_SCALE})`;
+}
 
 export type TourPlayback = {
   from: number;
@@ -42,6 +56,8 @@ export function TourStage({
   reduced,
   restartToken = 0,
   playback,
+  onComplete,
+  onPrepared,
 }: {
   chapter: ChapterId | "first-use";
   steps: readonly string[];
@@ -50,18 +66,29 @@ export function TourStage({
   reduced: boolean;
   restartToken?: number;
   playback?: TourPlayback;
+  onComplete?: () => void;
+  onPrepared?: () => void;
 }) {
   const { language, t } = useLanguage();
   const frame = useRef<HTMLIFrameElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLDivElement>(null);
+  const plane = useRef<HTMLDivElement>(null);
+  const cameraFrame = useRef(0);
+  const currentPose = useRef<CameraPose | null>(null);
+  const cameraReady = useRef(false);
   const lastScene = useRef("");
   const bootReady = useRef(false);
   const playbackRef = useRef(playback);
   playbackRef.current = playback;
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const onPreparedRef = useRef(onPrepared);
+  onPreparedRef.current = onPrepared;
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
   const completedScene = useRef("");
+  const phoneMode = useRef(window.matchMedia("(max-width: 820px)").matches).current;
   const [ready, setReady] = useState(false);
   const [scenePrepared, setScenePrepared] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -129,6 +156,7 @@ export function TourStage({
       if (message.type === "prepared") {
         setScenePrepared(true);
         playbackRef.current?.onPrepared?.(true);
+        onPreparedRef.current?.();
       }
       if (message.type === "camera")
         setCamera(message.overview ? overview : message);
@@ -140,7 +168,7 @@ export function TourStage({
         const controlled = playbackRef.current;
         if (message.complete && completedScene.current !== message.scene && (!controlled || controlled.playing || (reducedRef.current && controlled.active))) {
           completedScene.current = message.scene;
-          playbackRef.current?.onComplete();
+          (controlled?.onComplete ?? onCompleteRef.current)?.();
         }
       }
       if (message.type === "interaction") {
@@ -281,6 +309,39 @@ export function TourStage({
       ),
     );
   }
+  // 整个 iframe 在镜头移动时会被合成。把最终位移落在设备像素上，
+  // 避免停稳后仍因半像素采样让文字和边框一起发虚。
+  const deviceScale = window.devicePixelRatio || 1;
+  x = Math.round(x * deviceScale) / deviceScale;
+  y = Math.round(y * deviceScale) / deviceScale;
+  useLayoutEffect(() => {
+    const node = plane.current;
+    if (!node) return;
+    const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
+    window.cancelAnimationFrame(cameraFrame.current);
+    if (!cameraReady.current || reduced || exploring) {
+      cameraReady.current = true;
+      currentPose.current = target;
+      paintCameraPose(node, target);
+      return;
+    }
+    const start = currentPose.current ?? target;
+    const started = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - started) / CAMERA_DURATION);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      const pose = {
+        x: start.x + (target.x - start.x) * eased,
+        y: start.y + (target.y - start.y) * eased,
+        scale: start.scale + (target.scale - start.scale) * eased,
+      };
+      currentPose.current = pose;
+      paintCameraPose(node, pose);
+      if (progress < 1) cameraFrame.current = window.requestAnimationFrame(animate);
+    };
+    cameraFrame.current = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(cameraFrame.current);
+  }, [x, y, scale, reduced, exploring]);
   return (
     <div
       className={"tour-shell" + (exploring ? " exploring" : "")}
@@ -293,20 +354,17 @@ export function TourStage({
       >
         <div
           className="tour-plane"
+          ref={plane}
           style={{
             width: FRAME_WIDTH,
             height: FRAME_HEIGHT,
-            transform: exploring
-              ? "none"
-              : "translate(" + x + "px," + y + "px) scale(" + scale + ")",
-            transitionDuration: reduced || exploring ? "0ms" : undefined,
           }}
         >
           <iframe
             key={loadAttempt}
             ref={frame}
             title={label + ": " + t("真实 Context Guard 工作台")}
-            src={import.meta.env.BASE_URL + `generated/workbench${language === "en" ? "-en" : ""}.html?protocol=4&attempt=` + loadAttempt}
+            src={import.meta.env.BASE_URL + `generated/workbench${language === "en" ? "-en" : ""}.html?protocol=4&embedded=1&phone=${phoneMode ? 1 : 0}&attempt=` + loadAttempt}
             sandbox="allow-scripts"
             referrerPolicy="same-origin"
             loading="lazy"
@@ -402,6 +460,22 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
   const { language, t } = useLanguage();
   const chapters = getChapters(language);
   const scene = chapters.find((item) => item.id === selected)!;
+  const completionEnabled = useRef(false);
+  useLayoutEffect(() => {
+    completionEnabled.current = false;
+  }, [selected, restartToken]);
+  const selectChapter = useCallback((chapter: WorkbenchChapterId) => {
+    if (chapter === selected) return;
+    completionEnabled.current = false;
+    onSelect(chapter);
+  }, [onSelect, selected]);
+  const advanceChapter = useCallback(() => {
+    if (reduced || !completionEnabled.current) return;
+    completionEnabled.current = false;
+    const current = chapters.findIndex((item) => item.id === selected);
+    const next = chapters[(current + 1) % chapters.length];
+    onSelect(next.id);
+  }, [chapters, onSelect, reduced, selected]);
   return (
     <section
       id="workbench"
@@ -412,7 +486,7 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
         className="tour-chapter-select"
         aria-label={t("演示功能")}
         value={selected}
-        onChange={(event) => onSelect(event.target.value as WorkbenchChapterId)}
+        onChange={(event) => selectChapter(event.target.value as WorkbenchChapterId)}
       >
         {chapters.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select>
@@ -423,7 +497,7 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
               role="tab"
               key={item.id}
               aria-selected={selected === item.id}
-              onClick={() => onSelect(item.id)}
+              onClick={() => selectChapter(item.id)}
             >
               {item.label}
             </button>
@@ -436,6 +510,8 @@ export function Workbench({ reduced = false, selected, onSelect, restartToken = 
           label={t("工作台")}
           reduced={reduced}
           restartToken={restartToken}
+          onComplete={advanceChapter}
+          onPrepared={() => { completionEnabled.current = true; }}
         />
       </div>
     </section>

@@ -1,6 +1,16 @@
 # Workbench / Agent interface (local Node protocol 2)
 
-The authoritative document is `<project>/.codex/context/map.json`. Browser storage
+This reference describes the local workbench and isolated Git Session caches.
+`references/server-memory.md` defines the private memory service, publication and
+migration boundary. An implemented client is not evidence of deployment: do not
+claim server-confirmed memory until that project's authenticated read succeeds.
+
+Linked worktrees use the Git common directory for shared bindings and one service.
+Session maps and journals are separated by Session/worktree identity; legacy local
+maps are only seeds for explicitly bound local Sessions. All Sessions reads the
+private server's published main baseline and preserves its last valid version
+on disconnect. It never reads Git-tracked memory or imports an unmerged feature map.
+Non-Git local folders retain the single-document workflow. Browser storage
 contains recovery drafts and UI preferences, never a second authoritative map.
 Python remains required for initialization, lifecycle hooks and bug Markdown.
 The server, submissions and live notifications run on Node 18 or newer; no new
@@ -8,8 +18,14 @@ runtime dependency is required.
 
 ## Start and read
 
+The workbench command uses a project-named `.localhost` HTTP entry by default.
+See [named-workbench.md](named-workbench.md) for explicit linked-worktree binding,
+opening deduplication, private proxy state and direct-URL compatibility. Map CLI
+requests retain the direct authenticated backend channel.
+
 ```sh
 context-guard workbench --root "/path/to/project"
+context-guard workbench --diagnose --root "/path/to/project" --session "actual-hook-session-id"
 context-guard map status --root "/path/to/project" --session "actual-hook-session-id"
 context-guard map read --root "/path/to/project" --session "actual-hook-session-id" --node M1
 context-guard map changes --root "/path/to/project" --session "actual-hook-session-id" --cursor "last-cursor"
@@ -20,11 +36,51 @@ the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit me
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
 session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
 Do not substitute the visible demo session label or invent a human identity.
+Session IDs remain internal protocol keys. The workbench renders the host-provided
+task name plus useful worktree/branch context and never exposes full or shortened
+Session IDs as user-facing labels or fallback text.
+
+At SessionStart and every prompt, use `workbench --binding-status --session <id>`.
+The result separates the binding record (`current`, `moved`, `other-worktree`,
+`stale`, or `project-mismatch`) from runtime verification (`ready`, `stopped`,
+`legacy`, `duplicate`, or `named-mismatch`). Unbound means ask the user for the
+project workbench URL, then bind with `workbench --session <id> --workbench-url
+<confirmed-url>`. The URL must resolve to the same Git project, backend instance,
+and compatible runtime. A broken binding/service means repair, not create another
+workbench. For an existing bound Session, a missing/stale canonical URL or a
+recognized older runtime is repaired by `workbench --session <id>` using the global
+project registry; it is not a reason to ask the user to bind again. Unknown legacy
+or duplicate owners remain explicit migration errors. Main branch selection
+uses advertised GitHub origin/HEAD, or explicit `--bind-main <branch> --remote <name>`
+or `--local-main <branch>`. No main/master fallback. Existing confirmed language
+is project-scoped and inherited by new worktrees. An ordinary bind cannot move an
+already bound Session. After explicit user confirmation, `workbench --session <id>
+--rebind` preserves prior data, invalidates old capabilities and discards the old
+view/store cache.
+
+Binding is prepared before the named route is touched and committed only after
+the final URL has passed identity verification. The returned URL includes
+`?session=<id>` so that browser tab remains pinned to that Session; activity in
+another task never changes the selected map. Only explicit human selection does.
+The verified project URL is stored with the Session binding and is returned as
+`workbenchUrl` by binding status. The loopback backend URL is diagnostic-only and
+must not replace the named project URL in a user-facing binding.
+
+Runtime compatibility uses a schema plus named capabilities, not the broad HTTP
+protocol number. `workbench --diagnose` inventories every registered state file
+for the Git common directory without starting or stopping a service. When it
+returns `migrationRequired`, review the exact `pid:instance` retire keys. The
+explicit `workbench migrate --root ... --retire <keys>` command copies every
+target's `.codex/context` into the private Git-common-dir migration backup before
+sending only `SIGTERM`; identity changes abort, timeouts never escalate to a
+force-kill, and unknown state files are preserved.
 
 `map read` checks connected pages at a synchronization checkpoint. An unresponsive
-page or unsaved draft returns `UI_PENDING`. It is not safe to proceed by reading a
-stale card. A read describes that moment, not a lock held throughout the model's
-reasoning. Always pass its `version` when submitting the next change.
+connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
+from the fence; their browser recovery copy does not block the authoritative map. It
+is not safe to proceed by reading a stale card. A read describes that moment, not a
+lock held throughout the model's reasoning. Always pass its `version` when submitting
+the next change.
 
 ## Submit operations
 
@@ -40,7 +96,7 @@ context-guard map operation --root "/path/to/project" --session "actual-hook-ses
   "operationId": "a-unique-id-kept-for-retries",
   "baseVersion": "version-returned-by-read",
   "operations": [
-    {"type":"create","parentId":"M1","node":{"id":"N100","title":"New proposal","kind":"work","purpose":"What this node does"}},
+    {"type":"create","parentId":"M1","node":{"id":"N100","title":"Notifications","kind":"work","purpose":"Own outbound delivery","owns":["src/notifications/index.mjs"],"memories":[{"text":"Introduces outbound delivery","paths":["src/notifications/index.mjs"],"proposalEvidence":{"parentId":"M1","basis":"new-module","reason":"Adds a separate runtime boundary and entry point","files":["src/notifications/index.mjs"]}}]}},
     {"type":"update","id":"N21","fields":{"purpose":"Revised purpose"}}
   ]
 }
@@ -53,8 +109,11 @@ Operations are atomic with respect to other supported submissions:
   `map apply` request. It never replaces a nonempty map. Fresh initialization now
   creates the minimal root automatically.
 
-- `create`: unique `node.id`, existing `parentId`, editable node fields. Agent
-  creation always produces an Agent proposal; it cannot self-confirm.
+- `create`: unique `node.id`, existing `parentId`, editable node fields. Human creation
+  may be minimal. Agent creation requires a concise `title` and `purpose`, valid `owns`,
+  and a memory containing `proposalEvidence` (`parentId`, `basis`, `reason`, `files`) with
+  at least one implementation file. Duplicate active titles and overlapping pending
+  proposals are rejected. A valid Agent create is still only a proposal; it cannot self-confirm.
 - `update`: `id`, `fields`. Agent may edit its own unconfirmed proposal or a node
   explicitly granted to its actual session by the human in the workbench.
 - `move`: `id`, `parentId`. Both source and destination must be authorized. Root
@@ -64,7 +123,7 @@ Operations are atomic with respect to other supported submissions:
 - `attach-bug`: narrow compatibility operation adding a uniquely identified bug
   stub; it does not authorize changing other fields or proposal approval.
 
-Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `bugs`,
+Editable fields: `title`, `purpose`, `kind`, `state`, `memories`, `ideas`, `todos`, `bugs`,
 `dormant`, `files`, `owns`. `proposal` and `isNew` changes require the workbench.
 The tree uses `children` and may contain legacy `_inbox` children. IDs are unique
 across both. Existing unknown metadata is preserved. Own paths are relative to
@@ -74,6 +133,60 @@ Human scope grants are explicit node IDs. Granting a child does not implicitly
 grant ancestors. The workbench can grant a module's current descendants; future
 children do not silently acquire permission. Revocation applies to queued writes
 before they commit. Confirmation and scope grant are distinct actions.
+
+## Archive-to-Map reconciliation
+
+`archive-session` is the normal Agent completion path. Its `--files` values must be
+repo-relative files actually changed by that Agent. Before writing the Session archive,
+it performs one versioned Map reconciliation:
+
+- Files covered by `owns` add the archive summary as one memory on the longest-matching
+  node. Exact-file ownership wins over directory ownership.
+- Files with no accepted owner remain `unclassified`; absence of an `owns` match is not
+  evidence that a new product responsibility exists, so it never creates a node by itself.
+- Tests, docs, generated files, and configuration outside an existing node's `owns` may be
+  assigned with an explicit `assignments` item containing `nodeId`, `reason`, and `files`.
+  The target must be an accepted node, the files must be part of this archive, and the
+  Session still needs its normal grant to update that node.
+- A new node requires an explicit `proposal` with `parentId`, `title`, `purpose`, `reason`,
+  `basis`, and `files`. `basis` is one of `new-module`, `new-interface`, `new-component`, or
+  `new-responsibility`; supporting-only changes cannot be the sole evidence. The parent must
+  be accepted, accepted titles cannot be duplicated, overlapping proposals are deduplicated,
+  and the Agent cannot accept its own proposal.
+- The Session ID, normalized file set, and archive content form the idempotency key, so
+  retrying the same archive cannot duplicate memories or nodes. Later work in the same
+  Session may add another memory for the same files when its archive content differs.
+- Existing-node memories require that Session's normal node grant. Missing grants,
+  pending page edits, invalid paths, and version conflicts fail visibly and leave the
+  Session archive unwritten so the same command can be retried.
+
+The underlying command is `context-guard map reconcile --root <project> --session
+<actual-session-id> --input <json>`. Agents normally use `archive-session`; optional
+governance JSON is passed with `archive-session --input <json-file-or->`:
+
+```json
+{
+  "assignments": [
+    {
+      "nodeId": "workbench",
+      "reason": "Regression test for the workbench implementation",
+      "files": ["tests/workbench-browser.mjs"]
+    }
+  ],
+  "proposal": {
+    "parentId": "T0",
+    "title": "Notifications",
+    "purpose": "Own outbound notification delivery",
+    "reason": "Introduces a separate runtime boundary and public entry point",
+    "basis": "new-module",
+    "files": ["src/notifications/index.mjs"]
+  }
+}
+```
+
+Omit either top-level field when it is not needed. Reconciliation derives operations from
+the current Map and commits them through the same local protocol; it never reads or updates
+a legacy roadmap file.
 
 ## States, errors and recovery
 
@@ -139,6 +252,11 @@ may repeat a report. Agent actions must still use stable operation IDs. Own-sess
 writes advance the observation baseline without triggering a self-response loop.
 Other-session, human and external-file actions remain observable.
 
+Active Codex hooks call this inbox at session start, on each user prompt, and after
+compaction. They expose a pending receipt and changed node IDs to the Agent but do
+not acknowledge it. This makes another Agent's committed Map changes visible at a
+reasoning boundary without treating file events as model wake-ups.
+
 These commands use the existing authenticated changes API and verify the actual
 disk hash. They do not send page checkpoints, blur inputs, read browser storage,
 or certify that an uncommitted browser draft is saved. Before making any change,
@@ -162,6 +280,89 @@ The adapter needs no new server endpoint and works with an already-running Node
 protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack
 workflow; they are not an alternative idle-task scheduler.
+
+## Prompt signals and Map TODOs
+
+`UserPromptSubmit` stores a stable private signal ID. The Agent classifies it by
+meaning, not keyword matching:
+
+```sh
+context-guard record-todo --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "New requirement" --description "Acceptance details"
+context-guard record-bad-case --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --node N1 --title "Failure" --phenomenon "What failed"
+context-guard resolve-signal --root "/path/to/project" --session "actual-hook-session-id" \
+  --signal "SIG-..." --kind task
+```
+
+`record-todo` requires the real lifecycle session and an explicit grant for the
+target node. It creates one idempotent `todos[]` entry bound to that session and
+signal, with creation/update timestamps. Retrying cannot duplicate it. Bad cases
+resolve their signal only after the Map attachment succeeds. `TODO.md` remains a
+human-owned file and the hook denies Agent writes to it.
+
+For a message with several distinct intentions, call `split-signal --root ...
+--session ... --signal <parent> --input <json>` with
+`{"items":["fix rendering now","add shortcuts later","record save failure"]}`.
+Classify each returned child signal. The split is idempotent, and unresolved
+children still block completion. A classification conflict is rejected before
+writing to Map, so it cannot leave a new orphan TODO.
+
+## Explicit development plans
+
+After the user approves implementation, classify pending prompt signals and run:
+
+```sh
+context-guard plan-start --root <project> --session <actual-session-id> --input <plan.json>
+```
+
+```json
+{"approved":true,"summary":"Implement rendering fix","node_ids":["N1"],"paths":["src/","tests/render.test.mjs"]}
+```
+
+`approved` records the Agent's attestation of user approval, not a new browser
+capability. Node grants are independently checked. The command reads the nodes,
+requires pending inbox changes to be reviewed/acknowledged, hashes the declared
+files, records timestamps and prepares configured Cloud Sync. A second active
+plan is rejected. There is no invented native "plan approved" Hook event.
+
+Mutating tools require an active plan. Known paths outside the plan are denied.
+Unknown shell/script scopes are explicitly marked unverified, never described
+as checked. Tool hooks do not run cloud synchronization per file. Read-only
+inspection and standalone Context Guard recovery commands remain available.
+
+After testing, archive every changed file with `archive-session --files ...
+--input <archive.json>`. In addition to optional assignments/proposal, supply:
+
+```json
+{"verification":"npm test: passed; artifact/log location","assessment":{"decision":"reuse","reason":"No independent module introduced; belongs to rendering"}}
+```
+
+Assessment decisions: `reuse`, `propose`, or `none` (no new node needed). A
+`propose` decision requires the existing evidence-backed proposal object; the
+Agent cannot approve it. Unknown scripts additionally require `scope_review`;
+failed tools require `failure_review` describing resolution and revalidation.
+Delegated work requires `subagent_review`, an object mapping each relevant agent
+ID to reviewed evidence or an explicit explanation for discarding its result.
+These are Agent judgments: the Hook checks that they exist, not their truth.
+No-files plans still append the summary/evidence to the authorized plan nodes.
+Unclassified changed files cannot yield a successful plan archive receipt.
+
+Run `plan-finish --root ... --session ...`. It checks the successful archive,
+file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sync
+when configured. Failure leaves the plan unfinished. Changes after archive
+require a new verified archive. `plan-status` returns the active plan, last
+completed plan and pending signals; use it after compact/interrupt or a retry.
+Stop blocks pending signals or active plans and never marks them complete itself.
+On a host's repeated Stop invocation, it reports `INCOMPLETE` without another
+forced retry, preserving unfinished state so the Agent can report a real blocker
+instead of entering an infinite loop.
+
+Limits: this is a cooperative Agent protocol, not a filesystem sandbox. Arbitrary
+scripts may modify paths outside the declared scope; their actual scope requires
+Agent review. A local inbox check is a point-in-time observation, not a lock on
+all other writers. Cloud finish provides the serialized remote conflict check.
+Host Hook delivery and support must be validated on the installed client.
 
 ## Cache migration and external saves
 
@@ -194,8 +395,9 @@ security sandbox**: a program with the user's full filesystem/browser access can
 read credentials, edit the map or impersonate browser actions. Do not expose the
 port or use it to isolate a hostile Agent running as the same OS user.
 
-One Node instance owns a project. An identified old Python service is not silently
-killed: export its cache and stop it using the old entry before starting Node.
+One compatible Node instance owns a project. An old or duplicate service is never
+silently killed: diagnose it, review the private backup target, and run the exact
+explicit migration command before starting the current runtime.
 `context-guard workbench --root ... --stop` waits for connected page checkpoints;
 dirty pages must be saved or explicitly resolved first.
 

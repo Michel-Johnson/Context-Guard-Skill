@@ -8,11 +8,11 @@ Context Guard is a durable project-memory skill for Codex, Cursor, and Claude. I
 
 ## What It Does
 
-- **Four stores**: sessions, bugs, tasks, map — in the opened project’s `.codex/context/`
+- **Four stores**: sessions, bugs, tasks, map — with local drafts/caches in the opened project’s `.codex/context/`
 - **First-use map**: the agent and the human decide the first layer together (several candidate cuts, then lock L1), then L2, then L3. Titles must be instantly readable. Later sessions open that map
 - **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
 - **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
-- **Record language**: Chinese or English per folder
+- **Record language**: Chinese or English per project, shared by its linked worktrees
 - **Lifecycle**: create session records, retain user messages, and persist agent-identified bad cases through one command
 
 v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
@@ -21,14 +21,39 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Cloud:** the [GitHack page](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html) shows the last push. Clicks there do not write the repo. Ask for changes in chat; the agent edits files and pushes; refresh the page. The first open may show GitHack’s “One more step” screen — click **Open the page**.
+**Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
 
-**Local:** with hooks installed, a new session can start one local workbench. You can also start or stop it manually. The Node service automatically persists edits to `map.json` and pushes file/Agent changes back to the page; a browser directory handle is no longer a map writer.
+**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session asks which project workbench to use and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. A private global registry outside the replaceable Skill install preserves project URLs and bindings across upgrades; a temporarily unavailable bound Session self-repairs by project identity instead of asking again.
+
+**Development policy for this repository:** source code follows the existing
+branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
+release artifacts. All development memory must come from the user-designated
+private server, with local caches and isolated Session records. All Sessions reads
+the server's committed-main baseline. The private service/client and local
+acceptance tests are implemented; real deployment, native Hook trust verification,
+and historical migration remain pending separate approval. See [the memory contract](references/server-memory.md).
+Other projects do not automatically inherit this repository's server configuration.
 
 ```bash
-context-guard workbench --root /path/to/project
+context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
+context-guard workbench --root /path/to/project --session <actual-session-id> --workbench-url http://project-name.localhost:1355/prototype/workbench.html
+context-guard workbench --diagnose --root /path/to/project --session <actual-session-id>
+# only after explicit confirmation to move an existing binding:
+context-guard workbench --root /other/worktree --session <actual-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
+
+Local URLs default to `http://project-name.localhost:1355` (a subsequent free port
+is used if occupied), with no global Portless installation. Binding verifies the
+named URL, Git project, backend instance, and runtime before persisting; returned
+URLs pin the selected Session and never auto-switch to a newer active task. Explicit
+`workbench bind --root <worktree> --project-root <existing-map-worktree>`
+selects a service target without merging Maps or replacing the required Session
+binding. Session records remain isolated in their own worktrees. Diagnose old or
+duplicate services first; explicit migration backs up their private context and
+signals only the reviewed `pid:instance` identities without force-killing them.
+See [named workbenches](references/named-workbench.md) and
+[Portless attribution](THIRD_PARTY_NOTICES.md); Apache-2.0 notices ship with the package.
 
 The workbench chrome is Chinese or English. Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
 
@@ -171,9 +196,12 @@ Use $context-guard. Four stores: sessions, bugs, tasks, map.
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language English
 python3 scripts/context_guard.py workbench --root /path/to/project
+context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map.
+Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results and adds the summary to accepted Map nodes covered by `owns`. Unowned files remain unclassified. Use `archive-session --input ...` to explicitly assign support files to an existing node or submit an evidence-backed new-node proposal for human confirmation.
+
+Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes to the Agent at reasoning boundaries; run Cloud Sync `prepare` only at the first mutation of a plan; and check conflicts before requiring `sync finish`. New user requirements are classified semantically into Map TODOs. `TODO.md` stays human-owned. Hook events carry stable IDs and occurrence/recording timestamps.
 
 ## Main Files
 
@@ -197,3 +225,9 @@ See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 ## Local workbench synchronization
 
 Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
+
+## Cloud event synchronization
+
+Cloud Sync receives project-scoped SSE events instead of periodically replacing every Map. Run `context-guard sync prepare` before development and `context-guard sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified. See the [Cloud Sync interface](references/cloud-sync-interface.md).
+
+To install Cloud on a new Linux server, create project credentials, connect working copies, or move the service to another host, follow the [Cloud deployment guide](references/cloud-deployment.md). Cloud stays in this repository; its persistent data and secrets stay outside the Git checkout.

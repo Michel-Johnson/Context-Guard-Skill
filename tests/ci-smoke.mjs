@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import '../.github/scripts/test-environment.mjs';
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
@@ -19,7 +21,7 @@ let passed = false;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || repositoryRoot,
-    env: { ...process.env, ...options.env },
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', ...options.env },
     input: options.input,
     encoding: "utf8",
     windowsHide: true
@@ -74,6 +76,18 @@ function installedPath(home) {
 
 async function main() {
   const python = findPython();
+  const cloudService = path.join(repositoryRoot, "deploy", "context-guard-cloud.service");
+  assert.ok(fs.existsSync(cloudService), "repository must include the Cloud systemd service");
+  const serviceUnit = fs.readFileSync(cloudService, "utf8");
+  for (const required of [
+    "EnvironmentFile=-%h/.config/context-guard-cloud.env",
+    "CONTEXT_GUARD_CLOUD_HOST=0.0.0.0",
+    "CONTEXT_GUARD_CLOUD_PORT=8788",
+    "CONTEXT_GUARD_CLOUD_DATA=%h/context-guard-cloud-data",
+    "scripts/cloud/server.mjs"
+  ]) {
+    assert.ok(serviceUnit.includes(required), `Cloud systemd service must configure ${required}`);
+  }
   const packedDirectory = path.join(temporaryRoot, "packed");
   const consumerDirectory = path.join(temporaryRoot, "consumer");
   const npmCache = path.join(temporaryRoot, "npm-cache");
@@ -98,8 +112,21 @@ async function main() {
   const postinstall = path.join(packageDirectory, "bin", "postinstall.js");
   const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
   const hookScript = path.join(packageDirectory, "scripts", "context_guard_hook.py");
-  checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  const cloudDeploymentGuide = path.join(packageDirectory, "references", "cloud-deployment.md");
+  const syntheticCache = path.join(packageDirectory, "scripts", "__pycache__");
+  fs.mkdirSync(syntheticCache, { recursive: true });
+  fs.writeFileSync(path.join(syntheticCache, "context_guard.cpython-test.pyc"), "synthetic cache");
+  try {
+    checkInstallBoundaries({ packageDirectory, root: path.join(temporaryRoot, "install-boundaries") });
+  } finally {
+    fs.rmSync(syntheticCache, { recursive: true, force: true });
+  }
   assert.equal(countSkillFiles(packageDirectory), 1, "published package must contain one skill");
+  assert.ok(fs.existsSync(cloudDeploymentGuide), "published package must include the cloud deployment guide");
+  const deploymentGuide = fs.readFileSync(cloudDeploymentGuide, "utf8");
+  for (const required of ["npm ci --omit=dev", "context-guard-cloud.service", "/api/health", "/api/projects", "sync connect", "sync finish"]) {
+    assert.ok(deploymentGuide.includes(required), `cloud deployment guide must document ${required}`);
+  }
   run(process.execPath, [cli, "--help"]);
   run(python, ["-c", [
     "from pathlib import Path",
@@ -141,6 +168,7 @@ async function main() {
 
   for (const home of Object.values(homes)) {
     assert.ok(fs.existsSync(path.join(installedPath(home), "SKILL.md")));
+    assert.ok(fs.existsSync(path.join(installedPath(home), "references", "cloud-deployment.md")));
     assert.ok(fs.existsSync(path.join(installedPath(home), "scripts", "context_guard_hook.py")));
     assert.equal(countSkillFiles(installedPath(home)), 1);
   }
@@ -157,6 +185,8 @@ async function main() {
   const claudeSettings = readJson(path.join(homes.claude, "settings.json"));
   assert.deepEqual(claudeSettings.permissions, { allow: ["Read"] });
   assert.match(claudeSettings.hooks.SessionStart[0].hooks[0].command, /--platform claude/);
+  assert.equal(codexHooks.hooks.SessionStart[0].hooks[0].timeout, 20);
+  assert.equal(cursorHooks.hooks.sessionStart[0].timeout, 20);
 
   const globalHomes = {
     CODEX_HOME: path.join(temporaryRoot, "global-codex"),
@@ -177,9 +207,20 @@ async function main() {
 
   const project = path.join(temporaryRoot, "project");
   const unrelatedCwd = path.join(temporaryRoot, "hook-cwd");
+  const hookCodexHome = path.join(temporaryRoot, "hook-codex-home");
   fs.mkdirSync(project, { recursive: true });
   fs.mkdirSync(unrelatedCwd, { recursive: true });
+  fs.mkdirSync(hookCodexHome, { recursive: true });
+  run(python, ["-c", [
+    "import sqlite3,sys",
+    "db=sqlite3.connect(sys.argv[1])",
+    "db.execute('CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, title TEXT, name TEXT)')",
+    "db.execute('INSERT INTO threads VALUES (?, ?, ?, ?)', ('session-two', sys.argv[2], 'first prompt', 'basic'))",
+    "db.commit()",
+    "db.close()"
+  ].join(";"), path.join(hookCodexHome, "state_5.sqlite"), project]);
   const hookEnvironment = {
+    CODEX_HOME: hookCodexHome,
     CONTEXT_GUARD_DISABLE_WORKBENCH: "1",
     CONTEXT_GUARD_HEADLESS: "1"
   };
@@ -193,10 +234,17 @@ async function main() {
     }
   );
   const firstResponse = JSON.parse(firstStart.stdout);
-  assert.match(firstResponse.additional_context, /ask the user whether project context should be recorded/);
-  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "index.md")));
+  assert.match(firstResponse.additional_context, /This Session is not bound/);
+  assert.ok(!fs.existsSync(path.join(project, ".codex", "context", "index.md")), "an unbound Session must not initialize project memory");
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "payload root must beat process cwd");
-  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
+  assert.ok(fs.existsSync(path.join(project, ".codex", "context", "sessions.jsonl")), "an unbound hook keeps only registration evidence");
+  assert.ok(!fs.existsSync(path.join(project, ".codex", "context", "sessions", "session-one.md")));
+
+  workbenchProject = project;
+  const bindingPort = await freePort();
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-one", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
 
   // Cursor on Windows can prepend a UTF-8 BOM to every hook payload.
   const cursorMessages = ["第一条 Cursor 消息", "第二条 Cursor 消息"];
@@ -209,21 +257,33 @@ async function main() {
       })
     });
   }
-  run(python, [hookScript, "stop", "--platform", "cursor"], {
+  const cursorStop = run(python, [hookScript, "stop", "--platform", "cursor"], {
     cwd: unrelatedCwd,
     env: hookEnvironment,
     input: "\uFEFF" + JSON.stringify({ workspace_roots: [project], conversation_id: "session-one", generation_id: "generation-1" })
   });
   const cursorEvents = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse);
-  assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop"]);
+  assert.equal(JSON.parse(cursorStop.stdout).decision, "block", "unclassified prompts cannot silently complete");
+  assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop-blocked"]);
   assert.ok(cursorEvents.every(({ session_id }) => session_id === "session-one"), "turns must keep the client's conversation ID");
   assert.ok(cursorEvents.filter(({ event }) => event === "user-prompt-submit").every(({ message_status }) => message_status === "recorded"));
   const cursorMemory = fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8");
   for (const message of cursorMessages) assert.ok(cursorMemory.includes(message));
+  const cursorSessionMemory = fs.readFileSync(path.join(project, ".codex", "context", "sessions", "session-one.md"), "utf8");
+  for (const message of cursorMessages) assert.ok(cursorSessionMemory.includes(message));
   assert.ok(!fs.existsSync(path.join(unrelatedCwd, ".codex", "context")), "BOM payload root must beat process cwd");
 
   run(python, [contextScript, "set-language", "--root", project, "--language", "zh"]);
+  const secondBindingPrompt = run(
+    python,
+    [hookScript, "session-start", "--platform", "codex"],
+    { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-two" }) }
+  );
+  assert.match(secondBindingPrompt.stdout, /This Session is not bound/);
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-two", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
   const secondStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -236,6 +296,9 @@ async function main() {
   const secondResponse = JSON.parse(secondStart.stdout);
   assert.doesNotMatch(JSON.stringify(secondResponse), /ask the user whether/);
   assert.equal(readJson(path.join(project, ".codex", "context", "preferences.json")).record_language, "zh");
+  const namedSession = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
+    .trim().split(/\r?\n/).map(JSON.parse).findLast((event) => event.session_id === "session-two");
+  assert.equal(namedSession.thread_name, "basic", "Codex lifecycle records should include the real thread name");
 
   const userMessage = "请记住：CI 第一版只保护已经实现的安装流程。";
   run(
@@ -257,13 +320,33 @@ async function main() {
     }
   );
   assert.match(fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8"), /CI 第一版/);
+  assert.match(fs.readFileSync(path.join(project, ".codex", "context", "sessions", "session-two.md"), "utf8"), /CI 第一版/);
   const sessionEvents = fs.readFileSync(path.join(project, ".codex", "context", "sessions.jsonl"), "utf8")
     .trim().split(/\r?\n/).map(JSON.parse);
   assert.ok(sessionEvents.some((event) => event.event === "session-start" && event.session_id === "session-one"));
   assert.ok(sessionEvents.some((event) => event.event === "user-prompt-submit"));
-  assert.ok(sessionEvents.some((event) => event.event === "stop"));
+  assert.ok(sessionEvents.some((event) => event.event === "stop-blocked"));
 
-  workbenchProject = project;
+  const fallbackProject = path.join(temporaryRoot, "fallback-project");
+  fs.mkdirSync(fallbackProject);
+  for (const [event, input] of [
+    ["session-start", { project_root: fallbackProject, is_background_agent: true }],
+    ["user-prompt-submit", { project_root: fallbackProject, prompt: "fallback session" }],
+    ["stop", { project_root: fallbackProject }]
+  ]) run(python, [hookScript, event, "--platform", "codex"], { env: hookEnvironment, input: JSON.stringify(input) });
+  const fallbackEvents = fs.readFileSync(path.join(fallbackProject, ".codex/context/sessions.jsonl"), "utf8").trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(new Set(fallbackEvents.map(event => event.session_id)).size, 1, "hook processes without a client ID must share the current project session");
+  assert.ok(!fs.existsSync(path.join(fallbackProject, ".codex/context/map.json")), "unbound fallback hooks must not initialize project memory");
+
+  const thirdBindingPrompt = run(
+    python,
+    [hookScript, "session-start", "--platform", "codex"],
+    { cwd: unrelatedCwd, env: hookEnvironment, input: JSON.stringify({ project_root: project, session_id: "session-three" }) }
+  );
+  assert.match(thirdBindingPrompt.stdout, /This Session is not bound/);
+  run(process.execPath, [cli, "workbench", "--root", project, "--session", "session-three", "--port", String(bindingPort)], {
+    env: { ...clientEnvironment, CONTEXT_GUARD_HEADLESS: "1" }
+  });
   const automaticWorkbenchStart = run(
     python,
     [hookScript, "session-start", "--platform", "codex"],
@@ -275,9 +358,33 @@ async function main() {
   );
   const automaticContext = JSON.parse(automaticWorkbenchStart.stdout).hookSpecificOutput.additionalContext;
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
-  assert.ok(automaticUrl, `SessionStart should inject the automatically started workbench URL\n${automaticWorkbenchStart.stderr}`);
+  assert.ok(automaticUrl, `a bound SessionStart should reuse and report its project workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /unclassified files: scripts\/context_guard\.py/);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.length, 0, "unclassified files must not create Map nodes");
+  const archiveGovernance = path.join(temporaryRoot, "archive-governance.json");
+  fs.writeFileSync(archiveGovernance, JSON.stringify({ proposal: {
+    parentId: "T0", title: "Context CLI", purpose: "提供 Context Guard 命令入口", reason: "新增独立命令职责且当前 Map 没有对应节点",
+    basis: "new-interface", files: ["scripts/context_guard.py"]
+  } }));
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
+  const archivedMap = readJson(path.join(project, ".codex/context/map.json"));
+  const archiveProposal = archivedMap.root.children.find(node => node.proposal === "proposed" && node.owns?.includes("scripts/context_guard.py"));
+  assert.ok(archiveProposal, "archive-session should only create an explicit evidence-backed proposal");
+  assert.equal(archiveProposal.proposedBy, "session-three");
+  assert.match(archiveProposal.memories[0].text, /建立 Context CLI 节点/);
+  assert.equal(archiveProposal.memories[0].proposalEvidence.basis, "new-interface");
+  run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "建立 Context CLI 节点", "--files", "scripts/context_guard.py", "--input", archiveGovernance]);
+  assert.equal(readJson(path.join(project, ".codex/context/map.json")).root.children.filter(node => node.id === archiveProposal.id).length, 1);
   run(python, [contextScript, "workbench", "--root", project, "--stop"]);
+
+  const candidatesInput = path.join(temporaryRoot, "l1-candidates.json");
+  fs.writeFileSync(candidatesInput, JSON.stringify({ lenses: [{ id: "runtime", title: "运行视角", why: "按运行链路", candidates: [{ id: "hooks", title: "Hooks", purpose: "接入生命周期", owns: ["scripts/context_guard_hook.py"] }] }] }));
+  run(python, [contextScript, "write-candidates", "--root", project, "--input", candidatesInput]);
+  const candidates = readJson(path.join(project, ".codex/context/l1-candidates.json"));
+  assert.equal(candidates.v, 1); assert.equal(candidates.lenses[0].candidates[0].id, "hooks");
 
   const mapPath = path.join(project, ".codex", "context", "map.json");
   const map = readJson(mapPath);
@@ -293,6 +400,7 @@ async function main() {
     "--cause", "待确认",
     "--guard", "跨平台安装冒烟",
     "--node", "N1",
+    "--session", "session-three",
     "--keys", "install,hook"
   ]);
   assert.ok(fs.existsSync(path.join(project, ".codex", "context", "bugs", "B1.md")));
@@ -308,6 +416,28 @@ async function main() {
   assert.match(bugFix, /## 怎么修\n未修/);
   assert.match(bugFix, /## 怎么防\n跨平台安装冒烟/);
   assert.equal(readJson(mapPath).root.bugs[0].id, "B1");
+  assert.deepEqual(readJson(mapPath).root.bugs[0].sessions, ["session-three"]);
+  const invalidNode = spawnSync(python, [contextScript, "record-bad-case", "--root", project, "--title", "错误节点", "--phenomenon", "不能静默挂载", "--node", "missing", "--session", "session-three"], { encoding: "utf8", windowsHide: true });
+  assert.equal(invalidNode.status, 1); assert.match(invalidNode.stderr, /unknown map node/);
+  run(python, [contextScript, "record-bad-case-fix", "--root", project, "--case", "B1", "--method", "安装并校验生命周期 Hook", "--evidence", "三平台打包冒烟通过", "--status", "resolved", "--session", "session-three"]);
+  assert.equal(readJson(path.join(project, ".codex/context/bugs-index.json")).B1.status, "resolved");
+  assert.equal(readJson(mapPath).root.bugs[0].status, "resolved");
+  assert.match(fs.readFileSync(path.join(project, ".codex/context/fixes/B1.md"), "utf8").replace(/\r\n/g, "\n"), /## 怎么修\n安装并校验生命周期 Hook/);
+  assert.equal(readJson(path.join(project, ".codex/context/bad-case-events.json")).at(-1).event, "fix");
+
+  for (const platform of ["cursor", "claude"]) {
+    const doctor = run(process.execPath, [cli, "doctor", "--platform", platform, "--root", project, "--json"], { env: clientEnvironment });
+    assert.equal(JSON.parse(doctor.stdout).ok, true);
+  }
+  const codexDoctor = spawnSync(process.execPath, [cli, "doctor", "--platform", "codex", "--root", project, "--json"], {
+    cwd: repositoryRoot, env: { ...process.env, ...clientEnvironment, CODEX_THREAD_ID: "" }, encoding: "utf8", windowsHide: true
+  });
+  assert.equal(codexDoctor.status, 1, "configured files are not proof that Codex trusted the Hook");
+  const codexDoctorReport = JSON.parse(codexDoctor.stdout);
+  assert.equal(codexDoctorReport.ok, false);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.hooks-trust").ok, false);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.hooks-executed").ok, true);
+  assert.equal(codexDoctorReport.results.find(item => item.name === "codex.context-emitted").ok, true);
 
   workbenchProject = project;
   const port = await freePort();

@@ -1,26 +1,355 @@
 import fs from 'node:fs/promises';
+import { watchFile, unwatchFile } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite, encode, readJSON } from './io.mjs';
+const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
+let nodeSqlite;
+
+function hasBuiltInSqlite(version = process.versions.node) {
+  const [major = 0, minor = 0] = String(version).split('.').map(Number);
+  return major > 22 || (major === 22 && minor >= 5);
+}
+
+async function queryWithNodeSqlite(database, sql) {
+  if (nodeSqlite === undefined) nodeSqlite = await import('node:sqlite').catch(() => null);
+  if (!nodeSqlite?.DatabaseSync) return null;
+  const connection = new nodeSqlite.DatabaseSync(database, { readOnly: true });
+  try { return connection.prepare(sql).all(); }
+  finally { connection.close(); }
+}
+
+const ACTIVE_TASK_EVENTS = new Set(['task_started', 'turn_started', 'response.started']);
+const STOPPED_TASK_EVENTS = new Set([
+  'task_complete', 'task_completed', 'turn_complete', 'turn_completed', 'response.completed',
+  'task_cancelled', 'task_canceled', 'task_failed', 'turn_aborted', 'turn_cancelled', 'turn_canceled',
+]);
+const UNKNOWN_ACTIVITY = { status: 'unknown', lastEvent: 'unknown', lastSeen: '' };
+
+function taskEvent(line) {
+  try {
+    const event = JSON.parse(line);
+    const candidates = [
+      event?.type === 'event_msg' ? event.payload?.type : null,
+      event?.type,
+      event?.payload?.event?.type,
+      event?.event?.type,
+    ].filter(type => typeof type === 'string');
+    const type = candidates.find(candidate => ACTIVE_TASK_EVENTS.has(candidate) || STOPPED_TASK_EVENTS.has(candidate));
+    if (!type) return null;
+    return {
+      status: ACTIVE_TASK_EVENTS.has(type) ? 'active' : 'stopped',
+      lastEvent: type,
+      lastSeen: event.timestamp || event.created_at || event.payload?.timestamp || '',
+    };
+  } catch { return null; }
+}
+
+export function rolloutTaskStatus(text, initial = UNKNOWN_ACTIVITY) {
+  let state = { ...initial };
+  for (const line of text.split('\n')) {
+    const event = taskEvent(line);
+    if (event) state = event;
+  }
+  return state;
+}
+
+function activityOf(item) {
+  const status = ['active', 'stopped'].includes(item?.status) ? item.status : 'unknown';
+  const statusSeen = item?.statusSeen || (status === 'unknown' ? '' : item?.lastSeen) || '';
+  return { status, statusSeen, lastEvent: item?.lastEvent || 'unknown', statusSource: item?.statusSource || item?.platform || 'unknown' };
+}
+
+function latestActivity(previous, discovered) {
+  const before = activityOf(previous), after = activityOf(discovered);
+  if (after.statusSeen > before.statusSeen) return after;
+  if (after.statusSeen < before.statusSeen) return before;
+  const rank = { unknown: 0, active: 1, stopped: 2 };
+  return rank[after.status] > rank[before.status] ? after : before;
+}
+
+function isoTime(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return new Date(value * 1000).toISOString();
+  if (typeof value === 'string' && value) return value;
+  return new Date(0).toISOString();
+}
+
 export class Access {
-  constructor(root) { this.ctx = path.join(root, '.codex/context'); this.file = path.join(this.ctx, 'sessions/workbench-access.json'); this.queue = Promise.resolve(); }
-  async init() { this.data = await readJSON(this.file, { sessions: {} }); return this; }
-  async knownSessions() {
-    const text = await fs.readFile(path.join(this.ctx, 'sessions.jsonl'), 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+  constructor(root, options = {}) {
+    this.root = root;
+    this.ctx = path.join(root, '.codex/context');
+    this.file = options.file || path.join(this.ctx, 'sessions/workbench-access.json');
+    this.bindingsFile = options.bindingsFile || path.join(this.ctx, 'sessions/workbench-bindings.json');
+    this.sessionsFile = path.join(this.ctx, 'sessions.jsonl');
+    this.codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+    this.codexDb = options.codexDb || null;
+    this.sqliteCommand = options.sqliteCommand || 'sqlite3';
+    this.execFile = options.execFile || execFileAsync;
+    this.querySqlite = options.querySqlite || queryWithNodeSqlite;
+    this.allowExternalSqlite = options.allowExternalSqlite ?? !hasBuiltInSqlite(options.nodeVersion);
+    this.codexSessions = options.codexSessions || null;
+    this.codexRows = null;
+    this.codexQuery = null;
+    this.rolloutStates = new Map();
+    this.queue = Promise.resolve();
+  }
+  async init() {
+    this.data = await readJSON(this.file, { sessions: {} });
+    this.bindings = await readJSON(this.bindingsFile, { sessions: {} });
+    return this;
+  }
+  binding(sessionId) { return this.bindings.sessions[sessionId] || null; }
+  bindingRoots() { return [...new Set([this.root, ...Object.values(this.bindings.sessions).map(item => item?.worktreeRoot).filter(Boolean)])]; }
+  async hookSessionRegistry(root = this.root) {
+    const sessionsFile = path.join(root, '.codex/context/sessions.jsonl');
+    const text = await fs.readFile(sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+    const sessions = new Map();
+    for (const line of text.split('\n').filter(Boolean)) {
+      try {
+        const event = JSON.parse(line);
+        const id = typeof event.session_id === 'string' ? event.session_id.trim() : '';
+        if (!id || event.event === 'maintenance' || id.startsWith('maintenance-')) continue;
+        const at = typeof event.at === 'string' && event.at ? event.at : new Date(0).toISOString();
+        const previous = sessions.get(id);
+        // A blocked Stop means governance is unfinished, not that the Agent is
+        // still generating a response. Keep those two states separate so stale
+        // bindings never render as a permanently spinning Session.
+        const stopped = ['stop', 'stop-blocked', 'subagent-stop'].includes(event.event);
+        const activated = ['session-start', 'subagent-start', 'user-prompt-submit'].includes(event.event);
+        const status = stopped ? 'stopped' : activated ? 'active' : previous?.status || 'unknown';
+        sessions.set(id, {
+          id,
+          name: typeof event.thread_name === 'string' && event.thread_name.trim() ? event.thread_name.trim() : previous?.name || '',
+          platform: typeof event.platform === 'string' && event.platform ? event.platform : previous?.platform || 'unknown',
+          status,
+          statusSeen: stopped || activated ? at : previous?.statusSeen || '',
+          statusSource: 'hook',
+          firstSeen: previous?.firstSeen || at,
+          lastSeen: at,
+          lastEvent: typeof event.event === 'string' ? event.event : previous?.lastEvent || 'unknown',
+          worktreeRoot: root,
+        });
+      } catch {}
+    }
+    return [...sessions.values()];
+  }
+  async stateDatabase() {
+    if (this.codexDb) return this.codexDb;
+    const files = await fs.readdir(this.codexHome, { withFileTypes: true }).catch(() => []);
+    const candidates = await Promise.all(files
+      .filter(item => item.isFile() && /^state(?:_\d+)?\.sqlite$/.test(item.name))
+      .map(async item => {
+        const file = path.join(this.codexHome, item.name);
+        return { file, mtime: (await fs.stat(file).catch(() => ({ mtimeMs: 0 }))).mtimeMs };
+      }));
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    if (candidates[0]) this.codexDb = candidates[0].file;
+    return this.codexDb;
+  }
+  async readRange(file, start, length) {
+    if (length <= 0) return '';
+    const handle = await fs.open(file, 'r');
+    try {
+      const buffer = Buffer.allocUnsafe(length);
+      let offset = 0;
+      while (offset < length) {
+        const { bytesRead } = await handle.read(buffer, offset, length - offset, start + offset);
+        if (!bytesRead) break;
+        offset += bytesRead;
+      }
+      return buffer.subarray(0, offset).toString('utf8');
+    } finally { await handle.close(); }
+  }
+  async initialRolloutState(file, size) {
+    const block = 256 * 1024;
+    let end = size, suffix = '';
+    while (end > 0) {
+      const start = Math.max(0, end - block);
+      const text = await this.readRange(file, start, end - start) + suffix;
+      const lines = text.split('\n');
+      suffix = start > 0 ? lines.shift() : '';
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const event = taskEvent(lines[i]);
+        if (event) return event;
+      }
+      end = start;
+    }
+    return { ...UNKNOWN_ACTIVITY };
+  }
+  async rolloutState(file) {
+    if (!file) return { ...UNKNOWN_ACTIVITY };
+    const stat = await fs.stat(file).catch(() => null);
+    if (!stat?.isFile()) return { ...UNKNOWN_ACTIVITY };
+    const previous = this.rolloutStates.get(file);
+    if (previous && stat.size === previous.size) return previous;
+    let state;
+    if (previous && stat.size > previous.size) {
+      const appended = await this.readRange(file, previous.size, stat.size - previous.size);
+      state = rolloutTaskStatus(appended, previous);
+    } else state = await this.initialRolloutState(file, stat.size);
+    const next = { ...state, size: stat.size };
+    this.rolloutStates.set(file, next);
+    return next;
+  }
+  async databaseSignature(database) {
+    const signatures = await Promise.all([database, `${database}-wal`].map(async file => {
+      const stat = await fs.stat(file).catch(() => null);
+      return stat ? `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : '-';
+    }));
+    return `${database}:${signatures.join(':')}`;
+  }
+  async loadCodexRows(database, sql) {
+    const signature = `${await this.databaseSignature(database)}:${sql}`;
+    if (this.codexRows?.signature === signature) return this.codexRows.rows;
+    if (this.codexQuery?.signature === signature) return this.codexQuery.promise;
+    const promise = (async () => {
+      let rows = await this.querySqlite(database, sql);
+      if (rows === null) {
+        if (!this.allowExternalSqlite) throw new Error('Built-in SQLite is unavailable on a supported Node.js runtime');
+        const { stdout } = await this.execFile(this.sqliteCommand, ['-readonly', '-json', database, sql], {
+          encoding: 'utf8', timeout: 1500, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+        });
+        rows = stdout.trim() ? JSON.parse(stdout) : [];
+      }
+      this.codexRows = { signature, rows };
+      return rows;
+    })();
+    this.codexQuery = { signature, promise };
+    try { return await promise; }
+    finally { if (this.codexQuery?.promise === promise) this.codexQuery = null; }
+  }
+  async discoverCodexSessions(roots = [this.root]) {
+    if (this.codexSessions) {
+      const batches = await Promise.all(roots.map(root => this.codexSessions(root)));
+      return batches.flat();
+    }
+    const database = await this.stateDatabase();
+    if (!database) return [];
+    const escaped = roots.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
+    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
+    try {
+      const rows = await this.loadCodexRows(database, sql);
+      return await Promise.all(rows.map(async row => {
+        const state = await this.rolloutState(row.rollout_path);
+        return {
+          id: String(row.id),
+          name: String(row.name || row.title || '').trim(),
+          platform: 'codex',
+          status: state.status,
+          statusSeen: state.lastSeen,
+          statusSource: 'codex-rollout',
+          firstSeen: isoTime(row.created_at),
+          lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
+          lastEvent: state.lastEvent,
+          worktreeRoot: String(row.cwd || ''),
+        };
+      }));
+    } catch { return []; }
+  }
+  async sessionRegistry() {
+    const roots = this.bindingRoots();
+    const [hookBatches, codexSessions] = await Promise.all([Promise.all(roots.map(root => this.hookSessionRegistry(root))), this.discoverCodexSessions(roots)]);
+    const hookSessions = hookBatches.flat();
+    const sessions = new Map(Object.entries(this.bindings.sessions).filter(([id]) => !id.startsWith('maintenance-')).map(([id, binding]) => [id, {
+      id, name: '', platform: 'unknown', status: 'unknown', statusSeen: '', statusSource: 'binding', firstSeen: binding.updatedAt, lastSeen: binding.updatedAt, lastEvent: 'bound', ...binding,
+    }]));
+    for (const discovered of [...hookSessions, ...codexSessions]) {
+      if (!discovered?.id) continue;
+      if (!this.binding(discovered.id)) continue;
+      const stored = sessions.get(discovered.id);
+      const previous = stored?.lastEvent === 'bound' ? { ...stored, firstSeen: '', lastSeen: '' } : stored;
+      const activity = latestActivity(previous, discovered);
+      sessions.set(discovered.id, {
+        ...previous,
+        ...discovered,
+        name: discovered.name || previous?.name || '',
+        firstSeen: [previous?.firstSeen, discovered.firstSeen].filter(Boolean).sort()[0] || new Date(0).toISOString(),
+        lastSeen: [previous?.lastSeen, discovered.lastSeen].filter(Boolean).sort().at(-1) || new Date(0).toISOString(),
+        ...activity,
+      });
+    }
+    const validated = await Promise.all([...sessions.values()].map(async item => {
+      const binding = this.binding(item.id) || {};
+      const target = binding.worktreeRoot ? await fs.realpath(binding.worktreeRoot).catch(() => null) : null;
+      return {
+        ...item,
+        ...binding,
+        bindingState: target ? 'bound' : 'stale',
+        worktreeName: target ? path.basename(target) : path.basename(binding.worktreeRoot || ''),
+      };
+    }));
+    return validated.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+  }
+  async recordedSessionIds() {
+    const text = await fs.readFile(this.sessionsFile, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
     const ids = new Set();
-    for (const line of text.split('\n').filter(Boolean)) { try { const event = JSON.parse(line); if (event.session_id) ids.add(event.session_id); } catch {} }
+    for (const line of text.split('\n').filter(Boolean)) {
+      try { const event = JSON.parse(line); if (typeof event.session_id === 'string' && event.session_id.trim()) ids.add(event.session_id.trim()); } catch {}
+    }
     return [...ids];
   }
-  async register(sessionId) {
-    if (!(await this.knownSessions()).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook', 403);
-    return { kind: 'agent', sessionId };
+  async snapshot() {
+    const sessions = await this.sessionRegistry();
+    return {
+      sessions,
+      currentSessionId: (sessions.find(item => item.status === 'active') || sessions[0])?.id || null,
+      grants: this.data.sessions,
+    };
+  }
+  async knownSessions(root = null) {
+    if (!root) return (await this.sessionRegistry()).map(item => item.id);
+    const [hook, codex] = await Promise.all([this.hookSessionRegistry(root), this.discoverCodexSessions([root])]);
+    return [...new Set([...hook, ...codex].map(item => item.id))];
+  }
+  watch(onChange) {
+    let timer, checking = false, signature;
+    const listener = () => {
+      clearTimeout(timer);
+      timer = setTimeout(onChange, 30);
+      timer.unref?.();
+    };
+    const inspect = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const sessions = await this.sessionRegistry();
+        const next = JSON.stringify(sessions.map(({ id, name, status, lastSeen }) => [id, name, status, lastSeen]));
+        if (signature !== undefined && signature !== next) listener();
+        signature = next;
+      } finally { checking = false; }
+    };
+    watchFile(this.sessionsFile, { persistent: false, interval: 200 }, inspect);
+    void inspect();
+    const interval = setInterval(inspect, 750); interval.unref?.();
+    return () => { clearTimeout(timer); clearInterval(interval); unwatchFile(this.sessionsFile, inspect); };
+  }
+  async register(sessionId, binding = {}) {
+    if (!Object.keys(binding).length && !this.binding(sessionId)) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind this Session explicitly before granting scope', 409);
+    const worktreeRoot = binding.worktreeRoot || this.binding(sessionId)?.worktreeRoot || this.root;
+    if (!(await this.knownSessions(worktreeRoot)).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
+    const stored = {
+      ...(this.binding(sessionId) || {}),
+      ...binding,
+      sessionId,
+      worktreeRoot,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = this.queue.then(async () => {
+      this.bindings.sessions[sessionId] = stored;
+      await atomicWrite(this.bindingsFile, encode(this.bindings));
+    });
+    this.queue = next.catch(() => {}); await next;
+    return { kind: 'agent', sessionId, ...(stored.projectId ? { projectId: stored.projectId } : {}), ...(stored.worktreeId ? { worktreeId: stored.worktreeId } : {}) };
   }
   grants(sessionId) { return this.data.sessions[sessionId]?.nodes || []; }
   async grant(sessionId, nodes, version) {
+    await this.register(sessionId);
     const next = this.queue.then(async () => {
-      await this.register(sessionId);
       const data = structuredClone(this.data);
       data.sessions[sessionId] = { nodes: [...new Set(nodes)], version, changedAt: new Date().toISOString() };
       await atomicWrite(this.file, encode(data)); this.data = data;

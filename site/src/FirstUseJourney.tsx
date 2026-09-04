@@ -10,6 +10,8 @@ import { NativeViewport } from "./NativeViewport";
 import { useUsagePlayer } from "./useUsagePlayer";
 import { Icon } from "./components";
 import { UsageNavigation } from "./UsageNavigation";
+import { TourStage } from "./Workbench";
+import { getChapters } from "./storyboard";
 
 export function FirstUseJourney({ client, reduced, active = true, initialChapter = 0, onUsageChange, onOpenDemo }: {
   client: Client;
@@ -26,6 +28,7 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
   const [mode, setMode] = useState<"all" | "chapter">("all");
   const [finished, setFinished] = useState(false);
   const [full, setFull] = useState(false);
+  const [cursorWorkbench, setCursorWorkbench] = useState(false);
   const chapter = chapters[position.index] ?? chapters[0];
   const turn = turns[chapter.turn];
   const timing = useMemo(() => conversationTiming(turn, client), [turn, client]);
@@ -45,11 +48,17 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
   const openWorkbench = useCallback(() => {
     player.pause();
     setFinished(true);
+    if (client.id === "cursor") {
+      setCursorWorkbench(true);
+      setFull(true);
+      return;
+    }
     onOpenDemo("map");
-  }, [player.pause, onOpenDemo]);
+  }, [client.id, player.pause, onOpenDemo]);
 
   function select(index: number, resume = false) {
     setFinished(false);
+    setCursorWorkbench(false);
     if (!resume) setFull(false);
     setPosition((value) => ({ index, revision: value.revision + 1 }));
     player.setPlaying(!reduced);
@@ -73,11 +82,14 @@ export function FirstUseJourney({ client, reduced, active = true, initialChapter
     }
   }, [reduced]);
   function restart() { select(mode === "all" ? 0 : position.index); }
-  const clientWindow = useMemo(() => <NativeClientFrame client={client} title={t("一起建立项目地图")}>
+  const workbenchScene = useMemo(() => getChapters(language).find((item) => item.id === "map")!, [language]);
+  const workspace = cursorWorkbench ? <TourStage chapter="map" steps={workbenchScene.steps} captions={workbenchScene.captions}
+    label={t("工作台")} reduced={reduced} /> : undefined;
+  const clientWindow = useMemo(() => <NativeClientFrame client={client} title={t("一起建立项目地图")} workspace={workspace}>
     <AnimatedNativeConversation resetToken={position.revision} reduced={reduced} client={client} usage={turn}
       history={history} workbenchLink={Boolean(turn.opensWorkbench)} clock={player.clock}
       onSeek={player.seek} onOpen={openWorkbench} />
-  </NativeClientFrame>, [client, turn, history, player.clock, player.seek, openWorkbench, position.revision, reduced, t]);
+  </NativeClientFrame>, [client, turn, history, player.clock, player.seek, openWorkbench, position.revision, reduced, t, workspace]);
 
   return <div className={`client-demo-body first-use-journey ${!player.active ? "is-paused" : ""} ${reduced ? "is-reduced" : ""}`} data-demo-scope="app">
     <UsageNavigation usageId="first" chapter={position.index} onChapterSelect={select}

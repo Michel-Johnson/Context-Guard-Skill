@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "automaticNodeTests": {
+    "roots": [
+      ".github/scripts",
+      "tests"
+    ],
+    "suffix": ".test.mjs",
+    "excluded": [
+      ".github/scripts/security-checks.test.mjs"
+    ]
+  },
+  "standaloneSuites": [
+    {
+      "path": ".github/scripts/security-checks.test.mjs",
+      "command": "npm run security:test",
+      "purpose": "Runs before the shared Node test process so repository security failures stop immediately."
+    },
+    {
+      "path": "tests/ci-smoke.mjs",
+      "command": "npm test",
+      "purpose": "Exercises the packaged CLI and cross-runtime smoke contract."
+    },
+    {
+      "path": "tests/workbench-browser.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Runs the local workbench end-to-end browser acceptance suite."
+    },
+    {
+      "path": "tests/cloud-workbench-browser.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Runs the Cloud workbench end-to-end browser acceptance suite."
+    },
+    {
+      "path": "tests/cloud-sync-browser.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Runs the two-way local and Cloud Session Map synchronization browser suite."
+    }
+  ],
+  "helpers": [
+    {
+      "path": "tests/crash-worker.mjs",
+      "usedBy": "tests/workbench-sync.test.mjs"
+    },
+    {
+      "path": "tests/win-file-lock.py",
+      "usedBy": "tests/workbench-sync.test.mjs"
+    }
+  ],
+  "separatePackages": [
+    {
+      "root": "site",
+      "command": "npm --prefix site test",
+      "pattern": "site/**/*.test.mjs"
+    }
+  ]
+}

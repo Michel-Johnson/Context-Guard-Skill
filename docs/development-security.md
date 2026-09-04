@@ -1,12 +1,30 @@
 # Development and release security
 
-## What stays local
+## What stays out of Git and releases
 
-`.codex/`, output, caches, real environment files, private keys and credential files
-do not belong in source commits or npm packages. Keep public templates and empty
-`.env.example` files only; examples are still scanned for secrets.
+The entire `.codex/` tree, output, caches, real environment files, private keys
+and credential files do not belong in source commits or npm packages. Keep public
+templates and empty `.env.example` files only; examples are still scanned for
+secrets. Do not copy private memory into another tracked directory or publish it
+as PR/CI attachments. Necessary product documentation and verification summaries
+remain allowed.
 
-Product branches retain approved `.github/` checks and `tests/ci-smoke.mjs`.
+This repository's development memory is governed by
+[`references/server-memory.md`](../references/server-memory.md): the private
+server is its authority, while local records are caches or pending drafts. This
+does not permit uploading credentials or machine runtime state as memory. Server
+reads and writes both need authorization; public read-only access is not private.
+Connection details stay out of public source. The private memory backend/client
+has local automated acceptance, while deployment, native Hook trust verification,
+and historical migration remain pending in `CI_todo.md`; current Map sync alone
+is insufficient.
+
+Product branches retain approved `.github/` checks and the explicitly listed
+cross-platform product tests in `scripts/branch_guard.py`. Temporary experiments,
+fixtures, and fake repositories still belong only on the test branch.
+The formal test inventory itself is `tests/test-manifest.json` and is approved as
+product CI metadata; adding an executable test still requires the explicit branch
+guard entry where applicable.
 Temporary tests and fake repositories remain on `cursor/test-layout-f54e`; do not
 merge them into main. Product fixes belong on product branches. The existing
 `scripts/branch_guard.py` remains part of pre-commit validation.
@@ -96,6 +114,6 @@ security gate, without publishing. Never upload a deliberately unsafe test packa
 
 - 首次开发运行 `npm run dev:setup`，用 `npm run hooks:status` 确认已启用。
 - 提交前检查暂存区；推送前检查提交历史；CI 决定可否合并；CD 检查最终包后才上传。
-- `.codex` 本地资料保留，不进后续提交；更新旧工作目录前先备份，历史不会自动清除。
+- 整个 `.codex/` 不进 Git 或分发产物；开发记忆以私有服务器为准，本地仅缓存/待同步。凭据和本机运行状态不作为记忆上传；迁移前保留本地文件，历史不会自动清除。
 - 正式测试留在源码仓库、不进 npm；普通用户安装不带扫描器或开发 hooks。
 - 命中后停止并修复，不绕过、不输出原密钥；误报只接受精确、经审查的规则调整。

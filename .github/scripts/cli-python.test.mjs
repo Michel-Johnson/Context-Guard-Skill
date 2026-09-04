@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const source = fs.readFileSync(new URL("../../bin/context-guard-skill.js", import.meta.url), "utf8");
 function execute(platform, versions, scriptResult = { status: 0 }) {
@@ -64,5 +66,31 @@ test("a real command failure is propagated without running it twice", () => {
     const result = execute("win32", { python: valid, python3: valid }, scriptResult);
     assert.equal(result.exit, expected);
     assert.equal(result.calls.length, 2);
+  }
+});
+
+test("Python CLI advertises only supported v1 commands", () => {
+  const script = fileURLToPath(new URL("../../scripts/context_guard.py", import.meta.url));
+  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+  const result = candidates
+    .map(command => spawnSync(command, [script, "--help"], { encoding: "utf8", windowsHide: true }))
+    .find(item => !item.error && item.status === 0);
+  assert.ok(result, "Python 3 is required for the CLI contract test");
+  assert.match(result.stdout, /\binit\b/);
+  assert.match(result.stdout, /\bworkbench\b/);
+  for (const removed of ["test-hub", "feature-chain", "show-roadmap", "dev-complete"]) {
+    assert.doesNotMatch(result.stdout, new RegExp(removed));
+  }
+});
+
+test("Python workbench CLI exposes explicit Session and main binding options", () => {
+  const script = fileURLToPath(new URL("../../scripts/context_guard.py", import.meta.url));
+  const candidates = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+  const result = candidates
+    .map(command => spawnSync(command, [script, "workbench", "--help"], { encoding: "utf8", windowsHide: true }))
+    .find(item => !item.error && item.status === 0);
+  assert.ok(result, "Python 3 is required for the CLI contract test");
+  for (const option of ["--session", "--binding-status", "--bind-main", "--local-main", "--remote"]) {
+    assert.match(result.stdout, new RegExp(option));
   }
 });

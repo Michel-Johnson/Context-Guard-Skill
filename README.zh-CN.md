@@ -8,11 +8,11 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 ## 能做什么
 
-- **四块**：会话、坏例、任务、地图，都在当前项目的 `.codex/context/`
+- **四块**：会话、坏例、任务、地图；当前项目的 `.codex/context/` 保存本地草稿和缓存
 - **首次建图**：人和 Agent 先商量第一层怎么切（可以先给几种拆法或较多候选），定了再拆第二层、第三层。卡名要一眼能看懂。之后会话打开这张图
 - **人看工作台**：`prototype/workbench.html`。Agent 读小索引，不读整张地图
 - **用户原话**：写进 `user-messages.md`；密钥只在 `private/`
-- **记录语言**：按文件夹选中文或英文
+- **记录语言**：按项目选择中文或英文，同一 Git 项目的各个工作树共享
 - **生命周期**：首次 Session 自动建档、记录用户消息，并在识别到 bad case 后通过统一命令落盘
 
 第一版**没有** Roadmap HTML、测试中台、功能链。
@@ -21,14 +21,24 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 人在 `prototype/workbench.html` 里看图。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**云端：** 浏览器打开的是已经推上去的图（[GitHack](https://raw.githack.com/Michel-Johnson/Context-Guard-Skill/main/prototype/workbench.html)）。在网页里改不会写回仓库。需要改图时，在本地 Node 工作台确认提议。静态网页不承担保存；推送仍须明确授权。第一次打开可能会看到 GitHack 提示页，点 **Open the page**。
+**云端：** Cloud 首页只汇集多个项目入口，每个项目独立维护自己的 Map。公开页面只读；通过工作台令牌授权后的 Cloud 工作台可以编辑。项目使用独立同步令牌和事件流，不共享管理令牌。
 
-**本地：** 装了 Hook 后，新会话可以自动打开本机工作台。也可以手动启动或停止。Node 服务会自动把编辑保存到本地 map.json，也会把文件/Agent 改动推送到页面；不再依赖「连接仓库」的文件句柄写图。
+**本地：** 每次生命周期回复先校验真实 Session 的绑定。未绑定时询问要使用哪个项目工作台，不建图、不启动服务、也不自动打开浏览器。用户确认后，同一 Git 项目的多个工作树复用一个服务，但各自 Session 视图隔离。全局私有注册表位于 Skill 安装目录之外，升级后继续复用项目域名与既有绑定；已绑定但暂时失效的 Session 会按项目身份自愈，不重复询问。
+
+**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 只读服务器上与已合并主分支对应的基线。私有服务/客户端和本地自动化验收已实现；真实部署、原生 Hook 信任验证和历史迁移仍需另行批准，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
 
 ```bash
-context-guard workbench --root /path/to/project
+context-guard workbench --binding-status --root /path/to/project --session <真实-session-id>
+context-guard workbench --root /path/to/project --session <真实-session-id> --workbench-url http://项目名.localhost:1355/prototype/workbench.html
+context-guard workbench --diagnose --root /path/to/project --session <真实-session-id>
+# 仅在用户明确确认迁移已有绑定后使用：
+context-guard workbench --root /other/worktree --session <真实-session-id> --rebind
 context-guard workbench --root /path/to/project --stop
 ```
+
+本地入口默认使用 `http://项目名.localhost:1355`（端口被占用时选择后续可用端口），无需安装全局 Portless。同项目共用服务，但每个 Session 仍须明确绑定。绑定先校验域名、项目、后端实例和运行时能力，成功后才落盘；返回地址带 Session 参数，其他任务变活跃不会自动切换当前页面。兼容命令 `workbench bind --root <当前工作树> --project-root <已有地图的工作树>` 只选择服务目标，不代替 Session 绑定、不合并 Map。旧或重复服务先用 `--diagnose` 清点，再按输出的精确 `pid:instance` 执行 `workbench migrate --retire ...`；迁移先做私有备份且不会强杀进程。
+
+详见[命名工作台](references/named-workbench.md)。精简路由存储基于 Portless 0.15.6，遵循 Apache-2.0；[第三方声明](THIRD_PARTY_NOTICES.md)与许可证随安装包分发。
 
 顶栏最右 **设置** 里切界面语言和主题。地图上的标题、用途、记忆仍按写入时的语言，不整页翻译。
 
@@ -171,9 +181,12 @@ Use $context-guard. 四块：会话、坏例、任务、地图。
 python3 scripts/context_guard.py init --root /path/to/project
 python3 scripts/context_guard.py set-language --root /path/to/project --language 中文
 python3 scripts/context_guard.py workbench --root /path/to/project
+context-guard doctor --platform codex --root /path/to/project
 ```
 
-运行 `context-guard workbench --root /path/to/project` 看图。
+运行 `context-guard workbench --root /path/to/project` 看图。顶栏按 `平台-thread名称` 显示（例如 `codex-basic`），设置中可切换会话；Session ID 只作为内部标识，授权会在工作台重启后保留。用带 `--session` 的 `record-bad-case` 和 `record-bad-case-fix` 完成最小坏例闭环，用 `write-candidates --input ...` 生成并校验首次建图候选。`archive-session --files ...` 会保存本 Session 的耐久结果，并把摘要写入由 `owns` 覆盖的已确认 Map 节点。没有节点覆盖的修改保持“未分类”，不会自动生成节点；只有通过 `archive-session --input ...` 显式归属配套文件，或提交带证据的新职责节点提案，才会改变 Map，提案仍需用户确认。
+
+Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在会话开始、用户输入和压缩恢复时把真实 Map、授权、待办/坏例和其他 Session 的变更送给 Agent；在计划首次修改前只做一次云端 `prepare`，完成后检查冲突并要求 `sync finish`。用户的新要求由 Agent 按语义写入 Map TODO；`TODO.md` 只允许用户维护。所有 Hook 事件都有事件编号和发生/记录时间。
 
 ## 主要文件
 
@@ -197,3 +210,15 @@ python3 scripts/context_guard.py workbench --root /path/to/project
 ## 本地工作台同步
 
 使用 `context-guard map read` 读取权威节点，`map apply` 提交操作。请求关联真实会话、基准内容版本和稳定操作编号。浏览器缓存只保存恢复草稿，静态页面只读。Hook 和上下文初始化仍需要 Python。详细命令、错误语义与旧缓存迁移见 [接口说明](references/workbench-interface.md)。
+
+## 云端事件同步
+
+连接后，Cloud Sync 通过项目级 SSE 事件流接收变化，不定时扫描或全量覆盖。Agent 开发前运行 `sync prepare`，开发完成后运行 `sync finish`；期间出现不相关变化会自动重放，重叠节点、字段或文件会返回 `WORK_IMPACT` 并保持未验证。
+
+```bash
+context-guard sync connect --root /path/to/project --url http://cloud-host:8788 --project project-id --token project-token
+context-guard sync prepare --root /path/to/project --session "$CODEX_THREAD_ID" --nodes N1 --paths src/example.js
+context-guard sync finish --root /path/to/project --session "$CODEX_THREAD_ID"
+```
+
+详细协议见 [Cloud Sync 接口](references/cloud-sync-interface.md)。在新服务器安装、创建项目凭据、连接工作副本或迁移服务时，按 [Cloud 部署指南](references/cloud-deployment.md) 操作；云端仍属于本仓库，持久数据和密钥放在仓库外。

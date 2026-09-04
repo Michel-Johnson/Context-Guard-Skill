@@ -326,7 +326,8 @@
       }
       if (step === 3) {
         // 继续处理另一张尚未加入的卡，不把“加入后隐藏”伪装成同一路径。
-        await click("#nav-crumbs a", true);
+        // 提议详情可能仍在根视图，此时没有可返回的面包屑，直接选择另一张卡。
+        if (document.querySelector("#nav-crumbs a")) await click("#nav-crumbs a", true);
         await click(() => node("冷启动"));
         await click('[data-act="cancel"]');
         await click("#btn-tray");
@@ -451,6 +452,8 @@
         await settle(request);
         for (let i = 0; i <= first; i++)
           await stage(chapter, i, false, request);
+        // 告知父页新章节的首帧已经建立，避免上一章的结束消息触发连跳。
+        send("prepared");
         send("step", { step: first, complete: false });
         // 快照先可见，再开始光标动作。重复播放只在一整段结束后重置。
         await wait(pace.opening, request);

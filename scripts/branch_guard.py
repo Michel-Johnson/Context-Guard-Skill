@@ -5,11 +5,21 @@ from __future__ import annotations
 import subprocess
 import sys
 
+WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 TEST_MARK = "test-layout"
 PRODUCT_TESTS = {
     "tests/ci-smoke.mjs",
+    "tests/cloud-sync-client.test.mjs",
+    "tests/cloud-sync-browser.mjs",
+    "tests/cloud-workbench.test.mjs",
+    "tests/cloud-workbench-browser.mjs",
     "tests/workbench-sync.test.mjs",
     "tests/workbench-inbox.test.mjs",
+    "tests/hook-lifecycle.test.mjs",
+    "tests/hook-runtime-concurrency.test.mjs",
+    "tests/named-workbench.test.mjs",
+    "tests/test-manifest.json",
     "tests/workbench-browser.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",
@@ -28,13 +38,16 @@ EVAL_SCRIPTS = {
 
 
 def git(*args: str) -> str:
-    return subprocess.check_output(["git", *args], text=True).strip()
+    return subprocess.check_output(
+        ["git", *args], text=True, creationflags=WINDOWS_NO_WINDOW,
+    ).strip()
 
 
 def staged_paths() -> list[str]:
     raw = subprocess.check_output(
         ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
         text=True,
+        creationflags=WINDOWS_NO_WINDOW,
     )
     return [line.strip() for line in raw.splitlines() if line.strip()]
 

@@ -1,10 +1,6 @@
 name: CI | 三客户端无对话检查
 
 on:
-  push:
-    branches: [main, codex/CI]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 # No AI credentials, model requests, npm publication, or hook-trust bypass.

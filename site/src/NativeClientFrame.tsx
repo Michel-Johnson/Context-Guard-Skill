@@ -29,8 +29,8 @@ function ClaudeFrame({ children, title }: { children: ReactNode; title: string }
   );
 }
 
-export function NativeClientFrame({ client, children, title }: { client: Client; children: ReactNode; title: string }) {
-  if (client.id === "cursor") return <CursorFrame title={title}>{children}</CursorFrame>;
+export function NativeClientFrame({ client, children, title, workspace }: { client: Client; children: ReactNode; title: string; workspace?: ReactNode }) {
+  if (client.id === "cursor") return <CursorFrame title={title} workspace={workspace}>{children}</CursorFrame>;
   if (client.id === "claude") return <ClaudeFrame title={title}>{children}</ClaudeFrame>;
   if (client.id === "codex-app") return <CodexAppFrame title={title}>{children}</CodexAppFrame>;
   if (client.id === "codex-cli") return <CodexCliFrame>{children}</CodexCliFrame>;

@@ -41,12 +41,17 @@ test("英文流程完整翻译并在示例用户确认后设置英语，不改�
   assert.deepEqual(english.chapters.map(c => c.id), chinese.chapters.map(c => c.id));
 });
 
-test("App调用与工作台演示保持为两个独立整屏页", () => {
+test("Cursor在客户端窗口内接续工作台，其他入口仍可打开独立工作台页", () => {
   const story = getFirstUseStory("zh");
   assert.deepEqual(story.chapters.map(chapter => chapter.id), ["invoke", "language", "prepare"]);
   assert.ok(story.chapters.every(chapter => chapter.kind === "app"));
   const journeySource = readFileSync(new URL("../src/FirstUseJourney.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(journeySource, /TourStage|journey-workbench-screen|usePaneTransition/);
+  assert.match(journeySource, /const \[cursorWorkbench, setCursorWorkbench\] = useState\(false\)/);
+  assert.match(journeySource, /client\.id === "cursor"[\s\S]*setCursorWorkbench\(true\)[\s\S]*return/);
+  assert.match(journeySource, /workspace=\{workspace\}/);
+  assert.match(journeySource, /<TourStage chapter="map"/);
+  assert.match(journeySource, /setCursorWorkbench\(false\)/);
+  assert.match(journeySource, /onOpenDemo\("map"\)/);
   assert.match(journeySource, /state\.position\.index === chapters\.length - 1\)\s*openWorkbench\(\)/);
   assert.doesNotMatch(journeySource, /client-demo-progress/);
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
@@ -64,9 +69,59 @@ test("首页使用真实双语工作台宣传图并移除重复辅助项", () =>
   assert.match(visualSource, /sourceHeight = 900/);
   assert.match(visualSource, /workbench-en\.html/);
   assert.match(visualSource, /workbench\.html/);
+  assert.match(visualSource, /\?embedded=1&phone=0&hero=1/);
+  assert.match(visualSource, /type: "scene"[\s\S]*chapter: "map"/);
+  assert.match(visualSource, /IntersectionObserver/);
+  const prepareSource = readFileSync(new URL("./prepare-workbench.mjs", import.meta.url), "utf8");
+  assert.match(prepareSource, /cg-embedded/);
+  assert.match(prepareSource, /cg-embedded \.phone-preview-banner\{display:none!important\}/);
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /matchMedia\("\(max-width: 820px\)"\)/);
+  assert.match(workbenchSource, /embedded=1&phone=\$\{phoneMode \? 1 : 0\}/);
 
   const navigationSource = readFileSync(new URL("../src/UsageNavigation.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(navigationSource, /client-precondition|使用前提/);
+});
+
+test("工作台和客户端镜头使用稳定的双倍栅格，避免缩放重排和低清放大", () => {
+  const stageSource = readFileSync(new URL("../src/stage.css", import.meta.url), "utf8");
+  const planeRule = stageSource.match(/\.tour-plane\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(planeRule, /will-change\s*:\s*transform/);
+  assert.doesNotMatch(planeRule, /transition/);
+
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
+  assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
+  assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
+  assert.match(workbenchSource, /const CAMERA_RASTER_SCALE = 2/);
+  assert.match(workbenchSource, /node\.style\.zoom = String\(CAMERA_RASTER_SCALE\)/);
+  assert.match(workbenchSource, /pose\.scale \/ CAMERA_RASTER_SCALE/);
+  assert.match(workbenchSource, /requestAnimationFrame\(animate\)/);
+
+  const viewportSource = readFileSync(new URL("../src/NativeViewport.tsx", import.meta.url), "utf8");
+  assert.match(viewportSource, /rasterizedCamera\(\{ \.\.\.pose, x, y \}\)/);
+  assert.match(viewportSource, /plane\.current\.style\.zoom = String\(nativeRasterScale\)/);
+
+  const cameraSource = readFileSync(new URL("../src/native-camera.ts", import.meta.url), "utf8");
+  assert.match(cameraSource, /nativeRasterScale = 2/);
+  assert.match(cameraSource, /scale: pose\.scale \/ nativeRasterScale/);
+});
+
+test("工作台六个章节完成后自动顺序循环，减少动态时不自动切换", () => {
+  const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
+  assert.match(workbenchSource, /const advanceChapter = useCallback\(\(\) => \{/);
+  assert.match(workbenchSource, /if \(reduced \|\| !completionEnabled\.current\) return/);
+  assert.match(workbenchSource, /completionEnabled\.current = false/);
+  assert.match(workbenchSource, /chapters\[\(current \+ 1\) % chapters\.length\]/);
+  assert.match(workbenchSource, /if \(chapter === selected\) return/);
+  assert.match(workbenchSource, /onClick=\{\(\) => selectChapter\(item\.id\)\}/);
+  assert.match(workbenchSource, /onComplete=\{advanceChapter\}/);
+  assert.match(workbenchSource, /onPrepared=\{\(\) => \{ completionEnabled\.current = true; \}\}/);
+  assert.match(workbenchSource, /\(controlled\?\.onComplete \?\? onCompleteRef\.current\)\?\.\(\)/);
+
+  const tourSource = readFileSync(new URL("../src/workbench-tour.js", import.meta.url), "utf8");
+  assert.match(tourSource, /if \(document\.querySelector\("#nav-crumbs a"\)\) await click\("#nav-crumbs a", true\)/);
+  assert.match(tourSource, /send\("prepared"\);\s*send\("step", \{ step: first, complete: false \}\)/);
 });
 
 test("文字逐字增长，不产生半个Unicode字符", () => {

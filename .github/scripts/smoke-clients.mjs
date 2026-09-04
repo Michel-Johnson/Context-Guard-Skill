@@ -11,7 +11,13 @@ import { isolatedEnvironment, run, rpcClient } from "./client-protocol.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const versions = JSON.parse(fs.readFileSync(new URL("../client-versions.json", import.meta.url), "utf8"));
-const events = { SessionStart: "sessionStart", UserPromptSubmit: "userPromptSubmit", Stop: "stop", SubagentStart: "subagentStart", SubagentStop: "subagentStop" };
+export const codexEvents = {
+  SessionStart: "sessionStart", SubagentStart: "subagentStart", UserPromptSubmit: "userPromptSubmit",
+  PreToolUse: "preToolUse", PermissionRequest: "permissionRequest", PostToolUse: "postToolUse",
+  PreCompact: "preCompact", PostCompact: "postCompact", SubagentStop: "subagentStop",
+  Stop: "stop", Interrupt: "interrupt",
+};
+const claudeEvents = ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"];
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const contextPath = (project) => path.join(project, ".codex", "context");
 
@@ -38,7 +44,8 @@ export function assertInside(root, target) {
 export function verifyInstalled(skill, config, client) {
   for (const file of installedFiles) assert.ok(fs.statSync(path.join(skill, file)).isFile(), `Missing installed file: ${file}`);
   for (const file of forbiddenInstalledPaths) assert.ok(!fs.existsSync(path.join(skill, file)), `Development file leaked: ${file}`);
-  const names = client === "cursor" ? ["sessionStart", "beforeSubmitPrompt", "stop", "subagentStart", "subagentStop"] : Object.keys(events);
+  const names = client === "cursor" ? ["sessionStart", "beforeSubmitPrompt", "stop", "subagentStart", "subagentStop"]
+    : client === "codex" ? Object.keys(codexEvents) : claudeEvents;
   for (const name of names) {
     const groups = config.hooks?.[name] || [];
     const handlers = client === "cursor" ? groups : groups.flatMap((group) => group.hooks || []);
@@ -52,7 +59,7 @@ export function verifyCodexDiscovery(result, project, skill, hooksPath) {
   assert.ok(skills.skills.some((item) => item.name === "context-guard" && item.enabled === true && path.resolve(item.path) === path.join(skill, "SKILL.md")), "Codex did not discover the installed Skill");
   const hooks = result.hooks.data.find((item) => path.resolve(item.cwd) === path.resolve(project));
   assert.ok(hooks && hooks.errors.length === 0, "Codex hook discovery returned errors");
-  for (const event of Object.values(events)) {
+  for (const event of Object.values(codexEvents)) {
     assert.ok(hooks.hooks.some((item) => item.eventName === event && item.enabled && item.handlerType === "command" && item.command.includes("context_guard_hook.py") && item.command.includes("--platform codex") && path.resolve(item.sourcePath) === hooksPath), `Codex did not discover hook: ${event}`);
   }
   return hooks.hooks.filter((item) => item.command.includes("context_guard_hook.py")).map(({ eventName, trustStatus }) => ({ eventName, trustStatus }));
@@ -72,6 +79,17 @@ export function verifyNativeSession(project, client) {
     assert.match(event.session_id, /^[A-Za-z0-9._-]+$/);
     assert.ok(fs.existsSync(path.join(ctx, "sessions", `${event.session_id}.md`)), "Missing native session record");
   }
+  return native;
+}
+
+export function verifyNativeUnboundSession(project, client) {
+  const ctx = contextPath(project);
+  assert.ok(fs.existsSync(path.join(ctx, "sessions.jsonl")), "No native SessionStart evidence");
+  const entries = fs.readFileSync(path.join(ctx, "sessions.jsonl"), "utf8").trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+  const native = entries.filter((item) => item.platform === client && item.event === "session-start" && item.root_source === "hook payload" && item.binding === "required");
+  assert.ok(native.length && native.every((item) => item.session_id && item.hook_sha256 && item.context_emitted === true), "No native unbound SessionStart evidence");
+  assert.ok(!fs.existsSync(path.join(ctx, "map.json")), "Unbound SessionStart must not initialize project memory");
+  assert.ok(!fs.existsSync(path.join(ctx, "private", "workbench.json")), "Unbound SessionStart must not start a workbench");
   return native;
 }
 
@@ -194,31 +212,26 @@ async function main() {
       });
       await check("Restored Codex installation is discoverable", async () => { verifyCodexDiscovery(await query(), project, skill, hooksPath); });
     } else if (client === "claude") {
-      let firstSessions, workbench;
-      await check("Native --init-only: SessionStart creates files and workbench", async () => {
+      let firstSessions;
+      await check("Native --init-only: unbound SessionStart records the binding request only", async () => {
         await executeClient(["--init-only"]);
-        firstSessions = verifyNativeSession(project, client);
-        assert.equal(readJson(path.join(contextPath(project), "preferences.json")).record_language, "unset");
-        workbench = await verifyWorkbench(project);
-        return { sessionId: firstSessions.at(-1).session_id, workbench };
+        firstSessions = verifyNativeUnboundSession(project, client);
+        return { sessionId: firstSessions.at(-1).session_id, binding: "required" };
       });
-      await check("Second native startup preserves language, sessions and workbench", async () => {
-        await run(process.execPath, [cli, "set-language", "--root", project, "--language", "zh"], { cwd: project, env });
+      await check("Second native startup remains unbound without fabricating project state", async () => {
         await executeClient(["--init-only"]);
-        const sessions = verifyNativeSession(project, client);
+        const sessions = verifyNativeUnboundSession(project, client);
         assert.ok(new Set(sessions.map((item) => item.session_id)).size > new Set(firstSessions.map((item) => item.session_id)).size, "No new native session was created");
-        assert.equal(readJson(path.join(contextPath(project), "preferences.json")).record_language, "zh");
-        await verifyWorkbench(project, workbench);
       });
       await check("Negative: removing the real hook prevents native initialization", async () => {
         const config = readJson(hooksPath); delete config.hooks.SessionStart;
         fs.writeFileSync(hooksPath, JSON.stringify(config));
         try {
           await executeClient(["--init-only"], negativeProject);
-          assert.throws(() => verifyNativeSession(negativeProject, client), /No native SessionStart evidence/);
+          assert.throws(() => verifyNativeUnboundSession(negativeProject, client), /No native SessionStart evidence/);
         } finally { fs.writeFileSync(hooksPath, originalConfig); }
       });
-      report.boundaries.push("--init-only does not submit user messages or trigger a conversation Stop; those script behaviors remain covered by the base fixture tests.");
+      report.boundaries.push("--init-only proves the real Hook emitted an unbound registration request. User confirmation and replay of that same Session ID are covered by deterministic package/browser tests; it does not submit user messages or trigger Stop.");
     } else {
       const rpc = rpcClient(tools.command, [...tools.args, "acp"], { cwd: project, env });
       try {
