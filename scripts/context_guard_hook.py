@@ -1270,9 +1270,14 @@ def main() -> int:
         )
         hook_log(f"[context-guard] user-messages: {status}")
         signal_id = str(signal.get("id")) if signal else "none"
+        pending_ids = pending_signals(runtime)
+        pending_notice = ", ".join(pending_ids[:20]) or "none"
+        if len(pending_ids) > 20:
+            pending_notice += f" (+{len(pending_ids) - 20} more; use plan-status for the complete list)"
         notice = (
             context_text + "\n\n" +
-            f"User signal: {signal_id}. Classify it semantically before durable work: "
+            f"User signal: {signal_id}. Pending user signals: {pending_notice}. "
+            "Classify every pending signal semantically before durable work: "
             f"use `context-guard record-todo --root {json.dumps(str(root))} --session {json.dumps(current_session_id)} --signal {json.dumps(signal_id)} --node <id> --title <title> --description <details>` for a durable TODO; "
             "use record-bad-case with the same --signal for a credible failure; or use resolve-signal --kind task|ignore. "
             "For multiple meanings use split-signal --signal <id> --input <json> with items:[<text>,<text>], then classify every returned child signal. "
@@ -1334,21 +1339,26 @@ def main() -> int:
     if event == "stop":
         pending = pending_signals(runtime)
         plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
-        reason = ""
-        if pending:
-            reason = "Classify pending user signals: " + ", ".join(pending) + ". "
-        if plan:
-            reason += f"Plan {plan['id']} is unfinished. Archive verified results with a node/module assessment, then run context-guard plan-finish."
+        # Codex renders Stop block reasons as a user-role hook_prompt. Cursor and
+        # Claude still rely on the block contract to continue an unfinished turn.
+        blocked = bool(plan or (pending and platform != "codex"))
         # Stop checks local receipts only. Network work belongs to explicit plan
         # boundaries and cannot time out this short hook into false success.
-        append_session_event(root, "stop-blocked" if reason else event, platform, current_session_id,
-                             session_details(audit_details(payload, event, current_session_id, runtime, {"result": "incomplete" if reason else "completed"})))
-        if reason and isinstance(payload, dict) and payload.get("stop_hook_active") is True:
+        result = "incomplete" if blocked else "deferred" if pending else "completed"
+        append_session_event(root, "stop-blocked" if blocked else event, platform, current_session_id,
+                             session_details(audit_details(payload, event, current_session_id, runtime,
+                                                           {"result": result, "pending_signal_count": len(pending)})))
+        if not blocked:
+            # Pending signals are already durable and will be re-injected through
+            # the next UserPromptSubmit additionalContext. Blocking Stop would
+            # turn the internal signal IDs into a user-visible hook_prompt.
+            print("{}")
+        elif isinstance(payload, dict) and payload.get("stop_hook_active") is True:
             # Hosts may stop retrying hooks; allow reporting the blocker without
             # converting unfinished work into a completion receipt or looping.
-            print(json.dumps({"systemMessage": "Context Guard INCOMPLETE: " + reason}, ensure_ascii=False))
+            print(json.dumps({"systemMessage": "Context Guard is still finishing the current task. No user action is required."}, ensure_ascii=False))
         else:
-            print(json.dumps({"decision": "block", "reason": reason} if reason else {"systemMessage": "Context Guard lifecycle completed."}, ensure_ascii=False))
+            print(json.dumps({"decision": "block", "reason": "Context Guard is finishing the current task. No user action is required."}, ensure_ascii=False))
         return 0
 
     hook_log(f"[context-guard] ignored event: {event}")
