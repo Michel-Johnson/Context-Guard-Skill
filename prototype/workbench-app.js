@@ -1981,6 +1981,13 @@ function bugProgressHtml(bug){
   const state = bugProgress(bug);
   return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
 }
+function bugPanelRank(bug){
+  const kind = bugProgress(bug).kind;
+  if(kind==="waiting") return 0;
+  if(kind==="processing" || kind==="handoff") return 1;
+  if(kind==="settling" || kind==="deferred") return 2;
+  return 3;
+}
 function todoSessionsOf(todo){ return bugSessionsOf(todo); }
 function todoProgress(todo){
   const status = String(todo?.status||"pending");
@@ -2011,7 +2018,10 @@ function openBugList(){
   ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(b=>{
     if(b && b.status!=="dormant") out.push({bug:b, node:data, path:[data], unassigned:true});
   });
-  return out;
+  return out
+    .map((item,index)=>({item,index}))
+    .sort((a,b)=>bugPanelRank(a.item.bug)-bugPanelRank(b.item.bug) || a.index-b.index)
+    .map(entry=>entry.item);
 }
 function revealPath(path){
   if(!path || path.length<2) return;
@@ -2332,13 +2342,12 @@ function renderBugPanel(){
     const sessions = bugSessionsOf(item.bug);
     const mine = sessions.indexOf(sid)>=0;
     const sending = bugDispatching.has(item.bug.id);
-    const dots = sessions.filter(s=>s!==sid).map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}" title="${escAttr(s)}"></i>`).join("");
     const claim = on && !item.unassigned
       ? `<button type="button" class="claim" data-claim ${sending?"disabled":""}>${sending?t("bugSending"):sid?(mine?t("leave"):t("claim")):t("assignSession")}</button>`
       : (mine ? `<span class="claim">${esc(t("claim"))}</span>` : "");
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
       <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
-      ${on || sessions.length ? `<span class="bug-row">${dots}${claim}</span>` : ""}
+      ${claim ? `<span class="bug-row">${claim}</span>` : ""}
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
