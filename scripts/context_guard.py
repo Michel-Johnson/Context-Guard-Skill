@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import functools
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import webbrowser
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -366,10 +370,128 @@ def hook_runtime_path(root: Path, session_id: str) -> Path:
     return context_dir(root) / "private" / "hook-runtime" / f"{digest}.json"
 
 
+_HOOK_RUNTIME_LOCKS: dict[str, dict[str, object]] = {}
+
+
+class _HookRuntimeLockLease:
+    def __init__(self, key: str):
+        self.key = key
+        self.closed = False
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        state = _HOOK_RUNTIME_LOCKS.get(self.key)
+        if not state:
+            return
+        count = int(state["count"]) - 1
+        if count > 0:
+            state["count"] = count
+            return
+        handle = state["handle"]
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            _HOOK_RUNTIME_LOCKS.pop(self.key, None)
+
+    def __enter__(self) -> "_HookRuntimeLockLease":
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+
+def acquire_hook_runtime_lock(root: Path, session_id: str, timeout: float = 10.0) -> _HookRuntimeLockLease:
+    """Acquire a crash-safe, re-entrant process lock for one Session runtime."""
+    target = hook_runtime_path(root, session_id)
+    lock_path = target.with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    key = str(lock_path.resolve())
+    held = _HOOK_RUNTIME_LOCKS.get(key)
+    if held:
+        held["count"] = int(held["count"]) + 1
+        return _HookRuntimeLockLease(key)
+
+    handle = lock_path.open("a+b")
+    if os.name == "nt":
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except (BlockingIOError, OSError) as exc:
+            if isinstance(exc, OSError) and exc.errno not in {None, errno.EACCES, errno.EAGAIN}:
+                handle.close()
+                raise
+            if time.monotonic() >= deadline:
+                handle.close()
+                raise TimeoutError(f"timed out waiting for hook runtime lock: {lock_path}") from exc
+            time.sleep(0.02)
+    _HOOK_RUNTIME_LOCKS[key] = {"handle": handle, "count": 1}
+    return _HookRuntimeLockLease(key)
+
+
+@contextmanager
+def hook_runtime_lock(root: Path, session_id: str, timeout: float = 10.0):
+    lease = acquire_hook_runtime_lock(root, session_id, timeout)
+    try:
+        yield
+    finally:
+        lease.close()
+
+
+def serialize_hook_runtime(session_arg: int):
+    """Serialize a CLI operation that performs a runtime read-modify-write."""
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args, **kwargs):
+            root = args[0] if args else kwargs["root"]
+            session_id = args[session_arg] if len(args) > session_arg else kwargs.get("session_id", "")
+            if not session_id:
+                return function(*args, **kwargs)
+            with hook_runtime_lock(root, str(session_id)):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
 def read_hook_runtime(root: Path, session_id: str) -> dict[str, object]:
-    value = read_json(hook_runtime_path(root, session_id), {})
+    target = hook_runtime_path(root, session_id)
+    if not target.exists():
+        value: object = {}
+    else:
+        try:
+            value = json.loads(target.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(f"hook runtime is unreadable; preserve and repair {target}") from exc
     if not isinstance(value, dict):
-        value = {}
+        raise ValueError(f"hook runtime must be a JSON object: {target}")
+    recorded_session = value.get("session_id")
+    if recorded_session not in {None, session_id}:
+        raise ValueError(f"hook runtime belongs to another Session: {target}")
+    if "signals" in value and not isinstance(value["signals"], list):
+        raise ValueError(f"hook runtime signals must be a list: {target}")
     value.setdefault("v", 1)
     value.setdefault("session_id", session_id)
     value.setdefault("signals", [])
@@ -383,8 +505,20 @@ def write_hook_runtime(root: Path, session_id: str, value: dict[str, object]) ->
     target = hook_runtime_path(root, session_id)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(temporary, target)
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        if os.name != "nt":
+            directory = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
     return target
 
 
@@ -395,6 +529,7 @@ def prompt_signal_id(session_id: str, turn_id: str, prompt: str) -> str:
     return f"SIG-{digest[:20]}"
 
 
+@serialize_hook_runtime(1)
 def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) -> dict[str, object]:
     runtime = read_hook_runtime(root, session_id)
     signals = runtime.get("signals")
@@ -422,6 +557,7 @@ def add_prompt_signal(root: Path, session_id: str, turn_id: str, prompt: str) ->
     return signal
 
 
+@serialize_hook_runtime(1)
 def resolve_prompt_signal(
     root: Path,
     session_id: str,
@@ -451,6 +587,7 @@ def resolve_prompt_signal(
     return signal
 
 
+@serialize_hook_runtime(1)
 def split_signal(root: Path, session_id: str, signal_id: str, items: object) -> list[dict]:
     """The Agent separates meanings; the hook never guesses from keywords."""
     if not isinstance(items, list) or not 2 <= len(items) <= 20 or not all(isinstance(item, str) and item.strip() for item in items):
@@ -515,6 +652,7 @@ def session_platform(root: Path, session_id: str) -> str:
     return platform
 
 
+@serialize_hook_runtime(1)
 def archive_session(
     root: Path,
     session_id: str,
@@ -737,6 +875,7 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+@serialize_hook_runtime(4)
 def record_todo(
     root: Path,
     title: str,
@@ -790,6 +929,7 @@ def record_todo(
     return {"id": todo_id, "node": node_id, "version": result.get("version"), "duplicate": bool(result.get("duplicate"))}
 
 
+@serialize_hook_runtime(1)
 def resolve_signal(root: Path, session_id: str, signal_id: str, kind: str) -> dict[str, object]:
     if kind not in {"task", "ignore"}:
         raise ValueError("resolve-signal --kind must be task or ignore; use record-todo/record-bad-case for durable records")
@@ -826,6 +966,7 @@ def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str, session_i
     run_node_workbench(args, {"node": node_id, "bug": bug})
 
 
+@serialize_hook_runtime(9)
 def record_bad_case(
     root: Path,
     title: str,
@@ -965,6 +1106,7 @@ def update_bug_on_map(ctx: Path, bug_id: str, status: str, session_id: str) -> N
     run_node_workbench(args, {"bug": {"id": bug_id, "status": status}})
 
 
+@serialize_hook_runtime(5)
 def record_bad_case_fix(
     root: Path,
     bug_id: str,

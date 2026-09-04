@@ -15,11 +15,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 
-from context_guard import append_session_event
+from context_guard import acquire_hook_runtime_lock, append_session_event
 from context_guard import add_prompt_signal
 from context_guard import context_dir as context_folder
 from context_guard import configure_stdio, ensure_session_file, folder_root, init_context, is_context_guard_skill_path
-from context_guard import read_hook_runtime, read_json, start_workbench, utc_now
+from context_guard import hook_runtime_lock, read_hook_runtime, read_json, start_workbench, utc_now
 from context_guard import safe_identifier, session_records, write_hook_runtime, write_json
 from context_guard import run_node_workbench
 
@@ -914,6 +914,11 @@ def checked_sync(root: Path, session: str, action: str, paths: list[str] | None 
 
 
 def plan_command(root: Path, session: str, command: str, data: dict) -> dict:
+    with hook_runtime_lock(root, session):
+        return _plan_command_locked(root, session, command, data)
+
+
+def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> dict:
     runtime = read_hook_runtime(root, session)
     if command == "plan-status":
         return {"active_plan": runtime.get("active_plan"), "last_plan": runtime.get("last_plan"), "pending_signals": pending_signals(runtime)}
@@ -1069,6 +1074,9 @@ def main() -> int:
             return hook_response(platform, event, "Context Guard Session is unbound; confirm its workbench before project work. No map was initialized.")
     created = init_context(root)
     ensure_session_file(root, current_session_id, platform)
+    # Keep the lease alive until this hook invocation returns. Kernel locks are
+    # released even if the process crashes, so there is no stale lock cleanup.
+    _runtime_lease = acquire_hook_runtime_lock(root, current_session_id)
     runtime = read_hook_runtime(root, current_session_id)
 
     if event == "session-start":
