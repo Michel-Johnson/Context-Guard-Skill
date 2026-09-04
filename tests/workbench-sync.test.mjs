@@ -1,3 +1,4 @@
+import '../.github/scripts/test-environment.mjs';
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';

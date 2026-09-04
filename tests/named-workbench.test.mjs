@@ -1,3 +1,4 @@
+import '../.github/scripts/test-environment.mjs';
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -162,6 +163,33 @@ test('proxy restart keeps persisted routes and one project closing cannot take d
   assert.equal((await call(named.url, '/__context_guard/health')).status, 200);
   await backend.close();
   assert.equal((await call(otherName.url, '/__context_guard/health')).status, 200);
+});
+test('a recognized older named proxy upgrades in place and preserves its route store', async t => {
+  const dir = await fixture(t), instance = 'o'.repeat(32), adminToken = 'a'.repeat(32);
+  const old = http.createServer((req, res) => {
+    if (req.url === '/__cg_proxy/health') {
+      res.setHeader('content-type', 'application/json');
+      return res.end(JSON.stringify({ kind: 'context-guard-named', version: 1, instance }));
+    }
+    if (req.url === '/__cg_proxy/stop' && req.method === 'POST' && req.headers.authorization === `Bearer ${adminToken}`) {
+      res.writeHead(202).end();
+      setImmediate(() => old.close(async () => { await fs.unlink(path.join(dir, 'proxy.json')).catch(() => {}); }));
+      return;
+    }
+    res.writeHead(403).end();
+  });
+  await new Promise(resolve => old.listen(0, '127.0.0.1', resolve));
+  const port = old.address().port;
+  await fs.writeFile(path.join(dir, 'routes.json'), '[]');
+  await fs.writeFile(path.join(dir, 'proxy.json'), JSON.stringify({ version: 1, instance, pid: process.pid, base: `http://127.0.0.1:${port}`, adminToken }));
+  const upgraded = await ensureNamedProxy({ dir, port });
+  t.after(async () => {
+    const response = await call(upgraded.base, '/__cg_proxy/stop', { method: 'POST', headers: { Authorization: `Bearer ${upgraded.adminToken}` } });
+    assert.equal(response.status, 202);
+  });
+  assert.notEqual(upgraded.instance, instance);
+  assert.equal(upgraded.runtimeSchema, 2);
+  assert.deepEqual(new RouteStore(dir).loadRoutes(), []);
 });
 test('corrupt routes fail closed without overwriting data, and names normalize deterministically', async t => {
   const root = await fixture(t), store = new RouteStore(root), file = path.join(root, 'routes.json');
