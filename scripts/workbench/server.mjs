@@ -12,6 +12,7 @@ import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
 import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
 import { memoryRequest, sessionMemoryDir } from './memory.mjs';
+import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees } from '../../prototype/map-model.mjs';
@@ -112,7 +113,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     bindingsFile: sessionBindingsPath(project),
   } : {}).init();
   let stopAccessWatch = () => {}, stopCloudWatch = () => {};
-  const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap();
+  const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap(), syncCoordinators = new Map();
   let mainStore, mainSource = null;
   const sourceFile = path.join(project.sharedDir, 'main-source.json');
   let server, base;
@@ -147,6 +148,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   async function createStore(viewId, storeRoot, options = {}) {
     let target;
+    const { syncDirectory, sessionId, ...storeOptions } = options;
     const projectionRoot = options.projectionRoot || storeRoot;
     const projectMap = project.kind === 'git' && viewId === 'main'
       ? async () => true
@@ -155,13 +157,20 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const job = previous.then(() => target.version === version ? generateProjections(projectionRoot, doc, version, () => target.version === version) : false);
           projectionQueues.set(viewId, job.catch(() => {})); return job;
         };
-    target = new MapStore(storeRoot, { fault, project: projectMap, ...options });
+    target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions });
     await target.init();
     storeViews.set(target, new Set([viewId]));
     target.on('change', state => {
       for (const targetView of storeViews.get(target) || []) broadcast('state', { ...state, viewId: targetView, source: sourceFor(targetView) }, targetView);
     });
     stores.set(viewId, target);
+    if (sessionId && syncDirectory) {
+      const sessionProject = await resolveProject(storeRoot);
+      const coordinator = new MemorySyncCoordinator({ project: sessionProject, sessionId, store: target, directory: syncDirectory });
+      coordinator.on('change', status => broadcast('cloud-sync', status, viewId));
+      syncCoordinators.set(viewId, coordinator);
+      await coordinator.start();
+    }
     return target;
   }
   function viewFor(actor, url) {
@@ -175,11 +184,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const dir = sessionMemoryDir(sessionProject, sessionId), file = path.join(dir, 'map.json');
     const baseFile = path.join(dir, 'base-main.json');
     const [existing, baseline] = await Promise.all([readJSON(file, null), readJSON(baseFile, null)]);
-    let main = null;
-    try { main = (await memoryRequest(project, 'main')).snapshot; }
+    let main = null, remoteSession = null;
+    try {
+      [main, remoteSession] = await Promise.all([
+        memoryRequest(project, 'main').then(result => result.snapshot),
+        memoryRequest(sessionProject, `sessions/${encodeURIComponent(sessionId)}`).then(result => result.snapshot),
+      ]);
+    }
     catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
     if (!existing) {
-      const seed = main?.memory?.map || await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
+      const seed = remoteSession?.memory?.map || main?.memory?.map || await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
       if (main) await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
       await atomicWrite(file, encode(seed));
     } else if (main && !baseline?.map) {
@@ -205,7 +219,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
     if (stores.has(viewId)) return stores.get(viewId);
     const { dir, file } = await ensureSessionMap(sessionProject, sessionId);
-    return createStore(viewId, sessionProject.worktreeRoot, { file, runtime: path.join(dir, 'sync'), eventsFile: path.join(dir, 'changes.jsonl'), projectionRoot: dir });
+    return createStore(viewId, sessionProject.worktreeRoot, { file, runtime: path.join(dir, 'sync'), eventsFile: path.join(dir, 'changes.jsonl'), projectionRoot: dir, sessionId, syncDirectory: dir });
   }
   function sourceFor(viewId) {
     if (viewId === 'main') return mainSource;
@@ -227,7 +241,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     })().finally(() => { refreshing = null; });
     return refreshing;
   }
-  async function cloudSyncStatus() {
+  async function cloudSyncStatus(viewId = 'main') {
+    if (syncCoordinators.has(viewId)) return syncCoordinators.get(viewId).snapshot();
     const paths = syncPaths(root);
     const config = await readJSON(paths.config, null) || await readJSON(paths.legacyConfig, null);
     const state = await readJSON(paths.state, null);
@@ -357,6 +372,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const view = `session:${prepared.sessionId}`;
             await fence(view);
             for (const [credential, actor] of agentTokens) if (actor.sessionId === prepared.sessionId) agentTokens.delete(credential);
+            if (syncCoordinators.has(view)) { await syncCoordinators.get(view).close(); syncCoordinators.delete(view); }
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
@@ -368,6 +384,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               runtime: path.join(sessionFiles.dir, 'sync'),
               eventsFile: path.join(sessionFiles.dir, 'changes.jsonl'),
               projectionRoot: sessionFiles.dir,
+              sessionId: prepared.sessionId,
+              syncDirectory: sessionFiles.dir,
             });
           }
           const credential = token(); agentTokens.set(credential, actor);
@@ -386,7 +404,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const actor = auth(req, url);
           const viewId = viewFor(actor, url);
           const activeStore = await storeFor(viewId);
-          if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus()); }
+          if (route === '/api/cloud-sync' && req.method === 'GET') { isHuman(actor); return send(res, 200, await cloudSyncStatus(viewId)); }
           if (route === '/api/events' && req.method === 'GET') {
             isHuman(actor); const id = url.searchParams.get('clientId');
             if (!id || id.length > 100) throw new MapError('INVALID_CLIENT', 'Invalid clientId');
@@ -558,6 +576,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         server.closeIdleConnections?.();
         server.closeAllConnections?.();
         await disconnected;
+        await Promise.all([...syncCoordinators.values()].map(coordinator => coordinator.close()));
         await Promise.all([...new Set(stores.values())].map(store => store.close()));
         await Promise.all([...projectionQueues.values()]);
         if ((await readJSON(sharedState, null))?.instance === instance) await fs.unlink(sharedState);
@@ -569,5 +588,5 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
     return { state, project, store: mainStore, stores, access, server, close, humanToken };
-  } catch (e) { stopAccessWatch(); stopCloudWatch(); await Promise.all([...new Set(stores.values())].map(store => store.close())); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
+  } catch (e) { stopAccessWatch(); stopCloudWatch(); await Promise.all([...syncCoordinators.values()].map(coordinator => coordinator.close())); await Promise.all([...new Set(stores.values())].map(store => store.close())); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
 }

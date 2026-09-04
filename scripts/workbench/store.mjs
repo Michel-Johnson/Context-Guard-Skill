@@ -48,7 +48,8 @@ export class MapStore extends EventEmitter {
       this.doc = disk.doc; this.version = disk.version; this.error = null;
       if (previous) {
         const changed = before?.root && disk.doc.root ? diffTrees(before.root, disk.doc.root) : [];
-        await this.recordEvent({ operationId: `external:${disk.version}`, fromVersion: previous, version: disk.version, actor: { kind: 'external', sessionId: null }, actions: ['external-file'], nodeIds: [...new Set(changed.map(op => op.id || op.node?.id).filter(Boolean))], fields: [...new Set(changed.flatMap(op => Object.keys(op.fields || {})))] });
+        const event = await this.recordEvent({ operationId: `external:${disk.version}`, fromVersion: previous, version: disk.version, actor: { kind: 'external', sessionId: null }, actions: ['external-file'], operations: changed, nodeIds: [...new Set(changed.map(op => op.id || op.node?.id).filter(Boolean))], fields: [...new Set(changed.flatMap(op => Object.keys(op.fields || {})))] });
+        this.emit('event', event);
       }
       this.scheduleProjection(); this.emit('change', this.state(false));
     } else if (this.error) { this.error = null; this.emit('change', this.state(false)); }
@@ -72,17 +73,19 @@ export class MapStore extends EventEmitter {
     try { await handle.writeFile(JSON.stringify(event) + '\n'); await handle.sync(); }
     finally { await handle.close(); }
     this.events.push(event); this.cursor = event.cursor;
+    return event;
   }
   changes(cursor) {
     const i = cursor ? this.events.findIndex(e => e.cursor === cursor) : -1;
     return { version: this.version, cursor: this.cursor, reset: !cursor || i < 0, changes: this.events.slice(i >= 0 ? i + 1 : -100), ...(!cursor || i < 0 ? { readCurrent: true } : {}) };
   }
   async finish(record) {
-    await this.recordEvent(record.event);
+    const event = await this.recordEvent(record.event);
     await this.fault('after-event');
     await atomicWrite(this.operationPath(record.operationId), encode(record));
     await this.fault('after-result');
     await atomicWrite(this.pendingFile, 'null\n');
+    return event;
   }
   async recover() {
     const pending = await readJSON(this.pendingFile, null);
@@ -116,7 +119,7 @@ export class MapStore extends EventEmitter {
       const { doc, resultIds } = applyOperations(disk.doc, operations, actor, typeof grants === 'function' ? grants() : grants);
       const raw = encode(doc), version = hash(raw);
       const result = { committed: true, operationId, version, resultIds, projection: 'pending' };
-      const record = { operationId, digest, baseVersion, version, result, event: { operationId, fromVersion: baseVersion, version, actor, actions: operations.map(op => op.type), nodeIds: resultIds, fields: [...new Set(operations.flatMap(op => Object.keys(op.fields || {})))] } };
+      const record = { operationId, digest, baseVersion, version, result, event: { operationId, fromVersion: baseVersion, version, actor, actions: operations.map(op => op.type), operations: structuredClone(operations), nodeIds: resultIds, fields: [...new Set(operations.flatMap(op => Object.keys(op.fields || {})))] } };
       await atomicWrite(this.pendingFile, encode(record));
       let replaced = false;
       try {
@@ -125,7 +128,7 @@ export class MapStore extends EventEmitter {
           if (hash(await fs.readFile(this.file)) !== baseVersion) throw new MapError('VERSION_CONFLICT', 'External save occurred before replacement', 409);
         } });
         replaced = true; await this.fault('after-map');
-        await this.finish(record);
+        record.persistedEvent = await this.finish(record);
       } catch (e) {
         const current = await fs.readFile(this.file).then(hash).catch(() => null);
         if (!replaced && current === baseVersion) {
@@ -137,6 +140,7 @@ export class MapStore extends EventEmitter {
       }
       this.doc = doc; this.version = version; this.error = null;
       this.scheduleProjection(); this.emit('change', { ...this.state(false), operationId });
+      this.emit('event', record.persistedEvent || record.event);
       return { ...result, cursor: this.cursor };
     });
   }

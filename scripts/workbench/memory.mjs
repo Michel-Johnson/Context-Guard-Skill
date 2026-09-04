@@ -35,7 +35,10 @@ export async function prepareMemory(project, sessionId) {
   const local = await readJSON(path.join(dir, 'map.json'), null);
   const remote = status.session;
   if (!baseline) await atomicWrite(baseFile, encode({ version: remote?.baseMainVersion || null }));
-  if (remote && previous?.snapshot?.version !== remote.version && local && hash(encode(local)) !== hash(encode(previous?.snapshot?.memory?.map || remote.memory.map))) {
+  const localVersion = local ? hash(encode(local)) : null;
+  const remoteMapVersion = remote?.memory?.map ? hash(encode(remote.memory.map)) : null;
+  const previousMapVersion = previous?.snapshot?.memory?.map ? hash(encode(previous.snapshot.memory.map)) : null;
+  if (remote && previous?.snapshot?.version !== remote.version && local && localVersion !== remoteMapVersion && (!previousMapVersion || localVersion !== previousMapVersion)) {
     throw new MapError('MEMORY_CONFLICT', 'Server Session changed while local edits exist; preserve both and reconcile', 409);
   }
   if (remote && (!previous || previous.snapshot?.version !== remote.version)) {

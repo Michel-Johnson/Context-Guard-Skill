@@ -170,6 +170,69 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
 });
 
+test('private Session changes are durable, ordered, isolated, and replayed over SSE', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-events-'));
+  const memoryConfig = {
+    dataDir: path.join(dataDir, 'memory'),
+    adminToken: 'memory-admin',
+    projects: {
+      'context-guard': { token: 'project-memory-token' },
+      other: { token: 'other-memory-token' },
+    },
+  };
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const headers = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
+  const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Session map', kind: 'module', state: 'dirty', children: [] } };
+  const seeded = await request(service.url, '/v1/projects/context-guard/sessions/session-events', {
+    method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'session-events-seed', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map, records: {} } }),
+  });
+  assert.equal(seeded.response.status, 200);
+  const firstReplay = await request(service.url, '/v1/projects/context-guard/sessions/session-events/changes?after=0', { headers });
+  assert.equal(firstReplay.response.status, 200);
+  assert.deepEqual(firstReplay.body.events.map(event => [event.cursor, event.type]), [[1, 'session.snapshot']]);
+  assert.equal(firstReplay.body.events[0].at, new Date(firstReplay.body.events[0].at).toISOString());
+
+  const controller = new AbortController();
+  const streamResponse = await fetch(service.url + '/v1/projects/context-guard/sessions/session-events/events?after=1', {
+    headers: { Authorization: 'Bearer project-memory-token' }, signal: controller.signal,
+  });
+  assert.equal(streamResponse.status, 200);
+  const reader = streamResponse.body.getReader();
+  await reader.read(); // ready event
+  const mapCommit = { operationId: 'session-events-edit', baseVersion: seeded.body.snapshot.version, operations: [{ type: 'update', id: 'T0', fields: { purpose: 'streamed edit' } }] };
+  const committed = await request(service.url, '/v1/projects/context-guard/sessions/session-events/map', {
+    method: 'POST', headers,
+    body: JSON.stringify(mapCommit),
+  });
+  assert.equal(committed.response.status, 200);
+  assert.equal(committed.body.cursor, 2);
+  const duplicate = await request(service.url, '/v1/projects/context-guard/sessions/session-events/map', { method: 'POST', headers, body: JSON.stringify(mapCommit) });
+  assert.deepEqual(duplicate.body, committed.body);
+  const reused = await request(service.url, '/v1/projects/context-guard/sessions/session-events/map', {
+    method: 'POST', headers, body: JSON.stringify({ ...mapCommit, operations: [{ type: 'update', id: 'T0', fields: { purpose: 'different' } }] }),
+  });
+  assert.equal(reused.response.status, 409); assert.equal(reused.body.error.code, 'ID_REUSED');
+  let streamed = '';
+  const deadline = Date.now() + 2000;
+  while (!streamed.includes('session-events-edit') && Date.now() < deadline) {
+    const part = await reader.read();
+    streamed += new TextDecoder().decode(part.value || new Uint8Array());
+  }
+  assert.match(streamed, /event: change/);
+  assert.match(streamed, /session-events-edit/);
+  controller.abort(); await reader.cancel().catch(() => {});
+
+  const crossed = await request(service.url, '/v1/projects/other/sessions/session-events/changes?after=0', { headers });
+  assert.equal(crossed.response.status, 401);
+  await service.close();
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  const replayed = await request(service.url, '/v1/projects/context-guard/sessions/session-events/changes?after=0', { headers });
+  assert.deepEqual(replayed.body.events.map(event => event.operationId), ['session-events-seed', 'session-events-edit']);
+  assert.equal(replayed.body.highWater, 2);
+});
+
 test('private Session history is timestamped, restorable, durable, and CAS protected', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-memory-history-'));
   const memoryConfig = {

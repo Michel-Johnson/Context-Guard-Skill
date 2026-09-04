@@ -31,6 +31,7 @@ export const packedFiles = [
   "scripts/workbench/reconcile.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
+  "scripts/workbench/sync-coordinator.mjs",
 
   "README.md",
   "README.zh-CN.md",
@@ -81,6 +82,7 @@ export const installedFiles = [
   "scripts/workbench/reconcile.mjs",
   "scripts/workbench/server.mjs",
   "scripts/workbench/store.mjs",
+  "scripts/workbench/sync-coordinator.mjs",
 
   "SKILL.md",
   "bin/context-guard-skill.js",

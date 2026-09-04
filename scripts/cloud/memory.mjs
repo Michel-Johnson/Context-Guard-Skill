@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { timingSafeEqual } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
 import { applyOperations, MapError, validate } from '../../prototype/map-model.mjs';
@@ -16,8 +17,40 @@ function validateOptions({ dataDir, adminToken }) {
   if (!path.isAbsolute(dataDir)) throw new Error('Private data directory must be absolute and outside source control');
 }
 
-const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [] });
+const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
 const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
+const memoryHubs = new WeakMap();
+function memoryHub(configuration) {
+  let hub = memoryHubs.get(configuration);
+  if (!hub) { hub = new EventEmitter(); hub.setMaxListeners(0); memoryHubs.set(configuration, hub); }
+  return hub;
+}
+
+function appendMemoryEvent(state, { projectId, scope, type, operationId, baseVersion = null, version = null, operations = null, actor, at }) {
+  state.events ||= [];
+  state.eventCursors ||= {};
+  const previousCursor = state.eventCursors[scope] || state.events.reduce((maximum, event) => (
+    event.scope === scope ? Math.max(maximum, event.cursor ?? 0) : maximum
+  ), 0);
+  const cursor = previousCursor + 1;
+  state.eventCursors[scope] = cursor;
+  const event = {
+    seq: state.revision,
+    cursor,
+    projectId,
+    eventId: hash(encode({ revision: state.revision, scope, type, operationId, version, at })),
+    scope,
+    type,
+    operationId,
+    baseVersion,
+    version,
+    ...(operations ? { operations: structuredClone(operations) } : {}),
+    actor,
+    at,
+  };
+  state.events.push(event);
+  return event;
+}
 
 function appendHistory(state, { scope, action, snapshot, previousVersion = null, actor = { kind: 'agent' }, at = new Date().toISOString() }) {
   state.history ||= [];
@@ -59,21 +92,23 @@ export async function readMemoryProject({ dataDir, adminToken, projects = {} }, 
 export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
   const file = memoryFile(configuration.dataDir, projectId);
-  return withFileLock(file + '.lock', async () => {
+  const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
     state.closedSessions ||= {};
     if (state.closedSessions[sessionId]) throw new MapError('SESSION_CLOSED', 'This Session Map was published and closed; start a new Session from the latest main baseline', 410);
     const current = state.sessions[sessionId];
     if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
-    if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Session Map changed; reload before committing', 409, { currentVersion: current.version });
     if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
     const receiptKey = hash(`workbench:${sessionId}:${input.operationId}`);
     const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-      return state.receipts[receiptKey].result;
+      return { result: state.receipts[receiptKey].result, event: null };
     }
-    const applied = applyOperations(current.memory.map, input.operations, actor);
+    if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Session Map changed; reload before committing', 409, { currentVersion: current.version });
+    // The project credential already authorizes this private Session scope. Keep
+    // the real actor in history, but do not reapply local node grants on Cloud.
+    const applied = applyOperations(current.memory.map, input.operations, actor.kind === 'agent' ? { kind: 'human', sessionId: actor.sessionId } : actor);
     validate(applied.doc);
     const updatedAt = new Date().toISOString();
     const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), memory: { ...current.memory, map: applied.doc }, updatedAt };
@@ -82,21 +117,28 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     appendHistory(state, { scope: `session:${sessionId}`, action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, sessionId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
     state.receipts[receiptKey] = { fingerprint, result };
+    const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
+    result.cursor = event.cursor;
     await atomicWrite(file, encode(state));
-    return result;
+    return { result, event };
   });
+  if (committed.event) memoryHub(configuration).emit('event', committed.event);
+  return committed.result;
 }
 
-export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {}) {
+export function createMemoryHandler(configuration = {}) {
+  const { dataDir, adminToken, projects = {} } = configuration;
   validateOptions({ dataDir, adminToken });
+  const hub = memoryHub(configuration);
+  const eventClients = new Set();
   const git = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
-  return async (req, res) => {
+  const handler = async (req, res) => {
     const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); return true; };
     const url = new URL(req.url, 'http://localhost');
-    const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)|publish|history|restore)$/);
+    const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)(?:\/(map|changes|events))?|publish|history|restore)$/);
     if (!route) return false;
     try {
-      const [, projectId, scope, rawSession] = route;
+      const [, projectId, scope, rawSession, sessionAction] = route;
       const sessionId = rawSession ? decodeURIComponent(rawSession) : '';
       if (rawSession && !validSessionId(sessionId)) {
         throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
@@ -109,6 +151,35 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
       const initial = initialMemoryState();
       if (req.method === 'GET') {
         const state = await readJSON(file, initial);
+        if (rawSession && sessionAction === 'changes') {
+          const after = Math.max(0, Number(url.searchParams.get('after') || 0));
+          const scopeName = `session:${sessionId}`;
+          const events = (state.events || []).filter(event => event.scope === scopeName && (event.cursor ?? event.seq) > after);
+          return send(200, { projectId, sessionId, after, cursor: events.at(-1)?.cursor || after, highWater: state.eventCursors?.[scopeName] || 0, events });
+        }
+        if (rawSession && sessionAction === 'events') {
+          const after = Math.max(0, Number(url.searchParams.get('after') || req.headers['last-event-id'] || 0));
+          const scopeName = `session:${sessionId}`;
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+          let delivered = after;
+          const writeEvent = event => {
+            const cursor = event.cursor ?? event.seq;
+            if (event.scope !== scopeName || cursor <= delivered || res.destroyed) return;
+            delivered = cursor;
+            res.write(`id: ${cursor}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
+          };
+          hub.on('event', writeEvent);
+          eventClients.add(res);
+          // Subscribe before rereading the durable log. A concurrent commit is
+          // either delivered live or replayed here; the cursor removes duplicates.
+          const freshState = await readJSON(file, initial);
+          for (const event of (freshState.events || [])) writeEvent(event);
+          res.write(`retry: 1000\nevent: ready\ndata: ${JSON.stringify({ projectId, sessionId, cursor: delivered, highWater: freshState.eventCursors?.[scopeName] || 0 })}\n\n`);
+          const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': keepalive\n\n'); }, 15000);
+          heartbeat.unref();
+          req.on('close', () => { clearInterval(heartbeat); hub.off('event', writeEvent); eventClients.delete(res); });
+          return true;
+        }
         if (scope === 'history') {
           const historyScope = String(url.searchParams.get('scope') || 'main');
           scopeValue(state, historyScope);
@@ -119,7 +190,7 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
         }
         if (scope === 'main') return send(200, { projectId, snapshot: state.main });
         if (scope === 'preferences') return send(200, { projectId, preferences: state.preferences });
-        if (rawSession) return send(200, { projectId, snapshot: state.sessions[sessionId] || null });
+        if (rawSession && !sessionAction) return send(200, { projectId, snapshot: state.sessions[sessionId] || null, revision: state.revision });
         throw new MapError('METHOD', 'Unsupported method', 405);
       }
       if (req.method !== 'POST') throw new MapError('METHOD', 'POST required', 405);
@@ -128,13 +199,18 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
       for await (const chunk of req) { size += chunk.length; if (size > 16 * 1024 * 1024) throw new MapError('BODY_TOO_LARGE', 'Memory batch exceeds 16 MiB', 413); chunks.push(chunk); }
       const input = JSON.parse(Buffer.concat(chunks));
       if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
-      const result = await withFileLock(file + '.lock', async () => {
+      if (rawSession && sessionAction === 'map') {
+        const result = await commitSessionMap(configuration, projectId, sessionId, input, { kind: admin ? 'admin' : 'agent', sessionId });
+        return send(200, result);
+      }
+      if (sessionAction) throw new MapError('METHOD', 'GET required', 405);
+      const committed = await withFileLock(file + '.lock', async () => {
         const state = await readJSON(file, initial), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
         state.closedSessions ||= {};
         if ((scope === 'publish' || scope === 'restore' && ['main', 'preferences'].includes(input.scope)) && !admin) throw new MapError('FORBIDDEN', 'Main publication and restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
           if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-          return state.receipts[key].result;
+          return { result: state.receipts[key].result, event: null };
         }
         let snapshot;
         let historyScope = scope;
@@ -211,14 +287,28 @@ export function createMemoryHandler({ dataDir, adminToken, projects = {} } = {})
         const result = { committed: true, projectId, snapshot, revision: state.revision, history,
           ...(scope === 'publish' ? { closedSession: state.closedSessions[input.sessionId] } : {}) };
         state.receipts[key] = { fingerprint, result };
+        const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
+          projectId,
+          scope: historyScope,
+          type: historyAction === 'restore' ? 'session.restored' : 'session.snapshot',
+          operationId: input.operationId,
+          baseVersion: previousVersion,
+          version: snapshot.version,
+          actor: { kind: admin ? 'admin' : 'agent' },
+          at: snapshot.updatedAt || new Date().toISOString(),
+        }) : null;
         // Snapshot and receipt share one durable replace: a retry after a crash cannot duplicate the write.
         await atomicWrite(file, encode(state));
-        return result;
+        return { result, event };
       });
-      send(200, result);
+      if (committed.event) hub.emit('event', committed.event);
+      send(200, committed.result);
     } catch (error) { send(error.status || 500, { error: { code: error.code || 'MEMORY_ERROR', message: error instanceof MapError ? error.message : 'Memory request failed; data preserved' } }); }
     return true;
   };
+  handler.onEvent = listener => { hub.on('event', listener); return () => hub.off('event', listener); };
+  handler.close = () => { for (const response of eventClients) response.end(); eventClients.clear(); };
+  return handler;
 }
 
 export async function startMemoryServer({ dataDir, adminToken, projects = {}, host = '127.0.0.1', port = 0 } = {}) {
@@ -233,7 +323,7 @@ export async function startMemoryServer({ dataDir, adminToken, projects = {}, ho
   });
   server.requestTimeout = 20000;
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
-  return { server, url: `http://${host}:${server.address().port}`, close: () => new Promise((resolve, reject) => { server.close(error => error ? reject(error) : resolve()); server.closeAllConnections?.(); }) };
+  return { server, url: `http://${host}:${server.address().port}`, close: () => new Promise((resolve, reject) => { handler.close(); server.close(error => error ? reject(error) : resolve()); server.closeAllConnections?.(); }) };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = await readJSON(process.env.CONTEXT_GUARD_MEMORY_CONFIG);

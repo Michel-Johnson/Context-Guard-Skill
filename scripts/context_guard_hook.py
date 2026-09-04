@@ -1119,7 +1119,7 @@ def main() -> int:
                 except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
             if sync_configured(ctx):
-                sync_command(root, "ensure")
+                sync_command(root, "ensure", current_session_id)
         context_text, snapshot = map_context(root, ctx, current_session_id)
         runtime["last_map_version"] = snapshot.get("version")
         runtime["last_cloud_cursor"] = snapshot.get("cloud_cursor")

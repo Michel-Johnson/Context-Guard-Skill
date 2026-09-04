@@ -495,6 +495,12 @@ export async function startCloudServer({
       if (client.scope === `${scope}|${viewId}`) client.res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
     }
   };
+  const stopMemoryEvents = memoryHandler?.onEvent(event => {
+    const project = projectById(event.projectId);
+    if (!project || !event.scope?.startsWith('session:')) return;
+    const viewId = event.scope;
+    broadcastWorkbench(`project:${project.id}`, project, viewId).catch(() => {});
+  }) || (() => {});
   const validateOperationId = input => {
     const operationId = String(input.operationId || '');
     if (!operationId || operationId.length > 160) throw new MapError('INVALID_OPERATION', 'operationId is required');
@@ -827,6 +833,7 @@ export async function startCloudServer({
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
     clearInterval(heartbeat);
+    stopMemoryEvents();
     for (const res of directoryClients) res.end();
     for (const client of workbenchClients) client.res.end();
     for (const set of projectClients.values()) for (const res of set) res.end();

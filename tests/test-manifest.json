@@ -30,6 +30,11 @@
       "path": "tests/cloud-workbench-browser.mjs",
       "command": "npm run test:browser",
       "purpose": "Runs the Cloud workbench end-to-end browser acceptance suite."
+    },
+    {
+      "path": "tests/cloud-sync-browser.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Runs the two-way local and Cloud Session Map synchronization browser suite."
     }
   ],
   "helpers": [
