@@ -158,6 +158,10 @@ For emergency administration, the existing one-time token exchange remains:
 http://<server>:8788/auth?token=<workbench-token>&next=/
 ```
 
+This one-time browser bootstrap route exchanges the token for an HttpOnly cookie.
+All API administration and project synchronization credentials must use the
+`Authorization: Bearer ...` header; query-string tokens are rejected on APIs.
+
 The token is exchanged for an HttpOnly cookie. Remove the token from copied or
 shared URLs after authentication.
 
