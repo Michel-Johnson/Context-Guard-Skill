@@ -11,9 +11,23 @@
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
-  var preview = q.has("preview");
-  var gallery = q.has("gallery");
+  function flag(name){
+    if(q.has(name)) return true;
+    /* htmlpreview 把 raw GitHub 地址整段塞进 search，q.has 认不出来。 */
+    return new RegExp("[?&#]"+name+"=").test(location.href);
+  }
+  var preview = flag("preview");
+  var gallery = flag("gallery");
   window.__CG_GALLERY = gallery;
+  var galleryVal = q.has("gallery") ? (q.get("gallery") || "") : "";
+  if(!galleryVal){
+    var gm = /[?&#]gallery=([^&]*)/.exec(location.href);
+    galleryVal = gm ? gm[1] : "";
+  }
+  window.__CG_GALLERY_KIND = /^(add|insp|actions)$/i.test(galleryVal) ? "add"
+    : /^(trash|bin|icon|del)$/i.test(galleryVal) ? "trash"
+    : /^(chip|tag|badge|state)$/i.test(galleryVal) ? "chip"
+    : "bar";
   if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
   if(!(t==="1"||t==="4"||t==="44"||t==="48")){
@@ -29,7 +43,8 @@
   window.__CG_NODE_THEME = t;
   window.__CG_PREVIEW = preview;
   /* ?phone=1 电脑上看手机布局；?phone=0 强制电脑布局。Safari「桌面网站」会把视口报成 ~980px。 */
-  var phoneQ = q.has("phone") ? q.get("phone") : null;
+  var phoneMatch = /[?&#]phone=([^&]*)/.exec(location.href);
+  var phoneQ = q.has("phone") ? q.get("phone") : (phoneMatch ? phoneMatch[1] : null);
   var phoneForce = phoneQ==null ? null : (phoneQ==="0" ? false : true);
   window.__CG_PHONE_FORCE = phoneForce;
   var phone = false;
@@ -57,24 +72,25 @@
 <body>
 <div id="design-gallery">
   <div class="g-bar">
-    <b>检查器分区 · 50 版</b>
-    <span class="hint">往下滑动看。看中了把编号发我，例如「分区 17」。不用点按钮。</span>
+    <b>工作台风格 · 50 版</b>
+    <span class="hint">往下滑动。画布和右侧栏跟现在工作台一样，只有顶栏换风格。看中了把编号发我，例如「风格 17」。不用点。</span>
   </div>
   <div class="g-scroll" id="g-scroll"></div>
 </div>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
 <div class="phone-preview-banner" id="phone-preview-banner">手机预览 · 只看布局，电脑顶栏不会跟着砍</div>
+<h1 id="repo-title" hidden>Context Guard 架构导图</h1>
 <header class="top">
   <div class="brand">
-    <h1 class="repo-switch" id="repo-title">Context Guard 架构导图 <span class="caret">▾</span></h1>
+    <nav class="nav-crumbs" id="nav-crumbs"></nav>
     <div class="repo-menu" id="repo-menu"></div>
   </div>
-  <nav class="nav-crumbs" id="nav-crumbs"></nav>
   <div class="top-tools">
-    <div class="dir-toggle" id="dir-toggle">
-      <button type="button" data-dir="lr" class="on" data-i18n="dirLr">左右</button>
-      <button type="button" data-dir="tb" data-i18n="dirTb">上下</button>
-    </div>
+    <button type="button" class="dir-toggle" id="dir-toggle" aria-pressed="false" data-dir="lr" data-i18n-title="dirTitle" title="布局" aria-label="布局">
+      <span class="dir-thumb" aria-hidden="true"></span>
+      <span class="dir-opt on" data-dir="lr">左右</span>
+      <span class="dir-opt" data-dir="tb">上下</span>
+    </button>
     <div class="rel-toggle" id="rel-toggle" data-i18n-title="relTitle" title="打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。">
       <button type="button" id="btn-rel" aria-pressed="false" data-i18n="relations">关系</button>
     </div>
@@ -174,6 +190,7 @@
     <svg id="links"></svg>
     <div id="nodes"></div>
     <div id="currents"></div>
+    <div id="flow-labs"></div>
   </div>
 </div>
 <div id="dot-hint" hidden role="tooltip"></div>

@@ -7,7 +7,9 @@ const I18N = {
   zh: {
     docTitle:"Context Guard · 工作台原型",
     archMap:"架构导图",
+    switchRepo:"切换项目",
     dirLr:"左右", dirTb:"上下",
+    dirTitle:"布局：点一下切换左右 / 上下",
     relations:"关系",
     relHint:"点击模块看关系，不会进入",
     relTitle:"打开后点击节点只高亮它的生产/消费，不进入。无关模块会变暗。",
@@ -79,10 +81,16 @@ const I18N = {
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
     forever:"永久删除", deleteAsk:"确定删掉？", delete:"删除",
+    addOnMap:"要加模块或节点，去图上点 ＋。这里不放按钮。",
+    deleteAskKids:"下面还有 {n} 个子项。一起删，还是接到上一级？",
+    deleteKeepKids:"接到上一级",
+    deleteWithKids:"一起删",
     wasUnder:"原属：", root:"根",
     join:"加入", hide:"隐藏", restore:"恢复",
     acceptLayer:"本层全部加入", grant:"授权", enter:"进入",
     plusModule:"＋ 模块", plusChild:"＋ 子节点",
+    addChildTitle:"新增模块或节点",
+    addKindModule:"模块", addKindNode:"节点",
     moduleName:"模块名称", childName:"子节点名称",
     memory:"记忆", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"继承的", dormant:"休眠经验",
     addMem:"添加记忆", addIdea:"添加 Idea", addTodo:"添加 TODO", addBug:"添加 Bug",
@@ -103,7 +111,9 @@ const I18N = {
   en: {
     docTitle:"Context Guard · workbench",
     archMap:"architecture map",
+    switchRepo:"Switch project",
     dirLr:"Left–right", dirTb:"Top–down",
+    dirTitle:"Layout: tap to switch left–right / top–down",
     relations:"Relations",
     relHint:"Click a module to see relations. It will not enter.",
     relTitle:"When on, clicking a node highlights produce/consume partners and dims the rest. It does not enter.",
@@ -175,10 +185,16 @@ const I18N = {
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
     forever:"Delete forever", deleteAsk:"Delete this?", delete:"Delete",
+    addOnMap:"To add a module or node, tap ＋ on the map. No buttons here.",
+    deleteAskKids:"This still has {n} children. Reattach them, or delete together?",
+    deleteKeepKids:"Reattach",
+    deleteWithKids:"Delete all",
     wasUnder:"From: ", root:"root",
     join:"Add", hide:"Hide", restore:"Restore",
     acceptLayer:"Add all in this layer", grant:"Authorize", enter:"Enter",
     plusModule:"＋ Module", plusChild:"＋ Child",
+    addChildTitle:"Add a module or node",
+    addKindModule:"Module", addKindNode:"Node",
     moduleName:"Module name", childName:"Child name",
     memory:"Memory", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addTodo:"Add TODO", addBug:"Add bug",
@@ -386,12 +402,22 @@ let authMode = false;
 let composingId = null;
 let composingKind = "work";
 let composeParent = null;
+let addPickId = null;
 function clearCompose(){
   workbenchSync?.setInputDraft(null); composingId = null; composingKind = "work"; composeParent = null; }
+function closeAddPick(){
+  if(!addPickId) return;
+  addPickId = null;
+  document.querySelectorAll(".node.picking").forEach(el=>el.classList.remove("picking"));
+}
+function canMutate(){
+  return !!(workbenchSync?.ready || !window.__CG_SERVER);
+}
 let attaching = null;
 let attachDraft = "";
 function clearAttach(){ attaching = null; attachDraft = ""; }
 let pendingDeleteId = null;
+let deleteAskId = null;
 let bugPathMode = false;
 let bugFocus = null;
 let bugPathReturn = null;
@@ -1128,7 +1154,8 @@ function renderFirstUseCopy(){
 }
 function applyRepoChrome(){
   const r = currentRepo();
-  document.getElementById("repo-title").innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
+  const titleEl = document.getElementById("repo-title");
+  if(titleEl) titleEl.innerHTML = esc(r.name)+" "+t("archMap")+' <span class="caret">▾</span>';
   renderRepoMenu();
   renderFirstUseCopy();
 }
@@ -1646,7 +1673,10 @@ function isProposed(n){
   return true;
 }
 function isAllSessionsView(){ return workbenchSync?.isAllSessions?.()===true; }
-function isAuth(n){ return isAllSessionsView() || sessionAuth.has(n.id); }
+function isAuth(n){
+  if(window.__CG_PREVIEW || !window.__CG_SERVER) return true;
+  return isAllSessionsView() || sessionAuth.has(n.id);
+}
 function authUnlockAll(){
   sessionAuth.clear();
   walkAll(data, n=>{ if(n && n.id) sessionAuth.add(n.id); });
@@ -2326,6 +2356,8 @@ function renderBugPanel(){
 }
 
 function enterView(id, opts){
+  closeAddPick();
+  deleteAskId = null;
   if(bugPathMode){
     bugPathMode = false;
     bugFocus = null;
@@ -2340,6 +2372,26 @@ function enterView(id, opts){
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
+function canSwitchRepo(){
+  return !window.__CG_SERVER && Object.keys(catalog).length>1;
+}
+function crumbLabel(n){
+  return `${n.kind==="module"?"▣ ":""}${esc(n.title)}`;
+}
+function bindContextSwitch(el){
+  const open = ()=>{
+    closeSettings();
+    closeSessionMenu();
+    document.getElementById("repo-menu").classList.toggle("open");
+    el.setAttribute("aria-expanded", document.getElementById("repo-menu").classList.contains("open") ? "true" : "false");
+  };
+  el.onclick = e=>{ e.stopPropagation(); open(); };
+  el.onkeydown = e=>{
+    if(e.key!=="Enter" && e.key!==" ") return;
+    e.preventDefault();
+    open();
+  };
+}
 function renderNav(){
   const el = document.getElementById("nav-crumbs");
   if(bugPathMode && bugFocus){
@@ -2349,7 +2401,6 @@ function renderNav(){
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
     document.getElementById("tray-count").textContent = cancelledList().length;
-    document.getElementById("dir-toggle").classList.toggle("is-catalog", false);
     syncChrome();
     const here0 = el.querySelector(".here");
     if(here0) el.scrollLeft = Math.max(0, here0.offsetLeft + here0.offsetWidth - el.clientWidth);
@@ -2358,13 +2409,24 @@ function renderNav(){
   const path = findPath(viewRootId);
   const cloudProject = window.__CG_SERVER?.root?.startsWith("cloud:") && window.__CG_SERVER.root!=="cloud:overview";
   const cloudHome = cloudProject ? `<a class="cloud-overview-link" href="/">${esc(t("projectOverview"))}</a><span class="sep">›</span>` : "";
-  el.innerHTML = cloudHome + path.map((n,i)=> i===path.length-1
-    ? `<span class="here">${n.kind==="module"?"▣ ":""}${esc(n.title)}</span>`
-    : `<a data-id="${n.id}">${n.kind==="module"?"▣ ":""}${esc(n.title)}</a><span class="sep">›</span>`
-  ).join("");
+  const switchable = canSwitchRepo();
+  el.innerHTML = cloudHome + path.map((n,i)=>{
+    const last = i===path.length-1;
+    if(last){
+      const atRoot = i===0;
+      const caret = atRoot && switchable ? ` <span class="caret">▾</span>` : "";
+      const cls = atRoot && switchable ? "here switch" : "here";
+      const extra = atRoot && switchable
+        ? ` role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" title="${esc(t("switchRepo"))}"`
+        : "";
+      return `<span class="${cls}" id="context-card"${extra}>${atRoot ? esc(n.title) : crumbLabel(n)}${caret}</span>`;
+    }
+    return `<a data-id="${n.id}">${crumbLabel(n)}</a><span class="sep">›</span>`;
+  }).join("");
   el.querySelectorAll("a[data-id]").forEach(a=>a.onclick=()=>enterView(a.dataset.id));
+  const card = document.getElementById("context-card");
+  if(card && path.length===1 && switchable) bindContextSwitch(card);
   document.getElementById("tray-count").textContent = cancelledList().length;
-  document.getElementById("dir-toggle").classList.toggle("is-catalog", isCatalogView());
   syncChrome();
   const here = el.querySelector(".here");
   if(here) el.scrollLeft = Math.max(0, here.offsetLeft + here.offsetWidth - el.clientWidth);
@@ -2395,12 +2457,6 @@ document.getElementById("first-use-empty").onclick = startEmptyRoot;
 document.getElementById("first-use-cut-back").onclick = ()=>{
   currentRepo().firstUseOpen = true;
   setOverlay(true, false);
-};
-document.getElementById("repo-title").onclick = e=>{
-  e.stopPropagation();
-  closeSettings();
-  closeSessionMenu();
-  document.getElementById("repo-menu").classList.toggle("open");
 };
 document.addEventListener("click", ()=>{ closeRepoMenu(); closeSettings(); closeSessionMenu(); });
 document.getElementById("repo-menu").onclick = e=>e.stopPropagation();
@@ -2434,17 +2490,22 @@ document.getElementById("theme-picks").onclick = e=>{
   applyNodeTheme(b.dataset.theme, true);
 };
 function setLayoutDir(dir){
-  layoutDir = dir;
-  document.body.classList.toggle("layout-tb", dir==="tb");
-  document.querySelectorAll("#dir-toggle [data-dir]").forEach(b=>{
-    b.classList.toggle("on", b.dataset.dir===dir);
-  });
+  layoutDir = dir==="tb" ? "tb" : "lr";
+  document.body.classList.toggle("layout-tb", layoutDir==="tb");
+  const el = document.getElementById("dir-toggle");
+  if(el){
+    el.dataset.dir = layoutDir;
+    el.classList.toggle("is-tb", layoutDir==="tb");
+    el.setAttribute("aria-pressed", layoutDir==="tb" ? "true" : "false");
+    el.querySelectorAll(".dir-opt").forEach(opt=>{
+      opt.classList.toggle("on", opt.dataset.dir===layoutDir);
+    });
+  }
   renderAll();
   fitView();
 }
-document.getElementById("dir-toggle").onclick = e=>{
-  const b = e.target.closest("[data-dir]");
-  if(b) setLayoutDir(b.dataset.dir);
+document.getElementById("dir-toggle").onclick = ()=>{
+  setLayoutDir(layoutDir==="tb" ? "lr" : "tb");
 };
 document.getElementById("lang-toggle").onclick = e=>{
   e.stopPropagation();
@@ -2516,6 +2577,7 @@ const worldEl = document.getElementById("world");
 const nodesEl = document.getElementById("nodes");
 const linksEl = document.getElementById("links");
 const currentsEl = document.getElementById("currents");
+const flowLabsEl = document.getElementById("flow-labs");
 let extents = {w:800, h:500};
 let layoutDir = "lr";
 let relationMode = false;
@@ -2530,7 +2592,11 @@ function nodeHtml(n, isViewRoot, ghost){
         ? `<span class="join-spin" aria-hidden="true"></span>`
         : `<span class="new-dot"></span>`)
     : "";
-  const add = ghost || isProposed(n) ? "" : `<span class="add-child" title="${escAttr(t("addModule"))}">＋</span>`;
+  const add = ghost || isProposed(n) ? "" : `<span class="add-child" role="button" title="${escAttr(t("addChildTitle"))}" aria-haspopup="menu" aria-expanded="${addPickId===n.id?"true":"false"}">＋</span>
+      <div class="add-pick" role="menu">
+        <button type="button" data-add="module">${t("addKindModule")}</button>
+        <button type="button" data-add="work">${t("addKindNode")}</button>
+      </div>`;
   if(n.kind==="module"){
     const st = moduleAuthState(n);
     const lock = isProposed(n) || st!=="none" ? "" : `<span class="lock">🔒</span>`;
@@ -2562,6 +2628,7 @@ function renderMap(){
 
   nodesEl.innerHTML = "";
   if(currentsEl) currentsEl.innerHTML = "";
+  if(flowLabsEl) flowLabsEl.innerHTML = "";
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
@@ -2577,6 +2644,7 @@ function renderMap(){
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
       (n.id===selectedId && !isCancelled(n)?" selected":"") +
+      (addPickId===n.id?" picking":"") +
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
     div.innerHTML = nodeHtml(n, isViewRoot, ghost);
@@ -2723,7 +2791,8 @@ function renderMap(){
     }
   }
   function useSpreadGrid(){
-    if(isCatalogView()) return true;
+    /* 地图根上：上下要折行，左右仍是树（孩子在右侧）。关系模式继续用散点网格。 */
+    if(isCatalogView() && tb) return true;
     if(!relationMode) return false;
     const kids = visibleChildren(root);
     return kids.length>=2 && kids.every(c=>c.kind==="module");
@@ -2811,15 +2880,6 @@ function renderMap(){
         pathSegs.forEach((d, di)=>{
           const delay = (di*0.18 + si*0.32).toFixed(2);
           paths += `<path class="current-flow" stroke="${color}" style="animation-delay:${delay}s" d="${d}"/>`;
-          if(currentsEl){
-            const bead = document.createElement("div");
-            bead.className = "current-bead";
-            bead.style.background = color;
-            bead.style.boxShadow = `0 0 12px 4px ${color}`;
-            bead.style.offsetPath = `path("${d}")`;
-            bead.style.animationDelay = delay+"s";
-            currentsEl.appendChild(bead);
-          }
         });
       });
     }
@@ -2860,24 +2920,94 @@ function renderMap(){
       const b = port(p2,s2,p1.x+s1.w/2,p1.y+s1.h/2);
       const dx=b.x-a.x, dy=b.y-a.y;
       const dist = Math.hypot(dx,dy)||1;
-      const bulge = Math.min(150, Math.max(56, dist*0.4));
-      const cx = (a.x+b.x)/2 - (dy/dist)*bulge;
-      const cy = (a.y+b.y)/2 + (dx/dist)*bulge;
-      const lx = 0.25*a.x + 0.5*cx + 0.25*b.x;
-      const ly = 0.25*a.y + 0.5*cy + 0.25*b.y;
-      return {d:`M${a.x},${a.y} Q${cx},${cy} ${b.x},${b.y}`, lx, ly};
+      const bulge = Math.min(160, Math.max(64, dist*0.42));
+      const c = {x:(a.x+b.x)/2 - (dy/dist)*bulge, y:(a.y+b.y)/2 + (dx/dist)*bulge};
+      return {d:`M${a.x},${a.y} Q${c.x},${c.y} ${b.x},${b.y}`, a, b, c};
+    }
+    function quadAt(a,c,b,t){
+      const u=1-t;
+      return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y};
+    }
+    function labOverlapAmt(a,b,pad){
+      const ox = (a.w+b.w)/2 + pad - Math.abs(a.x-b.x);
+      const oy = (a.h+b.h)/2 + pad - Math.abs(a.y-b.y);
+      if(ox<=0 || oy<=0) return null;
+      return {ox, oy};
+    }
+    function unstackLabs(placed){
+      for(let n=0; n<8; n++){
+        let moved = false;
+        for(let i=0; i<placed.length; i++){
+          for(let j=i+1; j<placed.length; j++){
+            const a = placed[i], b = placed[j];
+            const hit = labOverlapAmt(a,b,6);
+            if(!hit) continue;
+            moved = true;
+            if(hit.oy <= hit.ox){
+              const s = a.y===b.y ? 1 : Math.sign(a.y-b.y);
+              a.y += s * hit.oy/2;
+              b.y -= s * hit.oy/2;
+            }else{
+              const s = a.x===b.x ? 1 : Math.sign(a.x-b.x);
+              a.x += s * hit.ox/2;
+              b.x -= s * hit.ox/2;
+            }
+          }
+        }
+        if(!moved) break;
+      }
+    }
+    function measureLab(text){
+      if(!flowLabsEl) return {w: Math.max(24, text.length*7), h:16};
+      const probe = document.createElement("span");
+      probe.className = "flow-lab";
+      probe.textContent = text;
+      probe.style.left = "-9999px";
+      probe.style.top = "0";
+      flowLabsEl.appendChild(probe);
+      const w = Math.max(probe.offsetWidth, 12);
+      const h = Math.max(probe.offsetHeight, 14);
+      probe.remove();
+      return {w, h};
     }
     paths = `<defs><marker id="flow-arrow" markerWidth="8" markerHeight="8" refX="6.4" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#5a7a62" stroke-width="1.2"/></marker></defs>` + paths;
+    const pendingLabs = [];
     (data.flows||[]).forEach(f=>{
       if(f.from!==relFocus && f.to!==relFocus) return;
       if(!pos.has(f.from) || !pos.has(f.to)) return;
       const curve = flowCurve(f.from, f.to);
       if(!curve) return;
       paths += `<path class="flow hot" d="${curve.d}" marker-end="url(#flow-arrow)"/>`;
-      if(f.label){
-        paths += `<text class="flow-lab" text-anchor="middle" x="${curve.lx.toFixed(1)}" y="${(curve.ly-4).toFixed(1)}">${esc(f.label)}</text>`;
-      }
+      if(f.label) pendingLabs.push({text:f.label, curve});
     });
+    if(flowLabsEl){
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+      const placed = pendingLabs.map(item=>{
+        const {w,h} = measureLab(item.text);
+        const pt = quadAt(item.curve.a, item.curve.c, item.curve.b, 0.5);
+        const mid = {x:(item.curve.a.x+item.curve.b.x)/2, y:(item.curve.a.y+item.curve.b.y)/2};
+        const ox = item.curve.c.x-mid.x, oy = item.curve.c.y-mid.y;
+        const olen = Math.hypot(ox,oy)||1;
+        return {text:item.text, x:pt.x+(ox/olen)*10, y:pt.y+(oy/olen)*10, w, h};
+      });
+      unstackLabs(placed);
+      placed.forEach(box=>{
+        const el = document.createElement("span");
+        el.className = "flow-lab";
+        el.textContent = box.text;
+        el.style.left = box.x+"px";
+        el.style.top = box.y+"px";
+        flowLabsEl.appendChild(el);
+        maxX = Math.max(maxX, box.x+box.w/2);
+        maxY = Math.max(maxY, box.y+box.h/2);
+      });
+      extents = {w:maxX, h:maxY};
+      linksEl.setAttribute("width", maxX+140);
+      linksEl.setAttribute("height", maxY+140);
+      flowLabsEl.style.width = (maxX+140)+"px";
+      flowLabsEl.style.height = (maxY+140)+"px";
+    }
   }
   linksEl.innerHTML = paths;
 }
@@ -2895,7 +3025,24 @@ function onNodeClick(e, n){
   if(authMode){
     toggleAuth(n); return;
   }
-  if(e.target.classList.contains("add-child")){ addModule(n); return; }
+  const pickBtn = e.target.closest && e.target.closest("[data-add]");
+  if(pickBtn && e.target.closest(".add-pick")){
+    const kind = pickBtn.dataset.add;
+    addPickId = null;
+    if(kind==="module") addModule(n);
+    else addChild(n);
+    return;
+  }
+  if(e.target.closest && e.target.closest(".add-child")){
+    if(addPickId===n.id){ addPickId=null; renderAll(); return; }
+    if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+    addPickId = n.id;
+    selectedId = n.id;
+    renderAll();
+    return;
+  }
+  if(e.target.closest && e.target.closest(".add-pick")) return;
+  closeAddPick();
   if(bugPathMode){
     selectedId = n.id;
     renderAll();
@@ -2937,6 +3084,39 @@ function acceptLayer(node){
   node.children.filter(isProposed).forEach(c=>acceptProposal(c, true));
   renderAll();
 }
+function attachedChildren(n){
+  const kids = (n.children||[]).filter(c=>c && !isCancelled(c));
+  const inbox = (n._inbox||[]).filter(c=>c && !isCancelled(c));
+  return kids.concat(inbox);
+}
+function requestDelete(node){
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+  if(!node || node.id===data.id) return;
+  clearCompose();
+  const kids = attachedChildren(node);
+  if(!kids.length){ applyDelete(node, true); return; }
+  deleteAskId = node.id;
+  selectedId = node.id;
+  renderAll();
+}
+function applyDelete(node, withChildren){
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
+  if(!node || node.id===data.id) return;
+  deleteAskId = null;
+  const path = pathOf(node) || [];
+  const parent = path.length>1 ? path[path.length-2] : null;
+  if(!parent) return;
+  if(!withChildren){
+    const keep = attachedChildren(node);
+    node.children = (node.children||[]).filter(c=>isCancelled(c));
+    node._inbox = (node._inbox||[]).filter(c=>isCancelled(c));
+    const idx = parent.children.indexOf(node);
+    if(idx>=0) parent.children.splice(idx, 0, ...keep);
+    else parent.children.push(...keep);
+    promoteFatWork(parent);
+  }
+  cancelProposal(node);
+}
 function cancelProposal(n){
   if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
   if(!n || n.id===data.id) return;
@@ -2956,8 +3136,9 @@ function cancelProposal(n){
 }
 
 function startCompose(node, kind){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   if(!node) return;
+  addPickId = null;
   composeParent = node;
   selectedId = node.id;
   composingId = node.id;
@@ -2968,7 +3149,7 @@ function startCompose(node, kind){
 }
 function addChild(node){ startCompose(node, "work"); }
 function addModule(from){
-  if(!workbenchSync?.ready){ workbenchSync?.setStatus("readonly"); return; }
+  if(!canMutate()){ workbenchSync?.setStatus("readonly"); return; }
   const target = from || getNode(selectedId);
   /* 挂在点中的节点后。不要因为提议/找不到就改挂到当前页根（看起来像最开始那个模块）。 */
   if(!target || isCancelled(target)) return;
@@ -3021,7 +3202,7 @@ const STATE_LABEL = ()=>({
 function textOf(el){ return (el.innerText||"").replace(/\u00a0/g," ").replace(/\s+/g," ").trim(); }
 function bindEdit(el, commit, multiline){
   if(!el) return;
-  if(!window.__CG_SERVER){ el.contentEditable="false"; return; }
+  if(window.__CG_SERVER && !workbenchSync?.ready){ el.contentEditable="false"; return; }
   el.contentEditable="true"; el.spellcheck=false;
   let composing=false;
   function draft(){ return {nodeId:selectedId, field:el.dataset.ed, index:el.dataset.i, bug:el.dataset.bug, text:el.innerText||""}; }
@@ -3097,11 +3278,9 @@ function renderDetail(){
       <div class="actions">
         <button data-act="accept" class="primary">${t("join")}</button>
         <button data-act="cancel">${t("hide")}</button>
-        <button type="button" data-act="module">${t("plusModule")}</button>
       </div>`;
     el.querySelector('[data-act="accept"]').onclick = ()=>acceptProposal(node);
     bindSilent(el.querySelector('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
-    el.querySelector('[data-act="module"]').onclick = ()=>addModule(node);
     return;
   }
   if(cancelled){
@@ -3183,24 +3362,32 @@ function renderDetail(){
       : "";
   const filesHtml = fileList(node).length
     ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
+  const trashBtn = canDelete && !composing && deleteAskId!==node.id
+    ? `<button type="button" class="trash" data-act="delete" title="${t("delete")}" aria-label="${t("delete")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></button>`
+    : "";
+  const actionBtns = [
+    cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:"",
+    !cancelled && pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:"",
+    !cancelled && noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:"",
+    !cancelled && relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""
+  ].filter(Boolean).join("");
   el.innerHTML = `
-    <h2><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</h2>
+    <h2 class="detail-head"><span class="head-main"><span class="ed" data-ed="title">${esc(node.title)}</span>${chip}</span>${trashBtn}</h2>
     ${(isModule||node.kind==="work")? `<p class="lead ed" data-ed="purpose">${esc(node.purpose||"")}</p>`:""}
-    <div class="actions">
-      ${cancelled? `<button data-act="restore" class="primary">${t("restore")}</button>`:""}
-      ${!cancelled? `
-        ${pendingKids? `<button data-act="accept-layer" class="primary">${t("acceptLayer")}</button>`:""}
-        ${noauth? `<button data-act="grant" class="auth-primary">${t("grant")}</button>`:""}
-        ${relationMode && canEnter(node)? `<button type="button" data-act="enter" class="primary">${t("enter")}</button>`:""}
-        ${composing?"":`<button type="button" data-act="module">${t("plusModule")}</button>
-        <button type="button" data-act="child">${t("plusChild")}</button>`}
-        ${canDelete? `<button type="button" data-act="delete" class="quiet">${t("delete")}</button>`:""}`:""}
-    </div>
+    ${actionBtns? `<div class="actions">${actionBtns}</div>`:""}
+    ${deleteAskId===node.id? `<div class="delete-ask">
+        <p>${t("deleteAskKids").replace("{n}", String(attachedChildren(node).length))}</p>
+        <div class="row">
+          <button type="button" data-act="delete-keep">${t("deleteKeepKids")}</button>
+          <button type="button" data-act="delete-all">${t("deleteWithKids")}</button>
+          <button type="button" class="quiet" data-act="delete-abort">${t("cancel")}</button>
+        </div>
+      </div>`:""}
     ${composing? `<div class="compose">
         <span class="ed ghost" data-ed="compose-title" data-compose>${composingKind==="module"?t("moduleName"):t("childName")}</span>
         <button type="button" data-act="compose-ok" class="primary">${t("add")}</button>
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
-      </div>`:""}
+      </div>`: deleteAskId===node.id?"":`<p class="add-hint">${t("addOnMap")}</p>`}
     ${filesHtml}
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
       <summary><span>${labels.memory}${node.memories.length?" "+node.memories.length:""}</span><button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">＋</button></summary>
@@ -3246,7 +3433,10 @@ function renderDetail(){
   if(q('[data-act="enter"]'))   q('[data-act="enter"]').onclick   = ()=>enterView(node.id);
   if(q('[data-act="child"]'))   q('[data-act="child"]').onclick   = ()=>addChild(node);
   if(q('[data-act="module"]'))  q('[data-act="module"]').onclick  = ()=>addModule(node);
-  bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); cancelProposal(node); });
+  bindSilent(q('[data-act="delete"]'), ()=>{ clearCompose(); requestDelete(node); });
+  bindSilent(q('[data-act="delete-keep"]'), ()=> applyDelete(node, false));
+  bindSilent(q('[data-act="delete-all"]'), ()=> applyDelete(node, true));
+  bindSilent(q('[data-act="delete-abort"]'), ()=>{ deleteAskId = null; renderAll(); });
   if(q('[data-act="add-mem"]')) q('[data-act="add-mem"]').onclick = (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldMem = true;
@@ -3429,14 +3619,32 @@ function crossBug(node, bugId){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
+function hideEdgeSlivers(){
+  const vp = document.getElementById("viewport");
+  const header = document.querySelector("header.top");
+  if(!vp || window.__CG_GALLERY) return;
+  const box = vp.getBoundingClientRect();
+  const headerBottom = header && header.getClientRects().length ? header.getBoundingClientRect().bottom : box.top;
+  const clipTop = Math.max(box.top, headerBottom);
+  vp.querySelectorAll("#nodes .node").forEach(el => {
+    const r = el.getBoundingClientRect();
+    const above = clipTop - r.top;
+    const below = r.bottom - clipTop;
+    el.classList.toggle("edge-sliver", above > 1 && below < Math.max(36, r.height * 0.55));
+  });
+}
 function applyView(){
   worldEl.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
+  hideEdgeSlivers();
+}
+if(worldEl && window.MutationObserver){
+  new MutationObserver(() => hideEdgeSlivers()).observe(worldEl, { attributes:true, attributeFilter:["style"] });
 }
 /* 导图在顶栏和检查器让出的区域内居中；顶栏变高时用 --chrome-top 让位，不要把标题盖住。 */
 function chromeTop(){
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--chrome-top");
   const n = parseFloat(raw);
-  return Number.isFinite(n) && n>0 ? n : 52;
+  return Number.isFinite(n) && n>0 ? n : 58;
 }
 const DRAWER_W_KEY = "cg-drawer-width";
 const DRAWER_H_KEY = "cg-drawer-height";
@@ -3640,9 +3848,12 @@ function bindDrawerSplit(){
 }
 function syncChrome(){
   const h = document.querySelector("header.top");
-  if(!h) return;
-  const px = Math.ceil(h.getBoundingClientRect().height);
+  if(!h || !h.getClientRects().length) return;
+  const box = h.getBoundingClientRect();
+  const min = document.documentElement.classList.contains("cg-phone") ? 96 : 58;
+  const px = Math.max(min, Math.round(box.bottom));
   document.documentElement.style.setProperty("--chrome-top", px+"px");
+  hideEdgeSlivers();
 }
 function fitView(){
   const bugs = document.body.classList.contains("bugs-open");
@@ -3704,6 +3915,7 @@ function endPointer(e){
 vp.addEventListener("pointerdown", e=>{
   if(window.__CG_GALLERY) return;
   hideDotHint();
+  if(!e.target.closest(".add-child") && !e.target.closest(".add-pick")) closeAddPick();
   if(document.body.classList.contains("drawer-resizing")) return;
   if(panIgnore(e.target)) return;
   if(e.pointerType==="mouse" && e.button!=null && e.button!==0) return;
@@ -3772,82 +3984,321 @@ function renderAll(){
   syncLinkRepoBtn();
   persist();
 }
-function bootDesignGallery(){
-  document.title = "检查器分区 · 50 版";
-  const VARIANTS = [
-    {id:"01", name:"现况：字贴横线", sep:"pinch"},
-    {id:"02", name:"横线拉开", sep:"line"},
-    {id:"03", name:"横线再拉开", sep:"far"},
-    {id:"04", name:"不要横线", sep:"none"},
-    {id:"05", name:"更大留白、不要横线", sep:"wide"},
-    {id:"06", name:"虚线分隔", sep:"dash"},
-    {id:"07", name:"标题下一截短线", sep:"short"},
-    {id:"08", name:"每块一张卡", sep:"cards"},
-    {id:"09", name:"浅底圆角块", sep:"soft"},
-    {id:"10", name:"左侧细线", sep:"rail"},
-    {id:"11", name:"只靠间距", sep:"gap"},
-    {id:"12", name:"记忆浅绿底", sep:"line", tint:"mem"},
-    {id:"13", name:"记忆绿 / Bug蓝 淡底", sep:"none", tint:"zebra"},
-    {id:"14", name:"左条：绿和蓝", sep:"rail", tint:"rail"},
-    {id:"15", name:"标题做成绿蓝胶囊", sep:"none", tint:"pills"},
-    {id:"16", name:"卡片 + 绿蓝底", sep:"cards", tint:"zebra"},
-    {id:"17", name:"浅底块 + 绿记忆", sep:"soft", tint:"mem"},
-    {id:"18", name:"无横线 + 绿记忆", sep:"wide", tint:"mem"},
-    {id:"19", name:"拉开的线 + 绿记忆", sep:"far", tint:"mem"},
-    {id:"20", name:"短线改成绿和蓝", sep:"short", head:"rule"},
-    {id:"21", name:"标题下彩线、不要横线", sep:"none", head:"rule"},
-    {id:"22", name:"大标题行", sep:"line", head:"lg"},
-    {id:"23", name:"更大标题、无横线", sep:"none", head:"xl"},
-    {id:"24", name:"字距拉开的小标题", sep:"far", head:"space"},
-    {id:"25", name:"卡片 + 大标题", sep:"cards", head:"lg"},
-    {id:"26", name:"Idea 写出「还没有」", sep:"line", note:"1"},
-    {id:"27", name:"无横线，空项也写一句", sep:"none", note:"1"},
-    {id:"28", name:"卡片里写出空项", sep:"cards", note:"1"},
-    {id:"29", name:"内容往右缩一格", sep:"line", indent:"1"},
-    {id:"30", name:"无横线，内容再缩进", sep:"none", indent:"2"},
-    {id:"31", name:"卡片 + 缩进", sep:"cards", indent:"1"},
-    {id:"32", name:"加号改成「添加」", sep:"line", plus:"text"},
-    {id:"33", name:"无横线，「添加」", sep:"wide", plus:"text"},
-    {id:"34", name:"加号放到标题左边", sep:"none", plus:"left"},
-    {id:"35", name:"不要加号", sep:"far", plus:"hide"},
-    {id:"36", name:"卡片不要加号", sep:"cards", plus:"hide"},
-    {id:"37", name:"区块之间再空一截", sep:"none", stack:"1"},
-    {id:"38", name:"卡片拉开", sep:"cards", stack:"1"},
-    {id:"39", name:"左条拉开", sep:"rail", stack:"1", tint:"rail"},
-    {id:"40", name:"继承写淡一点", sep:"line", quiet:"1"},
-    {id:"41", name:"无横线，继承淡", sep:"wide", quiet:"1"},
-    {id:"42", name:"绿底记忆 + 继承淡", sep:"none", tint:"mem", quiet:"1"},
-    {id:"43", name:"绿蓝胶囊 + 空项说明", sep:"none", tint:"pills", note:"1"},
-    {id:"44", name:"绿蓝淡底 + 大标题", sep:"soft", tint:"zebra", head:"lg"},
-    {id:"45", name:"左条彩线 + 添加", sep:"rail", tint:"rail", plus:"text"},
-    {id:"46", name:"无横线 + 缩进 + 空项", sep:"wide", indent:"2", note:"1"},
-    {id:"47", name:"卡片 + 彩线标题", sep:"cards", head:"rule"},
-    {id:"48", name:"只靠间距 + 大标题", sep:"gap", head:"xl"},
-    {id:"49", name:"浅底 + 不要加号 + 空项", sep:"soft", plus:"hide", note:"1"},
-    {id:"50", name:"无横线、绿记忆、蓝继承、大留白", sep:"wide", tint:"zebra", quiet:"1", stack:"1"}
+function bootChipGallery(){
+  document.title = "状态标签 · 50 版";
+  document.documentElement.classList.add("g-kind-chip");
+  const bar = document.querySelector("#design-gallery .g-bar");
+  if(bar){
+    bar.querySelector("b").textContent = "状态标签 · 50 版";
+    bar.querySelector(".hint").textContent = "往下滑动。字是黑体、正的；颜色是荧光笔涂在字上，不是胶囊。标题行跟现在检查器一样，只换这一笔。下面三粒是已做未测 / 测试未过 / 未开发。看中了把编号发我，例如「标签 11」。不用点。";
+  }
+  const trash = `<span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span>`;
+  const names = [
+    ["01","腰涂微斜"],["02","更斜"],["03","不斜"],["04","只涂字腰"],["05","整格涂满"],
+    ["06","带对勾"],["07","淡涂"],["08","很浓"],["09","左右冒头"],["10","贴字"],
+    ["11","圆头笔"],["12","方头笔"],["13","上扬"],["14","下压"],["15","两笔叠"],
+    ["16","尾淡"],["17","字距松"],["18","字距紧"],["19","稍大"],["20","稍小"],
+    ["21","偏下划"],["22","偏上划"],["23","荧光绿"],["24","更宽"],["25","更窄"],
+    ["26","更厚"],["27","更薄"],["28","毛边"],["29","勾加字"],["30","半透明"],
+    ["31","大圆角"],["32","短涂"],["33","过冲"],["34","歪圆头"],["35","左侧重"],
+    ["36","右侧重"],["37","中间亮"],["38","竖向更满"],["39","底三分一"],["40","斜切角"],
+    ["41","加粗字"],["42","细字"],["43","黄绿"],["44","薄荷"],["45","柠檬"],
+    ["46","青柠"],["47","笔触纹理"],["48","三笔"],["49","纸上微影"],["50","最荧光"]
   ];
-  const body = `<div class="hit"><i class="dot success"></i><div><p>npx/init/set-language 属于冷启动，不是 hook。</p></div></div>`;
-  const root = document.getElementById("g-scroll");
-  root.innerHTML = VARIANTS.map(v=>{
-    const attrs = ["sep","tint","plus","note","indent","head","stack","quiet"]
-      .filter(k=>v[k]).map(k=>`data-${k}="${v[k]}"`).join(" ");
-    return `<article class="g-item" id="v${v.id}">
-      <div class="g-num">${v.id} · ${v.name}</div>
-      <aside class="drawer g-mock" data-v="${v.id}" ${attrs}>
-        <h2>冷启动 <span class="state-chip untested">已做未测</span></h2>
-        <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
-        <div class="actions">
-          <button type="button">＋ 模块</button>
-          <button type="button">＋ 子节点</button>
-          <button type="button" class="quiet">删除</button>
-        </div>
-        <section class="sec mem"><header>记忆 1 <span class="add">+</span></header><div class="body">${body}</div></section>
-        <section class="sec idea"><header>Idea <span class="add">+</span></header><div class="body"></div></section>
-        <section class="sec bug"><header>Bug <span class="add">+</span></header><div class="body"></div></section>
-        <section class="sec inh"><header>继承的 5</header><div class="body"></div></section>
-      </aside>
-    </article>`;
+  const okOf = id => (id==="06"||id==="29") ? `<b>✓</b>测试通过` : "测试通过";
+  const uOf = () => "已做未测";
+  const fOf = () => "测试未过";
+  const dOf = () => "未开发";
+  document.getElementById("g-scroll").innerHTML = names.map(([id, name]) => {
+    const chip = `<span class="chip">${okOf(id)}</span>`;
+    const alts = `<div class="alts"><span class="chip u">${uOf()}</span><span class="chip f">${fOf()}</span><span class="chip d">${dOf()}</span></div>`;
+    return `<article class="g-item" id="v${id}"><div class="g-num">${id} · ${name}</div><aside class="g-mock g-ch-mock g-ch-${id}"><div class="who"><h2>冷启动</h2>${chip}<span class="sp"></span>${trash}</div><p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>${alts}</aside></article>`;
   }).join("");
+}
+function bootTrashIconGallery(){
+  document.title = "垃圾桶图标 · 50 版";
+  document.documentElement.classList.add("g-kind-trash");
+  const bar = document.querySelector("#design-gallery .g-bar");
+  if(bar){
+    bar.querySelector("b").textContent = "垃圾桶图标 · 50 版";
+    bar.querySelector(".hint").textContent = "往下滑动，指针放上图标看动效。标题行跟现在检查器一样，只换垃圾桶。看中了把编号发我，例如「垃圾桶 12」。";
+  }
+  const s = (inner, sw) =>
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw||1.8}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+  const f = inner =>
+    `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${inner}</svg>`;
+  const lidH = `<g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g>`;
+  const lidLine = `<g class="lid"><path d="M4.5 7.1h15"/></g>`;
+  const canR = `<g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g>`;
+  const ribs2 = `<g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g>`;
+  const ribs3 = `<g class="rib"><path d="M9.5 11.2v6"/><path d="M12 11.2v6"/><path d="M14.5 11.2v6"/></g>`;
+  const ring = `<circle class="ring" cx="12" cy="13" r="10" stroke-width="1.2" fill="none"/>`;
+  const L = [];
+  const add = (id, name, icon) => L.push({id, name, icon});
+  add("01", "盖子弹起", s(lidH+canR+ribs2));
+  add("02", "盖子掀开", s(lidH+canR+ribs2, 2));
+  add("03", "整桶轻晃", s(lidH+canR+ribs2, 2.2));
+  add("04", "轻轻放大", s(lidLine+canR+ribs2, 1.4));
+  add("05", "盖子拍下", s(lidH+canR));
+  add("06", "纸屑掉进", s(lidH+canR+`<g class="paper"><path d="M10 4v3M13.5 4.5v2.6"/></g>`+ribs2));
+  add("07", "桶身一歪", s(`<g class="lid"><path d="M5 7h14"/></g><g class="can"><path d="M7.2 7l.6 13h8.4l.6-13"/></g>`+ribs2));
+  add("08", "线条走一圈", s(lidH+canR+ribs2, 1.6));
+  add("09", "空心变实心", s(lidH+`<g class="can"><path d="M7 8h10l-.9 11.2H7.9z"/></g>`+ribs2));
+  add("10", "呼吸放大", s(lidH+canR+ribs3));
+  add("11", "盖子飞走", s(lidH+`<g class="can"><path d="M7.4 7.1v12.2a1.4 1.4 0 0 0 1.4 1.4h6.4a1.4 1.4 0 0 0 1.4-1.4V7.1"/></g>`+ribs2));
+  add("12", "弹一下", s(lidH+`<g class="can"><rect x="7" y="7.2" width="10" height="13" rx="2"/></g>`+ribs2));
+  add("13", "压扁", s(lidH+canR+ribs2, 2.4));
+  add("14", "拧一点", s(`<g class="lid"><rect x="10" y="2.8" width="4" height="2" rx="1" fill="currentColor" stroke="none"/><path d="M4 7h16"/></g>`+canR+ribs2));
+  add("15", "纸张滑入", s(lidLine+canR+`<g class="paper"><path d="M12 3.2v5"/></g>`+ribs2));
+  add("16", "竖线收起", s(lidH+canR+ribs3, 1.7));
+  add("17", "圆圈围住", s(lidH+canR+ribs2+ring));
+  add("18", "盖子点头", s(`<g class="lid"><rect x="8.8" y="3" width="6.4" height="2" rx="1" fill="currentColor" stroke="none"/><path d="M4 7.2h16"/></g>`+canR+ribs2));
+  add("19", "轻轻闪", s(lidLine+`<g class="can"><path d="M8 7.2h8v12.4H8z"/></g>`+ribs2, 1.5));
+  add("20", "左右晃", s(lidH+`<g class="can"><path d="M6.8 7.2h10.4l-1.1 12.6H7.9z"/></g>`+ribs2));
+  add("21", "盖子滑开", s(`<g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M3.5 7.1h17"/></g>`+canR+ribs2));
+  add("22", "桶口张开", s(lidLine+`<g class="can"><path d="M6.5 7.4l1.2 12.4h8.6l1.2-12.4"/></g>`+ribs2));
+  add("23", "小块散开", s(lidH+canR+`<g class="paper"><rect class="bit" x="9" y="4" width="1.4" height="1.4" fill="currentColor" stroke="none"/><rect class="bit" x="12" y="3.2" width="1.4" height="1.4" fill="currentColor" stroke="none"/><rect class="bit" x="14.6" y="4.2" width="1.4" height="1.4" fill="currentColor" stroke="none"/></g>`+ribs2));
+  add("24", "往下顿一下", s(lidH+canR+ribs2, 2.1));
+  add("25", "橡皮筋", s(lidH+`<g class="can"><path d="M7 7.2h10v12.5a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z"/></g>`+ribs2));
+  add("26", "盖子隐去", s(lidLine+canR+ribs2, 1.9));
+  add("27", "斜切", s(lidH+canR+`<g class="rib"><path d="M12 10.8v6.4"/></g>`));
+  add("28", "盖子竖起", s(lidH+canR+`<g class="rib"><path d="M10.2 11v6M13.8 11v6"/></g>`, 1.85));
+  add("29", "墨水填满", s(lidH+canR+`<rect class="ink" x="8.2" y="10.4" width="7.6" height="8.4" rx="1" fill="currentColor" stroke="none" opacity=".35"/>`+ribs2));
+  add("30", "小纸飞入", s(lidLine+canR+`<g class="paper"><path d="M11 3.4h2v4h-2z" fill="currentColor" stroke="none" opacity=".85"/></g>`+ribs2));
+  add("31", "提手一晃", s(`<g class="lid"><path d="M9.2 4.2h5.6"/><path d="M4.5 7h15"/></g>`+canR+ribs2, 2));
+  add("32", "线变粗", s(lidH+canR+ribs2, 1.3));
+  add("33", "桶缩小", s(lidH+`<g class="can"><path d="M8 7.1v12.3a1.5 1.5 0 0 0 1.5 1.5h5a1.5 1.5 0 0 0 1.5-1.5V7.1"/></g>`+ribs2));
+  add("34", "弹出", f(`<g class="lid"><rect x="8.5" y="3" width="7" height="2" rx="1"/><rect x="4" y="5.2" width="16" height="2.2" rx="1"/></g><g class="can"><path d="M7 8h10l-.9 12.2a1.6 1.6 0 0 1-1.6 1.4H9.5a1.6 1.6 0 0 1-1.6-1.4z"/></g>`));
+  add("35", "盖子跳", s(lidH+canR+`<path d="M8 20.8h8"/>`+ribs2));
+  add("36", "涟漪", s(lidH+canR+ribs2+`<circle class="ring" cx="12" cy="13" r="9" fill="none" stroke-width="1.3"/>`));
+  add("37", "虚线绕", s(lidH+canR+ribs2+`<circle class="ring" cx="12" cy="13" r="10" fill="none" stroke-width="1.2" stroke-dasharray="3 3"/>`));
+  add("38", "折一下", s(lidH+`<g class="can"><path d="M7.5 7.2h9v12.6h-9z"/></g>`+ribs2, 1.9));
+  add("39", "盖章", f(`<g class="lid"><path d="M9 3h6l1 2h4v2H4V5h4z"/></g><g class="can"><path d="M7 8h10v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z"/><rect class="rib" x="10" y="10.5" width="1.4" height="7" rx=".4" fill="#fffdf8"/><rect class="rib" x="12.8" y="10.5" width="1.4" height="7" rx=".4" fill="#fffdf8"/></g>`));
+  add("40", "融化", s(lidH+`<g class="can"><path d="M6.8 7.2h10.4c.2 4 .6 8.2.2 12.6H7.2c-.5-4.2-.2-8.4-.4-12.6z"/></g>`+ribs2));
+  add("41", "眨一下", s(lidH+canR+`<g class="eye"><circle cx="10.2" cy="13.4" r=".9" fill="currentColor" stroke="none"/><circle cx="13.8" cy="13.4" r=".9" fill="currentColor" stroke="none"/></g>`));
+  add("42", "拍盖", s(lidH+canR+ribs2, 2.3));
+  add("43", "纸团进去", s(lidLine+canR+`<g class="paper"><path d="M11.2 4.2l.4 2.2 1.6-.6-.8 2.4 1.4 1.1-2.2.2-.6 2-1-1.8-2 .4 1.4-1.8z" fill="currentColor" stroke="none"/></g>`));
+  add("44", "往上抽", s(lidH+canR+`<g class="rib"><path d="M10 11.6v5.2M14 11.6v5.2"/></g>`, 1.75));
+  add("45", "从中裂开", s(lidH+canR+`<g class="rib"><path d="M10 11v6"/><path d="M14 11v6"/></g>`));
+  add("46", "颜色加深", s(lidH+canR+ribs3, 2));
+  add("47", "敲两下", s(lidH+canR+ribs2+`<path d="M9 20.9h6"/>`));
+  add("48", "先抬再落", s(lidH+canR+`<g class="paper"><path d="M12 3.6v4.2"/></g>`+ribs2));
+  add("49", "微微浮起", s(lidH+`<g class="can"><path d="M7 7.2h10l-1 12.6H8z"/></g>`+ribs2, 1.6));
+  add("50", "圆盖探头", s(`<g class="lid"><rect x="8.4" y="3" width="7.2" height="2.2" rx="1.1" fill="currentColor" stroke="none"/><path d="M4.2 7.2h15.6"/></g>`+`<g class="can"><rect x="7" y="7.2" width="10" height="12.6" rx="3"/></g>`+ribs2));
+
+  const card = icon => `<div class="who"><h2>冷启动</h2><span class="st">已做未测</span><span class="sp"></span><button type="button" class="ico" aria-label="删除">${icon}</button></div>
+    <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
+    <p class="hint">指针放上去看动效。这里只换图标。</p>`;
+  document.getElementById("g-scroll").innerHTML = L.map(v =>
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-tr-mock g-tr-${v.id}">${card(v.icon)}</aside></article>`
+  ).join("");
+}
+function bootAddActionGallery(){
+  document.title = "新增这一行 · 50 版";
+  const bar = document.querySelector("#design-gallery .g-bar");
+  if(bar){
+    bar.querySelector("b").textContent = "新增这一行 · 50 版";
+    bar.querySelector(".hint").textContent = "往下滑动。标题、用途、记忆卡跟现在检查器一样，只有「新增 / 删除」这一行在换。看中了把编号发我，例如「新增 03」。不用点。";
+  }
+  const frozen = slot => `<h2>冷启动 <span class="st">已做未测</span></h2>
+    <p class="lead">skill 怎么进机器、第一次怎么建图：安装、init、语言、层对层商量</p>
+    <div class="slot">${slot}</div>
+    <div class="note"><span class="add">记忆 ＋</span><p>npx/init/set-language 属于冷启动，不是 hook。</p></div>
+    <div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div>
+    <div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div>
+    <div class="inh">继承的 5</div>`;
+  const L = [];
+  const add = (id, name, slot) => L.push({id, name, html: frozen(slot)});
+  add("01", "现况双钮", `<div class="row"><span class="b">＋ 模块</span><span class="b">＋ 子节点</span><span class="q">删除</span></div>`);
+  add("02", "一钮再选", `<span class="b">＋ 新增 ▾</span><div class="menu"><i class="on">模块</i><i>节点</i></div>`);
+  add("03", "图上那个＋", `<span class="plus">＋</span><div class="pop"><i>模块</i><i>节点</i></div>`);
+  add("04", "三个字链", `<a>模块</a><a>节点</a><a class="del">删除</a>`);
+  add("05", "先说再选", `<p class="hint">在这个节点下面加：</p><a>模块</a><a>节点</a>`);
+  add("06", "一个主按钮", `<div class="row"><span class="b">＋ 新增</span><span class="q">删除</span></div>`);
+  add("07", "分段再添加", `<div class="row"><span class="seg"><i class="on">模块</i><i>节点</i></span><span class="b">添加</span></div>`);
+  add("08", "标题旁小＋", `<span class="hint">加号在标题右边，这一行空着。</span>`);
+  add("09", "让图上的＋干", `<p class="hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p>`);
+  add("10", "全宽一条", `<span class="b wide">＋ 新增模块或节点</span>`);
+  add("11", "两张小卡", `<div class="cards"><i>模块<u>一块开工面</u></i><i>节点<u>一件具体的事</u></i></div>`);
+  add("12", "两个图标", `<div class="row"><span class="ico">▣</span><span class="ico">○</span><span class="q">删除</span></div>`);
+  add("13", "从底升起", `<div class="sheet"><i>新增模块</i><i>新增节点</i><i class="x">取消</i></div>`);
+  add("14", "下拉选择", `<div class="sel"><span>新增…</span><span>▾</span></div>`);
+  add("15", "两粒芯片", `<div class="row"><span class="chip">模块</span><span class="chip">节点</span><span class="chip x">删除</span></div>`);
+  add("16", "检查器只删", `<span class="q">删除</span>`);
+  add("17", "收进三点", `<span class="more">···</span>`);
+  add("18", "滑块选种类", `<div class="row"><span class="slide"><b></b><i>模块</i><i>节点</i></span><span class="b">添加</span></div>`);
+  add("19", "开关当模块", `<div class="row"><span class="b">＋ 添加</span><span class="tog">作为模块 <u></u></span></div>`);
+  add("20", "虚线投放", `<div class="drop">＋ 放到这里<span>模块或节点，点了再选</span></div>`);
+  add("21", "像记忆卡那样", `<div class="fake">新增 ＋</div>`);
+  add("22", "两步", `<div class="step">① 选种类</div><div class="row"><span class="b">模块</span><span class="b">节点</span></div>`);
+  add("23", "先起名", `<div class="ph">名称，回车后再选模块或节点</div>`);
+  add("24", "一粒黄胶囊", `<span class="pill">＋ 新增</span>`);
+  add("25", "无阴影双钮", `<div class="row"><span class="flat">＋ 模块</span><span class="flat">＋ 节点</span><span class="q">删除</span></div>`);
+  add("26", "跟地图同一套", `<div class="row"><span class="b">＋</span><span class="hint">点开后选模块或节点</span></div>`);
+  add("27", "底栏三格", `<div class="dock"><i>模块</i><i>节点</i><i>删除</i></div>`);
+  add("28", "模块为主", `<div class="row"><span class="b">＋ 模块</span><span class="q">＋ 节点</span><span class="q">删除</span></div>`);
+  add("29", "节点为主", `<div class="row"><span class="b">＋ 节点</span><span class="q">＋ 模块</span><span class="q">删除</span></div>`);
+  add("30", "三等分", `<div class="tri"><i>模块</i><i>节点</i><i>删除</i></div>`);
+  add("31", "小字新增", `<p class="hint">新增 · 模块 / 节点</p>`);
+  add("32", "手写", `<div class="hand">加模块 / 加节点</div>`);
+  add("33", "命令行", `<div class="term">$ add [--module|--node]</div>`);
+  add("34", "报纸栏", `<div class="paper"><b>新增</b> 模块 · 节点 &nbsp;&nbsp; <b>删</b></div>`);
+  add("35", "瑞士两个词", `<span class="swiss">模块</span><span class="swiss">节点</span>`);
+  add("36", "右下圆钮", `<span class="fab">＋</span>`);
+  add("37", "蓝字无框", `<a>＋ 模块</a> <a>＋ 节点</a> <a class="del">删除</a>`);
+  add("38", "删除离远点", `<div class="row"><span class="b">＋ 新增</span></div><div class="row" style="margin-top:18px"><span class="q">删除这个节点</span></div>`);
+  add("39", "先问一句", `<p class="ask">加模块，还是加节点？</p><div class="row"><span class="b">模块</span><span class="b">节点</span></div>`);
+  add("40", "单选再确认", `<div class="rad"><i class="on">模块</i><i>节点</i></div>`);
+  add("41", "页签", `<div class="tabs"><i class="on">模块</i><i>节点</i></div>`);
+  add("42", "长句子", `<span class="b long">在「冷启动」下面加一个模块或节点</span>`);
+  add("43", "极简", `<div class="row"><span class="dotplus">＋</span><span class="q">删除</span></div>`);
+  add("44", "不分种类", `<span class="b">＋ 子项</span>`);
+  add("45", "删前再问", `<div class="row"><span class="b">＋ 新增</span></div><div class="confirm">删除？ <span class="q">取消</span> <span class="q">删</span></div>`);
+  add("46", "说清楚孩子", `<p class="kid">冷启动的孩子</p><div class="row"><span class="b">＋ 模块</span><span class="b">＋ 节点</span></div>`);
+  add("47", "左右两栏", `<div class="cols"><i>模块</i><i>节点</i></div>`);
+  add("48", "折叠新增", `<div class="fold">新增 ▾<span>模块 · 节点</span></div>`);
+  add("49", "现况但合成", `<div class="row"><span class="b">＋ 模块或节点</span><span class="q">删除</span></div>`);
+  add("50", "一个＋收掉删除", `<span class="b">＋</span>`);
+
+  /* 08 把小加号画在标题上，slot 仍占位。 */
+  const htmlFor = v => {
+    let inner = v.html;
+    if(v.id==="08") inner = inner.replace("<h2>冷启动", "<h2>冷启动 <span class=\"tiny\">＋</span>");
+    return inner;
+  };
+  document.getElementById("g-scroll").innerHTML = L.map(v =>
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-add-mock g-add-${v.id}">${htmlFor(v)}</aside></article>`
+  ).join("");
+}
+function bootDesignGallery(){
+  if(window.__CG_GALLERY_KIND==="add"){
+    bootAddActionGallery();
+    return;
+  }
+  if(window.__CG_GALLERY_KIND==="trash"){
+    bootTrashIconGallery();
+    return;
+  }
+  if(window.__CG_GALLERY_KIND==="chip"){
+    bootChipGallery();
+    return;
+  }
+  document.title = "工作台风格 · 50 版";
+  const barEl = document.querySelector("#design-gallery .g-bar");
+  if(barEl){
+    barEl.querySelector("b").textContent = "工作台风格 · 50 版";
+    barEl.querySelector(".hint").textContent = "往下滑动。画布和右侧栏跟现在工作台一样，只有顶栏换风格。看中了把编号发我，例如「风格 17」。不用点。";
+  }
+  const card = `<span class="here">Context Guard <i class="caret">▾</i></span>`;
+  const stage = `<div class="stage"><div class="map"><div class="root"><b>Context Guard</b><span>人与 Agent 共用的项目记忆，活在仓库里</span></div><div class="kids"><div class="mod"><b>工作台</b><span>人在浏览器看图、改记忆、确认提议</span></div><div class="mod"><b>冷启动</b><span>skill 怎么进机器、第一次怎么建图</span></div><div class="mod"><b>底层文件系统</b><span>会话、坏例、任务怎么写、怎么跳</span></div><div class="mod"><b>hook</b><span>当前开发进程的生命周期提醒</span></div><div class="mod"><b>CI/CD</b><span>以后怎么自动验；夹具挂在这里</span></div></div></div><aside class="insp"><div class="who"><h2>Context Guard</h2><span class="st">已做未测</span><span class="sp"></span><span class="trash" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></span></div><p class="add-hint">要加模块或节点，去图上点 ＋。这里不放按钮。</p><div class="note"><span class="add">记忆 ＋</span><p>第一层由人锁定：工作台、冷启动、底层文件系统、hook、CI/CD。</p><p>SKILL.md 合同挂在根上。</p></div><div class="note"><span class="add">Idea ＋</span><p class="empty">还没有</p></div><div class="note"><span class="add">Bug ＋</span><p class="empty">还没有</p></div></aside></div>`;
+  const shell = bar => `<div class="bar">${bar}</div>${stage}`;
+  const L = [];
+  const add = (id, name, bar) => L.push({id, name, html: shell(bar)});
+
+  add("01", "现况粗框",
+    `${card}<span class="sp"></span><div class="tools"><span class="box dir"><i></i><span>左右</span><span>上下</span></span><span class="box">关系</span><span class="box sq">🔑</span><span class="box">🐞 Bug (1)</span><span class="box sq">⚙</span></div>`);
+  add("02", "细线字钮",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("03", "纯文字",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug <b>1</b></span><span>设置</span></div>`);
+  add("04", "静音圆标",
+    `${card}<span class="sp"></span><div class="tools"><span class="ico">↕</span><span class="ico">⇄</span><span class="ico">🔑</span><span class="ico bug">1</span><span class="ico">⚙</span></div>`);
+  add("05", "浮岛",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("06", "左右两岛",
+    `<div class="island">${card}</div><div class="island r"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("07", "两行",
+    `<div class="r1">项目</div><div class="r2">${card}<div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div></div>`);
+  add("08", "路径",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("09", "刊头",
+    `${card}<div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug</span><span>⚙</span></div>`);
+  add("10", "IDE",
+    `<span class="dots"><i></i><i></i><i></i></span>${card}<div class="tools"><span>TB</span><span>Rel</span><span>Auth</span><span>Bug</span><span>⚙</span></div>`);
+  add("11", "报纸报头",
+    `<div class="kicker">Project memory · Thursday</div>${card}<div class="row"><span>上下</span><span>关系 · 授权 · Bug 1 · 设置</span></div>`);
+  add("12", "深色墨条",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div>`);
+  add("13", "浅托盘",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("14", "左边色签",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("15", "分段一条",
+    `${card}<span class="sp"></span><div class="seg"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div>`);
+  add("16", "瑞士留白",
+    `${card}<span class="sp"></span><div class="tools"><span>LAYOUT</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div>`);
+  add("17", "和纸红印",
+    `<span class="seal">守</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>虫 1</span><span>设</span></div>`);
+  add("18", "毛玻璃",
+    `${card}<span class="sp"></span><div class="tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
+  add("19", "线圈本",
+    `<div class="rings"><i></i><i></i></div>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("20", "地图图例",
+    `<span class="leg">LEGEND</span>${card}<span class="sp"></span><div class="tools"><span class="sym"><i></i>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("21", "印章题名",
+    `<span class="chop">守</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("22", "终端条",
+    `${card}<span class="sp"></span><div class="tools"><span>--tb</span><span>rel</span><span>auth</span><span>bug:1</span><span>cfg</span></div>`);
+  add("23", "大标题导航",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div>`);
+  add("24", "文件名居中",
+    `<span class="side">☰</span>${card}<div class="tools"><span>↕</span><span>⇄</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
+  add("25", "无边框",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("26", "深色紧凑",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span class="bug">Bug 1</span><span>设置</span></div>`);
+  add("27", "衬线刊头",
+    `${card}<span class="sp"></span><div class="tools"><span>Layout</span><span>Edges</span><span>Key</span><span>Bugs</span><span>More</span></div>`);
+  add("28", "图标带小字",
+    `${card}<span class="sp"></span><div class="tools"><span class="ic"><b>↕</b><u>上下</u></span><span class="ic"><b>⇄</b><u>关系</u></span><span class="ic"><b>🔑</b><u>授权</u></span><span class="ic"><b>🐞</b><u>Bug</u></span><span class="ic"><b>⚙</b><u>设置</u></span></div>`);
+  add("29", "单胶囊",
+    `${card}<span class="sp"></span><div class="cap"><span>上下</span><span>关系</span><span>授权</span><span class="on">Bug 1</span><span>设置</span></div>`);
+  add("30", "顶上一根黄线",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("31", "折角纸",
+    `<span class="fold"></span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("32", "蓝图",
+    `${card}<span class="sp"></span><div class="tools"><span>TB</span><span>REL</span><span>KEY</span><span>BUG</span><span>SET</span></div>`);
+  add("33", "展签",
+    `<div><div class="k">Node map</div>${card}</div><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("34", "票根",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span></div><span class="sn">No. 0823</span>`);
+  add("35", "中间跳转槽",
+    `${card}<div class="jump">跳到模块…</div><div class="tools"><span>上下</span><span>关系</span><span>🔑</span><span>1</span><span>⚙</span></div>`);
+  add("36", "状态当一句",
+    `${card}<span class="sent">上下布局 · <span class="bad">1 个 Bug</span></span><div class="tools"><span>关系</span><span>授权</span><span>设置</span></div>`);
+  add("37", "底下贴页签",
+    `<div class="r1">${card}<span class="sp"></span><span>🔑</span><span>⚙</span></div><div class="tabs"><span>上下</span><span>关系</span><span class="on">Bug 1</span></div>`);
+  add("38", "双细线古典",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("39", "软色片",
+    `${card}<span class="sp"></span><div class="tools"><span class="chip">上下</span><span class="chip">关系</span><span class="chip">授权</span><span class="chip bug">Bug 1</span><span class="chip">设置</span></div>`);
+  add("40", "几何小标",
+    `<i class="mark"></i>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("41", "罗盘布局",
+    `<span class="comp">北<br>南</span>${card}<span class="sp"></span><div class="tools"><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("42", "微字大气",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("43", "巨大标题",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug</span><span>设置</span></div>`);
+  add("44", "几乎空白",
+    `${card}<span class="more">···</span>`);
+  add("45", "左边书脊",
+    `<span class="spine">CG</span>${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("46", "比例尺",
+    `${card}<div class="rule"><span>左右</span><span class="on">上下</span></div><div class="tools"><span>关系</span><span>🔑</span><span>Bug 1</span><span>⚙</span></div>`);
+  add("47", "手写题头",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("48", "淡彩分层",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+  add("49", "工具收进菜单",
+    `${card}<span class="sp"></span><div class="tools"><span class="menu">···</span></div>`);
+  add("50", "一条金线",
+    `${card}<span class="sp"></span><div class="tools"><span>上下</span><span>关系</span><span>授权</span><span>Bug 1</span><span>设置</span></div>`);
+
+  document.getElementById("g-scroll").innerHTML = L.map(v =>
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-chrome g-lay-${v.id}">${v.html}</aside></article>`
+  ).join("");
 }
 async function boot(){
   if(window.__CG_GALLERY){
@@ -3864,7 +4315,9 @@ async function boot(){
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
     notice.style.cssText="position:fixed;bottom:10px;left:10px;z-index:10000;background:white;padding:12px;border:1px solid";
     document.body.append(notice);
-    await loadMapFromHttp(); renderAll(); fitView(); return;
+    await loadMapFromHttp();
+    authUnlockAll();
+    renderAll(); fitView(); return;
   }
   workbenchSync=new WorkbenchSync({
     getRoot:()=>data,
@@ -3875,12 +4328,13 @@ async function boot(){
   const publishButton=document.getElementById("btn-publish-main");
   if(publishButton) publishButton.onclick=publishCloudMain;
   const connected=await workbenchSync.start();
-  if(!connected){ await loadMapFromHttp(); applyingServerMap=true; renderAll(); applyingServerMap=false; }
-  // A local server owns exactly one project. Switching demo repositories is preview-only.
-  if(window.__CG_SERVER || window.__CG_CLOUD_READONLY){ document.getElementById("repo-title").onclick=null; document.getElementById("repo-menu").style.display="none"; }
-  if(!window.__CG_SERVER){
-    document.addEventListener("click",e=>{ const b=e.target.closest("[data-act],.add-child,.auth-dot,.node .accept,.node .cancel"); if(b){ e.preventDefault(); e.stopImmediatePropagation(); workbenchSync.setStatus("readonly"); } },true);
+  if(!connected){
+    await loadMapFromHttp();
+    if(!window.__CG_SERVER) authUnlockAll();
+    applyingServerMap=true; renderAll(); applyingServerMap=false;
   }
+  // A local server owns exactly one project. Switching demo repositories is preview-only.
+  if(window.__CG_SERVER || window.__CG_CLOUD_READONLY){ document.getElementById("repo-menu").style.display="none"; }
   if(window.__CG_PREVIEW){
     closeOverlay();
     currentRepo().firstUseOpen = false;
@@ -3894,9 +4348,13 @@ async function boot(){
     phoneBanner.textContent = "电脑预览 · 强制宽屏布局";
   }
   syncThemePicks();
+  if(window.__CG_PREVIEW || !window.__CG_SERVER) authUnlockAll();
   renderAll();
   finishDrawerChrome();
   fitView();
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(()=>{ syncChrome(); renderAll(); fitView(); }).catch(()=>{});
+  }
   if(new URLSearchParams(location.search).has("settings")){
     const menu = document.getElementById("settings-menu");
     const btn = document.getElementById("btn-settings");

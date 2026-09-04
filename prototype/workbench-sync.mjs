@@ -75,7 +75,8 @@ export class WorkbenchSync {
     this.panel.querySelector('#cg-sync-version').textContent = this.version ? this.version.slice(0, 10) : '';
     this.panel.querySelector('#cg-sync-version').dataset.version = this.version || '';
     const attention = { readonly: '只读', conflict: '同步冲突', offline: '连接中断', error: '保存失败' }[status];
-    this.notice.hidden = !attention;
+    /* 静态 htmlpreview 没有服务端：设置里仍记只读，顶栏不要跳出「只读」条。 */
+    this.notice.hidden = !this.config || !attention;
     this.notice.textContent = attention || '';
     this.notice.title = attention ? this.panel.querySelector('#cg-sync-status').textContent + '；请打开设置中的同步与恢复' : '';
   }

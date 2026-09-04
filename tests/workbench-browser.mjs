@@ -2,6 +2,7 @@ import '../.github/scripts/test-environment.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -34,6 +35,36 @@ function recordCheck(name) { checks.push(name); console.log(`Browser check passe
 const read = async () => JSON.parse(await fs.readFile(mapPath, 'utf8'));
 async function until(fn, timeout = 6000) { const end = Date.now() + timeout; while (!await fn()) { if (Date.now() >= end) throw new Error('condition timed out'); await pause(25); } }
 const synchronized = () => page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+async function servePrototype() {
+  const protoDir = path.join(workspace, 'prototype');
+  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, 'http://127.0.0.1');
+      const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'workbench.html';
+      const file = path.normalize(path.join(protoDir, rel));
+      if (!file.startsWith(protoDir + path.sep)) { res.writeHead(403); res.end(); return; }
+      const data = await fs.readFile(file);
+      res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
+      res.end(data);
+    } catch { res.writeHead(404); res.end(); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return server;
+}
+async function chromeHeights(target) {
+  return target.evaluate(() => {
+    const els = [
+      document.querySelector('.nav-crumbs .here'),
+      document.getElementById('dir-toggle'),
+      document.getElementById('rel-toggle'),
+      document.getElementById('btn-auth'),
+      document.getElementById('btn-bugs'),
+      document.getElementById('btn-settings'),
+    ].filter(el => el && el.offsetParent);
+    return els.map(el => Math.round(el.getBoundingClientRect().height));
+  });
+}
 async function openSyncSettings() {
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') !== 'true') await page.locator('#btn-settings').click();
   if (await page.locator('#cg-sync').getAttribute('open') === null) await page.locator('#cg-sync summary').click();
@@ -255,6 +286,40 @@ try {
   assert.equal(await page.locator('#session-status').getAttribute('aria-label'), '已完成');
   recordCheck('icon-only-session-status');
   assert.equal((await read()).root.title, '浏览器验收'); recordCheck('legacy-cache-not-written');
+  const chrome = await chromeHeights(page);
+  assert.ok(chrome.length >= 3, 'chrome buttons are on screen');
+  assert.equal(new Set(chrome).size, 1, `chrome button heights ${chrome.join(',')}`);
+  await page.locator('.node[data-id="N1"]').click();
+  const trashBtn = page.locator('#detail button.trash');
+  assert.equal(await trashBtn.count(), 1, 'non-root inspector has a delete trash');
+  const actH = await trashBtn.evaluate(el => Math.round(el.getBoundingClientRect().height));
+  assert.equal(actH, chrome[0], `inspector trash height ${actH} vs chrome ${chrome[0]}`);
+  assert.equal(await page.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
+  assert.ok((await page.locator('#detail .add-hint').textContent()).includes('去图上点'));
+  assert.equal(await trashBtn.locator('.lid').count(), 1, 'live trash uses the lid-open icon');
+  await trashBtn.hover();
+  const lidMove = await trashBtn.locator('.lid').evaluate(el => getComputedStyle(el).transform);
+  assert.notEqual(lidMove, 'none', `lid should open on hover, got ${lidMove}`);
+  const liveMark = await page.evaluate(() => {
+    const s = document.createElement('span');
+    s.className = 'state-chip success';
+    s.textContent = '测试通过';
+    document.querySelector('#detail').appendChild(s);
+    const cs = getComputedStyle(s);
+    const mark = getComputedStyle(s, '::before');
+    const m = new DOMMatrix(mark.transform);
+    const out = { bg: cs.backgroundColor, radius: cs.borderRadius, color: cs.color, size: cs.fontSize, mark: mark.backgroundColor, content: mark.content, markRadius: mark.borderRadius, skewC: m.c };
+    s.remove();
+    return out;
+  });
+  assert.equal(liveMark.bg, 'rgba(0, 0, 0, 0)', `live chip should not be a pill, got ${liveMark.bg}`);
+  assert.equal(liveMark.radius, '0px');
+  assert.equal(liveMark.color, 'rgb(45, 45, 45)');
+  assert.equal(liveMark.size, '14px');
+  assert.equal(liveMark.mark, 'rgb(198, 237, 110)', `highlighter mark ${liveMark.mark}`);
+  assert.equal(liveMark.markRadius, '10px', 'live chip follows gallery 11 round marker, scaled up');
+  assert.ok(Math.abs(liveMark.skewC - Math.tan(-4 * Math.PI / 180)) < 0.01, `round-head skew ${liveMark.skewC}`);
+  recordCheck('chrome-button-height');
   const splitBox = await page.locator('#drawer-split').boundingBox();
   assert.ok(splitBox && splitBox.width >= 16, 'inspector split is on screen');
   const widthBefore = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--drawer-width').trim());
@@ -336,7 +401,10 @@ try {
   assert.ok(confirmation.events.some(event => event.actor.kind === 'human'));
   assert.equal((await cli('inbox')).receipt, confirmation.receipt);
   await cli('ack', undefined, ['--receipt', 'invalid-receipt'], 'RECEIPT_MISMATCH');
-  await page.locator('#detail [data-act="child"]').click(); await page.locator('[data-ed="compose-title"]').fill('人类新增子节点'); await page.locator('[data-act="compose-ok"]').click(); await synchronized();
+  await page.locator('.node[data-id="N2"] .add-child').click();
+  await page.locator('.node[data-id="N2"].picking .add-pick [data-add="work"]').click();
+  await page.locator('[data-ed="compose-title"]').fill('人类新增子节点');
+  await page.locator('[data-act="compose-ok"]').click(); await synchronized();
   await until(async () => (await read()).root.children.find(x => x.id === 'N2')?.children.some(x => x.title === '人类新增子节点')); recordCheck('human-create');
   assert.equal((await cli('inbox')).receipt, confirmation.receipt, 'Unacknowledged delivery must survive a later edit');
   assert.equal((await cli('ack', undefined, ['--receipt', confirmation.receipt])).acknowledged, true);
@@ -468,6 +536,588 @@ try {
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
+  stage = 'delete-reparent';
+  const createdChild = (await read()).root.children.find(x => x.id === 'N2')?.children.find(x => x.title === '人类新增子节点');
+  assert.ok(createdChild, 'human-created child is still under N2');
+  await page.locator('.node[data-id="N2"]').click();
+  await page.locator('#detail button.trash').click();
+  assert.ok((await page.locator('#detail .delete-ask').textContent()).includes('接到上一级'));
+  await page.locator('#detail [data-act="delete-keep"]').click();
+  await synchronized();
+  await until(async () => {
+    const map = await read();
+    const n2 = map.root.children.find(x => x.id === 'N2');
+    const sibling = map.root.children.find(x => x.title === '人类新增子节点');
+    return n2?.proposal === 'cancelled' && sibling?.id === createdChild.id;
+  });
+  assert.equal((await read()).root.children.find(x => x.id === 'N2')?.children.some(x => x.title === '人类新增子节点'), false);
+  await page.locator(`.node[data-id="${createdChild.id}"]`).click();
+  await page.locator('#detail button.trash').click();
+  assert.equal(await page.locator('#detail .delete-ask').count(), 0, 'leaf delete must not ask about children');
+  await synchronized();
+  await until(async () => (await read()).root.children.find(x => x.id === createdChild.id)?.proposal === 'cancelled');
+  recordCheck('delete-reparent');
+  stage = 'static-preview-clicks';
+  const staticServer = await servePrototype();
+  const preview = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  preview.on('pageerror', error => errors.push(error.message));
+  try {
+    const port = staticServer.address().port;
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?preview=1`);
+    await preview.waitForSelector('.node.root');
+    assert.equal(await preview.evaluate(() => document.documentElement.classList.contains('theme-preview')), true);
+    assert.equal(await preview.locator('header.top').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 253, 248)');
+    const previewBanner = await preview.evaluate(() => {
+      const el = document.querySelector('.theme-preview-banner');
+      const s = getComputedStyle(el);
+      return {
+        display: s.display,
+        shown: s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0
+      };
+    });
+    assert.equal(previewBanner.shown, false, `preview module-card chip must stay hidden ${JSON.stringify(previewBanner)}`);
+    recordCheck('preview-theme-banner-hidden');
+    assert.equal(await preview.locator('.node.noauth').count(), 0, 'static preview unlocks every node');
+    assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true);
+    const previewChrome = await chromeHeights(preview);
+    assert.equal(new Set(previewChrome).size, 1, `preview chrome heights ${previewChrome.join(',')}`);
+    const context = await preview.evaluate(() => {
+      const crumbs = document.querySelector('.nav-crumbs');
+      const here = crumbs.querySelector('.here');
+      return {
+        h1: !!document.querySelector('header.top h1'),
+        here: here?.textContent.replace(/\s+/g, ' ').trim(),
+        switch: here?.classList.contains('switch'),
+        hits: (crumbs.innerText.match(/Context Guard/g) || []).length
+      };
+    });
+    assert.equal(context.h1, false, 'repo name is not a second title');
+    assert.equal(context.hits, 1, `root should show one context card ${JSON.stringify(context)}`);
+    assert.equal(context.switch, true);
+    await preview.locator('#context-card').click();
+    assert.equal(await preview.locator('#repo-menu.open').count(), 1);
+    await preview.locator('#context-card').click();
+    assert.equal(await preview.locator('#repo-menu.open').count(), 0);
+    await preview.locator('.node[data-id="M1"]').click();
+    await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
+    const nested = await preview.evaluate(() =>
+      [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
+        tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
+      }))
+    );
+    assert.ok(nested.length >= 2, `drilled path ${JSON.stringify(nested)}`);
+    assert.equal(nested[0].tag, 'A');
+    assert.ok(nested[0].text.includes('Context Guard'));
+    assert.ok(nested.at(-1).text.includes('工作台'));
+    assert.equal(nested.at(-1).switch, false);
+    await preview.locator('.nav-crumbs a').first().click();
+    await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    recordCheck('context-card-merged');
+    const dirToggle = preview.locator('#dir-toggle');
+    await dirToggle.waitFor({ state: 'visible' });
+    assert.equal(await preview.locator('#dir-toggle button').count(), 0);
+    assert.equal(await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().height)), previewChrome[0]);
+    const dirW = await dirToggle.evaluate(el => Math.round(el.getBoundingClientRect().width));
+    assert.ok(dirW <= 64, `layout slider should stay compact, got ${dirW}`);
+    const coverLr = await dirToggle.evaluate(() => {
+      const thumb = document.querySelector('#dir-toggle .dir-thumb').getBoundingClientRect();
+      const lr = document.querySelector('#dir-toggle [data-dir="lr"]').getBoundingClientRect();
+      const tb = document.querySelector('#dir-toggle [data-dir="tb"]').getBoundingClientRect();
+      const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+      return { overLr: overlap(thumb, lr), overTb: overlap(thumb, tb) };
+    });
+    assert.ok(coverLr.overTb > coverLr.overLr, `slider should cover 上下 when 左右 is current ${JSON.stringify(coverLr)}`);
+    const lrSpread = await preview.evaluate(() => {
+      const root = document.querySelector('.node.root').getBoundingClientRect();
+      const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return { dx: kid.x - root.x, dy: kid.y - root.y };
+    });
+    assert.ok(lrSpread.dx > lrSpread.dy, `first layer left-right should sit children to the side ${JSON.stringify(lrSpread)}`);
+    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
+    await preview.waitForFunction(() => {
+      const thumb = document.querySelector('#dir-toggle .dir-thumb').getBoundingClientRect();
+      const lr = document.querySelector('#dir-toggle [data-dir="lr"]').getBoundingClientRect();
+      const tb = document.querySelector('#dir-toggle [data-dir="tb"]').getBoundingClientRect();
+      const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+      return overlap(thumb, lr) > overlap(thumb, tb);
+    });
+    const tbSpread = await preview.evaluate(() => {
+      const root = document.querySelector('.node.root').getBoundingClientRect();
+      const kid = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return { dx: kid.x - root.x, dy: kid.y - root.y, tb: document.body.classList.contains('layout-tb') };
+    });
+    assert.equal(tbSpread.tb, true);
+    assert.ok(tbSpread.dy > 20, `first layer top-down should sit children below ${JSON.stringify(tbSpread)}`);
+    const tbWrap = await preview.evaluate(() => {
+      const boxes = ['M1', 'M2', 'M3', 'M4', 'M5'].map(id => {
+        const r = document.querySelector(`.node[data-id="${id}"]`).getBoundingClientRect();
+        return { id, y: Math.round(r.top), x: Math.round(r.left) };
+      });
+      const bands = [];
+      boxes.forEach(b => {
+        if (!bands.some(y => Math.abs(y - b.y) < 24)) bands.push(b.y);
+      });
+      const ys = boxes.map(b => b.y);
+      return { boxes, bands: bands.length, ySpan: Math.max(...ys) - Math.min(...ys) };
+    });
+    assert.ok(tbWrap.bands >= 2 && tbWrap.ySpan > 40, `top-down should wrap children, not one row ${JSON.stringify(tbWrap)}`);
+    await dirToggle.locator('.dir-opt[data-dir="lr"]').click();
+    recordCheck('layout-dir-on-first-layer');
+    recordCheck('layout-tb-wraps');
+    await preview.locator('#btn-rel').click();
+    await preview.locator('.node[data-id="M2"]').click();
+    await preview.locator('.flow-lab').first().waitFor({ state: 'visible' });
+    const flowLabs = await preview.evaluate(() => {
+      const labs = [...document.querySelectorAll('.flow-lab')].map(el => {
+        const r = el.getBoundingClientRect();
+        return { text: el.textContent, left: r.left, right: r.right, top: r.top, bottom: r.bottom, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      });
+      const hits = [];
+      for (let i = 0; i < labs.length; i++) {
+        for (let j = i + 1; j < labs.length; j++) {
+          const a = labs[i], b = labs[j];
+          if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) {
+            hits.push([a.text, b.text]);
+          }
+        }
+      }
+      const box = id => {
+        const r = document.querySelector(`.node[data-id="${id}"]`).getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      };
+      const m2 = box('M2'), m4 = box('M4');
+      const mid = { cx: (m2.cx + m4.cx) / 2, cy: (m2.cy + m4.cy) / 2 };
+      const dist = (a, b) => Math.hypot(a.cx - b.cx, a.cy - b.cy);
+      const pair = labs.filter(l => l.text === '安装时可选 hooks' || l.text === 'SessionStart 触发冷启动');
+      const awayFromApex = pair.filter(l => dist(l, mid) >= dist(l, m2) || dist(l, mid) >= dist(l, m4));
+      return { texts: labs.map(l => l.text), hits, awayFromApex: awayFromApex.map(l => l.text) };
+    });
+    assert.ok(flowLabs.texts.includes('安装时可选 hooks'), 'hook install label');
+    assert.ok(flowLabs.texts.includes('SessionStart 触发冷启动'), 'hook start label');
+    assert.deepEqual(flowLabs.hits, [], `overlapping relation labels ${JSON.stringify(flowLabs.hits)}`);
+    assert.deepEqual(flowLabs.awayFromApex, [], `labels should stay on the arc, not hug a node: ${flowLabs.awayFromApex.join(',')}`);
+    await preview.locator('#btn-rel').click();
+    recordCheck('relation-flow-labels');
+    await preview.locator('#btn-bugs').click();
+    await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
+    await preview.waitForSelector('body.bug-path-mode');
+    assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
+    assert.equal(await preview.locator('.current-bead').count(), 0);
+    await preview.locator('#btn-bug-exit').click();
+    if (await preview.evaluate(() => document.body.classList.contains('bugs-open'))) {
+      await preview.locator('#btn-bugs').click();
+    }
+    recordCheck('bug-path-flow-no-bead');
+    const child = preview.locator('#nodes .node.module').nth(1);
+    const childId = await child.getAttribute('data-id');
+    const childTitle = (await child.locator('.m-head span').innerText()).trim();
+    await child.click();
+    await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
+    assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
+    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
+    assert.equal(await preview.locator('#detail button.trash').count(), 1);
+    assert.equal(await preview.locator('#detail button.trash .lid').count(), 1);
+    await dirToggle.click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
+    assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);
+    await dirToggle.click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), false);
+    assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), false);
+    recordCheck('layout-dir-slide');
+    await preview.locator('#btn-auth').click();
+    await preview.locator(`#nodes .node[data-id="${childId}"]`).click();
+    assert.equal(await preview.locator('.sync-notice').evaluate(el => el.hidden), true, 'auth click must not force readonly');
+    await preview.locator('#btn-auth').click();
+    if (await preview.locator('.nav-crumbs a').count()) {
+      await preview.locator('.nav-crumbs a').first().click();
+      await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    }
+    assert.equal(await preview.locator('#detail button.trash').count(), 0, 'map root has no trash');
+    assert.ok((await preview.locator('#detail .add-hint').textContent()).includes('去图上点'));
+    await preview.locator('.node.root .add-child').click();
+    const rootPick = preview.locator('.node.root .add-pick');
+    assert.equal(await rootPick.evaluate(el => getComputedStyle(el).display), 'flex', 'plus must open a kind picker');
+    assert.equal(await preview.locator('[data-ed="compose-title"]').count(), 0, 'plus must not start compose until a kind is chosen');
+    assert.equal(await preview.locator('.nav-crumbs a').count(), 0, 'plus must not enter a module');
+    const pickShadow = await rootPick.evaluate(el => getComputedStyle(el).boxShadow);
+    assert.ok(pickShadow === 'none' || pickShadow === '', `kind picker must have no shadow, got ${pickShadow}`);
+    await rootPick.locator('[data-add="work"]').click();
+    assert.equal((await preview.locator('[data-ed="compose-title"]').textContent())?.trim(), '子节点名称');
+    await preview.locator('[data-act="compose-cancel"]').click();
+    await preview.locator('.node.root .add-child').click();
+    await preview.locator('.node.root .add-pick [data-add="module"]').click();
+    assert.equal((await preview.locator('[data-ed="compose-title"]').textContent())?.trim(), '模块名称');
+    await preview.locator('[data-act="compose-cancel"]').click();
+    await preview.locator('.node[data-id="M1"] .add-child').click();
+    assert.equal(await preview.locator('.nav-crumbs a').count(), 0, 'plus on a child module must not drill in');
+    assert.equal(await preview.locator('.node[data-id="M1"].picking .add-pick').count(), 1);
+    recordCheck('map-plus-picks-kind');
+    const chromeGap = await preview.evaluate(() => {
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      return { headerBottom: header.bottom, headerTop: header.top, vpTop: vp.top, overlap: header.bottom - vp.top };
+    });
+    assert.ok(chromeGap.vpTop + 0.51 >= chromeGap.headerBottom, `canvas must start at the header bottom, not under it ${JSON.stringify(chromeGap)}`);
+    const readClip = () => preview.evaluate(() => {
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const y = header.bottom - 3;
+      const hits = [];
+      for (let x = 40; x <= 900; x += 20) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.closest && el.closest('#nodes .node')) hits.push(x);
+      }
+      const overlapping = [...document.querySelectorAll('#nodes .node')].filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > header.bottom - 1 && r.top < header.bottom && r.right > 8 && r.left < window.innerWidth - 8;
+      }).length;
+      return { hits, overlapping, vpTop: vp.top, headerBottom: header.bottom };
+    });
+    const emptyPanFrom = () => preview.evaluate(() => {
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      for (let y = vp.bottom - 48; y > vp.top + 36; y -= 28) {
+        for (let x = vp.left + 28; x < Math.min(vp.right - 28, 720); x += 36) {
+          const el = document.elementFromPoint(x, y);
+          if (el && !el.closest('.node') && el.closest('#viewport')) return { x, y };
+        }
+      }
+      return { x: vp.left + 48, y: Math.min(vp.bottom - 40, vp.top + 320) };
+    });
+    let headerCutsNode = await readClip();
+    for (let i = 0; i < 8 && headerCutsNode.overlapping === 0; i++) {
+      const panFrom = await emptyPanFrom();
+      await preview.mouse.move(panFrom.x, panFrom.y);
+      await preview.mouse.down();
+      await preview.mouse.move(panFrom.x, Math.max(16, panFrom.y - 480), { steps: 12 });
+      await preview.mouse.up();
+      headerCutsNode = await readClip();
+    }
+    if (headerCutsNode.overlapping === 0) {
+      await preview.evaluate(() => {
+        const header = document.querySelector('header.top').getBoundingClientRect();
+        const node = document.querySelector('#nodes .node');
+        const world = document.getElementById('world');
+        if (!node || !world) return;
+        const r = node.getBoundingClientRect();
+        const dy = r.top - (header.bottom - 16);
+        const cur = new DOMMatrix(getComputedStyle(world).transform);
+        world.style.transform = `translate(${cur.e}px, ${cur.f - dy}px) scale(${cur.a || 1})`;
+      });
+      headerCutsNode = await readClip();
+    }
+    assert.ok(headerCutsNode.vpTop + 0.51 >= headerCutsNode.headerBottom, `panning must not tuck the canvas under the header ${JSON.stringify(headerCutsNode)}`);
+    assert.ok(headerCutsNode.overlapping > 0, `a node box must reach the header strip ${JSON.stringify(headerCutsNode)}`);
+    assert.equal(headerCutsNode.hits.length, 0, `panning a node under the header must clip, not slice a dead pill ${JSON.stringify(headerCutsNode)}`);
+    const deadPill = await preview.evaluate(() => {
+      const header = document.querySelector('header.top').getBoundingClientRect();
+      const vp = document.getElementById('viewport').getBoundingClientRect();
+      const clipTop = Math.max(vp.top, header.bottom);
+      const slivers = [...document.querySelectorAll('#nodes .node')].flatMap(node => {
+        if (getComputedStyle(node).visibility === 'hidden') return [];
+        const r = node.getBoundingClientRect();
+        const above = clipTop - r.top;
+        const below = r.bottom - clipTop;
+        if (above > 1 && below > 0 && below < 36) return [{ vis: Math.round(below), id: node.dataset.id }];
+        return [];
+      });
+      const yHits = [];
+      for (let x = 40; x <= 900; x += 16) {
+        const el = document.elementFromPoint(x, clipTop + 4);
+        const node = el && el.closest && el.closest('#nodes .node');
+        if (!node) continue;
+        const r = node.getBoundingClientRect();
+        const visH = Math.min(r.bottom, vp.bottom) - Math.max(r.top, clipTop);
+        if (visH > 0 && visH < 36) yHits.push({ visH: Math.round(visH), id: node.dataset.id });
+      }
+      return { clipTop, headerBottom: header.bottom, vpTop: vp.top, slivers, yHits };
+    });
+    assert.equal(deadPill.slivers.length, 0, `thin clipped node must not show as a pill under the header ${JSON.stringify(deadPill)}`);
+    assert.equal(deadPill.yHits.length, 0, `no dead pill hit-test under the header ${JSON.stringify(deadPill)}`);
+    recordCheck('static-preview-node-click');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?preview=1&phone=1`);
+    await preview.waitForSelector('.node .add-child');
+    const ghostPlus = await preview.evaluate(() =>
+      [...document.querySelectorAll('.node:not(.selected) .add-child')].map(el => Number(getComputedStyle(el).opacity))
+    );
+    assert.ok(ghostPlus.length, 'phone nodes have add-child');
+    assert.ok(ghostPlus.every(o => o === 0), `unselected pluses must be hidden on phone, got ${ghostPlus.join(',')}`);
+    const banners = await preview.evaluate(() => {
+      const vh = window.innerHeight, vw = window.innerWidth;
+      return [...document.querySelectorAll('.theme-preview-banner, .phone-preview-banner')].map(el => {
+        const s = getComputedStyle(el), r = el.getBoundingClientRect();
+        const shown = s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+        return { shown, h: Math.round(r.height), w: Math.round(r.width), covers: shown && (r.height > vh * 0.2 || r.width > vw * 0.45) };
+      });
+    });
+    assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
+    recordCheck('phone-preview-banners-hidden');
+    recordCheck('phone-add-child-hidden');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=1`);
+    await preview.waitForSelector('.g-item');
+    const gallery = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const bars = items.filter(el => el.querySelector('.g-chrome .bar'));
+      const stages = items.filter(el => el.querySelector('.g-chrome .stage .map') && el.querySelector('.g-chrome .insp'));
+      const cards = items.map(el => el.querySelectorAll('.bar .here').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        bars: bars.length,
+        stages: stages.length,
+        oneCard: cards.every(n => n === 1),
+        title: document.querySelector('.g-bar b')?.textContent
+      };
+    });
+    assert.equal(gallery.n, 50, `chrome gallery should show 50 drafts ${JSON.stringify(gallery)}`);
+    assert.equal(gallery.uniq, 50);
+    assert.equal(gallery.bars, 50);
+    assert.equal(gallery.stages, 50, `each draft must show the full workbench ${JSON.stringify(gallery)}`);
+    assert.equal(gallery.oneCard, true, 'each draft has one context card');
+    assert.equal(gallery.title, '工作台风格 · 50 版');
+    const frozen = await preview.evaluate(() => {
+      const pick = id => {
+        const item = document.querySelector('#v' + id);
+        const cs = el => getComputedStyle(el);
+        const map = item.querySelector('.map');
+        const root = item.querySelector('.root');
+        const mod = item.querySelector('.mod');
+        const insp = item.querySelector('.insp');
+        const bar = item.querySelector('.bar');
+        const note = item.querySelector('.note');
+        const hint = item.querySelector('.add-hint');
+        const trash = item.querySelector('.who .trash');
+        return {
+          mapBg: cs(map).backgroundColor,
+          rootBg: cs(root).backgroundColor,
+          modBg: cs(mod).backgroundColor,
+          inspBg: cs(insp).backgroundColor,
+          inspBorder: cs(insp).borderLeftColor,
+          noteBg: cs(note).backgroundColor,
+          hint: hint?.textContent?.trim() || '',
+          trashH: Math.round(trash.getBoundingClientRect().height),
+          barBg: cs(bar).backgroundColor
+        };
+      };
+      return { a: pick('01'), b: pick('12'), c: pick('32'), d: pick('25') };
+    });
+    assert.equal(frozen.a.mapBg, 'rgb(254, 250, 242)', `live canvas cream ${frozen.a.mapBg}`);
+    assert.equal(frozen.a.rootBg, 'rgb(255, 243, 191)');
+    assert.equal(frozen.a.modBg, 'rgb(243, 234, 214)');
+    assert.equal(frozen.a.inspBg, 'rgb(254, 250, 242)');
+    assert.equal(frozen.a.noteBg, 'rgb(255, 255, 255)');
+    assert.equal(frozen.a.hint, '要加模块或节点，去图上点 ＋。这里不放按钮。');
+    assert.equal(frozen.a.trashH, 36);
+    for (const other of [frozen.b, frozen.c, frozen.d]) {
+      assert.equal(other.mapBg, frozen.a.mapBg, `map must stay live ${JSON.stringify(other)}`);
+      assert.equal(other.rootBg, frozen.a.rootBg);
+      assert.equal(other.modBg, frozen.a.modBg);
+      assert.equal(other.inspBg, frozen.a.inspBg);
+      assert.equal(other.noteBg, frozen.a.noteBg);
+    }
+    assert.notEqual(frozen.a.barBg, frozen.b.barBg, 'ink bar still differs from live chrome');
+    assert.notEqual(frozen.a.barBg, frozen.c.barBg, 'blueprint bar still differs from live chrome');
+    recordCheck('chrome-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=add`);
+    await preview.waitForSelector('.g-add-mock');
+    const addGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-add-mock'));
+      const slots = items.map(el => el.querySelector('.slot')?.innerHTML || '');
+      const titles = items.map(el => el.querySelector('h2')?.childNodes[0]?.textContent?.trim());
+      const notes = items.map(el => el.querySelectorAll('.note').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        slotUniq: new Set(slots).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        threeNotes: notes.every(n => n === 3)
+      };
+    });
+    assert.equal(addGal.n, 50, `add-row gallery should show 50 drafts ${JSON.stringify(addGal)}`);
+    assert.equal(addGal.uniq, 50);
+    assert.equal(addGal.mocks, 50);
+    assert.ok(addGal.slotUniq >= 48, `add slots must differ, got ${addGal.slotUniq}`);
+    assert.equal(addGal.title, '新增这一行 · 50 版');
+    assert.equal(addGal.cold, true, 'title stays 冷启动');
+    assert.equal(addGal.threeNotes, true, 'memory/idea/bug cards stay');
+    const addFrozen = await preview.evaluate(() => {
+      const pick = id => {
+        const item = document.querySelector('#v' + id);
+        const cs = el => getComputedStyle(el);
+        const mock = item.querySelector('.g-add-mock');
+        const lead = item.querySelector('.lead');
+        const note = item.querySelector('.note');
+        const h2 = item.querySelector('h2');
+        return {
+          bg: cs(mock).backgroundColor,
+          pad: cs(mock).padding,
+          lead: cs(lead).color,
+          noteBg: cs(note).backgroundColor,
+          h2: cs(h2).fontSize
+        };
+      };
+      const slot = id => document.querySelector('#v' + id + ' .slot').innerHTML;
+      return { a: pick('01'), b: pick('12'), c: pick('33'), s1: slot('01'), s2: slot('03'), s3: slot('09') };
+    });
+    assert.equal(addFrozen.a.bg, 'rgb(254, 250, 242)');
+    assert.equal(addFrozen.a.noteBg, 'rgb(255, 255, 255)');
+    assert.equal(addFrozen.a.h2, '18px');
+    assert.equal(addFrozen.b.bg, addFrozen.a.bg);
+    assert.equal(addFrozen.c.noteBg, addFrozen.a.noteBg);
+    assert.notEqual(addFrozen.s1, addFrozen.s2);
+    assert.notEqual(addFrozen.s1, addFrozen.s3);
+    recordCheck('add-row-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=trash`);
+    await preview.waitForSelector('.g-tr-mock');
+    const trashGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-tr-mock'));
+      const icons = items.map(el => el.querySelector('.ico')?.innerHTML || '');
+      const titles = items.map(el => el.querySelector('h2')?.textContent?.trim());
+      const pe = items[0] ? getComputedStyle(items[0].querySelector('.g-tr-mock')).pointerEvents : '';
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        iconUniq: new Set(icons).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        pe
+      };
+    });
+    assert.equal(trashGal.n, 50, `trash gallery should show 50 drafts ${JSON.stringify(trashGal)}`);
+    assert.equal(trashGal.uniq, 50);
+    assert.equal(trashGal.mocks, 50);
+    assert.ok(trashGal.iconUniq >= 40, `trash icons must differ, got ${trashGal.iconUniq}`);
+    assert.equal(trashGal.title, '垃圾桶图标 · 50 版');
+    assert.equal(trashGal.cold, true, 'title stays 冷启动');
+    assert.equal(trashGal.pe, 'auto', 'hover must reach the icon');
+    const frozenTrash = await preview.evaluate(() => {
+      const item = document.querySelector('#v01');
+      const cs = el => getComputedStyle(el);
+      const mock = item.querySelector('.g-tr-mock');
+      const ico = item.querySelector('.ico');
+      const h2 = item.querySelector('h2');
+      return {
+        bg: cs(mock).backgroundColor,
+        h2: cs(h2).fontSize,
+        icoH: Math.round(ico.getBoundingClientRect().height),
+        color: cs(ico).color
+      };
+    });
+    assert.equal(frozenTrash.bg, 'rgb(254, 250, 242)');
+    assert.equal(frozenTrash.h2, '18px');
+    assert.equal(frozenTrash.icoH, 36);
+    assert.equal(frozenTrash.color, 'rgb(226, 75, 75)');
+    await preview.locator('#v01 .ico').hover();
+    const lidMove = await preview.locator('#v01 .ico .lid').evaluate(el => getComputedStyle(el).transform);
+    assert.notEqual(lidMove, 'none', `lid should lift on hover, got ${lidMove}`);
+    recordCheck('trash-icon-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=chip`);
+    await preview.waitForSelector('.g-ch-mock');
+    const chipGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-ch-mock'));
+      const chips = items.map(el => {
+        const c = el.querySelector('.who .chip');
+        if (!c) return '';
+        const s = getComputedStyle(c);
+        const b = getComputedStyle(c, '::before');
+        const a = getComputedStyle(c, '::after');
+        return [s.padding, s.fontSize, s.fontWeight, s.letterSpacing, b.backgroundColor, b.backgroundImage, b.transform, b.top, b.bottom, b.left, b.right, b.opacity, b.borderRadius, b.boxShadow, a.content].join('|');
+      });
+      const titles = items.map(el => el.querySelector('h2')?.textContent?.trim());
+      const altN = items.map(el => el.querySelectorAll('.alts .chip').length);
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        chipUniq: new Set(chips).size,
+        title: document.querySelector('.g-bar b')?.textContent,
+        cold: titles.every(t => t === '冷启动'),
+        threeAlts: altN.every(n => n === 3)
+      };
+    });
+    assert.equal(chipGal.n, 50, `chip gallery should show 50 drafts ${JSON.stringify(chipGal)}`);
+    assert.equal(chipGal.uniq, 50);
+    assert.equal(chipGal.mocks, 50);
+    assert.ok(chipGal.chipUniq >= 40, `chips must differ, got ${chipGal.chipUniq}`);
+    assert.equal(chipGal.title, '状态标签 · 50 版');
+    assert.equal(chipGal.cold, true, 'title stays 冷启动');
+    assert.equal(chipGal.threeAlts, true, 'each draft shows the other three states');
+    const frozenChip = await preview.evaluate(() => {
+      const item = document.querySelector('#v01');
+      const cs = el => getComputedStyle(el);
+      const mock = item.querySelector('.g-ch-mock');
+      const h2 = item.querySelector('h2');
+      const chip = item.querySelector('.who .chip');
+      const csBefore = getComputedStyle(chip, '::before');
+      return {
+        bg: cs(mock).backgroundColor,
+        h2: cs(h2).fontSize,
+        text: chip?.textContent?.trim(),
+        chipBg: cs(chip).backgroundColor,
+        chipColor: cs(chip).color,
+        mark: csBefore.backgroundColor,
+        radius: cs(chip).borderRadius
+      };
+    });
+    assert.equal(frozenChip.bg, 'rgb(254, 250, 242)');
+    assert.equal(frozenChip.h2, '18px');
+    assert.equal(frozenChip.text, '测试通过');
+    assert.equal(frozenChip.chipBg, 'rgba(0, 0, 0, 0)');
+    assert.equal(frozenChip.chipColor, 'rgb(45, 45, 45)');
+    assert.equal(frozenChip.radius, '0px');
+    assert.equal(frozenChip.mark, 'rgb(198, 237, 110)');
+    const picked = await preview.evaluate(() => {
+      const b = getComputedStyle(document.querySelector('#v11 .who .chip'), '::before');
+      return { rad: b.borderRadius };
+    });
+    assert.equal(picked.rad, '8px', 'gallery 11 is the round-head marker');
+    const upright = await preview.evaluate(() => {
+      const check = sel => {
+        const item = document.querySelector(sel);
+        const cs = el => getComputedStyle(el);
+        const els = {
+          h2: item.querySelector('h2'),
+          chip: item.querySelector('.who .chip'),
+          lead: item.querySelector('.lead'),
+          alt: item.querySelector('.alts .chip'),
+          num: item.querySelector('.g-num')
+        };
+        return Object.fromEntries(Object.entries(els).map(([k, el]) => {
+          const s = cs(el);
+          return [k, { style: s.fontStyle, family: s.fontFamily, synth: s.fontSynthesis }];
+        }));
+      };
+      return {
+        iChips: document.querySelectorAll('i.chip').length,
+        v09: check('#v09'),
+        v16: check('#v16'),
+        v28: check('#v28')
+      };
+    });
+    assert.equal(upright.iChips, 0, 'chips must be spans, not <i>');
+    for (const id of ['v09', 'v16', 'v28']) {
+      const block = upright[id];
+      for (const part of ['h2', 'chip', 'lead', 'alt', 'num']) {
+        assert.equal(block[part].style, 'normal', `${id} ${part} font-style`);
+        assert.match(block[part].family, /Noto Sans SC/, `${id} ${part} family ${block[part].family}`);
+        assert.doesNotMatch(block[part].family, /Comic Neue|Georgia|Libre Baskerville|Songti|cursive/i, `${id} ${part} still slanted family`);
+        assert.equal(block[part].synth, 'none', `${id} ${part} font-synthesis`);
+      }
+    }
+    recordCheck('state-chip-gallery-50');
+  } finally {
+    await preview.close();
+    await new Promise(resolve => staticServer.close(resolve));
+  }
   await page.screenshot({ path: path.join(output, 'synced.png'), fullPage: true });
   assert.deepEqual(errors, []);
   passed = true;
