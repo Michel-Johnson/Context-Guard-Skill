@@ -7,7 +7,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
-import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
+import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
@@ -81,6 +81,14 @@ test('orphan Bug recovery requires the original attachment receipt from the same
   const prepared = await prepareSessionCommit({ doc: {}, operation: async () => validRecord }, input, agent, sessionId);
   assert.equal(prepared.actor.kind, 'recovery');
   assert.equal(prepared.input.operations[0].type, 'recover-bug');
+  const preparedUpdate = await prepareSessionCommit(
+    { doc: {}, operation: async () => validRecord },
+    { recoveryOf: input.recoveryOf, operations: [{ type: 'update-bug', bug: { id: bug.id, status: 'resolved' } }] },
+    agent,
+    sessionId,
+  );
+  assert.equal(preparedUpdate.input.operations[0].id, 'N1');
+  assert.equal(preparedUpdate.input.operations[0].bug.status, 'resolved');
   await assert.rejects(
     prepareSessionCommit({ doc: {}, operation: async () => null }, input, agent, sessionId),
     error => error.code === 'FORBIDDEN_RECOVERY',
@@ -101,6 +109,24 @@ test('orphan Bug recovery requires the original attachment receipt from the same
   assert.equal(recovered.unassigned_bugs.length, 0);
   assert.deepEqual(recovered.root.children[0].bugs[0].sessions, [sessionId]);
   assert.equal(recovered.root.children[0].bugs[0].desc, '保留内容');
+});
+
+test('update-bug restores an orphan before applying its status', async () => {
+  const sessionId = 'session-recovery', bug = { id: 'B4', status: 'resolved' };
+  let commit, projections = 0;
+  const call = async (route, options = {}) => {
+    if (route.startsWith('/api/operation?')) return { found: true, result: { committed: true } };
+    if (route === '/api/state') return { version: 'missing-version', doc: { root: { id: 'T0', bugs: [], children: [] } } };
+    if (route === '/api/commit') { commit = options.body; return { committed: true, version: 'restored-version' }; }
+    if (route === '/api/projections') { projections += 1; return { status: 'ready' }; }
+    throw new Error(`unexpected route ${route}`);
+  };
+  const result = await updateBugWithRecovery(call, sessionId, { bug });
+  assert.equal(result.recovered, true);
+  assert.match(commit.operationId, /^bug-status-recover:[a-f0-9]{24}$/);
+  assert.equal(commit.recoveryOf, `bug:${sessionId}:${bug.id}`);
+  assert.deepEqual(commit.operations, [{ type: 'update-bug', bug }]);
+  assert.equal(projections, 1);
 });
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 

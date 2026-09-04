@@ -28,15 +28,17 @@ export async function prepareSessionCommit(store, input, actor, sessionId) {
     return { input: sessionId ? { ...input, operations: restoreSessionWorkItemOperations(store.doc, input.operations, sessionId) } : input, actor };
   }
   const operation = Array.isArray(input.operations) && input.operations.length === 1 ? input.operations[0] : null;
-  const expected = operation?.type === 'attach-bug' ? `bug:${sessionId}:${operation.bug?.id || ''}` : '';
+  const bugId = ['attach-bug', 'update-bug'].includes(operation?.type) ? operation.bug?.id || '' : '';
+  const expected = bugId ? `bug:${sessionId}:${bugId}` : '';
   const prior = expected && input.recoveryOf === expected ? await store.operation(expected) : null;
   const original = prior?.event;
-  const originalOperation = original?.operations?.find(item => item?.type === 'attach-bug' && item?.id === operation?.id && item?.bug?.id === operation?.bug?.id);
-  if (!prior?.result?.committed || original?.actor?.sessionId !== sessionId || !originalOperation) {
+  const originalOperation = original?.operations?.find(item => item?.type === 'attach-bug' && item?.bug?.id === bugId);
+  const sameTarget = operation?.type === 'update-bug' || originalOperation?.id === operation?.id;
+  if (!prior?.result?.committed || original?.actor?.sessionId !== sessionId || !originalOperation || !sameTarget) {
     throw new MapError('FORBIDDEN_RECOVERY', 'Bug recovery requires this Session\'s committed original attachment receipt', 403);
   }
   return {
-    input: { ...input, operations: [{ ...operation, type: 'recover-bug' }] },
+    input: { ...input, operations: [{ type: 'recover-bug', id: originalOperation.id, bug: { ...originalOperation.bug, ...operation.bug } }] },
     actor: { kind: 'recovery', sessionId, projectId: actor.projectId, worktreeId: actor.worktreeId },
   };
 }

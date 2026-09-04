@@ -45,6 +45,26 @@ export async function attachBugWithRecovery(call, sessionId, input) {
   });
   return prior.found ? { ...result, recovered: true } : result;
 }
+export async function updateBugWithRecovery(call, sessionId, input) {
+  const operationId = `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`;
+  const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
+  const snapshot = await call('/api/state');
+  const exists = documentHasBug(snapshot.doc, input.bug.id);
+  if (prior.found && exists) return { ...prior.result, duplicate: true };
+  const recoveryOf = `bug:${sessionId}:${input.bug.id}`;
+  const recoveryKey = createHash('sha256').update(`${operationId}\0${snapshot.version}`).digest('hex').slice(0, 24);
+  const result = await call('/api/commit', {
+    method: 'POST',
+    body: {
+      operationId: exists ? operationId : `bug-status-recover:${recoveryKey}`,
+      baseVersion: snapshot.version,
+      operations: [{ type: 'update-bug', bug: input.bug }],
+      ...(!exists ? { recoveryOf } : {}),
+    },
+  });
+  await call('/api/projections', { method: 'POST', body: { wait: true } });
+  return !exists ? { ...result, recovered: true } : result;
+}
 function options(args) {
   const opts = { _: [] };
   for (let i = 0; i < args.length; i++) {
@@ -611,14 +631,7 @@ async function main(args) {
     return attachBugWithRecovery(call, sessionId, await inputJSON(opt.input));
   }
   if (action === 'update-bug') {
-    const input = await inputJSON(opt.input), operationId = `bug-status:${sessionId}:${input.bug.id}:${input.bug.status}`;
-    const prior = await call('/api/operation?id=' + encodeURIComponent(operationId));
-    if (prior.found) return { ...prior.result, duplicate: true };
-    const snapshot = await call('/api/state');
-    const result = await call('/api/commit', { method: 'POST', body: { operationId, baseVersion: snapshot.version, operations: [{ type: 'update-bug', bug: input.bug }] } });
-    // The command updates both the live map and its generated indexes as one observable operation.
-    await call('/api/projections', { method: 'POST', body: { wait: true } });
-    return result;
+    return updateBugWithRecovery(call, sessionId, await inputJSON(opt.input));
   }
   throw new MapError('USAGE', 'Use workbench, attach-bug, update-bug, record-todo, or map status|read|changes|inbox|ack|watch|apply|operation|projections|reconcile');
 }
