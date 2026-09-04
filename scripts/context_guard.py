@@ -192,9 +192,27 @@ def read_input_json(input_path: str) -> object:
     return json.loads(Path(input_path).resolve().read_text(encoding="utf-8"))
 
 
-def write_json(path: Path, value: object) -> None:
+def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        if os.name != "nt":
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_json(path: Path, value: object) -> None:
+    atomic_write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
 
 
 def read_preferences(ctx: Path) -> dict[str, str]:
@@ -476,6 +494,18 @@ def serialize_hook_runtime(session_arg: int):
     return decorate
 
 
+def serialize_named_lock(name: str):
+    """Serialize a project-wide registry update independently of Session IDs."""
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args, **kwargs):
+            root = args[0] if args else kwargs["root"]
+            with hook_runtime_lock(root, f"registry:{name}"):
+                return function(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
 def read_hook_runtime(root: Path, session_id: str) -> dict[str, object]:
     target = hook_runtime_path(root, session_id)
     if not target.exists():
@@ -503,22 +533,7 @@ def write_hook_runtime(root: Path, session_id: str, value: dict[str, object]) ->
     value["session_id"] = session_id
     value["updated_at"] = utc_now()
     target = hook_runtime_path(root, session_id)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f"{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    try:
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-            handle.write(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-        if os.name != "nt":
-            directory = os.open(target.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-    finally:
-        temporary.unlink(missing_ok=True)
+    atomic_write_text(target, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
     return target
 
 
@@ -966,6 +981,7 @@ def attach_bug_to_map(ctx: Path, bug: dict[str, object], node_id: str, session_i
     run_node_workbench(args, {"node": node_id, "bug": bug})
 
 
+@serialize_named_lock("bad-case-registry")
 @serialize_hook_runtime(9)
 def record_bad_case(
     root: Path,
@@ -1025,7 +1041,7 @@ def record_bad_case(
     ]
     if card_path:
         lines.append(f"- card: {card_path}")
-    bug_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(bug_path, "\n".join(lines) + "\n")
     fix_lines = [
         f"# {bug_id} {title.strip()}",
         "",
@@ -1043,7 +1059,7 @@ def record_bad_case(
         "", "## 代码", "待补充",
         "", "## 证据", "待补充",
     ])
-    fix_path.write_text("\n".join(fix_lines) + "\n", encoding="utf-8")
+    atomic_write_text(fix_path, "\n".join(fix_lines) + "\n")
 
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict):
@@ -1106,6 +1122,7 @@ def update_bug_on_map(ctx: Path, bug_id: str, status: str, session_id: str) -> N
     run_node_workbench(args, {"bug": {"id": bug_id, "status": status}})
 
 
+@serialize_named_lock("bad-case-registry")
 @serialize_hook_runtime(5)
 def record_bad_case_fix(
     root: Path,
@@ -1127,11 +1144,11 @@ def record_bad_case_fix(
     if not method.strip() or not evidence.strip():
         raise ValueError("record-bad-case-fix needs --method and --evidence")
     bug_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", bug_path.read_text(encoding="utf-8"), count=1)
-    bug_path.write_text(bug_text, encoding="utf-8")
+    atomic_write_text(bug_path, bug_text)
     fix_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", fix_path.read_text(encoding="utf-8"), count=1)
     fix_text = replace_markdown_section(fix_text, "怎么修", method)
     fix_text = replace_markdown_section(fix_text, "证据", evidence)
-    fix_path.write_text(fix_text, encoding="utf-8")
+    atomic_write_text(fix_path, fix_text)
     index = read_json(ctx / "bugs-index.json", {})
     if not isinstance(index, dict) or not isinstance(index.get(bug_id), dict):
         raise ValueError(f"bad case is missing from bugs-index.json: {bug_id}")
