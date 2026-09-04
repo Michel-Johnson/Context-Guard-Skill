@@ -78,13 +78,14 @@ grants and cross-project token isolation remain in force. These are local
 single-user safeguards, not protection against another process running with
 full access to the same user's files.
 
-A recognized older backend is upgraded in place on the next bound lifecycle or
-`workbench` command. The old backend must first acknowledge its synchronization
-fence and release the project lock; otherwise the command returns
-`UPGRADE_PENDING` and does not start a replacement. Unknown legacy runtimes and
-duplicate owners still require explicit diagnosis/migration. Browser recovery
-storage remains on the stable project origin, so a normal compatible upgrade does
-not change its storage boundary.
+A recognized older backend or named proxy is upgraded in place on the next bound
+lifecycle or `workbench` command. The proxy preserves its route store and must
+acknowledge an authenticated stop before replacement. The old backend must first
+acknowledge its synchronization fence and release the project lock; otherwise the
+command returns `UPGRADE_PENDING` and does not start a replacement. Unknown legacy
+runtimes and duplicate owners still require explicit diagnosis/migration. Browser
+recovery storage remains on the stable project origin, so a normal compatible
+upgrade does not change its storage boundary.
 
 - `CONTEXT_GUARD_NAMED_WORKBENCH=0` or `--direct`: old direct loopback URL.
 - `CONTEXT_GUARD_NAMED_STATE_DIR`: isolated private proxy state directory (default
@@ -101,7 +102,8 @@ Guard implementations, not a vendored full Portless CLI.
 `tests/named-workbench.test.mjs` is part of `npm test`: authorization, Origin/Host,
 read/write, five sessions/SSE streams, opening claims, name collision, backend
 identity/port reuse, proxy restart, multi-project isolation, corrupt route state,
-concurrent process startup, persistent global registry, recognized runtime upgrade,
-legacy route repair, explicit Git worktree binding and the real Python SessionStart
-handler. This does not prove delivery by every desktop host, OS or browser.
+concurrent process startup, isolated test registries, persistent global registry,
+recognized backend/proxy runtime upgrade, legacy route repair, explicit Git
+worktree binding and the real Python SessionStart handler. This does not prove
+delivery by every desktop host, OS or browser.
 Outstanding coverage is tracked in `CI_todo.md`.

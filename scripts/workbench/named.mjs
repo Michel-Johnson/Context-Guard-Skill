@@ -11,10 +11,22 @@ import { globalWorkbenchDirectory, registeredProject, rememberProject } from './
 import { RouteStore } from './portless-routes.mjs';
 
 export const namedDirectory = globalWorkbenchDirectory;
+const PROXY_RUNTIME_SCHEMA = 2;
 function alive(pid) { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } }
-async function proxyHealth(state) {
+async function proxyProbe(state) {
   if (!state || state.version !== 1 || !/^http:\/\/127\.0\.0\.1:\d+$/.test(state.base) || !state.adminToken) return false;
-  try { const res = await fetch(state.base + '/__cg_proxy/health', { signal: AbortSignal.timeout(700), redirect: 'error' }); const value = await res.json(); return res.ok && value.kind === 'context-guard-named' && value.instance === state.instance; } catch { return false; }
+  try { const res = await fetch(state.base + '/__cg_proxy/health', { signal: AbortSignal.timeout(700), redirect: 'error' }); const value = await res.json(); return res.ok && value.kind === 'context-guard-named' && value.instance === state.instance ? value : null; } catch { return null; }
+}
+const compatibleProxy = value => value?.runtimeSchema === PROXY_RUNTIME_SCHEMA && value.capabilities?.includes('project-key-routes');
+function stopProxy(state) {
+  return new Promise((resolve, reject) => {
+    const target = new URL('/__cg_proxy/stop', state.base);
+    const req = http.request(target, { method: 'POST', agent: false, headers: { Authorization: `Bearer ${state.adminToken}`, Connection: 'close' } }, res => {
+      res.resume(); res.on('end', () => res.statusCode === 202 ? resolve() : reject(new Error(`Proxy upgrade rejected with HTTP ${res.statusCode}`)));
+    });
+    req.setTimeout(1500, () => req.destroy(new Error('Proxy upgrade timed out')));
+    req.on('error', reject); req.end();
+  });
 }
 export async function ensureNamedProxy({ dir = namedDirectory(), port = Number(process.env.CONTEXT_GUARD_NAMED_PORT || 1355) } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65515) throw new Error('Invalid named proxy port');
@@ -24,7 +36,7 @@ export async function ensureNamedProxy({ dir = namedDirectory(), port = Number(p
   let held = false;
   while (!held) {
     const state = await readJSON(file, null);
-    if (await proxyHealth(state)) return state;
+    if (compatibleProxy(await proxyProbe(state))) return state;
     if (Date.now() > deadline) throw new Error('Named proxy startup busy; no process was replaced');
     try { const h = await fs.open(lock, 'wx', 0o600); try { await h.writeFile(JSON.stringify({ pid: process.pid, identity })); } finally { await h.close(); } held = true; }
     catch (e) {
@@ -45,12 +57,21 @@ export async function ensureNamedProxy({ dir = namedDirectory(), port = Number(p
   }
   try {
     let state = await readJSON(file, null);
-    if (await proxyHealth(state)) return state;
+    let probe = await proxyProbe(state);
+    if (compatibleProxy(probe)) return state;
+    if (probe && state?.adminToken && alive(state.pid)) {
+      await stopProxy(state);
+      while (Date.now() < deadline && alive(state.pid) && (await readJSON(file, null))?.instance === state.instance) await pause(25);
+      if (alive(state.pid) && (await readJSON(file, null))?.instance === state.instance) throw new Error('Older named proxy did not stop safely; no replacement was started');
+      state = await readJSON(file, null);
+      probe = await proxyProbe(state);
+      if (compatibleProxy(probe)) return state;
+    }
     if (state && alive(state.pid)) throw new Error('Existing proxy process is not healthy; inspect it before restarting');
     const log = await fs.open(path.join(dir, 'proxy.log'), 'a', 0o600);
     const child = spawn(process.execPath, [fileURLToPath(new URL('./named-proxy.mjs', import.meta.url)), dir, String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
     child.unref(); await log.close();
-    while (Date.now() < deadline) { await pause(60); state = await readJSON(file, null); if (await proxyHealth(state)) return state; }
+    while (Date.now() < deadline) { await pause(60); state = await readJSON(file, null); if (compatibleProxy(await proxyProbe(state))) return state; }
     throw new Error('Named proxy failed to start; inspect its private proxy.log');
   } finally { if ((await readJSON(lock, null))?.identity === identity) await fs.unlink(lock); }
 }
