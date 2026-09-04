@@ -7,12 +7,12 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
-import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer } from '../scripts/workbench/cli.mjs';
+import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
-import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
+import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
@@ -66,11 +66,67 @@ test('attach-bug recovers when an old operation receipt outlives the Map entry',
   assert.equal(recovered.recovered, true);
   assert.equal(commit.baseVersion, 'missing-version');
   assert.match(commit.operationId, /^bug-recover:[a-f0-9]{24}$/);
+  assert.equal(commit.recoveryOf, `bug:${sessionId}:${bug.id}`);
   assert.deepEqual(commit.operations, [{ type: 'attach-bug', id: 'N1', bug }]);
   commit = undefined;
   const duplicate = await attachBugWithRecovery(call, sessionId, { node: 'N1', bug });
   assert.equal(duplicate.duplicate, true);
   assert.equal(commit, undefined);
+});
+
+test('orphan Bug recovery requires the original attachment receipt from the same Session', async () => {
+  const sessionId = agent.sessionId, bug = { id: 'B4', title: '恢复坏例', status: 'open' };
+  const input = { recoveryOf: `bug:${sessionId}:${bug.id}`, operations: [{ type: 'attach-bug', id: 'N1', bug }] };
+  const validRecord = { result: { committed: true }, event: { actor: agent, operations: [{ type: 'attach-bug', id: 'N1', bug: { ...bug, sessions: [sessionId] } }] } };
+  const prepared = await prepareSessionCommit({ doc: {}, operation: async () => validRecord }, input, agent, sessionId);
+  assert.equal(prepared.actor.kind, 'recovery');
+  assert.equal(prepared.input.operations[0].type, 'recover-bug');
+  const preparedUpdate = await prepareSessionCommit(
+    { doc: {}, operation: async () => validRecord },
+    { recoveryOf: input.recoveryOf, operations: [{ type: 'update-bug', bug: { id: bug.id, status: 'resolved' } }] },
+    agent,
+    sessionId,
+  );
+  assert.equal(preparedUpdate.input.operations[0].id, 'N1');
+  assert.equal(preparedUpdate.input.operations[0].bug.status, 'resolved');
+  await assert.rejects(
+    prepareSessionCommit({ doc: {}, operation: async () => null }, input, agent, sessionId),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  await assert.rejects(
+    prepareSessionCommit({ doc: {}, operation: async () => ({ ...validRecord, event: { ...validRecord.event, actor: { ...agent, sessionId: 'other' } } }) }, input, agent, sessionId),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  const map = { v: 1, project: 'test', root: { id: 'T0', title: '项目', kind: 'module', children: [{ id: 'N1', title: '节点', kind: 'work', bugs: [], children: [] }] } };
+  assert.throws(
+    () => applyOperations(map, [{ type: 'recover-bug', id: 'N1', bug }], agent, ['N1']),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  const recovered = applyOperations(
+    { ...map, unassigned_bugs: [{ ...bug, desc: '保留内容', sessions: [] }] },
+    [{ type: 'recover-bug', id: 'N1', bug }], { ...agent, kind: 'recovery' }, ['N1'],
+  ).doc;
+  assert.equal(recovered.unassigned_bugs.length, 0);
+  assert.deepEqual(recovered.root.children[0].bugs[0].sessions, [sessionId]);
+  assert.equal(recovered.root.children[0].bugs[0].desc, '保留内容');
+});
+
+test('update-bug restores an orphan before applying its status', async () => {
+  const sessionId = 'session-recovery', bug = { id: 'B4', status: 'resolved' };
+  let commit, projections = 0;
+  const call = async (route, options = {}) => {
+    if (route.startsWith('/api/operation?')) return { found: true, result: { committed: true } };
+    if (route === '/api/state') return { version: 'missing-version', doc: { root: { id: 'T0', bugs: [], children: [] } } };
+    if (route === '/api/commit') { commit = options.body; return { committed: true, version: 'restored-version' }; }
+    if (route === '/api/projections') { projections += 1; return { status: 'ready' }; }
+    throw new Error(`unexpected route ${route}`);
+  };
+  const result = await updateBugWithRecovery(call, sessionId, { bug });
+  assert.equal(result.recovered, true);
+  assert.match(commit.operationId, /^bug-status-recover:[a-f0-9]{24}$/);
+  assert.equal(commit.recoveryOf, `bug:${sessionId}:${bug.id}`);
+  assert.deepEqual(commit.operations, [{ type: 'update-bug', bug }]);
+  assert.equal(projections, 1);
 });
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 

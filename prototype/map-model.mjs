@@ -212,7 +212,7 @@ export function scopeChangesToSession(result, document, sessionId) {
   const changes = (result.changes || []).map(change => {
     const operations = (change.operations || []).flatMap(operation => {
       const op = copy(operation);
-      if (op.type === 'attach-bug') return workItemAssignedTo(op.bug, sessionId) ? [{ ...op, bug: visibleWorkItem(op.bug, sessionId) }] : [];
+      if (op.type === 'attach-bug' || op.type === 'recover-bug') return workItemAssignedTo(op.bug, sessionId) ? [{ ...op, bug: visibleWorkItem(op.bug, sessionId) }] : [];
       if (op.type === 'update-bug') return visibleBugIds.has(op.bug?.id) ? [op] : [];
       if (op.type === 'update') for (const key of ['bugs', 'todos']) if (Array.isArray(op.fields?.[key])) op.fields[key] = scopedWorkItems(op.fields[key], sessionId);
       if (op.type === 'create') for (const key of ['bugs', 'todos']) if (Array.isArray(op.node?.[key])) op.node[key] = scopedWorkItems(op.node[key], sessionId);
@@ -265,6 +265,20 @@ export function applyOperations(document, operations, actor, grants = []) {
     } else if (op.type === 'document') {
       if (!human) throw new MapError('FORBIDDEN', 'Only the workbench can change document metadata', 403);
       checkFields(op.fields, ['bootstrap', 'flows']); Object.assign(doc, copy(op.fields));
+    } else if (op.type === 'recover-bug') {
+      if (actor.kind !== 'recovery' || !actor.sessionId) throw new MapError('FORBIDDEN_RECOVERY', 'Bug recovery requires a verified original receipt', 403);
+      if (!target || !allowed(target.node) || !object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '')) throw new MapError('INVALID_BUG_RECOVERY', 'Invalid bug recovery', 403);
+      let existing = null;
+      for (const { node } of index.values()) {
+        const found = (node.bugs || []).find(item => item?.id === op.bug.id);
+        if (found) existing ||= found;
+        if (Array.isArray(node.bugs)) node.bugs = node.bugs.filter(item => item?.id !== op.bug.id);
+      }
+      const unassigned = (doc.unassigned_bugs || []).find(item => item?.id === op.bug.id);
+      existing ||= unassigned;
+      if (Array.isArray(doc.unassigned_bugs)) doc.unassigned_bugs = doc.unassigned_bugs.filter(item => item?.id !== op.bug.id);
+      const bug = { ...copy(existing || {}), ...copy(op.bug), sessions: [...new Set([...assignedSessions(existing), actor.sessionId])] };
+      (target.node.bugs ||= []).push(bug); resultIds.push(op.id);
     } else if (op.type === 'attach-bug') {
       // Compatibility operation only adds a bug stub; it cannot confirm or rewrite nodes.
       if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '')) throw new MapError('INVALID_BUG', 'Invalid bug');

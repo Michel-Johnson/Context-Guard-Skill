@@ -22,6 +22,27 @@ export const projectStatePath = project => project.kind === 'git' ? path.join(pr
 export const projectLockPath = project => project.kind === 'git' ? path.join(project.sharedDir, 'node-workbench.lock') : path.join(project.worktreeRoot, '.codex/context/private/node-workbench.lock');
 const execFileAsync = promisify(execFile);
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+
+export async function prepareSessionCommit(store, input, actor, sessionId) {
+  if (!sessionId || !input?.recoveryOf) {
+    return { input: sessionId ? { ...input, operations: restoreSessionWorkItemOperations(store.doc, input.operations, sessionId) } : input, actor };
+  }
+  const operation = Array.isArray(input.operations) && input.operations.length === 1 ? input.operations[0] : null;
+  const bugId = ['attach-bug', 'update-bug'].includes(operation?.type) ? operation.bug?.id || '' : '';
+  const expected = bugId ? `bug:${sessionId}:${bugId}` : '';
+  const prior = expected && input.recoveryOf === expected ? await store.operation(expected) : null;
+  const original = prior?.event;
+  const originalOperation = original?.operations?.find(item => item?.type === 'attach-bug' && item?.bug?.id === bugId);
+  const sameTarget = operation?.type === 'update-bug' || originalOperation?.id === operation?.id;
+  if (!prior?.result?.committed || original?.actor?.sessionId !== sessionId || !originalOperation || !sameTarget) {
+    throw new MapError('FORBIDDEN_RECOVERY', 'Bug recovery requires this Session\'s committed original attachment receipt', 403);
+  }
+  return {
+    input: { ...input, operations: [{ type: 'recover-bug', id: originalOperation.id, bug: { ...originalOperation.bug, ...operation.bug } }] },
+    actor: { kind: 'recovery', sessionId, projectId: actor.projectId, worktreeId: actor.worktreeId },
+  };
+}
+
 export function bugSessionMessage(node, bug) {
   return [
     'Context Guard 工作台向你分配了一个 Bug。',
@@ -452,8 +473,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
             if (actor.kind === 'agent') await fence(viewId);
             const sessionId = actor.kind === 'agent' ? actor.sessionId : viewId.startsWith('session:') ? viewId.slice('session:'.length) : '';
-            const scopedInput = sessionId ? { ...input, operations: restoreSessionWorkItemOperations(activeStore.doc, input.operations, sessionId) } : input;
-            const result = await activeStore.commit(scopedInput, actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
+            const prepared = await prepareSessionCommit(activeStore, input, actor, sessionId);
+            const result = await activeStore.commit(prepared.input, prepared.actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
           if (route === '/api/access' && req.method === 'GET') {
