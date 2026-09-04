@@ -56,6 +56,19 @@ rather than overwriting them. Integrate custom hooks explicitly if refusal occur
 Consumer `npm install` / `npx` does not install developer hooks or the scanner.
 Normal Skill creation of a user's local `.codex/context` remains unchanged.
 
+## Post-merge local acceptance
+
+A Context Guard product PR is not delivered merely because GitHub merged it.
+The implementing Agent must immediately fetch the merged `origin/main`, update
+the local global Skill from a checkout containing that merge, and prove that the
+installed Skill/runtime matches the merged source. Then run `context-guard doctor`
+and repeat the feature-specific acceptance through the installed entry point,
+not the development checkout. Record the main merge commit, install source,
+version/hash comparison, and runtime output. An explicit request to implement or
+merge already authorizes these normal delivery steps; do not ask again. Native
+Hook trust is still a host security boundary: report it when pending and never
+use a dangerous trust bypass.
+
 ## When checks run
 
 | Stage | Input | Result |
