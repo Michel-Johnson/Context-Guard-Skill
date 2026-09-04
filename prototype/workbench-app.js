@@ -1245,31 +1245,52 @@ function readableSessionName(meta){
   const placeholder=/^(?:agent\s*[=：:·-]\s*)?(?:当前会话|current session)$/i.test(name);
   return name && name!==id && name!==shortId && !placeholder ? name : "";
 }
-function sessionBaseLabel(meta){
+function sessionHumanValue(meta,value){
   const id=sessionIdOf(meta), shortId=String(meta?.shortId||"").trim();
-  const humanValue=value=>{
-    const text=String(value||"").trim();
-    return text && text!==id && text!==shortId ? text : "";
-  };
+  const text=String(value||"").trim();
+  return text && text!==id && text!==shortId ? text : "";
+}
+function sessionBaseLabel(meta){
   const platform=String(meta?.platform||"").trim();
   const readablePlatform=platform && platform!=="unknown" ? platform : "";
   const name=readableSessionName(meta);
-  const worktree=humanValue(meta?.worktreeName);
-  const branch=humanValue(meta?.branch);
-  if(name) return [...new Set([readablePlatform?`${readablePlatform}-${name}`:name,worktree,branch].filter(Boolean))].join(" · ");
-  const context=[worktree,branch].filter((value,index,array)=>value && array.indexOf(value)===index);
-  if(context.length) return [readablePlatform,...context].filter(Boolean).join(" · ");
+  if(name){
+    const alreadyPrefixed=readablePlatform && name.toLowerCase().startsWith(`${readablePlatform.toLowerCase()}-`);
+    return readablePlatform&&!alreadyPrefixed?`${readablePlatform}-${name}`:name;
+  }
   return `${readablePlatform||"Agent"} ${uiLang==="en"?"session":"会话"}`;
 }
+function sessionContextLabel(meta){
+  const worktree=sessionHumanValue(meta,meta?.worktreeName);
+  const branch=sessionHumanValue(meta,meta?.branch);
+  return [...new Set([worktree,branch].filter(Boolean))].join(" · ");
+}
+function sessionLabelModel(meta,sessions=workbenchSync?.sessions||[]){
+  if(!meta) return {primary:uiLang==="en"?"No agent session":"暂无 Agent 会话",secondary:"",context:""};
+  const id=sessionIdOf(meta), primary=sessionBaseLabel(meta);
+  const peers=normalizeSessions(sessions).filter(item=>sessionBaseLabel(item)===primary).sort((a,b)=>sessionIdOf(a).localeCompare(sessionIdOf(b)));
+  let secondary="";
+  if(peers.length>1){
+    const uniqueValue=getter=>{
+      const own=getter(meta);
+      return own && peers.filter(item=>getter(item)===own).length===1 ? own : "";
+    };
+    secondary=uniqueValue(item=>sessionHumanValue(item,item?.branch))
+      || uniqueValue(item=>sessionHumanValue(item,item?.worktreeName))
+      || uniqueValue(sessionContextLabel);
+    if(!secondary){
+      const index=Math.max(0,peers.findIndex(item=>sessionIdOf(item)===id));
+      secondary=`${uiLang==="en"?"Session":"会话"} ${index+1}`;
+    }
+  }
+  return {primary,secondary,context:sessionContextLabel(meta)};
+}
 function sessionPrimaryLabel(meta,sessions=workbenchSync?.sessions||[]){
-  if(!meta) return uiLang==="en"?"No agent session":"暂无 Agent 会话";
-  const id=sessionIdOf(meta), base=sessionBaseLabel(meta);
-  const peers=normalizeSessions(sessions).filter(item=>sessionBaseLabel(item)===base).sort((a,b)=>sessionIdOf(a).localeCompare(sessionIdOf(b)));
-  const ordinal=peers.length>1 ? `${uiLang==="en"?"session":"会话"} ${Math.max(0,peers.findIndex(item=>sessionIdOf(item)===id))+1}` : "";
-  return [base,ordinal,id===browserCurrentSessionId()?t("sessionNow"):""].filter(Boolean).join(" · ");
+  return sessionLabelModel(meta,sessions).primary;
 }
 function sessionMetaLabel(meta,sessions=workbenchSync?.sessions||[]){
-  return sessionPrimaryLabel(meta,sessions);
+  const label=sessionLabelModel(meta,sessions);
+  return [label.primary,label.secondary].filter(Boolean).join(" — ");
 }
 function sessionLifecycle(meta){
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
@@ -1313,13 +1334,13 @@ function setWorkbenchAccess(ids,session,meta,global,main){
   const status=document.getElementById("session-status");
   const chip=document.getElementById("session-chip");
   const lifecycle=activeMeta?sessionLifecycle(activeMeta):{state:"empty",label:"未挂载会话",disabled:false};
-  const displayName=global?t("allSessions"):sessionMetaLabel(activeMeta,sessions);
+  const displayName=global?t("allSessions"):sessionPrimaryLabel(activeMeta,sessions);
   const state=global?"empty":lifecycle.state;
   const stateLabel=global?t("globalSessionView"):lifecycle.label;
   label.textContent=displayName;
   label.title=global&&main?.branch
     ? `${stateLabel} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`
-    : [stateLabel,activeMeta?sessionBaseLabel(activeMeta):""].filter(Boolean).join(" · ");
+    : [stateLabel,activeMeta?sessionContextLabel(activeMeta):""].filter(Boolean).join(" · ");
   status.className=`session-status ${state}`;
   status.setAttribute("aria-label",stateLabel);
   status.title=stateLabel;
@@ -1396,9 +1417,12 @@ function renderSessionMenu(){
     <span class="session-option-name">${esc(t("allSessions"))}</span>
   </button>`;
   menu.innerHTML = all + sessions.map(meta=>{
-    const lifecycle=sessionLifecycle(meta), id=sessionIdOf(meta);
-    return `<button type="button" role="option" data-session="${escAttr(id)}" aria-selected="${id===workbenchSync.activeSession}" aria-disabled="${lifecycle.disabled}" ${lifecycle.disabled?"disabled":""} title="${escAttr(lifecycle.label)}">
-      <span class="session-option-name">${esc(sessionMetaLabel(meta,sessions))}</span>
+    const lifecycle=sessionLifecycle(meta), id=sessionIdOf(meta), label=sessionLabelModel(meta,sessions);
+    const current=id===browserCurrentSessionId();
+    const title=[lifecycle.label,label.context].filter(Boolean).join(" · ");
+    const accessible=[label.primary,label.secondary,current?t("sessionNow"):"",lifecycle.label].filter(Boolean).join("，");
+    return `<button type="button" role="option" data-session="${escAttr(id)}" aria-selected="${id===workbenchSync.activeSession}" aria-current="${current}" aria-disabled="${lifecycle.disabled}" aria-label="${escAttr(accessible)}" ${lifecycle.disabled?"disabled":""} title="${escAttr(title)}">
+      <span class="session-option-copy"><span class="session-option-name">${esc(label.primary)}</span>${label.secondary?`<span class="session-option-context">${esc(label.secondary)}</span>`:""}</span>
       <span class="session-status ${lifecycle.state}" aria-label="${lifecycle.label}"></span>
     </button>`;
   }).join("");
@@ -2087,7 +2111,7 @@ function sessionMetaOf(sessionId){
 }
 function sessionDisplayName(sessionId){
   const meta = sessionMetaOf(sessionId);
-  return meta ? sessionPrimaryLabel(meta) : (uiLang==="en"?"Agent session":"Agent 会话");
+  return meta ? sessionMetaLabel(meta) : (uiLang==="en"?"Agent session":"Agent 会话");
 }
 function bugProgress(bug){
   const status = String(bug?.status||"open");
