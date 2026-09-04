@@ -201,6 +201,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
 
   const started = hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   assert.match(started.json.hookSpecificOutput.additionalContext, /Context Guard Map snapshot/);
+  assert.match(started.json.hookSpecificOutput.additionalContext, /Keep the plan active through commit, PR, merge, and installed acceptance/);
 
   const prompted = hook('UserPromptSubmit', project, session, { prompt: '完成 Hook 生命周期开发' });
   const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
@@ -209,6 +210,15 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   await installMap(project);
   const noPlan = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
   assert.equal(noPlan.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(noPlan.json.hookSpecificOutput.permissionDecisionReason, /without asking them to confirm again/);
+  const planInput = JSON.stringify({ approved: true, summary: 'explicit request is approval', node_ids: ['N1'], paths: ['src/'] });
+  for (const command of [
+    `printf %s ${JSON.stringify(planInput)} | node ${JSON.stringify(contextScript.replace(/context_guard\.py$/, '../bin/context-guard-skill.js'))} plan-start --input -`,
+    `printf %s ${JSON.stringify(planInput)} | python3 ${JSON.stringify(contextScript)} plan-start --input -`,
+  ]) {
+    const bootstrap = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
+    assert.equal(bootstrap.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
   await startPlan(t, project, session);
 
   const prepared = hook('PreToolUse', project, session, {
@@ -664,6 +674,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --diagnose --root .'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --root . --session session-1'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | context-guard plan-start --input -'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | node /tmp/context-guard-skill.js plan-start --input -'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | python3 /tmp/context_guard.py plan-start --input -'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'python3 payload.py | context-guard plan-start --input -'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rg --pre ./writer pattern .'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'find . -delete'}})
