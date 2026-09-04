@@ -12,7 +12,7 @@ import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
-import { bugSessionMessage, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
+import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
@@ -66,11 +66,41 @@ test('attach-bug recovers when an old operation receipt outlives the Map entry',
   assert.equal(recovered.recovered, true);
   assert.equal(commit.baseVersion, 'missing-version');
   assert.match(commit.operationId, /^bug-recover:[a-f0-9]{24}$/);
+  assert.equal(commit.recoveryOf, `bug:${sessionId}:${bug.id}`);
   assert.deepEqual(commit.operations, [{ type: 'attach-bug', id: 'N1', bug }]);
   commit = undefined;
   const duplicate = await attachBugWithRecovery(call, sessionId, { node: 'N1', bug });
   assert.equal(duplicate.duplicate, true);
   assert.equal(commit, undefined);
+});
+
+test('orphan Bug recovery requires the original attachment receipt from the same Session', async () => {
+  const sessionId = agent.sessionId, bug = { id: 'B4', title: '恢复坏例', status: 'open' };
+  const input = { recoveryOf: `bug:${sessionId}:${bug.id}`, operations: [{ type: 'attach-bug', id: 'N1', bug }] };
+  const validRecord = { result: { committed: true }, event: { actor: agent, operations: [{ type: 'attach-bug', id: 'N1', bug: { ...bug, sessions: [sessionId] } }] } };
+  const prepared = await prepareSessionCommit({ doc: {}, operation: async () => validRecord }, input, agent, sessionId);
+  assert.equal(prepared.actor.kind, 'recovery');
+  assert.equal(prepared.input.operations[0].type, 'recover-bug');
+  await assert.rejects(
+    prepareSessionCommit({ doc: {}, operation: async () => null }, input, agent, sessionId),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  await assert.rejects(
+    prepareSessionCommit({ doc: {}, operation: async () => ({ ...validRecord, event: { ...validRecord.event, actor: { ...agent, sessionId: 'other' } } }) }, input, agent, sessionId),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  const map = { v: 1, project: 'test', root: { id: 'T0', title: '项目', kind: 'module', children: [{ id: 'N1', title: '节点', kind: 'work', bugs: [], children: [] }] } };
+  assert.throws(
+    () => applyOperations(map, [{ type: 'recover-bug', id: 'N1', bug }], agent, ['N1']),
+    error => error.code === 'FORBIDDEN_RECOVERY',
+  );
+  const recovered = applyOperations(
+    { ...map, unassigned_bugs: [{ ...bug, desc: '保留内容', sessions: [] }] },
+    [{ type: 'recover-bug', id: 'N1', bug }], { ...agent, kind: 'recovery' }, ['N1'],
+  ).doc;
+  assert.equal(recovered.unassigned_bugs.length, 0);
+  assert.deepEqual(recovered.root.children[0].bugs[0].sessions, [sessionId]);
+  assert.equal(recovered.root.children[0].bugs[0].desc, '保留内容');
 });
 async function until(fn, timeout = 4000) { const end = Date.now() + timeout; while (!await fn()) { assert.ok(Date.now() < end, 'condition timed out'); await pause(25); } }
 

@@ -36,7 +36,12 @@ export async function attachBugWithRecovery(call, sessionId, input) {
   const commitOperationId = prior.found ? `bug-recover:${recoveryKey}` : operationId;
   const result = await call('/api/commit', {
     method: 'POST',
-    body: { operationId: commitOperationId, baseVersion: snapshot.version, operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }] },
+    body: {
+      operationId: commitOperationId,
+      baseVersion: snapshot.version,
+      operations: [{ type: 'attach-bug', id: input.node, bug: input.bug }],
+      ...(prior.found ? { recoveryOf: operationId } : {}),
+    },
   });
   return prior.found ? { ...result, recovered: true } : result;
 }
