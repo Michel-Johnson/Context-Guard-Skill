@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startCloudServer } from '../scripts/cloud/server.mjs';
-import { checkpointSync, connectSync, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
+import { checkpointSync, connectSync, ensureService, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
 
 const node = (id, title) => ({ id, title, kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] });
 const document = () => ({
@@ -42,6 +42,23 @@ async function edit(root, nodeId, purpose) {
   const target = doc.root.children.find(item => item.id === nodeId);
   target.purpose = purpose;
   await fs.writeFile(file, JSON.stringify(doc, null, 2) + '\n');
+}
+
+async function waitFor(check, message, timeout = 8_000) {
+  const deadline = Date.now() + timeout;
+  let last;
+  while (Date.now() < deadline) {
+    try { last = await check(); if (last) return last; } catch (error) { last = error; }
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  assert.fail(`${message}${last instanceof Error ? `: ${last.message}` : ''}`);
+}
+
+async function stopService(root) {
+  const status = await syncStatus(root).catch(() => null);
+  if (!status?.service?.pid) return;
+  try { process.kill(status.service.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+  await waitFor(async () => !(await syncStatus(root)).service.alive, 'sync service did not stop');
 }
 
 test('local clients connect and pull event-driven cloud state', async t => {
@@ -112,4 +129,63 @@ test('checkpoint reports conflicts without publishing the Session map', async t 
   assert.equal(remote.document.root.children.find(item => item.id === 'N1').purpose, 'published from B');
   const local = JSON.parse(await fs.readFile(path.join(a, '.codex/context/map.json'), 'utf8'));
   assert.equal(local.root.children.find(item => item.id === 'N1').purpose, 'draft from A');
+});
+
+test('connect requires an explicit pull or push when local and Cloud maps differ', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const seed = await f.local();
+  await connectSync({ root: seed, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false });
+  await prepareSync({ root: seed, sessionId: 'seed', nodeIds: ['N1'] });
+  await edit(seed, 'N1', 'Cloud is authoritative');
+  await finishSync({ root: seed, sessionId: 'seed' });
+
+  const pulled = await f.local();
+  await edit(pulled, 'N1', 'different local draft');
+  const base = { root: pulled, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false };
+  await assert.rejects(() => connectSync(base), error => error.code === 'INITIAL_SYNC_CONFLICT');
+  await connectSync({ ...base, mode: 'pull' });
+  let local = JSON.parse(await fs.readFile(path.join(pulled, '.codex/context/map.json'), 'utf8'));
+  assert.equal(local.root.children.find(item => item.id === 'N1').purpose, 'Cloud is authoritative');
+
+  const pushed = await f.local();
+  await edit(pushed, 'N2', 'explicit local replacement');
+  await connectSync({ root: pushed, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false, mode: 'push' });
+  const remote = await fetch(f.cloud.url + '/api/projects/sync-fixture/map').then(response => response.json());
+  assert.equal(remote.document.root.children.find(item => item.id === 'N2').purpose, 'explicit local replacement');
+});
+
+test('ensure service resumes SSE from its durable cursor after restart', async t => {
+  const f = await fixture(); t.after(() => f.dispose());
+  const writer = await f.local(), listener = await f.local();
+  const options = root => ({ root, url: f.cloud.url, projectId: 'sync-fixture', token: f.token, startService: false });
+  await connectSync(options(writer)); await connectSync(options(listener));
+  t.after(() => stopService(listener));
+
+  const first = await ensureService(listener);
+  assert.equal(first.started, true);
+  const duplicate = await ensureService(listener);
+  assert.deepEqual(duplicate, { started: false, pid: first.pid });
+
+  await prepareSync({ root: writer, sessionId: 'writer-one', nodeIds: ['N1'] });
+  await edit(writer, 'N1', 'received while online');
+  await finishSync({ root: writer, sessionId: 'writer-one' });
+  await waitFor(async () => {
+    const map = JSON.parse(await fs.readFile(path.join(listener, '.codex/context/map.json'), 'utf8'));
+    return map.root.children.find(item => item.id === 'N1').purpose === 'received while online';
+  }, 'listener did not receive the first SSE update');
+
+  await stopService(listener);
+  await prepareSync({ root: writer, sessionId: 'writer-two', nodeIds: ['N2'] });
+  await edit(writer, 'N2', 'received after restart');
+  await finishSync({ root: writer, sessionId: 'writer-two' });
+
+  const restarted = await ensureService(listener);
+  assert.equal(restarted.started, true);
+  await waitFor(async () => {
+    const map = JSON.parse(await fs.readFile(path.join(listener, '.codex/context/map.json'), 'utf8'));
+    return map.root.children.find(item => item.id === 'N2').purpose === 'received after restart';
+  }, 'listener did not resume from the durable SSE cursor');
+  const status = await syncStatus(listener);
+  assert.equal(status.state.status, 'synced');
+  assert.equal(status.service.alive, true);
 });
