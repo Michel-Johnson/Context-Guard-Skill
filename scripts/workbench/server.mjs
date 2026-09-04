@@ -14,6 +14,7 @@ import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sess
 import { memoryRequest, sessionMemoryDir } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
+import { Attachments } from './attachments.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -134,8 +135,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     bindingsFile: sessionBindingsPath(project),
   } : {}).init();
   let stopAccessWatch = () => {}, stopCloudWatch = () => {};
-  const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap(), syncCoordinators = new Map();
+  const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap(), syncCoordinators = new Map(), attachmentStores = new WeakMap();
   let mainStore, mainSource = null;
+  const attachmentsFor = store => {
+    let attachments = attachmentStores.get(store);
+    if (!attachments) {
+      attachments = new Attachments(store.root);
+      attachmentStores.set(store, attachments);
+    }
+    return attachments;
+  };
   const sourceFile = path.join(project.sharedDir, 'main-source.json');
   let server, base;
   async function updateMainBaseline(source, { force = false } = {}) {
@@ -481,6 +490,23 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             isHuman(actor);
             return send(res, 200, await activeStore.repair(await body(req)));
           }
+          if (route === '/api/attachments' && req.method === 'POST') {
+            isHuman(actor);
+            if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
+            if (activeStore.blocked || activeStore.error) throw new MapError('RECOVERY_REQUIRED', 'Resolve map recovery before uploading', 409);
+            return send(res, 200, await attachmentsFor(activeStore).save(await body(req), activeStore.doc));
+          }
+          if (route === '/api/attachments' && req.method === 'GET') {
+            isHuman(actor);
+            const content = await attachmentsFor(activeStore).read(url.searchParams.get('path'), activeStore.doc);
+            res.writeHead(200, {
+              'Content-Type': 'application/octet-stream',
+              'Content-Disposition': 'attachment',
+              'X-Content-Type-Options': 'nosniff',
+              'Cache-Control': 'no-store',
+            });
+            return res.end(content);
+          }
           if (route === '/api/access' && req.method === 'GET') {
             isHuman(actor);
             const currentSessionId = viewId.startsWith('session:') ? viewId.slice('session:'.length) : null;
@@ -571,7 +597,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
         }
-        if (['/prototype/map-model.mjs', '/prototype/workbench-sync.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        if (['/prototype/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (['/prototype/workbench-app.js', '/prototype/workbench-fixtures.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (route === '/prototype/workbench.css') { file = path.join(skillRoot, route.slice(1)); contentType = 'text/css; charset=utf-8'; }
         else if (route === '/.codex/context/map.json') { file = mainStore.file; contentType = 'application/json; charset=utf-8'; }

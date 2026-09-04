@@ -23,6 +23,7 @@ PRODUCT_TESTS = {
     "tests/workbench-browser.mjs",
     "tests/workbench-journal-recovery.test.mjs",
     "tests/workbench-journal-recovery-browser.mjs",
+    "tests/workbench-attachments.test.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",
 }

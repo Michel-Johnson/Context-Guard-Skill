@@ -841,7 +841,7 @@ export async function startCloudServer({
           return send(res, 200, result);
         }
       }
-      if (req.method === 'GET' && /\/(map-model|workbench-sync)\.mjs$/.test(route)) {
+      if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments)\.mjs$/.test(route)) {
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
