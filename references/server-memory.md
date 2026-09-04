@@ -32,8 +32,9 @@ checkout write access just so the service can run `git fetch`.
 Configure a client using `context-guard memory configure --root <project> --input
 <private-file>` containing `url`, `projectId`, `token`. It verifies the endpoint
 before replacing existing configuration. Never put the credential on the command
-line, in a node, in a Session record, or in Git. Configure publisher credentials
-only in an authorized publication environment, not every Agent worktree.
+line, in a node, in a Session record, or in Git. Keep the administrator credential
+on the server. Agent worktrees use only their project-scoped credential; the human
+browser uses only its HttpOnly workbench cookie.
 
 The authenticated API is `/v1/projects/<id>/main`, `/preferences`,
 `/sessions/<session-id>`, `/publish`, `/history`, and `/restore`. Public Cloud routes do not expose these
@@ -66,14 +67,24 @@ destructive strategy once a normal ancestor exists.
 Archive invokes sync when configured; failure preserves the local draft and is reported,
 not treated as success.
 
-`memory publish --input <private-request>` requires publisher/admin credentials,
-`operationId`, `baseVersion`, `sessionId`, `sessionVersion`, `expectedMainSha`.
-The server checks the actual configured mirror/ref and verifies Session source
-ancestry; the Session must already be reconciled to the current main-memory version.
+`memory publish --input <private-request>` is a constrained publication request
+authorized by the project-scoped credential. It accepts only `operationId`,
+`baseVersion`, `sessionId`, `sessionVersion`, and `expectedMainSha`; it cannot
+submit arbitrary Main content. The Cloud workbench exposes the same operation to
+an authenticated human through its cookie. The server keeps its administrator
+credential private, checks the actual configured mirror/ref, verifies Session
+source ancestry, and requires the Session to be reconciled to the current
+main-memory version. Direct Main writes and Main/preferences restoration still
+require administrator authorization.
 Main advancement, unmerged source or concurrent publication fails without changing
 the baseline. Workbench refreshes the baseline every 30 seconds and shows stale or
 unavailable status instead of overwriting the last good snapshot. Repositories
 without a configured authoritative ref cannot publish.
+
+The project page reports publication as waiting for Git merge, ready, conflicting,
+unavailable, or published. The publish control becomes active only in a ready
+Session view. A published Main view is read-only; further changes belong in a new
+Session.
 
 Successful publication closes and removes that Session Map branch in the same
 durable server transaction. Its immutable history, publication receipt, source

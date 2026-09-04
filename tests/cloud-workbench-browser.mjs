@@ -3,15 +3,20 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 
+const execFileAsync = promisify(execFile);
+const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
 const output = path.resolve(process.argv[2] || `output/playwright/browser-ci/cloud-${Date.now()}-${randomUUID()}`);
 const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-browser-'));
+const repository = path.join(dataDir, 'repository');
 const memoryConfig = {
   dataDir: path.join(dataDir, 'memory'),
   adminToken: 'memory-admin',
-  projects: { 'context-guard': { token: 'project-memory-token' } },
+  projects: { 'context-guard': { token: 'project-memory-token', root: repository, ref: 'refs/heads/main' } },
 };
 const mainMap = {
   v: 1,
@@ -46,6 +51,19 @@ const request = async (url, options = {}) => {
 
 try {
   await fs.mkdir(output, { recursive: true });
+  await fs.mkdir(repository);
+  await git(repository, 'init', '-b', 'main');
+  await git(repository, 'config', 'user.name', 'Cloud Browser Test');
+  await git(repository, 'config', 'user.email', 'cloud-browser@example.invalid');
+  await fs.writeFile(path.join(repository, 'version.txt'), 'base\n');
+  await git(repository, 'add', 'version.txt');
+  await git(repository, 'commit', '-m', 'base');
+  const baseSha = await git(repository, 'rev-parse', 'HEAD');
+  await git(repository, 'switch', '-c', 'feature');
+  await fs.writeFile(path.join(repository, 'version.txt'), 'feature\n');
+  await git(repository, 'commit', '-am', 'feature');
+  const featureSha = await git(repository, 'rev-parse', 'HEAD');
+  await git(repository, 'switch', 'main');
   service = await startCloudServer({
     host: '127.0.0.1',
     port: 0,
@@ -56,6 +74,18 @@ try {
     privateAccess: true,
     memoryConfig,
   });
+  const baselineSession = await request(`${service.url}/v1/projects/context-guard/sessions/baseline-session`, {
+    method: 'POST',
+    headers: headers('project-memory-token'),
+    body: JSON.stringify({ operationId: 'browser-baseline-session', baseVersion: null, baseMainVersion: null, sourceCommit: baseSha, memory: { map: mainMap, records: {} } }),
+  });
+  assert.equal(baselineSession.response.status, 200, JSON.stringify(baselineSession.body));
+  const baselinePublication = await request(`${service.url}/v1/projects/context-guard/publish`, {
+    method: 'POST',
+    headers: headers('project-memory-token'),
+    body: JSON.stringify({ operationId: 'browser-baseline-publish', baseVersion: null, sessionId: 'baseline-session', sessionVersion: baselineSession.body.snapshot.version, expectedMainSha: baseSha }),
+  });
+  assert.equal(baselinePublication.response.status, 200, JSON.stringify(baselinePublication.body));
   const seededMain = await request(`${service.url}/api/projects/context-guard/snapshot`, {
     method: 'POST',
     headers: headers('cloud-admin'),
@@ -65,7 +95,7 @@ try {
   const seededSession = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, {
     method: 'POST',
     headers: headers('project-memory-token'),
-    body: JSON.stringify({ operationId: 'browser-session-seed', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map: sessionMap, records: {} } }),
+    body: JSON.stringify({ operationId: 'browser-session-seed', baseVersion: null, baseMainVersion: baselinePublication.body.snapshot.version, sourceCommit: featureSha, memory: { map: sessionMap, records: {} } }),
   });
   assert.equal(seededSession.response.status, 200, JSON.stringify(seededSession.body));
 
@@ -94,6 +124,13 @@ try {
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Main map/);
   record('Main is the default view');
+  await page.locator('.cloud-overview-link').click();
+  await page.waitForURL(`${service.url}/`);
+  assert.match(await page.locator('.node[data-id="P_context-guard"]').textContent(), /Context Guard/);
+  await page.locator('.node[data-id="P_context-guard"]').click();
+  await page.waitForURL(`${service.url}/projects/context-guard`);
+  await synchronized();
+  record('Project page has a stable route back to the overview');
 
   await page.locator('#session-chip').click();
   await page.locator('#session-menu [data-session="session-one"]').click();
@@ -158,6 +195,28 @@ try {
   assert.equal(conflictWinner.body.snapshot.memory.map.root.purpose, 'concurrent server edit');
   await page.unroute(commitRoute);
   record('Concurrent edit shows conflict and preserves the losing browser draft');
+
+  await page.reload();
+  await synchronized();
+  await page.locator('#session-chip').click();
+  await page.locator('#session-menu [data-session="session-one"]').click();
+  await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one');
+  await synchronized();
+  await git(repository, 'merge', '--ff-only', 'feature');
+  await page.reload();
+  await synchronized();
+  await page.locator('#session-chip').click();
+  await page.locator('#session-menu [data-session="session-one"]').click();
+  await page.waitForFunction(() => document.querySelector('#btn-publish-main')?.dataset.status === 'ready');
+  await page.locator('#btn-publish-main').click();
+  await page.waitForFunction(() => document.querySelector('#btn-publish-main')?.dataset.status === 'published');
+  await synchronized();
+  assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
+  assert.doesNotMatch(await page.content(), /memory-admin|cloud-admin|project-memory-token/);
+  await page.reload();
+  await synchronized();
+  assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
+  record('Verified publication updates durable read-only Main without exposing an admin token');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

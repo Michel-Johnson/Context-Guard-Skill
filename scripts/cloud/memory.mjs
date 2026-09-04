@@ -89,6 +89,80 @@ export async function readMemoryProject({ dataDir, adminToken, projects = {} }, 
   return readJSON(memoryFile(dataDir, projectId), initialMemoryState());
 }
 
+const gitCommand = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
+async function mergedIntoMain(project, sourceCommit, targetCommit) {
+  try { await gitCommand(project.root, ['merge-base', '--is-ancestor', sourceCommit, targetCommit]); return true; }
+  catch (error) { if (error?.code === 1) return false; throw error; }
+}
+
+export async function memoryPublicationStatus(configuration, projectId, sessionId, { refresh = false } = {}) {
+  validateOptions(configuration);
+  if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
+  const project = configuration.projects?.[projectId];
+  if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  const state = await readMemoryProject(configuration, projectId);
+  const closed = state.closedSessions?.[sessionId];
+  if (closed) return { projectId, sessionId, status: 'published', ...closed };
+  const session = state.sessions?.[sessionId];
+  if (!session) return { projectId, sessionId, status: 'missing' };
+  if (!project.root || !project.ref) return { projectId, sessionId, status: 'unavailable', reason: 'MAIN_BINDING_REQUIRED', sessionVersion: session.version };
+  if (refresh && project.remote) await gitCommand(project.root, ['fetch', '--quiet', project.remote]);
+  const mainSha = await gitCommand(project.root, ['rev-parse', '--verify', `${project.ref}^{commit}`]);
+  const baseVersion = state.main?.version || null;
+  const common = { projectId, sessionId, sessionVersion: session.version, baseVersion, baseMainVersion: session.baseMainVersion ?? null, sourceCommit: session.sourceCommit, mainSha };
+  if (session.baseMainVersion !== baseVersion) return { ...common, status: 'conflict', reason: 'MAIN_MEMORY_ADVANCED' };
+  return { ...common, status: await mergedIntoMain(project, session.sourceCommit, mainSha) ? 'ready' : 'waiting', reason: null };
+}
+
+export async function publishSessionMemory(configuration, projectId, input, actor = { kind: 'agent', sessionId: input?.sessionId || '' }) {
+  validateOptions(configuration);
+  const project = configuration.projects?.[projectId];
+  if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
+  const file = memoryFile(configuration.dataDir, projectId);
+  const committed = await withFileLock(file + '.lock', async () => {
+    const state = await readJSON(file, initialMemoryState());
+    state.closedSessions ||= {};
+    const key = hash(`publish:${input.operationId}`), fingerprint = hash(encode(input));
+    if (state.receipts[key]) {
+      if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
+      return { result: state.receipts[key].result, event: null };
+    }
+    if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
+    if (!project.root || !project.ref) throw new MapError('MAIN_BINDING_REQUIRED', 'Configure the server repository mirror and authoritative ref', 409);
+    const session = state.sessions[input.sessionId];
+    if (!session || session.version !== input.sessionVersion) throw new MapError('VERSION_CONFLICT', 'Session version changed', 409);
+    if ((state.main?.version || null) !== input.baseVersion || session.baseMainVersion !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Reconcile Session against the published main baseline first', 409);
+    if (project.remote) await gitCommand(project.root, ['fetch', '--quiet', project.remote]);
+    const mainSha = await gitCommand(project.root, ['rev-parse', '--verify', `${project.ref}^{commit}`]);
+    if (mainSha !== input.expectedMainSha) throw new MapError('MAIN_ADVANCED', 'Main changed; review the new commit before publication', 409);
+    if (!await mergedIntoMain(project, session.sourceCommit, mainSha)) throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409);
+    const previousVersion = state.main?.version || null;
+    const publishedAt = new Date().toISOString();
+    const snapshot = {
+      ...session,
+      version: hash(encode(input)),
+      memory: { map: session.memory.map, records: { ...(state.main?.memory?.records || {}), ...session.memory.records } },
+      mainSha,
+      ref: project.ref,
+      repository: project.repository || projectId,
+      publishedAt,
+    };
+    state.main = snapshot;
+    state.closedSessions[input.sessionId] = { sessionId: input.sessionId, sessionVersion: session.version, sourceCommit: session.sourceCommit, mainSha, mainVersion: snapshot.version, publishedAt };
+    delete state.sessions[input.sessionId];
+    state.revision++;
+    const history = appendHistory(state, { scope: 'main', action: 'publish', snapshot, previousVersion, actor, at: publishedAt });
+    const result = { committed: true, projectId, snapshot, revision: state.revision, history, closedSession: state.closedSessions[input.sessionId] };
+    state.receipts[key] = { fingerprint, result };
+    const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.published', operationId: input.operationId, baseVersion: previousVersion, version: snapshot.version, actor, at: publishedAt });
+    await atomicWrite(file, encode(state));
+    return { result, event };
+  });
+  if (committed.event) memoryHub(configuration).emit('event', committed.event);
+  return committed.result;
+}
+
 export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
   const file = memoryFile(configuration.dataDir, projectId);
@@ -131,7 +205,6 @@ export function createMemoryHandler(configuration = {}) {
   validateOptions({ dataDir, adminToken });
   const hub = memoryHub(configuration);
   const eventClients = new Set();
-  const git = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
   const handler = async (req, res) => {
     const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); return true; };
     const url = new URL(req.url, 'http://localhost');
@@ -204,10 +277,14 @@ export function createMemoryHandler(configuration = {}) {
         return send(200, result);
       }
       if (sessionAction) throw new MapError('METHOD', 'GET required', 405);
+      if (scope === 'publish') {
+        const result = await publishSessionMemory(configuration, projectId, input, { kind: admin ? 'admin' : 'agent', sessionId: input.sessionId || '' });
+        return send(200, result);
+      }
       const committed = await withFileLock(file + '.lock', async () => {
         const state = await readJSON(file, initial), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
         state.closedSessions ||= {};
-        if ((scope === 'publish' || scope === 'restore' && ['main', 'preferences'].includes(input.scope)) && !admin) throw new MapError('FORBIDDEN', 'Main publication and restoration require publisher/admin authorization', 403);
+        if (scope === 'restore' && ['main', 'preferences'].includes(input.scope) && !admin) throw new MapError('FORBIDDEN', 'Main and preference restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
           if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
           return { result: state.receipts[key].result, event: null };
@@ -231,39 +308,6 @@ export function createMemoryHandler(configuration = {}) {
           snapshot = { sessionId: id, version: hash(encode(input)), sourceCommit: input.sourceCommit, baseMainVersion: input.baseMainVersion ?? null, memory: input.memory, updatedAt: new Date().toISOString() };
           state.sessions[id] = snapshot;
           historyScope = `session:${id}`;
-        } else if (scope === 'publish') {
-          if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
-          if (!project.root || !project.ref) throw new MapError('MAIN_BINDING_REQUIRED', 'Configure the server repository mirror and authoritative ref', 409);
-          const session = state.sessions[input.sessionId];
-          if (!session || session.version !== input.sessionVersion) throw new MapError('VERSION_CONFLICT', 'Session version changed', 409);
-          if ((state.main?.version || null) !== input.baseVersion || session.baseMainVersion !== input.baseVersion) throw new MapError('VERSION_CONFLICT', 'Reconcile Session against the published main baseline first', 409);
-          if (project.remote) await git(project.root, ['fetch', '--quiet', project.remote]);
-          const mainSha = await git(project.root, ['rev-parse', '--verify', `${project.ref}^{commit}`]);
-          if (mainSha !== input.expectedMainSha) throw new MapError('MAIN_ADVANCED', 'Main changed; review the new commit before publication', 409);
-          try { await git(project.root, ['merge-base', '--is-ancestor', session.sourceCommit, mainSha]); }
-          catch { throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409); }
-          previousVersion = state.main?.version || null;
-          snapshot = {
-            ...session,
-            version: hash(encode(input)),
-            memory: { map: session.memory.map, records: { ...(state.main?.memory?.records || {}), ...session.memory.records } },
-            mainSha,
-            ref: project.ref,
-            repository: project.repository || projectId,
-            publishedAt: new Date().toISOString(),
-          };
-          state.main = snapshot;
-          state.closedSessions[input.sessionId] = {
-            sessionId: input.sessionId,
-            sessionVersion: session.version,
-            sourceCommit: session.sourceCommit,
-            mainSha,
-            mainVersion: snapshot.version,
-            publishedAt: snapshot.publishedAt,
-          };
-          delete state.sessions[input.sessionId];
-          historyScope = 'main';
-          historyAction = 'publish';
         } else if (scope === 'restore') {
           historyScope = String(input.scope || '');
           const current = scopeValue(state, historyScope);
@@ -284,8 +328,7 @@ export function createMemoryHandler(configuration = {}) {
         } else throw new MapError('READ_ONLY_MAIN', 'Publish a verified Session; main cannot be written directly', 403);
         state.revision++;
         const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: { kind: admin ? 'admin' : 'agent' }, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
-        const result = { committed: true, projectId, snapshot, revision: state.revision, history,
-          ...(scope === 'publish' ? { closedSession: state.closedSessions[input.sessionId] } : {}) };
+        const result = { committed: true, projectId, snapshot, revision: state.revision, history };
         state.receipts[key] = { fingerprint, result };
         const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
           projectId,

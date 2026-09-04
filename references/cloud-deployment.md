@@ -72,7 +72,7 @@ mode `0600`. Its `dataDir` must be absolute and outside the checkout:
 ```json
 {
   "dataDir": "/var/lib/context-guard-memory",
-  "adminToken": "<publisher-token>",
+  "adminToken": "<server-only-admin-token>",
   "projects": {
     "my-project": {
       "token": "<project-memory-token>",
@@ -86,7 +86,10 @@ mode `0600`. Its `dataDir` must be absolute and outside the checkout:
 ```
 
 The Cloud service mounts the authenticated `/v1/projects/...` memory routes at
-the same origin. Keep the JSON file and both data directories in server backups.
+the same origin. The administrator token stays in this server-only file. Agents
+receive only the matching project token, which may write their Session and request
+publication but cannot directly replace Main or restore Main/preferences. Keep the
+JSON file and both data directories in server backups.
 
 The included `deploy/context-guard-cloud.service` listens on `0.0.0.0:8788` and
 stores data in `$HOME/context-guard-cloud-data`. Change its port or paths before
@@ -151,6 +154,13 @@ cookie for 30 days. Normal refreshes and reopened pages remain signed in, and
 authenticated workbench activity renews the same lifetime. `POST /auth/logout`
 clears it. Five wrong attempts from one backend connection address pause password
 login for five minutes.
+
+Inside a project, the fixed “Projects” breadcrumb returns to the multi-project
+overview. Select a Session to edit its private Map. After that Session's source
+commit is present in the configured authoritative Main ref and its memory base is
+current, “Publish Main” becomes available. The browser never receives the server
+administrator or project token; it asks the server to perform the same constrained,
+Git-verified publication. The resulting Main Map is durable and read-only.
 
 For emergency administration, the existing one-time token exchange remains:
 

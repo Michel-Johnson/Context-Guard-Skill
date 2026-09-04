@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, entries, validate, MapError } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
-import { commitSessionMap, createMemoryHandler, readMemoryProject } from './memory.mjs';
+import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryProject } from './memory.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -470,8 +470,21 @@ export async function startCloudServer({
     if (!snapshot) throw new MapError('UNKNOWN_VIEW', 'Session memory is not available', 404);
     return { version: snapshot.version, document: snapshot.memory.map, source: { status: 'session', sessionId, sourceCommit: snapshot.sourceCommit, baseMainVersion: snapshot.baseMainVersion, updatedAt: snapshot.updatedAt || null } };
   };
+  const mainMemorySnapshot = async project => {
+    if (!configuredMemory?.projects?.[project.id]) return null;
+    const snapshot = (await readMemoryProject(configuredMemory, project.id)).main;
+    if (!snapshot) {
+      const document = emptyProjectDocument(project);
+      return { version: versionOf(document), document, source: { status: 'baseline-pending', mainSha: null, publishedAt: null } };
+    }
+    return { version: snapshot.version, document: snapshot.memory.map, source: { status: 'main', mainSha: snapshot.mainSha || null, publishedAt: snapshot.publishedAt || null } };
+  };
   const scopedWorkbenchState = async (scope, project, viewId = 'main') => {
-    const snapshot = viewId.startsWith('session:') ? await sessionSnapshot(project, viewId) : await workbenchSnapshot(scope, project);
+    const snapshot = viewId.startsWith('session:')
+      ? await sessionSnapshot(project, viewId)
+      : project && viewId === 'main'
+        ? await mainMemorySnapshot(project) || await workbenchSnapshot(scope, project)
+        : await workbenchSnapshot(scope, project);
     return { version: snapshot.version, doc: snapshot.document, viewId, source: snapshot.source || null, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
   };
   const memorySessions = async project => {
@@ -488,6 +501,16 @@ export async function startCloudServer({
       return { id: snapshot.sessionId, name: '', platform: 'agent', status: latest?.status === 'working' ? 'active' : 'completed', lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
     }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
+  const publicationState = async (project, viewId, options = {}) => {
+    if (!project || !configuredMemory?.projects?.[project.id]) return { status: 'unavailable', reason: 'MEMORY_NOT_CONFIGURED' };
+    if (viewId === 'main') {
+      const state = await readMemoryProject(configuredMemory, project.id);
+      return state.main
+        ? { projectId: project.id, status: 'published', mainVersion: state.main.version, mainSha: state.main.mainSha || null, publishedAt: state.main.publishedAt || null }
+        : { projectId: project.id, status: 'empty', mainVersion: null };
+    }
+    return memoryPublicationStatus(configuredMemory, project.id, viewId.slice('session:'.length), options);
+  };
   const broadcastWorkbench = async (scope, project, viewId = 'main') => {
     const state = await scopedWorkbenchState(scope, project, viewId);
     for (const client of workbenchClients) {
@@ -497,9 +520,9 @@ export async function startCloudServer({
   };
   const stopMemoryEvents = memoryHandler?.onEvent(event => {
     const project = projectById(event.projectId);
-    if (!project || !event.scope?.startsWith('session:')) return;
-    const viewId = event.scope;
-    broadcastWorkbench(`project:${project.id}`, project, viewId).catch(() => {});
+    if (!project) return;
+    if (event.scope === 'main') broadcastWorkbench(`project:${project.id}`, project, 'main').catch(() => {});
+    else if (event.scope?.startsWith('session:')) broadcastWorkbench(`project:${project.id}`, project, event.scope).catch(() => {});
   }) || (() => {});
   const validateOperationId = input => {
     const operationId = String(input.operationId || '');
@@ -625,6 +648,27 @@ export async function startCloudServer({
           for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
           return send(res, 200, { sessions, grants, currentSessionId: null, project: { id: project.id, kind: 'git', main: { status: 'ready' } } });
         }
+        if (action === '/api/publication' && req.method === 'GET') {
+          if (!project) return send(res, 200, { status: 'unavailable', reason: 'PROJECT_REQUIRED' });
+          return send(res, 200, await publicationState(project, viewId));
+        }
+        if (action === '/api/publication' && req.method === 'POST') {
+          if (!project || !viewId.startsWith('session:')) throw new MapError('SESSION_REQUIRED', 'Select a Session Map before publishing Main', 409);
+          const input = await requestBody(req);
+          const status = await publicationState(project, viewId, { refresh: true });
+          if (status.status === 'waiting') throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409);
+          if (status.status === 'conflict') throw new MapError('VERSION_CONFLICT', 'Reconcile Session against the published main baseline first', 409);
+          if (status.status !== 'ready') throw new MapError(status.reason || 'PUBLICATION_UNAVAILABLE', 'Session is not ready for Main publication', 409);
+          const result = await publishSessionMemory(configuredMemory, project.id, {
+            operationId: input.operationId,
+            baseVersion: status.baseVersion,
+            sessionId: status.sessionId,
+            sessionVersion: status.sessionVersion,
+            expectedMainSha: status.mainSha,
+          }, { kind: 'human', sessionId: 'cloud-workbench' });
+          await broadcastWorkbench(`project:${project.id}`, project, 'main');
+          return send(res, 200, result);
+        }
         if (action === '/api/presence' && req.method === 'POST') {
           const input = await requestBody(req), state = await scopedWorkbenchState(scope, project, viewId);
           return send(res, 200, { version: state.version, synchronized: input.version === state.version && !input.dirty, error: null, recovery: false });
@@ -636,7 +680,7 @@ export async function startCloudServer({
             await broadcastWorkbench(scope, project, viewId);
             return send(res, 200, result);
           }
-          if (project) return send(res, 200, await commitProject(project, input, { kind: 'human', sessionId: 'cloud-workbench' }));
+          if (project) throw new MapError('READ_ONLY_MAIN', 'Publish a verified Session; Main cannot be edited directly', 403);
           const result = await serial('overview', async () => {
             await recoverTransactions('overview');
             const operationId = validateOperationId(input), receiptPath = operationFile('overview', operationId);
