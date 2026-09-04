@@ -149,7 +149,7 @@ GitHub Releases are not part of this package's delivery path. Users install the 
 2. Create the matching `vX.Y.Z` tag on that commit.
 3. Push the tag. `.github/workflows/npm-publish.yml` validates, packs, smoke-tests, and publishes that exact tarball to npm.
 
-The workflow has no manual trigger. Pushing a matching version tag starts the complete publish pipeline automatically; the validated tarball is retained as a GitHub Actions artifact for 14 days. It reuses npm Trusted Publishing for `Michel-Johnson/Context-Guard-Skill`, workflow filename `npm-publish.yml`, with the `npm publish` action allowed. Local npm login is not required for Actions publishing. See the [release and recovery runbook](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md).
+The workflow has no manual trigger. Pushing a matching version tag starts the complete publish pipeline automatically; it tests fresh installs and upgrades from npm `latest`, preserves user configuration/context/hooks, and verifies that npm serves the same SHA-256 tarball that passed acceptance. The validated tarball and upgrade baseline are retained as GitHub Actions artifacts for 14 days, and the post-publish proof is written to the Actions summary. It reuses npm Trusted Publishing for `Michel-Johnson/Context-Guard-Skill`, workflow filename `npm-publish.yml`, with the `npm publish` action allowed. Local npm login is not required for Actions publishing. See the [release and recovery runbook](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md).
 
 ## Where Context Lives
 
