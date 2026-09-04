@@ -2746,7 +2746,8 @@ function renderMap(){
     }
   }
   function useSpreadGrid(){
-    if(isCatalogView()) return true;
+    /* 地图根上：上下要折行，左右仍是树（孩子在右侧）。关系模式继续用散点网格。 */
+    if(isCatalogView() && tb) return true;
     if(!relationMode) return false;
     const kids = visibleChildren(root);
     return kids.length>=2 && kids.every(c=>c.kind==="module");
