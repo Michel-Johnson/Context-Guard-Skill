@@ -787,6 +787,16 @@ export async function startCloudServer({
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
+      if (req.method === 'GET' && /\/workbench-(?:app|fixtures)\.js$/.test(route)) {
+        requirePrivateRead(req, url);
+        const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
+      }
+      if (req.method === 'GET' && /\/workbench\.css$/.test(route)) {
+        requirePrivateRead(req, url);
+        const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
+        res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
+      }
       if (req.method === 'GET' && (route === '/' || route === '/prototype/' || route === '/workbench.html' || /^\/projects\/[^/]+$/.test(route))) {
         if (privateAccess && browserPasswordHash && !hasWorkbenchAccess(req, url)) return redirect(res, `/login?next=${encodeURIComponent(`${route}${url.search}`)}`);
         requirePrivateRead(req, url);
