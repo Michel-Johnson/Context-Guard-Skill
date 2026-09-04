@@ -21,6 +21,7 @@ PRODUCT_TESTS = {
     "tests/named-workbench.test.mjs",
     "tests/test-manifest.json",
     "tests/workbench-browser.mjs",
+    "tests/workbench-attachments.test.mjs",
     "tests/crash-worker.mjs",
     "tests/win-file-lock.py",
 }

@@ -413,7 +413,10 @@ function canMutate(){
 }
 let attaching = null;
 let attachDraft = "";
-function clearAttach(){ attaching = null; attachDraft = ""; }
+function clearAttach(){
+  if(pendingWrite){ pendingWrite.cancelled=true; pendingWrite.controller?.abort(); }
+  pendingWrite=null; attaching=null; attachDraft="";
+}
 let pendingDeleteId = null;
 let deleteAskId = null;
 let bugPathMode = false;
@@ -570,6 +573,9 @@ function canFsAccess(){ return typeof window.showDirectoryPicker==="function"; }
 let repoRootHandle = null;
 let repoFsOk = false;
 let pendingWrite = null;
+let attachmentModule = null;
+window.addEventListener("beforeunload", e=>{ if(pendingWrite){ e.preventDefault(); e.returnValue=""; } });
+function attachmentApi(){ if(!attachmentModule) throw new Error("附件模块尚未就绪"); return attachmentModule; }
 const filePreviewUrl = Object.create(null);
 const SHOT_DIR = "docs/shots";
 const FS_DB = "cg-workbench-fs";
@@ -695,6 +701,15 @@ async function writeRepoPath(rel, blob){
   await w.close();
 }
 async function readRepoFile(rel){
+  if(workbenchSync?.config && ![MAP_FILE,PREF_FILE,CAND_FILE].includes(rel)){
+    try{
+      const response=await fetch("/api/attachments?path="+encodeURIComponent(rel), {headers:{Authorization:"Bearer "+workbenchSync.config.token},cache:"no-store"});
+      if(!response.ok) return null;
+      const blob=await response.blob();
+      const ext=String(rel).split(".").pop().toLowerCase();
+      return new Blob([blob], {type:({png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",svg:"image/svg+xml",webp:"image/webp"})[ext] || blob.type});
+    }catch(e){ return null; }
+  }
   if(!repoRootHandle || !repoFsOk) return null;
   try{
     const parts = String(rel).split("/").filter(Boolean);
@@ -719,6 +734,19 @@ function hydrateThumbs(root){
 async function saveBlobToOwner(node, kind, key, blob, fileName){
   if(!blob) return false;
   const name = fileName || blob.name || "paste.bin";
+  if(workbenchSync?.ready && workbenchSync.config){
+    clearAttach();
+    const api=attachmentApi();
+    const current=getNode(node.id);
+    if(!current) return false;
+    let target;
+    try { target=api.attachmentTarget(current,kind,key,workbenchSync.config.root); }
+    catch(e){ workbenchSync.setStatus(workbenchSync.status,e.message); return false; }
+    const job={id:crypto.randomUUID(),target,blob,name,cancelled:false};
+    pendingWrite=job; attaching={kind,key,nodeId:node.id,ownerId:target.ownerId}; attachDraft="";
+    renderAll();
+    return resumeAttachment(job);
+  }
   if(!repoFsOk){
     pendingWrite = {node, kind, key, blob, name};
     beginAttach(kind, key, shotRel(name, blob));
@@ -732,6 +760,31 @@ async function saveBlobToOwner(node, kind, key, blob, fileName){
   clearAttach();
   renderAll();
   return true;
+}
+async function resumeAttachment(job){
+  if(job.running || job.cancelled) return false;
+  job.running=true; job.error=""; job.controller=new AbortController();
+  try{
+    const api=attachmentApi();
+    const valid=()=>!job.cancelled && pendingWrite===job && workbenchSync?.config?.root===job.target.root && api.attachmentOwner(data,job.target);
+    job.isValid=()=>!!valid();
+    if(!valid()) throw new Error("附件目标或项目已改变，请取消后重新添加");
+    if(!job.saved){ job.stage="文件保存中"; renderAll(); job.saved=await api.uploadAttachment(workbenchSync.config,job); }
+    const owner=valid();
+    if(!owner) throw new Error("文件已保存，但原条目已不存在；未挂到其他条目");
+    if(!fileList(owner).some(file=>file.path===job.saved.path)) owner.files.push({path:job.saved.path,name:job.name});
+    rememberPreview(job.saved.path,job.blob);
+    job.stage="文件已保存，引用提交中"; renderAll();
+    if(["offline","error","conflict"].includes(workbenchSync.status)) await workbenchSync.retry();
+    else await workbenchSync.flush();
+    if(job.cancelled) return false;
+    const committed=api.attachmentOwner(workbenchSync.baseTree,job.target);
+    if(!committed?.files?.some(file=>(typeof file==="string"?file:file.path)===job.saved.path)) throw new Error("文件已保存，附件引用尚未同步；请重试或处理地图冲突");
+    pendingWrite=null; attaching=null; attachDraft=""; renderAll(); return true;
+  }catch(e){
+    if(!job.cancelled){ job.error=e.message; job.stage=job.saved?"文件已保存，引用未完成":"未确认文件保存结果"; renderAll(); workbenchSync.setStatus(workbenchSync.status,e.message); }
+    return false;
+  }finally{ job.running=false; }
 }
 function repoRelPath(s){
   const p = String(s||"").trim().replace(/\\/g,"/").split(/\s/)[0];
@@ -811,16 +864,19 @@ function attachHtml(kind, key, owner, readonly){
   const fk = escAttr(kind), fi = escAttr(String(key));
   const chips = files.map((f,i)=>{
     const p = escAttr(f.path);
-    const name = esc(fileBase(f.path));
+    const name = esc(f.name || fileBase(f.path));
     const img = isImagePath(f.path)
       ? `<img class="file-thumb" data-repo-src="${p}" alt="${name}" title="${p}">`
       : "";
     const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
-    return `<span class="file-chip" title="${p}">${img}<span class="file-name">${name}</span>${rm}</span>`;
+    return `<span class="file-chip" title="${p}">${img}<button type="button" class="file-name quiet" data-open-file="${p}" data-file-name="${escAttr(f.name || fileBase(f.path))}">${name}</button>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
-  if(!files.length && !isAttaching(kind, key)) return "";
-  const add = isAttaching(kind, key)
+  const activeJob=pendingWrite?.target && pendingWrite.target.nodeId===selectedId && pendingWrite.target.kind===kind && (kind==="node" || (kind==="bug" ? owner.id===pendingWrite.target.ownerId : owner._attachmentId===pendingWrite.target.ownerId));
+  if(!files.length && !isAttaching(kind, key) && !activeJob) return "";
+  const add = activeJob
+    ? `<span class="file-add"><span role="status">${esc(pendingWrite.error || pendingWrite.stage || "准备上传")}</span>${pendingWrite.error?`<button type="button" class="quiet" data-act="retry-upload">重试</button>`:""}<button type="button" class="quiet" data-act="cancel-file">${pendingWrite.saved?"结束此操作":t("cancel")}</button></span>`
+    : isAttaching(kind, key)
     ? `<span class="file-add">
          <input class="file-path" data-file-input data-fk="${fk}" data-fi="${fi}" value="${escAttr(isAttaching(kind, key)?attachDraft:"")}" placeholder="${escAttr(t("filePathPh"))}" autocomplete="off">
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
@@ -830,6 +886,13 @@ function attachHtml(kind, key, owner, readonly){
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
+  el.querySelectorAll('[data-open-file]').forEach(b=>{
+    b.onclick=async()=>{
+      const blob=await readRepoFile(b.dataset.openFile);
+      if(!blob){ workbenchSync?.setStatus(workbenchSync.status,"附件无法读取；请核对文件仍在当前项目内且引用已同步"); return; }
+      const url=URL.createObjectURL(blob), a=document.createElement("a"); a.href=url; a.download=b.dataset.fileName; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+    };
+  });
   const saveFrom = host=>{
     const kind = host.dataset.fk, key = host.dataset.fi;
     const box = el.querySelector("[data-file-input]");
@@ -838,7 +901,11 @@ function bindFileUi(el, node){
   };
   el.querySelectorAll('[data-act="ask-file"]').forEach(b=>{
     b.onclick = async ()=>{
-      if(repoFsOk){
+      if(workbenchSync?.ready && workbenchSync.config){
+        const f=await pickLocalFile();
+        if(f) await saveBlobToOwner(node,b.dataset.fk,b.dataset.fi,f,f.name);
+        return;
+      }else if(repoFsOk){
         const f = await pickLocalFile();
         if(f) await saveBlobToOwner(node, b.dataset.fk, b.dataset.fi, f, f.name);
         return;
@@ -846,6 +913,7 @@ function bindFileUi(el, node){
       beginAttach(b.dataset.fk, b.dataset.fi, "");
     };
   });
+  el.querySelectorAll('[data-act="retry-upload"]').forEach(b=>{ b.onclick=()=>pendingWrite && resumeAttachment(pendingWrite); });
   el.querySelectorAll('[data-act="save-file"]').forEach(b=>{
     b.onclick = ()=>saveFrom(b);
   });
@@ -4555,7 +4623,7 @@ async function boot(){
   if(stored) uiLang = stored;
   applyStaticI18n();
   let WorkbenchSync;
-  try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }
+  try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); attachmentModule=await import("./attachments.mjs"); }
   catch(e){
     const notice=document.createElement("div"); notice.id="cg-sync"; notice.dataset.status="readonly";
     notice.textContent="只读预览：请运行 context-guard workbench --root <项目目录>，本页面不会保存地图。";
