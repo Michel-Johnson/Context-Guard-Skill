@@ -35,6 +35,11 @@
       "path": "tests/cloud-sync-browser.mjs",
       "command": "npm run test:browser",
       "purpose": "Runs the two-way local and Cloud Session Map synchronization browser suite."
+    },
+    {
+      "path": "tests/workbench-journal-recovery-browser.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Confirms that an explicit human action recovers a corrupt journal without replacing the current map."
     }
   ],
   "helpers": [

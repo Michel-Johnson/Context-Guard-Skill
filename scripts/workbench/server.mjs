@@ -486,6 +486,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const result = await activeStore.commit(prepared.input, prepared.actor, () => access.grants(actor.sessionId, activeStore.doc), async () => { if (actor.kind === 'agent' && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'Page edits are still pending', 409); });
             return send(res, 200, result);
           }
+          if (route === '/api/recover' && req.method === 'POST') {
+            isHuman(actor);
+            return send(res, 200, await activeStore.repair(await body(req)));
+          }
           if (route === '/api/attachments' && req.method === 'POST') {
             isHuman(actor);
             if (project.kind === 'git' && viewId === 'main') throw new MapError('READ_ONLY_MAIN', 'All Sessions follows the committed main branch and is read-only', 403);
