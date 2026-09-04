@@ -66,6 +66,8 @@ try {
 
   const tarball = path.join(dist, packResult[0].filename);
   run(process.execPath, [".github/scripts/security-scan.mjs", "package", tarball]);
+  const baseline = path.join(dist, "baseline");
+  run(process.execPath, [".github/scripts/release-checks.mjs", "prepare-baseline", baseline]);
   run(process.execPath, [
     ".github/scripts/smoke-npm-package.mjs",
     "--tarball", tarball,
@@ -73,8 +75,14 @@ try {
     "--codex-home", path.join(temporaryRoot, "default-codex-home"),
     "--with-hooks"
   ]);
+  run(process.execPath, [
+    ".github/scripts/smoke-upgrade-package.mjs",
+    tarball,
+    baseline,
+    path.join(temporaryRoot, "upgrade")
+  ]);
 
-  console.log("Context Guard CD rehearsal passed: exact package, digest, global install, npx install, hooks, and init.");
+  console.log("Context Guard CD rehearsal passed: exact package, digest, fresh install, upgrade preservation, hooks, and init.");
   passed = true;
 } finally {
   const resolvedTemporaryRoot = path.resolve(temporaryRoot);

@@ -220,10 +220,20 @@ Saving and synchronization run in the background without a floating toolbar.
 Recovery controls and Agent session selection are under Settings → 同步与恢复.
 Connection, conflict and save errors show a brief notice next to Settings.
 Text editing does not need browser folder access. The attachment-folder permission
-button appears only while adding an attachment, not below every memory or idea.
-Entries without files have no attachment button or empty attachment row. Paste or
-drop an attachment onto the entry text to add the first one; removing the last file
-hides the attachment controls again.
+picker is used only by the static recovery/demo page. A Node-served workbench sends
+the selected file to `/api/attachments`; only the human browser capability may use
+that endpoint. The service writes a new UUID-prefixed file under `docs/shots/`,
+never overwrites an existing path, and returns a project-relative path for the map.
+Uploads are limited to 8 MiB. Retrying the same upload ID is idempotent only when
+the name and bytes are identical; reusing it for different content is rejected.
+Downloads are allowed only for paths referenced by the currently visible map, so
+the endpoint is not a general project-file reader. Entries without files have no
+attachment button or empty attachment row. Paste or drop an attachment onto the
+entry text to add the first one; removing the last file hides the controls again.
+Closing or navigating away while an upload is active requires browser confirmation;
+the upload can also be cancelled explicitly. If its target entry was removed before
+completion, the map is not changed and the uploaded file remains as an unreferenced,
+non-overwriting artifact for later manual cleanup.
 
 - `committed:true`: map contents have been flushed and replaced. Index projection
   can still be pending/failed. The page acknowledges its applied version separately.
@@ -240,6 +250,15 @@ hides the attachment controls again.
   completed. Preserve `.codex/context/private/sync`, restart/query the same ID;
   do not generate a fresh create operation. If the file matches neither recorded
   version, writes remain blocked for explicit reconciliation.
+- Journal startup validates every JSONL record and its chained cursor. A partial
+  final append or missing final newline is backed up and repaired automatically;
+  the next event records `journalGap:true` rather than pretending history is
+  continuous. Malformed interior records or cursor mismatches leave the map
+  readable but block all writes. Only the human workbench can choose Settings →
+  同步与恢复 → 保留当前地图并恢复日志, and it must submit the current map
+  version plus explicit acceptance of the historical gap. The original journal
+  is retained under private recovery storage. Agents cannot call this endpoint,
+  and a concurrent journal change aborts replacement instead of overwriting it.
 - `INVALID_MAP` / file missing: last valid display is retained with an error;
   it is not reported synchronized. Fix the external file to resume.
 - Index failure: read a node through the API. `map_owns.py` checks map source

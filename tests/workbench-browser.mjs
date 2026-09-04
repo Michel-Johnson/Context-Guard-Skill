@@ -677,6 +677,23 @@ try {
   await until(async () => (await read()).root.children[0].memories[0].files.length === 1); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"]').count(), 1);
   assert.deepEqual((await read()).root.children[0].ideas[0].files, []);
+  const uploadFixture = path.join(sandbox, 'uploaded-through-node.txt');
+  await fs.writeFile(uploadFixture, 'Node-managed attachment');
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: async () => { throw new Error('directory access must not be requested'); } });
+    Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: undefined });
+  });
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.locator('#detail [data-act="ask-file"]').click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(uploadFixture);
+  await until(async () => (await read()).root.children[0].memories[0].files.length === 2);
+  await synchronized();
+  const uploaded = (await read()).root.children[0].memories[0].files.find(file => file.name === 'uploaded-through-node.txt');
+  assert.ok(uploaded?.path.startsWith('docs/shots/'));
+  assert.equal(await fs.readFile(path.join(root, uploaded.path), 'utf8'), 'Node-managed attachment');
+  await page.locator('#detail [data-act="rm-file"]').nth(1).click();
+  await until(async () => (await read()).root.children[0].memories[0].files.length === 1);
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
   assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);

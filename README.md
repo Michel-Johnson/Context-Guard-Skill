@@ -149,7 +149,7 @@ GitHub Releases are not part of this package's delivery path. Users install the 
 2. Create the matching `vX.Y.Z` tag on that commit.
 3. Push the tag. `.github/workflows/npm-publish.yml` validates, packs, smoke-tests, and publishes that exact tarball to npm.
 
-The workflow has no manual trigger. Pushing a matching version tag starts the complete publish pipeline automatically; the validated tarball is retained as a GitHub Actions artifact for 14 days. It reuses npm Trusted Publishing for `Michel-Johnson/Context-Guard-Skill`, workflow filename `npm-publish.yml`, with the `npm publish` action allowed. Local npm login is not required for Actions publishing. See the [release and recovery runbook](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md).
+The workflow has no manual trigger. Pushing a matching version tag starts the complete publish pipeline automatically; it tests fresh installs and upgrades from npm `latest`, preserves user configuration/context/hooks, and verifies that npm serves the same SHA-256 tarball that passed acceptance. The validated tarball and upgrade baseline are retained as GitHub Actions artifacts for 14 days, and the post-publish proof is written to the Actions summary. It reuses npm Trusted Publishing for `Michel-Johnson/Context-Guard-Skill`, workflow filename `npm-publish.yml`, with the `npm publish` action allowed. Local npm login is not required for Actions publishing. See the [release and recovery runbook](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md).
 
 ## Where Context Lives
 
@@ -225,7 +225,7 @@ See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 
 ## Local workbench synchronization
 
-Node now owns local map submissions and live page updates. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
+Node now owns local map submissions, live page updates, and attachments. In a served workbench, human uploads are written as unique files under `docs/shots/`; the browser no longer needs project-directory permission, and only map-referenced files can be downloaded through the attachment endpoint. Its event journal is cursor-chain validated at startup: an interrupted final append is backed up and repaired with an explicit history-gap event, while interior corruption keeps the map read-only until a human confirms recovery in Settings. Agents cannot approve journal loss. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
 
 ## Cloud event synchronization
 

@@ -94,6 +94,10 @@ The final package must match `.github/scripts/package-contract.mjs`, contain onl
 regular files and remain byte-identical during scanning. Existing artifact hashes
 preserve the same package through installation tests and npm publication. CD
 continues to run on version tags and uses OIDC; no long-lived npm token is added.
+It also verifies an upgrade from the integrity-pinned npm `latest` without changing
+user settings, project context, or third-party hooks. After publication, the npm
+tarball must match the pre-publish SHA-256 and the result is recorded in the
+Actions summary.
 
 ## Investigating a block
 
@@ -120,8 +124,9 @@ applications. Historical removal/force pushes require separate authorization.
 secrets, actual hooks, safe archive handling and sanitized output using synthetic
 credentials generated at runtime. It is also part of `npm test`; successful tests
 clean their own temporary directory. Failures retain only synthetic test evidence.
-`npm run test:cd` exercises the existing release rehearsal with the same package
-security gate, without publishing. Never upload a deliberately unsafe test package.
+`npm run test:cd` exercises the release rehearsal with the same package security
+gate and a real upgrade from the current npm `latest`, without publishing. Never
+upload a deliberately unsafe test package.
 
 ## 中文速查
 

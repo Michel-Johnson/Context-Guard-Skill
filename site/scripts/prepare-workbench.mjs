@@ -110,7 +110,7 @@ for(const event of ['drop','paste']) document.addEventListener(event,e=>{
 const charset = /<meta charset=["']utf-8["']>/i;
 const bootCall = /\bboot\(\);(?=\s*<\/script>\s*<\/body>)/;
 const applicationBoot = /\bboot\(\);\s*$/;
-const syncImport = 'try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); }';
+const syncImport = 'try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); attachmentModule=await import("./attachments.mjs"); }';
 const styleLink = '<link rel="stylesheet" href="./workbench.css?v=bug-claim">';
 const fixtureScript = '<script src="./workbench-fixtures.js?v=bug-claim"></script>';
 const applicationScript = '<script src="./workbench-app.js?v=bug-claim"></script>';
