@@ -13,7 +13,13 @@ export function validRoute(r) {
     && typeof r.root === 'string' && path.isAbsolute(r.root)
     && /^[a-f0-9]{24}$/.test(r.projectId) && typeof r.instance === 'string' && r.instance.length >= 20
     && (r.runtimeSchema === undefined || Number.isInteger(r.runtimeSchema) && r.runtimeSchema > 0)
-    && typeof r.proxyToken === 'string' && r.proxyToken.length >= 32;
+    && typeof r.proxyToken === 'string' && r.proxyToken.length >= 32
+    && (r.projectKey === undefined || /^(?:git|folder)-[a-f0-9]{20}$/.test(r.projectKey));
+}
+
+function sameIdentity(left, right) {
+  return left && right && left.hostname === right.hostname && left.root === right.root
+    && left.projectId === right.projectId && left.instance === right.instance;
 }
 export class RouteStore {
   constructor(dir) { this.routesPath = path.join(dir, 'routes.json'); }
@@ -32,11 +38,14 @@ export class RouteStore {
       fs.renameSync(temp, this.routesPath);
     } finally { try { fs.unlinkSync(temp); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
   }
-  addRoute(route) {
+  addRoute(route, { replace = null } = {}) {
     if (!validRoute(route)) throw new Error('Invalid named-workbench route');
     const routes = this.loadRoutes(), previous = routes.find(r => r.hostname === route.hostname);
     // Project identity, not PID reuse, controls name ownership. Never kill an owner.
-    if (previous && (previous.projectId !== route.projectId || previous.root !== route.root)) throw new Error('Name belongs to another project; choose a different --name');
+    const sameProject = previous?.projectKey && route.projectKey && previous.projectKey === route.projectKey;
+    if (previous && (previous.projectId !== route.projectId || previous.root !== route.root) && !sameProject && !sameIdentity(previous, replace)) {
+      throw new Error('Name belongs to another project; choose a different --name');
+    }
     this.saveRoutes([...routes.filter(r => r.hostname !== route.hostname), route]);
   }
 }

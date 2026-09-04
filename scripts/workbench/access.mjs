@@ -116,7 +116,10 @@ export class Access {
         if (!id || event.event === 'maintenance' || id.startsWith('maintenance-')) continue;
         const at = typeof event.at === 'string' && event.at ? event.at : new Date(0).toISOString();
         const previous = sessions.get(id);
-        const stopped = ['stop', 'subagent-stop'].includes(event.event);
+        // A blocked Stop means governance is unfinished, not that the Agent is
+        // still generating a response. Keep those two states separate so stale
+        // bindings never render as a permanently spinning Session.
+        const stopped = ['stop', 'stop-blocked', 'subagent-stop'].includes(event.event);
         const activated = ['session-start', 'subagent-start', 'user-prompt-submit'].includes(event.event);
         const status = stopped ? 'stopped' : activated ? 'active' : previous?.status || 'unknown';
         sessions.set(id, {

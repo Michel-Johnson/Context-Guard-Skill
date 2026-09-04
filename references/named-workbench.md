@@ -42,8 +42,14 @@ not start a service or open a browser. All Sessions remains the read-only publis
 main baseline, never the target worktree's unmerged Map. See `server-memory.md`
 for the private-memory deployment and publication boundary.
 
-The named entry and project identity are shared in the Git common directory, so
-restarting the backend from another linked worktree retains the project's URL.
+The named entry and project identity are shared in the Git common directory. A
+user-private global registry at `~/.context-guard/named-workbench/projects.json`
+also records every established local project, its known worktree roots and its
+canonical URL. It lives outside the replaceable Skill directory, so reinstalling
+or upgrading the Skill does not erase bindings or create a second workbench.
+Restarting the backend from another linked worktree retains the project's URL.
+Inspect the private catalog without starting a project service with
+`context-guard workbench --list`.
 
 When opening is requested, it is claimed atomically by the backend: live workbench pages
 suppress another open, and parallel first starts share a five-second opening
@@ -72,10 +78,13 @@ grants and cross-project token isolation remain in force. These are local
 single-user safeguards, not protection against another process running with
 full access to the same user's files.
 
-An old running backend is not automatically restarted. Use `--direct` for its
-existing address, or save drafts and stop it explicitly before upgrading. Browser
-recovery storage belongs to its origin: export unresolved drafts before changing
-names/origins; this feature does not migrate browser storage.
+A recognized older backend is upgraded in place on the next bound lifecycle or
+`workbench` command. The old backend must first acknowledge its synchronization
+fence and release the project lock; otherwise the command returns
+`UPGRADE_PENDING` and does not start a replacement. Unknown legacy runtimes and
+duplicate owners still require explicit diagnosis/migration. Browser recovery
+storage remains on the stable project origin, so a normal compatible upgrade does
+not change its storage boundary.
 
 - `CONTEXT_GUARD_NAMED_WORKBENCH=0` or `--direct`: old direct loopback URL.
 - `CONTEXT_GUARD_NAMED_STATE_DIR`: isolated private proxy state directory (default
@@ -92,6 +101,7 @@ Guard implementations, not a vendored full Portless CLI.
 `tests/named-workbench.test.mjs` is part of `npm test`: authorization, Origin/Host,
 read/write, five sessions/SSE streams, opening claims, name collision, backend
 identity/port reuse, proxy restart, multi-project isolation, corrupt route state,
-concurrent process startup, explicit Git worktree binding and the real Python
-SessionStart handler. This does not prove delivery by every desktop host, OS or
-browser. Outstanding coverage is tracked in `CI_todo.md`.
+concurrent process startup, persistent global registry, recognized runtime upgrade,
+legacy route repair, explicit Git worktree binding and the real Python SessionStart
+handler. This does not prove delivery by every desktop host, OS or browser.
+Outstanding coverage is tracked in `CI_todo.md`.

@@ -47,7 +47,10 @@ The result separates the binding record (`current`, `moved`, `other-worktree`,
 project workbench URL, then bind with `workbench --session <id> --workbench-url
 <confirmed-url>`. The URL must resolve to the same Git project, backend instance,
 and compatible runtime. A broken binding/service means repair, not create another
-workbench. Main branch selection
+workbench. For an existing bound Session, a missing/stale canonical URL or a
+recognized older runtime is repaired by `workbench --session <id>` using the global
+project registry; it is not a reason to ask the user to bind again. Unknown legacy
+or duplicate owners remain explicit migration errors. Main branch selection
 uses advertised GitHub origin/HEAD, or explicit `--bind-main <branch> --remote <name>`
 or `--local-main <branch>`. No main/master fallback. Existing confirmed language
 is project-scoped and inherited by new worktrees. An ordinary bind cannot move an

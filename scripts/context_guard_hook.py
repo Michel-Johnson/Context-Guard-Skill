@@ -681,7 +681,8 @@ def control_words(words: list[str]) -> bool:
     """Protocol writes are their own audited recovery path, not product edits."""
     return protocol_command(words, {
         "plan-start", "plan-finish", "plan-status", "archive-session", "resolve-signal", "split-signal",
-        "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync",
+        "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync", "workbench",
+        "preferences", "memory",
     })
 
 
@@ -823,7 +824,14 @@ def read_only_shell(command: str) -> bool:
 def control_tool(payload: object) -> bool:
     """Only standalone protocol commands can recover a blocked lifecycle."""
     segments = shell_segments(tool_command(payload))
-    return bool(segments and len(segments) == 1 and control_words(segments[0]))
+    if not segments or not control_words(segments[-1]):
+        return False
+    # Allow a literal stdin producer before an audited Context Guard command.
+    # Arbitrary programs and additional commands never inherit this exemption.
+    return len(segments) == 1 or (
+        len(segments) == 2
+        and Path(segments[0][0]).name in {"printf", "echo"}
+    )
 
 
 def git_changed_paths(root: Path) -> list[str]:
@@ -1014,6 +1022,7 @@ def main() -> int:
     current_session_id = session_id(payload, platform, ctx, event)
     current_session_name = session_display_name(payload, platform, root, current_session_id)
     memory_notice = ""
+    verified_workbench_url = ""
 
     def session_details(details: dict[str, object] | None = None) -> dict[str, object]:
         result = dict(details or {})
@@ -1045,8 +1054,27 @@ def main() -> int:
             prior = f" It is currently recorded against {target}; use --rebind only after explicit confirmation." if target else ""
             return hook_response(platform, event, main_notice + f"This Session is not bound to the current worktree.{prior} Ask the user for the project workbench URL. After confirmation run {context_guard_cli()} workbench --root {json.dumps(str(root))} --session {json.dumps(current_session_id)} --workbench-url <confirmed-url>. If the user explicitly chooses this project but has no running URL, omit --workbench-url and create its single project service. Do not initialize a map, read project memory, or auto-open another workbench before confirmation. Binding is not a node permission grant.")
         runtime_status = str(binding.get("runtime", {}).get("status") or "")
-        if runtime_status in {"legacy", "duplicate", "named-mismatch"}:
+        if runtime_status in {"legacy", "duplicate"}:
             return hook_response(platform, event, f"Context Guard binding exists, but the project workbench runtime is {runtime_status}. Do not create another service or ask to bind again. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))} and follow the explicit migration result.")
+        if not binding.get("session", {}).get("verified") and os.environ.get("CONTEXT_GUARD_DISABLE_WORKBENCH") != "1":
+            try:
+                repaired = run_node_workbench([
+                    "workbench", "--root", str(root), "--session", current_session_id,
+                ])
+                verified_workbench_url = str(repaired.get("url") or "")
+                binding = run_node_workbench([
+                    "workbench", "--binding-status", "--root", str(root),
+                    "--session", current_session_id,
+                ])
+                if not binding.get("session", {}).get("verified"):
+                    raise RuntimeError("binding receipt was not verified")
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+                return hook_response(
+                    platform, event,
+                    f"Context Guard kept the existing Session binding, but its project workbench could not be verified or repaired. "
+                    f"Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}. "
+                    "Source inspection and recovery commands may continue; do not create a second workbench or ask the user to bind again.",
+                )
         try:
             memory = run_node_workbench(["memory", "prepare", "--root", str(root), "--session", current_session_id])
             if memory.get("current"):
@@ -1075,12 +1103,13 @@ def main() -> int:
         # Registration must precede the inbox CLI's identity check.
         append_session_event(root, event, platform, current_session_id,
                              session_details(audit_details(payload, event, current_session_id, runtime, {"root_source": root_source})))
-        url = None
+        url = verified_workbench_url or None
         if not (isinstance(payload, dict) and payload.get("is_background_agent") is True):
-            try:
-                url = start_workbench(root, open_browser=False, raise_errors=True)
-            except (OSError, RuntimeError, subprocess.TimeoutExpired):
-                return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
+            if not url:
+                try:
+                    url = start_workbench(root, open_browser=False, raise_errors=True, session_id=current_session_id)
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                    return hook_response(platform, event, f"Context Guard could not start or verify the bound project workbench. Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}; no replacement service was started and the binding was preserved.")
             if sync_configured(ctx):
                 sync_command(root, "ensure")
         context_text, snapshot = map_context(root, ctx, current_session_id)

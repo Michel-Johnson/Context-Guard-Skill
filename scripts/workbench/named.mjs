@@ -1,15 +1,16 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { readJSON, pause } from './io.mjs';
 import { projectId, projectName, resolveProject } from './project.mjs';
 import { compatibleRuntime, WORKBENCH_RUNTIME_SCHEMA } from './runtime.mjs';
+import { globalWorkbenchDirectory, registeredProject, rememberProject } from './registry.mjs';
+import { RouteStore } from './portless-routes.mjs';
 
-export const namedDirectory = () => path.resolve(process.env.CONTEXT_GUARD_NAMED_STATE_DIR || path.join(os.homedir(), '.context-guard/named-workbench'));
+export const namedDirectory = globalWorkbenchDirectory;
 function alive(pid) { if (!Number.isInteger(pid) || pid < 1) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } }
 async function proxyHealth(state) {
   if (!state || state.version !== 1 || !/^http:\/\/127\.0\.0\.1:\d+$/.test(state.base) || !state.adminToken) return false;
@@ -55,25 +56,37 @@ export async function ensureNamedProxy({ dir = namedDirectory(), port = Number(p
 }
 export async function namedWorkbench(state, request, { name, dir, port } = {}) {
   const project = await resolveProject(state.root);
+  const registryDir = dir || namedDirectory();
+  const registered = await registeredProject(project, { dir: registryDir });
   const saved = await readJSON(project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(state.root, '.codex/context/private/named-entry.json'), null);
   const doc = await readJSON(path.join(state.root, '.codex/context/map.json'), {});
-  const chosen = name || saved?.name || projectName(doc.project || path.basename(state.root), state.root);
+  const chosen = name || saved?.name || registered?.name || projectName(doc.project || path.basename(state.root), state.root);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(chosen)) throw new Error('Use a lowercase DNS name (letters, digits, hyphens; 1–63 characters)');
   const capabilities = await fetch(new URL('/__context_guard/health', state.url), { signal: AbortSignal.timeout(1000) }).then(r => r.json());
   if (!capabilities.namedEntry || !compatibleRuntime(capabilities)) throw new Error('The running workbench needs an upgrade for verified named URLs. Save drafts and use the explicit migration flow; it was not restarted');
-  const proxy = await ensureNamedProxy({ dir, port });
+  const proxy = await ensureNamedProxy({ dir: registryDir, port });
   const hostname = `${chosen}.localhost`, origin = `http://${hostname}:${new URL(proxy.base).port}`;
   // Stable, domain-separated capability for concurrent first registration.
   const proxyToken = saved?.proxyToken || createHash('sha256').update(`named-forwarding:${state.adminToken}`).digest('base64url');
   const identityRoot = capabilities.namedRoot || state.root;
-  const route = { hostname, root: identityRoot, projectId: projectId(identityRoot), instance: state.instance, runtimeSchema: WORKBENCH_RUNTIME_SCHEMA, port: Number(new URL(state.url).port), proxyToken };
-  const response = await fetch(proxy.base + '/__cg_proxy/routes', { method: 'POST', headers: { Authorization: `Bearer ${proxy.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(route), signal: AbortSignal.timeout(5000), redirect: 'error' });
+  const route = { hostname, root: identityRoot, projectId: projectId(identityRoot), projectKey: project.projectId, instance: state.instance, runtimeSchema: WORKBENCH_RUNTIME_SCHEMA, port: Number(new URL(state.url).port), proxyToken };
+  const previous = new RouteStore(registryDir).loadRoutes().find(item => item.hostname === hostname) || null;
+  let replace = null;
+  if (previous && (previous.root !== route.root || previous.projectId !== route.projectId)) {
+    const knownRoot = registered?.roots?.includes(previous.root);
+    const sameGitProject = await resolveProject(previous.root).then(item => item.projectId === project.projectId).catch(() => false);
+    if (previous.projectKey === project.projectId || knownRoot || sameGitProject) {
+      replace = { hostname: previous.hostname, root: previous.root, projectId: previous.projectId, instance: previous.instance };
+    }
+  }
+  const response = await fetch(proxy.base + '/__cg_proxy/routes', { method: 'POST', headers: { Authorization: `Bearer ${proxy.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...route, ...(replace ? { replace } : {}) }), signal: AbortSignal.timeout(5000), redirect: 'error' });
   if (!response.ok) throw new Error('Project name registration failed; name may belong to another project');
   // Claim the name before changing the backend's accepted origin. A collision
   // must not break the project's previously working URL.
   await request(state, '/api/named-entry', { method: 'POST', body: { origin, name: chosen, proxyToken } });
   const result = { url: origin + '/prototype/workbench.html', projectRoot: state.root, proxyPort: Number(new URL(proxy.base).port) };
   await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
+  await rememberProject(project, { dir: registryDir, name: chosen, origin, state: { ...state, ...capabilities } });
   return result;
 }
 

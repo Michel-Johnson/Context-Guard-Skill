@@ -292,12 +292,11 @@ export class WorkbenchSync {
     // A browser belongs to the Session explicitly present in its URL or selected
     // by the human. Activity in another task must never silently switch maps.
     if (this.activeSession !== ALL_SESSIONS && !current) { this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.manualSession = false; }
-    const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '全部 Session';
+    const all = document.createElement('option'); all.value = ALL_SESSIONS; all.textContent = '主工作台 · 全部 Session';
     const options = [all, ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
-      const short = item.shortId || (item.id.length > 20 ? `${item.id.slice(0, 8)}…${item.id.slice(-6)}` : item.id);
-      const displayName = `${item.platform}-${item.name || 'Session'} · ${short}${item.worktreeName ? ` · ${item.worktreeName}` : ''}`;
-      option.textContent = displayName; option.title = `${item.id}\n${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
+      const displayName = [item.name || `${item.platform || 'Agent'} Session`, item.worktreeName, item.branch].filter(Boolean).join(' · ');
+      option.textContent = displayName; option.title = `${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
     })];
     select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
