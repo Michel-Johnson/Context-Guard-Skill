@@ -177,6 +177,35 @@ test('node removal, field removal, moves and document metadata are summarized', 
   assert.equal(changes.find(c => c.type === 'document').fields.project.after.value, 'b');
 });
 
+test('concurrent checkpoints retain independent acknowledgements across ordinary presence updates', async t => {
+  const f = await fixture(); await f.store.close();
+  const server = await startServer({ root: f.root, port: 0 });
+  const { token } = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: agent.sessionId } });
+  const abort = new AbortController();
+  const stream = await fetch(new URL('/api/events?clientId=responsive', server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` }, signal: abort.signal });
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder(); let buffer = '';
+  const respond = (async () => {
+    const ids = [];
+    while (ids.length < 2) {
+      const { value, done } = await reader.read(); if (done) throw new Error('Event stream ended');
+      buffer += decoder.decode(value, { stream: true });
+      let end;
+      while ((end = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+        if (block.includes('event: checkpoint')) ids.push(JSON.parse(block.split('\n').find(line => line.startsWith('data: ')).slice(6)).checkpoint);
+      }
+    }
+    await pause(1500); // Background pages can take longer than the former 1.2s fence.
+    for (const checkpoint of ids) await request(server.state, '/api/presence', { token: server.humanToken, method: 'POST', body: { clientId: 'responsive', dirty: false, version: server.store.version, checkpoint } });
+    await request(server.state, '/api/presence', { token: server.humanToken, method: 'POST', body: { clientId: 'responsive', dirty: false, version: server.store.version } });
+  })();
+  try {
+    const results = await Promise.allSettled([request(server.state, '/api/state', { token }), request(server.state, '/api/state', { token }), respond]);
+    for (const result of results) assert.equal(result.status, 'fulfilled', result.reason?.message);
+  } finally { abort.abort(); await reader.cancel().catch(() => {}); await server.close(); }
+});
+
 test('HTTP integration uses Agent identity and never requests a browser checkpoint', async t => {
   const f = await fixture(); await f.store.close();
   const server = await startServer({ root: f.root, port: 0 }); t.after(() => server.close());
