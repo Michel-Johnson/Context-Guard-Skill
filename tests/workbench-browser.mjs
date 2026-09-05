@@ -158,6 +158,25 @@ try {
   await page.getByRole('button', { name: '将当前图设为真实地图' }).click(); await synchronized();
   const initialized = await read(); assert.equal(initialized.root.id, 'T0'); assert.ok(initialized.root.children.length > 0); assert.equal(initialized.bootstrap, 'ready');
   recordCheck('empty-map-explicitly-initializes-current-workbench');
+  stage = 'backend-password-ui';
+  let loginRequest;
+  const loginRoute = '**/api/v2/messages?**';
+  await page.route(loginRoute, async route => {
+    loginRequest = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: loginRequest.id, ok: true, data: { repositoryId: '123' } }) });
+  });
+  await page.locator('#cg-cloud-login').click();
+  assert.equal(await page.locator('dialog input').count(), 1);
+  assert.equal(await page.locator('dialog input').getAttribute('type'), 'password');
+  await page.locator('dialog input').fill('synthetic-browser-password');
+  await page.locator('dialog [type="submit"]').click();
+  await page.waitForFunction(() => document.querySelector('dialog [role="status"]')?.textContent.includes('后端已连接'));
+  assert.equal(loginRequest.type, 'auth.open'); assert.equal(loginRequest.payload.repository, 'auto');
+  assert.equal(await page.locator('dialog input').inputValue(), '');
+  assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('synthetic-browser-password')), false);
+  await page.locator('dialog [data-cancel]').click(); await page.unroute(loginRoute);
+  recordCheck('backend-password-ui-no-manual-identities-or-password-storage');
+  stage = 'bidirectional-sync';
   await fs.writeFile(mapPath, encode(doc));
   await page.waitForFunction(() => document.querySelector('#repo-title')?.textContent?.includes('browser-test'));
   await page.waitForFunction(() => document.querySelector('#cg-sync-status')?.textContent?.includes('旧缓存'));

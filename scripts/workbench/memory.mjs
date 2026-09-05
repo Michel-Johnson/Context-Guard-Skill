@@ -14,8 +14,18 @@ export async function memoryRequest(project, scope, input, configuration) {
   const base = new URL(config.url);
   if (base.username || base.password || base.search || base.hash || (base.protocol !== 'https:' && !(base.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)))) throw new MapError('INSECURE_MEMORY_URL', 'Use HTTPS, or an explicit loopback tunnel', 400);
   if (!/^[a-z0-9-]+$/.test(config.projectId || '') || !config.token) throw new MapError('INVALID_MEMORY_CONFIG', 'Project ID and scoped token required');
-  const response = await fetch(new URL(`/v1/projects/${config.projectId}/${scope}`, base), { method: input ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${config.token}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, body: input ? JSON.stringify(input) : undefined });
-  const result = await response.json();
+  let response, result;
+  try {
+    response = await fetch(new URL(`/v1/projects/${config.projectId}/${scope}`, base), { method: input ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${config.token}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, body: input ? JSON.stringify(input) : undefined });
+  } catch {
+    throw new MapError('MEMORY_UNAVAILABLE', input ? 'Delivery outcome is unknown; preserve the request ID before retrying' : 'Memory service is temporarily unavailable', 503);
+  }
+  if (response.status === 401) throw new MapError('UNAUTHORIZED', 'Memory credential expired or was rejected', 401);
+  if (response.status === 403) throw new MapError('FORBIDDEN', 'Memory access was denied', 403);
+  if (!response.headers.get('content-type')?.includes('application/json')) throw new MapError('MEMORY_UNAVAILABLE', 'Memory service did not return JSON; preserve pending changes', 503);
+  try { result = await response.json(); }
+  catch { throw new MapError('MEMORY_UNAVAILABLE', 'Incomplete memory receipt; preserve pending changes and the request ID', 503); }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) throw new MapError('MEMORY_UNAVAILABLE', 'Malformed memory receipt', 503);
   if (!response.ok) throw new MapError(result.error?.code || 'MEMORY_FAILED', result.error?.message || 'Memory request failed', response.status);
   if (result.projectId !== config.projectId) throw new MapError('PROJECT_MISMATCH', 'Server returned another project', 409);
   return result;

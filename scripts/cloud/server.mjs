@@ -4,9 +4,15 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, entries, validate, MapError } from '../../prototype/map-model.mjs';
+import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
-import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryProject } from './memory.mjs';
+import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
+import { WorkbenchSnapshots } from '../workbench/protocol-snapshots.mjs';
+import { verifyChangeReferences } from '../workbench/protocol-map.mjs';
+import { ProtocolAuth } from './protocol-auth.mjs';
+import { ProtocolStore } from '../workbench/protocol-store.mjs';
+import { ProtocolBlobs, serveBlob } from '../workbench/protocol-blobs.mjs';
+import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../workbench/protocol.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -241,6 +247,7 @@ export async function startCloudServer({
   secureCookies = process.env.CONTEXT_GUARD_CLOUD_SECURE_COOKIES === '1',
   publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
   memoryConfig,
+  protocolConfig,
   faultInjector = async () => {},
 } = {}) {
   const registryFile = path.join(dataDir, 'projects.json');
@@ -265,6 +272,35 @@ export async function startCloudServer({
     ? await readJson(path.resolve(process.env.CONTEXT_GUARD_MEMORY_CONFIG), null)
     : null);
   const memoryHandler = configuredMemory ? createMemoryHandler(configuredMemory) : null;
+  const interfaceConfig = protocolConfig || configuredMemory?.interfaceV2;
+  const interfaceStores = new Map();
+  const interfaceStreams = new Set();
+  const interfaceMapHeads = async principal => {
+    const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === principal.repositoryId);
+    if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) return {};
+    return memoryHeads(configuredMemory, repository.projectId);
+  };
+  const interfaceStorage = principal => {
+    const directory = path.join(dataDir, 'interface-v2', digest(principal.repositoryId));
+    if (!interfaceStores.has(principal.repositoryId)) interfaceStores.set(principal.repositoryId, {
+      store: new ProtocolStore(directory), blobs: new ProtocolBlobs(path.join(directory, 'blobs')), snapshots: new WorkbenchSnapshots(path.join(directory, 'snapshots')),
+    });
+    return interfaceStores.get(principal.repositoryId);
+  };
+  const interfaceAuth = interfaceConfig ? new ProtocolAuth({
+    directory: path.join(dataDir, 'interface-v2'),
+    verifyPassword: password => verifyWorkbenchPassword(password, browserPasswordHash),
+    authorizeRepository: slug => {
+      const repository = interfaceConfig.repositories?.find(item => item.slug === slug);
+      return repository && /^\d+$/.test(repository.repositoryId) ? repository.repositoryId : null;
+    },
+    resolveIdentity: (slug, clientId) => {
+      const repository = interfaceConfig.repositories?.find(item => item.slug === slug);
+      const client = repository?.clients?.[clientId];
+      if (!client || client.disabled || client.role === 'human' || !/^\d+$/.test(repository.repositoryId)) return null;
+      return { repositoryId: repository.repositoryId, repositorySlug: slug, clientId, deviceId: client.deviceId, agentId: client.agentId, role: client.role || 'executor', bindings: client.bindings || {}, nodeIds: client.nodeIds || null };
+    },
+  }) : null;
   let registry = await readJson(registryFile, null);
   if (!registry) {
     registry = { v: 2, projects: [compactProject({ id: 'context-guard', name: 'Context Guard', description: 'Context Guard 项目地图' })] };
@@ -604,6 +640,164 @@ export async function startCloudServer({
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
+      if (route === '/api/v2/events') {
+        if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 is not configured');
+        if (req.method !== 'GET') protocolFail('INVALID_ARGUMENT', 'Use GET');
+        if (req.headers.origin && req.headers.origin !== allowedOrigin) protocolFail('FORBIDDEN', 'Untrusted browser origin');
+        const credential = bearer(req), principal = await interfaceAuth.authenticate(credential);
+        const { store } = interfaceStorage(principal);
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+        res.write(': connected\n\n');
+        let pending = false, dirty = false, closed = false;
+        const heads = new Map();
+        const notify = async () => {
+          dirty = true;
+          if (pending || closed) return;
+          pending = true;
+          try {
+            while (dirty && !closed) {
+              dirty = false;
+              const current = await interfaceAuth.authenticate(credential);
+              const mapHeads = await interfaceMapHeads(current);
+              for (const head of await store.queueHeads(current)) {
+                const key = `${head.session.id}:${head.session.generation}`;
+                const version = `${head.latestSeq}:${mapHeads[head.session.id]?.mapVersion || ''}`;
+                if (heads.get(key) === version) continue;
+                heads.set(key, version);
+                const message = { v: 2, id: randomUUID(), type: 'sync.event', session: head.session, payload: { latestSeq: head.latestSeq } };
+                if (!res.write(`event: sync.event\ndata: ${JSON.stringify(message)}\n\n`)) { res.end(); break; }
+              }
+            }
+          } catch { res.end(); } finally { pending = false; }
+        };
+        const timer = setInterval(() => {
+          interfaceAuth.authenticate(credential).then(() => { if (!res.write(': heartbeat\n\n')) res.end(); }).catch(() => res.end());
+        }, 10000); timer.unref();
+        interfaceStreams.add(res); store.on('change', notify);
+        const memoryEvents = configuredMemory ? memoryHub(configuredMemory) : null;
+        const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+        const memoryChanged = event => { if (event.projectId === repository?.projectId) notify(); };
+        memoryEvents?.on('event', memoryChanged);
+        res.on('close', () => { closed = true; clearInterval(timer); store.off('change', notify); memoryEvents?.off('event', memoryChanged); interfaceStreams.delete(res); });
+        await notify(); return;
+      }
+      const binaryRoute = route.match(/^\/api\/v2\/blobs\/([a-f0-9]{64})$/);
+      if (binaryRoute) {
+        try {
+          if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 is not configured');
+          if (req.headers.origin && req.headers.origin !== allowedOrigin) protocolFail('FORBIDDEN', 'Untrusted browser origin');
+          const principal = await interfaceAuth.authenticate(bearer(req));
+          const session = { id: req.headers['x-context-guard-session'], generation: Number(req.headers['x-context-guard-generation']) };
+          const { store, blobs } = interfaceStorage(principal);
+          await store.authorizeSession(principal, session);
+          return await serveBlob(req, res, { blobs, principal, session, blobId: binaryRoute[1] });
+        } catch (error) { return send(res, error.status || 503, errorReply('', error)); }
+      }
+      if (route === '/api/v2/messages') {
+        let id = '';
+        try {
+          if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 requires configured repository and client registrations');
+          if (req.method !== 'POST') protocolFail('INVALID_ARGUMENT', 'Use POST');
+          if (req.headers.origin && req.headers.origin !== allowedOrigin) protocolFail('FORBIDDEN', 'Untrusted browser origin');
+          if (!String(req.headers['content-type'] || '').startsWith('application/json')) protocolFail('INVALID_ARGUMENT', 'Expected JSON');
+          const chunks = []; let size = 0;
+          for await (const chunk of req) { size += chunk.length; if (size > MAX_MESSAGE_BYTES) protocolFail('TOO_LARGE', 'Message exceeds 256 KiB'); chunks.push(chunk); }
+          let input;
+          try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { protocolFail('INVALID_ARGUMENT', 'Invalid JSON'); }
+          if (typeof input?.id === 'string' && input.id.length <= 128) id = input.id;
+          validateMessage(input);
+          if (input.type === 'auth.open') {
+            const opened = await interfaceAuth.open(input, String(req.socket.remoteAddress));
+            const repository = interfaceConfig.repositories.find(item => item.repositoryId === opened.data.repositoryId);
+            opened.data.capabilities = repository?.projectId && configuredMemory?.projects?.[repository.projectId] ? ['private-map-heads'] : [];
+            return send(res, 200, { id, ok: true, data: opened.data }, { 'X-Context-Guard-Credential': opened.credential });
+          }
+          const credential = bearer(req);
+          if (input.type === 'auth.close') return send(res, 200, { id, ok: true, data: await interfaceAuth.close(credential) });
+          let principal;
+          if (!credential && hasWorkbenchAccess(req, url)) {
+            const repository = interfaceConfig.repositories?.find(item => item.projectId === url.searchParams.get('project'));
+            if (!repository || !/^\d+$/.test(repository.repositoryId)) protocolFail('FORBIDDEN', 'Select an authorized project');
+            principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
+          } else principal = await interfaceAuth.authenticate(credential);
+          const { store, blobs, snapshots } = interfaceStorage(principal);
+          if (input.type === 'workbench.patch') {
+            await store.authorizeSession(principal, input.session);
+            await verifyChangeReferences(input.payload.changes, {
+              object: async (ref, version) => (await store.handle(principal, { v: 2, id: randomUUID(), type: 'object.read', session: input.session, payload: { ref, version } })).data,
+              blob: blobId => blobs.metadata(principal, input.session, blobId),
+            });
+            const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+            if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) protocolFail('NOT_FOUND', 'Private project memory is not configured');
+            const actor = { kind: principal.role === 'human' ? 'human' : 'agent', sessionId: input.session.id };
+            try {
+              const data = await commitSessionMap(configuredMemory, repository.projectId, input.session.id,
+                { operationId: `v2:${digest(JSON.stringify([principal.repositoryId, principal.deviceId, principal.agentId, input.session, input.id]))}`, baseVersion: input.payload.baseVersion, changes: input.payload.changes }, actor, {
+                  authorize: async () => {
+                    if (credential) principal = await interfaceAuth.authenticate(credential);
+                    else if (!hasWorkbenchAccess(req, url)) protocolFail('UNAUTHORIZED', 'Workbench login expired');
+                    await store.authorizeSession(principal, input.session);
+                  },
+                  grants: async doc => {
+                    const all = doc?.root ? [...entries(doc.root).keys()] : [];
+                    if (principal.role === 'human') return all;
+                    const granted = Array.isArray(principal.nodeIds) ? all.filter(id => principal.nodeIds.includes(id)) : principal.role === 'device' ? all : [];
+                    const binding = await store.registeredBinding(principal, input.session.id);
+                    return filterNodeAccess(doc, granted, binding.agentId);
+                  },
+                });
+              return send(res, 200, { id, ok: true, data });
+            } catch (error) {
+              if (error instanceof MapError) protocolFail(error.code === 'ID_REUSED' ? 'ID_REUSED' : ({ 400: 'INVALID_ARGUMENT', 403: 'FORBIDDEN', 404: 'NOT_FOUND', 409: 'CONFLICT' })[error.status] || 'UNAVAILABLE', error.message, error.details);
+              throw error;
+            }
+          }
+          const reply = await store.handle(principal, input, {
+            blobs,
+            allowMigration: principal.role === 'device',
+            workbenchRead: async (identity, message) => {
+              const repository = interfaceConfig.repositories.find(item => item.repositoryId === identity.repositoryId);
+              if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) protocolFail('NOT_FOUND', 'Private project memory is not configured');
+              let source;
+              const load = async () => {
+                if (!source) {
+                  const memory = await readMemoryProject(configuredMemory, repository.projectId);
+                  const snapshot = message.payload.scope === 'main' ? memory.main : memory.sessions[message.session.id];
+                  if (!snapshot?.memory?.map) protocolFail('NOT_FOUND', 'Requested workbench is unavailable');
+                  source = { version: snapshot.version, doc: scopeDocumentToSession(snapshot.memory.map, message.session.id) };
+                }
+                return source;
+              };
+              return snapshots.read(identity, message, { load, capture: () => store.recoverySnapshot(identity, message.session, load), grants: async () => {
+                const doc = (await load()).doc;
+                const all = doc.root ? [...entries(doc.root).keys()] : [];
+                if (identity.role === 'human') return all;
+                const granted = Array.isArray(identity.nodeIds) ? all.filter(id => identity.nodeIds.includes(id)) : identity.role === 'executor' ? [] : all;
+                const binding = await store.registeredBinding(identity, message.session.id);
+                return filterNodeAccess(doc, granted, binding.agentId, 'read');
+              } });
+            },
+            verifyBinding: (identity, payload) => identity.role === 'device' || identity.bindings?.[payload.sessionId] === payload.worktreeId,
+            workflow: {
+              verifyRouting: async (identity, message) => {
+                const repository = interfaceConfig.repositories?.find(item => item.repositoryId === identity.repositoryId);
+                if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) return false;
+                const memory = await readMemoryProject(configuredMemory, repository.projectId);
+                if (!memory.main?.memory?.map?.root || memory.main.version !== message.payload.mainVersion) return false;
+                const doc = memory.main.memory.map;
+                const binding = await store.registeredBinding(identity, message.session.id);
+                const readable = filterNodeAccess(doc, [...entries(doc.root).keys()], binding.agentId, 'read');
+                return message.payload.nodeIds.every(id => readable.includes(id));
+              },
+            },
+          });
+          if (input.type === 'sync.heartbeat') {
+            const heads = await interfaceMapHeads(principal);
+            reply.data.sessions = reply.data.sessions.map(session => ({ ...session, ...(heads[session.id] || {}) }));
+          }
+          return send(res, 200, reply);
+        } catch (error) { return send(res, error.status || 503, errorReply(id, error)); }
+      }
       const passwordLoginRequest = route === '/auth/login' && req.method === 'POST';
       if (!passwordLoginRequest && allowedOrigin && req.headers.origin && canonicalOrigin(req.headers.origin) !== allowedOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
       if (memoryHandler && await memoryHandler(req, res)) return;
@@ -887,6 +1081,7 @@ export async function startCloudServer({
   const close = () => closing ||= new Promise((resolve, reject) => {
     clearInterval(heartbeat);
     stopMemoryEvents();
+    for (const res of interfaceStreams) res.end();
     for (const res of directoryClients) res.end();
     for (const client of workbenchClients) client.res.end();
     for (const set of projectClients.values()) for (const res of set) res.end();

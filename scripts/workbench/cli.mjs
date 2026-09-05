@@ -8,6 +8,7 @@ import { startServer, statePath, projectStatePath, projectLockPath, health, skil
 import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
+import { validateMessage } from './protocol.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
 import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';
@@ -549,7 +550,7 @@ async function main(args) {
         : await namedWorkbench(state, request, { name: opt.name });
     await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
     if (bindInput) await request(state, '/api/session', { method: 'POST', body: { ...bindInput, workbenchUrl: result.url } });
-    const claim = opt['claim-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: {} }) : {};
+    const claim = opt['claim-open'] || opt['retry-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: { retry: !!opt['retry-open'] } }) : {};
     const url = new URL(result.url);
     if (opt.session) url.searchParams.set('session', String(opt.session));
     const receipt = opt.session ? await diagnoseWorkbench(root, String(opt.session)) : null;
@@ -568,6 +569,15 @@ async function main(args) {
   const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
+  if (action === 'interrupted') return call('/api/v2/interrupt', { method: 'POST', body: {
+    id: opt['event-id'], occurredAt: opt['occurred-at'], reason: 'Local host interrupted the task',
+  } });
+  if (action === 'exchange') {
+    const message = validateMessage(await inputJSON(opt.input));
+    if (message.type.startsWith('auth.')) throw new MapError('FORBIDDEN', 'Use the human workbench to authorize the backend', 403);
+    if (message.session && message.session.id !== sessionId) throw new MapError('FORBIDDEN', 'Message targets a different Session', 403);
+    return call('/api/v2/messages', { method: 'POST', body: message });
+  }
   if (['inbox', 'ack', 'watch'].includes(action)) {
     const dir = sessionMemoryDir(project, sessionId);
     const inbox = new AgentInbox(root, sessionId, call, project.kind === 'git' ? { ctx: dir, pendingFile: path.join(dir, 'sync/pending.json'), eventsDir: dir } : {});

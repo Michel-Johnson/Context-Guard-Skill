@@ -5,7 +5,7 @@ import os from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { entries, MapError } from '../../prototype/map-model.mjs';
+import { entries, MapError, filterNodeAccess } from '../../prototype/map-model.mjs';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 const execFileAsync = promisify(execFile);
 export const token = () => randomBytes(32).toString('base64url');
@@ -298,11 +298,12 @@ export class Access {
     if (!record) return null;
     return { mode: record.mode === 'all' ? 'all' : 'explicit', nodes: Array.isArray(record.nodes) ? record.nodes : [] };
   }
-  grants(sessionId, document = null) {
+  grants(sessionId, document = null, mode = 'write') {
     const record = this.accessRecord(sessionId);
     if (!record) return [];
-    if (record.mode !== 'all' || !document?.root) return [...record.nodes];
-    return [...entries(document.root).keys()];
+    if (!document?.root) return [...record.nodes];
+    const nodes = record.mode === 'all' ? [...entries(document.root).keys()] : [...record.nodes];
+    return filterNodeAccess(document, nodes, sessionId, mode);
   }
   async promoteLegacyFullGrant(sessionId, document) {
     const record = this.data.sessions[sessionId];

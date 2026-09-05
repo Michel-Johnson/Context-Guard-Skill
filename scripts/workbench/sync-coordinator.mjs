@@ -54,7 +54,7 @@ export function parseSseBlocks(buffer) {
 }
 
 export class MemorySyncCoordinator extends EventEmitter {
-  constructor({ project, sessionId, store, directory, request = memoryRequest, retryMin = 250, retryMax = 5000 } = {}) {
+  constructor({ project, sessionId, store, directory, request = memoryRequest, retryMin = 250, retryMax = 5000, managed = false } = {}) {
     super();
     this.project = project;
     this.sessionId = sessionId;
@@ -71,6 +71,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.retryDelay = retryMin;
     this.serial = Promise.resolve();
     this.closed = false;
+    this.managed = managed;
     this.abort = null;
     this.status = { configured: false, status: 'disabled', pending: 0, cursor: 0, serverVersion: null, error: null, conflict: null };
     this.onStoreEvent = event => {
@@ -252,7 +253,8 @@ export class MemorySyncCoordinator extends EventEmitter {
     validate(remote.memory.map);
     const base = await readJSON(this.baseFile, null);
     const local = this.store.doc;
-    if (!base || equalDocument(local, remote.memory.map)) {
+    if (!base && !equalDocument(local, remote.memory.map)) return this.saveConflict('BASELINE_MISSING', null, local, remote.memory.map, { cursor, serverVersion: remote.version });
+    if (equalDocument(local, remote.memory.map)) {
       await atomicWrite(this.baseFile, encode(remote.memory.map));
       await fs.unlink(this.outboxFile).catch(() => {});
       return this.persist({ serverVersion: remote.version, cursor, status: 'synced', pending: 0, error: null, conflict: null, lastSyncedAt: remote.updatedAt });
@@ -289,7 +291,7 @@ export class MemorySyncCoordinator extends EventEmitter {
   }
 
   retry() {
-    if (this.closed || this.retryTimer) return;
+    if (this.closed || this.managed || this.retryTimer) return;
     const delay = this.retryDelay;
     this.retryDelay = Math.min(this.retryMax, Math.max(this.retryMin, this.retryDelay * 2));
     this.retryTimer = setTimeout(() => {
@@ -323,9 +325,10 @@ export class MemorySyncCoordinator extends EventEmitter {
   }
 
   async run() {
-    while (!this.closed) {
+    while (!this.closed && !this.managed) {
       try {
         await this.schedule(() => this.initialize());
+        if (this.managed) return;
         if (this.status.conflict) return;
         const base = new URL(this.configuration.url);
         this.abort = new AbortController();
@@ -350,6 +353,32 @@ export class MemorySyncCoordinator extends EventEmitter {
       this.retryWaitResolve = resolve;
       this.retryWaitTimer = setTimeout(() => { this.retryWaitTimer = null; this.retryWaitResolve = null; resolve(); }, milliseconds);
       this.retryWaitTimer.unref();
+    });
+  }
+
+  async projectHeartbeat(head) {
+    if (typeof head.mapVersion !== 'string' || !Number.isSafeInteger(head.mapCursor) || head.mapCursor < 0) return;
+    if (!this.managed) {
+      this.managed = true;
+      clearTimeout(this.retryTimer); this.retryTimer = null;
+      clearTimeout(this.retryWaitTimer); this.retryWaitResolve?.();
+      this.abort?.abort(); await this.loopPromise?.catch(() => {});
+    }
+    return this.schedule(async () => {
+      if (this.closed || this.status.conflict) return;
+      if (!this.status.serverVersion) await this.initialize();
+      if (this.status.conflict) return;
+      if (head.mapVersion !== this.status.serverVersion) {
+        const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
+        // This cursor belongs to the observed version. A newer read will be
+        // reconciled again on the next heartbeat, never skip unseen events.
+        await this.reconcileRemote(remote, head.mapCursor);
+      }
+      if (this.status.pending) await this.flush();
+      else if (['offline', 'error', 'connecting'].includes(this.status.status)) await this.persist({ status: 'synced', error: null });
+    }).catch(async error => {
+      if (!this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || 'MEMORY_UNAVAILABLE' });
+      throw error;
     });
   }
 

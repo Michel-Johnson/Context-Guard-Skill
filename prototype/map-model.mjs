@@ -1,10 +1,20 @@
 // Shared by the workbench and Node service. Unknown stored fields are retained.
-export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
+export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
 export class MapError extends Error {
   constructor(code, message, status = 400, details = {}) { super(message); Object.assign(this, { code, status, details }); }
 }
 export const copy = value => JSON.parse(JSON.stringify(value));
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+export function filterNodeAccess(document, grants, agentId, mode = 'write') {
+  if (!document?.root) return [];
+  const index = entries(document.root);
+  return grants.filter(id => {
+    const node = index.get(id)?.node;
+    if (!node) return false;
+    const rule = node.access?.find(item => item.agentId === agentId);
+    return !rule || rule.allow === 'write' || mode === 'read' && rule.allow === 'read';
+  });
+}
 const object = x => x && typeof x === 'object' && !Array.isArray(x);
 const proposalBases = new Set(['new-module', 'new-interface', 'new-component', 'new-responsibility']);
 function proposalPath(value) {
@@ -60,7 +70,7 @@ export function validate(doc) {
   for (const { node } of index.values()) {
     if (typeof node.title !== 'string' || node.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid title`);
     if (node.purpose !== undefined && typeof node.purpose !== 'string') throw new MapError('INVALID_MAP', 'purpose must be text');
-    for (const key of ['memories', 'ideas', 'todos', 'bugs', 'dormant', 'files', 'owns']) {
+    for (const key of ['memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns']) {
       if (node[key] !== undefined && !Array.isArray(node[key])) throw new MapError('INVALID_MAP', `${key} must be an array`);
     }
     if (node.kind && !['module', 'work'].includes(node.kind)) throw new MapError('INVALID_MAP', 'Invalid kind');
@@ -74,6 +84,14 @@ export function validate(doc) {
     for (const todo of node.todos || []) {
       if (typeof todo.title !== 'string' || todo.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO title`);
       if (todo.status && !['pending', 'processing', 'done'].includes(todo.status)) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO status`);
+    }
+  }
+  for (const { node } of index.values()) {
+    for (const message of node.messages || []) if (!object(message) || typeof message.text !== 'string') throw new MapError('INVALID_MAP', 'Message must contain text');
+    const agents = new Set();
+    for (const rule of node.access || []) {
+      if (!object(rule) || typeof rule.agentId !== 'string' || !rule.agentId || !['read', 'write', 'none'].includes(rule.allow) || agents.has(rule.agentId)) throw new MapError('INVALID_MAP', 'Invalid or duplicate node access rule');
+      agents.add(rule.agentId);
     }
   }
   for (const flow of doc.flows || []) {
@@ -234,6 +252,7 @@ export function applyOperations(document, operations, actor, grants = []) {
     if (op.type === 'initialize') {
       if (doc.root !== null || typeof op.project !== 'string' || !op.project.trim()) throw new MapError('INVALID_INITIALIZATION', 'Only an empty legacy pending map can be initialized');
       checkFields(op.node, ['id', ...editableFields, 'children', '_inbox']);
+      if (!human && op.node.access?.length) throw new MapError('FORBIDDEN', 'Agent cannot set node access', 403);
       if (!human && (op.node.children?.length || op.node._inbox?.length)) throw new MapError('FORBIDDEN', 'Only the workbench can initialize a complete map', 403);
       doc.project = op.project;
       doc.root = { id: 'T0', title: op.project, kind: 'module', state: 'dirty', children: [], ...copy(op.node), origin: actor.kind, proposal: human ? 'accepted' : 'proposed', proposedBy: actor.sessionId };
@@ -249,6 +268,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
       if (!human) {
+        if (op.node.access?.length) throw new MapError('FORBIDDEN', 'Agent cannot set node access', 403);
         validateAgentProposalNode(op.node, op.parentId);
         const title = String(op.node.title).trim().toLocaleLowerCase();
         const owns = new Set(op.node.owns.map(proposalPath));
@@ -261,7 +281,27 @@ export function applyOperations(document, operations, actor, grants = []) {
       const node = { title: '', kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], ...copy(op.node), origin: actor.kind, proposedBy: actor.sessionId };
       if (!human) { node.proposal = 'proposed'; node.isNew = true; }
       else { node.proposal ||= 'accepted'; node.isNew = node.proposal === 'proposed'; }
-      (parent.children ||= []).push(node); resultIds.push(id);
+      const children = parent.children ||= [];
+      if (op.order !== undefined && (!Number.isSafeInteger(op.order) || op.order < 0 || op.order > children.length)) throw new MapError('INVALID_ORDER', 'Sibling position is outside the list');
+      children.splice(op.order ?? children.length, 0, node); resultIds.push(id);
+    } else if (op.type === 'relation') {
+      const flows = doc.flows ||= [];
+      const position = op.legacyIndex === undefined ? flows.findIndex(flow => flow.id === op.id)
+        : Number.isSafeInteger(op.legacyIndex) && op.legacyIndex >= 0 && !flows[op.legacyIndex]?.id ? op.legacyIndex : -1;
+      const prior = flows[position];
+      if (!['create', 'update', 'delete'].includes(op.action)) throw new MapError('INVALID_OPERATION', 'Invalid relation action');
+      if (op.action === 'create' ? !!prior : !prior) throw new MapError('VERSION_CONFLICT', 'Relation no longer matches the operation', 409);
+      checkFields(op.fields || {}, ['from', 'to', 'label']);
+      const next = { ...prior, ...copy(op.fields || {}), id: op.id };
+      for (const id of new Set([prior?.from, prior?.to, next.from, next.to].filter(Boolean))) {
+        const node = index.get(id)?.node;
+        if (!node) throw new MapError('NOT_FOUND', 'Relation endpoint is missing', 404);
+        if (!allowed(node)) throw new MapError('FORBIDDEN', 'Relation endpoint is not authorized', 403);
+        resultIds.push(id);
+      }
+      if (op.action === 'create') flows.push(next);
+      else if (op.action === 'delete') flows.splice(position, 1);
+      else flows[position] = next;
     } else if (op.type === 'document') {
       if (!human) throw new MapError('FORBIDDEN', 'Only the workbench can change document metadata', 403);
       checkFields(op.fields, ['bootstrap', 'flows']); Object.assign(doc, copy(op.fields));
@@ -302,14 +342,16 @@ export function applyOperations(document, operations, actor, grants = []) {
       if (!allowed(target.node)) throw new MapError('FORBIDDEN', `Session is not authorized for ${op.id}`, 403);
       if (op.type === 'update') {
         checkFields(op.fields);
-        if (!human && ['proposal', 'isNew'].some(key => Object.hasOwn(op.fields, key))) throw new MapError('FORBIDDEN', 'Agent cannot confirm or cancel a proposal', 403);
+        if (!human && ['proposal', 'isNew', 'access'].some(key => Object.hasOwn(op.fields, key))) throw new MapError('FORBIDDEN', 'Agent cannot confirm proposals or change node access', 403);
         Object.assign(target.node, copy(op.fields));
       } else if (op.type === 'move') {
         const parent = index.get(op.parentId)?.node;
         if (!target.parent || !parent || entries(target.node).has(parent.id)) throw new MapError('INVALID_MOVE', 'Missing parent, root move or tree cycle');
         if (!allowed(parent)) throw new MapError('FORBIDDEN', 'Destination is not authorized', 403);
         target.parent[target.bucket] = target.parent[target.bucket].filter(x => x.id !== op.id);
-        (parent.children ||= []).push(target.node);
+        const children = parent.children ||= [];
+        if (op.order !== undefined && (!Number.isSafeInteger(op.order) || op.order < 0 || op.order > children.length)) throw new MapError('INVALID_ORDER', 'Sibling position is outside the list');
+        children.splice(op.order ?? children.length, 0, target.node);
       } else if (op.type === 'delete') {
         if (!human || !target.parent) throw new MapError('FORBIDDEN', 'Only human can permanently remove a non-root node', 403);
         target.parent[target.bucket] = target.parent[target.bucket].filter(x => x.id !== op.id);
@@ -341,5 +383,32 @@ export function diffTrees(before, after) {
     if (Object.keys(fields).length) ops.push({ type: 'update', id, fields });
   }
   for (const [id, { parent }] of a) if (!b.has(id) && parent && b.has(parent.id)) ops.push({ type: 'delete', id });
+  // Reconstruct the child order after structural operations before emitting
+  // positional moves. This also handles inserts before existing siblings.
+  const lists = new Map([...a].map(([id, { node }]) => [id, (node.children || []).map(child => child.id)]));
+  const owners = new Map([...a].filter(([, item]) => item.parent && item.bucket === 'children').map(([id, item]) => [id, item.parent.id]));
+  const detach = id => {
+    const list = lists.get(owners.get(id));
+    if (list?.includes(id)) list.splice(list.indexOf(id), 1);
+    owners.delete(id);
+  };
+  for (const op of ops) {
+    if (op.type === 'delete') detach(op.id);
+    if (op.type === 'move' || op.type === 'create') {
+      const id = op.id || op.node.id;
+      detach(id);
+      if (!lists.has(op.parentId)) lists.set(op.parentId, []);
+      lists.get(op.parentId).push(id); owners.set(id, op.parentId);
+      if (!lists.has(id)) lists.set(id, []);
+    }
+  }
+  for (const [parentId, { node }] of b) {
+    const list = lists.get(parentId) || [];
+    for (const [order, child] of (node.children || []).entries()) {
+      if (list[order] === child.id) continue;
+      detach(child.id); list.splice(order, 0, child.id); owners.set(child.id, parentId);
+      ops.push({ type: 'move', id: child.id, parentId, order });
+    }
+  }
   return ops;
 }

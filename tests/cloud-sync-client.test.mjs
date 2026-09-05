@@ -191,7 +191,9 @@ test('ensure service resumes SSE from its durable cursor after restart', async t
   await waitFor(async () => {
     const map = JSON.parse(await fs.readFile(path.join(listener, '.codex/context/map.json'), 'utf8'));
     return map.root.children.find(item => item.id === 'N1').purpose === 'received while online';
-  }, 'listener did not receive the first SSE update');
+  // This is a recovery test, not a latency benchmark. Allow the 15s HTTP
+  // deadline plus process scheduling; still require the real received edit.
+  }, 'listener did not receive the first SSE update', 20_000);
 
   await stopService(listener);
   await prepareSync({ root: writer, sessionId: 'writer-two', nodeIds: ['N2'] });
@@ -203,7 +205,7 @@ test('ensure service resumes SSE from its durable cursor after restart', async t
   await waitFor(async () => {
     const map = JSON.parse(await fs.readFile(path.join(listener, '.codex/context/map.json'), 'utf8'));
     return map.root.children.find(item => item.id === 'N2').purpose === 'received after restart';
-  }, 'listener did not resume from the durable SSE cursor');
+  }, 'listener did not resume from the durable SSE cursor', 20_000);
   const status = await syncStatus(listener);
   assert.equal(status.state.status, 'synced');
   assert.equal(status.service.alive, true);

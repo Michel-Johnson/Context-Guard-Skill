@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { hash } from '../scripts/workbench/io.mjs';
+import { ProtocolBlobs } from '../scripts/workbench/protocol-blobs.mjs';
+
+test('IF-019: interrupted blob resumes, repeats safely, verifies digest and supports ranged reads', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-blobs-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let blobs = new ProtocolBlobs(directory);
+  const p = { repositoryId: 'r' }, s = { id: 's', generation: 1 }, bytes = Buffer.from('abcdefgh');
+  const metadata = { name: 'proof.txt', size: bytes.length, sha256: hash(bytes), mediaType: 'text/plain' };
+  const { blobId } = await blobs.register(p, s, metadata);
+  await assert.rejects(blobs.metadata(p, s, blobId), { code: 'NOT_FOUND' });
+  assert.deepEqual(await blobs.put(p, s, blobId, 'bytes 0-3/8', bytes.subarray(0, 4)), { offset: 4, complete: false });
+  blobs = new ProtocolBlobs(directory);
+  assert.equal((await blobs.register(p, s, metadata)).offset, 4);
+  assert.deepEqual(await blobs.put(p, s, blobId, 'bytes 0-3/8', bytes.subarray(0, 4)), { offset: 4, complete: false });
+  await assert.rejects(blobs.put(p, s, blobId, 'bytes 0-3/8', Buffer.from('xxxx')), { code: 'CONFLICT' });
+  await assert.rejects(blobs.put(p, s, blobId, 'bytes 4-7/8', Buffer.from('xxxx')), { code: 'CONFLICT' });
+  assert.equal((await blobs.register(p, s, metadata)).offset, 4);
+  assert.deepEqual(await blobs.put(p, s, blobId, 'bytes 4-7/8', bytes.subarray(4)), { offset: 8, complete: true });
+  assert.deepEqual((await blobs.read(p, s, blobId, 'bytes=2-5')).bytes, Buffer.from('cdef'));
+  assert.deepEqual((await blobs.read(p, s, blobId)).bytes, bytes);
+  await assert.rejects(blobs.read(p, { ...s, id: 'other' }, blobId), { code: 'NOT_FOUND' });
+  await assert.rejects(blobs.read({ repositoryId: 'other' }, s, blobId), { code: 'NOT_FOUND' });
+  await assert.rejects(blobs.read(p, s, '../private'), { code: 'INVALID_ARGUMENT' });
+  await assert.rejects(blobs.read(p, s, blobId, 'bytes=0-999'), { code: 'INVALID_ARGUMENT' });
+});

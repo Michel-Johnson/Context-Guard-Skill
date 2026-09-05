@@ -964,6 +964,14 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.equal(delivered.length, 2);
     assert.equal(delivered[1].todo.id, 'TD1');
     assert.match(delivered[1].message, /TODO: TD1 · 新需求/);
+    const reliable = { operationId: 'delivery-retry', sessionId: agent.sessionId, nodeId: 'N1', todoId: 'TD1' };
+    assert.equal((await call('/__context_guard/bootstrap', running.humanToken)).data.interfaceCapabilities.durableDelivery, true);
+    const firstDelivery = await call('/api/session-message', running.humanToken, reliable);
+    const repeatedDelivery = await call('/api/session-message', running.humanToken, reliable);
+    assert.equal(firstDelivery.data.state, 'received');
+    assert.equal(firstDelivery.data.deliveryId, reliable.operationId);
+    assert.deepEqual(firstDelivery, repeatedDelivery);
+    assert.equal(delivered.length, 3, 'retry must not enqueue a second host message');
     const beforeScopedEdit = await call('/api/state', credential);
     const visibleBugs = beforeScopedEdit.data.doc.root.children[0].bugs;
     visibleBugs[0].title = '当前 Session 已修改';
