@@ -4484,6 +4484,111 @@ function bootAddActionGallery(){
     `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-add-mock g-add-${v.id}">${htmlFor(v)}</aside></article>`
   ).join("");
 }
+function bootRelIconGallery(){
+  document.title = "关系图标 · 50 版";
+  document.documentElement.classList.add("g-kind-rel");
+  const bar = document.querySelector("#design-gallery .g-bar");
+  if(bar){
+    bar.querySelector("b").textContent = "关系图标 · 50 版";
+    bar.querySelector(".hint").textContent = "关系不是普通链接，也不是树的上下级。打开后点一张卡：有生产/消费的亮着，弧顶写标签，无关的变淡，不会进入模块。下面按这个画，上面有一张对照。左边关、右边开。看中了发「关系 07」。不用点。";
+  }
+  const gallery = document.getElementById("design-gallery");
+  const scroll = document.getElementById("g-scroll");
+  let legend = gallery && gallery.querySelector(".g-rel-legend");
+  if(!legend && gallery && scroll){
+    legend = document.createElement("div");
+    legend.className = "g-rel-legend";
+    gallery.insertBefore(legend, scroll);
+  }
+  if(legend){
+    legend.innerHTML = `<div class="g-rel-map" aria-hidden="true">
+      <span class="pill dim" style="left:14px;top:18px">CI/CD</span>
+      <span class="pill hot" style="left:92px;top:56px">工作台</span>
+      <span class="pill peer" style="left:232px;top:16px">冷启动</span>
+      <span class="pill peer" style="left:232px;top:96px">hook</span>
+      <svg class="arcs" viewBox="0 0 420 140" preserveAspectRatio="none"><path d="M168 64 Q214 28 244 30"/><path d="M168 80 Q214 112 244 110"/></svg>
+      <span class="lab" style="left:210px;top:28px">生产</span>
+      <span class="lab" style="left:210px;top:112px">消费</span>
+    </div>
+    <p class="g-rel-why">对照：点中黄卡「工作台」。虚线弧上的「生产 / 消费」才是关系。淡掉的 CI/CD 跟它没有产消，不是父子树。图标要把这张图收进 20px，不是两圆一线。</p>`;
+  }
+  const s = (inner, sw) =>
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw||1.8}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+  const cap = (x, y, w, h, kind) => {
+    const rx = (Math.min(w, h) / 2).toFixed(2);
+    if(kind==="hot") return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="currentColor" stroke="none"/>`;
+    if(kind==="dim") return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" opacity=".2"/>`;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>`;
+  };
+  const dash = d => `<path d="${d}" stroke-dasharray="2.2 1.8"/>`;
+  const tag = (x, y, w=5.6) => `<rect x="${(x-w/2).toFixed(2)}" y="${(y-1.4).toFixed(2)}" width="${w}" height="2.8" rx="1.4" fill="currentColor" stroke="none"/>`;
+  const arrR = (x, y) => `<path d="M${x-1.5} ${y-1.6}l2.4 1.6-2.4 1.6"/>`;
+  const arrL = (x, y) => `<path d="M${x+1.5} ${y-1.6}l-2.4 1.6 2.4 1.6"/>`;
+  const L = [];
+  const add = (id, name, icon) => L.push({id, name, icon});
+  add("01", "点卡看产消", s(`${cap(1.8,8.2,8.6,7.6,"hot")}${cap(13.6,8.2,8.6,7.6,"peer")}${dash("M10.4 10.2Q12 6.2 13.6 10.2")}${tag(12,6)}`));
+  add("02", "无关变淡", s(`${cap(7.6,8.4,8.8,7.4,"hot")}${cap(1.6,2.6,7.4,5.2,"peer")}${cap(15.2,16.2,7.4,5.2,"peer")}${cap(15.6,2.6,7,5,"dim")}${cap(1.6,16.4,7,5,"dim")}${dash("M8.4 7.2Q9.6 8.6 9.8 10")}${dash("M14.4 14.2Q16 16 16.8 17.4")}${tag(9.2,6.6)}${tag(15.6,13.6)}`));
+  add("03", "弧顶写标签", s(`${cap(1.6,8.6,8.8,7,"hot")}${cap(13.6,8.6,8.8,7,"peer")}${dash("M10.4 10.4Q12 6.4 13.6 10.4")}${tag(12,5.9,6.4)}`));
+  add("04", "生产出去", s(`${cap(1.6,8.2,8.6,7.6,"hot")}${cap(13.8,8.2,8.6,7.6,"peer")}${dash("M10.2 12h3.2")}${arrR(14.2,12)}${tag(12,8.2)}`));
+  add("05", "消费进来", s(`${cap(1.6,8.2,8.6,7.6,"peer")}${cap(13.8,8.2,8.6,7.6,"hot")}${dash("M10.4 12h3")}${arrL(10.2,12)}${tag(12,8.2)}`));
+  add("06", "产消一对", s(`${cap(1.8,8.2,8.6,7.6,"hot")}${cap(13.6,8.2,8.6,7.6,"peer")}${dash("M10.4 10Q12 6.6 13.6 10")}${dash("M10.4 14Q12 17.4 13.6 14")}${tag(12,6.2)}${tag(12,17.8)}`));
+  add("07", "不是父子", s(`${cap(8,2.4,8,5.2,"dim")}${cap(1.6,11.6,8.4,6.6,"hot")}${cap(14,11.6,8.4,6.6,"peer")}<path d="M12 7.6v3.2" opacity=".2"/>${dash("M10 14.8h4")}${tag(12,13)}`));
+  add("08", "散点不是树", s(`${cap(8.2,8.8,7.6,6.6,"hot")}${cap(1.6,3.2,6.8,5,"peer")}${cap(15.6,15.6,6.8,5,"peer")}${cap(15.8,3.2,6.6,4.8,"dim")}${cap(1.8,16,6.6,4.8,"dim")}${dash("M8.2 7.4Q9.4 8.8 9.6 10.2")}${dash("M14.4 14Q16.2 16.2 17 17.2")}${tag(8.8,6.8)}${tag(15.4,13.6)}`));
+  add("09", "点中黄卡", s(`${cap(1.6,8,9,8,"peer")}${cap(13.4,8,9,8,"hot")}${dash("M10.6 10.6Q12 7 13.4 10.6")}${tag(12,6.6)}`));
+  add("10", "虚线产消", s(`${cap(1.8,8.4,8.6,7.2,"hot")}${cap(13.6,8.4,8.6,7.2,"peer")}${dash("M10.4 10.6Q12 6.8 13.6 10.6")}${tag(12,6.4)}`));
+  add("11", "一产两家", s(`${cap(1.6,8.6,8.2,6.8,"hot")}${cap(14.2,2.8,8,5.4,"peer")}${cap(14.2,15.8,8,5.4,"peer")}${dash("M9.8 10.2Q12.2 7.2 15 6.2")}${dash("M9.8 13.8Q12.4 16.6 15 17.8")}${tag(12.4,7.4)}${tag(12.6,16.6)}`));
+  add("12", "两家一消", s(`${cap(14.2,8.6,8.2,6.8,"hot")}${cap(1.6,2.8,8,5.4,"peer")}${cap(1.6,15.8,8,5.4,"peer")}${dash("M9.6 6.4Q12 8.4 14.2 11")}${dash("M9.6 17.6Q12 15.6 14.2 13")}${tag(11.2,7.4)}${tag(11.2,16.6)}`));
+  add("13", "侧向有关", s(`${cap(1.6,8.2,8.8,7.6,"hot")}${cap(13.6,8.2,8.8,7.6,"peer")}${dash("M10.4 12h3.2")}${tag(12,9.4)}`));
+  add("14", "脚下弧标", s(`${cap(1.8,4.8,8.8,6.8,"hot")}${cap(13.4,4.8,8.8,6.8,"peer")}${dash("M10.6 11.4Q12 18 13.4 11.4")}${tag(12,18.2)}`));
+  add("15", "头顶弧标", s(`${cap(1.8,10.4,8.8,7,"hot")}${cap(13.4,10.4,8.8,7,"peer")}${dash("M10.6 12.2Q12 5.6 13.4 12.2")}${tag(12,5.2)}`));
+  add("16", "只留有关边", s(`${cap(7.4,8.2,9,7.6,"hot")}${cap(1.6,2.6,7.2,5.2,"peer")}${cap(15.2,16.2,7.2,5.2,"peer")}${cap(15.6,2.6,6.8,5,"dim")}${dash("M8.4 7.2Q9.6 8.8 9.8 10")}${dash("M14.6 14.4Q16.4 16.4 17 17.6")}${tag(9,6.6)}${tag(15.8,13.8)}`));
+  add("17", "切断无关", s(`${cap(7.4,8.2,9,7.6,"hot")}${cap(1.6,2.8,7.2,5.2,"peer")}${cap(15.4,16.2,7,5.2,"dim")}${dash("M8.4 7.4Q9.6 8.8 9.8 10.2")}${tag(9,6.6)}<path d="M16.2 16.2l4 4M20.2 16.2l-4 4" opacity=".4"/>`));
+  add("18", "选中加圈", s(`<circle cx="12" cy="12.2" r="10" opacity=".28"/>${cap(7.6,8.6,8.8,7,"hot")}${cap(1.6,2.8,6.8,5,"peer")}${dash("M8.2 7.4Q9.4 8.8 9.6 10.2")}${tag(8.8,6.6)}`));
+  add("19", "灯照邻卡", s(`<path d="M12 2.4L3.6 21.2h16.8z" opacity=".14" fill="currentColor" stroke="none"/>${cap(7.6,11,8.8,6.4,"hot")}${cap(2.2,16.4,6.6,4.8,"peer")}${cap(15.2,16.4,6.6,4.8,"peer")}${cap(8.6,3.8,6.8,4.6,"dim")}${dash("M8.8 16.6Q7 17.4 6.4 18.2")}${tag(7.4,16)}`));
+  add("20", "圈住产消", s(`<ellipse cx="12" cy="13.4" rx="10" ry="7.4" opacity=".14" fill="currentColor" stroke="none"/>${cap(7.6,10,8.8,6.6,"hot")}${cap(2.2,4.4,7,5,"peer")}${dash("M8.4 9.2Q9.6 10.4 9.8 11.6")}${tag(9,8.4)}`));
+  add("21", "点一下看邻", s(`${cap(6.8,8,10.4,8.2,"hot")}${cap(1.6,2.4,6.6,4.8,"peer")}${dash("M8 6.8Q9.4 8.4 9.6 10")}${tag(8.6,6)}<circle cx="18.2" cy="5.4" r="2"/><path d="M18.2 7.5v1.2"/>`));
+  add("22", "灰度无关", s(`${cap(7.4,8.2,9.2,7.6,"hot")}${cap(1.6,2.6,7.2,5.2,"peer")}${cap(15.4,16.4,7,5.2,"peer")}${cap(15.8,2.6,6.6,5,"dim")}${cap(1.8,16.6,6.6,5,"dim")}${dash("M8.4 7.2Q9.6 8.8 9.8 10.2")}${tag(9,6.6)}`));
+  add("23", "模块胶囊", s(`${cap(1.4,8,9.2,8,"hot")}${cap(13.4,8,9.2,8,"peer")}${dash("M10.6 10.6Q12 6.8 13.4 10.6")}${tag(12,6.4,6.2)}`));
+  add("24", "双向产消", s(`${cap(1.6,8,9,8,"hot")}${cap(13.4,8,9,8,"peer")}${dash("M10.6 10.2Q12 6.6 13.4 10.2")}${dash("M10.6 13.8Q12 17.4 13.4 13.8")}${arrR(13.2,9.4)}${arrL(10.8,14.6)}${tag(12,6)}${tag(12,18)}`));
+  add("25", "弧虚标实", s(`${cap(1.6,8.6,8.8,6.8,"hot")}${cap(13.6,8.6,8.8,6.8,"peer")}${dash("M10.4 10.6Q12 6.6 13.6 10.6")}${tag(12,6.2,6.6)}`));
+  add("26", "上下产消", s(`${cap(7.6,2.2,8.8,6.4,"peer")}${cap(7.6,15.2,8.8,6.6,"hot")}${dash("M12 8.6v5.4")}${arrR(12,14.2)}${tag(16.2,12)}`));
+  add("27", "左产右消", s(`${cap(1.4,8,9.2,8,"hot")}${cap(13.4,8,9.2,8,"peer")}${dash("M10.6 12h3")}${arrR(14.4,12)}${tag(12,8.4)}`));
+  add("28", "选中描粗", s(`${cap(7.2,8,9.6,8,"hot")}${cap(1.6,2.6,7,5.2,"peer")}${dash("M8.4 7.2Q9.6 8.8 9.8 10.2")}${tag(9,6.4)}`, 2.2));
+  add("29", "淡卡虚框", s(`${cap(7.4,8.2,9.2,7.6,"hot")}${cap(1.6,2.8,7.2,5.2,"peer")}<rect x="15.6" y="2.6" width="6.8" height="5" rx="2.5" opacity=".2" stroke-dasharray="1.4 1.6"/>${dash("M8.4 7.4Q9.6 8.8 9.8 10.2")}${tag(9,6.6)}`));
+  add("30", "关系簇", s(`<ellipse cx="12" cy="13.6" rx="10.2" ry="7.6" opacity=".14" fill="currentColor" stroke="none"/>${cap(7.6,10.2,8.8,6.4,"hot")}${cap(2,4.6,7.2,5,"peer")}${cap(15,16.4,7.2,5,"peer")}${dash("M8.6 9.2Q9.6 10.6 9.8 11.8")}${tag(9.2,8.4)}`));
+  add("31", "弧顶小点", s(`${cap(1.6,9,8.8,6.4,"hot")}${cap(13.6,9,8.8,6.4,"peer")}${dash("M10.4 10.8Q12 6.8 13.6 10.8")}<circle cx="12" cy="6.6" r="1.45" fill="currentColor"/>`));
+  add("32", "聚光邻居", s(`<circle cx="12" cy="12" r="9.2" opacity=".16" fill="currentColor" stroke="none"/>${cap(7.4,8.4,9.2,7.2,"hot")}${cap(1.8,3.2,6.8,5,"peer")}${dash("M8.2 7.6Q9.4 9 9.6 10.4")}${tag(8.8,6.8)}`));
+  add("33", "有关加粗弧", s(`${cap(1.6,8.6,8.8,6.8,"hot")}${cap(13.6,8.6,8.8,6.8,"peer")}${cap(8.2,2.2,7.6,4.6,"dim")}${dash("M10.4 10.4Q12 6.6 13.6 10.4")}${tag(12,6.2)}`, 2.35));
+  add("34", "迷你关系图", s(`${cap(7.8,9.4,8.4,6.2,"hot")}${cap(1.6,3.6,7,4.8,"peer")}${cap(15.4,3.6,7,4.8,"peer")}${cap(1.8,16,6.8,4.8,"dim")}${cap(15.4,16,7,4.8,"peer")}${dash("M8.4 8Q9.6 10 9.8 11.2")}${dash("M14.4 11.2Q16 8.8 16.8 7.8")}${dash("M14.6 14.8Q16.2 16.6 17 17.4")}${tag(9,7.2)}${tag(16.2,9.2)}`));
+  add("35", "一亮两连", s(`${cap(7.4,8,9.2,8,"hot")}${cap(1.6,16,7.2,5.4,"peer")}${cap(15.2,16,7.2,5.4,"peer")}${cap(8.4,2.2,7.2,4.6,"dim")}${dash("M9.6 15.6Q7.2 17 5.8 18.2")}${dash("M14.4 15.6Q16.8 17 18.2 18.2")}${tag(7.2,16.2)}${tag(16.8,16.2)}`));
+  add("36", "点后展开", s(`${cap(2.2,8.4,8.2,7.2,"hot")}${cap(14,2.8,8,5.4,"peer")}${cap(14,15.8,8,5.4,"peer")}${dash("M10.4 10.2Q12.6 7.2 15 6")}${dash("M10.4 13.8Q12.8 16.6 15.2 18")}${tag(12.8,7)}${tag(13,16.8)}`));
+  add("37", "侧连不是树", s(`${cap(7.8,2.4,8.4,5,"dim")}${cap(1.6,11.2,8.6,6.4,"hot")}${cap(13.8,11.2,8.6,6.4,"peer")}<path d="M12 7.4v3" opacity=".2"/>${dash("M10.2 14.4h3.6")}${tag(12,12.6)}`));
+  add("38", "多对一消", s(`${cap(13.8,8.4,8.6,7.2,"hot")}${cap(1.6,2.6,8.2,5.4,"peer")}${cap(1.6,16,8.2,5.4,"peer")}${dash("M9.8 6.4Q12 8.6 13.8 11.2")}${dash("M9.8 17.6Q12 15.4 13.8 12.8")}${arrR(13.4,11)}${tag(11.2,7.4)}${tag(11.2,16.6)}`));
+  add("39", "一对多产", s(`${cap(1.6,8.4,8.6,7.2,"hot")}${cap(14.2,2.6,8.2,5.4,"peer")}${cap(14.2,16,8.2,5.4,"peer")}${dash("M10.2 10.2Q12.4 7.2 15.2 5.8")}${dash("M10.2 13.8Q12.4 16.8 15.2 18.2")}${arrR(15,6.2)}${arrR(15,17.8)}${tag(12.6,7.2)}${tag(12.6,16.8)}`));
+  add("40", "暗底三联", s(`<rect x="2.2" y="4" width="19.6" height="16" rx="4" opacity=".1" fill="currentColor" stroke="none"/>${cap(7.6,9.2,8.8,6.4,"hot")}${cap(2.2,5.4,7,4.8,"peer")}${dash("M8.4 9.6Q9.4 10.8 9.6 12")}${tag(9,8.8)}`));
+  add("41", "弧点标签", s(`${cap(1.6,9,8.8,6.4,"hot")}${cap(13.6,9,8.8,6.4,"peer")}${dash("M10.4 10.8Q12 6.8 13.6 10.8")}<circle cx="12" cy="6.6" r="1.7" fill="currentColor"/><circle cx="12" cy="6.6" r=".55" fill="#fffdf8" stroke="none"/>`));
+  add("42", "两张模块卡", s(`${cap(1.2,7.2,9.6,9.6,"hot")}${cap(13.2,7.2,9.6,9.6,"peer")}${dash("M10.8 10.6Q12 6.8 13.2 10.6")}${tag(12,6.4,6.4)}`));
+  add("43", "高亮环绕", s(`<circle cx="12" cy="12" r="10.2" opacity=".12"/><circle cx="12" cy="12" r="10.2" stroke-dasharray="2.2 2"/>${cap(7.4,8.4,9.2,7.2,"hot")}${cap(1.6,2.8,6.8,5,"peer")}${dash("M8.2 7.4Q9.4 8.8 9.6 10.2")}${tag(8.8,6.6)}`));
+  add("44", "淡化四周", s(`${cap(7.2,8,9.6,8,"hot")}${cap(1.6,2.6,6.8,5,"peer")}${cap(15.6,16.4,6.8,5,"peer")}${cap(15.8,2.6,6.6,5,"dim")}${cap(1.6,16.6,6.6,5,"dim")}${cap(8.8,1.8,6.4,3.6,"dim")}${dash("M8.2 7Q9.4 8.6 9.6 10")}${tag(8.8,6)}`));
+  add("45", "产消双弧", s(`${cap(1.4,8,9.2,8,"hot")}${cap(13.4,8,9.2,8,"peer")}${dash("M10.6 10.2Q12 6.4 13.4 10.2")}${dash("M10.6 13.8Q12 17.6 13.4 13.8")}${arrR(13.2,9.2)}${arrL(10.8,14.8)}${tag(12,5.8)}${tag(12,18.2)}`));
+  add("46", "点选只看关系", s(`${cap(7,8,10,8.2,"hot")}${cap(1.4,2.4,7,5,"peer")}${cap(15.6,16.6,7,5,"peer")}${cap(15.8,2.4,6.8,5,"dim")}${cap(1.4,16.8,6.8,5,"dim")}${dash("M8 6.8Q9.4 8.6 9.6 10.2")}${dash("M14.8 14.8Q16.6 16.8 17.4 18")}${tag(8.6,6)}${tag(16.2,14.2)}`));
+  add("47", "指针点模块", s(`${cap(1.8,7.6,9,8.4,"hot")}${cap(13.6,7.6,8.6,8.4,"peer")}${dash("M10.8 10.4Q12 6.6 13.6 10.4")}${tag(12,6.2)}<path d="M16.8 16.2l1.6 4.6 1.4-2.8z" fill="currentColor" stroke="none"/>`));
+  add("48", "标签打断弧", s(`${cap(1.6,8.4,8.8,7.2,"hot")}${cap(13.6,8.4,8.8,7.2,"peer")}${dash("M10.4 10.6Q11.2 7.8 12 7.2")}${dash("M12 7.2Q12.8 7.8 13.6 10.6")}${tag(12,6.4,7)}`));
+  add("49", "邻居描边", s(`${cap(1.6,8,9,8,"hot")}${cap(13.4,8,9,8,"peer")}${dash("M10.6 10.4Q12 6.6 13.4 10.4")}${tag(12,6.2)}`, 2.25));
+  add("50", "中心产消", s(`${cap(7.2,8.2,9.6,7.6,"hot")}${cap(1.4,2.4,7.2,5.2,"peer")}${cap(15.4,16.4,7.2,5.2,"peer")}${dash("M8.2 7Q9.6 8.6 9.8 10.2")}${dash("M14.8 14.6Q16.6 16.6 17.4 17.8")}${tag(8.8,6)}${tag(16.2,13.8)}`));
+  const chrome = icon => `<div class="g-rel-bar" aria-hidden="true">
+    <span class="g-rel-dir"><i></i><u>左右</u><u>上下</u></span>
+    <button type="button" class="rel-btn" title="关">${icon}</button>
+    <button type="button" class="rel-btn on" title="开">${icon}</button>
+    <span class="g-rel-sq">🔑</span>
+    <span class="g-rel-sq">⚙</span>
+  </div>
+  <div class="g-rel-zoom" aria-hidden="true">${icon}</div>
+  <p class="g-rel-cap">实心胶囊=点中的模块 · 空心=有生产/消费 · 淡=无关 · 虚线+小条=弧上的标签</p>`;
+  document.getElementById("g-scroll").innerHTML = L.map(v =>
+    `<article class="g-item" id="v${v.id}"><div class="g-num">${v.id} · ${v.name}</div><aside class="g-mock g-rel-mock g-rel-${v.id}">${chrome(v.icon)}</aside></article>`
+  ).join("");
+}
 function bootDesignGallery(){
   if(window.__CG_GALLERY_KIND==="add"){
     bootAddActionGallery();
@@ -4495,6 +4600,10 @@ function bootDesignGallery(){
   }
   if(window.__CG_GALLERY_KIND==="chip"){
     bootChipGallery();
+    return;
+  }
+  if(window.__CG_GALLERY_KIND==="rel"){
+    bootRelIconGallery();
     return;
   }
   document.title = "工作台风格 · 50 版";
