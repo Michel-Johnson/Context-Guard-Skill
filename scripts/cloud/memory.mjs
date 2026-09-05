@@ -1,5 +1,6 @@
 // Private memory API. It can run alone or be mounted by the Cloud service.
 import http from 'node:http';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -7,7 +8,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
-import { applyOperations, MapError, validate } from '../../prototype/map-model.mjs';
+import { applyOperations, MapError, validate, restoreSessionWorkItemOperations } from '../../prototype/map-model.mjs';
+import { translateChanges, operationGrants } from '../workbench/protocol-map.mjs';
 import { validateMemory } from '../workbench/memory-schema.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
@@ -20,6 +22,27 @@ function validateOptions({ dataDir, adminToken }) {
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
 const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
 const memoryHubs = new WeakMap();
+const headCaches = new WeakMap();
+
+export async function memoryHeads(configuration, projectId) {
+  let cache = headCaches.get(configuration);
+  if (!cache) { cache = new Map(); headCaches.set(configuration, cache); }
+  const stamp = async () => {
+    try { const stat = await fs.stat(memoryFile(configuration.dataDir, projectId), { bigint: true }); return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`; }
+    catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = await stamp();
+    if (cache.get(projectId)?.stamp === before) return structuredClone(cache.get(projectId).heads);
+    const state = await readMemoryProject(configuration, projectId);
+    if (before !== await stamp()) continue;
+    const heads = Object.fromEntries(Object.entries(state.sessions).map(([id, snapshot]) => [id, {
+      mapVersion: snapshot.version, mapCursor: state.eventCursors?.[`session:${id}`] || 0,
+    }]));
+    cache.set(projectId, { stamp: before, heads }); return structuredClone(heads);
+  }
+  throw new MapError('MEMORY_UNAVAILABLE', 'Memory changed while reading synchronization heads', 503);
+}
 
 function publicationRecord(value = {}) {
   return {
@@ -42,7 +65,7 @@ function publicationHistory(closed) {
 function nextSessionGeneration(closed) {
   return publicationHistory(closed).reduce((maximum, item) => Math.max(maximum, item.generation || 1), 0) + 1;
 }
-function memoryHub(configuration) {
+export function memoryHub(configuration) {
   let hub = memoryHubs.get(configuration);
   if (!hub) { hub = new EventEmitter(); hub.setMaxListeners(0); memoryHubs.set(configuration, hub); }
   return hub;
@@ -187,26 +210,32 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   return committed.result;
 }
 
-export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
+export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }, policy = null) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
   const file = memoryFile(configuration.dataDir, projectId);
   const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
+    await policy?.authorize?.();
     state.closedSessions ||= {};
     if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
     const receiptKey = hash(`workbench:${sessionId}:${input.operationId}`);
-    const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
+    const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, ...(policy ? { changes: input.changes } : { operations: input.operations }), actor }));
+    const current = state.sessions[sessionId];
+    const grants = policy ? await policy.grants(current?.memory?.map) : [];
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
+      if (policy && actor.kind !== 'human' && (state.receipts[receiptKey].requiredGrants || []).some(id => !grants.includes(id))) throw new MapError('FORBIDDEN', 'A node grant was revoked', 403);
       return { result: state.receipts[receiptKey].result, event: null };
     }
-    const current = state.sessions[sessionId];
     if (!current && state.closedSessions[sessionId]) throw new MapError('SESSION_REOPEN_REQUIRED', 'Publish closed this Session generation; reopen it from the latest main snapshot before editing', 409);
     if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
     if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Session Map changed; reload before committing', 409, { currentVersion: current.version });
     // The project credential already authorizes this private Session scope. Keep
     // the real actor in history, but do not reapply local node grants on Cloud.
-    const applied = applyOperations(current.memory.map, input.operations, actor.kind === 'agent' ? { kind: 'human', sessionId: actor.sessionId } : actor);
+    const operations = policy
+      ? restoreSessionWorkItemOperations(current.memory.map, translateChanges(current.memory.map, input.changes, actor, grants, current.version), sessionId)
+      : input.operations;
+    const applied = applyOperations(current.memory.map, operations, !policy && actor.kind === 'agent' ? { kind: 'human', sessionId: actor.sessionId } : actor, grants);
     validate(applied.doc);
     const updatedAt = new Date().toISOString();
     const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), memory: { ...current.memory, map: applied.doc }, updatedAt };
@@ -214,8 +243,8 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     state.revision++;
     appendHistory(state, { scope: `session:${sessionId}`, action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, sessionId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
-    state.receipts[receiptKey] = { fingerprint, result };
-    const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
+    state.receipts[receiptKey] = { fingerprint, result, ...(policy ? { requiredGrants: operationGrants(current.memory.map, operations, grants) } : {}) };
+    const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations, actor, at: updatedAt });
     result.cursor = event.cursor;
     await atomicWrite(file, encode(state));
     return { result, event };

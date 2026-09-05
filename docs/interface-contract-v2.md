@@ -1,10 +1,16 @@
 # 接口规范 v2（精简草案）
 
-待审核，未实现。本版替代 draft-1 的消息分类；不改变现有运行API。本地-cloud、云端agent-cloud、agent-本地及上下行模块保留。
+完整目标待验收，部分基础能力已实现（见下）。本版替代 draft-1 的消息分类；现有运行 API 保留。本地-cloud、云端agent-cloud、agent-本地及上下行模块保留。
+
+### 1.0 实现进度
+
+已实现消息校验、设备鉴权、Session 绑定、持久队列、对象版本、任务审核/CI 状态机和分块附件。已授权的本地后端启动项目级事件连接、10 秒心跳补读和上行重试；Cloud 通知先写入本地收件箱，Agent 从本地读取，各消费者独立确认。此确认不代表模型执行或任务完成。附件登记与二进制内容走同一 Cloud 连接，凭证不交给 Agent。现有按钮增加持久交付编号和未知结果保护。
+
+Map 复用现有事务和协调逻辑，v2 提供读写、固定分页、恢复快照、消息/关系/权限及附件引用校验；支持的 Cloud 通过项目共用事件流与心跳驱动 Map 同步。Codex 原生队列接收任务及审核通知；其他宿主从同一持久收件箱读取，尚未提供自动唤醒适配。中断 Hook 自动保存并重试上报。源码准备允许记忆传输暂时待同步，但授权、冲突、归档和 CI 门禁不放宽。真实业务 Cloud Main 合并白名单尚未确定，可信合并/收口回执不伪造；相关入口继续失败关闭。最终 GitHub CI、部署与安装后验收仍待完成，不能把隔离测试等同于已上线；逐项证据见 `CI_todo.md`。
 
 ## 公共格式（只定义一次）
 
-通信使用 UTF-8 JSON。拟定 HTTP 入口 POST /api/v2/messages；本地宿主适配器可用标准输入输出传同一JSON。不绑定模型harness。
+通信使用 UTF-8 JSON。HTTP 入口 POST /api/v2/messages；本地宿主可调用 `context-guard map exchange --root <目录> --session <真实Session> --input -`，从标准输入传完整信封，从标准输出读取回执。CLI 复用已核验的本地绑定，不向 Agent 暴露 Cloud 凭证。不绑定模型 harness。
 
 ```json
 {"v":2,"id":"request-1","type":"sync.read","session":{"id":"session-1","generation":1},"payload":{"afterSeq":10,"limit":50}}
@@ -24,6 +30,12 @@ v、id、type、payload必填；auth.open/auth.close、项目心跳和session.bi
 
 成功表示本次操作持久完成，queued/received不表示整个任务完成。通知使用同一信封，payload明确业务结果；可靠投递通过sync.ack确认，不另建每类result接口。独立最终结果仍保留，例如merge.result。
 
+实现澄清：永久去重回执适用于写操作。心跳、sync.read、workbench.read、object.read、blob.get 是只读观察，id用于对应响应，不保存永久查询回执；重试可观察更新状态。需要稳定内容的分页和对象查询必须固定version。空闲心跳不改变业务数据、不积累回执。
+
+同一 Session 的主 Agent、CI Agent 和执行后端各自拥有消费进度；一个调用方的 sync.ack 不能替另一个确认。身份来自连接，不在节点上重复传。审核回执不可变，object.read 使用 receiptId 同时作为 ref 和 version，读取后再核对其中的需求/Plan 版本和签发者。
+
+实现补充：本地与 Cloud 附件提供分块 PUT / Range GET；二进制请求沿用 Authorization，通过 `X-Context-Guard-Session` 与 `X-Context-Guard-Generation` 传递公共 Session 身份。Cloud v2 在受保护配置 `interfaceV2` 登记允许连接的仓库后启用。密码授权本地后端设备，后端登记 Agent；设备凭证仅返回后端并保存在私有配置，不交给 Agent。本地从 Main remote 自动核验 GitHub 数字 ID，设备 ID 持久生成；浏览器只要求密码。本地/Cloud 绑定版本由后端转换，断线重试固定原始内容。具备 `private-map-heads` 能力的 Cloud 在每个心跳 Session 项附加 mapVersion/mapCursor，供共用同步器补漏；旧服务继续使用已有兼容入口，不假称支持 v2。
+
 字段未标可选即必填，不接受未声明null。ID为非空字符串，最长128字符；所有version及以Version结尾的字段统一为后端生成的不透明字符串，不能大小比较。仅创建对象/首次绑定的baseVersion或expectedBindingVersion允许空字符串；分页cursor也允许空字符串。generation是正整数，seq/offset/size是非负安全整数；v为数字2。普通消息最大256KiB，读取limit 1–100，超大对象传附件；text/summary/reason最多2000字符。未知type、非法字段、越权对象、旧代次拒绝。错误码：INVALID_ARGUMENT、UNAUTHORIZED、FORBIDDEN、NOT_FOUND、CONFLICT、ID_REUSED、CURSOR_EXPIRED、TOO_LARGE、UNAVAILABLE、STALE_SESSION；仅暂时不可用允许原ID重试。限额仍为待审核提案。
 
 ## 连接、安全及离线
@@ -40,7 +52,7 @@ changes最多100项：op=create/update/delete，id稳定不变。create/update�
 
 | kind | fields |
 |---|---|
-| node | parentId?:string、title:string、purpose?:string、kind:module/work、state:dirty/untested/success/failed、order?:integer、proposal?:proposed/accepted/cancelled |
+| node | parentId?:string、title:string、purpose?:string、kind:module/work、state:dirty/untested/success/failed、order?:integer、proposal?:proposed/accepted/cancelled、owns?:string[]、proposalEvidence?:object |
 | todo | nodeId:string、title:string、status:pending/processing/done、description?:string |
 | bug | nodeId:string、title:string、status:open/resolved、reproduction?:string |
 | message | nodeId?:string、text:string |
@@ -49,6 +61,12 @@ changes最多100项：op=create/update/delete，id稳定不变。create/update�
 | access | nodeId:string、agentId:string、allow:read/write/none |
 
 ?表示可选。关系端点必须存在；移动节点用parentId更新并拒绝成环。提案确认和access只能由有权限的人提交；Agent不能给自己授权。撤销权限立刻阻止新的受限读写。视图缩放、选中节点等个人UI偏好不是共享业务数据，不纳入此接口。这些是传输对象，不规定文件名或目录。
+
+Agent 新建节点沿用现有提案门禁，必须给出 owns 和 proposalEvidence={parentId,basis,reason,files}；basis 为 new-module/new-interface/new-component/new-responsibility，files 至少包含一个 owns 覆盖的实现文件。它不是自动确认节点的权限。
+
+memory/idea 的 refs 必须可按固定版本读取。附件引用使用 `{ref:"blob:<blobId>",version:"<sha256>"}`；未上传完、摘要不符或属于其他 Session 的附件不能引用。access 只能缩小已有的 Session 授权边界，不能越过项目或 Session 绑定。
+
+读取页的 items 使用 {node,parentId,bucket}，node 保留原有可见记录和自定义字段，不嵌套 children/_inbox；metadata 返回项目显示信息和授权范围内的关系。旧的无 ID 记录在快照中获得版本限定引用，首次 v2 修改后固化 ID；过期 baseVersion 不能用来指向移位后的记录。
 
 Cloud网页与本地网页使用相同workbench.read/patch格式；Cloud人类写入校验后加入对应Session下行队列，回传本地的同一变更ID不重复广播。版本由接收后端生成，调用方只提供baseVersion，不自造新版本。全量恢复分页固定快照，不混不同版本页面。
 
@@ -86,7 +104,7 @@ object.put返回{ref,version}，可写plan/evidence/experience/ciTodo；brief.su
 
 CONFLICT附error.details={currentVersion:string}：保留草稿，读取当前状态，比对后用新请求ID和新baseVersion提交，不自动覆盖。STALE_SESSION附{currentGeneration:integer}：停止旧代次发送，重新核验绑定；不自动改到新代次继续执行旧任务。
 
-CURSOR_EXPIRED附{recoveryRequired:true}：调用workbench.read，recovery=true、cursor为空。服务端创建固定快照并返回recovery={resumeAfterSeq:integer,pendingMessages:完整信封数组}；pendingMessages随快照分页，所有页使用同一屏障序号。该屏障之前的未处理任务必须包含，已确认结果不重复执行；屏障之后的消息从sync.read继续读取。整份快照与待处理消息持久保存后才能推进读取游标，不能直接推进执行ack。若回复过大继续分页，不丢弃消息。
+CURSOR_EXPIRED附{recoveryRequired:true}：调用workbench.read，recovery=true、cursor为空。服务端创建固定快照并返回recovery={resumeAfterSeq:integer,pendingMessages:[{seq:integer,message:完整信封}]}；pendingMessages随快照分页，所有页使用同一屏障序号。恢复页的version标识整个恢复快照，mapVersion才用于下一次workbench.patch。该屏障之前的未处理任务必须包含，已确认结果不重复执行；屏障之后的消息从sync.read继续读取。整份快照与待处理消息持久保存后才能推进读取游标，不能直接推进执行ack。若回复过大继续分页，不丢弃消息。
 
 执行任务的事件在任务关闭并确认前不得因日志过期丢弃；只有可从快照恢复的工作台变化可被压缩。恢复中仍有本地编辑则先比较保留，不用远端快照静默覆盖。恢复数据不完整返回UNAVAILABLE，不声称已同步。
 
@@ -110,4 +128,4 @@ GitHub代码走正常PR/CI，不增加自制源码同步。Cloud merge.request�
 
 普通回执归入统一result；相同任务交付、Plan审核在不同跳转间复用。本轮只新增session.bind、task.control、sync.event三种消息，共25种；其余缺口补在原接口字段与校验规则内。合并包内容白名单仍是明确待决项，不冒充已闭环的可执行接口。
 
-节点只展示一句用途、type+payload、返回；公共格式不逐节点重复。旧节点标为已替代并保留历史，不移除用户Todo/Bug。本轮只制定规范，未开发接口、未修改服务器运行代码。
+节点只展示一句用途、type+payload、返回；公共格式不逐节点重复。旧节点标为已替代并保留历史，不移除用户Todo/Bug。初始设计不代表实现；当前实现与验收边界见本文开头及 `CI_todo.md`，不据此推断生产服务器已经升级。

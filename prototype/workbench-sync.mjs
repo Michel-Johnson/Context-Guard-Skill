@@ -30,6 +30,10 @@ export class WorkbenchSync {
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     this.repairButton = document.createElement('button'); this.repairButton.id = 'cg-sync-repair'; this.repairButton.hidden = true;
     this.panel.querySelector('.sync-actions').append(this.repairButton);
+    if (this.config?.interfaceCapabilities?.deviceLogin && !this.config.root?.startsWith('cloud:')) {
+      const login = document.createElement('button'); login.type = 'button'; login.id = 'cg-cloud-login'; login.textContent = '连接 Cloud';
+      login.onclick = () => this.openCloudLogin(); this.panel.querySelector('.sync-actions').append(login);
+    }
     this.repairButton.onclick = () => this.repair();
     document.getElementById('settings-menu').append(this.panel);
     this.notice = document.createElement('span'); this.notice.className = 'sync-notice'; this.notice.setAttribute('role', 'status'); this.notice.hidden = true;
@@ -451,10 +455,47 @@ export class WorkbenchSync {
     await this.refreshAccess();
   }
   async sendBug(sessionId, nodeId, bugId) {
-    return this.call('/api/session-message', { sessionId, nodeId, bugId });
+    return this.sendWorkItem({ sessionId, nodeId, bugId });
   }
   async sendTodo(sessionId, nodeId, todoId) {
-    return this.call('/api/session-message', { sessionId, nodeId, todoId });
+    return this.sendWorkItem({ sessionId, nodeId, todoId });
+  }
+  async connectCloud(password) {
+    const id = uniqueId();
+    const result = await this.call('/api/v2/messages', { v: 2, id, type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password } });
+    if (result.id !== id || result.ok !== true) throw new Error('Cloud 没有返回有效连接回执');
+    return result.data;
+  }
+  openCloudLogin() {
+    const dialog = document.createElement('dialog');
+    dialog.innerHTML = '<form><h3>连接 Cloud</h3><p>使用项目已配置的 Cloud 地址，仓库自动识别。</p><label>密码 <input type="password" autocomplete="current-password" required></label><p role="status"></p><button type="submit">连接</button> <button type="button" data-cancel>取消</button></form>';
+    const input = dialog.querySelector('input'), status = dialog.querySelector('[role="status"]'), submit = dialog.querySelector('[type="submit"]');
+    dialog.querySelector('[data-cancel]').onclick = () => dialog.close();
+    dialog.onclose = () => { input.value = ''; dialog.remove(); };
+    dialog.querySelector('form').onsubmit = async event => {
+      event.preventDefault(); if (submit.disabled) return;
+      const password = input.value; input.value = ''; submit.disabled = true; status.textContent = '正在连接…';
+      try { await this.connectCloud(password); status.textContent = '后端已连接，Session 正在自动同步。'; }
+      catch { status.textContent = '连接未确认。请检查密码、Cloud 地址或网络；本地数据未清空。'; }
+      finally { submit.disabled = false; }
+    };
+    document.body.append(dialog); dialog.showModal(); input.focus();
+  }
+  async sendWorkItem(input) {
+    if (!this.config.interfaceCapabilities?.durableDelivery) throw new Error('当前后端不支持可靠任务交付，请先升级；尚未发送任务');
+    const key = `cg-delivery:${this.config.root}:${JSON.stringify(input)}`;
+    let request = stored(key);
+    if (request && (request.invalidJSON || typeof request.operationId !== 'string' || request.uncertain)) throw new Error('任务交付结果需要核对；不会重复发送');
+    request ||= { ...input, operationId: uniqueId() };
+    // Retain the same ID across a lost response, repeated click and page reload.
+    localStorage.setItem(key, JSON.stringify(request));
+    const result = await this.call('/api/session-message', request);
+    if (result.deliveryId !== request.operationId || result.state !== 'received') {
+      localStorage.setItem(key, JSON.stringify({ ...request, uncertain: true }));
+      throw new Error('后端未返回可靠交付回执，请先核对任务是否已收到');
+    }
+    localStorage.removeItem(key);
+    return result;
   }
   async toggleAccess(ids) {
     if (this.activeSession === ALL_SESSIONS) { this.setStatus(this.status, '请先选择具体 Session 再调整授权'); return; }

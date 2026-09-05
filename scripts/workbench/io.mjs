@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 export const hash = text => createHash('sha256').update(text).digest('hex');
 export const encode = value => JSON.stringify(value, null, 2) + '\n';
 export const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-export async function withFileLock(file, action) {
+export async function withFileLock(file, action, { reclaimGuard = false } = {}) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const deadline = Date.now() + 5000;
   let handle;
@@ -17,6 +17,11 @@ export async function withFileLock(file, action) {
       await handle.sync();
     }
     catch (error) {
+      // Windows can report delete-pending contention as EPERM rather than EEXIST.
+      // Retry only acquisition; an error after opening our own lock must fail.
+      if (!handle && process.platform === 'win32' && ['EPERM', 'EACCES', 'EBUSY'].includes(error.code) && Date.now() < deadline) {
+        await pause(25); continue;
+      }
       if (error.code !== 'EEXIST') {
         if (handle) { await handle.close().catch(() => {}); handle = null; await fs.unlink(file).catch(() => {}); }
         throw error;
@@ -28,9 +33,17 @@ export async function withFileLock(file, action) {
         catch (cause) { dead = cause.code === 'ESRCH'; }
       }
       if (dead) {
-        const stale = `${file}.stale-${randomUUID()}`;
-        try { await fs.rename(file, stale); await fs.unlink(stale); continue; }
-        catch (cause) { if (cause.code === 'ENOENT') continue; throw cause; }
+        if (reclaimGuard) throw Object.assign(new Error('Interrupted lock recovery needs explicit repair; preserve the recovery guard'), { code: 'STATE_BUSY' });
+        // Serialize stale recovery and reread the owner inside that guard. A
+        // contender must never remove a new live lock using an old PID snapshot.
+        await withFileLock(`${file}.reclaim`, async () => {
+          const current = await readJSON(file, null).catch(() => null);
+          if (!current || current.host !== os.hostname() || !Number.isSafeInteger(current.pid) || current.pid <= 0) return;
+          try { process.kill(current.pid, 0); return; }
+          catch (cause) { if (cause.code !== 'ESRCH') return; }
+          await fs.unlink(file).catch(cause => { if (cause.code !== 'ENOENT') throw cause; });
+        }, { reclaimGuard: true });
+        continue;
       }
       if (Date.now() >= deadline) throw Object.assign(new Error('Shared state is busy; preserve lock and retry'), { code: 'STATE_BUSY' });
       await pause(25);

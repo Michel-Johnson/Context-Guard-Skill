@@ -27,7 +27,7 @@ function run(command, args, options = {}) {
     timeout: options.timeout || 30_000,
     windowsHide: true,
   });
-  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')}\n${result.error?.code || result.signal || result.status}\n${result.stdout}\n${result.stderr}`);
   return result;
 }
 
@@ -139,20 +139,20 @@ async function startPlan(t, project, session, paths = ['src/']) {
   const ctx = path.join(project, '.codex/context');
   await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(await freePort())]);
-  return JSON.parse(run('python3', [contextScript, 'plan-start', '--root', project, '--session', session, '--input', '-'], {
+  return JSON.parse(run(python, [contextScript, 'plan-start', '--root', project, '--session', session, '--input', '-'], {
     input: JSON.stringify({ approved: true, summary: '实现并验证运行时', node_ids: ['N1'], paths }),
   }).stdout);
 }
 
 function archivePlan(project, session, files = 'src/scratch.txt', extra = {}) {
-  return run('python3', [contextScript, 'archive-session', '--root', project, '--session', session,
+  return run(python, [contextScript, 'archive-session', '--root', project, '--session', session,
     '--summary', '完成运行时开发', '--files', files, '--input', '-'], {
     input: JSON.stringify({ verification: 'hook-lifecycle fixture: verified output', assessment: { decision: 'reuse', reason: '属于现有运行时节点' }, ...extra }),
   });
 }
 
 function finishPlan(project, session) {
-  return run('python3', [contextScript, 'plan-finish', '--root', project, '--session', session]);
+  return run(python, [contextScript, 'plan-finish', '--root', project, '--session', session]);
 }
 
 test('Codex installs exactly the eleven supported Context Guard hooks except SessionEnd', async () => {
@@ -249,7 +249,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.match(resumed.json.hookSpecificOutput.additionalContext, /Active plan: plan-[a-f0-9]+/);
   assert.match(resumed.json.hookSpecificOutput.additionalContext, /Resume it before starting unrelated work/);
   const resumeSignal = resumed.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
-  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', resumeSignal, '--kind', 'task']);
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', resumeSignal, '--kind', 'task']);
   assert.throws(() => archivePlan(project, session), /subagent_review/);
   archivePlan(project, session, 'src/scratch.txt', { subagent_review: { 'agent-one': 'Reviewed paths and test evidence; no additional changes' } });
   finishPlan(project, session);
@@ -284,9 +284,9 @@ test('read-only inspection remains available without a plan while writes stay ga
     'ps aux | rg context-guard',
     'lsof -nP -iTCP:1355 -sTCP:LISTEN',
     'curl -fsS http://127.0.0.1:1355/api/health',
-    `node ${path.join(repository, 'bin/context-guard-skill.js')} workbench --diagnose --root ${project}`,
-    `node ${path.join(repository, 'bin/context-guard-skill.js')} workbench --binding-status --root ${project} --session ${session}`,
-    `node ${path.join(repository, 'bin/context-guard-skill.js')} plan-status --root ${project} --session ${session}`,
+    `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --diagnose --root "${project}"`,
+    `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --binding-status --root "${project}" --session ${session}`,
+    `node "${path.join(repository, 'bin/context-guard-skill.js')}" plan-status --root "${project}" --session ${session}`,
   ];
   for (const command of commands) {
     const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
@@ -522,7 +522,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(recoveredEvents.filter(item => item.case === recovered.id && item.event === 'fix').length, 1);
 
   const beforeConflict = await fs.readFile(path.join(ctx, 'map.json'), 'utf8');
-  assert.throws(() => run('python3', [contextScript, 'record-todo', '--root', project, '--session', session,
+  assert.throws(() => run(python, [contextScript, 'record-todo', '--root', project, '--session', session,
     '--signal', badSignal, '--node', 'N1', '--title', 'must not write']), /already resolved as bad-case/);
   assert.equal(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'), beforeConflict, 'classification conflict must fail before any Map write');
 
@@ -530,8 +530,8 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const mixedId = mixed.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
   const splitArgs = [contextScript, 'split-signal', '--root', project, '--session', session, '--signal', mixedId, '--input', '-'];
   const splitInput = JSON.stringify({ items: ['修复显示', '以后加快捷键', '保存失败'] });
-  const children = JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout);
-  assert.deepEqual(JSON.parse(run('python3', splitArgs, { input: splitInput }).stdout), children);
+  const children = JSON.parse(run(python, splitArgs, { input: splitInput }).stdout);
+  assert.deepEqual(JSON.parse(run(python, splitArgs, { input: splitInput }).stdout), children);
   const cursorBlocked = hook('Stop', project, session, { platform: 'cursor' });
   assert.equal(cursorBlocked.json.decision, 'block');
   assert.equal(cursorBlocked.json.reason, 'Context Guard is finishing the current task. No user action is required.');
@@ -542,10 +542,10 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   const reminded = hook('UserPromptSubmit', project, session, { turn_id: 'mixed-reminder', prompt: '继续处理当前任务' });
   for (const child of children) assert.match(reminded.json.hookSpecificOutput.additionalContext, new RegExp(child.id));
   const reminderId = reminded.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
-  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', reminderId, '--kind', 'task']);
-  run('python3', [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', children[0].id, '--kind', 'task']);
-  run('python3', [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', children[1].id, '--node', 'N1', '--title', '快捷键']);
-  run('python3', [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', children[2].id, '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交失败']);
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', reminderId, '--kind', 'task']);
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', children[0].id, '--kind', 'task']);
+  run(python, [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', children[1].id, '--node', 'N1', '--title', '快捷键']);
+  run(python, [contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', children[2].id, '--node', 'N1', '--title', '保存失败', '--phenomenon', '提交失败']);
   assert.deepEqual(hook('Stop', project, session).json, {});
 
   const otherSession = 'hook-session-other';
@@ -621,7 +621,7 @@ test('completion receipts require evidence, scope review, all files and fresh co
   assert.throws(() => finishPlan(project, session), /changed after archive/);
   archivePlan(project, session, 'src/dirty.txt', { scope_review: 'git diff verified src only', failure_review: 'fixed script; output verified' });
   finishPlan(project, session);
-  const state = JSON.parse(run('python3', [contextScript, 'plan-status', '--root', project, '--session', session]).stdout);
+  const state = JSON.parse(run(python, [contextScript, 'plan-status', '--root', project, '--session', session]).stdout);
   assert.equal(state.active_plan, null);
   assert.equal(state.last_plan.status, 'completed');
   assert.ok(state.last_plan.started_at && state.last_plan.completed_at && state.last_plan.archive.at);
@@ -650,7 +650,7 @@ test('unclassified plan files fail before any Map write; explicit support assign
 });
 
 test('unresolved signals survive retention; empty or broken interfaces fail visibly', async () => {
-  const result = run('python3', ['-c', `
+  const result = run(python, ['-c', `
 import sys, json, tempfile
 from pathlib import Path
 from unittest.mock import patch

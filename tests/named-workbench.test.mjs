@@ -7,6 +7,7 @@ import http from 'node:http';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startServer } from '../scripts/workbench/server.mjs';
+import { WORKBENCH_BUILD } from '../scripts/workbench/runtime.mjs';
 import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
@@ -69,7 +70,7 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal((await call(backend.state.url, '/__context_guard/bootstrap', { headers: { Host: new URL(named.url).host } })).status, 403);
   const boot = await call(named.url, '/__context_guard/bootstrap');
   assert.equal(boot.data.instance, backend.state.instance);
-  assert.equal(boot.data.buildId, 'project-workbench-v9');
+  assert.equal(boot.data.buildId, WORKBENCH_BUILD);
   assert.ok(boot.data.capabilities.includes('runtime-instance-check'));
   const auth = { Authorization: `Bearer ${boot.data.token}`, Origin: origin, 'Content-Type': 'application/json' };
   const before = await call(named.url, '/api/state', { headers: auth });
@@ -255,7 +256,7 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   await fs.cp(path.join(cwd, 'prototype'), path.join(installed, 'prototype'), { recursive: true });
   const runtimeFile = path.join(installed, 'scripts/workbench/runtime.mjs');
   const runtime = (await fs.readFile(runtimeFile, 'utf8'))
-    .replace("project-workbench-v9", "project-workbench-v8")
+    .replace(WORKBENCH_BUILD, "project-workbench-v8")
     .replace(/\s*'runtime-instance-check',\r?\n/, '\n');
   await fs.writeFile(runtimeFile, runtime);
   const old = spawnSync(process.execPath, [path.join(installed, 'scripts/workbench/cli.mjs'), 'workbench', '--root', root, '--port', '0', '--direct'], {
@@ -268,7 +269,7 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   const upgraded = await ensureServer(root, 0); t.after(() => stopServer(root));
   assert.notEqual(upgraded.instance, oldResult.instance);
   assert.equal((await diagnoseWorkbench(root)).runtime.status, 'ready');
-  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, 'project-workbench-v9');
+  assert.equal((await call(upgraded.url, '/__context_guard/health')).data.buildId, WORKBENCH_BUILD);
 });
 test('proxy restart keeps persisted routes and one project closing cannot take down another', async t => {
   const { proxy, backend, named, dir } = await environment(t);
@@ -420,7 +421,7 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   const automaticallyBound = await run(hookArgs, payload);
   assert.match(automaticallyBound.stdout + automaticallyBound.stderr, new RegExp(known.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(automaticallyBound.stdout + automaticallyBound.stderr, /Ask the user/);
-  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true);
+  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true, automaticallyBound.stdout + automaticallyBound.stderr);
   const hook = await run(hookArgs, payload);
   assert.match(hook.stdout + hook.stderr, /http:\/\/hook-project\.localhost:\d+\/prototype\/workbench.html/);
   const repaired = await diagnoseWorkbench(root, 'named-hook');
@@ -429,7 +430,7 @@ test('real SessionStart injects named URL and automatic browser opener is claime
   await backend.close();
   const restored = await run(hookArgs, payload);
   assert.doesNotMatch(restored.stdout + restored.stderr, /Ask the user/);
-  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true);
+  assert.equal((await diagnoseWorkbench(root, 'named-hook')).session.verified, true, restored.stdout + restored.stderr);
   // Use a spy, not the user's browser, but exercise the real Python opener path.
   const code = `import sys,os,json; sys.path.insert(0,${JSON.stringify(path.join(cwd, 'scripts'))}); import context_guard as c; from pathlib import Path; os.environ.pop('CI',None); os.environ.pop('CONTEXT_GUARD_HEADLESS',None); calls=[]; c.webbrowser.open=lambda *a,**k:calls.append(a[0]); c.start_workbench(Path.cwd()); c.start_workbench(Path.cwd()); print(json.dumps(calls))`;
   const opened = await run(['-c', code]); assert.equal(JSON.parse(opened.stdout).length, 1);

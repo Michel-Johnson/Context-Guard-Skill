@@ -22,7 +22,9 @@ if (files.length === 0) {
   throw new Error("No Node test files were discovered.");
 }
 
-const result = spawnSync(process.execPath, ["--test", ...files], {
+// Several suites launch Git, Python and local servers. Bound file-level
+// concurrency instead of scaling subprocesses with the host's CPU count.
+const result = spawnSync(process.execPath, ["--test", "--test-concurrency=4", ...files], {
   stdio: "inherit",
   timeout: 15 * 60 * 1000,
   windowsHide: true,

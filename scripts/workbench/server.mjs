@@ -11,10 +11,20 @@ import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
 import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
-import { memoryRequest, sessionMemoryDir } from './memory.mjs';
+import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
 import { Attachments } from './attachments.mjs';
+import { ProtocolStore } from './protocol-store.mjs';
+import { ProtocolBlobs, serveBlob } from './protocol-blobs.mjs';
+import { workflowTypes } from './protocol-workflow.mjs';
+import { ProtocolDelivery, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
+import { DeviceConnection } from './protocol-device.mjs';
+import { WorkbenchSnapshots } from './protocol-snapshots.mjs';
+import { ProtocolMap, verifyChangeReferences } from './protocol-map.mjs';
+import { lookupRepository } from './protocol-repository.mjs';
+import { messageHandler } from './protocol-client.mjs';
+import { fail as protocolFail, ProtocolError, validateMessage } from './protocol.mjs';
 import { syncPaths } from '../sync/client.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../../prototype/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -107,13 +117,13 @@ export async function health(state) {
   return result?.ok ? result.value : null;
 }
 export { loopbackJSON };
-export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage } = {}) {
+export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
   let project = await ensureProjectBinding(await resolveProject(root));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
-  let namedEntry = await readJSON(namedFile, null), openClaimAt = 0;
+  let namedEntry = await readJSON(namedFile, null), openClaimed = false;
   const validNamedOrigin = value => /^http:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost:[1-9][0-9]{0,4}$/.test(value || '') && Number(new URL(value).port) > 0 && Number(new URL(value).port) <= 65535;
   if (namedEntry && (!validNamedOrigin(namedEntry.origin) || typeof namedEntry.proxyToken !== 'string' || namedEntry.proxyToken.length < 32)) throw new MapError('INVALID_ORIGIN', 'Invalid saved named entry; configuration preserved');
   await fs.mkdir(path.dirname(lock), { recursive: true });
@@ -130,6 +140,57 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     }
   }
   const adminToken = token(), humanToken = token(), agentTokens = new Map(), peers = new Map();
+  const protocolStore = new ProtocolStore(path.join(project.sharedDir, 'interface-v2'));
+  const protocolBlobs = new ProtocolBlobs(path.join(project.sharedDir, 'interface-v2', 'blobs'));
+  const protocolSnapshots = new WorkbenchSnapshots(path.join(project.sharedDir, 'interface-v2', 'snapshots'));
+  const protocolMap = new ProtocolMap(path.join(project.sharedDir, 'interface-v2', 'map-intents'));
+  const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
+  let device;
+  const projectDevice = async () => {
+    const config = await readJSON(memoryConfigPath(project), null);
+    if (!config?.url) return null;
+    if (!device || device.origin !== config.url) {
+      await device?.close();
+      device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
+    }
+    if (await device.connected()) device.start({
+      sessions: async () => {
+        const registered = [];
+        for (const head of await protocolStore.queueHeads(backendPrincipal)) {
+          if (!access.binding(head.session.id)) continue;
+          try {
+            if (await device.bindingReady(await protocolStore.registeredBinding(backendPrincipal, head.session.id))) registered.push({ ...head.session, ackedSeq: 0 });
+          } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }
+        }
+        return registered;
+      },
+      apply: async message => {
+        if (!access.binding(message.session.id)) protocolFail('FORBIDDEN', 'Session registration was revoked');
+        const result = (await protocolStore.receiveNotification(backendPrincipal, message)).data;
+        if (executionNotifications.has(message.type) || message.type === 'review.result' && message.payload.kind === 'plan') {
+          const session = (await access.sessionRegistry()).find(item => item.id === message.session.id);
+          if (!session) protocolFail('FORBIDDEN', 'Host Session is unavailable');
+          // Pull adapters can consume the durable inbox on every supported host.
+          // Only the already-supported Codex queue has a native push adapter.
+          if (session.platform !== 'codex') return result;
+          const target = await storeFor(project.kind === 'git' ? `session:${session.id}` : 'main');
+          if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
+          const prompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
+          const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }) });
+          await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: session.platform, sessionId: session.id, root: session.worktreeRoot || root, message: prompt });
+        }
+        return result;
+      },
+      onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
+      onError: (error, source) => {
+        device.lastError = error.code || 'UNAVAILABLE';
+        if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const coordinator of syncCoordinators.values()) if (coordinator.managed && !coordinator.status.conflict) {
+          coordinator.update({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: device.lastError });
+        }
+      },
+    });
+    return device;
+  };
   const access = await new Access(root, project.kind === 'git' ? {
     file: path.join(project.sharedDir, 'workbench-access.json'),
     bindingsFile: sessionBindingsPath(project),
@@ -197,7 +258,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     stores.set(viewId, target);
     if (sessionId && syncDirectory) {
       const sessionProject = await resolveProject(storeRoot);
-      const coordinator = new MemorySyncCoordinator({ project: sessionProject, sessionId, store: target, directory: syncDirectory });
+      const connection = await projectDevice();
+      const coordinator = new MemorySyncCoordinator({ project: sessionProject, sessionId, store: target, directory: syncDirectory,
+        managed: !!connection && await connection.supports('private-map-heads') });
       coordinator.on('change', status => broadcast('cloud-sync', status, viewId));
       syncCoordinators.set(viewId, coordinator);
       await coordinator.start();
@@ -392,13 +455,150 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
         if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
-        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, ...runtimeIdentity() });
+        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() });
+        if (route === '/api/v2/messages') return messageHandler({
+          allowedOrigin: requestOrigin,
+          authenticate: request => {
+            let actor;
+            try { actor = auth(request, url); } catch { return null; }
+            return { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, actor, role: actor.kind === 'human' ? 'human' : 'executor' };
+          },
+          handle: async (principal, input) => {
+            const connection = await projectDevice();
+            if (input.type.startsWith('auth.')) {
+              if (principal.role !== 'human') protocolFail('FORBIDDEN', 'Only the local human workbench can authorize the backend');
+              if (!connection) protocolFail('INVALID_ARGUMENT', 'Configure the project Cloud origin first');
+              let data;
+              if (input.type === 'auth.open') {
+                const current = await resolveProject(root);
+                if (!current.github || current.bindingRequired) protocolFail('INVALID_ARGUMENT', 'A verified GitHub Main remote is required');
+                const identity = await repositoryLookup(current.github.slug);
+                data = await connection.connect({ ...input, payload: { ...input.payload, repository: `https://github.com/${current.github.slug}` } }, identity);
+                await projectDevice();
+              } else data = await connection.disconnect(input);
+              return { id: input.id, ok: true, data };
+            }
+            const human = principal.role === 'human';
+            if (human && !['workbench.read', 'workbench.patch'].includes(input.type)) protocolFail('FORBIDDEN', 'This message requires an Agent Session');
+            const connected = connection && await connection.connected();
+            if (input.type === 'workbench.patch') {
+              await protocolStore.authorizeSession(principal, input.session);
+              const sessionId = input.session.id;
+              const viewId = project.kind === 'git' ? `session:${sessionId}` : 'main';
+              const target = await storeFor(viewId);
+              const actor = human ? { ...principal.actor, sessionId } : principal.actor;
+              const data = await protocolMap.patch(principal, input, { store: target, actor,
+                references: () => verifyChangeReferences(input.payload.changes, {
+                  object: async (ref, version) => {
+                    const read = { v: 2, id: randomUUID(), type: 'object.read', session: input.session, payload: { ref, version } };
+                    return connected ? connection.send(read) : (await protocolStore.handle(principal, read)).data;
+                  },
+                  blob: blobId => connected ? connection.send({ v: 2, id: randomUUID(), type: 'blob.get', session: input.session, payload: { blobId } }) : protocolBlobs.metadata(principal, input.session, blobId),
+                }),
+                grants: () => human ? [...entries(target.doc.root).keys()] : access.grants(principal.agentId, target.doc),
+                prepare: request => prepareSessionCommit(target, request, actor, sessionId),
+                authorize: async () => {
+                  const binding = access.binding(sessionId);
+                  if (!binding || !human && binding.worktreeId !== principal.actor.worktreeId) protocolFail('FORBIDDEN', 'Agent binding changed');
+                  await protocolStore.authorizeSession(principal, input.session);
+                  if (pendingPeers(viewId).length) protocolFail('CONFLICT', 'Page edits are pending');
+                },
+              });
+              return { id: input.id, ok: true, data };
+            }
+            if (input.type === 'workbench.read') {
+              await protocolStore.authorizeSession(principal, input.session);
+              const sessionId = input.session.id, binding = access.binding(sessionId);
+              if (!binding || !human && binding.worktreeId !== principal.actor.worktreeId) protocolFail('FORBIDDEN', 'Agent binding is no longer active');
+              const target = await storeFor(project.kind === 'git' ? `session:${sessionId}` : 'main');
+              let source;
+              const load = async () => {
+                  if (source) return source;
+                  if (input.payload.scope === 'main') {
+                    let snapshot;
+                    try { ({ snapshot } = await memoryRequest(project, 'main')); }
+                    catch (error) { protocolFail(error.code === 'MEMORY_NOT_CONFIGURED' ? 'NOT_FOUND' : 'UNAVAILABLE', 'A confirmed Main snapshot is unavailable'); }
+                    if (!snapshot?.memory?.map) protocolFail('NOT_FOUND', 'Published Main snapshot is unavailable');
+                    return source = { doc: scopeDocumentToSession(snapshot.memory.map, sessionId), version: snapshot.version };
+                  }
+                  await target.serial(() => target.refresh());
+                  if (target.error || target.blocked) protocolFail('UNAVAILABLE', 'Session Map requires recovery');
+                  return source = { doc: scopeDocumentToSession(target.doc, sessionId), version: target.version };
+              };
+              const data = await protocolSnapshots.read(principal, input, {
+                load,
+                capture: () => protocolStore.recoverySnapshot(principal, input.session, load),
+                grants: async () => {
+                  const doc = (await load()).doc;
+                  return human ? [...entries(doc.root).keys()] : access.grants(principal.agentId, doc, 'read');
+                },
+              });
+              return { id: input.id, ok: true, data };
+            }
+            if (connected && (/^(object\.(put|read)|blob\.(put|get))$/.test(input.type) || workflowTypes.has(input.type))) {
+              const binding = access.binding(principal.actor.sessionId);
+              if (!binding || binding.worktreeId !== principal.actor.worktreeId) protocolFail('FORBIDDEN', 'Agent binding is no longer active');
+              if (input.session) await protocolStore.authorizeSession(principal, input.session);
+              for (const session of input.payload.sessions || []) await protocolStore.authorizeSession(principal, session);
+              return { id: input.id, ok: true, data: await connection.send(input) };
+            }
+            const reply = await protocolStore.handle(principal, input, {
+            blobs: protocolBlobs,
+            verifyBinding: (identity, payload) => {
+              const binding = access.binding(identity.agentId);
+              return payload.sessionId === identity.agentId && binding && payload.worktreeId === binding.worktreeId;
+            },
+            authorize: () => {
+              const binding = access.binding(principal.actor.sessionId);
+              if (!binding || binding.worktreeId !== principal.actor.worktreeId) protocolFail('FORBIDDEN', 'Agent binding is no longer active');
+            },
+            });
+            if (connected && input.type === 'session.bind') {
+              await connection.bind(input, reply.data);
+              return reply;
+            }
+            return reply;
+          },
+        })(req, res);
+        if (route === '/api/v2/interrupt' && req.method === 'POST') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
+          const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
+          const binding = await protocolStore.registeredBinding(principal, actor.sessionId);
+          if (!binding || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'Session binding changed');
+          const session = { id: actor.sessionId, generation: binding.generation };
+          const input = await body(req), active = await protocolStore.activeExecution(principal, session);
+          let message = validateMessage({ v: 2, id: input.id, type: 'task.report', session,
+            payload: { taskId: active?.taskId || 'no-cloud-task', stage: 'interrupted', data: { reason: input.reason, occurredAt: input.occurredAt } } });
+          const connection = await projectDevice();
+          const prior = await connection?.savedMessage(input.id);
+          if (prior) {
+            if (prior.session?.id !== session.id || prior.session.generation !== session.generation || prior.type !== 'task.report' || prior.payload.stage !== 'interrupted' || prior.payload.data.occurredAt !== input.occurredAt || prior.payload.data.reason !== input.reason) protocolFail('ID_REUSED', 'Interruption ID was already used');
+            message = prior;
+          } else if (!active || Date.parse(input.occurredAt) < Date.parse(active.assignedAt)) return send(res, 200, { queued: false, reason: 'No matching active Cloud task' });
+          if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is not configured; keep the hook event for retry');
+          const data = await connection.send(message);
+          return send(res, 200, { queued: true, synchronized: true, taskId: message.payload.taskId, receipt: data });
+        }
+        const binaryRoute = route.match(/^\/api\/v2\/blobs\/([a-f0-9]{64})$/);
+        if (binaryRoute) {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent credential is required');
+          const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId };
+          const session = { id: req.headers['x-context-guard-session'], generation: Number(req.headers['x-context-guard-generation']) };
+          await protocolStore.authorizeSession(principal, session);
+          const binding = access.binding(actor.sessionId);
+          if (!binding || binding.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'Agent binding is no longer active');
+          const connection = await projectDevice();
+          if (connection && await connection.connected()) return await connection.proxyBlob(req, res, session, binaryRoute[1]);
+          return await serveBlob(req, res, { blobs: protocolBlobs, principal, session, blobId: binaryRoute[1] });
+        }
         if (['/api/named-entry', '/api/open-claim'].includes(route) && req.method === 'POST') {
           if (!direct || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req);
           if (route === '/api/open-claim') {
-            const shouldOpen = !peers.size && Date.now() - openClaimAt > 5000;
-            if (shouldOpen) openClaimAt = Date.now();
+            const shouldOpen = !peers.size && (!openClaimed || input.retry === true);
+            if (shouldOpen) openClaimed = true;
             return send(res, 200, { shouldOpen });
           }
           if (!validNamedOrigin(input.origin) || typeof input.proxyToken !== 'string' || input.proxyToken.length < 32) throw new MapError('INVALID_ORIGIN', 'Expected an exact local project HTTP origin');
@@ -435,8 +635,21 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               syncDirectory: sessionFiles.dir,
             });
           }
+          const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
+          const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, actor.sessionId);
+          const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: actor.sessionId, agentId: actor.sessionId,
+            worktreeId: actor.worktreeId, expectedBindingVersion: previousProtocolBinding?.version || '' } };
+          const protocolBinding = (await protocolStore.handle(identity, bindMessage, {
+            allowMigration: true, verifyBinding: (_p, payload) => access.binding(payload.sessionId)?.worktreeId === payload.worktreeId,
+          })).data;
+          const connection = await projectDevice();
+          let cloudBinding = { status: 'disconnected' };
+          if (connection && await connection.connected()) {
+            try { await connection.bind(bindMessage, protocolBinding); cloudBinding = { status: 'ready' }; }
+            catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
+          }
           const credential = token(); agentTokens.set(credential, actor);
-          return send(res, 200, { token: credential, actor });
+          return send(res, 200, { token: credential, actor, protocolBinding, cloudBinding });
         }
         if (route === '/api/stop' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
@@ -466,6 +679,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               // state is already captured by the page recovery layer; retaining a
               // disconnected peer would make a closed tab block every later Agent.
               peers.delete(peerId);
+              if (!peers.size) openClaimed = false;
             }); return;
           }
           if (route === '/api/presence' && req.method === 'POST') {
@@ -575,9 +789,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const message = bug ? bugSessionMessage(node, bug) : todoSessionMessage(node, todo);
             const payload = { sessionId, message, root: session.worktreeRoot || root, session, node: structuredClone(node) };
             if (bug) payload.bug = structuredClone(bug); else payload.todo = structuredClone(todo);
-            try { await messageQueue(payload); }
-            catch { throw new MapError('SESSION_MESSAGE_FAILED', 'Work item could not be delivered to the session', 502); }
-            return send(res, 200, { sent: true, sessionId, ...(bug ? { bugId } : { todoId }) });
+            let deliveryReceipt;
+            try {
+              if (input.operationId !== undefined) {
+                if (typeof input.operationId !== 'string' || !input.operationId.trim() || input.operationId.length > 128) throw new MapError('INVALID_ARGUMENT', 'Invalid delivery operationId');
+                const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'deliveries'), { codex: () => messageQueue(payload) });
+                deliveryReceipt = await delivery.deliver({ id: input.operationId, platform: session.platform, sessionId, root: payload.root, message });
+              } else await messageQueue(payload); // Compatibility for pre-v2 workbenches.
+            }
+            catch (error) { if (error instanceof ProtocolError || error instanceof MapError) throw error; throw new MapError('SESSION_MESSAGE_FAILED', 'Work item could not be delivered to the session', 502); }
+            return send(res, 200, { sent: true, sessionId, ...deliveryReceipt, ...(bug ? { bugId } : { todoId }) });
           }
           if (route === '/api/migration-preview' && req.method === 'POST') {
             isHuman(actor); const input = await body(req); validate(input.doc);
@@ -604,7 +825,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         let file, contentType;
         if (route === '/' || route === '/prototype/workbench.html') {
           const html = await fs.readFile(path.join(skillRoot, 'prototype/workbench.html'), 'utf8');
-          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, ...runtimeIdentity() }).replace(/</g, '\\u003c');
+          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() }).replace(/</g, '\\u003c');
           const nonce = token();
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
@@ -631,6 +852,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     await atomicWrite(sharedState, encode(state));
     if (sharedState !== statePath(root)) await atomicWrite(statePath(root), encode(state));
     stopAccessWatch = access.watch(() => broadcast('access', {}));
+    await projectDevice();
     const heartbeat = setInterval(() => broadcast('ping', {}), 10000); heartbeat.unref();
     const mainRefresh = setInterval(() => { if (project.kind === 'git') refreshProject().catch(() => {}); }, 30000); mainRefresh.unref();
     let ownershipChecks = 0, ownershipCheckRunning = false;
@@ -656,6 +878,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         await refreshing?.catch(() => {});
         stopAccessWatch();
         stopCloudWatch();
+        await device?.close();
         // Stop accepting reconnects before draining events or slow projections.
         const disconnected = new Promise((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve());

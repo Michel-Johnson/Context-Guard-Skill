@@ -644,6 +644,24 @@ def session_memory_sync(root: Path, current_session_id: str, event: str, payload
         return {"error": {"code": "MEMORY_SYNC_PENDING", "message": str(error)[:500]}}
 
 
+def sync_pending_interrupt(root: Path, session: str, runtime: dict) -> None:
+    """Keep interruption signals until the local backend accepts the original ID."""
+    pending = runtime.get("pending_interrupts") or []
+    if not pending:
+        return
+    item = pending[0]
+    try:
+        run_node_workbench(["map", "interrupted", "--root", str(root), "--session", session,
+                            "--event-id", item["id"], "--occurred-at", item["at"]])
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        # No adapter stderr or credentials enter development memory.
+        runtime["interrupt_sync"] = "pending"
+    else:
+        runtime["pending_interrupts"] = pending[1:]
+        runtime["interrupt_sync"] = "pending" if pending[1:] else "confirmed"
+    write_hook_runtime(root, session, runtime)
+
+
 def tool_paths(payload: object, root: Path) -> list[str]:
     if not isinstance(payload, dict):
         return []
@@ -936,6 +954,19 @@ def checked_sync(root: Path, session: str, action: str, paths: list[str] | None 
     return value
 
 
+def prepare_plan_sync(root: Path, session: str, paths: list[str]) -> dict:
+    # The caller has already verified live node grants, reads and the inbox.
+    # A transport outage is not a code-delivery verdict. Conflicts and denied
+    # authority remain blocking; no local baseline is fabricated or replaced.
+    value = sync_command(root, "prepare", session, paths)
+    code = (value.get("error") or {}).get("code")
+    if value.get("status") != "conflict" and code in {"MEMORY_UNAVAILABLE", "SYNC_TOOL_FAILED", "HTTP_ERROR", "UNAVAILABLE"}:
+        return {"pending": True, "code": code}
+    if value.get("error") or value.get("status") == "conflict":
+        raise ValueError("Cloud prepare requires reconciliation or authorization")
+    return value
+
+
 def plan_command(root: Path, session: str, command: str, data: dict) -> dict:
     with hook_runtime_lock(root, session):
         return _plan_command_locked(root, session, command, data)
@@ -971,11 +1002,12 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         if inbox.get("pending"):
             raise ValueError("Read/process and acknowledge Map inbox before starting the plan")
         baseline = scope_snapshot(root, paths)
-        sync = checked_sync(root, session, "prepare", paths) if sync_configured(ctx) else {}
+        sync = prepare_plan_sync(root, session, paths) if sync_configured(ctx) else {}
         plan = {"id": "plan-" + hashlib.sha256(f"{session}:{utc_now()}".encode()).hexdigest()[:20],
                 "summary": data["summary"], "status": "working", "started_at": utc_now(),
                 "node_ids": sorted(set(nodes)), "paths": paths, "actual_paths": [],
-                "baseline": baseline, "revision": 0, "map_version": state.get("version"), "sync": sync}
+                "baseline": baseline, "revision": 0, "map_version": state.get("version"), "sync": sync,
+                "delivery": {"source": "working", "memory": "pending" if sync.get("pending") else "ready"}}
         runtime["active_plan"] = plan
     else:
         if not isinstance(plan, dict):
@@ -991,6 +1023,9 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         if inbox.get("pending"):
             raise ValueError("Other Map changes need review and acknowledgement before plan-finish")
         if sync_configured(ctx):
+            if (plan.get("sync") or {}).get("pending"):
+                plan["sync"] = checked_sync(root, session, "prepare", plan["paths"])
+                write_hook_runtime(root, session, runtime)
             checked_sync(root, session, "track", plan["paths"])
             checked_sync(root, session, "checkpoint")
             finished = checked_sync(root, session, "finish")
@@ -1010,6 +1045,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
             if finished.get("status") != "completed":
                 raise ValueError("Cloud did not confirm completion")
         plan["status"] = "completed"
+        plan["delivery"] = {"source": "verified", "memory": "confirmed"}
         plan["completed_at"] = utc_now()
         latest = read_hook_runtime(root, session)
         active = latest.get("active_plan") or {}
@@ -1177,6 +1213,9 @@ def main() -> int:
     # released even if the process crashes, so there is no stale lock cleanup.
     _runtime_lease = acquire_hook_runtime_lock(root, current_session_id)
     runtime = read_hook_runtime(root, current_session_id)
+
+    if event in {"session-start", "user-prompt-submit", "post-compact"}:
+        sync_pending_interrupt(root, current_session_id, runtime)
 
     if event == "session-start":
         # Registration must precede the inbox CLI's identity check.
@@ -1396,13 +1435,18 @@ def main() -> int:
         return hook_response(platform, event, memory_notice + "\n\n" + context_text + "\n\n" + restored)
 
     if event == "interrupt":
+        event_id, _, _ = event_identity(payload, event, current_session_id)
         runtime["interrupted"] = {
             "at": utc_now(),
             "turn_id": payload_value(payload, ("turn_id", "turnId")) or None,
             "plan_id": (runtime.get("active_plan") or {}).get("id") if isinstance(runtime.get("active_plan"), dict) else None,
             "status": "interrupted",
         }
+        pending = runtime.setdefault("pending_interrupts", [])
+        if not any(item.get("id") == event_id for item in pending):
+            pending.append({"id": event_id, "at": runtime["interrupted"]["at"]})
         write_hook_runtime(root, current_session_id, runtime)
+        sync_pending_interrupt(root, current_session_id, runtime)
         append_session_event(root, event, platform, current_session_id, session_details(audit_details(payload, event, current_session_id, runtime, {"result": "interrupted"})))
         print(json.dumps({"systemMessage": "Context Guard saved the interrupted plan state; it remains unfinished and will be restored on resume."}, ensure_ascii=False))
         return 0

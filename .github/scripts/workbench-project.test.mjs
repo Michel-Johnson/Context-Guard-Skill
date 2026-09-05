@@ -31,7 +31,7 @@ async function repository({ remote = 'git@github.com:example/context-guard.git',
   }
   const worktree = path.join(sandbox, 'feature');
   git(root, 'worktree', 'add', '-b', 'feature', worktree);
-  return { sandbox, root, worktree, async dispose() { await fs.rm(sandbox, { recursive: true, force: true }); } };
+  return { sandbox, root, worktree, async dispose() { await fs.rm(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } };
 }
 
 async function commitMainMap(fixture, title) {

@@ -9,6 +9,19 @@ WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 TEST_MARK = "test-layout"
 PRODUCT_TESTS = {
+    "tests/interface-auth.test.mjs",
+    "tests/interface-blobs.test.mjs",
+    "tests/interface-delivery.test.mjs",
+    "tests/interface-device.test.mjs",
+    "tests/interface-events.test.mjs",
+    "tests/interface-map.test.mjs",
+    "tests/interface-memory-errors.test.mjs",
+    "tests/interface-protocol.test.mjs",
+    "tests/interface-repository.test.mjs",
+    "tests/interface-snapshots.test.mjs",
+    "tests/interface-store.test.mjs",
+    "tests/interface-transport.test.mjs",
+    "tests/interface-workflow.test.mjs",
     "tests/ci-smoke.mjs",
     "tests/cloud-sync-client.test.mjs",
     "tests/cloud-sync-browser.mjs",

@@ -60,13 +60,15 @@ async function defaultBranch(root, remote = 'origin') {
 }
 
 async function worktreeMetadata(root, main = null) {
-  const head = await git(root, ['rev-parse', 'HEAD'], { optional: true });
-  const currentBranch = await git(root, ['branch', '--show-current'], { optional: true });
-  let gitDir = await git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true });
-  if (gitDir) gitDir = await fs.realpath(gitDir).catch(() => path.resolve(root, gitDir));
   const mainBranch = main?.branch || '';
   const mainRef = main?.ref || '';
-  const mainSha = mainRef ? await git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }) : '';
+  const [head, currentBranch, rawGitDir, mainSha] = await Promise.all([
+    git(root, ['rev-parse', 'HEAD'], { optional: true }),
+    git(root, ['branch', '--show-current'], { optional: true }),
+    git(root, ['rev-parse', '--path-format=absolute', '--git-dir'], { optional: true }),
+    mainRef ? git(root, ['rev-parse', '--verify', '--quiet', `${mainRef}^{commit}`], { optional: true }) : '',
+  ]);
+  const gitDir = rawGitDir ? await fs.realpath(rawGitDir).catch(() => path.resolve(root, rawGitDir)) : '';
   return { branch: currentBranch, head, gitDir, mainBranch, mainRef, mainSha };
 }
 
