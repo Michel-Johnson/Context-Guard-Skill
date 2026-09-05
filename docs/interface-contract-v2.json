@@ -1,0 +1,539 @@
+{
+  "version": 2,
+  "status": "draft",
+  "interfaces": [
+    {
+      "type": "object.put",
+      "purpose": "保存Plan或测试资料",
+      "payload": {
+        "kind": "plan",
+        "ref": "plan-1",
+        "baseVersion": "",
+        "content": {
+          "text": "读取启动入口，修复启动路径，补安装测试。"
+        }
+      },
+      "result": {
+        "ref": "plan-1",
+        "version": "v1"
+      },
+      "rule": "kind=plan/evidence/experience/ciTodo；创建baseVersion为空字符串，更新带旧版本令牌。返回ref/version。brief、reviewReceipt、ciResult只能由对应接口生成，不能通过通用写入伪造。合并包白名单仍待决定。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "MOD-local-agent-up",
+        "MOD-offline-agent-up"
+      ]
+    },
+    {
+      "type": "auth.open",
+      "purpose": "连接并识别仓库",
+      "payload": {
+        "repository": "https://github.com/example/project",
+        "password": "<用户输入>",
+        "clientId": "device-1"
+      },
+      "result": {
+        "connectionId": "conn-1",
+        "repositoryId": "123456789",
+        "expiresAt": "2026-09-06T00:00:00Z"
+      },
+      "rule": "仓库地址从 Git remote 自动读取；仅首次连接输入密码。Cloud 校验访问范围，返回短期连接凭证（响应头或安全 Cookie，不写进地图）。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "auth.close",
+      "purpose": "断开并撤销当前连接",
+      "payload": {},
+      "result": {},
+      "rule": "只撤销当前连接，不能代替更改密码或撤销其他设备。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "sync.heartbeat",
+      "purpose": "每10秒核对下行进度",
+      "payload": {
+        "sessions": [
+          {
+            "id": "session-1",
+            "generation": 1,
+            "ackedSeq": 10
+          }
+        ]
+      },
+      "result": {
+        "sessions": [
+          {
+            "id": "session-1",
+            "generation": 1,
+            "latestSeq": 12,
+            "ackedSeq": 10
+          }
+        ]
+      },
+      "rule": "只比较序号，不传文件。最新序号更大就 sync.read；本地变更主动上传。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "sync.read",
+      "purpose": "分页读取下行消息",
+      "payload": {
+        "afterSeq": 10,
+        "limit": 50
+      },
+      "result": {
+        "messages": [
+          {
+            "seq": 11,
+            "message": {
+              "v": 2,
+              "id": "message-11",
+              "type": "task.assign",
+              "session": {
+                "id": "session-1",
+                "generation": 1
+              },
+              "payload": {
+                "taskId": "task-1",
+                "briefRef": "brief-1",
+                "briefVersion": "v1",
+                "sessionId": "session-1",
+                "nodeIds": [
+                  "node-1"
+                ],
+                "mainVersion": "m6"
+              }
+            }
+          }
+        ],
+        "nextSeq": 11,
+        "hasMore": false
+      },
+      "rule": "消息带完整公共信封，nextSeq只表示读进度。过期返回CURSOR_EXPIRED和恢复提示；用workbench.read(recovery=true)恢复快照及待处理消息后补读。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "sync.ack",
+      "purpose": "确认消息已处理",
+      "payload": {
+        "items": [
+          {
+            "seq": 11,
+            "outcome": "applied"
+          }
+        ]
+      },
+      "result": {
+        "ackedSeq": 11
+      },
+      "rule": "outcome 为 applied/rejected/cancelled；拒绝或取消须附 reason。只能推进连续已处理序号；任务接收不等于任务完成。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "workbench.patch",
+      "purpose": "修改节点、Todo、Bug或留言",
+      "payload": {
+        "baseVersion": "v10",
+        "changes": [
+          {
+            "op": "update",
+            "kind": "todo",
+            "id": "todo-1",
+            "fields": {
+              "title": "检查安装",
+              "status": "pending"
+            }
+          }
+        ]
+      },
+      "result": {
+        "version": "v11"
+      },
+      "rule": "create/update/delete 共用格式；kind=node/todo/bug/message/memory/idea/relation/access。字段白名单见公共规范。授权只能由已认证的人修改，Agent不能给自己授权。整批校验版本，冲突保留双方改动。",
+      "parents": [
+        "N461",
+        "N462"
+      ]
+    },
+    {
+      "type": "workbench.read",
+      "purpose": "读取工作台快照",
+      "payload": {
+        "scope": "main",
+        "nodeIds": [
+          "node-1"
+        ],
+        "version": "m6",
+        "cursor": "",
+        "limit": 50
+      },
+      "result": {
+        "scope": "main",
+        "version": "m6",
+        "items": [
+          {
+            "kind": "node",
+            "id": "node-1",
+            "fields": {
+              "title": "安装与启动",
+              "kind": "module",
+              "state": "dirty"
+            }
+          },
+          {
+            "kind": "memory",
+            "id": "memory-1",
+            "fields": {
+              "nodeId": "node-1",
+              "text": "安装后自动启动工作台。"
+            }
+          }
+        ],
+        "nextCursor": ""
+      },
+      "rule": "scope=main/session；Main只读。任务读取传mainVersion，nodeIds限定节点及直接关联资料，不默认展开子树。公共Session标调用方。Session恢复沿用recovery=true，Main禁止队列恢复；缺版本或无权限不能用其他数据冒充。",
+      "parents": [
+        "N461",
+        "MOD-cloud-agent-up",
+        "MOD-local-agent-up",
+        "MOD-offline-agent-up"
+      ]
+    },
+    {
+      "type": "blob.put",
+      "purpose": "上传附件元信息",
+      "payload": {
+        "name": "evidence.txt",
+        "size": 1024,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mediaType": "text/plain"
+      },
+      "result": {
+        "blobId": "blob-1",
+        "uploadPath": "/api/v2/blobs/blob-1",
+        "offset": 0
+      },
+      "rule": "文件正文用独立 PUT 二进制；Content-Range 分段续传，重复片段必须一致。完成后校验总长度和SHA256，才可被引用。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "blob.get",
+      "purpose": "下载附件",
+      "payload": {
+        "blobId": "blob-1"
+      },
+      "result": {
+        "downloadPath": "/api/v2/blobs/blob-1",
+        "size": 1024,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mediaType": "text/plain"
+      },
+      "rule": "独立 GET 支持 Range 续传，下载同样鉴权；只接受服务端资源ID，不接受任意URL或本机路径。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "merge.request",
+      "purpose": "申请将Session合入Cloud Main",
+      "payload": {
+        "sessionVersion": "s12",
+        "baseMainVersion": "m5",
+        "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+        "contentRef": "merge-package-1"
+      },
+      "result": {
+        "mergeId": "merge-1",
+        "state": "queued"
+      },
+      "rule": "Cloud 校验对应 GitHub PR 已合并且版本准确；后台合并完成发 merge.result。包内容白名单后续确定，在确定前不允许真正执行合并。",
+      "parents": [
+        "N461"
+      ]
+    },
+    {
+      "type": "merge.result",
+      "purpose": "报告Cloud合并结果",
+      "payload": {
+        "mergeId": "merge-1",
+        "state": "merged",
+        "mainVersion": "m6"
+      },
+      "result": null,
+      "rule": "state 为 merged/conflict/failed；失败附 error。任务只有必要的 GitHub/Cloud 合并与经验归档都完成才能释放；不自动删除本地文件。",
+      "parents": [
+        "N462"
+      ]
+    },
+    {
+      "type": "brief.submit",
+      "purpose": "提交供人确认的简短需求",
+      "payload": {
+        "taskId": "task-1",
+        "text": "安装Skill后自动打开工作台。"
+      },
+      "result": {
+        "briefRef": "brief-1",
+        "version": "v1"
+      },
+      "rule": "Cloud 生成不可变版本；人看到并确认这一版本后，才允许分配。修改正文产生新版本并重新确认。",
+      "parents": [
+        "MOD-cloud-agent-up"
+      ]
+    },
+    {
+      "type": "review.request",
+      "purpose": "请求人或主Agent审核",
+      "payload": {
+        "kind": "plan",
+        "ref": "plan-1",
+        "version": "v1",
+        "taskId": "task-1",
+        "requirementsRef": "brief-1",
+        "requirementsVersion": "v1",
+        "rulesVersion": "rules-1"
+      },
+      "result": null,
+      "rule": "kind=brief时只需kind/ref/version/taskId；kind=plan再带requirementsRef/requirementsVersion/rulesVersion。brief送人，plan送主Agent，接收不等于批准。",
+      "parents": [
+        "MOD-cloud-agent-down"
+      ]
+    },
+    {
+      "type": "review.result",
+      "purpose": "提交审核决定",
+      "payload": {
+        "kind": "plan",
+        "ref": "plan-1",
+        "version": "v1",
+        "decision": "approved",
+        "reason": "符合需求及规范"
+      },
+      "result": {
+        "receiptId": "review-1",
+        "version": "v1"
+      },
+      "rule": "提交：kind/ref/version/decision/reason；返回服务端receiptId/version。转发同一决定时必须附receiptId，接收方向签发后端读取校验。brief仅人批准，plan由主Agent批准；不可用自称角色或自造回执授权。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "MOD-cloud-agent-down",
+        "MOD-local-agent-down",
+        "MOD-offline-agent-down"
+      ]
+    },
+    {
+      "type": "task.assign",
+      "purpose": "交付已批准任务",
+      "payload": {
+        "taskId": "task-1",
+        "briefRef": "brief-1",
+        "briefVersion": "v1",
+        "sessionId": "session-1",
+        "nodeIds": [
+          "node-1"
+        ],
+        "mainVersion": "m6"
+      },
+      "result": {
+        "state": "received"
+      },
+      "rule": "nodeIds必填且非空，单节点也用数组；mainVersion固定路由依据的Main版本。Cloud校验节点及权限，逐跳原样交付节点和获批需求。路由不增加授权，不覆盖Session改动。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "MOD-local-agent-down",
+        "MOD-offline-agent-down"
+      ]
+    },
+    {
+      "type": "task.report",
+      "purpose": "上报Plan、进度、中断或CI交接",
+      "payload": {
+        "taskId": "task-1",
+        "stage": "planReady",
+        "data": {
+          "planRef": "plan-1",
+          "planVersion": "v1",
+          "sourceSha": "cccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "result": {
+        "state": "received"
+      },
+      "rule": "stage=planReady/progress/interrupted/handoff/cancelled/resumed/closed；各自data格式见文档。中断由脚本上报，完成必须附服务端收口回执，不允许Agent自行改idle。",
+      "parents": [
+        "MOD-local-agent-up",
+        "MOD-offline-agent-up",
+        "N461"
+      ]
+    },
+    {
+      "type": "task.rework",
+      "purpose": "将CI失败退回原任务",
+      "payload": {
+        "taskId": "task-1",
+        "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+        "ciResultRef": "ci-result-1",
+        "failedTestIds": [
+          "CI-001"
+        ]
+      },
+      "result": {
+        "state": "received"
+      },
+      "rule": "仍交给原执行Agent，保留上下文与busy；不作为新任务插队。",
+      "parents": [
+        "MOD-local-agent-down",
+        "MOD-offline-agent-down"
+      ]
+    },
+    {
+      "type": "ci.request",
+      "purpose": "请求多模块测试",
+      "payload": {
+        "taskId": "task-1",
+        "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+        "ciTodoRef": "ci-todo-1",
+        "unitTestRefs": [
+          "unit-1"
+        ]
+      },
+      "result": null,
+      "rule": "CI Agent读取所需多模块上下文；GitHub检查由Agent主动查询，不新增GitHub推送接口。",
+      "parents": [
+        "MOD-cloud-agent-down"
+      ]
+    },
+    {
+      "type": "ci.result",
+      "purpose": "提交测试结论",
+      "payload": {
+        "taskId": "task-1",
+        "sourceSha": "cccccccccccccccccccccccccccccccccccccccc",
+        "verdict": "failed",
+        "checks": [
+          {
+            "testId": "CI-001",
+            "todoId": "CI-TODO-001",
+            "status": "failed",
+            "evidenceRef": "evidence-1",
+            "reproductionRef": "repro-1"
+          }
+        ]
+      },
+      "result": {
+        "ref": "ci-result-1",
+        "version": "v1"
+      },
+      "rule": "verdict 为 passed/failed/incomplete；逐条绑定测试编号。CI_todo完成仅打勾、保留证据，不删除。GitHub证据须带实际SHA、runId和check名称。",
+      "parents": [
+        "MOD-cloud-agent-up"
+      ]
+    },
+    {
+      "type": "executor.state",
+      "purpose": "通知执行方忙闲",
+      "payload": {
+        "agentId": "agent-1",
+        "state": "busy",
+        "taskId": "task-1"
+      },
+      "result": null,
+      "rule": "只有busy/idle；idle省略taskId。在线状态独立，不因CI交接、断线或中断直接改为空闲。",
+      "parents": [
+        "MOD-cloud-agent-down"
+      ]
+    },
+    {
+      "type": "object.read",
+      "purpose": "按版本读取需求、Plan及证据",
+      "payload": {
+        "ref": "brief-1",
+        "version": "v1"
+      },
+      "result": {
+        "ref": "brief-1",
+        "version": "v1",
+        "kind": "brief",
+        "content": {
+          "text": "安装Skill后自动打开工作台。"
+        }
+      },
+      "rule": "按ref+version读取授权对象；brief/plan/evidence/experience/ciTodo/reviewReceipt/ciResult均可读。对象版本不可变；大内容返回blobId。不接受任意URL或文件路径。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "MOD-local-agent-up",
+        "MOD-offline-agent-up"
+      ]
+    },
+    {
+      "type": "session.bind",
+      "purpose": "登记Session与执行位置",
+      "payload": {
+        "sessionId": "session-1",
+        "worktreeId": "worktree-1",
+        "agentId": "agent-1",
+        "expectedBindingVersion": ""
+      },
+      "result": {
+        "session": {
+          "id": "session-1",
+          "generation": 1
+        },
+        "bindingVersion": "b1"
+      },
+      "rule": "设备来自鉴权连接，不靠正文自称。首次expectedBindingVersion为空；重连原绑定复用。迁移须人确认并带旧版本，旧执行方失效。无云端时由本地后端校验。同Session不同代次拒绝串用。",
+      "parents": [
+        "N461",
+        "MOD-local-agent-up",
+        "MOD-offline-agent-up"
+      ]
+    },
+    {
+      "type": "task.control",
+      "purpose": "取消、恢复或收口任务",
+      "payload": {
+        "taskId": "task-1",
+        "action": "cancel",
+        "expectedVersion": "t1",
+        "data": {
+          "reason": "用户取消"
+        }
+      },
+      "result": {
+        "controlId": "control-1",
+        "taskVersion": "t2",
+        "state": "pending"
+      },
+      "rule": "action=cancel/resume/complete。收到只表示待处理；执行结果由task.report上报。complete必须提交合并与归档回执，由调度端核验后关闭任务，不能直接自报成功。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "N462",
+        "MOD-local-agent-down",
+        "MOD-offline-agent-down"
+      ]
+    },
+    {
+      "type": "sync.event",
+      "purpose": "通知Cloud下行有变化",
+      "payload": {
+        "latestSeq": 12
+      },
+      "result": null,
+      "rule": "只唤醒读取，不传文件、不推进ack。SSE发送完整公共信封；断流10秒心跳兜底，重连按自己的持久进度补读。",
+      "parents": [
+        "N462"
+      ]
+    }
+  ]
+}
