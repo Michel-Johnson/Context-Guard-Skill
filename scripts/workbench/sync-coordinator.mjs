@@ -304,6 +304,12 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.retryTimer.unref();
   }
 
+  healthyLegacyFallback() {
+    // memoryRequest has a ten-second deadline. A successful polling channel is
+    // sufficient for synchronization even while the optional SSE hint reconnects.
+    return this.status.status === 'synced' && this.lastHeartbeatAt > Date.now() - this.heartbeatMs - 10000;
+  }
+
   startLegacyHeartbeat() {
     if (this.closed || this.managed) return;
     this.heartbeatTimer = setTimeout(async () => {
@@ -320,9 +326,13 @@ export class MemorySyncCoordinator extends EventEmitter {
           if (this.status.pending && !this.status.conflict) await this.flush();
           // An idle healthy connection must not rewrite the Map or state file.
           else if (!this.status.conflict && ['offline', 'error', 'connecting'].includes(this.status.status)) await this.persist({ status: 'synced', error: null });
+          this.lastHeartbeatAt = Date.now();
         });
       } catch (error) {
-        if (!this.closed && !this.managed && !this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || 'MEMORY_UNAVAILABLE' }).catch(() => {});
+        await this.schedule(async () => {
+          this.lastHeartbeatAt = 0;
+          if (!this.closed && !this.managed && !this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || 'MEMORY_UNAVAILABLE' });
+        }).catch(() => {});
       } finally {
         this.startLegacyHeartbeat();
       }
@@ -375,7 +385,7 @@ export class MemorySyncCoordinator extends EventEmitter {
   async run() {
     while (!this.closed && !this.managed) {
       try {
-        await this.schedule(() => this.initialize());
+        await this.schedule(() => this.healthyLegacyFallback() ? undefined : this.initialize());
         if (this.closed || this.managed) return;
         if (this.status.conflict) return;
         const base = new URL(this.configuration.url);
@@ -392,7 +402,9 @@ export class MemorySyncCoordinator extends EventEmitter {
         clearTimeout(this.streamTimer);
         if (this.closed || this.managed) break;
         if (this.abort?.signal.reason?.code === 'EVENT_STREAM_TIMEOUT') error = this.abort.signal.reason;
-        if (!this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || error.message });
+        await this.schedule(async () => {
+          if (!this.closed && !this.managed && !this.status.conflict && !this.healthyLegacyFallback()) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || error.message });
+        });
         await this.waitForRetry(this.retryDelay + Math.floor(Math.random() * Math.max(1, this.retryDelay / 4)));
         this.retryDelay = Math.min(this.retryMax, Math.max(this.retryMin, this.retryDelay * 2));
       } finally {

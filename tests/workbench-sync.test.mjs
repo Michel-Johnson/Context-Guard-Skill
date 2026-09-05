@@ -402,7 +402,13 @@ for (const stalledHeaders of [false, true]) test(`Legacy sync recovers silent ${
   await request(project, 'sessions/silent/map', { operationId: 'cloud-only', baseVersion: remote.version, operations: [{ type: 'update', id: 'N1', fields: { title: 'Cloud-only update' } }] });
   await until(() => store.doc.root.children[0].title === 'Cloud-only update', 3000);
   assert.equal(connections, 1, 'heartbeat repairs a missed notification without waiting for reconnect');
+  await coordinator.serial;
+  const stateStamp = (await fs.stat(coordinator.stateFile)).mtimeMs;
+  const reported = [];
+  coordinator.on('change', state => reported.push(state.status));
   await until(() => connections >= 2, 10000);
+  assert.equal(reported.includes('offline'), false, 'healthy polling must not flash offline when only SSE stalls');
+  assert.equal((await fs.stat(coordinator.stateFile)).mtimeMs, stateStamp, 'healthy fallback reconnect must not rewrite idle state');
   assert.equal(coordinator.managed, false, 'legacy repair must not enable unsupported v2 mode');
 });
 
