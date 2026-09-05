@@ -54,7 +54,7 @@ export function parseSseBlocks(buffer) {
 }
 
 export class MemorySyncCoordinator extends EventEmitter {
-  constructor({ project, sessionId, store, directory, request = memoryRequest, retryMin = 250, retryMax = 5000, managed = false } = {}) {
+  constructor({ project, sessionId, store, directory, request = memoryRequest, retryMin = 250, retryMax = 5000, managed = false, heartbeatMs = 10000, streamIdleMs = 25000 } = {}) {
     super();
     this.project = project;
     this.sessionId = sessionId;
@@ -69,6 +69,8 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.retryMin = retryMin;
     this.retryMax = retryMax;
     this.retryDelay = retryMin;
+    this.heartbeatMs = heartbeatMs;
+    this.streamIdleMs = streamIdleMs;
     this.serial = Promise.resolve();
     this.closed = false;
     this.managed = managed;
@@ -121,6 +123,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.store.on('event', this.onStoreEvent);
     this.update({ configured: true, status: 'connecting' });
     this.loopPromise = this.run();
+    this.startLegacyHeartbeat();
     return this.snapshot();
   }
 
@@ -301,37 +304,83 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.retryTimer.unref();
   }
 
+  startLegacyHeartbeat() {
+    if (this.closed || this.managed) return;
+    this.heartbeatTimer = setTimeout(async () => {
+      try {
+        await this.schedule(async () => {
+          if (this.closed || this.managed || this.status.conflict || !this.status.serverVersion) return;
+          const after = this.status.cursor || 0;
+          const changes = await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}/changes?after=${after}`);
+          if (!Number.isSafeInteger(changes.cursor) || changes.cursor < after) throw new MapError('INVALID_SYNC_CURSOR', 'Invalid change cursor');
+          if (changes.cursor > after) {
+            const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
+            await this.reconcileRemote(remote, changes.cursor);
+          }
+          if (this.status.pending && !this.status.conflict) await this.flush();
+          // An idle healthy connection must not rewrite the Map or state file.
+          else if (!this.status.conflict && ['offline', 'error', 'connecting'].includes(this.status.status)) await this.persist({ status: 'synced', error: null });
+        });
+      } catch (error) {
+        if (!this.closed && !this.managed && !this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || 'MEMORY_UNAVAILABLE' }).catch(() => {});
+      } finally {
+        this.startLegacyHeartbeat();
+      }
+    }, this.heartbeatMs);
+    this.heartbeatTimer.unref();
+  }
+
+  armStreamDeadline() {
+    clearTimeout(this.streamTimer);
+    const controller = this.abort;
+    this.streamTimer = setTimeout(() => {
+      controller.abort(new MapError('EVENT_STREAM_TIMEOUT', 'Memory event stream stopped responding'));
+      this.streamReader?.cancel().catch(() => {});
+    }, this.streamIdleMs);
+    this.streamTimer.unref();
+  }
+
   async consumeEvents(response) {
     if (!response.ok) throw new MapError(response.status === 401 ? 'UNAUTHORIZED' : 'MEMORY_EVENTS_FAILED', `Memory event stream failed: ${response.status}`, response.status);
+    if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new MapError('MEMORY_EVENTS_FAILED', 'Memory service did not return an event stream');
     const decoder = new TextDecoder(); let buffer = '';
-    for await (const chunk of response.body) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const parsed = parseSseBlocks(buffer); buffer = parsed.rest;
-      for (const block of parsed.blocks) {
-        const lines = block.split('\n');
-        const eventType = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message';
-        const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
-        if (!data) continue;
-        const event = JSON.parse(data);
-        if (eventType === 'change') await this.schedule(async () => {
-          const cursor = event.cursor ?? Number(lines.find(line => line.startsWith('id:'))?.slice(3).trim() || 0);
-          if (cursor <= (this.status.cursor || 0)) return;
-          const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
-          await this.reconcileRemote(remote, cursor);
-        });
+    const reader = response.body.getReader();
+    this.streamReader = reader;
+    try {
+      for (;;) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
+        this.armStreamDeadline();
+        this.retryDelay = this.retryMin;
+        buffer += decoder.decode(chunk, { stream: true });
+        const parsed = parseSseBlocks(buffer); buffer = parsed.rest;
+        for (const block of parsed.blocks) {
+          const lines = block.split('\n');
+          const eventType = lines.find(line => line.startsWith('event:'))?.slice(6).trim() || 'message';
+          const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+          if (!data) continue;
+          const event = JSON.parse(data);
+          if (eventType === 'change') await this.schedule(async () => {
+            const cursor = event.cursor ?? Number(lines.find(line => line.startsWith('id:'))?.slice(3).trim() || 0);
+            if (cursor <= (this.status.cursor || 0)) return;
+            const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
+            await this.reconcileRemote(remote, cursor);
+          });
+        }
+        if (this.closed) break;
       }
-      if (this.closed) break;
-    }
+    } finally { this.streamReader = null; reader.releaseLock(); }
   }
 
   async run() {
     while (!this.closed && !this.managed) {
       try {
         await this.schedule(() => this.initialize());
-        if (this.managed) return;
+        if (this.closed || this.managed) return;
         if (this.status.conflict) return;
         const base = new URL(this.configuration.url);
         this.abort = new AbortController();
+        this.armStreamDeadline();
         const response = await fetch(new URL(`/v1/projects/${this.configuration.projectId}/sessions/${encodeURIComponent(this.sessionId)}/events?after=${this.status.cursor || 0}`, base), {
           headers: { Authorization: `Bearer ${this.configuration.token}`, 'Last-Event-ID': String(this.status.cursor || 0) },
           redirect: 'error', signal: this.abort.signal,
@@ -340,10 +389,16 @@ export class MemorySyncCoordinator extends EventEmitter {
         if (!this.closed) throw new MapError('EVENT_STREAM_CLOSED', 'Memory event stream closed');
         this.retryDelay = this.retryMin;
       } catch (error) {
-        if (this.closed || error.name === 'AbortError') break;
+        clearTimeout(this.streamTimer);
+        if (this.closed || this.managed) break;
+        if (this.abort?.signal.reason?.code === 'EVENT_STREAM_TIMEOUT') error = this.abort.signal.reason;
         if (!this.status.conflict) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || error.message });
         await this.waitForRetry(this.retryDelay + Math.floor(Math.random() * Math.max(1, this.retryDelay / 4)));
         this.retryDelay = Math.min(this.retryMax, Math.max(this.retryMin, this.retryDelay * 2));
+      } finally {
+        clearTimeout(this.streamTimer);
+        this.abort?.abort();
+        this.abort = null;
       }
     }
   }
@@ -360,8 +415,10 @@ export class MemorySyncCoordinator extends EventEmitter {
     if (typeof head.mapVersion !== 'string' || !Number.isSafeInteger(head.mapCursor) || head.mapCursor < 0) return;
     if (!this.managed) {
       this.managed = true;
+      clearTimeout(this.heartbeatTimer);
       clearTimeout(this.retryTimer); this.retryTimer = null;
       clearTimeout(this.retryWaitTimer); this.retryWaitResolve?.();
+      this.streamReader?.cancel().catch(() => {});
       this.abort?.abort(); await this.loopPromise?.catch(() => {});
     }
     return this.schedule(async () => {
@@ -384,10 +441,13 @@ export class MemorySyncCoordinator extends EventEmitter {
 
   async close() {
     this.closed = true;
+    clearTimeout(this.heartbeatTimer);
+    clearTimeout(this.streamTimer);
     clearTimeout(this.retryTimer);
     clearTimeout(this.retryWaitTimer);
     this.retryWaitResolve?.();
     this.store.off('event', this.onStoreEvent);
+    this.streamReader?.cancel().catch(() => {});
     this.abort?.abort();
     await this.loopPromise?.catch(() => {});
     await this.serial;
