@@ -68,6 +68,11 @@
 
 ## 项目命名工作台
 
+- [x] 兼容旧 Cloud 的 Session 同步：事件流无数据/响应头停滞时超时重连；独立心跳补读 Cloud-only 修改；心跳单飞、无变化不写盘、v2 接管停用旧心跳（`tests/workbench-sync.test.mjs` 的 Legacy sync/heartbeat 用例）
+- [x] Cloud 当前状态读取合并并发冷读，缓存排除历史与回执；外部文件替换失效、写入失败不发布缓存、保留完整磁盘历史；64 MiB 堆下50并发读取回归（`tests/cloud-workbench.test.mjs`）
+- [ ] 历史与回执继续增长时的分片存储及历史查询/写入峰值内存；本次不删减历史，热读缓存不等于消除无限存储增长
+- [ ] 生产网络下长时间断流与恢复观察；隔离故障测试通过不等于所有生产断连原因已经消除
+
 - [x] 命名入口 Host/Origin/令牌隔离、读写、5 个 session/SSE、原生 Python SessionStart 处理函数、自动打开去重（`tests/named-workbench.test.mjs`）
 - [x] 并发启动共享代理、名称冲突不接管、后端端口复用身份校验、代理重启及项目退出隔离、损坏路由文件拒绝覆盖
 - [x] 同一 Git 仓库的显式 worktree 绑定、保留原 Map、拒绝跨仓库绑定；许可证随包及 Skill 安装验证

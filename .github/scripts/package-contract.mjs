@@ -7,6 +7,7 @@ export const packedFiles = [
   "scripts/workbench/memory.mjs",
   "scripts/workbench/memory-schema.mjs",
   "scripts/cloud/memory.mjs",
+  "scripts/cloud/memory-read-view.mjs",
   "references/named-workbench.md",
   "THIRD_PARTY_NOTICES.md",
   "licenses/Portless-Apache-2.0.txt",

@@ -7,10 +7,11 @@ import { promisify } from 'node:util';
 import { timingSafeEqual } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { atomicWrite, encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
+import { encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
 import { applyOperations, MapError, validate, restoreSessionWorkItemOperations } from '../../prototype/map-model.mjs';
 import { translateChanges, operationGrants } from '../workbench/protocol-map.mjs';
 import { validateMemory } from '../workbench/memory-schema.mjs';
+import { memoryReadViews } from './memory-read-view.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
 const validSessionId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\u0000-\u001f\u007f]/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
@@ -34,7 +35,7 @@ export async function memoryHeads(configuration, projectId) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const before = await stamp();
     if (cache.get(projectId)?.stamp === before) return structuredClone(cache.get(projectId).heads);
-    const state = await readMemoryProject(configuration, projectId);
+    const state = await readMemoryView(configuration, projectId);
     if (before !== await stamp()) continue;
     const heads = Object.fromEntries(Object.entries(state.sessions).map(([id, snapshot]) => [id, {
       mapVersion: snapshot.version, mapCursor: state.eventCursors?.[`session:${id}`] || 0,
@@ -132,7 +133,16 @@ function setScopeValue(state, scope, snapshot) {
 export async function readMemoryProject({ dataDir, adminToken, projects = {} }, projectId) {
   validateOptions({ dataDir, adminToken });
   if (!projects[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  // Prime the small view before a full historical/mutable read, so concurrent
+  // workbench requests do not parse the same large document alongside a write.
+  await memoryReadViews.read(memoryFile(dataDir, projectId), initialMemoryState());
   return readJSON(memoryFile(dataDir, projectId), initialMemoryState());
+}
+
+export async function readMemoryView({ dataDir, adminToken, projects = {} }, projectId) {
+  validateOptions({ dataDir, adminToken });
+  if (!projects[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  return memoryReadViews.read(memoryFile(dataDir, projectId), initialMemoryState());
 }
 
 const gitCommand = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
@@ -146,7 +156,7 @@ export async function memoryPublicationStatus(configuration, projectId, sessionI
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
   const project = configuration.projects?.[projectId];
   if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
-  const state = await readMemoryProject(configuration, projectId);
+  const state = await readMemoryView(configuration, projectId);
   const session = state.sessions?.[sessionId];
   const closed = state.closedSessions?.[sessionId];
   if (!session && closed) return { projectId, sessionId, status: 'published', ...closed };
@@ -167,7 +177,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
   const file = memoryFile(configuration.dataDir, projectId);
   const committed = await withFileLock(file + '.lock', async () => {
-    const state = await readJSON(file, initialMemoryState());
+    const state = await readMemoryProject(configuration, projectId);
     state.closedSessions ||= {};
     const key = hash(`publish:${input.operationId}`), fingerprint = hash(encode(input));
     if (state.receipts[key]) {
@@ -203,7 +213,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     const result = { committed: true, projectId, snapshot, revision: state.revision, history, closedSession: state.closedSessions[input.sessionId] };
     state.receipts[key] = { fingerprint, result };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.published', operationId: input.operationId, baseVersion: previousVersion, version: snapshot.version, actor, at: publishedAt });
-    await atomicWrite(file, encode(state));
+    await memoryReadViews.write(file, state);
     return { result, event };
   });
   if (committed.event) memoryHub(configuration).emit('event', committed.event);
@@ -246,7 +256,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     state.receipts[receiptKey] = { fingerprint, result, ...(policy ? { requiredGrants: operationGrants(current.memory.map, operations, grants) } : {}) };
     const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations, actor, at: updatedAt });
     result.cursor = event.cursor;
-    await atomicWrite(file, encode(state));
+    await memoryReadViews.write(file, state);
     return { result, event };
   });
   if (committed.event) memoryHub(configuration).emit('event', committed.event);
@@ -274,9 +284,8 @@ export function createMemoryHandler(configuration = {}) {
       const admin = equal(credential, adminToken);
       if (!project || (!admin && (!project.token || !equal(credential, project.token)))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
       const file = memoryFile(dataDir, projectId);
-      const initial = initialMemoryState();
       if (req.method === 'GET') {
-        const state = await readJSON(file, initial);
+        const state = scope === 'history' ? await readMemoryProject(configuration, projectId) : await readMemoryView(configuration, projectId);
         if (rawSession && sessionAction === 'changes') {
           const after = Math.max(0, Number(url.searchParams.get('after') || 0));
           const scopeName = `session:${sessionId}`;
@@ -298,7 +307,7 @@ export function createMemoryHandler(configuration = {}) {
           eventClients.add(res);
           // Subscribe before rereading the durable log. A concurrent commit is
           // either delivered live or replayed here; the cursor removes duplicates.
-          const freshState = await readJSON(file, initial);
+          const freshState = await readMemoryView(configuration, projectId);
           for (const event of (freshState.events || [])) writeEvent(event);
           res.write(`retry: 1000\nevent: ready\ndata: ${JSON.stringify({ projectId, sessionId, cursor: delivered, highWater: freshState.eventCursors?.[scopeName] || 0 })}\n\n`);
           const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': keepalive\n\n'); }, 15000);
@@ -335,7 +344,7 @@ export function createMemoryHandler(configuration = {}) {
         return send(200, result);
       }
       const committed = await withFileLock(file + '.lock', async () => {
-        const state = await readJSON(file, initial), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
+        const state = await readMemoryProject(configuration, projectId), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
         state.closedSessions ||= {};
         if (scope === 'restore' && ['main', 'preferences'].includes(input.scope) && !admin) throw new MapError('FORBIDDEN', 'Main and preference restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
@@ -420,7 +429,7 @@ export function createMemoryHandler(configuration = {}) {
           at: snapshot.updatedAt || new Date().toISOString(),
         }) : null;
         // Snapshot and receipt share one durable replace: a retry after a crash cannot duplicate the write.
-        await atomicWrite(file, encode(state));
+        await memoryReadViews.write(file, state);
         return { result, event };
       });
       if (committed.event) hub.emit('event', committed.event);

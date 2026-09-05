@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
-import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
+import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { WorkbenchSnapshots } from '../workbench/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../workbench/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
