@@ -1327,6 +1327,34 @@ try {
       }
     }
     recordCheck('state-chip-gallery-50');
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=rel`);
+    await preview.waitForSelector('.g-rel-mock');
+    const relGal = await preview.evaluate(() => {
+      const items = [...document.querySelectorAll('.g-item')];
+      const names = items.map(el => el.querySelector('.g-num')?.textContent || '');
+      const mocks = items.filter(el => el.querySelector('.g-rel-mock'));
+      const icons = items.map(el => el.querySelector('.rel-btn svg')?.innerHTML || '');
+      const ons = items.filter(el => el.querySelector('.rel-btn.on'));
+      return {
+        n: items.length,
+        uniq: new Set(names).size,
+        mocks: mocks.length,
+        iconUniq: new Set(icons).size,
+        ons: ons.length,
+        title: document.querySelector('.g-bar b')?.textContent,
+        h: items[0] ? Math.round(items[0].querySelector('.rel-btn').getBoundingClientRect().height) : 0,
+        onBg: items[0] ? getComputedStyle(items[0].querySelector('.rel-btn.on')).backgroundColor : ''
+      };
+    });
+    assert.equal(relGal.n, 50, `relation icon gallery should show 50 drafts ${JSON.stringify(relGal)}`);
+    assert.equal(relGal.uniq, 50);
+    assert.equal(relGal.mocks, 50);
+    assert.ok(relGal.iconUniq >= 40, `relation icons must differ, got ${relGal.iconUniq}`);
+    assert.equal(relGal.ons, 50);
+    assert.equal(relGal.title, '关系图标 · 50 版');
+    assert.equal(relGal.h, 36);
+    assert.equal(relGal.onBg, 'rgb(255, 243, 191)');
+    recordCheck('rel-icon-gallery-50');
   } finally {
     await preview.close();
     await new Promise(resolve => staticServer.close(resolve));

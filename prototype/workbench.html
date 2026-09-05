@@ -27,6 +27,7 @@
   window.__CG_GALLERY_KIND = /^(add|insp|actions)$/i.test(galleryVal) ? "add"
     : /^(trash|bin|icon|del)$/i.test(galleryVal) ? "trash"
     : /^(chip|tag|badge|state)$/i.test(galleryVal) ? "chip"
+    : /^(rel|relation|link|flow)$/i.test(galleryVal) ? "rel"
     : "bar";
   if(gallery) document.documentElement.classList.add("design-gallery");
   var t = q.get("theme");
@@ -67,7 +68,7 @@
   if(phoneForce!==null) document.documentElement.classList.add("phone-preview");
 })();
 </script>
-<link rel="stylesheet" href="./workbench.css?v=bug-claim">
+<link rel="stylesheet" href="./workbench.css?v=rel-icon">
 </head>
 <body>
 <div id="design-gallery">
@@ -209,7 +210,7 @@
 <div class="drawer-split" id="drawer-split" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="splitTitle" title="拖动调整检查器宽度，双击恢复"></div>
 <aside class="drawer" id="detail"></aside>
 
-<script src="./workbench-fixtures.js?v=bug-claim"></script>
-<script src="./workbench-app.js?v=bug-claim"></script>
+<script src="./workbench-fixtures.js?v=rel-icon"></script>
+<script src="./workbench-app.js?v=rel-icon"></script>
 </body>
 </html>

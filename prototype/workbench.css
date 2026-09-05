@@ -1488,3 +1488,30 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-mock.g-ch-48 .chip:after{content:"";position:absolute;z-index:-1;left:-3px;right:8px;top:.22em;bottom:.28em;background:var(--mark);opacity:.35;transform:skewX(-18deg) rotate(-1.2deg)}
 .g-ch-49 .chip{--mark-shadow:1px 1px 0 rgba(45,45,45,.12)}
 .g-ch-50 .chip{--mark:#ccff00;--mark-op:1;--mark-skew:-10deg}
+
+html.g-kind-rel .g-scroll{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:28px 22px;max-width:1120px}
+html.design-gallery .g-rel-mock{pointer-events:auto;overflow:visible;width:100%;
+  padding:16px 16px 14px;background:#fefaf2;border-left:2px solid #2d2d2d;color:#2d2d2d;
+  font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC",sans-serif}
+.g-rel-bar{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+.g-rel-dir{position:relative;display:grid;grid-template-columns:1fr 1fr;width:60px;height:36px;
+  border:2px solid #2d2d2d;border-radius:8px;overflow:hidden;background:#fffdf8;flex:0 0 auto}
+.g-rel-dir i{position:absolute;top:3px;bottom:3px;right:3px;width:calc((100% - 6px)/2);
+  background:#fff3bf;border:2px solid #2d2d2d;border-radius:5px}
+.g-rel-dir u{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:800;text-decoration:none}
+.g-rel-mock .rel-btn{
+  width:36px;height:36px;min-height:36px;padding:0;border:2px solid #2d2d2d;border-radius:8px;
+  background:#fffdf8;box-shadow:none;color:#2d2d2d;flex:0 0 auto;
+  display:inline-flex;align-items:center;justify-content:center;cursor:default}
+.g-rel-mock .rel-btn.on{background:#fff3bf}
+.g-rel-mock .rel-btn svg{width:18px;height:18px;display:block;overflow:visible}
+.g-rel-sq{width:36px;height:36px;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;
+  display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto}
+.g-rel-bug{height:36px;padding:0 10px;border:2px solid #2d2d2d;border-radius:8px;background:#fffdf8;
+  display:inline-flex;align-items:center;font-size:12.5px;font-weight:700;white-space:nowrap}
+.g-rel-cap{margin:10px 0 0;font-size:12px;font-weight:700;color:#746c60}
+.g-rel-mock .rel-btn:hover svg{transform:scale(1.08)}
+
