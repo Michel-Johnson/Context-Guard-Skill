@@ -73,6 +73,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.streamIdleMs = streamIdleMs;
     this.serial = Promise.resolve();
     this.closed = false;
+    this.initialized = false;
     this.managed = managed;
     this.abort = null;
     this.status = { configured: false, status: 'disabled', pending: 0, cursor: 0, serverVersion: null, error: null, conflict: null };
@@ -133,6 +134,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     if (!remote) remote = await this.createSessionGeneration();
     if (!remote || this.status.conflict) return;
     validate(remote.memory.map);
+    if (this.status.status === 'synced' && !this.status.pending && remote.version === this.status.serverVersion && equalDocument(base, remote.memory.map) && equalDocument(this.store.doc, base)) return;
     if (!base) {
       if (equalDocument(this.store.doc, remote.memory.map)) {
         await atomicWrite(this.baseFile, encode(remote.memory.map));
@@ -315,7 +317,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.heartbeatTimer = setTimeout(async () => {
       try {
         await this.schedule(async () => {
-          if (this.closed || this.managed || this.status.conflict || !this.status.serverVersion) return;
+          if (this.closed || this.managed || !this.initialized || this.status.conflict || !this.status.serverVersion) return;
           const after = this.status.cursor || 0;
           const changes = await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}/changes?after=${after}`);
           if (!Number.isSafeInteger(changes.cursor) || changes.cursor < after) throw new MapError('INVALID_SYNC_CURSOR', 'Invalid change cursor');
@@ -385,7 +387,10 @@ export class MemorySyncCoordinator extends EventEmitter {
   async run() {
     while (!this.closed && !this.managed) {
       try {
-        await this.schedule(() => this.healthyLegacyFallback() ? undefined : this.initialize());
+        await this.schedule(async () => {
+          await this.initialize();
+          this.initialized = !this.status.conflict && !!this.status.serverVersion;
+        });
         if (this.closed || this.managed) return;
         if (this.status.conflict) return;
         const base = new URL(this.configuration.url);

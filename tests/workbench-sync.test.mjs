@@ -353,6 +353,9 @@ test('Legacy heartbeat is single-flight, write-free while idle, and stops on v2 
   coordinator.persist = async fields => { writes++; coordinator.update(fields); };
   t.after(async () => { release(); await coordinator.close(); });
   coordinator.startLegacyHeartbeat();
+  await pause(80);
+  assert.equal(calls, 0, 'cached serverVersion cannot replace successful initialization');
+  coordinator.initialized = true;
   await until(() => calls === 1);
   await pause(100);
   assert.equal(calls, 1, 'a slow request does not accumulate heartbeat requests');
@@ -388,6 +391,9 @@ for (const stalledHeaders of [false, true]) test(`Legacy sync recovers silent ${
   await request(project, 'sessions/silent', { operationId: 'seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head, memory: { map: f.doc, records: {} } });
   const store = await new MapStore(f.root, { file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'runtime'), eventsFile: path.join(f.root, 'events.jsonl') }).init();
   const coordinator = new MemorySyncCoordinator({ project, sessionId: 'silent', store, directory: path.join(f.root, 'sync'), request, heartbeatMs: 30, streamIdleMs: 5000, retryMin: 25, retryMax: 100 });
+  let initializations = 0;
+  const initialize = coordinator.initialize.bind(coordinator);
+  coordinator.initialize = async () => { initializations++; return initialize(); };
   t.after(async () => {
     await coordinator.close(); await store.close();
     const stopped = new Promise(resolve => stalled.close(resolve));
@@ -402,11 +408,14 @@ for (const stalledHeaders of [false, true]) test(`Legacy sync recovers silent ${
   await request(project, 'sessions/silent/map', { operationId: 'cloud-only', baseVersion: remote.version, operations: [{ type: 'update', id: 'N1', fields: { title: 'Cloud-only update' } }] });
   await until(() => store.doc.root.children[0].title === 'Cloud-only update', 3000);
   assert.equal(connections, 1, 'heartbeat repairs a missed notification without waiting for reconnect');
+  const highWater = (await request(project, 'sessions/silent/changes?after=0')).highWater;
+  await until(() => coordinator.snapshot().cursor === highWater);
   await coordinator.serial;
   const stateStamp = (await fs.stat(coordinator.stateFile)).mtimeMs;
   const reported = [];
   coordinator.on('change', state => reported.push(state.status));
   await until(() => connections >= 2, 10000);
+  assert.ok(initializations >= 2, 'reconnect still initializes missing sessions and unqueued local edits');
   assert.equal(reported.includes('offline'), false, 'healthy polling must not flash offline when only SSE stalls');
   assert.equal((await fs.stat(coordinator.stateFile)).mtimeMs, stateStamp, 'healthy fallback reconnect must not rewrite idle state');
   assert.equal(coordinator.managed, false, 'legacy repair must not enable unsupported v2 mode');
