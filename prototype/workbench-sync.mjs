@@ -450,6 +450,20 @@ export class WorkbenchSync {
       return;
     }
     if (this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession) {
+      if (this.config?.root?.startsWith('cloud:')) {
+        const publication = await this.call('/api/publication').catch(() => null);
+        if (publication?.status === 'published') {
+          this.activeSession = ALL_SESSIONS;
+          this.viewId = 'main';
+          this.sessionUnavailable = false;
+          this.events?.close(); this.events = null;
+          const url = new URL(location.href);
+          url.searchParams.delete('session');
+          history.replaceState(null, '', url);
+          setTimeout(() => this.reload().catch(error => this.setStatus('error', error.message)), 0);
+          return;
+        }
+      }
       // Keep the canvas and its identity together. A disappearing Session is
       // unavailable, not an implicit request to edit the Main map.
       this.events?.close(); this.events = null;

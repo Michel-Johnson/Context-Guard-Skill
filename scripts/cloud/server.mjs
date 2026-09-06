@@ -881,6 +881,7 @@ export async function startCloudServer({
         }
         if (action === '/api/access' && req.method === 'GET') {
           if (!project) return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
+          await publishMergedSessions();
           const sessions = await memorySessions(project), grants = {};
           const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
           for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };

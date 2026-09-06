@@ -263,12 +263,7 @@ try {
   await synchronized();
   await git(repository, 'merge', '--ff-only', 'feature');
   await page.reload();
-  await synchronized();
-  await page.locator('#session-chip').click();
-  await page.locator('#session-menu [data-session="session-one"]').click();
-  await page.waitForFunction(() => document.querySelector('#btn-publish-main')?.dataset.status === 'ready');
-  await page.locator('#btn-publish-main').click();
-  await page.waitForFunction(() => document.querySelector('#btn-publish-main')?.dataset.status === 'published');
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('session'));
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
   assert.doesNotMatch(await page.content(), /memory-admin|cloud-admin|project-memory-token/);
@@ -276,6 +271,7 @@ try {
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
   assert.equal(new URL(page.url()).searchParams.has('session'), false);
+  assert.equal(await page.locator('#btn-publish-main').count(), 0, 'Main publication has no browser control');
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu [data-session="session-one"]').count(), 0, 'a published Session leaves the active selector');
   assert.equal(await page.locator('#cg-sync-session option[value="session-one"]').count(), 0);
