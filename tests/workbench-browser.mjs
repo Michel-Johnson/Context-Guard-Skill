@@ -359,7 +359,7 @@ try {
   assert.match(queuedMessages[0].message, /处理状态测试/);
   assert.match(queuedMessages[0].message, /N1/);
   releaseBugQueue();
-  await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('处理中 · codex-basic-browser'));
+  await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('Codex 已收到'));
   assert.equal(await bugRow.locator('.bug-dot.processing').count(), 1);
   await until(async () => (await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.includes(session));
   await synchronized();
@@ -423,7 +423,7 @@ try {
   assert.match(queuedMessages[3].message, /TODO: TD\d+ · 开发新的需求入口/);
   const todoRow = page.locator('#detail .todo-list li').filter({ hasText: '开发新的需求入口' });
   await todoRow.waitFor();
-  assert.match(await todoRow.textContent(), /处理中/);
+  assert.match(await todoRow.textContent(), /Codex 已收到/);
   await todoRow.locator('.todo-check').click();
   await until(async () => (await read()).root.children[0].todos.some(todo => todo.title === '开发新的需求入口' && todo.status === 'done'));
   assert.match(await todoRow.textContent(), /已完成/);

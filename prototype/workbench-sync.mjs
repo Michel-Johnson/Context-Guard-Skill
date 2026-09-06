@@ -31,6 +31,7 @@ export class WorkbenchSync {
     this.composing = false; this.inputDraft = null; this.activeSession = requestedSession || ALL_SESSIONS; this.viewId = requestedSession ? `session:${requestedSession}` : 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
     this.manualSession = Boolean(requestedSession);
     this.pendingSession = requestedSession || '';
+    this.taskStates = new Map();
     this.refreshingAccess = null;
     this.accessRefreshQueued = false;
     this.urlPinned = Boolean(requestedSession);
@@ -180,7 +181,7 @@ export class WorkbenchSync {
       }
       if (!state.doc?.root) throw new Error('地图根节点无效');
       this.initializationRequired = false;
-      this.a.apply(state.doc); this.baseTree = copy(this.a.getRoot()); this.ready = true;
+      this.a.apply(state.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const hasRecovery = this.loadRecovery();
       this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
@@ -245,6 +246,7 @@ export class WorkbenchSync {
         else if (this.pendingRequest && this.status === 'offline') await this.retry();
         else if (head.version !== this.version) await this.receive(head);
         else if (this.status === 'offline') await this.retry();
+        await this.refreshTaskStatuses().catch(() => {});
       } catch { if (view === this.viewId && !this.disposed) await this.recoverConnection(); }
       finally { this.heartbeatRunning = false; this.scheduleHeartbeat(); }
     }, 10000);
@@ -296,7 +298,7 @@ export class WorkbenchSync {
     this.recoveryState(current);
     if (current.error || current.recovery || !current.doc) { this.setStatus('error', current.error?.message || '服务需要恢复'); return; }
     if (this.dirty()) { this.setStatus('conflict'); return; }
-    this.doc = current.doc; this.version = current.version; this.source = current.source || null; this.a.apply(this.doc); this.baseTree = copy(this.a.getRoot()); this.revision++;
+    this.doc = current.doc; this.version = current.version; this.source = current.source || null; this.a.apply(this.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++;
     await this.presence(); this.setStatus('synced');
   }
   async flush() {
@@ -400,7 +402,7 @@ export class WorkbenchSync {
     this.initializationRequired = false;
     this.panel.querySelector('#cg-sync-initialize').hidden = true;
     this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version; this.source = current.source || null;
-    this.a.apply(current.doc); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
+    this.a.apply(current.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
     this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
     if (this.switchingSession) return;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
@@ -628,12 +630,45 @@ export class WorkbenchSync {
     // Retain the same ID across a lost response, repeated click and page reload.
     localStorage.setItem(key, JSON.stringify(request));
     const result = await this.call('/api/session-message', request);
-    if (result.deliveryId !== request.operationId || result.state !== 'received') {
+    if (result.deliveryId !== request.operationId || !['queued', 'cloud_queued', 'local_received', 'codex_received', 'uncertain', 'received'].includes(result.state)) {
       localStorage.setItem(key, JSON.stringify({ ...request, uncertain: true }));
       throw new Error('后端未返回可靠交付回执，请先核对任务是否已收到');
     }
     localStorage.removeItem(key);
+    if (result.taskId) {
+      this.watchTask(result.taskId, result.sessionId || input.sessionId, result.state);
+      this.refreshTaskStatuses().catch(() => {});
+    }
     return result;
+  }
+  watchTask(taskId, sessionId, state = '') {
+    if (!taskId || !sessionId) return;
+    const previous = this.taskStates.get(taskId) || {};
+    this.taskStates.set(taskId, { ...previous, taskId, sessionId, ...(state ? { state } : {}) });
+  }
+  watchDocument(root) {
+    const pending = [root];
+    while (pending.length) {
+      const value = pending.pop();
+      if (!value || typeof value !== 'object') continue;
+      if (value.dispatch?.task_id && value.dispatch?.session_id) this.watchTask(value.dispatch.task_id, value.dispatch.session_id, value.dispatch.status);
+      pending.push(...Object.values(value));
+    }
+  }
+  taskState(taskId) { return this.taskStates.get(taskId)?.state || ''; }
+  async refreshTaskStatuses() {
+    if (!this.config.interfaceCapabilities?.taskDispatch || !this.taskStates.size || this.taskStatusRunning) return;
+    this.taskStatusRunning = true;
+    try {
+      const result = await this.call('/api/task-status', { tasks: [...this.taskStates.values()].map(({ taskId, sessionId }) => ({ taskId, sessionId })) });
+      let changed = false;
+      for (const item of result.tasks || []) {
+        const previous = this.taskStates.get(item.taskId);
+        if (!previous || previous.state !== item.state) changed = true;
+        this.taskStates.set(item.taskId, item);
+      }
+      if (changed) this.a.statusChanged?.();
+    } finally { this.taskStatusRunning = false; }
   }
   async toggleAccess(ids) {
     if (this.activeSession === ALL_SESSIONS) { this.setStatus(this.status, '请先选择具体 Session 再调整授权'); return; }

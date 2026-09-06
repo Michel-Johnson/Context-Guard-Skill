@@ -60,7 +60,7 @@ export const payloadRules = {
   'auth.close': object({}),
   'sync.heartbeat': object({ sessions: array(object({ id, generation: integer(1), ackedSeq: integer() })) }),
   'sync.read': object({ afterSeq: integer(), limit: integer(1, 100) }),
-  'sync.ack': object({ items: array((v, p) => { object({ seq: integer(1), outcome: choice('applied', 'rejected', 'cancelled'), reason: optional(text) })(v, p); check(v.outcome === 'applied' || !!v.reason, p); }, 1) }),
+  'sync.ack': object({ items: array((v, p) => { object({ seq: integer(1), outcome: choice('applied', 'rejected', 'cancelled'), reason: optional(text), deliveryState: optional(choice('stored', 'received', 'uncertain')) })(v, p); check(v.outcome === 'applied' || !!v.reason, p); }, 1) }),
   'sync.event': object({ latestSeq: integer() }),
   'workbench.patch': object({ baseVersion: version, changes: array(change, 1) }),
   'workbench.read': v => {

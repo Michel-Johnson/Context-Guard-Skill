@@ -25,7 +25,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     return { ref, version };
   };
   const changed = task => { task.version = randomUUID(); return { taskId: task.id, version: task.version, stage: task.stage }; };
-  const notify = () => emit({ ...message, id: randomUUID() });
+  const notify = (source = message) => emit({ ...source, id: randomUUID() });
   if (message.type === 'brief.submit') {
     role('coordinator');
     const key = taskKey(p.taskId), previous = state.tasks[key];
@@ -78,9 +78,15 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   if (message.type === 'task.assign') {
     role('coordinator'); at('approved');
     if (p.briefRef !== task.brief.ref || p.briefVersion !== task.brief.version || task.briefReview?.decision !== 'approved') fail('CONFLICT', 'Human approval does not match this brief');
-    if (Object.values(state.tasks).some(value => belongs(value) && value.busy)) fail('CONFLICT', 'Executor is already busy');
     if (!await policy.verifyRouting?.(principal, message)) fail('FORBIDDEN', 'Main version and node access could not be verified');
-    task.assignment = structuredClone(p); task.busy = true; task.stage = 'assigned'; notify(); return changed(task);
+    task.assignment = structuredClone(p);
+    task.assignmentNotification = { ...structuredClone(message), id: randomUUID() };
+    if (Object.values(state.tasks).some(value => belongs(value) && value.busy)) {
+      task.busy = false; task.stage = 'queued'; task.queuedAt = new Date().toISOString();
+      return changed(task);
+    }
+    task.busy = true; task.stage = 'assigned'; task.assignmentSeq = emit(task.assignmentNotification);
+    return changed(task);
   }
   if (message.type === 'task.report') {
     role('executor', 'device');
@@ -115,7 +121,19 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
         task.stage = 'closed'; task.busy = false;
       }
     }
-    notify(); return changed(task);
+    notify();
+    const status = changed(task);
+    if (task.stage === 'closed') {
+      const next = Object.values(state.tasks)
+        .filter(value => belongs(value) && value.stage === 'queued' && value.assignmentNotification)
+        .sort((left, right) => String(left.queuedAt || '').localeCompare(String(right.queuedAt || '')) || left.id.localeCompare(right.id))[0];
+      if (next) {
+        next.busy = true; next.stage = 'assigned'; delete next.queuedAt;
+        next.assignmentSeq = emit(next.assignmentNotification); changed(next);
+        status.activatedTaskId = next.id;
+      }
+    }
+    return status;
   }
   if (message.type === 'ci.request') {
     role('coordinator', 'ci'); at('awaiting-ci');

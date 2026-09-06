@@ -126,14 +126,15 @@
         "items": [
           {
             "seq": 11,
-            "outcome": "applied"
+            "outcome": "applied",
+            "deliveryState": "received"
           }
         ]
       },
       "result": {
         "ackedSeq": 11
       },
-      "rule": "outcome 为 applied/rejected/cancelled；拒绝或取消须附 reason。只能推进连续已处理序号；任务接收不等于任务完成。",
+      "rule": "outcome 为 applied/rejected/cancelled；拒绝或取消须附 reason。deliveryState 可为 stored/received/uncertain；只能推进连续已处理序号，任务接收不等于任务完成。",
       "parents": [
         "N461"
       ]
@@ -346,9 +347,9 @@
         "mainVersion": "m6"
       },
       "result": {
-        "state": "received"
+        "state": "cloud_queued"
       },
-      "rule": "nodeIds必填且非空，单节点也用数组；mainVersion固定路由依据的Main版本。Cloud校验节点及权限，逐跳原样交付节点和获批需求。路由不增加授权，不覆盖Session改动。",
+      "rule": "nodeIds必填且非空，单节点也用数组；mainVersion固定路由依据的Main版本。Cloud校验节点及权限，逐跳原样交付节点和获批需求。执行方忙时保存在Cloud队列，前一任务关闭后再激活；路由不增加授权，不覆盖Session改动。",
       "parents": [
         "MOD-cloud-agent-up",
         "MOD-local-agent-down",

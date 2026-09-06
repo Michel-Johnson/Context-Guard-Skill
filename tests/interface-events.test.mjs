@@ -105,21 +105,24 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const sha = await git('rev-parse', 'HEAD');
   await git('remote', 'add', 'origin', 'git@github.com:example/repo.git');
   await git('update-ref', 'refs/remotes/origin/main', sha); await git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
-  const project = await resolveProject(root), doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', children: [
-    { id: 'private', title: 'private', access: [{ id: 'denied', agentId: 's', allow: 'none' }] },
+  const project = await resolveProject(root), doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', todos: [
+    { id: 'TD1', title: 'Approved integration task', status: 'pending' },
+    { id: 'TD2', title: 'Queued integration task', status: 'pending' },
+  ], children: [
+    { id: 'private', title: 'private', todos: [{ id: 'TD3', title: 'Denied task', status: 'pending' }], access: [{ id: 'denied', agentId: 's', allow: 'none' }] },
   ] } };
   const ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
   await fs.writeFile(path.join(ctx, 'sessions.jsonl'), ['s', 's2'].map(id => JSON.stringify({ session_id: id, event: 'session-start', platform: 'codex' })).join('\n') + '\n');
-  const memory = { dataDir: path.join(directory, 'memory'), adminToken: 'test-admin', projects: { test: { token: 'test-project' } } };
-  const memoryFile = path.join(memory.dataDir, hash('test'), 'memory.json'); await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  const memory = { dataDir: path.join(directory, 'memory'), adminToken: 'test-admin', projects: { 'context-guard': { token: 'test-project' } } };
+  const memoryFile = path.join(memory.dataDir, hash('context-guard'), 'memory.json'); await fs.mkdir(path.dirname(memoryFile), { recursive: true });
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'main-v1', mainSha: sha, memory: { map: doc, records: {} } },
     sessions: Object.fromEntries(['s', 's2'].map(id => [id, { version: 'initial', baseMainVersion: 'main-v1', memory: { map: doc, records: {} } }])), receipts: {}, history: [], events: [], eventCursors: {} }));
-  const protocolConfig = { repositories: [{ slug: 'example/repo', repositoryId: '123', projectId: 'test', clients: {
+  const protocolConfig = { repositories: [{ slug: 'example/repo', repositoryId: '123', projectId: 'context-guard', clients: {
     coordinator: { deviceId: 'cloud-coordinator', agentId: 'coordinator', role: 'coordinator', bindings: { s: project.worktreeId, s2: project.worktreeId } },
   } }] };
   cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), memoryConfig: memory, protocolConfig, port: 0, browserToken: 'test-browser', browserPasswordHash: await createWorkbenchPasswordHash('test-only') });
   await fs.mkdir(project.sharedDir, { recursive: true });
-  await fs.writeFile(path.join(project.sharedDir, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId: 'test', token: 'test-project' }));
+  await fs.writeFile(path.join(project.sharedDir, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId: 'context-guard', token: 'test-project' }));
   const delivered = [];
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   let seq = 0;
@@ -129,23 +132,31 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const second = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's2', worktreeRoot: root } });
   assert.equal(first.cloudBinding.status, 'ready'); assert.equal(second.cloudBinding.status, 'ready');
   const waitFor = async predicate => { const deadline = Date.now() + 15000; while (!await predicate() && Date.now() < deadline) await delay(30); assert.ok(await predicate(), 'condition did not become true'); };
-  await commitSessionMap(memory, 'test', 's2', { operationId: 's2-edit', baseVersion: 'initial', operations: [{ type: 'update', id: 'R', fields: { purpose: 's2 only' } }] });
+  await commitSessionMap(memory, 'context-guard', 's2', { operationId: 's2-edit', baseVersion: 'initial', operations: [{ type: 'update', id: 'R', fields: { purpose: 's2 only' } }] });
   await waitFor(() => local.stores.get('session:s2').doc.root.purpose === 's2 only');
   assert.notEqual(local.stores.get('session:s').doc.root.purpose, 's2 only');
-  let credential;
-  await sendMessage(cloud.url, '', message('auth.open', { repository: 'https://github.com/example/repo', clientId: 'coordinator', password: 'test-only' }, false), { allowLoopback: true, receiveCredential: value => { credential = value; } });
-  const send = (type, payload) => sendMessage(cloud.url, credential, message(type, payload), { allowLoopback: true });
-  const brief = await send('brief.submit', { taskId: 'task', text: 'Approved integration task' });
-  await send('review.request', { taskId: 'task', kind: 'brief', ref: brief.ref, version: brief.version });
-  const approved = await fetch(`${cloud.url}/api/v2/messages?project=test`, { method: 'POST', headers: { Cookie: 'cg_workbench=test-browser', 'Content-Type': 'application/json' },
-    body: JSON.stringify(message('review.result', { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: 'approved' })) });
-  assert.equal(approved.status, 200, await approved.text());
-  const assignment = message('task.assign', { taskId: 'task', briefRef: brief.ref, briefVersion: brief.version, sessionId: 's', nodeIds: ['R'], mainVersion: 'main-v1' });
-  await assert.rejects(sendMessage(cloud.url, credential, { ...assignment, id: 'denied-assignment', payload: { ...assignment.payload, nodeIds: ['private'] } }, { allowLoopback: true }), { code: 'FORBIDDEN' });
-  await sendMessage(cloud.url, credential, assignment, { allowLoopback: true });
+  const cloudHeaders = { Cookie: 'cg_workbench=test-browser', 'Content-Type': 'application/json' };
+  const cloudCall = (route, body) => fetch(`${cloud.url}/api/workbench/projects/context-guard${route}?view=main`, { method: 'POST', headers: cloudHeaders, body: JSON.stringify(body) });
+  const plan = await cloudCall('/api/access-plan', { sessionId: 's', nodeId: 'R' });
+  assert.equal(plan.status, 200); assert.deepEqual((await plan.json()).missing, []);
+  const deniedPlan = await cloudCall('/api/access-plan', { sessionId: 's', nodeId: 'private' });
+  assert.equal(deniedPlan.status, 200); assert.deepEqual((await deniedPlan.json()).missing, ['private']);
+  const denied = await cloudCall('/api/session-message', { operationId: 'denied-task', sessionId: 's', nodeId: 'private', todoId: 'TD3' });
+  assert.equal(denied.status, 403);
+  const assignment = { operationId: 'approved-task', sessionId: 's', nodeId: 'R', todoId: 'TD1' };
+  const assignedResponse = await cloudCall('/api/session-message', assignment);
+  assert.equal(assignedResponse.status, 200);
+  const assigned = await assignedResponse.json(); assert.equal(assigned.state, 'cloud_queued');
+  const repeated = await cloudCall('/api/session-message', assignment);
+  assert.deepEqual(await repeated.json(), assigned);
   await waitFor(() => delivered.length === 1);
   assert.equal(delivered[0].sessionId, 's'); assert.match(delivered[0].message, /Approved integration task/);
-  await sendMessage(cloud.url, credential, assignment, { allowLoopback: true });
+  await waitFor(async () => {
+    const response = await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] });
+    return (await response.json()).tasks?.[0]?.state === 'codex_received';
+  });
+  const queuedResponse = await cloudCall('/api/session-message', { operationId: 'queued-task', sessionId: 's', nodeId: 'R', todoId: 'TD2' });
+  assert.equal((await queuedResponse.json()).state, 'queued'); assert.equal(delivered.length, 1);
   const interrupt = { id: 'interrupt-1', occurredAt: new Date().toISOString(), reason: 'local interruption' };
   const reported = await request(local.state, '/api/v2/interrupt', { token: first.token, method: 'POST', body: interrupt });
   assert.equal(reported.synchronized, true); assert.equal(reported.receipt.stage, 'interrupted');

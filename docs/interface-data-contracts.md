@@ -47,7 +47,7 @@
 | sync.available | Cloud→本地 | latestSeq:integer；Session 由信封确定 |
 | sync.read | 本地→Cloud | afterSeq:integer，limit:integer，maxBytes:integer |
 | sync.batch | Cloud→本地 | commands:[{seq:integer,message:业务消息信封}]，nextAfterSeq:integer，hasMore:boolean |
-| sync.ack | 本地→Cloud | results:[{seq:integer,messageId:string,outcome:string,receiptId:string}]；outcome 取 applied、rejected、cancelled |
+| sync.ack | 本地→Cloud | items:[{seq:integer,outcome:string,reason?:string,deliveryState?:string}]；outcome 取 applied、rejected、cancelled，deliveryState 取 stored、received、uncertain |
 | sync.ack.result | Cloud→本地 | ackedSeq:integer |
 | workbench.changed | 本地→Cloud | eventId:string，baseVersion:string，version:string，operations:array；操作 schema 后续逐项定义 |
 | task.interrupted | 本地→Cloud | eventId:string，runId:string，stage:string，reason:string，occurredAt:string（RFC3339），可选 recoveryRef:string |

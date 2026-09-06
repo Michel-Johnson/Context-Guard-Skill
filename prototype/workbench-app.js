@@ -70,7 +70,7 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
-    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败",
+    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskWaitingReview:"等待 Plan 审核",
     allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
     projectOverview:"项目总览",
     bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
@@ -173,7 +173,7 @@ const I18N = {
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
-    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed",
+    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskWaitingReview:"Waiting for Plan review",
     allSessions:"Main workbench · All sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
     projectOverview:"Projects",
     bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
@@ -2189,11 +2189,17 @@ function sessionDisplayName(sessionId){
 }
 function bugProgress(bug){
   const status = String(bug?.status||"open");
-  if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
   if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
   if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
   if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
   if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
+  const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
+  if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskQueued")}`,detail:""};
+  if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskCloudQueued")}`,detail:""};
+  if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
+  if(delivery==="uncertain") return {kind:"waiting",label:t("taskUncertain"),detail:""};
+  if(delivery==="waiting_review") return {kind:"waiting",label:t("taskWaitingReview"),detail:""};
+  if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
   const sessions = bugSessionsOf(bug);
   if(!sessions.length){
     if(bugDispatching.has(bug?.id)) return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSending")}`, detail:""};
@@ -2223,6 +2229,12 @@ function todoSessionsOf(todo){ return bugSessionsOf(todo); }
 function todoProgress(todo){
   const status = String(todo?.status||"pending");
   if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
+  const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
+  if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskQueued")}`,detail:""};
+  if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskCloudQueued")}`,detail:""};
+  if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
+  if(delivery==="uncertain") return {kind:"waiting",label:t("taskUncertain"),detail:""};
+  if(delivery==="waiting_review") return {kind:"waiting",label:t("taskWaitingReview"),detail:""};
   if(status==="pending"){
     if(todoDispatching.has(todo?.id)) return {kind:"waiting",label:`${t("todoPending")} · ${t("bugSending")}`,detail:""};
     if(todo?.dispatch?.status==="scope-required") return {kind:"waiting",label:`${t("todoPending")} · ${t("todoScopeRequired")}`,detail:""};
@@ -2447,10 +2459,10 @@ async function dispatchBugToSession(node,bug,sessionId,plan){
   try{
     await workbenchSync.flush();
     if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
-    await workbenchSync.sendBug(sessionId,node.id,bug.id);
+    const delivery = await workbenchSync.sendBug(sessionId,node.id,bug.id);
     const sessions = bugSessionsOf(bug);
     if(!sessions.includes(sessionId)) sessions.push(sessionId);
-    bug.dispatch = {status:"sent",session_id:sessionId,at:new Date().toISOString()};
+    bug.dispatch = {status:delivery.state,task_id:delivery.taskId,session_id:sessionId,at:new Date().toISOString()};
     return true;
   }catch(error){
     bug.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
@@ -2488,11 +2500,11 @@ async function dispatchTodoToSession(node,todo,sessionId,plan){
   try{
     await workbenchSync.flush();
     if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
-    await workbenchSync.sendTodo(sessionId,node.id,todo.id);
+    const delivery = await workbenchSync.sendTodo(sessionId,node.id,todo.id);
     const sessions = todoSessionsOf(todo);
     if(!sessions.includes(sessionId)) sessions.push(sessionId);
     todo.status = "processing";
-    todo.dispatch = {status:"sent",session_id:sessionId,at:new Date().toISOString()};
+    todo.dispatch = {status:delivery.state,task_id:delivery.taskId,session_id:sessionId,at:new Date().toISOString()};
     return true;
   }catch(error){
     todo.status = "pending";
@@ -4603,7 +4615,8 @@ async function boot(){
     getRoot:()=>data,
     pending:()=>{ for(const id of ['nodes','links','currents']) document.getElementById(id)?.replaceChildren(); },
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
-    setAccess:setWorkbenchAccess
+    setAccess:setWorkbenchAccess,
+    statusChanged:()=>renderAll()
   });
   const connected=await workbenchSync.start();
   if(!connected){

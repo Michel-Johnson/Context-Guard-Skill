@@ -2,7 +2,7 @@
 
 - [x] Cloud 保存失败时在顶栏直接展示结构化错误码与简短原因，完整诊断仍保留在“同步与恢复”中。
 
-## 接口 1.0（开发中，尚未完成 Cloud 联调）
+## 接口 1.0（本地实现与隔离 Cloud 联调已完成，生产 Cloud 待部署验收）
 
 - [x] IF-001～IF-005：25 种消息的公共格式、字段白名单、Session 代次、大小和失败证据校验（`tests/interface-protocol.test.mjs`）。仅格式验证，不代表 25 种业务均已实现。
 - [x] IF-006～IF-009：并发重试去重、写盘失败原子回滚、连续确认、身份隔离与重新鉴权（`tests/interface-store.test.mjs`）。
@@ -25,10 +25,13 @@
 - [x] IF-043～IF-045：任务交付保持需求/节点/Main 版本，中断 Hook 重试原始信号，记忆传输失败不阻塞已授权源码准备而权限/冲突仍阻塞（`tests/interface-delivery.test.mjs`）。IF-027 增加 CI TODO 完整覆盖校验与原记录打勾、关联测试编号，不删除原项。
 - [x] IF-046：同一真实本地后端绑定两个 Session，使用隔离 Cloud 服务验证 Map 不串线、人类确认说明后原生队列投递、重复请求不再投递、脚本中断上报与 Main 查询（`tests/interface-events.test.mjs`）。原生队列适配器使用可计数测试替身，不代表启动真实模型。
 - [x] IF-047～IF-048：关系修改回执保留旧/新端点权限，旧关系首次编辑建立稳定编号并保留自定义字段（`tests/interface-map.test.mjs`）；IF-046 同时验证 Cloud 不向执行方分发无权读取的节点。
+- [x] IF-049：Cloud 工作台使用稳定交付编号提交已批准的 TODO/Bug；服务端一次事务保存任务说明、人工批准和任务分配，重复提交只返回原结果（`tests/interface-events.test.mjs`、`tests/cloud-sync-browser.mjs`）。
+- [x] IF-050：执行 Agent 忙碌时任务留在 Cloud 队列；前一任务可信关闭后按先入先出自动激活下一任务，工作台读取真实的排队、收到、待确认和执行状态（`tests/interface-workflow.test.mjs`、`tests/interface-events.test.mjs`）。
+- [x] IF-051：宿主明确拒绝时保留同一交付编号重试；接收结果不确定时停止自动重投，避免重复触发模型；浏览器中的最终完成/解决状态覆盖传输状态（`tests/interface-delivery.test.mjs`、`tests/workbench-browser.mjs`）。
 - [x] 现有 Map 协调器在支持能力的 Cloud 上由项目消息泵驱动；旧 Cloud 保留兼容入口。
 - [x] 同一已授权 Session 内跨角色对象共享、任务/Plan/审核/CI 交接、工作台变更、固定快照分页、附件续传与兼容入口已接线。暂时性记忆传输失败保留待同步状态，授权与冲突门禁不放松。
 - [ ] 未确定 Cloud Main 合并白名单与可信归档验证器，实际合并/最终关闭保持拒绝；不把测试注入的验证器当作生产合并实现。Cursor/Claude 提供显式 CLI 拉取入口，尚无自动唤醒适配器。
-- [ ] 全量本地回归、GitHub CI、隔离真实 Cloud 与安装入口验收；合并包内容白名单未确定前拒绝实际合并。
+- [ ] GitHub CI、生产 Cloud 与安装入口验收；本地全量 `npm test`、完整浏览器回归和隔离 Cloud 真人点击流程已通过。合并包内容白名单未确定前拒绝实际合并。
 
 - [x] Cloud Map 成功响应前持久化事件、地图与回执；中断恢复、重启恢复、服务器时间和多项目并发均有正式测试（`tests/cloud-workbench.test.mjs`）
 - [x] Cloud 项目总览重建时保留人工编辑、TODO 和自定义字段，重启后仍可恢复（`tests/cloud-workbench.test.mjs`）

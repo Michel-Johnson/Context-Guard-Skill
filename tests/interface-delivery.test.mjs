@@ -11,7 +11,12 @@ test('IF-029: host acceptance is not completion and uncertain acceptance never i
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let calls = 0;
-  const adapters = { codex: async input => { calls++; if (input.id === 'uncertain') throw new Error('reply lost'); } };
+  let retryFailures = 0;
+  const adapters = { codex: async input => {
+    calls++;
+    if (input.id === 'uncertain') throw Object.assign(new Error('reply lost'), { deliveryUncertain: true });
+    if (input.id === 'retry' && retryFailures++ === 0) throw Object.assign(new Error('not accepted'), { code: 'QUEUE_REJECTED' });
+  } };
   const delivery = new ProtocolDelivery(directory, adapters);
   const input = { id: 'accepted', platform: 'codex', sessionId: 's', root: directory, message: 'Inspect the approved task and write a Plan' };
   const receipts = await Promise.all([delivery.deliver(input), delivery.deliver(input)]);
@@ -20,7 +25,9 @@ test('IF-029: host acceptance is not completion and uncertain acceptance never i
   await assert.rejects(delivery.deliver({ ...input, id: 'unsupported', platform: 'unknown' }), { code: 'INVALID_ARGUMENT' });
   await assert.rejects(delivery.deliver({ ...input, id: 'uncertain' }), error => error.details.deliveryState === 'uncertain');
   await assert.rejects(new ProtocolDelivery(directory, adapters).deliver({ ...input, id: 'uncertain' }), error => error.details.deliveryState === 'uncertain');
-  assert.equal(calls, 2);
+  await assert.rejects(delivery.deliver({ ...input, id: 'retry' }), error => error.details.deliveryState === 'failed');
+  assert.equal((await delivery.deliver({ ...input, id: 'retry' })).state, 'received');
+  assert.equal(calls, 4);
 });
 
 test('IF-043: host prompts preserve approved requirements, node routing and pinned Main/Plan versions', async () => {
@@ -57,7 +64,7 @@ test('IF-030: browser retries and reloads retain the delivery ID and refuse an o
   const values = new Map();
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } });
   t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage; });
-  const make = () => Object.assign(Object.create(WorkbenchSync.prototype), { config: { root: 'test-project', interfaceCapabilities: { durableDelivery: true } } });
+  const make = () => Object.assign(Object.create(WorkbenchSync.prototype), { config: { root: 'test-project', interfaceCapabilities: { durableDelivery: true } }, taskStates: new Map() });
   const first = make(), seen = [];
   first.call = async (_route, request) => { seen.push(request.operationId); throw new Error('reply lost'); };
   await assert.rejects(first.sendTodo('s', 'node', 'todo'));
