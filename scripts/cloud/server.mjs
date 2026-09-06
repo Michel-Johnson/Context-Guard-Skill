@@ -575,34 +575,40 @@ export async function startCloudServer({
     if (event.scope === 'main') broadcastWorkbench(`project:${project.id}`, project, 'main').catch(() => {});
     else if (event.scope?.startsWith('session:')) broadcastWorkbench(`project:${project.id}`, project, event.scope).catch(() => {});
   }) || (() => {});
-  let automaticPublicationRunning = false;
-  const publishMergedSessions = async () => {
-    if (!configuredMemory || automaticPublicationRunning) return;
-    automaticPublicationRunning = true;
-    try {
-      for (const project of registry.projects) {
-        if (!configuredMemory.projects?.[project.id]) continue;
-        const state = await readMemoryProject(configuredMemory, project.id);
-        const sessions = Object.values(state.sessions || {})
-          .sort((left, right) => String(left.updatedAt || '').localeCompare(String(right.updatedAt || '')));
-        for (const session of sessions) {
-          const status = await memoryPublicationStatus(configuredMemory, project.id, session.sessionId, { refresh: true });
-          if (status.status !== 'ready') continue;
-          await publishSessionMemory(configuredMemory, project.id, {
-            operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,
-            baseVersion: status.baseVersion,
-            sessionId: status.sessionId,
-            sessionVersion: status.sessionVersion,
-            expectedMainSha: status.mainSha,
-          }, { kind: 'automation', sessionId: status.sessionId });
-          break;
-        }
-      }
-    } catch (error) {
-      console.error(`[context-guard] automatic Main publication deferred: ${error.message}`);
-    } finally {
-      automaticPublicationRunning = false;
+  let automaticPublicationRunning = null;
+  const publishMergedSessions = async ({ afterCurrent = false } = {}) => {
+    if (!configuredMemory) return;
+    if (automaticPublicationRunning) {
+      await automaticPublicationRunning;
+      if (!afterCurrent) return;
     }
+    const run = (async () => {
+      try {
+        for (const project of registry.projects) {
+          if (!configuredMemory.projects?.[project.id]) continue;
+          const state = await readMemoryProject(configuredMemory, project.id);
+          const sessions = Object.values(state.sessions || {})
+            .sort((left, right) => String(left.updatedAt || '').localeCompare(String(right.updatedAt || '')));
+          for (const session of sessions) {
+            const status = await memoryPublicationStatus(configuredMemory, project.id, session.sessionId, { refresh: true });
+            if (status.status !== 'ready') continue;
+            await publishSessionMemory(configuredMemory, project.id, {
+              operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,
+              baseVersion: status.baseVersion,
+              sessionId: status.sessionId,
+              sessionVersion: status.sessionVersion,
+              expectedMainSha: status.mainSha,
+            }, { kind: 'automation', sessionId: status.sessionId });
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`[context-guard] automatic Main publication deferred: ${error.message}`);
+      }
+    })();
+    automaticPublicationRunning = run;
+    try { await run; }
+    finally { if (automaticPublicationRunning === run) automaticPublicationRunning = null; }
   };
   const validateOperationId = input => {
     const operationId = String(input.operationId || '');
@@ -881,7 +887,7 @@ export async function startCloudServer({
         }
         if (action === '/api/access' && req.method === 'GET') {
           if (!project) return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
-          await publishMergedSessions();
+          await publishMergedSessions({ afterCurrent: true });
           const sessions = await memorySessions(project), grants = {};
           const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
           for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
