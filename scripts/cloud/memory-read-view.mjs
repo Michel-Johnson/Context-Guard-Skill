@@ -16,12 +16,14 @@ async function stamp(file) {
 
 export function createMemoryReadViews({ read = readJSON, write = atomicWrite, maxEntries = 32 } = {}) {
   const entries = new Map();
-  const remember = (file, entry) => {
-    entries.delete(file); entries.set(file, entry);
+  const trim = () => {
     for (const [key, value] of entries) {
       if (entries.size <= maxEntries) break;
-      if (!value.pending && key !== file) entries.delete(key);
+      if (!value.pending) entries.delete(key);
     }
+  };
+  const remember = (file, entry) => {
+    entries.delete(file); entries.set(file, entry); trim();
   };
   return {
     async read(file, initial) {
@@ -42,7 +44,7 @@ export function createMemoryReadViews({ read = readJSON, write = atomicWrite, ma
           throw new Error('Memory changed while reading current state');
         })();
         remember(file, selected);
-        selected.pending.finally(() => { selected.pending = null; }).catch(() => {});
+        selected.pending.finally(() => { selected.pending = null; trim(); }).catch(() => {});
       }
       // Callers may assemble responses, but cannot mutate a cached generation.
       return structuredClone(await entry.pending);
@@ -58,7 +60,7 @@ export function createMemoryReadViews({ read = readJSON, write = atomicWrite, ma
       remember(file, entry);
       try { await entry.pending; }
       catch (error) { if (entries.get(file) === entry) entries.delete(file); throw error; }
-      finally { entry.pending = null; }
+      finally { entry.pending = null; trim(); }
     },
   };
 }

@@ -539,7 +539,7 @@ export async function startCloudServer({
       }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
       const named = events.filter(event => typeof event.thread_name === 'string' && event.thread_name.trim()).at(-1);
       const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
-      const status = lifecycle ? (['stop', 'stop-blocked'].includes(lifecycle.event) ? 'stopped' : lifecycle.event === 'interrupt' ? 'interrupted' : 'active') : latest?.status === 'working' ? 'active' : 'unknown';
+      const status = lifecycle ? (['stop', 'stop-blocked', 'interrupt'].includes(lifecycle.event) ? 'stopped' : 'active') : latest?.status === 'working' ? 'active' : latest?.status === 'completed' ? 'stopped' : 'unknown';
       return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
     }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
@@ -838,7 +838,7 @@ export async function startCloudServer({
         const viewId = String(url.searchParams.get('view') || 'main');
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
         requireWorkbench(req, url);
         if (action === '/api/state' && req.method === 'GET') {
           const state = await scopedWorkbenchState(scope, project, viewId);

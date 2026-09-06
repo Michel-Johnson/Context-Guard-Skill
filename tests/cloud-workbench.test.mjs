@@ -58,6 +58,19 @@ async function fixture() {
   return { ...service, dataDir, async dispose() { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); } };
 }
 
+test('concurrent cold memory views trim the cache when reads settle', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-memory-trim-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const files = ['a', 'b', 'c'].map(name => path.join(root, name));
+  await Promise.all(files.map(file => fs.writeFile(file, JSON.stringify({ revision: 1 }))));
+  let reads = 0;
+  const views = createMemoryReadViews({ maxEntries: 1, read: async (...args) => { reads++; return readJSON(...args); } });
+  await Promise.all(files.map(file => views.read(file, {})));
+  assert.equal(reads, 3);
+  await Promise.all(files.map(file => views.read(file, {})));
+  assert.ok(reads >= 5, 'only one completed project view may remain cached');
+});
+
 async function request(base, route, options = {}) {
   const response = await fetch(base + route, options);
   return { response, body: await response.json() };
@@ -97,6 +110,8 @@ test('cloud shutdown closes live SSE clients promptly and can restart on the sam
 test('cloud workbench exposes a multi-project registry and guarded writes', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const health = await request(f.url, '/api/health');
+  const bootstrap = await request(f.url, '/api/workbench/projects/context-guard/bootstrap');
+  assert.equal(bootstrap.body.root, 'cloud:context-guard');
   assert.equal(health.response.status, 200); assert.equal(health.body.projects, 1);
   const initial = await request(f.url, '/api/projects');
   assert.deepEqual(initial.body.projects.map(project => project.id), ['context-guard']);

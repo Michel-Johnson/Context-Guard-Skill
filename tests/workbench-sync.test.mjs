@@ -33,6 +33,9 @@ test('browser reconnect retries share one operation and Session switches wait', 
   sync.switchingSession = true;
   await sync.retry();
   assert.equal(calls, 1);
+  sync.switchingSession = false; sync.sessionUnavailable = true;
+  await sync.retry(); await sync.presence(); await sync.recoverConnection();
+  assert.equal(calls, 1, 'unavailable Session must not reconnect');
 });
 
 test('failed Session switch restores canvas, version and identity together', async () => {
