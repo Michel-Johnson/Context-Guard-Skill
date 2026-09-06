@@ -334,11 +334,11 @@ test('verified Session publication needs no exposed admin token and the authenti
   secondRoundMap.root.purpose = 'second development round';
   const reopened = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'second-round-seed', baseVersion: null, baseMainVersion: main.body.snapshot.version, sourceCommit: featureSha, memory: { map: secondRoundMap, records: {} } }),
+    body: JSON.stringify({ operationId: 'second-round-seed', baseVersion: null, baseMainVersion: mainAfterEdit.body.snapshot.version, sourceCommit: featureSha, memory: { map: secondRoundMap, records: {} } }),
   });
   assert.equal(reopened.response.status, 200, JSON.stringify(reopened.body));
   assert.equal(reopened.body.snapshot.generation, 2);
-  assert.equal(reopened.body.snapshot.reopenedFrom, main.body.snapshot.version);
+  assert.equal(reopened.body.snapshot.reopenedFrom, mainAfterEdit.body.snapshot.version);
   const reopenedStatus = await request(service.url, '/api/workbench/projects/context-guard/api/publication?view=session%3Asession-publish', { headers: browserHeaders });
   assert.equal(reopenedStatus.body.status, 'ready'); assert.equal(reopenedStatus.body.generation, 2);
   const oldWriteReplay = await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(sessionSeedInput) });
