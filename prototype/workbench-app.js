@@ -1441,7 +1441,6 @@ function setWorkbenchAccess(ids,session,meta,global,main){
   chip.setAttribute("aria-label",`切换 Agent 会话，当前 ${displayName}，${stateLabel}`);
   syncSessionSelect();
   renderSessionMenu();
-  refreshCloudPublication();
   applyingServerMap=true;
   try{ if(document.activeElement?.isContentEditable) renderMap(); else renderAll(); }
   finally{ applyingServerMap=false; }
@@ -1460,45 +1459,6 @@ function closeSessionMenu(){
   const chip = document.getElementById("session-chip");
   if(menu) menu.hidden = true;
   if(chip) chip.setAttribute("aria-expanded","false");
-}
-function renderCloudPublication(status){
-  const button=document.getElementById("btn-publish-main");
-  if(!button) return;
-  const visible=window.__CG_SERVER?.root?.startsWith("cloud:") && window.__CG_SERVER.root!=="cloud:overview" && status && status.status!=="unavailable";
-  button.hidden=!visible;
-  if(!visible) return;
-  const labels={empty:"Main 未发布",waiting:"待合入 Main",ready:"发布 Main",publishing:"发布中…",published:"Main 已发布",conflict:"需先同步 Main",missing:"Session 不存在",error:"发布失败"};
-  button.dataset.status=status.status;
-  button.textContent=labels[status.status]||"发布不可用";
-  button.disabled=status.status!=="ready";
-  const detail=status.reason||(status.mainSha?`main @ ${status.mainSha.slice(0,8)}`:"");
-  button.title=detail;
-  button.setAttribute("aria-label",detail?`${button.textContent}，${detail}`:button.textContent);
-}
-async function refreshCloudPublication(){
-  if(!workbenchSync || !window.__CG_SERVER?.root?.startsWith("cloud:") || window.__CG_SERVER.root==="cloud:overview"){
-    renderCloudPublication(null); return;
-  }
-  try{ renderCloudPublication(await workbenchSync.call("/api/publication")); }
-  catch(error){ renderCloudPublication({status:"error",reason:error.message}); }
-}
-async function publishCloudMain(){
-  const button=document.getElementById("btn-publish-main");
-  if(!workbenchSync || !button || button.dataset.status!=="ready" || workbenchSync.isAllSessions()) return;
-  if(workbenchSync.dirty()){
-    await workbenchSync.flush();
-    if(workbenchSync.dirty()){ workbenchSync.setStatus(workbenchSync.status,"请先保存当前 Session Map"); return; }
-  }
-  renderCloudPublication({status:"publishing"});
-  try{
-    const result=await workbenchSync.call("/api/publication",{operationId:crypto.randomUUID()});
-    if(!result.committed) throw new Error("Main 发布未提交");
-    await workbenchSync.selectSession("__all__");
-    renderCloudPublication({status:"published",mainSha:result.snapshot?.mainSha});
-  }catch(error){
-    await refreshCloudPublication();
-    workbenchSync.setStatus(workbenchSync.status,"Main 发布失败："+error.message);
-  }
 }
 function renderSessionMenu(){
   const menu = document.getElementById("session-menu");
@@ -4645,8 +4605,6 @@ async function boot(){
     apply:doc=>{ applyingServerMap=true; try{ applyMapDoc(doc); renderAll(); }finally{ applyingServerMap=false; } },
     setAccess:setWorkbenchAccess
   });
-  const publishButton=document.getElementById("btn-publish-main");
-  if(publishButton) publishButton.onclick=publishCloudMain;
   const connected=await workbenchSync.start();
   if(!connected){
     await loadMapFromHttp();

@@ -575,6 +575,41 @@ export async function startCloudServer({
     if (event.scope === 'main') broadcastWorkbench(`project:${project.id}`, project, 'main').catch(() => {});
     else if (event.scope?.startsWith('session:')) broadcastWorkbench(`project:${project.id}`, project, event.scope).catch(() => {});
   }) || (() => {});
+  let automaticPublicationRunning = null;
+  const publishMergedSessions = async ({ afterCurrent = false } = {}) => {
+    if (!configuredMemory) return;
+    if (automaticPublicationRunning) {
+      await automaticPublicationRunning;
+      if (!afterCurrent) return;
+    }
+    const run = (async () => {
+      try {
+        for (const project of registry.projects) {
+          if (!configuredMemory.projects?.[project.id]) continue;
+          const state = await readMemoryProject(configuredMemory, project.id);
+          const sessions = Object.values(state.sessions || {})
+            .sort((left, right) => String(left.updatedAt || '').localeCompare(String(right.updatedAt || '')));
+          for (const session of sessions) {
+            const status = await memoryPublicationStatus(configuredMemory, project.id, session.sessionId, { refresh: true });
+            if (status.status !== 'ready') continue;
+            await publishSessionMemory(configuredMemory, project.id, {
+              operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,
+              baseVersion: status.baseVersion,
+              sessionId: status.sessionId,
+              sessionVersion: status.sessionVersion,
+              expectedMainSha: status.mainSha,
+            }, { kind: 'automation', sessionId: status.sessionId });
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`[context-guard] automatic Main publication deferred: ${error.message}`);
+      }
+    })();
+    automaticPublicationRunning = run;
+    try { await run; }
+    finally { if (automaticPublicationRunning === run) automaticPublicationRunning = null; }
+  };
   const validateOperationId = input => {
     const operationId = String(input.operationId || '');
     if (!operationId || operationId.length > 160) throw new MapError('INVALID_OPERATION', 'operationId is required');
@@ -862,21 +897,16 @@ export async function startCloudServer({
           return send(res, 200, await publicationState(project, viewId));
         }
         if (action === '/api/publication' && req.method === 'POST') {
-          if (!project || !viewId.startsWith('session:')) throw new MapError('SESSION_REQUIRED', 'Select a Session Map before publishing Main', 409);
-          const input = await requestBody(req);
+          if (!project || !viewId.startsWith('session:')) throw new MapError('SESSION_REQUIRED', 'Automatic publication requires a Session Map', 409);
           const status = await publicationState(project, viewId, { refresh: true });
-          if (status.status === 'waiting') throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409);
-          if (status.status === 'conflict') throw new MapError('VERSION_CONFLICT', 'Reconcile Session against the published main baseline first', 409);
-          if (status.status !== 'ready') throw new MapError(status.reason || 'PUBLICATION_UNAVAILABLE', 'Session is not ready for Main publication', 409);
-          const result = await publishSessionMemory(configuredMemory, project.id, {
-            operationId: input.operationId,
+          if (status.status !== 'ready') throw new MapError(status.reason || 'PUBLICATION_UNAVAILABLE', 'Session is not ready for automatic Main publication', 409);
+          return send(res, 200, await publishSessionMemory(configuredMemory, project.id, {
+            operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,
             baseVersion: status.baseVersion,
             sessionId: status.sessionId,
             sessionVersion: status.sessionVersion,
             expectedMainSha: status.mainSha,
-          }, { kind: 'human', sessionId: 'cloud-workbench' });
-          await broadcastWorkbench(`project:${project.id}`, project, 'main');
-          return send(res, 200, result);
+          }, { kind: 'automation', sessionId: status.sessionId }));
         }
         if (action === '/api/presence' && req.method === 'POST') {
           const input = await requestBody(req), state = await scopedWorkbenchState(scope, project, viewId);
@@ -1088,10 +1118,13 @@ export async function startCloudServer({
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
     for (const res of directoryClients) if (!res.destroyed) res.write(': heartbeat\n\n');
   }, 15_000); heartbeat.unref();
+  const publicationTimer = setInterval(publishMergedSessions, 30_000); publicationTimer.unref();
+  setTimeout(publishMergedSessions, 0).unref?.();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
     clearInterval(heartbeat);
+    clearInterval(publicationTimer);
     stopMemoryEvents();
     for (const res of interfaceStreams) res.end();
     for (const res of directoryClients) res.end();

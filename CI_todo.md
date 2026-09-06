@@ -68,6 +68,8 @@
 
 ## 项目命名工作台
 
+- [ ] 本轮未按用户要求运行测试：验证 Cloud 不再渲染或接受人工发布 Main，合入权威 main 后由服务器自动发布；验证旧的非空 mode-less Session 授权升级为动态 `all`，明确 `explicit` 收窄不受影响；验证已配置 Cloud 时 Hook 只返回 Cloud 前端地址而本地服务仅作后台。
+
 - [ ] 本轮开发待集中验收：Hook 动态全权限与显式撤权一致；Cloud 从本 Session 生命周期记录读取任务名称；页面 Session 切换失败提示、后端重启自动恢复、10秒轻量版本补读。需安装副本与真实 Cloud 页面验收，不以源码存在代替已部署。
 
 - [x] 兼容旧 Cloud 的 Session 同步：事件流无数据/响应头停滞时超时重连；独立心跳补读 Cloud-only 修改；心跳单飞、无变化不写盘、v2 接管停用旧心跳（`tests/workbench-sync.test.mjs` 的 Legacy sync/heartbeat 用例）

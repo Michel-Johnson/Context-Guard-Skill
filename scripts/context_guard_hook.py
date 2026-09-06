@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
+from urllib.parse import quote, urlsplit
 
 from context_guard import acquire_hook_runtime_lock, append_session_event
 from context_guard import add_prompt_signal
@@ -563,6 +564,21 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
         "These commands sync at plan boundaries when Cloud is configured. Use plan-status to recover unfinished work; read references/workbench-interface.md for schemas."
 
     )
+
+
+def frontend_workbench_url(ctx: Path, local_url: str | None, current_session_id: str) -> str | None:
+    """Expose one human UI: Cloud when configured, otherwise the local fallback."""
+    config = read_json(ctx / "private" / "cloud-sync" / "config.json", {})
+    cloud_url = str(config.get("url") or "") if isinstance(config, dict) else ""
+    project_id = str(config.get("projectId") or "") if isinstance(config, dict) else ""
+    try:
+        parsed = urlsplit(cloud_url)
+        if parsed.scheme == "https" and parsed.hostname and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", project_id):
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            return f"{origin}/projects/{quote(project_id)}?session={quote(current_session_id)}"
+    except ValueError:
+        pass
+    return local_url
 
 
 def prompt_text(raw: str) -> str:
@@ -1249,7 +1265,8 @@ def main() -> int:
         runtime["last_session_start"] = payload_time(payload)
         write_hook_runtime(root, current_session_id, runtime)
         hook_log(f"[context-guard] {'initialized' if created else 'ready'} {ctx} ({root_source})")
-        contexts = [memory_notice, language_setup_context(root, ctx), context_text, lifecycle_context(root, url, current_session_id)]
+        contexts = [memory_notice, language_setup_context(root, ctx), context_text,
+                    lifecycle_context(root, frontend_workbench_url(ctx, url, current_session_id), current_session_id)]
         playbook = ctx / "tasks" / "J2.md"
         if playbook.is_file():
             contexts.append(
