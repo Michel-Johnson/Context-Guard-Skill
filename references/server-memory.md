@@ -74,9 +74,11 @@ not treated as success.
 
 Main publication is automatic. The Cloud service periodically refreshes the
 configured authoritative ref and publishes a Session generation only after its
-source commit is present on that ref. Repository policy requires CI to pass before
-merge, so the merged authoritative ref is the publication gate; the browser does
-not expose a manual publish control. The underlying `memory publish --input
+source commit is present on that ref, or after a squash merge leaves every path
+changed by that Session byte-identical on authoritative Main. Any overlapping
+later change fails closed. Repository policy requires CI to pass before merge, so
+the merged authoritative ref is the publication gate; the browser does not expose
+a manual publish control. The underlying `memory publish --input
 <private-request>` recovery command remains constrained and accepts only `operationId`,
 `baseVersion`, `sessionId`, `sessionVersion`, and `expectedMainSha`; it cannot
 submit arbitrary Main content. The server keeps its administrator

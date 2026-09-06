@@ -299,10 +299,12 @@ test('verified Session publication needs no exposed admin token and the authenti
   });
   assert.equal(premature.response.status, 409); assert.equal(premature.body.error.code, 'NOT_MERGED');
 
-  await git(repository, 'merge', '--ff-only', 'feature');
+  await git(repository, 'merge', '--squash', 'feature');
+  await git(repository, 'commit', '-m', 'squash feature');
+  const squashSha = await git(repository, 'rev-parse', 'HEAD');
   const ready = await request(service.url, '/api/workbench/projects/context-guard/api/publication?view=session%3Asession-publish', { headers: browserHeaders });
-  assert.equal(ready.body.status, 'ready'); assert.equal(ready.body.mainSha, featureSha);
-  const publicationInput = { operationId: 'publish-main', baseVersion: null, sessionId: 'session-publish', sessionVersion: seeded.body.snapshot.version, expectedMainSha: featureSha };
+  assert.equal(ready.body.status, 'ready'); assert.equal(ready.body.mainSha, squashSha);
+  const publicationInput = { operationId: 'publish-main', baseVersion: null, sessionId: 'session-publish', sessionVersion: seeded.body.snapshot.version, expectedMainSha: squashSha };
   const published = await request(service.url, '/v1/projects/context-guard/publish', { method: 'POST', headers: projectHeaders, body: JSON.stringify(publicationInput) });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   assert.equal(published.body.snapshot.memory.map.root.title, 'Published Session map');
@@ -311,7 +313,7 @@ test('verified Session publication needs no exposed admin token and the authenti
   assert.deepEqual(replay.body, published.body);
 
   const main = await request(service.url, '/v1/projects/context-guard/main', { headers: projectHeaders });
-  assert.equal(main.body.snapshot.mainSha, featureSha);
+  assert.equal(main.body.snapshot.mainSha, squashSha);
   const closedMapWrite = await request(service.url, '/v1/projects/context-guard/sessions/session-publish/map', {
     method: 'POST', headers: projectHeaders,
     body: JSON.stringify({ operationId: 'closed-map-write', baseVersion: seeded.body.snapshot.version, operations: [{ type: 'update', id: 'T0', fields: { purpose: 'must not change' } }] }),
@@ -373,7 +375,7 @@ test('verified Session publication needs no exposed admin token and the authenti
   assert.equal((await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { headers: projectHeaders })).body.snapshot.version, reopened.body.snapshot.version);
   const republished = await request(service.url, '/v1/projects/context-guard/publish', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'publish-main-second', baseVersion: mainAfterEdit.body.snapshot.version, sessionId: 'session-publish', sessionVersion: reopened.body.snapshot.version, expectedMainSha: featureSha }),
+    body: JSON.stringify({ operationId: 'publish-main-second', baseVersion: mainAfterEdit.body.snapshot.version, sessionId: 'session-publish', sessionVersion: reopened.body.snapshot.version, expectedMainSha: squashSha }),
   });
   assert.equal(republished.response.status, 200, JSON.stringify(republished.body));
   assert.equal(republished.body.closedSession.generation, 2);
