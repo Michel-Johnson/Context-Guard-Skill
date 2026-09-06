@@ -25,6 +25,16 @@ const newToken = () => randomBytes(32).toString('base64url');
 const scrypt = promisify(cryptoScrypt);
 const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})$/;
 const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
+const sessionActivityTtlMs = 2 * 60 * 1000;
+
+export function cloudSessionActivity({ lifecycleEvent = '', workStatus = '', lastSeen = '' } = {}, currentTime = Date.now(), ttlMs = sessionActivityTtlMs) {
+  if (['stop', 'stop-blocked', 'interrupt'].includes(lifecycleEvent) || workStatus === 'completed') return 'stopped';
+  const seen = Date.parse(lastSeen);
+  if (['session-start', 'user-prompt-submit'].includes(lifecycleEvent) || workStatus === 'working') {
+    return Number.isFinite(seen) && currentTime - seen <= ttlMs ? 'active' : 'unknown';
+  }
+  return 'unknown';
+}
 
 export async function createWorkbenchPasswordHash(password) {
   const value = String(password || '');
@@ -539,8 +549,9 @@ export async function startCloudServer({
       }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
       const named = events.filter(event => typeof event.thread_name === 'string' && event.thread_name.trim()).at(-1);
       const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
-      const status = lifecycle ? (['stop', 'stop-blocked', 'interrupt'].includes(lifecycle.event) ? 'stopped' : 'active') : latest?.status === 'working' ? 'active' : latest?.status === 'completed' ? 'stopped' : 'unknown';
-      return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
+      const lastSeen = snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
+      const status = cloudSessionActivity({ lifecycleEvent: lifecycle?.event, workStatus: latest?.status, lastSeen });
+      return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen };
     }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
   const publicationState = async (project, viewId, options = {}) => {
