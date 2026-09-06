@@ -887,7 +887,6 @@ export async function startCloudServer({
         }
         if (action === '/api/access' && req.method === 'GET') {
           if (!project) return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
-          await publishMergedSessions({ afterCurrent: true });
           const sessions = await memorySessions(project), grants = {};
           const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
           for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
@@ -896,6 +895,18 @@ export async function startCloudServer({
         if (action === '/api/publication' && req.method === 'GET') {
           if (!project) return send(res, 200, { status: 'unavailable', reason: 'PROJECT_REQUIRED' });
           return send(res, 200, await publicationState(project, viewId));
+        }
+        if (action === '/api/publication' && req.method === 'POST') {
+          if (!project || !viewId.startsWith('session:')) throw new MapError('SESSION_REQUIRED', 'Automatic publication requires a Session Map', 409);
+          const status = await publicationState(project, viewId, { refresh: true });
+          if (status.status !== 'ready') throw new MapError(status.reason || 'PUBLICATION_UNAVAILABLE', 'Session is not ready for automatic Main publication', 409);
+          return send(res, 200, await publishSessionMemory(configuredMemory, project.id, {
+            operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,
+            baseVersion: status.baseVersion,
+            sessionId: status.sessionId,
+            sessionVersion: status.sessionVersion,
+            expectedMainSha: status.mainSha,
+          }, { kind: 'automation', sessionId: status.sessionId }));
         }
         if (action === '/api/presence' && req.method === 'POST') {
           const input = await requestBody(req), state = await scopedWorkbenchState(scope, project, viewId);
