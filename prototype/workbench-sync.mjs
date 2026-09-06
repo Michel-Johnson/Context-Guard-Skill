@@ -55,14 +55,14 @@ export class WorkbenchSync {
     window.addEventListener('pageshow', event => { if (event.persisted && this.config) { this.disposed = false; this.scheduleHeartbeat(); this.recoverConnection(); } });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
-  endpoint(route) {
+  endpoint(route, viewId = this.viewId) {
     const endpoint = `${this.config?.apiBase || ''}${route}`;
     if (!route.startsWith('/api/')) return endpoint;
-    return `${endpoint}${endpoint.includes('?') ? '&' : '?'}view=${encodeURIComponent(this.viewId || 'main')}`;
+    return `${endpoint}${endpoint.includes('?') ? '&' : '?'}view=${encodeURIComponent(viewId || 'main')}`;
   }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
-  async call(route, body, method = body === undefined ? 'GET' : 'POST') {
-    const response = await fetch(this.endpoint(route), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
+  async call(route, body, method = body === undefined ? 'GET' : 'POST', viewId = this.viewId) {
+    const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
     if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
     let result;
@@ -468,7 +468,8 @@ export class WorkbenchSync {
     }
     if (this.activeSession !== ALL_SESSIONS && !current) {
       if (this.config?.root?.startsWith('cloud:')) {
-        const publication = await this.call('/api/publication').catch(() => null);
+        const publicationView = this.pendingSession ? `session:${this.pendingSession}` : this.viewId;
+        const publication = await this.call('/api/publication', undefined, 'GET', publicationView).catch(() => null);
         if (publication?.status === 'published') {
           this.activeSession = ALL_SESSIONS;
           this.viewId = 'main';
