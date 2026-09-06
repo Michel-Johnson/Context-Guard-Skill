@@ -12,9 +12,11 @@ export function repositorySlug(value) {
 // The trusted host supplies password verification, repository authorization and
 // pre-registered client identities. No body field can select a privileged role.
 export class ProtocolAuth {
-  constructor({ directory, verifyPassword, resolveIdentity, authorizeRepository, now = Date.now, lifetimeMs = 60 * 60 * 1000 }) {
+  constructor({ directory, verifyPassword, resolveIdentity, authorizeRepository, now = Date.now,
+    lifetimeMs = 60 * 60 * 1000, renewWindowMs = Math.min(lifetimeMs / 4, 5 * 60 * 1000), recoveryMs = 7 * 24 * 60 * 60 * 1000 }) {
     this.file = path.join(directory, 'connections.json');
     this.verifyPassword = verifyPassword; this.resolveIdentity = resolveIdentity; this.now = now; this.lifetimeMs = lifetimeMs;
+    this.renewWindowMs = renewWindowMs; this.recoveryMs = recoveryMs;
     this.authorizeRepository = authorizeRepository;
     this.failures = new Map();
   }
@@ -43,7 +45,7 @@ export class ProtocolAuth {
       }
       if (['repositoryId', 'deviceId', 'agentId'].some(k => typeof principal[k] !== 'string' || !principal[k])) fail('FORBIDDEN', 'Invalid registered identity');
       // Only runtime credentials expire; no development memory is pruned.
-      for (const [key, entry] of Object.entries(state.connections)) if (entry.expiresAt <= time) delete state.connections[key];
+      for (const [key, entry] of Object.entries(state.connections)) if (entry.expiresAt + this.recoveryMs <= time) delete state.connections[key];
       state.connections[hash(credential)] = { connectionId, expiresAt, principal: { ...principal, repositorySlug: slug, clientId: input.payload.clientId } };
       await atomicWrite(this.file, encode(state));
     });
@@ -52,15 +54,29 @@ export class ProtocolAuth {
   }
   async authenticate(credential) {
     if (typeof credential !== 'string' || !credential) fail('UNAUTHORIZED', 'Connection credential required');
-    const state = await readJSON(this.file, { connections: {} }), entry = state.connections[hash(credential)];
-    if (!entry || entry.expiresAt <= this.now()) fail('UNAUTHORIZED', 'Connection expired or was revoked');
+    const time = this.now(), credentialHash = hash(credential);
+    const state = await readJSON(this.file, { connections: {} }), entry = state.connections[credentialHash];
+    if (!entry || entry.expiresAt + this.recoveryMs <= time) fail('UNAUTHORIZED', 'Connection expired or was revoked');
+    let principal;
     if (entry.principal.role === 'device') {
       if (await this.authorizeRepository?.(entry.principal.repositorySlug) !== entry.principal.repositoryId) fail('FORBIDDEN', 'Repository access revoked');
-      return entry.principal;
+      principal = entry.principal;
+    } else {
+      const current = await this.resolveIdentity(entry.principal.repositorySlug, entry.principal.clientId);
+      if (!current || current.repositoryId !== entry.principal.repositoryId || current.deviceId !== entry.principal.deviceId || current.agentId !== entry.principal.agentId) fail('FORBIDDEN', 'Client registration was revoked or changed');
+      principal = current;
     }
-    const current = await this.resolveIdentity(entry.principal.repositorySlug, entry.principal.clientId);
-    if (!current || current.repositoryId !== entry.principal.repositoryId || current.deviceId !== entry.principal.deviceId || current.agentId !== entry.principal.agentId) fail('FORBIDDEN', 'Client registration was revoked or changed');
-    return current;
+    if (entry.expiresAt - time <= this.renewWindowMs) {
+      await withFileLock(`${this.file}.lock`, async () => {
+        const latest = await readJSON(this.file, { connections: {} }), current = latest.connections[credentialHash];
+        if (!current || current.expiresAt + this.recoveryMs <= time) fail('UNAUTHORIZED', 'Connection expired or was revoked');
+        if (current.expiresAt - time <= this.renewWindowMs) {
+          current.expiresAt = time + this.lifetimeMs;
+          await atomicWrite(this.file, encode(latest));
+        }
+      });
+    }
+    return principal;
   }
   async close(credential) {
     if (typeof credential !== 'string' || !credential) fail('UNAUTHORIZED', 'Connection credential required');

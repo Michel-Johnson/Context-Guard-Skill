@@ -31,6 +31,7 @@
 - [x] IF-052：项目统一消息泵接管连接时仍先初始化并重新开启已发布的 Session；Main 与本地已有相同变更时不误报冲突（`tests/workbench-sync.test.mjs`）。
 - [x] IF-053：首次登记 Session 时直接携带本地任务名称与平台，不依赖 Hook 后续补写（`tests/workbench-sync.test.mjs`）。
 - [x] IF-054：统一协调器为旧 Session 补齐显示名称时保留原地图、记录、基线和源码提交（`tests/workbench-sync.test.mjs`）。
+- [x] IF-055：活跃或短期过期的本地 Cloud 凭证自动续期且不保存密码；明确拒绝后本地立即退出“已连接”状态（`tests/interface-auth.test.mjs`、`tests/interface-device.test.mjs`）。
 - [x] 现有 Map 协调器在支持能力的 Cloud 上由项目消息泵驱动；旧 Cloud 保留兼容入口。
 - [x] 同一已授权 Session 内跨角色对象共享、任务/Plan/审核/CI 交接、工作台变更、固定快照分页、附件续传与兼容入口已接线。暂时性记忆传输失败保留待同步状态，授权与冲突门禁不放松。
 - [ ] 未确定 Cloud Main 合并白名单与可信归档验证器，实际合并/最终关闭保持拒绝；不把测试注入的验证器当作生产合并实现。Cursor/Claude 提供显式 CLI 拉取入口，尚无自动唤醒适配器。

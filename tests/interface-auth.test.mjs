@@ -12,7 +12,7 @@ test('IF-020: credentials expire, revoke and survive restart without storing pla
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-auth-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let now = 1000, enabled = true;
-  const options = { directory, now: () => now, lifetimeMs: 1000, verifyPassword: async v => v === 'test-only', resolveIdentity: async (slug, clientId) => enabled && slug === 'example/repo' && clientId === 'client' ? { repositoryId: '123', deviceId: 'device', agentId: 'agent' } : null };
+  const options = { directory, now: () => now, lifetimeMs: 1000, recoveryMs: 0, verifyPassword: async v => v === 'test-only', resolveIdentity: async (slug, clientId) => enabled && slug === 'example/repo' && clientId === 'client' ? { repositoryId: '123', deviceId: 'device', agentId: 'agent' } : null };
   const auth = new ProtocolAuth(options);
   const input = { v: 2, id: 'login', type: 'auth.open', payload: { repository: 'git@github.com:example/repo.git', password: 'test-only', clientId: 'client' } };
   const opened = await auth.open(input, 'test');
@@ -24,6 +24,21 @@ test('IF-020: credentials expire, revoke and survive restart without storing pla
   enabled = true; now = 2001; await assert.rejects(restarted.authenticate(opened.credential), { code: 'UNAUTHORIZED' });
   const next = await restarted.open(input, 'test'); await restarted.close(next.credential);
   await assert.rejects(restarted.authenticate(next.credential), { code: 'UNAUTHORIZED' });
+});
+
+test('active and recently expired device credentials renew without storing the password', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-renew-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let now = 1000;
+  const auth = new ProtocolAuth({ directory, now: () => now, lifetimeMs: 1000, renewWindowMs: 250, recoveryMs: 5000,
+    verifyPassword: async value => value === 'test-only', authorizeRepository: async slug => slug === 'example/repo' ? '123' : null,
+    resolveIdentity: async () => null });
+  const input = { v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'device' } };
+  const opened = await auth.open(input, 'test');
+  now = 1900; assert.equal((await auth.authenticate(opened.credential)).repositoryId, '123');
+  now = 3001; assert.equal((await auth.authenticate(opened.credential)).repositoryId, '123');
+  assert.equal((await fs.readFile(auth.file, 'utf8')).includes('test-only'), false);
+  now = 9100; await assert.rejects(auth.authenticate(opened.credential), { code: 'UNAUTHORIZED' });
 });
 
 test('IF-024: Cloud binary upload enforces binding, hash completion and byte ranges', async t => {
