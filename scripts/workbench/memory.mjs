@@ -74,6 +74,15 @@ export function mergeMemory(base, local, remote, at = 'map') {
   }
   throw new MapError('MEMORY_CONFLICT', `Both Session and main changed ${at}; preserve drafts and reconcile explicitly`, 409);
 }
+
+export function reconcileSessionMap(previousSnapshot, localMap, remoteSnapshot) {
+  if (!remoteSnapshot?.memory?.map) return localMap;
+  const remoteMap = remoteSnapshot.memory.map;
+  if (encode(localMap) === encode(remoteMap) || previousSnapshot?.version === remoteSnapshot.version) return localMap;
+  const baseMap = previousSnapshot?.memory?.map;
+  if (!baseMap) throw new MapError('MEMORY_CONFLICT', 'Cloud Session changed without a confirmed common base; preserve both drafts and reconcile explicitly', 409);
+  return mergeMemory(baseMap, localMap, remoteMap);
+}
 export async function rebaseMemory(project, sessionId, { adoptMain = false } = {}) {
   const dir = sessionMemoryDir(project, sessionId);
   const status = await memoryStatus(project, sessionId), main = status.main;
@@ -126,12 +135,36 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
   const dir = sessionMemoryDir(project, sessionId), queue = path.join(dir, 'pending-upload.json');
   return withFileLock(queue + '.lock', async () => {
     const scope = `sessions/${encodeURIComponent(sessionId)}`;
+    const receiptFile = path.join(dir, 'server-receipt.json');
+    const conflictFile = path.join(dir, 'remote-sync/conflict.json');
+    if (await readJSON(conflictFile, null)) throw new MapError('MEMORY_CONFLICT', 'Resolve the preserved Cloud/Session conflict before uploading again', 409);
     // Retry an uncertain operation byte-for-byte before constructing a newer upload.
     const pending = await readJSON(queue, null);
-    if (pending) { await memoryRequest(project, scope, pending); await fs.unlink(queue); }
+    if (pending) {
+      const replayed = await memoryRequest(project, scope, pending);
+      await atomicWrite(receiptFile, encode(replayed));
+      await fs.unlink(queue);
+    }
     const current = await memoryStatus(project, sessionId);
     if (!current.current) throw new MapError('MEMORY_NOT_CONFIGURED', 'Configure private memory before syncing', 503);
-    const map = await readJSON(path.join(dir, 'map.json'));
+    const mapFile = path.join(dir, 'map.json');
+    let map = await readJSON(mapFile);
+    const previous = await readJSON(receiptFile, null);
+    try {
+      map = reconcileSessionMap(previous?.snapshot, map, current.session);
+    } catch (error) {
+      if (error?.code !== 'MEMORY_CONFLICT') throw error;
+      await atomicWrite(conflictFile, encode({
+        v: 1,
+        sessionId,
+        detectedAt: new Date().toISOString(),
+        base: previous?.snapshot || null,
+        local: { map },
+        remote: current.session || null,
+      }));
+      throw error;
+    }
+    if (encode(map) !== encode(await readJSON(mapFile))) await atomicWrite(mapFile, encode(map));
     const ctx = path.join(root, '.codex/context'), records = {};
     for (const folder of ['', 'sessions', 'bugs', 'fixes', 'tasks', 'cards']) {
       for (const entry of await fs.readdir(path.join(ctx, folder), { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
@@ -168,7 +201,7 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
     if (unchanged) return { committed: true, synchronized: true, changed: false, projectId: current.session.projectId || null, snapshot: current.session };
     await atomicWrite(queue, encode(input));
     const result = await memoryRequest(project, scope, input);
-    await atomicWrite(path.join(dir, 'server-receipt.json'), encode(result));
+    await atomicWrite(receiptFile, encode(result));
     await fs.unlink(queue);
     return result;
   });
