@@ -48,6 +48,10 @@ On every prompt, validate the actual Session's binding with `context-guard workb
 
 Linked Git worktrees share one workbench identity and service. The installed global Skill keeps a user-private project registry outside its replaceable install directory, so upgrades retain project names, roots and canonical URLs. Registry entries are historical identity records, not liveness evidence: the live inventory probes backend identity, treats a live-but-unresponsive owner as unknown rather than stopped, includes route-only legacy instances, and deduplicates physical instances across worktrees. Each explicitly bound Session has an isolated map; the **Main workbench · All sessions** view is a read-only published main baseline, never a live feature map. Publishing closes only that Session Map generation: if the same real Session continues later, the background workbench reopens its next generation from the latest Main and preserves older receipts; the Agent does not create ad-hoc sync code. Use an advertised GitHub default branch only when unambiguous; otherwise ask and persist `workbench --bind-main <branch> --remote <remote>` or `--local-main <branch>`. Never guess main/master. For private memory configure the project's server explicitly using the private input-file flow in `references/server-memory.md`.
 
+When Cloud is configured, it is the only human-facing workbench URL. The local
+service remains the Agent/Hook synchronization backend but must not be advertised
+or opened as a second frontend. Use the local page only when Cloud is not configured.
+
 Node atomically saves valid operations and notifies pages after file/Agent changes. Browser cache is only for recovery drafts and UI preferences. Static/GitHack/file views are read-only.
 
 Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite map.json. See `references/workbench-interface.md` for schema, errors, migration and recovery.

@@ -101,6 +101,21 @@ export class Access {
   async init() {
     this.data = await readJSON(this.file, { sessions: {} });
     this.bindings = await readJSON(this.bindingsFile, { sessions: {} });
+    // Older releases represented the default full Session scope by copying the
+    // then-current node IDs. That snapshot silently locked every node created
+    // later. A non-empty mode-less record is therefore the legacy form of the
+    // dynamic default. Explicitly narrowed records written by current releases
+    // carry mode:"explicit" and remain untouched.
+    let migrated = false;
+    for (const record of Object.values(this.data.sessions || {})) {
+      if (!record?.mode && Array.isArray(record?.nodes) && record.nodes.length) {
+        record.mode = 'all';
+        record.nodes = [];
+        record.changedAt = new Date().toISOString();
+        migrated = true;
+      }
+    }
+    if (migrated) await atomicWrite(this.file, encode(this.data));
     return this;
   }
   binding(sessionId) { return this.bindings.sessions[sessionId] || null; }
