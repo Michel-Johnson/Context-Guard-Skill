@@ -272,7 +272,7 @@ test('Node SQLite discovery reads Codex sessions without starting an external pr
   const connection = new sqlite.DatabaseSync(database);
   try {
     connection.exec('CREATE TABLE threads (id TEXT, name TEXT, title TEXT, created_at INTEGER, updated_at INTEGER, rollout_path TEXT, cwd TEXT, thread_source TEXT, archived INTEGER)');
-    connection.prepare('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('native-session', '进程内任务', '', 1, 2, rollout, f.root, 'user', 0);
+    connection.prepare('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('native-session', '进程内任务', '', 1, 2, rollout, path.toNamespacedPath(f.root), 'user', 0);
   } finally { connection.close(); }
   let externalCalls = 0;
   const access = await new Access(f.root, {

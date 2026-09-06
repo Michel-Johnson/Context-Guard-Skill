@@ -230,7 +230,10 @@ export class Access {
     }
     const database = await this.stateDatabase();
     if (!database) return [];
-    const escaped = roots.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
+    // Codex can persist Win32 extended-length paths while Git bindings use
+    // ordinary paths. Both spellings refer to the same explicitly bound root.
+    const aliases = [...new Set(roots.flatMap(root => [root, path.toNamespacedPath(root)]))];
+    const escaped = aliases.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
     const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
     try {
       const rows = await this.loadCodexRows(database, sql);
