@@ -158,9 +158,11 @@ login for five minutes.
 Inside a project, the fixed “Projects” breadcrumb returns to the multi-project
 overview. Select a Session to edit its private Map. After that Session's source
 commit is present in the configured authoritative Main ref and its memory base is
-current, “Publish Main” becomes available. The browser never receives the server
-administrator or project token; it asks the server to perform the same constrained,
-Git-verified publication. The resulting Main Map is durable and read-only.
+current, the server performs constrained, Git-verified publication automatically.
+The browser never receives the server administrator or project token. The resulting
+Main Map is durable; authenticated human edits are written directly to the same
+authoritative server file with optimistic version checks, while Agents remain limited
+to their bound Session Maps.
 
 For emergency administration, the existing one-time token exchange remains:
 

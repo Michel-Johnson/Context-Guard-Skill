@@ -232,7 +232,7 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
 });
 
-test('verified Session publication needs no exposed admin token and becomes the read-only Main workbench', async t => {
+test('verified Session publication needs no exposed admin token and the authenticated Main workbench persists human edits', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-main-publication-'));
   const repository = path.join(dataDir, 'repository');
   await fs.mkdir(repository);
@@ -310,17 +310,21 @@ test('verified Session publication needs no exposed admin token and becomes the 
   assert.equal(mainWorkbench.body.source.status, 'main');
   const mainEdit = await request(service.url, '/api/workbench/projects/context-guard/api/commit?view=main', {
     method: 'POST', headers: browserHeaders,
-    body: JSON.stringify({ operationId: 'main-edit', baseVersion: mainWorkbench.body.version, operations: [{ type: 'update', id: 'T0', fields: { title: 'must fail' } }] }),
+    body: JSON.stringify({ operationId: 'main-edit', baseVersion: mainWorkbench.body.version, operations: [{ type: 'update', id: 'T0', fields: { title: 'Human-edited Main map' } }] }),
   });
-  assert.equal(mainEdit.response.status, 403); assert.equal(mainEdit.body.error.code, 'READ_ONLY_MAIN');
+  assert.equal(mainEdit.response.status, 200, JSON.stringify(mainEdit.body));
+  assert.equal(mainEdit.body.persistedAt, new Date(mainEdit.body.persistedAt).toISOString());
+  const mainAfterEdit = await request(service.url, '/v1/projects/context-guard/main', { headers: projectHeaders });
+  assert.equal(mainAfterEdit.body.snapshot.memory.map.root.title, 'Human-edited Main map');
+  assert.equal(mainAfterEdit.body.snapshot.version, mainEdit.body.version);
 
   const second = await request(service.url, '/v1/projects/context-guard/sessions/session-advanced', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'advanced-seed', baseVersion: null, baseMainVersion: main.body.snapshot.version, sourceCommit: featureSha, memory: { map, records: {} } }),
+    body: JSON.stringify({ operationId: 'advanced-seed', baseVersion: null, baseMainVersion: mainAfterEdit.body.snapshot.version, sourceCommit: featureSha, memory: { map, records: {} } }),
   });
   const advanced = await request(service.url, '/v1/projects/context-guard/publish', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'advanced-publish', baseVersion: main.body.snapshot.version, sessionId: 'session-advanced', sessionVersion: second.body.snapshot.version, expectedMainSha: 'f'.repeat(40) }),
+    body: JSON.stringify({ operationId: 'advanced-publish', baseVersion: mainAfterEdit.body.snapshot.version, sessionId: 'session-advanced', sessionVersion: second.body.snapshot.version, expectedMainSha: 'f'.repeat(40) }),
   });
   assert.equal(advanced.response.status, 409); assert.equal(advanced.body.error.code, 'MAIN_ADVANCED');
   const preserved = await request(service.url, '/v1/projects/context-guard/sessions/session-advanced', { headers: projectHeaders });

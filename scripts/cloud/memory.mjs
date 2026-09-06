@@ -220,6 +220,46 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   return committed.result;
 }
 
+export async function commitMainMemoryMap(configuration, projectId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }) {
+  validateOptions(configuration);
+  if (!configuration.projects?.[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
+  if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
+  const file = memoryFile(configuration.dataDir, projectId);
+  const committed = await withFileLock(file + '.lock', async () => {
+    const state = await readMemoryProject(configuration, projectId);
+    const receiptKey = hash(`main-workbench:${input.operationId}`);
+    const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
+    if (state.receipts[receiptKey]) {
+      if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
+      return { result: state.receipts[receiptKey].result, event: null };
+    }
+    const current = state.main;
+    if (!current) throw new MapError('MAIN_UNAVAILABLE', 'Published Main memory is not available', 409);
+    if ((input.baseVersion ?? null) !== current.version) throw new MapError('VERSION_CONFLICT', 'Main Map changed; reload before committing', 409, { currentVersion: current.version });
+    const applied = applyOperations(current.memory.map, input.operations, actor);
+    validate(applied.doc);
+    const updatedAt = new Date().toISOString();
+    const snapshot = {
+      ...current,
+      version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })),
+      memory: { ...current.memory, map: applied.doc },
+      updatedAt,
+    };
+    validateMemory(snapshot.memory);
+    state.main = snapshot;
+    state.revision++;
+    appendHistory(state, { scope: 'main', action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
+    const result = { committed: true, projectId, operationId: input.operationId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
+    state.receipts[receiptKey] = { fingerprint, result };
+    const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
+    result.cursor = event.cursor;
+    await memoryReadViews.write(file, state);
+    return { result, event };
+  });
+  if (committed.event) memoryHub(configuration).emit('event', committed.event);
+  return committed.result;
+}
+
 export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }, policy = null) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
   const file = memoryFile(configuration.dataDir, projectId);
