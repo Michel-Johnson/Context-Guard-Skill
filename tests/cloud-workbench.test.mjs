@@ -348,7 +348,7 @@ test('verified Session publication needs no exposed admin token and the authenti
   assert.equal((await request(service.url, '/v1/projects/context-guard/sessions/session-publish', { headers: projectHeaders })).body.snapshot.version, reopened.body.snapshot.version);
   const republished = await request(service.url, '/v1/projects/context-guard/publish', {
     method: 'POST', headers: projectHeaders,
-    body: JSON.stringify({ operationId: 'publish-main-second', baseVersion: main.body.snapshot.version, sessionId: 'session-publish', sessionVersion: reopened.body.snapshot.version, expectedMainSha: featureSha }),
+    body: JSON.stringify({ operationId: 'publish-main-second', baseVersion: mainAfterEdit.body.snapshot.version, sessionId: 'session-publish', sessionVersion: reopened.body.snapshot.version, expectedMainSha: featureSha }),
   });
   assert.equal(republished.response.status, 200, JSON.stringify(republished.body));
   assert.equal(republished.body.closedSession.generation, 2);
