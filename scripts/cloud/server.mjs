@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
+import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { WorkbenchSnapshots } from '../workbench/protocol-snapshots.mjs';
@@ -26,6 +26,18 @@ const scrypt = promisify(cryptoScrypt);
 const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})$/;
 const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 const sessionActivityTtlMs = 2 * 60 * 1000;
+const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+
+function cloudWorkItemBrief(node, item, kind) {
+  const label = kind === 'bug' ? 'Bug' : 'TODO';
+  return [
+    `Context Guard Cloud 向你分配了一个 ${label}。`,
+    `${label}: ${compactText(item.id, 128)} · ${compactText(item.title)}`,
+    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
+    compactText(item.desc || item.description) ? `描述: ${compactText(item.desc || item.description)}` : '',
+    kind === 'bug' && compactText(item.record, 500) ? `记录: ${compactText(item.record, 500)}` : '',
+  ].filter(Boolean).join('\n');
+}
 
 export function cloudSessionActivity({ lifecycleEvent = '', workStatus = '', lastSeen = '' } = {}, currentTime = Date.now(), ttlMs = sessionActivityTtlMs) {
   if (['stop', 'stop-blocked', 'interrupt'].includes(lifecycleEvent) || workStatus === 'completed') return 'stopped';
@@ -296,6 +308,22 @@ export async function startCloudServer({
       store: new ProtocolStore(directory), blobs: new ProtocolBlobs(path.join(directory, 'blobs')), snapshots: new WorkbenchSnapshots(path.join(directory, 'snapshots')),
     });
     return interfaceStores.get(principal.repositoryId);
+  };
+  const interfaceProject = project => {
+    const repository = interfaceConfig?.repositories?.find(item => item.projectId === project?.id && /^\d+$/.test(item.repositoryId));
+    if (!repository) protocolFail('UNAVAILABLE', 'Cloud task delivery is not configured for this project');
+    const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
+    return { repository, principal, ...interfaceStorage(principal) };
+  };
+  const verifyInterfaceRouting = async (identity, message) => {
+    const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === identity.repositoryId);
+    if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) return false;
+    const memory = await readMemoryProject(configuredMemory, repository.projectId);
+    if (!memory.main?.memory?.map?.root || memory.main.version !== message.payload.mainVersion) return false;
+    const doc = memory.main.memory.map;
+    const binding = await interfaceStorage(identity).store.registeredBinding(identity, message.session.id);
+    const readable = filterNodeAccess(doc, [...entries(doc.root).keys()], binding.agentId, 'read');
+    return message.payload.nodeIds.every(id => readable.includes(id));
   };
   const interfaceAuth = interfaceConfig ? new ProtocolAuth({
     directory: path.join(dataDir, 'interface-v2'),
@@ -830,18 +858,7 @@ export async function startCloudServer({
               } });
             },
             verifyBinding: (identity, payload) => identity.role === 'device' || identity.bindings?.[payload.sessionId] === payload.worktreeId,
-            workflow: {
-              verifyRouting: async (identity, message) => {
-                const repository = interfaceConfig.repositories?.find(item => item.repositoryId === identity.repositoryId);
-                if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) return false;
-                const memory = await readMemoryProject(configuredMemory, repository.projectId);
-                if (!memory.main?.memory?.map?.root || memory.main.version !== message.payload.mainVersion) return false;
-                const doc = memory.main.memory.map;
-                const binding = await store.registeredBinding(identity, message.session.id);
-                const readable = filterNodeAccess(doc, [...entries(doc.root).keys()], binding.agentId, 'read');
-                return message.payload.nodeIds.every(id => readable.includes(id));
-              },
-            },
+            workflow: { verifyRouting: verifyInterfaceRouting },
           });
           if (input.type === 'sync.heartbeat') {
             const heads = await interfaceMapHeads(principal);
@@ -884,7 +901,7 @@ export async function startCloudServer({
         const viewId = String(url.searchParams.get('view') || 'main');
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig } }); }
         requireWorkbench(req, url);
         if (action === '/api/state' && req.method === 'GET') {
           const state = await scopedWorkbenchState(scope, project, viewId);
@@ -902,6 +919,62 @@ export async function startCloudServer({
           const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
           for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
           return send(res, 200, { sessions, grants, currentSessionId: null, project: { id: project.id, kind: 'git', main: { status: 'ready' } } });
+        }
+        if (action === '/api/access-plan' && req.method === 'POST') {
+          if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before assigning work', 409);
+          const input = await requestBody(req), sessionId = compactText(input.sessionId, 128), nodeId = compactText(input.nodeId, 128);
+          const { principal, store } = interfaceProject(project);
+          const binding = await store.registeredBinding(principal, sessionId);
+          if (!binding) throw new MapError('SESSION_OFFLINE', 'This Session has not connected its local backend', 409);
+          const main = await mainMemorySnapshot(project);
+          if (!main?.document?.root) throw new MapError('MAIN_REQUIRED', 'Published Main memory is unavailable', 409);
+          const nodes = assignmentScope(main.document, nodeId);
+          const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
+          return send(res, 200, { sessionId, nodeId, nodes, missing: nodes.filter(id => !readable.includes(id)) });
+        }
+        if (action === '/api/access' && req.method === 'POST') {
+          throw new MapError('ACCESS_EDIT_REQUIRED', 'Cloud permission changes must be made explicitly on the node; the Session is not auto-authorized', 409);
+        }
+        if (action === '/api/session-message' && req.method === 'POST') {
+          if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before assigning work', 409);
+          const input = await requestBody(req);
+          const operationId = compactText(input.operationId, 128), sessionId = compactText(input.sessionId, 128), nodeId = compactText(input.nodeId, 128);
+          const bugId = compactText(input.bugId, 128), todoId = compactText(input.todoId, 128);
+          if (!operationId || !sessionId || !nodeId || Boolean(bugId) === Boolean(todoId)) throw new MapError('INVALID_ARGUMENT', 'operationId, Session, node and exactly one work item are required', 400);
+          const { principal, store } = interfaceProject(project);
+          const binding = await store.registeredBinding(principal, sessionId);
+          if (!binding) throw new MapError('SESSION_OFFLINE', 'This Session has not connected its local backend', 409);
+          const session = { id: sessionId, generation: binding.generation };
+          const result = await store.submitApprovedTask(principal, { operationId, session, nodeId, bugId, todoId }, async () => {
+            const main = await mainMemorySnapshot(project);
+            if (!main?.document?.root) protocolFail('NOT_FOUND', 'Published Main memory is unavailable');
+            const node = entries(main.document.root).get(nodeId)?.node;
+            const item = bugId ? node?.bugs?.find(value => value?.id === bugId) : node?.todos?.find(value => value?.id === todoId);
+            if (!node || !item) protocolFail('NOT_FOUND', 'Work item or owner node is missing');
+            if ((bugId && ['resolved', 'dormant', 'wontfix'].includes(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
+            const nodeIds = assignmentScope(main.document, nodeId);
+            const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
+            if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');
+            return {
+              taskId: `task-${digest(`${project.id}\0${operationId}`).slice(0, 40)}`,
+              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version,
+            };
+          }, { verifyRouting: verifyInterfaceRouting });
+          return send(res, 200, result);
+        }
+        if (action === '/api/task-status' && req.method === 'POST') {
+          if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before reading tasks', 409);
+          const input = await requestBody(req);
+          if (!Array.isArray(input.tasks) || input.tasks.length > 100) throw new MapError('INVALID_ARGUMENT', 'tasks must be an array of at most 100 items', 400);
+          const { principal, store } = interfaceProject(project), tasks = [];
+          for (const item of input.tasks) {
+            const sessionId = compactText(item?.sessionId, 128), taskId = compactText(item?.taskId, 128);
+            const binding = sessionId && await store.registeredBinding(principal, sessionId);
+            if (!binding || !taskId) continue;
+            try { tasks.push(await store.taskStatus(principal, { id: sessionId, generation: binding.generation }, taskId)); }
+            catch (error) { if (error.code !== 'NOT_FOUND') throw error; }
+          }
+          return send(res, 200, { tasks });
         }
         if (action === '/api/publication' && req.method === 'GET') {
           if (!project) return send(res, 200, { status: 'unavailable', reason: 'PROJECT_REQUIRED' });
@@ -1112,7 +1185,7 @@ export async function startCloudServer({
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';
-        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}` }).replace(/</g, '\\u003c');
+        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, durableDelivery: !!projectId && !!interfaceConfig } }).replace(/</g, '\\u003c');
         const marker = `<script>window.__CG_SERVER=${config};</script>`;
         const html = (await fs.readFile(htmlPath, 'utf8')).replace('<!-- CG_SERVER_BOOT -->', marker);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });

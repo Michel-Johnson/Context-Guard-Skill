@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
-import { startCloudServer } from '../scripts/cloud/server.mjs';
+import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { sessionMemoryDir } from '../scripts/workbench/memory.mjs';
@@ -19,13 +19,13 @@ const sessionId = 'browser-session-sync';
 const memoryConfig = {
   dataDir: path.join(sandbox, 'memory'),
   adminToken: 'memory-admin',
-  projects: { 'context-guard': { token: 'project-memory-token' } },
+  projects: { 'context-guard': { token: 'project-memory-token', root, ref: 'refs/heads/main' } },
 };
 const document = {
   v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [],
   root: {
     id: 'T0', title: 'Session Map', purpose: '双向同步测试', kind: 'module', state: 'dirty', proposal: 'accepted',
-    memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [],
+    memories: [], ideas: [], todos: [{ id: 'TD1', title: '浏览器挂载任务', desc: '从 Cloud 触发本地 Codex', status: 'pending', sessions: [] }], bugs: [], dormant: [], files: [], owns: [], children: [],
   },
 };
 const headers = token => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
@@ -45,19 +45,38 @@ try {
   await fs.writeFile(path.join(root, 'README.md'), '# sync fixture\n');
   execFileSync('git', ['add', 'README.md'], { cwd: root, windowsHide: true });
   execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root, stdio: 'ignore', windowsHide: true });
+  execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:example/repo.git'], { cwd: root, windowsHide: true });
+  const fixtureSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', fixtureSha], { cwd: root, windowsHide: true });
+  execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'], { cwd: root, windowsHide: true });
   await fs.writeFile(path.join(ctx, 'map.json'), encode(document));
   await fs.writeFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date().toISOString(), event: 'session-start', platform: 'codex', session_id: sessionId, thread_name: 'browser-sync' })}\n`);
 
-  cloud = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir: path.join(sandbox, 'cloud'), adminToken: 'cloud-admin', memoryConfig });
+  cloud = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir: path.join(sandbox, 'cloud'), adminToken: 'cloud-admin', browserToken: 'cloud-admin',
+    browserPasswordHash: await createWorkbenchPasswordHash('test-only'), memoryConfig,
+    protocolConfig: { repositories: [{ slug: 'example/repo', repositoryId: '123', projectId: 'context-guard' }] } });
   const project = await resolveProject(root);
   await atomicWrite(path.join(project.sharedDir, 'memory-client.json'), encode({ url: cloud.url, projectId: 'context-guard', token: 'project-memory-token' }));
   const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  const baseline = await request(`${cloud.url}/v1/projects/context-guard/sessions/browser-baseline`, {
+    method: 'POST', headers: headers('project-memory-token'),
+    body: JSON.stringify({ operationId: 'browser-sync-baseline', baseVersion: null, baseMainVersion: null, sourceCommit, memory: { map: document, records: {} } }),
+  });
+  const published = await request(`${cloud.url}/v1/projects/context-guard/publish`, {
+    method: 'POST', headers: headers('project-memory-token'),
+    body: JSON.stringify({ operationId: 'browser-sync-main', baseVersion: null, sessionId: 'browser-baseline', sessionVersion: baseline.snapshot.version, expectedMainSha: sourceCommit }),
+  });
   await request(`${cloud.url}/v1/projects/context-guard/sessions/${sessionId}`, {
     method: 'POST', headers: headers('project-memory-token'),
-    body: JSON.stringify({ operationId: 'browser-sync-seed', baseVersion: null, baseMainVersion: null, sourceCommit, memory: { map: document, records: {} } }),
+    body: JSON.stringify({ operationId: 'browser-sync-seed', baseVersion: null, baseMainVersion: published.snapshot.version, sourceCommit, memory: { map: document, records: {} } }),
   });
 
-  local = await startServer({ root, port: 0 });
+  const delivered = [];
+  local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
+  await request(new URL('/api/v2/messages', local.state.url), {
+    method: 'POST', headers: headers(local.humanToken),
+    body: JSON.stringify({ v: 2, id: 'browser-device-login', type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password: 'test-only' } }),
+  });
   await request(new URL('/api/session', local.state.url), {
     method: 'POST', headers: headers(local.state.adminToken),
     body: JSON.stringify({ sessionId, worktreeRoot: root }),
@@ -71,6 +90,14 @@ try {
   await localPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
   await localPage.waitForSelector('#cloud-sync-status.synced:not([hidden])');
   await cloudPage.goto(`${cloud.url}/auth?token=cloud-admin&next=${encodeURIComponent('/projects/context-guard')}`);
+  await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+  await cloudPage.locator('.node[data-id="T0"]').click();
+  await cloudPage.locator('button.todo-check[data-todo="TD1"]').click();
+  const assignmentDialog = cloudPage.locator('dialog[open]');
+  await assignmentDialog.locator('select[name="session"]').selectOption(sessionId);
+  await assignmentDialog.locator('[data-submit]').click();
+  await cloudPage.waitForFunction(() => document.querySelector('button.todo-check[data-todo="TD1"]')?.title?.includes('Codex 已收到'), null, { timeout: 25000 });
+  assert.equal(delivered.length, 1); assert.equal(delivered[0].sessionId, sessionId);
   await cloudPage.locator('#session-chip').click();
   await cloudPage.locator(`#session-menu [data-session="${sessionId}"]`).click();
   await cloudPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
@@ -108,7 +135,7 @@ try {
   await fs.mkdir(output, { recursive: true });
   await localPage.screenshot({ path: path.join(output, 'local.png'), fullPage: true });
   await cloudPage.screenshot({ path: path.join(output, 'cloud.png'), fullPage: true });
-  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps'] }));
+  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps'] }));
   passed = true;
 } finally {
   if (!passed) {

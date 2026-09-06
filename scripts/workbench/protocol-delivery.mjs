@@ -36,17 +36,17 @@ export class ProtocolDelivery {
       const previous = await readJSON(file, null);
       if (previous && previous.fingerprint !== fingerprint) fail('ID_REUSED', 'Delivery ID differs from the saved intent');
       if (previous?.state === 'received') return previous.result;
-      if (previous) fail('UNAVAILABLE', 'Host acceptance is uncertain; do not dispatch again', { deliveryId: input.id, deliveryState: 'uncertain' });
-      await atomicWrite(file, encode({ fingerprint, state: 'dispatching', input }));
+      if (previous?.state === 'dispatching' || previous?.state === 'uncertain') fail('UNAVAILABLE', 'Host acceptance is uncertain; do not dispatch again', { deliveryId: input.id, deliveryState: 'uncertain' });
+      await atomicWrite(file, encode({ fingerprint, state: 'dispatching', attempts: (previous?.attempts || 0) + 1, input }));
       try {
         await adapter(input);
         const result = { deliveryId: input.id, state: 'received', sessionId: input.sessionId };
         await atomicWrite(file, encode({ fingerprint, state: 'received', input, result }));
         return result;
-      } catch {
-        // Even a failed response may follow successful acceptance. Preserve the
-        // intent without saving potentially sensitive adapter stdout/stderr.
-        fail('UNAVAILABLE', 'Host acceptance is uncertain; do not dispatch again', { deliveryId: input.id, deliveryState: 'uncertain' });
+      } catch (error) {
+        const uncertain = error?.deliveryUncertain === true || error?.killed === true || error?.code === 'ETIMEDOUT';
+        await atomicWrite(file, encode({ fingerprint, state: uncertain ? 'uncertain' : 'failed', attempts: (previous?.attempts || 0) + 1, input, errorCode: String(error?.code || 'DELIVERY_FAILED').slice(0, 128) }));
+        fail('UNAVAILABLE', uncertain ? 'Host acceptance is uncertain; do not dispatch again' : 'Host rejected delivery; it will be retried', { deliveryId: input.id, deliveryState: uncertain ? 'uncertain' : 'failed' });
       }
     });
   }

@@ -4,7 +4,7 @@
 
 ### 1.0 实现进度
 
-已实现消息校验、设备鉴权、Session 绑定、持久队列、对象版本、任务审核/CI 状态机和分块附件。已授权的本地后端启动项目级事件连接、10 秒心跳补读和上行重试；Cloud 通知先写入本地收件箱，Agent 从本地读取，各消费者独立确认。此确认不代表模型执行或任务完成。附件登记与二进制内容走同一 Cloud 连接，凭证不交给 Agent。现有按钮增加持久交付编号和未知结果保护。
+已实现消息校验、设备鉴权、Session 绑定、持久队列、对象版本、任务审核/CI 状态机和分块附件。已授权的本地后端启动项目级事件连接、10 秒心跳补读和上行重试；Cloud 通知先写入本地收件箱，再由本地宿主交付 Agent，各消费者独立确认。此确认不代表模型执行或任务完成。附件登记与二进制内容走同一 Cloud 连接，凭证不交给 Agent。Cloud 工作台的任务按钮使用稳定 operationId，执行方忙时留在 Cloud 队列，任务关闭后按进入顺序激活下一项。
 
 Map 复用现有事务和协调逻辑，v2 提供读写、固定分页、恢复快照、消息/关系/权限及附件引用校验；支持的 Cloud 通过项目共用事件流与心跳驱动 Map 同步。Codex 原生队列接收任务及审核通知；其他宿主从同一持久收件箱读取，尚未提供自动唤醒适配。中断 Hook 自动保存并重试上报。源码准备允许记忆传输暂时待同步，但授权、冲突、归档和 CI 门禁不放宽。真实业务 Cloud Main 合并白名单尚未确定，可信合并/收口回执不伪造；相关入口继续失败关闭。最终 GitHub CI、部署与安装后验收仍待完成，不能把隔离测试等同于已上线；逐项证据见 `CI_todo.md`。
 
@@ -44,6 +44,8 @@ Cloud仅HTTPS。auth.open按Git remote自动解析GitHub仓库数字ID，不让�
 
 每个项目一个本地后台，Session分队列；10秒心跳保证Cloud到本地补漏，本地变化立即上报。事件流 /api/v2/events 发送sync.event，payload={latestSeq:integer}，公共信封标明Session；只作提醒。断流仍靠心跳读取；sync.read内每条message也包含完整信封。按消息id去重，sync.ack只确认已有持久处理结果的连续序号，不能因收到通知就推进。重连不覆盖未确认本地编辑。
 
+sync.ack 的每项可附 `deliveryState=stored/received/uncertain`：stored 只表示本地已落盘，received 表示宿主明确接收，uncertain 表示可能已接收、禁止自动重复触发。确定未接收时本地不确认该序号，由下一次心跳使用同一交付编号重试；它不会阻塞其他 Session。
+
 无云端模式复用同一任务、审核、对象和工作台格式，由本地后端承担存储与排队；不连接Cloud。不存在主Agent时plan留待审核，不能默认通过或偷偷启动模型。具体采用何种本地主Agent仍由后续产品决定。
 
 ## 工作台变更字段
@@ -82,9 +84,22 @@ Cloud网页与本地网页使用相同workbench.read/patch格式；Cloud人类�
 
 ## 任务控制与引用
 
+### Cloud 工作台任务入口
+
+Cloud 页面使用与本地页面相同的简短入口，不让浏览器伪造审核回执或协议消息：
+
+```json
+POST /api/session-message
+{"operationId":"dispatch-1","sessionId":"session-1","nodeId":"N1","todoId":"TD1"}
+```
+
+`bugId` 与 `todoId` 二选一。服务端从已发布 Main 读取工作项、节点范围和 Main 版本，核验目标 Session 当前代次及权限，并在一次事务中保存需求、人类确认记录和任务。响应为 `{"deliveryId":"dispatch-1","taskId":"task-...","sessionId":"session-1","state":"cloud_queued"}`；执行方忙时 state 为 queued。重复 operationId/相同正文返回原结果，不同正文返回 ID_REUSED。
+
+页面通过 `POST /api/task-status`，正文 `{"tasks":[{"taskId":"task-...","sessionId":"session-1"}]}` 查询展示状态。状态只取 queued、cloud_queued、local_received、codex_received、uncertain、waiting_review、executing 及任务状态机的后续阶段；不能把排队或接收显示为执行完成。`POST /api/access-plan` 只返回分配范围和缺失权限；Session 默认拥有全部节点权限，只有人明确写入节点 access 规则后才缩小，任务入口不得偷偷恢复权限。
+
 ### 路由节点与查询 Main
 
-task.assign增加nodeIds:string[]（必填、非空、去重、最多100个）和mainVersion:string（必填）。单节点也用数组，不另设nodeId。主Agent基于此Main版本路由；Cloud校验节点存在且执行方有读取权限，任务、需求版本、节点与Main版本逐跳原样交付。没有已发布Main或节点不存在则拒绝，不猜测映射。路由不授予额外权限，也不覆盖Session工作稿。
+task.assign增加nodeIds:string[]（必填、非空、去重、最多100个）和mainVersion:string（必填）。单节点也用数组，不另设nodeId。主Agent基于此Main版本路由；Cloud校验节点存在且执行方有读取权限，任务、需求版本、节点与Main版本逐跳原样交付。没有已发布Main或节点不存在则拒绝，不猜测映射。路由不授予额外权限，也不覆盖Session工作稿。同一 Session 已有 busy 任务时，新任务进入 Cloud 队列，不向本地提前触发；前一任务完成必要合并并关闭后才激活下一项。
 
 执行Agent → 本地后端 → Cloud复用workbench.read；主Agent也可直接向Cloud调用。payload字段：scope:main/session（必填）、nodeIds?:string[]、version?:string、cursor:string、limit:integer、recovery?:boolean。scope=main读取已发布Main，公共信封session仅标调用方。旧v2示例没写scope的原意是session，新请求必须明确。
 

@@ -177,9 +177,15 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
           const prompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
           const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }) });
-          await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: session.platform, sessionId: session.id, root: session.worktreeRoot || root, message: prompt });
+          try {
+            await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: session.platform, sessionId: session.id, root: session.worktreeRoot || root, message: prompt });
+            return { ...result, deliveryState: 'received' };
+          } catch (error) {
+            if (error?.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'uncertain', reason: 'Codex acceptance could not be confirmed' };
+            throw error;
+          }
         }
-        return result;
+        return { ...result, deliveryState: 'stored' };
       },
       onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
       onError: (error, source) => {

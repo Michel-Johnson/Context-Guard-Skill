@@ -23,6 +23,12 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   const assignment = { taskId: 'task', briefRef: brief.ref, briefVersion: brief.version, sessionId: 's', nodeIds: ['node'], mainVersion: 'main-1' };
   await assert.rejects(send(coordinator, 'task.assign', assignment), { code: 'FORBIDDEN' });
   await send(coordinator, 'task.assign', assignment, { workflow: { verifyRouting: (_p, m) => m.payload.mainVersion === 'main-1' } });
+  const secondBrief = await send(coordinator, 'brief.submit', { taskId: 'task-2', text: 'Queued follow-up' });
+  await send(coordinator, 'review.request', { taskId: 'task-2', kind: 'brief', ref: secondBrief.ref, version: secondBrief.version });
+  await send(human, 'review.result', { kind: 'brief', ref: secondBrief.ref, version: secondBrief.version, decision: 'approved', reason: 'Approved follow-up' });
+  const queued = await send(coordinator, 'task.assign', { taskId: 'task-2', briefRef: secondBrief.ref, briefVersion: secondBrief.version, sessionId: 's', nodeIds: ['node'], mainVersion: 'main-1' }, { workflow: { verifyRouting: () => true } });
+  assert.equal(queued.stage, 'queued');
+  assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'queued');
   await assert.rejects(send(executor, 'executor.state', { agentId: 'executor', state: 'idle' }), { code: 'CONFLICT' });
   const plan = await send(executor, 'object.put', { kind: 'plan', ref: 'plan', baseVersion: '', content: { steps: ['Inspect', 'Implement', 'Test'] } });
   await send(executor, 'task.report', { taskId: 'task', stage: 'planReady', data: { planRef: plan.ref, planVersion: plan.version, sourceSha } });
@@ -51,6 +57,8 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   const controlId = `request-${counter}`;
   const closed = { taskId: 'task', stage: 'closed', data: { controlId, closeReceiptId: 'verified-close' } };
   await assert.rejects(send(executor, 'task.report', closed), { code: 'FORBIDDEN' });
-  await send(executor, 'task.report', closed, { workflow: { verifyClose: (_p, _task, data) => data.closeReceiptId === 'verified-close' } });
-  assert.equal((await send(executor, 'executor.state', { agentId: 'executor', state: 'idle' })).state, 'idle');
+  const closure = await send(executor, 'task.report', closed, { workflow: { verifyClose: (_p, _task, data) => data.closeReceiptId === 'verified-close' } });
+  assert.equal(closure.activatedTaskId, 'task-2');
+  assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'cloud_queued');
+  assert.equal((await send(executor, 'executor.state', { agentId: 'executor', state: 'busy', taskId: 'task-2' })).taskId, 'task-2');
 });
