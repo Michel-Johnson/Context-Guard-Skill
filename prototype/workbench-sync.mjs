@@ -52,7 +52,7 @@ export class WorkbenchSync {
       if (!this.config || this.dirty()) return;
       fetch(this.endpoint('/api/presence'), { method: 'POST', headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ clientId: this.id, version: this.version, dirty: false, closing: true }), keepalive: true }).catch(() => {});
     });
-    window.addEventListener('pageshow', event => { if (event.persisted && this.config) { this.disposed = false; this.recoverConnection(); } });
+    window.addEventListener('pageshow', event => { if (event.persisted && this.config) { this.disposed = false; this.scheduleHeartbeat(); this.recoverConnection(); } });
     this.setStatus(this.config ? 'loading' : 'readonly');
   }
   endpoint(route) {
@@ -460,6 +460,7 @@ export class WorkbenchSync {
     }
     if (current && this.sessionUnavailable) {
       this.sessionUnavailable = false;
+      this.setStatus('offline', 'Session 已恢复，正在核对未保存内容');
       this.connect();
     }
     const unavailableMeta = this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession
