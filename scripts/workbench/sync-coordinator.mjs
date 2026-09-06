@@ -133,6 +133,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     const base = await this.knownBase();
     let remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
     if (!remote) remote = await this.createSessionGeneration();
+    else remote = await this.ensureSessionDisplay(remote);
     if (!remote || this.status.conflict) return;
     validate(remote.memory.map);
     if (this.status.status === 'synced' && !this.status.pending && remote.version === this.status.serverVersion && equalDocument(base, remote.memory.map) && equalDocument(this.store.doc, base)) return;
@@ -152,6 +153,23 @@ export class MemorySyncCoordinator extends EventEmitter {
     if (this.status.conflict) return;
     await this.persist({ status: 'syncing', serverVersion: remote.version, error: null, conflict: null });
     await this.queueLocal();
+  }
+
+  async currentDisplay() {
+    const display = await this.display?.();
+    return display?.name ? { name: String(display.name).slice(0, 200), platform: String(display.platform || 'unknown').slice(0, 30) } : null;
+  }
+
+  async ensureSessionDisplay(remote) {
+    const display = await this.currentDisplay();
+    if (!display || same(remote.memory?.display, display)) return remote;
+    return (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`, {
+      operationId: `session-display:${this.sessionId}:${hash(encode(display))}`,
+      baseVersion: remote.version,
+      baseMainVersion: remote.baseMainVersion || null,
+      sourceCommit: remote.sourceCommit || this.project.head,
+      memory: { ...remote.memory, display },
+    })).snapshot;
   }
 
   async createSessionGeneration() {
@@ -180,13 +198,13 @@ export class MemorySyncCoordinator extends EventEmitter {
         if (mainOnly.length) await this.applyRemoteDocument(applyOperations(this.store.doc, mainOnly, { kind: 'human', sessionId: 'cloud-sync' }).doc, `main-rebase:${main.version}`);
       }
     }
-    const display = await this.display?.();
+    const display = await this.currentDisplay();
     const input = {
       operationId: `session-init:${this.sessionId}:${randomUUID()}`,
       baseVersion: null,
       baseMainVersion: main?.version || null,
       sourceCommit: this.project.head,
-      memory: { map: structuredClone(this.store.doc), records: {}, ...(display?.name ? { display: { name: String(display.name).slice(0, 200), platform: String(display.platform || 'unknown').slice(0, 30) } } : {}) },
+      memory: { map: structuredClone(this.store.doc), records: {}, ...(display ? { display } : {}) },
     };
     let remote;
     try { remote = (await this.request(this.project, scope, input)).snapshot; }
