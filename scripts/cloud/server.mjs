@@ -534,7 +534,13 @@ export async function startCloudServer({
     }
     return Object.values(state.sessions).map(snapshot => {
       const latest = works.filter(work => work.sessionId === snapshot.sessionId).sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
-      return { id: snapshot.sessionId, name: '', platform: 'agent', status: latest?.status === 'working' ? 'active' : 'completed', lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
+      const events = String(snapshot.memory?.records?.['sessions.jsonl'] || '').split('\n').flatMap(line => {
+        try { const event = JSON.parse(line); return event.session_id === snapshot.sessionId ? [event] : []; } catch { return []; }
+      }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      const named = events.filter(event => typeof event.thread_name === 'string' && event.thread_name.trim()).at(-1);
+      const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
+      const status = lifecycle ? (['stop', 'stop-blocked'].includes(lifecycle.event) ? 'stopped' : lifecycle.event === 'interrupt' ? 'interrupted' : 'active') : latest?.status === 'working' ? 'active' : 'unknown';
+      return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
     }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
   const publicationState = async (project, viewId, options = {}) => {
@@ -1073,6 +1079,7 @@ export async function startCloudServer({
   });
   server.requestTimeout = 15_000;
   const heartbeat = setInterval(() => {
+    for (const client of workbenchClients) if (!client.res.destroyed) client.res.write(': heartbeat\n\n');
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
     for (const res of directoryClients) if (!res.destroyed) res.write(': heartbeat\n\n');
   }, 15_000); heartbeat.unref();

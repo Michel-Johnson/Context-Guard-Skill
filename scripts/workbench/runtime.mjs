@@ -1,6 +1,6 @@
 export const WORKBENCH_PROTOCOL = 2;
 export const WORKBENCH_RUNTIME_SCHEMA = 4;
-export const WORKBENCH_BUILD = 'project-workbench-v10';
+export const WORKBENCH_BUILD = 'project-workbench-v11';
 export const WORKBENCH_CAPABILITIES = Object.freeze([
   'git-common-dir-project',
   'named-origin-verification',

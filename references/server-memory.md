@@ -45,6 +45,11 @@ with different content fails. Private/runtime paths are rejected by a strict rec
 allowlist; retain records without retention pruning. Session snapshots include the
 server write time. Do not upload secret content.
 
+`memory.display` optionally carries `{name, platform}` for the current Session.
+The client reads the registered host task title, never guesses it from prompts.
+The fields are limited to 200/30 characters. Cloud falls back to this Session's
+existing lifecycle names when metadata is absent; display data grants no authority.
+
 Every acknowledged write appends an immutable, server-timestamped history entry
 containing the full memory snapshot. `memory history --scope main` or `--scope
 session:<id>` reads it. `memory restore --input <private-request>` creates a new

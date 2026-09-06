@@ -95,7 +95,7 @@ try {
   const seededSession = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, {
     method: 'POST',
     headers: headers('project-memory-token'),
-    body: JSON.stringify({ operationId: 'browser-session-seed', baseVersion: null, baseMainVersion: baselinePublication.body.snapshot.version, sourceCommit: featureSha, memory: { map: sessionMap, records: {} } }),
+    body: JSON.stringify({ operationId: 'browser-session-seed', baseVersion: null, baseMainVersion: baselinePublication.body.snapshot.version, sourceCommit: featureSha, memory: { map: sessionMap, records: { 'sessions.jsonl': JSON.stringify({ session_id: 'session-one', thread_name: '修复同步连接', platform: 'codex', event: 'session-start', at: '2026-09-06T00:00:00Z' }) } } }),
   });
   assert.equal(seededSession.response.status, 200, JSON.stringify(seededSession.body));
 
@@ -127,7 +127,7 @@ try {
   assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu .session-option-name').filter({ hasText: '当前会话' }).count(), 0, 'Cloud overview/project pages have no actual current Session');
-  assert.equal(await page.locator('#session-menu [data-session="session-one"] .session-option-name').textContent(), 'agent 会话');
+  assert.equal(await page.locator('#session-menu [data-session="session-one"] .session-option-name').textContent(), 'codex-修复同步连接');
   assert.doesNotMatch(await page.locator('#session-menu').textContent(), /session-one/);
   assert.doesNotMatch((await page.locator('#cg-sync-session option').allTextContents()).join(' '), /session-one/);
   await page.locator('#session-chip').click();

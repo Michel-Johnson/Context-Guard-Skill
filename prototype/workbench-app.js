@@ -1520,8 +1520,11 @@ function renderSessionMenu(){
   }).join("");
   menu.querySelectorAll("[data-session]").forEach(button=>{
     button.onclick = async ()=>{
-      await workbenchSync?.selectSession(button.dataset.session);
-      closeSessionMenu();
+      try {
+        if(await workbenchSync?.selectSession(button.dataset.session)) closeSessionMenu();
+      } catch(error) {
+        workbenchSync?.setStatus('error', '无法打开该 Session 地图：'+error.message);
+      }
     };
   });
   positionSessionMenu();

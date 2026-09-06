@@ -237,6 +237,16 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     grant_record = sessions.get(current_session_id) if isinstance(sessions, dict) else {}
     grants = grant_record.get("nodes") if isinstance(grant_record, dict) and isinstance(grant_record.get("nodes"), list) else []
     by_id = {str(node.get("id")): node for node in nodes if isinstance(node.get("id"), str)}
+    # Match AccessStore: all is dynamic, while an explicit empty list is revoked.
+    if isinstance(grant_record, dict) and grant_record.get("mode") == "all":
+        grants = list(by_id)
+    def can_write_node(node_id: str) -> bool:
+        if node_id not in by_id:
+            return False
+        rule = next((item for item in (by_id[node_id].get("access") or [])
+                     if isinstance(item, dict) and item.get("agentId") == current_session_id), None)
+        return rule is None or rule.get("allow") == "write"
+    grants = [node_id for node_id in grants if can_write_node(node_id)]
     assigned_todos: list[dict[str, str]] = []
     assigned_bugs: list[dict[str, str]] = []
     for node in nodes:
