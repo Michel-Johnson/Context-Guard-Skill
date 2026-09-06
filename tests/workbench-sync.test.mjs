@@ -18,8 +18,49 @@ import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
+import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+test('browser reconnect retries share one operation and Session switches wait', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  let release, calls = 0;
+  sync.retryNow = async () => { calls++; await new Promise(resolve => { release = resolve; }); };
+  const first = sync.retry(), second = sync.retry();
+  assert.equal(calls, 1);
+  release(); await Promise.all([first, second]);
+  assert.equal(sync.retrying, null);
+  sync.switchingSession = true;
+  await sync.retry();
+  assert.equal(calls, 1);
+  sync.switchingSession = false; sync.sessionUnavailable = true;
+  await sync.retry(); await sync.presence(); await sync.recoverConnection();
+  assert.equal(calls, 1, 'unavailable Session must not reconnect');
+});
+
+test('failed Session switch restores canvas, version and identity together', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  let tree = { id: 'old', title: 'Original' };
+  Object.assign(sync, {
+    config: { root: 'cloud:project' }, sessions: [{ id: 'next' }],
+    activeSession: 'old', viewId: 'session:old', version: 'v-old',
+    doc: { root: tree }, baseTree: tree, ready: true,
+    a: { getRoot: () => tree, apply: doc => { tree = doc.root; } },
+    panel: { querySelector: () => ({}) }, dirty: () => false,
+    connect() {}, setStatus() {},
+    async reload() {
+      this.doc = { root: { id: 'next', title: 'Wrong map' } };
+      this.a.apply(this.doc); this.version = 'v-next'; this.baseTree = this.doc.root;
+      throw new Error('interrupted switch');
+    },
+  });
+  assert.equal(await sync.selectSession('next'), false);
+  assert.equal(sync.activeSession, 'old');
+  assert.equal(sync.viewId, 'session:old');
+  assert.equal(sync.version, 'v-old');
+  assert.equal(tree.id, 'old');
+  assert.equal(sync.baseTree.id, 'old');
+});
 after(async () => {
   const temporary = await fs.realpath(os.tmpdir());
   for (const root of fixtureRoots) {
@@ -323,6 +364,102 @@ test('Session sync compares node fields and parses chunked SSE safely', () => {
   const parsed = parseSseBlocks('event: change\r\ndata: {"cursor":1}\r\n\r\nevent: change\ndata: {"cursor":');
   assert.deepEqual(parsed.blocks, ['event: change\ndata: {"cursor":1}']);
   assert.equal(parsed.rest, 'event: change\ndata: {"cursor":');
+});
+
+test('Legacy SSE deadline cancels a pending read independently of fetch abort', async t => {
+  const f = await fixture();
+  let cancelled = false;
+  const body = new ReadableStream({ cancel() { cancelled = true; } });
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, store: { off() {} }, streamIdleMs: 30 });
+  coordinator.abort = new AbortController();
+  let timeout;
+  t.after(async () => { clearTimeout(timeout); await coordinator.close(); });
+  coordinator.armStreamDeadline();
+  await Promise.race([
+    coordinator.consumeEvents(new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })),
+    new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('pending stream read did not cancel')), 2000); }),
+  ]);
+  assert.equal(cancelled, true);
+  assert.equal(coordinator.abort.signal.reason.code, 'EVENT_STREAM_TIMEOUT');
+});
+
+test('Legacy heartbeat is single-flight, write-free while idle, and stops on v2 takeover', async t => {
+  const f = await fixture();
+  let calls = 0, writes = 0, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, sessionId: 'idle', store: { off() {} }, heartbeatMs: 20,
+    request: async () => { calls++; await gate; return { cursor: 7 }; },
+  });
+  coordinator.status = { ...coordinator.status, status: 'synced', cursor: 7, serverVersion: 'version' };
+  coordinator.persist = async fields => { writes++; coordinator.update(fields); };
+  t.after(async () => { release(); await coordinator.close(); });
+  coordinator.startLegacyHeartbeat();
+  await pause(80);
+  assert.equal(calls, 0, 'cached serverVersion cannot replace successful initialization');
+  coordinator.initialized = true;
+  await until(() => calls === 1);
+  await pause(100);
+  assert.equal(calls, 1, 'a slow request does not accumulate heartbeat requests');
+  release();
+  await until(() => calls >= 2);
+  assert.equal(writes, 0, 'unchanged Cloud does not rewrite state or map');
+  coordinator.status.conflict = { code: 'REMOTE_AND_LOCAL_CHANGED' };
+  const conflictAt = calls;
+  await pause(80);
+  assert.equal(calls, conflictAt, 'heartbeat never bypasses an unresolved conflict');
+  coordinator.status.conflict = null;
+  await coordinator.projectHeartbeat({ mapVersion: 'version', mapCursor: 7 });
+  const stoppedAt = calls;
+  await pause(80);
+  assert.equal(calls, stoppedAt, 'v2 takeover stops the legacy poller');
+});
+
+for (const stalledHeaders of [false, true]) test(`Legacy sync recovers silent ${stalledHeaders ? 'headers' : 'body'} and polls Cloud-only changes`, { timeout: 25000 }, async t => {
+  const f = await fixture(), sharedDir = path.join(f.root, 'shared');
+  await fs.mkdir(sharedDir, { recursive: true });
+  const service = await startMemoryServer({ dataDir: path.join(f.root, 'cloud'), adminToken: 'admin', projects: { project: { token: 'token' } }, host: '127.0.0.1', port: 0 });
+  let connections = 0;
+  const stalled = http.createServer((_req, res) => {
+    connections++;
+    if (!stalledHeaders) { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(': connected\n\n'); }
+  });
+  const sockets = new Set();
+  stalled.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
+  await new Promise(resolve => stalled.listen(0, '127.0.0.1', resolve));
+  const config = { url: service.url, projectId: 'project', token: 'token' }, project = { sharedDir, head: 'a'.repeat(40) };
+  const request = (project, scope, input) => memoryRequest(project, scope, input, config);
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ ...config, url: `http://127.0.0.1:${stalled.address().port}` }));
+  await request(project, 'sessions/silent', { operationId: 'seed', baseVersion: null, baseMainVersion: null, sourceCommit: project.head, memory: { map: f.doc, records: {} } });
+  const store = await new MapStore(f.root, { file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'runtime'), eventsFile: path.join(f.root, 'events.jsonl') }).init();
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'silent', store, directory: path.join(f.root, 'sync'), request, heartbeatMs: 30, streamIdleMs: 5000, retryMin: 25, retryMax: 100 });
+  let initializations = 0;
+  const initialize = coordinator.initialize.bind(coordinator);
+  coordinator.initialize = async () => { initializations++; return initialize(); };
+  t.after(async () => {
+    await coordinator.close(); await store.close();
+    const stopped = new Promise(resolve => stalled.close(resolve));
+    // Aborted fetches may open replacement TCP sockets without sending HTTP.
+    // closeAllConnections alone does not cover these pre-request sockets.
+    for (const socket of sockets) socket.destroy();
+    await stopped; await service.close();
+  });
+  await coordinator.start();
+  await until(() => connections === 1);
+  const remote = (await request(project, 'sessions/silent')).snapshot;
+  await request(project, 'sessions/silent/map', { operationId: 'cloud-only', baseVersion: remote.version, operations: [{ type: 'update', id: 'N1', fields: { title: 'Cloud-only update' } }] });
+  await until(() => store.doc.root.children[0].title === 'Cloud-only update', 3000);
+  assert.equal(connections, 1, 'heartbeat repairs a missed notification without waiting for reconnect');
+  const highWater = (await request(project, 'sessions/silent/changes?after=0')).highWater;
+  await until(() => coordinator.snapshot().cursor === highWater);
+  await coordinator.serial;
+  const stateStamp = (await fs.stat(coordinator.stateFile)).mtimeMs;
+  const reported = [];
+  coordinator.on('change', state => reported.push(state.status));
+  await until(() => connections >= 2, 10000);
+  assert.ok(initializations >= 2, 'reconnect still initializes missing sessions and unqueued local edits');
+  assert.equal(reported.includes('offline'), false, 'healthy polling must not flash offline when only SSE stalls');
+  assert.equal((await fs.stat(coordinator.stateFile)).mtimeMs, stateStamp, 'healthy fallback reconnect must not rewrite idle state');
+  assert.equal(coordinator.managed, false, 'legacy repair must not enable unsupported v2 mode');
 });
 
 test('Workbench coordinator automatically syncs one Session in both directions and survives an outage', async t => {

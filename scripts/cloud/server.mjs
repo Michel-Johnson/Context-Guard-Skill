@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
 import { atomicWrite } from '../workbench/io.mjs';
-import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
+import { commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { WorkbenchSnapshots } from '../workbench/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../workbench/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
@@ -534,7 +534,13 @@ export async function startCloudServer({
     }
     return Object.values(state.sessions).map(snapshot => {
       const latest = works.filter(work => work.sessionId === snapshot.sessionId).sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
-      return { id: snapshot.sessionId, name: '', platform: 'agent', status: latest?.status === 'working' ? 'active' : 'completed', lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
+      const events = String(snapshot.memory?.records?.['sessions.jsonl'] || '').split('\n').flatMap(line => {
+        try { const event = JSON.parse(line); return event.session_id === snapshot.sessionId ? [event] : []; } catch { return []; }
+      }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      const named = events.filter(event => typeof event.thread_name === 'string' && event.thread_name.trim()).at(-1);
+      const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
+      const status = lifecycle ? (['stop', 'stop-blocked', 'interrupt'].includes(lifecycle.event) ? 'stopped' : 'active') : latest?.status === 'working' ? 'active' : latest?.status === 'completed' ? 'stopped' : 'unknown';
+      return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen: snapshot.updatedAt || latest?.startedAt || '' };
     }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
   const publicationState = async (project, viewId, options = {}) => {
@@ -832,7 +838,7 @@ export async function startCloudServer({
         const viewId = String(url.searchParams.get('view') || 'main');
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: `cloud:${scope}`, protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req) }); }
         requireWorkbench(req, url);
         if (action === '/api/state' && req.method === 'GET') {
           const state = await scopedWorkbenchState(scope, project, viewId);
@@ -966,11 +972,16 @@ export async function startCloudServer({
         }
         if (action === 'events' && req.method === 'GET') {
           const after = Math.max(0, Number(url.searchParams.get('after') || req.headers['last-event-id'] || 0));
-          const events = (await readEvents(project.id)).filter(event => event.seq > after);
-          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-          res.write('retry: 1000\n'); for (const event of events) res.write(`id: ${event.seq}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
-          const clients = projectClients.get(project.id) || new Set(); clients.add(res); projectClients.set(project.id, clients);
-          req.on('close', () => clients.delete(res)); return;
+          // Register under the same queue as commits: no event may fall between
+          // the historical read and the live subscription.
+          await serial(project.id, async () => {
+            const events = (await readEvents(project.id)).filter(event => event.seq > after);
+            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+            res.write('retry: 1000\n\n'); for (const event of events) res.write(`id: ${event.seq}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
+            const clients = projectClients.get(project.id) || new Set(); clients.add(res); projectClients.set(project.id, clients);
+            res.on('close', () => clients.delete(res));
+          });
+          return;
         }
         if (action === 'work/prepare' && req.method === 'POST') {
           const input = await requestBody(req);
@@ -1073,6 +1084,7 @@ export async function startCloudServer({
   });
   server.requestTimeout = 15_000;
   const heartbeat = setInterval(() => {
+    for (const client of workbenchClients) if (!client.res.destroyed) client.res.write(': heartbeat\n\n');
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
     for (const res of directoryClients) if (!res.destroyed) res.write(': heartbeat\n\n');
   }, 15_000); heartbeat.unref();

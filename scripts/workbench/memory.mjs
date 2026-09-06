@@ -5,6 +5,7 @@ import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
 import { bindingStatus, resolveProject } from './project.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
 import { validateMemory } from './memory-schema.mjs';
+import { Access } from './access.mjs';
 export const sessionMemoryDir = (project, sessionId) => path.join(project.sharedDir, 'session-memory', hash(`${sessionId}\0${project.worktreeId}`));
 export const memoryConfigPath = project => path.join(project.sharedDir, 'memory-client.json');
 const sessionRecordName = sessionId => String(sessionId || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 120) || 'session';
@@ -145,6 +146,12 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
       }
     }
     const baseline = await readJSON(path.join(dir, 'base-main.json'), { version: null });
+    const access = await new Access(root, project.kind === 'git' ? {
+      file: path.join(project.sharedDir, 'workbench-access.json'),
+      bindingsFile: path.join(project.sharedDir, 'workbench-bindings.json'),
+    } : {}).init();
+    const identity = (await access.sessionRegistry()).find(item => item.id === sessionId);
+    const display = identity?.name ? { name: identity.name.slice(0, 200), platform: String(identity.platform || 'unknown').slice(0, 30) } : current.session?.memory?.display;
     const syncContext = {
       sessionId,
       hookEvent: String(client.hookEvent || '').slice(0, 80),
@@ -152,7 +159,7 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
       occurredAt: String(client.occurredAt || new Date().toISOString()),
       cursor: Number.isFinite(Number(client.cursor)) ? Number(client.cursor) : null,
     };
-    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records }, client: syncContext };
+    const input = { operationId: randomUUID(), baseVersion: current.session?.version || null, baseMainVersion: baseline.version, sourceCommit: project.head, memory: { map, records, ...(display ? { display } : {}) }, client: syncContext };
     validateMemory(input.memory);
     const unchanged = current.session
       && current.session.sourceCommit === input.sourceCommit

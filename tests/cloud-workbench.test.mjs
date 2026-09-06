@@ -6,15 +6,70 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
+import { atomicWrite, readJSON } from '../scripts/workbench/io.mjs';
 
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+
+test('memory read views share cold reads, invalidate replaces, and preserve complete history on disk', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-memory-views-')), file = path.join(root, 'memory.json');
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 5 }));
+  const state = { revision: 1, main: { version: 'one' }, sessions: {}, history: [{ snapshot: 'historical' }], receipts: { old: { result: 'original' } }, events: [] };
+  await atomicWrite(file, JSON.stringify(state));
+  let reads = 0;
+  const views = createMemoryReadViews({ read: async (...args) => { reads++; return readJSON(...args); } });
+  const concurrent = await Promise.all(Array.from({ length: 50 }, () => views.read(file, {})));
+  assert.equal(reads, 1);
+  assert.equal(concurrent[0].history, undefined);
+  assert.equal(concurrent[0].receipts, undefined);
+  concurrent[0].main.version = 'caller mutation';
+  assert.equal((await views.read(file, {})).main.version, 'one');
+  await views.write(file, { ...state, revision: 2, main: { version: 'two' } });
+  assert.equal((await views.read(file, {})).revision, 2);
+  assert.equal(reads, 1, 'successful writes refresh the cache without reparsing history');
+  assert.deepEqual((await readJSON(file)).history, state.history);
+  assert.deepEqual((await readJSON(file)).receipts, state.receipts);
+  await atomicWrite(file, JSON.stringify({ ...state, revision: 3 }));
+  assert.equal((await views.read(file, {})).revision, 3);
+  assert.equal(reads, 2, 'an external replacement invalidates the cached view');
+  const failing = createMemoryReadViews({ write: async () => { throw new Error('disk full'); } });
+  await failing.read(file, {});
+  await assert.rejects(failing.write(file, { ...state, revision: 4 }), /disk full/);
+  assert.equal((await failing.read(file, {})).revision, 3, 'a failed write cannot publish an uncommitted view');
+});
+
+test('fifty concurrent memory views fit a small heap despite large cold history', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-memory-heap-')), file = path.join(root, 'memory.json');
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 5 }));
+  await fs.writeFile(file, JSON.stringify({ revision: 7, main: null, sessions: {}, history: ['x'.repeat(8 * 1024 * 1024)], receipts: { old: 'y'.repeat(8 * 1024 * 1024) } }));
+  const moduleUrl = new URL('../scripts/cloud/memory-read-view.mjs', import.meta.url).href;
+  const script = `import { memoryReadViews } from ${JSON.stringify(moduleUrl)};
+    const values = await Promise.all(Array.from({length:50}, () => memoryReadViews.read(process.argv[1], {})));
+    if (values.some(value => value.revision !== 7 || value.history || value.receipts)) throw new Error('invalid view');
+    console.log('50 views passed on 64 MiB heap');`;
+  const result = await execFileAsync(process.execPath, ['--max-old-space-size=64', '--input-type=module', '-e', script, file], { timeout: 30000, windowsHide: true });
+  assert.match(result.stdout, /50 views passed/);
+});
 
 async function fixture() {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-cloud-'));
   const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'test-token' });
   return { ...service, dataDir, async dispose() { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); } };
 }
+
+test('concurrent cold memory views trim the cache when reads settle', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-memory-trim-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const files = ['a', 'b', 'c'].map(name => path.join(root, name));
+  await Promise.all(files.map(file => fs.writeFile(file, JSON.stringify({ revision: 1 }))));
+  let reads = 0;
+  const views = createMemoryReadViews({ maxEntries: 1, read: async (...args) => { reads++; return readJSON(...args); } });
+  await Promise.all(files.map(file => views.read(file, {})));
+  assert.equal(reads, 3);
+  await Promise.all(files.map(file => views.read(file, {})));
+  assert.ok(reads >= 5, 'only one completed project view may remain cached');
+});
 
 async function request(base, route, options = {}) {
   const response = await fetch(base + route, options);
@@ -55,6 +110,8 @@ test('cloud shutdown closes live SSE clients promptly and can restart on the sam
 test('cloud workbench exposes a multi-project registry and guarded writes', async t => {
   const f = await fixture(); t.after(() => f.dispose());
   const health = await request(f.url, '/api/health');
+  const bootstrap = await request(f.url, '/api/workbench/projects/context-guard/bootstrap');
+  assert.equal(bootstrap.body.root, 'cloud:context-guard');
   assert.equal(health.response.status, 200); assert.equal(health.body.projects, 1);
   const initial = await request(f.url, '/api/projects');
   assert.deepEqual(initial.body.projects.map(project => project.id), ['context-guard']);

@@ -119,7 +119,8 @@ try {
   await browser?.close().catch(() => {});
   await local?.close().catch(() => {});
   await cloud?.close().catch(() => {});
-  await fs.rm(sandbox, { recursive: true, force: true });
+  // Windows can briefly retain directory handles after browser/server shutdown.
+  await fs.rm(sandbox, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 console.log(`Session sync browser artifacts: ${output}`);

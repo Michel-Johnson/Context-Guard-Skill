@@ -1385,6 +1385,7 @@ function sessionMetaLabel(meta,sessions=workbenchSync?.sessions||[]){
   return [label.primary,label.secondary].filter(Boolean).join(" — ");
 }
 function sessionLifecycle(meta){
+  if(String(meta?.bindingState||"").toLowerCase()==="unavailable") return {state:"unknown",label:"会话不可用",disabled:true};
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
   const status=String(meta?.status||"").toLowerCase();
   if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
@@ -1520,8 +1521,11 @@ function renderSessionMenu(){
   }).join("");
   menu.querySelectorAll("[data-session]").forEach(button=>{
     button.onclick = async ()=>{
-      await workbenchSync?.selectSession(button.dataset.session);
-      closeSessionMenu();
+      try {
+        if(await workbenchSync?.selectSession(button.dataset.session)) closeSessionMenu();
+      } catch(error) {
+        workbenchSync?.setStatus('error', '无法打开该 Session 地图：'+error.message);
+      }
     };
   });
   positionSessionMenu();
@@ -2240,7 +2244,7 @@ function bugProgress(bug){
   const recentlySent = bug?.dispatch?.status==="sent" && Number.isFinite(sentAt) && Date.now()-sentAt<30000
     ? bug.dispatch.session_id
     : null;
-  const active = sessions.filter(id=>sessionMetaOf(id)?.status!=="stopped" || id===recentlySent);
+  const active = sessions.filter(id=>sessionLifecycle(sessionMetaOf(id)).state==="active" || id===recentlySent);
   const handling = active.length ? active : sessions;
   const names = handling.map(sessionDisplayName);
   const detail = names.join("、");

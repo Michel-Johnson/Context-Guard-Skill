@@ -52,6 +52,27 @@ async function fixture() {
   await fs.mkdir(path.join(project, 'src'), { recursive: true });
   return project;
 }
+
+test('Hook grants match dynamic all, explicit revocation and per-node read-only access', async () => {
+  const project = await fixture();
+  try {
+    const ctx = path.join(project, '.codex/context');
+    await fs.mkdir(path.join(ctx, 'sessions'), { recursive: true });
+    const doc = { root: { id: 'T0', children: [{ id: 'M1', children: [] }, { id: 'M2', access: [{ agentId: 'grant-test', allow: 'read' }], children: [] }] } };
+    await fs.writeFile(path.join(ctx, 'map.json'), JSON.stringify(doc));
+    const access = path.join(ctx, 'sessions/workbench-access.json');
+    const snapshot = () => JSON.parse(run(python, ['-c', 'import sys,json; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from context_guard_hook import map_snapshot; print(json.dumps(map_snapshot(Path(sys.argv[2]),"grant-test")["grants"]))', path.join(repository, 'scripts'), ctx], {cwd:project}).stdout);
+    await fs.writeFile(access, JSON.stringify({ sessions: { 'grant-test': { mode: 'all', nodes: [] } } }));
+    assert.deepEqual(snapshot(), ['T0', 'M1']);
+    doc.root.children.push({ id: 'M3', children: [] });
+    await fs.writeFile(path.join(ctx, 'map.json'), JSON.stringify(doc));
+    assert.deepEqual(snapshot(), ['T0', 'M1', 'M3']);
+    await fs.writeFile(access, JSON.stringify({ sessions: { 'grant-test': { mode: 'explicit', nodes: [] } } }));
+    assert.deepEqual(snapshot(), []);
+    await fs.writeFile(access, JSON.stringify({ sessions: { 'grant-test': { mode: 'explicit', nodes: ['M1', 'M2'] } } }));
+    assert.deepEqual(snapshot(), ['M1']);
+  } finally { await dispose(project); }
+});
 async function confirmBinding(root, session) {
   const project = await resolveProject(root);
   const file = sessionBindingsPath(project);
