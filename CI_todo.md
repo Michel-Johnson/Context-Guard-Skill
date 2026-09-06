@@ -28,6 +28,7 @@
 - [x] IF-049：Cloud 工作台使用稳定交付编号提交已批准的 TODO/Bug；服务端一次事务保存任务说明、人工批准和任务分配，重复提交只返回原结果（`tests/interface-events.test.mjs`、`tests/cloud-sync-browser.mjs`）。
 - [x] IF-050：执行 Agent 忙碌时任务留在 Cloud 队列；前一任务可信关闭后按先入先出自动激活下一任务，工作台读取真实的排队、收到、待确认和执行状态（`tests/interface-workflow.test.mjs`、`tests/interface-events.test.mjs`）。
 - [x] IF-051：宿主明确拒绝时保留同一交付编号重试；接收结果不确定时停止自动重投，避免重复触发模型；浏览器中的最终完成/解决状态覆盖传输状态（`tests/interface-delivery.test.mjs`、`tests/workbench-browser.mjs`）。
+- [x] IF-052：项目统一消息泵接管连接时仍先初始化并重新开启已发布的 Session；Main 与本地已有相同变更时不误报冲突（`tests/workbench-sync.test.mjs`）。
 - [x] 现有 Map 协调器在支持能力的 Cloud 上由项目消息泵驱动；旧 Cloud 保留兼容入口。
 - [x] 同一已授权 Session 内跨角色对象共享、任务/Plan/审核/CI 交接、工作台变更、固定快照分页、附件续传与兼容入口已接线。暂时性记忆传输失败保留待同步状态，授权与冲突门禁不放松。
 - [ ] 未确定 Cloud Main 合并白名单与可信归档验证器，实际合并/最终关闭保持拒绝；不把测试注入的验证器当作生产合并实现。Cursor/Claude 提供显式 CLI 拉取入口，尚无自动唤醒适配器。
