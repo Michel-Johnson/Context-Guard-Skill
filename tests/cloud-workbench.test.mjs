@@ -8,9 +8,25 @@ import { promisify } from 'node:util';
 import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/workbench/io.mjs';
+import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+
+test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {
+  const base = { v: 1, root: { id: 'T0', title: 'Base', purpose: '', children: [] } };
+  const local = structuredClone(base); local.root.title = 'Local title';
+  const remoteMap = structuredClone(base); remoteMap.root.purpose = 'Human Cloud note';
+  const previous = { version: 'v1', memory: { map: base } };
+  const remote = { version: 'v2', memory: { map: remoteMap } };
+  const merged = reconcileSessionMap(previous, local, remote);
+  assert.equal(merged.root.title, 'Local title');
+  assert.equal(merged.root.purpose, 'Human Cloud note');
+
+  const overlapping = structuredClone(base); overlapping.root.title = 'Cloud title';
+  assert.throws(() => reconcileSessionMap(previous, local, { version: 'v3', memory: { map: overlapping } }), error => error.code === 'MEMORY_CONFLICT');
+  assert.throws(() => reconcileSessionMap(null, local, remote), error => error.code === 'MEMORY_CONFLICT');
+});
 
 test('memory read views share cold reads, invalidate replaces, and preserve complete history on disk', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-memory-views-')), file = path.join(root, 'memory.json');
