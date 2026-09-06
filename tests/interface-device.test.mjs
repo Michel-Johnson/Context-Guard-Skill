@@ -64,6 +64,20 @@ test('IF-023: binding tokens are translated and an uncertain request keeps its o
   assert.equal(seen.length, 3);
 });
 
+test('an explicitly rejected Cloud credential marks the local backend disconnected', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-expired-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const device = new DeviceConnection({ directory, origin: 'https://example.test', transport: async (_origin, _credential, message, settings) => {
+    if (message.type === 'auth.open') { settings.receiveCredential('test-credential'); return { expiresAt: new Date(Date.now() + 1000).toISOString() }; }
+    throw Object.assign(new Error('expired'), { code: 'UNAUTHORIZED' });
+  } });
+  await device.connect({ v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'device' } });
+  await assert.rejects(device.transmit({ v: 2, id: 'beat', type: 'sync.heartbeat', payload: { sessions: [] } }), { code: 'UNAUTHORIZED' });
+  assert.equal(await device.connected(), false);
+  const state = JSON.parse(await fs.readFile(device.file, 'utf8'));
+  assert.deepEqual({ disconnected: state.disconnected, error: state.error, hasCredential: !!state.credential }, { disconnected: true, error: 'UNAUTHORIZED', hasCredential: false });
+});
+
 test('IF-025: outbox recovery preserves Session order and isolates a failed Session', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-outbox-order-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

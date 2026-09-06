@@ -40,13 +40,25 @@ export class DeviceConnection {
       await this.transport(this.origin, credential, { v: 2, id: randomUUID(), type: 'auth.close', payload: {} }, { allowLoopback: this.allowLoopback }).catch(() => {});
       fail('FORBIDDEN', 'Repository changed; preserve queues and migrate the project binding explicitly');
     }
-    await atomicWrite(this.file, encode({ origin: this.origin, credential, ...result }));
+    await withFileLock(`${this.file}.lock`, () => atomicWrite(this.file, encode({ origin: this.origin, credential, ...result })));
     return result;
   }
   async transmit(message) {
     const connection = await readJSON(this.file, null);
     if (!connection?.credential || connection.origin !== this.origin) fail('UNAUTHORIZED', 'Local backend must connect first');
-    return this.transport(connection.origin, connection.credential, message, { allowLoopback: this.allowLoopback });
+    try {
+      return await this.transport(connection.origin, connection.credential, message, { allowLoopback: this.allowLoopback });
+    } catch (error) {
+      if (error?.code === 'UNAUTHORIZED') {
+        await withFileLock(`${this.file}.lock`, async () => {
+          const current = await readJSON(this.file, null);
+          if (current?.credential === connection.credential) await atomicWrite(this.file, encode({
+            origin: this.origin, disconnected: true, error: error.code, failedAt: new Date().toISOString(),
+          }));
+        });
+      }
+      throw error;
+    }
   }
   async connected() { const value = await readJSON(this.file, null); return value?.origin === this.origin && !!value.credential; }
   async supports(capability) {
@@ -123,7 +135,7 @@ export class DeviceConnection {
   async disconnect(message) {
     const result = await this.transmit(message);
     await this.close();
-    await atomicWrite(this.file, encode({ origin: this.origin, disconnected: true }));
+    await withFileLock(`${this.file}.lock`, () => atomicWrite(this.file, encode({ origin: this.origin, disconnected: true })));
     return result;
   }
   async bind(message, localBinding) {
