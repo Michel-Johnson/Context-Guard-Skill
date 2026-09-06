@@ -614,12 +614,15 @@ test('Managed coordinator bootstraps a closed Session and accepts changes alread
   const store = await new MapStore(f.root, {
     file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'managed-store-runtime'), eventsFile: path.join(f.root, 'managed-store-events.jsonl'),
   }).init();
-  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'managed-session', store, directory: syncDir, managed: true, retryMin: 25, retryMax: 100 });
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'managed-session', store, directory: syncDir, managed: true,
+    display: async () => ({ name: '真实 Codex 任务', platform: 'codex' }), retryMin: 25, retryMax: 100 });
   t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
   await coordinator.start();
-  await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2, 6000);
+  await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2
+    && coordinator.snapshot().status === 'synced', 6000);
   const reopened = (await memoryRequest(project, 'sessions/managed-session')).snapshot;
   assert.equal(reopened.memory.map.root.children[0].title, '已经进入 Main');
+  assert.deepEqual(reopened.memory.display, { name: '真实 Codex 任务', platform: 'codex' });
   assert.equal(coordinator.snapshot().status, 'synced');
   assert.equal(coordinator.snapshot().conflict, null);
   assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
