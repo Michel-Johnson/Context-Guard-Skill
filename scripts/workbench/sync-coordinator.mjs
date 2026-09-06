@@ -54,7 +54,7 @@ export function parseSseBlocks(buffer) {
 }
 
 export class MemorySyncCoordinator extends EventEmitter {
-  constructor({ project, sessionId, store, directory, request = memoryRequest, retryMin = 250, retryMax = 5000, managed = false, heartbeatMs = 10000, streamIdleMs = 25000 } = {}) {
+  constructor({ project, sessionId, store, directory, request = memoryRequest, display, retryMin = 250, retryMax = 5000, managed = false, heartbeatMs = 10000, streamIdleMs = 25000 } = {}) {
     super();
     this.project = project;
     this.sessionId = sessionId;
@@ -66,6 +66,7 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.outboxFile = path.join(this.directory, 'outbox.json');
     this.conflictFile = path.join(this.directory, 'conflict.json');
     this.request = request;
+    this.display = display;
     this.retryMin = retryMin;
     this.retryMax = retryMax;
     this.retryDelay = retryMin;
@@ -179,12 +180,13 @@ export class MemorySyncCoordinator extends EventEmitter {
         if (mainOnly.length) await this.applyRemoteDocument(applyOperations(this.store.doc, mainOnly, { kind: 'human', sessionId: 'cloud-sync' }).doc, `main-rebase:${main.version}`);
       }
     }
+    const display = await this.display?.();
     const input = {
       operationId: `session-init:${this.sessionId}:${randomUUID()}`,
       baseVersion: null,
       baseMainVersion: main?.version || null,
       sourceCommit: this.project.head,
-      memory: { map: structuredClone(this.store.doc), records: {} },
+      memory: { map: structuredClone(this.store.doc), records: {}, ...(display?.name ? { display: { name: String(display.name).slice(0, 200), platform: String(display.platform || 'unknown').slice(0, 30) } } : {}) },
     };
     let remote;
     try { remote = (await this.request(this.project, scope, input)).snapshot; }

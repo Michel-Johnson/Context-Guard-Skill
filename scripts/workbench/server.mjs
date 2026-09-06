@@ -266,7 +266,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       const sessionProject = await resolveProject(storeRoot);
       const connection = await projectDevice();
       const coordinator = new MemorySyncCoordinator({ project: sessionProject, sessionId, store: target, directory: syncDirectory,
-        managed: !!connection && await connection.supports('private-map-heads') });
+        managed: !!connection && await connection.supports('private-map-heads'),
+        display: async () => {
+          const identity = (await access.sessionRegistry()).find(item => item.id === sessionId);
+          return identity?.name ? { name: identity.name, platform: identity.platform } : null;
+        } });
       coordinator.on('change', status => broadcast('cloud-sync', status, viewId));
       syncCoordinators.set(viewId, coordinator);
       await coordinator.start();
