@@ -276,7 +276,7 @@ try {
   assert.equal(await page.locator('#session-menu [data-session="session-one"]').count(), 0, 'a published Session leaves the active selector');
   assert.equal(await page.locator('#cg-sync-session option[value="session-one"]').count(), 0);
   await page.locator('#session-chip').click();
-  record('Verified publication updates durable read-only Main without exposing an admin token');
+  record('Verified publication updates durable Main without exposing an admin token');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

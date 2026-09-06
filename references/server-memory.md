@@ -82,16 +82,20 @@ not expose a manual publish control. The underlying `memory publish --input
 submit arbitrary Main content. The server keeps its administrator
 credential private, checks the actual configured mirror/ref, verifies Session
 source ancestry, and requires the Session to be reconciled to the current
-main-memory version. Direct Main writes and Main/preferences restoration still
-require administrator authorization.
+main-memory version. Authenticated human workbench edits may update the Main Map
+directly. Each edit uses the displayed Main version as an optimistic concurrency
+base and is persisted atomically with its timestamp, event and idempotency receipt.
+Project-scoped Agent credentials still cannot write Main directly;
+Main/preferences restoration requires administrator authorization.
 Main advancement, unmerged source or concurrent publication fails without changing
 the baseline. Workbench refreshes the baseline every 30 seconds and shows stale or
 unavailable status instead of overwriting the last good snapshot. Repositories
 without a configured authoritative ref cannot publish.
 
 The project page reports publication as waiting for Git merge, ready, conflicting,
-unavailable, or published. A published Main view is read-only; further changes belong in the
-next development generation of a Session Map.
+unavailable, or published. Agent development changes belong in a Session Map;
+authenticated human edits such as TODOs and project annotations may be saved
+directly to the authoritative Main view.
 
 Successful publication closes and removes only the active generation of that
 Session Map in the same durable server transaction. Its immutable history,

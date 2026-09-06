@@ -88,6 +88,7 @@
 - [ ] macOS/Windows/Linux 浏览器的 `.localhost` DNS 解析与受管网络策略兼容；正式精简实现的长期 CPU/内存/物理 I/O 基准
 - [ ] 旧 Map-only Cloud Sync 与多个 worktree 的联调；旧服务目标绑定不代表服务器迁移完成
 - [ ] 启动器强制终止后空/损坏启动锁及遗留 reclaim 锁的显式恢复工具；当前失败关闭，不擅自删除未知锁
+- [ ] 本轮按用户要求未在本地运行测试：验证认证浏览器可直接编辑私有 Main Map，刷新后仍从服务器权威文件读取；验证重复 `operationId` 幂等、复用 ID 被拒绝、过期 `baseVersion` 返回冲突，同时项目令牌仍不能直写 Main
 
 ## 架构与测试治理
 
