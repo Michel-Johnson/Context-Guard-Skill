@@ -972,11 +972,16 @@ export async function startCloudServer({
         }
         if (action === 'events' && req.method === 'GET') {
           const after = Math.max(0, Number(url.searchParams.get('after') || req.headers['last-event-id'] || 0));
-          const events = (await readEvents(project.id)).filter(event => event.seq > after);
-          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-          res.write('retry: 1000\n'); for (const event of events) res.write(`id: ${event.seq}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
-          const clients = projectClients.get(project.id) || new Set(); clients.add(res); projectClients.set(project.id, clients);
-          req.on('close', () => clients.delete(res)); return;
+          // Register under the same queue as commits: no event may fall between
+          // the historical read and the live subscription.
+          await serial(project.id, async () => {
+            const events = (await readEvents(project.id)).filter(event => event.seq > after);
+            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+            res.write('retry: 1000\n\n'); for (const event of events) res.write(`id: ${event.seq}\nevent: change\ndata: ${JSON.stringify(event)}\n\n`);
+            const clients = projectClients.get(project.id) || new Set(); clients.add(res); projectClients.set(project.id, clients);
+            res.on('close', () => clients.delete(res));
+          });
+          return;
         }
         if (action === 'work/prepare' && req.method === 'POST') {
           const input = await requestBody(req);

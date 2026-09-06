@@ -216,7 +216,7 @@ export class WorkbenchSync {
       await this.presence(checkpoint);
     });
     this.events.onerror = () => this.recoverConnection();
-    this.events.onopen = async () => { if (this.status === 'offline') await this.retry(); else await this.presence(); };
+    this.events.onopen = async () => { if (this.switchingSession) return; if (this.status === 'offline') await this.retry(); else await this.presence(); };
   }
   scheduleHeartbeat() {
     clearTimeout(this.heartbeatTimer);
@@ -225,6 +225,7 @@ export class WorkbenchSync {
       this.heartbeatRunning = true;
       const view = this.viewId;
       try {
+        if (this.switchingSession) return;
         const head = await this.call('/api/presence', { clientId: this.id, version: this.version, dirty: this.dirty() });
         if (view !== this.viewId || this.disposed) return;
         if (this.pendingSession) await this.refreshAccess();
@@ -236,7 +237,7 @@ export class WorkbenchSync {
     }, 10000);
   }
   async recoverConnection() {
-    if (this.reconnecting || this.disposed) return;
+    if (this.reconnecting || this.disposed || this.switchingSession) return;
     this.reconnecting = true;
     const view = this.viewId;
     try {
@@ -261,6 +262,7 @@ export class WorkbenchSync {
     }
   }
   async receive(state) {
+    if (this.switchingSession) return;
     // While a Cloud deep link waits for its Session snapshot, this connection is
     // intentionally subscribed to Main only so it can receive project access
     // events. Main state must not make the pending Session look synchronized.
@@ -311,6 +313,13 @@ export class WorkbenchSync {
     else this.setStatus('draft');
   }
   async retry() {
+    if (this.switchingSession) return;
+    if (this.retrying) return this.retrying;
+    this.retrying = this.retryNow();
+    try { return await this.retrying; } finally { this.retrying = null; }
+  }
+  async retryNow() {
+    if (this.inflight) await this.inflight;
     if (!this.config) return;
     if (!this.ready) { await this.start(); return; }
     try {
@@ -361,9 +370,13 @@ export class WorkbenchSync {
     if (this.dirty()) { this.saveDraft(); this.export(); }
     const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     const current = await this.call('/api/state');
-    if (generation !== this.loadGeneration) return;
+    if (generation !== this.loadGeneration) {
+      if (this.switchingSession) throw new Error('地图读取已被更新替代，请重试');
+      return;
+    }
     this.recoveryState(current);
     if (current.error || current.recovery || !current.doc?.root) {
+      if (this.switchingSession) throw new Error(current.error?.message || current.recovery?.message || '目标地图尚未就绪');
       const readOnlyMain = this.viewId === 'main' && current.source?.status !== 'local-folder';
       this.ready = false; this.initializationRequired = true; this.doc = current.doc; this.version = current.version;
       this.panel.querySelector('#cg-sync-initialize').hidden = readOnlyMain;
@@ -376,6 +389,7 @@ export class WorkbenchSync {
     this.pendingRequest = null; this.inputDraft = null; this.doc = current.doc; this.version = current.version; this.source = current.source || null;
     this.a.apply(current.doc); this.baseTree = copy(this.a.getRoot()); this.revision++; this.ready = true;
     this.captureKey ||= `cg-sync-draft:${this.config.root}:${this.viewId}`;
+    if (this.switchingSession) return;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
     const hasRecovery = this.loadRecovery();
     await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : '');
@@ -435,8 +449,15 @@ export class WorkbenchSync {
       return;
     }
     if (this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession) {
-      this.activeSession = ALL_SESSIONS; this.viewId = 'main'; this.manualSession = false;
+      // Keep the canvas and its identity together. A disappearing Session is
+      // unavailable, not an implicit request to edit the Main map.
+      this.events?.close(); this.events = null;
+      this.a.setAccess([], this.activeSession, null, false, this.project?.main || null);
+      this.setStatus('error', '当前 Session 已不可用；请切换主工作台或其他 Session');
     }
+    const unavailableMeta = this.activeSession !== ALL_SESSIONS && !current && !this.pendingSession
+      ? { ...(this.sessions.find(item => item.id === this.activeSession) || { id: this.activeSession, name: '当前 Session' }), bindingState: 'unavailable', status: 'unavailable' } : null;
+    if (unavailableMeta) sessions.push(unavailableMeta);
     const pendingMeta = this.pendingSession && !current
       ? { id: this.pendingSession, name: '当前 Session', platform: 'agent', status: 'syncing', bindingState: 'pending', lastSeen: '' }
       : null;
@@ -447,12 +468,13 @@ export class WorkbenchSync {
     })() : null;
     const options = [...(this.urlPinned ? [] : [all]), ...(pending ? [pending] : []), ...sessions.map(item => {
       const option = document.createElement('option'); option.value = item.id;
+      option.disabled = item.bindingState === 'unavailable';
       const displayName = [item.name || `${item.platform || 'Agent'} Session`, item.worktreeName, item.branch].filter(Boolean).join(' · ');
       option.textContent = displayName; option.title = `${item.worktreeRoot || ''}\n${item.bindingState || 'bound'}`; return option;
     })];
     select.replaceChildren(...options); select.disabled = false; select.value = this.activeSession;
     const active = sessions.find(item => item.id === this.activeSession) || null;
-    this.a.setAccess(this.grants?.[this.activeSession]?.nodes || [], this.activeSession, active, this.activeSession === ALL_SESSIONS, this.project?.main || null);
+    this.a.setAccess(active && !unavailableMeta ? this.grants?.[this.activeSession]?.nodes || [] : [], this.activeSession, active, this.activeSession === ALL_SESSIONS, this.project?.main || null);
   }
   renderCloudStatus(status) {
     if (!this.cloudIndicator) return;
@@ -469,14 +491,18 @@ export class WorkbenchSync {
   }
   async selectSession(sessionId) {
     if (this.switchingSession) return false;
+    if (this.retrying) await this.retrying;
+    if (this.switchingSession) return false;
     if (sessionId !== ALL_SESSIONS && !this.sessions.some(item => item.id === sessionId)) return false;
     if (this.dirty()) {
       await this.flush();
       if (this.dirty()) { this.setStatus(this.status, '当前视图仍有未保存内容，暂不能切换'); return false; }
     }
+    if (this.switchingSession) return false;
     const privateCloud = this.config?.root?.startsWith('cloud:') && this.config.root !== 'cloud:overview';
     const nextView = sessionId === ALL_SESSIONS || (!privateCloud && this.project?.kind !== 'git') ? 'main' : `session:${sessionId}`;
-    const previous = { activeSession: this.activeSession, pendingSession: this.pendingSession, manualSession: this.manualSession, viewId: this.viewId, captureKey: this.captureKey };
+    const previous = Object.fromEntries(['activeSession', 'pendingSession', 'manualSession', 'viewId', 'captureKey', 'doc', 'version', 'source', 'baseTree', 'ready', 'initializationRequired', 'pendingRequest', 'inputDraft', 'serverRecovery', 'revision'].map(key => [key, this[key]]));
+    const previousTree = copy(this.a.getRoot());
     this.switchingSession = true;
     try {
     this.activeSession = sessionId;
@@ -489,9 +515,15 @@ export class WorkbenchSync {
     const url = new URL(location.href);
     if (sessionId === ALL_SESSIONS) url.searchParams.delete('session'); else url.searchParams.set('session', sessionId);
     history.replaceState(null, '', url);
+    const hasRecovery = this.loadRecovery();
+    this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新，保留上次版本' : hasRecovery ? '发现保留的草稿，请导入比较' : '');
+    this.connect();
+    setTimeout(() => this.refreshAccess().catch(error => this.setStatus('error', error.message)), 0);
     return true;
     } catch (error) {
       Object.assign(this, previous);
+      if (previous.doc) this.a.apply({ ...previous.doc, root: previousTree });
+      this.panel.querySelector('#cg-sync-initialize').hidden = !previous.initializationRequired || previous.viewId === 'main';
       this.loadGeneration = (this.loadGeneration || 0) + 1;
       this.connect();
       this.setStatus('error', '无法切换地图：' + error.message);

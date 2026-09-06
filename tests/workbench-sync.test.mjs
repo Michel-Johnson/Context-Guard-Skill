@@ -18,8 +18,46 @@ import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
+import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+test('browser reconnect retries share one operation and Session switches wait', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  let release, calls = 0;
+  sync.retryNow = async () => { calls++; await new Promise(resolve => { release = resolve; }); };
+  const first = sync.retry(), second = sync.retry();
+  assert.equal(calls, 1);
+  release(); await Promise.all([first, second]);
+  assert.equal(sync.retrying, null);
+  sync.switchingSession = true;
+  await sync.retry();
+  assert.equal(calls, 1);
+});
+
+test('failed Session switch restores canvas, version and identity together', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  let tree = { id: 'old', title: 'Original' };
+  Object.assign(sync, {
+    config: { root: 'cloud:project' }, sessions: [{ id: 'next' }],
+    activeSession: 'old', viewId: 'session:old', version: 'v-old',
+    doc: { root: tree }, baseTree: tree, ready: true,
+    a: { getRoot: () => tree, apply: doc => { tree = doc.root; } },
+    panel: { querySelector: () => ({}) }, dirty: () => false,
+    connect() {}, setStatus() {},
+    async reload() {
+      this.doc = { root: { id: 'next', title: 'Wrong map' } };
+      this.a.apply(this.doc); this.version = 'v-next'; this.baseTree = this.doc.root;
+      throw new Error('interrupted switch');
+    },
+  });
+  assert.equal(await sync.selectSession('next'), false);
+  assert.equal(sync.activeSession, 'old');
+  assert.equal(sync.viewId, 'session:old');
+  assert.equal(sync.version, 'v-old');
+  assert.equal(tree.id, 'old');
+  assert.equal(sync.baseTree.id, 'old');
+});
 after(async () => {
   const temporary = await fs.realpath(os.tmpdir());
   for (const root of fixtureRoots) {
