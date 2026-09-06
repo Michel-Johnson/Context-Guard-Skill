@@ -54,9 +54,12 @@ daemon. Status is read without exposing the project token:
 context-guard sync status --root <project> --session <session-id>
 ```
 
-The workbench status icon means: spinner = connecting/pending, check = server
-acknowledged, exclamation = conflict/error. A successful server disk write whose
-response has not reached the client is still shown as pending.
+The workbench status icon means: spinner = a recent Session lifecycle event is
+active, check = explicitly stopped/completed, dot = no recent Session event and
+therefore disconnected/unknown, exclamation = conflict/error. Historical
+`SessionStart` and prompt events expire instead of leaving a permanent spinner.
+A successful server disk write whose response has not reached the client is still
+shown as pending.
 
 ## Legacy project Map connection
 

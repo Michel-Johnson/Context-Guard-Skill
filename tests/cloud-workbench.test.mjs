@@ -5,13 +5,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { cloudSessionActivity, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/workbench/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+
+test('Cloud Session activity expires without a recent Session event', () => {
+  const now = Date.parse('2026-09-06T08:00:00.000Z');
+  assert.equal(cloudSessionActivity({ lifecycleEvent: 'user-prompt-submit', lastSeen: '2026-09-06T07:59:00.000Z' }, now), 'active');
+  assert.equal(cloudSessionActivity({ lifecycleEvent: 'user-prompt-submit', lastSeen: '2026-09-06T07:57:59.999Z' }, now), 'unknown');
+  assert.equal(cloudSessionActivity({ lifecycleEvent: 'stop', lastSeen: '2026-09-01T00:00:00.000Z' }, now), 'stopped');
+  assert.equal(cloudSessionActivity({ workStatus: 'completed', lastSeen: '2026-09-01T00:00:00.000Z' }, now), 'stopped');
+  assert.equal(cloudSessionActivity({ workStatus: 'working', lastSeen: '' }, now), 'unknown');
+});
 
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {
   const base = { v: 1, root: { id: 'T0', title: 'Base', purpose: '', children: [] } };
