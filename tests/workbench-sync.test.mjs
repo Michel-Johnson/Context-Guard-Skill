@@ -577,6 +577,54 @@ test('Workbench coordinator automatically reopens the same Session after its pri
   assert.equal((await readMemoryProject(configuration, 'project')).closedSessions['reusable-session'].publications.length, 1);
 });
 
+test('Managed coordinator bootstraps a closed Session and accepts changes already present on Main', async t => {
+  const f = await fixture();
+  const oldDoc = structuredClone(f.doc);
+  const publishedDoc = structuredClone(f.doc);
+  publishedDoc.root.children[0].title = '已经进入 Main';
+  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(publishedDoc));
+  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'fixture@example.invalid');
+  git('config', 'user.name', 'Fixture');
+  git('add', '.codex/context/map.json');
+  git('commit', '-m', 'published baseline');
+  const head = git('rev-parse', 'HEAD');
+  const sharedDir = path.join(f.root, 'managed-shared');
+  const syncDir = path.join(f.root, 'managed-session-sync');
+  const configuration = {
+    dataDir: path.join(f.root, 'managed-memory'),
+    adminToken: 'memory-admin',
+    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
+  };
+  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
+  const service = await startMemoryServer(configuration);
+  const project = { sharedDir, head };
+  await fs.mkdir(sharedDir, { recursive: true });
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+  const seeded = await memoryRequest(project, 'sessions/managed-session', {
+    operationId: 'managed-seed', baseVersion: null, baseMainVersion: null, sourceCommit: head,
+    memory: { map: publishedDoc, records: {} },
+  });
+  await memoryRequest(project, 'publish', {
+    operationId: 'managed-publish', baseVersion: null, sessionId: 'managed-session',
+    sessionVersion: seeded.snapshot.version, expectedMainSha: head,
+  });
+  await atomicWrite(path.join(syncDir, 'remote-sync/server-base.json'), encode(oldDoc));
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'managed-store-runtime'), eventsFile: path.join(f.root, 'managed-store-events.jsonl'),
+  }).init();
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'managed-session', store, directory: syncDir, managed: true, retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
+  await coordinator.start();
+  await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2, 6000);
+  const reopened = (await memoryRequest(project, 'sessions/managed-session')).snapshot;
+  assert.equal(reopened.memory.map.root.children[0].title, '已经进入 Main');
+  assert.equal(coordinator.snapshot().status, 'synced');
+  assert.equal(coordinator.snapshot().conflict, null);
+  assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
+});
+
 test('Workbench coordinator migrates a confirmed legacy main baseline before reopening a Session', async t => {
   const f = await fixture();
   const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();

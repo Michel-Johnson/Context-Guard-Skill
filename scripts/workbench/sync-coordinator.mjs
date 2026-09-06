@@ -170,11 +170,13 @@ export class MemorySyncCoordinator extends EventEmitter {
       } else if (!equalDocument(base, main.memory.map)) {
         const localOperations = documentOperations(base, this.store.doc);
         const mainOperations = documentOperations(base, main.memory.map);
-        if (operationsOverlap(localOperations, mainOperations)) {
+        const localOnly = localOperations.filter(operation => !mainOperations.some(candidate => same(operation, candidate)));
+        const mainOnly = mainOperations.filter(operation => !localOperations.some(candidate => same(operation, candidate)));
+        if (operationsOverlap(localOnly, mainOnly)) {
           await this.saveConflict('MAIN_ADVANCED_BEFORE_SESSION_REOPEN', base, this.store.doc, main.memory.map);
           return null;
         }
-        if (mainOperations.length) await this.applyRemoteDocument(applyOperations(this.store.doc, mainOperations, { kind: 'human', sessionId: 'cloud-sync' }).doc, `main-rebase:${main.version}`);
+        if (mainOnly.length) await this.applyRemoteDocument(applyOperations(this.store.doc, mainOnly, { kind: 'human', sessionId: 'cloud-sync' }).doc, `main-rebase:${main.version}`);
       }
     }
     const input = {
@@ -385,7 +387,11 @@ export class MemorySyncCoordinator extends EventEmitter {
   }
 
   async run() {
-    while (!this.closed && !this.managed) {
+    // A project-level device connection takes over steady-state heartbeats, but
+    // every Session still needs one successful bootstrap. Without it, a Session
+    // that was closed after publication can never reopen and therefore never
+    // appears in the Cloud queue.
+    while (!this.closed) {
       try {
         await this.schedule(async () => {
           await this.initialize();
@@ -408,7 +414,7 @@ export class MemorySyncCoordinator extends EventEmitter {
         if (this.closed || this.managed) break;
         if (this.abort?.signal.reason?.code === 'EVENT_STREAM_TIMEOUT') error = this.abort.signal.reason;
         await this.schedule(async () => {
-          if (!this.closed && !this.managed && !this.status.conflict && !this.healthyLegacyFallback()) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || error.message });
+          if (!this.closed && !this.status.conflict && (!this.managed || !this.initialized) && !this.healthyLegacyFallback()) await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: error.code || error.message });
         });
         await this.waitForRetry(this.retryDelay + Math.floor(Math.random() * Math.max(1, this.retryDelay / 4)));
         this.retryDelay = Math.min(this.retryMax, Math.max(this.retryMin, this.retryDelay * 2));
