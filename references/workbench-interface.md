@@ -218,6 +218,7 @@ a legacy roadmap file.
 
 Saving and synchronization run in the background without a floating toolbar.
 Recovery controls and Agent session selection are under Settings → 同步与恢复.
+Cloud request failures keep the browser recovery copy and show the structured server error code with a short reason in the top bar; the full message remains in Settings → 同步与恢复.
 Connection, conflict and save errors show a brief notice next to Settings.
 Text editing does not need browser folder access. The attachment-folder permission
 picker is used only by the static recovery/demo page. A Node-served workbench sends

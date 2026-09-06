@@ -2,6 +2,14 @@ import { copy, diffTrees, entries, same } from './map-model.mjs';
 export const ALL_SESSIONS = '__all__';
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
+function diagnostic(error, fallback = '服务暂不可用') {
+  const message = String(error?.message || fallback).replace(/\s+/g, ' ').trim();
+  return error?.code && !message.startsWith(`[${error.code}]`) ? `[${error.code}] ${message}` : message;
+}
+function compact(message, limit = 72) {
+  const text = String(message || '').replace(/\s+/g, ' ').trim();
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
 function uniqueId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);
@@ -67,7 +75,11 @@ export class WorkbenchSync {
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
     let result;
     try { result = await response.json(); } catch { throw new Error('响应不完整；保留原请求等待重试'); }
-    if (!response.ok) { const e = new Error(result.error?.message || 'Request failed'); Object.assign(e, result.error, { serverResponse: true }); throw e; }
+    if (!response.ok) {
+      const { message: _message, ...details } = result.error || {};
+      const e = new Error(diagnostic(result.error, '请求失败'));
+      Object.assign(e, details, { serverResponse: true }); throw e;
+    }
     return result;
   }
   operations() {
@@ -96,7 +108,7 @@ export class WorkbenchSync {
     const attention = { readonly: '只读', conflict: '同步冲突', offline: '连接中断', error: '保存失败' }[status];
     /* 静态 htmlpreview 没有服务端：设置里仍记只读，顶栏不要跳出「只读」条。 */
     this.notice.hidden = !this.config || !attention;
-    this.notice.textContent = attention || '';
+    this.notice.textContent = attention ? `${attention}${status === 'error' && message ? ` · ${compact(message)}` : ''}` : '';
     this.notice.title = attention ? this.panel.querySelector('#cg-sync-status').textContent + '；请打开设置中的同步与恢复' : '';
   }
   recoveryState(state) {
