@@ -628,6 +628,39 @@ test('Managed coordinator bootstraps a closed Session and accepts changes alread
   assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
 });
 
+test('Managed coordinator adds display metadata to an existing Session without changing its source commit', async t => {
+  const f = await fixture();
+  const sharedDir = path.join(f.root, 'display-shared');
+  await fs.mkdir(sharedDir, { recursive: true });
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({
+    url: 'http://127.0.0.1:1', projectId: 'project', token: 'test-token',
+  }));
+  const originalSource = 'a'.repeat(40);
+  let remote = { version: 'session-v1', baseMainVersion: 'main-v1', sourceCommit: originalSource, memory: { map: f.doc, records: { 'sessions/s.md': 'preserve' } } };
+  const request = async (_project, scope, input) => {
+    if (scope === 'sessions/existing-session' && !input) return { snapshot: structuredClone(remote) };
+    if (scope === 'sessions/existing-session' && input) {
+      assert.equal(input.operationId.startsWith('session-display:existing-session:'), true);
+      assert.equal(input.baseVersion, remote.version);
+      remote = { ...input, version: 'session-v2' };
+      return { snapshot: structuredClone(remote) };
+    }
+    throw new Error(`Unexpected scope ${scope}`);
+  };
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'display-store-runtime'), eventsFile: path.join(f.root, 'display-store-events.jsonl'),
+  }).init();
+  const coordinator = new MemorySyncCoordinator({ project: { sharedDir, head: 'b'.repeat(40) }, sessionId: 'existing-session', store,
+    directory: path.join(f.root, 'display-session-sync'), request, managed: true,
+    display: async () => ({ name: 'CI', platform: 'codex' }), retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); });
+  await coordinator.start();
+  await until(() => coordinator.snapshot().status === 'synced');
+  assert.deepEqual(remote.memory.display, { name: 'CI', platform: 'codex' });
+  assert.deepEqual(remote.memory.records, { 'sessions/s.md': 'preserve' });
+  assert.equal(remote.sourceCommit, originalSource);
+});
+
 test('Workbench coordinator migrates a confirmed legacy main baseline before reopening a Session', async t => {
   const f = await fixture();
   const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
