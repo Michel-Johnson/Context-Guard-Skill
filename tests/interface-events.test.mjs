@@ -230,11 +230,21 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   });
   const queuedResponse = await cloudCall('/api/session-message', { operationId: 'queued-task', sessionId: 's', nodeId: 'R', todoId: 'TD2' });
   assert.equal((await queuedResponse.json()).state, 'queued'); assert.equal(delivered.length, 1);
+  const reports = delivered[0].message.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+  assert.equal(reports.length, 2);
+  await sendMessage(local.state.url, first.token, reports[0], { allowLoopback: true });
+  const running = await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] });
+  assert.equal((await running.json()).tasks[0].state, 'executing');
+  reports[1].payload.data.summary = 'Isolated adapter execution completed';
+  await sendMessage(local.state.url, first.token, reports[1], { allowLoopback: true });
+  await waitFor(() => delivered.length === 2);
+  const completed = await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] });
+  assert.equal((await completed.json()).tasks[0].state, 'completed');
   const interrupt = { id: 'interrupt-1', occurredAt: new Date().toISOString(), reason: 'local interruption' };
   const reported = await request(local.state, '/api/v2/interrupt', { token: first.token, method: 'POST', body: interrupt });
   assert.equal(reported.synchronized, true); assert.equal(reported.receipt.stage, 'interrupted');
   assert.deepEqual(await request(local.state, '/api/v2/interrupt', { token: first.token, method: 'POST', body: interrupt }), reported);
-  assert.equal(delivered.length, 1);
+  assert.equal(delivered.length, 2);
   const main = await sendMessage(local.state.url, first.token, message('workbench.read', { scope: 'main', cursor: '', limit: 10 }), { allowLoopback: true });
   assert.equal(main.version, 'main-v1'); assert.equal(main.items[0].node.id, 'R');
   // Binding identity and name outlive the ephemeral presence cache. Restart
@@ -251,7 +261,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   assert.equal(restored.find(item => item.id === 's').name, 'session-one');
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
-  assert.equal(delivered.length, 1, 'restart must not redeliver the already accepted task');
+  assert.equal(delivered.length, 2, 'restart must not redeliver either accepted task');
 });
 
 test('IF-037: the project heartbeat reconciles actual private Cloud Map edits without a per-Session event connection', async t => {

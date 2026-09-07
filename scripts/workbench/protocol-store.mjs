@@ -153,7 +153,7 @@ export class ProtocolStore extends EventEmitter {
       const brief = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief`, type: 'brief.submit', session: request.session, payload: { taskId, text: resolved.text } }, emitted, workflow);
       await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief-review`, type: 'review.request', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, taskId } }, emitted, workflow);
       await reduceWorkflow(state, principal, { v: 2, id: `${prefix}:approved`, type: 'review.result', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: '用户在 Cloud 工作台确认分配' } }, emitted, workflow);
-      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion } }, emitted, workflow);
+      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion, ...(resolved.mode ? { mode: resolved.mode } : {}) } }, emitted, workflow);
       const result = { deliveryId: request.operationId, taskId, sessionId: request.session.id, state: assigned.stage === 'queued' ? 'queued' : 'cloud_queued', taskVersion: assigned.version };
       state.taskDispatches[dispatchKey] = { fingerprint, result };
       return result;
@@ -170,7 +170,7 @@ export class ProtocolStore extends EventEmitter {
         ? Object.values(queue.consumers || {}).map(consumer => consumer.outcomes?.[task.assignmentSeq]).filter(Boolean)
         : [];
       const delivered = outcomes.find(item => item.deliveryState === 'received') || outcomes.find(item => item.deliveryState) || outcomes[0];
-      const stateName = task.stage === 'queued' ? 'queued'
+      const stateName = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'unknown') : task.stage === 'queued' ? 'queued'
         : ['plan-ready', 'plan-rejected'].includes(task.stage) ? 'waiting_review'
           : task.stage === 'executing' ? 'executing'
             : task.stage !== 'assigned' ? task.stage

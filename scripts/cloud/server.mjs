@@ -1054,7 +1054,7 @@ export async function startCloudServer({
             if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');
             return {
               taskId: `task-${digest(`${project.id}\0${operationId}`).slice(0, 40)}`,
-              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version,
+              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version, mode: 'session',
             };
           }, { verifyRouting: verifyInterfaceRouting });
           return send(res, 200, result);

@@ -25,6 +25,8 @@ const sha = (v, p) => check(typeof v === 'string' && /^[a-f0-9]{40}$/.test(v), p
 const session = object({ id, generation: integer(1) });
 const refs = array(id);
 const reportData = {
+  started: object({ deliveryId: id }),
+  finished: object({ deliveryId: id, outcome: choice('success', 'failed', 'cancelled'), summary: text }),
   planReady: object({ planRef: id, planVersion: version, sourceSha: sha }),
   progress: object({ seq: integer(), summary: text }),
   interrupted: object({ reason: text, occurredAt: (v, p) => check(typeof v === 'string' && /^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(v) && Number.isFinite(Date.parse(v)), p) }),
@@ -81,7 +83,7 @@ export const payloadRules = {
   'brief.submit': object({ taskId: id, text }),
   'review.request': v => { object({ kind: choice('brief', 'plan'), ref: id, version, taskId: id, requirementsRef: optional(id), requirementsVersion: optional(version), rulesVersion: optional(version) })(v); if (v.kind === 'plan') check(!!v.requirementsRef && !!v.requirementsVersion && !!v.rulesVersion, 'plan review references'); },
   'review.result': object({ kind: choice('brief', 'plan'), ref: id, version, decision: choice('approved', 'rejected'), reason: text, receiptId: optional(id) }),
-  'task.assign': object({ taskId: id, briefRef: id, briefVersion: version, sessionId: id, nodeIds: ids, mainVersion: version }),
+  'task.assign': object({ taskId: id, briefRef: id, briefVersion: version, sessionId: id, nodeIds: ids, mainVersion: version, mode: optional(choice('session', 'reviewed')) }),
   'task.report': v => { object({ taskId: id, stage: choice(...Object.keys(reportData)), data: jsonObject })(v); reportData[v.stage](v.data); },
   'task.rework': object({ taskId: id, sourceSha: sha, ciResultRef: id, failedTestIds: ids }),
   'ci.request': object({ taskId: id, sourceSha: sha, ciTodoRef: id, unitTestRefs: refs }),

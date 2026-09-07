@@ -80,6 +80,10 @@ Cloud网页与本地网页使用相同workbench.read/patch格式；Cloud人类�
 
 ## task.report 的 data
 
+Cloud 工作台确认分配的任务使用 `task.assign.mode="session"`，由绑定的现有 Session 执行；没有 mode 或 `mode="reviewed"` 的任务保留原 Plan/CI 审核流程。Session 任务先回报 `stage="started",data={deliveryId}`，结束后回报 `stage="finished",data={deliveryId,outcome:"success"|"failed"|"cancelled",summary}`。deliveryId 必须匹配服务端保存的分配通知，只有所属执行方可回报；服务器记录开始/结束时间，重复消息沿用原 ID。
+
+finished 是任务执行结果，不是 Git 合并、Main 发布或审核回执。它释放本 Session 的业务队列，并按服务端递增分配序号启动下一项；收到消息、心跳在线和普通 idle 状态均不能替代该结果。Cloud 保留全部任务与结果，失败和取消也释放队列，不能让后续任务永久等候。生产原生 Session 验收仍以 `CI_todo.md` 为准。
+
 - planReady：{planRef:string,planVersion:string,sourceSha:string}。
 - progress：{seq:integer,summary:string}，同任务seq单调递增，重复不覆盖较新状态。
 - interrupted：{reason:string,occurredAt:RFC3339}，脚本记录；失联不能伪造中断。

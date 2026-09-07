@@ -1388,7 +1388,7 @@ function sessionLifecycle(meta){
   if(String(meta?.bindingState||"").toLowerCase()==="unavailable") return {state:"unknown",label:"会话不可用",disabled:true};
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
   const status=String(meta?.status||"").toLowerCase();
-  if(status==="online") return {state:"online",label:"心跳在线",disabled:false};
+  if(status==="online") return {state:"online",label:meta?.execution?.status==="active"?"心跳在线 · 执行中":meta?.execution?.status==="stopped"?"心跳在线 · 空闲":"心跳在线",disabled:false};
   if(status==="offline") return {state:"offline",label:"心跳离线",disabled:false};
   if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
   if(["stopped","completed","done"].includes(status)) return {state:"stopped",label:"已完成",disabled:false};
@@ -2196,6 +2196,9 @@ function bugProgress(bug){
   if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
   if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
   const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
+  if(delivery==="completed") return {kind:"resolved",label:t("bugResolved"),detail:""};
+  if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
+  if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskQueued")}`,detail:""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
@@ -2232,6 +2235,9 @@ function todoProgress(todo){
   const status = String(todo?.status||"pending");
   if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
   const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
+  if(delivery==="completed") return {kind:"resolved",label:t("todoDone"),detail:""};
+  if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
+  if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskQueued")}`,detail:""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
