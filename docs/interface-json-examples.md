@@ -23,7 +23,9 @@
       {
         "sessionId": "session-demo",
         "generation": 1,
-        "settledSeq": 10
+        "settledSeq": 10,
+        "name": "online",
+        "platform": "codex"
       }
     ]
   }

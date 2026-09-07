@@ -60,7 +60,9 @@
           {
             "id": "session-1",
             "generation": 1,
-            "ackedSeq": 10
+            "ackedSeq": 10,
+            "name": "online",
+            "platform": "codex"
           }
         ]
       },
@@ -74,7 +76,7 @@
           }
         ]
       },
-      "rule": "只比较序号，不传文件。最新序号更大就 sync.read；本地变更主动上传。",
+      "rule": "只比较序号，不传文件。每次心跳携带本地 Session 展示名称与平台，供 Cloud 在线列表识别；旧客户端可省略这两个字段。最新序号更大就 sync.read；本地变更主动上传。",
       "parents": [
         "N461"
       ]

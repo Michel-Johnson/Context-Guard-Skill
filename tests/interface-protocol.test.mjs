@@ -29,6 +29,13 @@ test('IF-003: distinguish Session and generations, reject invalid queue cursors'
   const assign = message(catalog.interfaces.find(i => i.type === 'task.assign'));
   assign.payload.sessionId = 'another-session'; assert.throws(() => validateMessage(assign));
 });
+test('IF-056: heartbeat accepts bounded Session display metadata for Cloud presence', () => {
+  const heartbeat = message(catalog.interfaces.find(i => i.type === 'sync.heartbeat'));
+  heartbeat.payload.sessions[0] = { ...heartbeat.payload.sessions[0], name: 'online', platform: 'codex' };
+  assert.equal(validateMessage(heartbeat).payload.sessions[0].name, 'online');
+  heartbeat.payload.sessions[0].name = 'x'.repeat(241);
+  assert.throws(() => validateMessage(heartbeat), { code: 'INVALID_ARGUMENT' });
+});
 test('IF-004: bounded requests, failed test evidence, atomic change shapes', () => {
   const input = message(catalog.interfaces.find(i => i.type === 'object.put'));
   input.payload.content = { text: 'x'.repeat(256 * 1024) };

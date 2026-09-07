@@ -112,7 +112,9 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     { id: 'private', title: 'private', todos: [{ id: 'TD3', title: 'Denied task', status: 'pending' }], access: [{ id: 'denied', agentId: 's', allow: 'none' }] },
   ] } };
   const ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
-  await fs.writeFile(path.join(ctx, 'sessions.jsonl'), ['s', 's2'].map(id => JSON.stringify({ session_id: id, event: 'session-start', platform: 'codex' })).join('\n') + '\n');
+  await fs.writeFile(path.join(ctx, 'sessions.jsonl'), [['s', 'session-one'], ['s2', 'session-two']].map(([id, thread_name]) => JSON.stringify({
+    session_id: id, event: 'session-start', platform: 'codex', thread_name,
+  })).join('\n') + '\n');
   const memory = { dataDir: path.join(directory, 'memory'), adminToken: 'test-admin', projects: { 'context-guard': { token: 'test-project' } } };
   const memoryFile = path.join(memory.dataDir, hash('context-guard'), 'memory.json'); await fs.mkdir(path.dirname(memoryFile), { recursive: true });
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'main-v1', mainSha: sha, memory: { map: doc, records: {} } },
@@ -134,14 +136,19 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const heartbeatOnlyBinding = await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-bind', type: 'session.bind', payload: {
     sessionId: 'heartbeat-only', worktreeId: 'heartbeat-worktree', agentId: 'heartbeat-agent', expectedBindingVersion: '',
   } });
-  await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-presence', type: 'sync.heartbeat', payload: { sessions: [{ ...heartbeatOnlyBinding.session, ackedSeq: 0 }] } });
+  await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-presence', type: 'sync.heartbeat', payload: { sessions: [{
+    ...heartbeatOnlyBinding.session, ackedSeq: 0, name: 'live-task', platform: 'codex',
+  }] } });
   const accessEvent = await Promise.race([
     cloudEventReader.read().then(part => new TextDecoder().decode(part.value || new Uint8Array())),
     delay(2000).then(() => assert.fail('Cloud workbench did not receive the heartbeat access event')),
   ]);
   assert.match(accessEvent, /event: access/);
   const heartbeatAccess = await cloudAccess();
-  assert.equal(heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only')?.status, 'online');
+  assert.deepEqual(
+    Object.fromEntries(['name', 'platform', 'status'].map(key => [key, heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only')?.[key]])),
+    { name: 'live-task', platform: 'codex', status: 'online' },
+  );
   assert.deepEqual(heartbeatAccess.grants['heartbeat-only'].nodes, ['R', 'private']);
   await fs.mkdir(project.sharedDir, { recursive: true });
   await fs.writeFile(path.join(project.sharedDir, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId: 'context-guard', token: 'test-project' }));
@@ -155,7 +162,11 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   assert.equal(first.cloudBinding.status, 'ready'); assert.equal(second.cloudBinding.status, 'ready');
   const waitFor = async predicate => { const deadline = Date.now() + 15000; while (!await predicate() && Date.now() < deadline) await delay(30); assert.ok(await predicate(), 'condition did not become true'); };
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
-  await commitSessionMap(memory, 'context-guard', 's2', { operationId: 's2-edit', baseVersion: 'initial', operations: [{ type: 'update', id: 'R', fields: { purpose: 's2 only' } }] });
+  assert.deepEqual((await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).map(item => [item.name, item.platform]), [
+    ['session-one', 'codex'], ['session-two', 'codex'],
+  ]);
+  const s2Version = (await memoryHeads(memory, 'context-guard')).s2.mapVersion;
+  await commitSessionMap(memory, 'context-guard', 's2', { operationId: 's2-edit', baseVersion: s2Version, operations: [{ type: 'update', id: 'R', fields: { purpose: 's2 only' } }] });
   await waitFor(() => local.stores.get('session:s2').doc.root.purpose === 's2 only');
   assert.notEqual(local.stores.get('session:s').doc.root.purpose, 's2 only');
   const cloudCall = (route, body) => fetch(`${cloud.url}/api/workbench/projects/context-guard${route}?view=main`, { method: 'POST', headers: cloudHeaders, body: JSON.stringify(body) });

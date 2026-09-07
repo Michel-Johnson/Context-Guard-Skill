@@ -593,10 +593,10 @@ export async function startCloudServer({
       const observed = presence.get(sessionId);
       const lastSeen = observed?.lastHeartbeatAt || snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
       const status = cloudSessionPresence(observed?.lastHeartbeatAt);
-      return { id: sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '' };
+      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '' };
     });
     for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) sessions.push({
-      id: observed.sessionId, name: '', platform: 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
+      id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
       lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
     });
     return sessions.sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
@@ -882,14 +882,15 @@ export async function startCloudServer({
           if (input.type === 'sync.heartbeat') {
             const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
             const lastHeartbeatAt = new Date().toISOString();
-            let becameOnline = false;
+            let accessChanged = false;
             for (const session of input.payload.sessions) {
               const key = presenceKey(principal.repositoryId, session.id), previous = interfacePresence.get(key);
-              if (!previous?.online) becameOnline = true;
+              const name = session.name || previous?.name || '', platform = session.platform || previous?.platform || '';
+              if (!previous?.online || previous.name !== name || previous.platform !== platform) accessChanged = true;
               interfacePresence.set(key, { repositoryId: principal.repositoryId, projectId: repository?.projectId || '', sessionId: session.id,
-                generation: session.generation, lastHeartbeatAt, online: true });
+                generation: session.generation, name, platform, lastHeartbeatAt, online: true });
             }
-            if (becameOnline && repository?.projectId) {
+            if (accessChanged && repository?.projectId) {
               const project = projectById(repository.projectId);
               if (project) broadcastWorkbenchAccess(project);
             }
