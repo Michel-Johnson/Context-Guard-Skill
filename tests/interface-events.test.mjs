@@ -138,6 +138,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   } });
   await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-presence', type: 'sync.heartbeat', payload: { sessions: [{
     ...heartbeatOnlyBinding.session, ackedSeq: 0, name: 'live-task', platform: 'codex',
+    execution: { status: 'active', at: '2026-09-08T00:00:00Z' },
   }] } });
   const accessEvent = await Promise.race([
     cloudEventReader.read().then(part => new TextDecoder().decode(part.value || new Uint8Array())),
@@ -150,6 +151,17 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     { name: 'live-task', platform: 'codex', status: 'online' },
   );
   assert.deepEqual(heartbeatAccess.grants['heartbeat-only'].nodes, ['R', 'private']);
+  assert.deepEqual(heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only').execution,
+    { status: 'active', at: '2026-09-08T00:00:00Z' });
+  const mixedBeat = await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-stopped', type: 'sync.heartbeat', payload: { sessions: [
+    { ...heartbeatOnlyBinding.session, ackedSeq: 0, execution: { status: 'stopped', at: '2026-09-08T00:01:00Z' } },
+    { id: 'not-owned', generation: 1, ackedSeq: 0, name: 'must-not-appear' },
+  ] } });
+  assert.deepEqual(mixedBeat.rejected, [{ id: 'not-owned', generation: 1, code: 'FORBIDDEN' }]);
+  const stoppedAccess = await cloudAccess();
+  assert.equal(stoppedAccess.sessions.some(item => item.id === 'not-owned'), false);
+  assert.deepEqual(stoppedAccess.sessions.find(item => item.id === 'heartbeat-only').execution,
+    { status: 'stopped', at: '2026-09-08T00:01:00Z' });
   await fs.mkdir(project.sharedDir, { recursive: true });
   await fs.writeFile(path.join(project.sharedDir, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId: 'context-guard', token: 'test-project' }));
   const delivered = [];

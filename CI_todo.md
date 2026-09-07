@@ -3,6 +3,8 @@
 ## 设备级通讯精简（进行中，尚未部署）
 
 - [x] 地图/任务处理阻塞时独立发送心跳（`tests/interface-transport.test.mjs`）。
+- [x] 地图同步与同 Session 消息确认分离；混合心跳隔离失效绑定，Cloud 只登记通过鉴权的条目（`tests/interface-transport.test.mjs`、`tests/interface-store.test.mjs`、`tests/interface-events.test.mjs`）。
+- [x] 心跳携带宿主执行状态，Cloud API 区分连接在线与 active/stopped/unknown；隔离服务验证状态转换（`tests/interface-events.test.mjs`）。真实宿主及前端展示仍待验收。
 - [x] Cloud Session 深链接保留全部 Session 和 Main 入口（`tests/cloud-workbench-browser.mjs`）。
 - [x] Cloud 模式下损坏的本地日志自动备份恢复，保留地图与操作去重回执；损坏的待提交事务仍单独保护（`tests/workbench-journal-recovery.test.mjs`）。
 - [ ] 单设备跨项目统一通讯服务、真实执行状态回报、旧通讯路径删除。

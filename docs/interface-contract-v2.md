@@ -46,6 +46,10 @@ Cloud仅HTTPS。auth.open按Git remote自动解析GitHub仓库数字ID，不让�
 
 sync.ack 的每项可附 `deliveryState=stored/received/uncertain`：stored 只表示本地已落盘，received 表示宿主明确接收，uncertain 表示可能已接收、禁止自动重复触发。确定未接收时本地不确认该序号，由下一次心跳使用同一交付编号重试；它不会阻塞其他 Session。
 
+心跳 Session 可附 `execution:{status:"active"|"stopped"|"unknown",at:string}`，由本地宿主状态提供，不依赖 Hook。`at` 是宿主观察时间，不用于延长在线期限；在线仍以服务器接收时间为准。Cloud access 返回此执行状态，离线时返回 unknown；连接在线、宿主运行和业务任务完成是三个不同事实，心跳不能代替任务完成回执。
+
+混合心跳中部分 Session 的绑定失效、越权或确认位置超前时，成功条目继续返回，失败条目放在 `data.rejected:[{id,generation,code}]`，且不更新失败条目的在线状态或名称。全部条目失败时仍返回原错误。地图协调与消息确认并行，地图失败不阻止可靠收件，但任务自身的授权校验仍然执行。
+
 无云端模式复用同一任务、审核、对象和工作台格式，由本地后端承担存储与排队；不连接Cloud。不存在主Agent时plan留待审核，不能默认通过或偷偷启动模型。具体采用何种本地主Agent仍由后续产品决定。
 
 ## 工作台变更字段

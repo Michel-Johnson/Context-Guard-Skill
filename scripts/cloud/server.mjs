@@ -600,11 +600,12 @@ export async function startCloudServer({
       const observed = presence.get(sessionId);
       const lastSeen = observed?.lastHeartbeatAt || snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
       const status = cloudSessionPresence(observed?.lastHeartbeatAt);
-      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '' };
+      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '', execution: status === 'online' ? observed?.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' } };
     });
     for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) sessions.push({
       id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
       lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
+      execution: cloudSessionPresence(observed.lastHeartbeatAt) === 'online' ? observed.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' },
     });
     if (repository) {
       const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
@@ -903,16 +904,18 @@ export async function startCloudServer({
             workflow: { verifyRouting: verifyInterfaceRouting },
           });
           if (input.type === 'sync.heartbeat') {
-            await store.rememberSessionNames(principal, input.payload.sessions);
+            const accepted = input.payload.sessions.filter(item => reply.data.sessions.some(session => session.id === item.id && session.generation === item.generation && item.ackedSeq <= session.ackedSeq));
+            await store.rememberSessionNames(principal, accepted);
             const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
             const lastHeartbeatAt = new Date().toISOString();
             let accessChanged = false;
-            for (const session of input.payload.sessions) {
+            for (const session of accepted) {
               const key = presenceKey(principal.repositoryId, session.id), previous = interfacePresence.get(key);
               const name = session.name || previous?.name || '', platform = session.platform || previous?.platform || '';
-              if (!previous?.online || previous.name !== name || previous.platform !== platform) accessChanged = true;
+              const execution = session.execution || { status: 'unknown', at: '' };
+              if (!previous?.online || previous.name !== name || previous.platform !== platform || previous.execution?.status !== execution.status || previous.execution?.at !== execution.at) accessChanged = true;
               interfacePresence.set(key, { repositoryId: principal.repositoryId, projectId: repository?.projectId || '', sessionId: session.id,
-                generation: session.generation, name, platform, lastHeartbeatAt, online: true });
+                generation: session.generation, name, platform, lastHeartbeatAt, online: true, execution });
             }
             if (accessChanged && repository?.projectId) {
               const project = projectById(repository.projectId);

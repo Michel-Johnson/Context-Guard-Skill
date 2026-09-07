@@ -116,12 +116,19 @@ export class ProjectMessagePump {
     const sessions = await this.sessions();
     if (!sessions.length) return;
     const beat = await this.send(this.request('sync.heartbeat', { sessions }));
+    for (const rejected of beat.rejected || []) this.onError(new ProtocolError(rejected.code, 'Session heartbeat rejected', { sessionId: rejected.id, generation: rejected.generation }));
     return { sessions, beat };
   }
   async drainSession(sessions, remote) {
       const local = sessions.find(s => s.id === remote.id && s.generation === remote.generation);
       if (!local) fail('STALE_SESSION', 'Heartbeat returned an unknown binding');
-      await this.onSession(remote);
+      // Map reconciliation and durable notification delivery are independent.
+      // A failed or stalled Map must not suppress receipt of queued tasks.
+      const results = await Promise.allSettled([this.onSession(remote), this.drainNotifications(local, remote)]);
+      const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Session synchronization failed');
+  }
+  async drainNotifications(local, remote) {
       const session = { id: local.id, generation: local.generation };
       let cursor = remote.ackedSeq;
       // Bound a pass so one large Session cannot monopolize the project worker.

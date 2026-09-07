@@ -205,13 +205,23 @@ export class ProtocolStore extends EventEmitter {
         return { session: { id: payload.sessionId, generation: binding.generation }, bindingVersion: binding.version };
       }
       if (message.type === 'sync.heartbeat') {
-        return { sessions: payload.sessions.map(s => {
-          requireBinding(state, p, s);
-          const queue = queueFor(state, p, s);
-          const consumer = consumerFor(queue, p);
-          if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
-          return { id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq };
-        }) };
+        const sessions = [], rejected = [];
+        let firstError;
+        for (const s of payload.sessions) {
+          try {
+            requireBinding(state, p, s);
+            const queue = queueFor(state, p, s);
+            const consumer = consumerFor(queue, p);
+            if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
+            sessions.push({ id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq });
+          } catch (error) {
+            if (!['FORBIDDEN', 'STALE_SESSION', 'CONFLICT'].includes(error.code)) throw error;
+            firstError ||= error;
+            rejected.push({ id: s.id, generation: s.generation, code: error.code });
+          }
+        }
+        if (!sessions.length && firstError) throw firstError;
+        return { sessions, ...(rejected.length ? { rejected } : {}) };
       }
       if (message.type === 'sync.read') {
         const queue = queueFor(state, p, message.session);

@@ -64,6 +64,7 @@ export const payloadRules = {
     ackedSeq: integer(),
     name: optional(string(240)),
     platform: optional(string(64)),
+    execution: optional(object({ status: choice('active', 'stopped', 'unknown'), at: string(64, true) })),
   })) }),
   'sync.read': object({ afterSeq: integer(), limit: integer(1, 100) }),
   'sync.ack': object({ items: array((v, p) => { object({ seq: integer(1), outcome: choice('applied', 'rejected', 'cancelled'), reason: optional(text), deliveryState: optional(choice('stored', 'received', 'uncertain')) })(v, p); check(v.outcome === 'applied' || !!v.reason, p); }, 1) }),

@@ -163,6 +163,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const identity = identities.get(head.session.id), heartbeat = { ...head.session, ackedSeq: 0 };
               if (identity?.name) heartbeat.name = identity.name;
               if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
+              heartbeat.execution = { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
               registered.push(heartbeat);
             }
           } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }
@@ -195,7 +196,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
       onError: (error, source) => {
         device.lastError = error.code || 'UNAVAILABLE';
-        if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const coordinator of syncCoordinators.values()) if (coordinator.managed && !coordinator.status.conflict) {
+        if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const [view, coordinator] of syncCoordinators) if ((!error.details?.sessionId || view === `session:${error.details.sessionId}`) && coordinator.managed && !coordinator.status.conflict) {
           coordinator.update({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: device.lastError });
         }
       },

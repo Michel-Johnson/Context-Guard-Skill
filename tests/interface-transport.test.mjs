@@ -170,3 +170,30 @@ test('heartbeats continue while downstream Map work is stalled', async () => {
     assert.ok(beats >= 3);
   } finally { clearTimeout(timeout); release(); await pump.close(); }
 });
+
+test('a stalled Map does not block the same Session notification receipt', async () => {
+  let release, acknowledge;
+  const stalled = new Promise(resolve => { release = resolve; });
+  const acknowledged = new Promise(resolve => { acknowledge = resolve; });
+  const order = [];
+  const pump = new ProjectMessagePump({
+    sessions: async () => [{ ...session, ackedSeq: 0 }],
+    onSession: () => stalled,
+    send: async message => {
+      if (message.type === 'sync.heartbeat') return { sessions: [{ ...session, ackedSeq: 0, latestSeq: 1 }] };
+      if (message.type === 'sync.read') return { messages: [{ seq: 1, message: {
+        v: 2, id: 'independent-notification', type: 'sync.event', session, payload: { latestSeq: 1 },
+      } }], nextSeq: 1 };
+      order.push('ack'); acknowledge(); return { ackedSeq: 1 };
+    },
+    apply: async () => { order.push('persist'); return { outcome: 'applied' }; },
+  });
+  let timeout;
+  const work = pump.poll();
+  try {
+    await Promise.race([acknowledged, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('Map blocked notification delivery')), 1000);
+    })]);
+    assert.deepEqual(order, ['persist', 'ack']);
+  } finally { clearTimeout(timeout); release(); await work; await pump.close(); }
+});
