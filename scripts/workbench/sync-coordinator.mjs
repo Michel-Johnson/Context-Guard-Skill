@@ -149,7 +149,16 @@ export class MemorySyncCoordinator extends EventEmitter {
     this.status = { configured: false, status: 'disabled', pending: 0, cursor: 0, serverVersion: null, error: null, conflict: null };
     this.onStoreEvent = event => {
       if (event.actor?.sessionId === 'cloud-sync') return;
-      this.schedule(() => this.queueLocal()).catch(() => {});
+      const recovery = event.actions?.includes('journal-recovery')
+        && ['MAIN_ADVANCED_BEFORE_SESSION_REOPEN', 'SESSION_MAIN_BASELINE_REQUIRED'].includes(this.status.conflict?.code);
+      this.schedule(async () => {
+        if (!recovery) return this.queueLocal();
+        // The Map was read-only while the first bootstrap ran. A human recovery
+        // is the durable signal to retry that same bootstrap; semantic conflicts
+        // are saved again by initialize instead of being silently discarded.
+        await this.persist({ status: 'connecting', conflict: null, error: null });
+        await this.initialize();
+      }).catch(() => {});
     };
   }
 
