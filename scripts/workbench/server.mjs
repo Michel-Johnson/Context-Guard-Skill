@@ -155,11 +155,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     }
     if (await device.connected()) device.start({
       sessions: async () => {
-        const registered = [];
+        const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
         for (const head of await protocolStore.queueHeads(backendPrincipal)) {
           if (!access.binding(head.session.id)) continue;
           try {
-            if (await device.bindingReady(await protocolStore.registeredBinding(backendPrincipal, head.session.id))) registered.push({ ...head.session, ackedSeq: 0 });
+            if (await device.bindingReady(await protocolStore.registeredBinding(backendPrincipal, head.session.id))) {
+              const identity = identities.get(head.session.id), heartbeat = { ...head.session, ackedSeq: 0 };
+              if (identity?.name) heartbeat.name = identity.name;
+              if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
+              registered.push(heartbeat);
+            }
           } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }
         }
         return registered;

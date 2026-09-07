@@ -42,7 +42,7 @@
 
 | type | 方向 | payload 字段 |
 | --- | --- | --- |
-| sync.heartbeat | 本地→Cloud | connectionId:string，sessions:[{sessionId:string,generation:integer,settledSeq:integer}] |
+| sync.heartbeat | 本地→Cloud | connectionId:string，sessions:[{sessionId:string,generation:integer,settledSeq:integer,name?:string,platform?:string}]；名称与平台由本地真实 Session 注册表提供，Cloud 用于在线列表，旧客户端可省略 |
 | sync.heartbeat.result | Cloud→本地 | sessions:[{sessionId:string,generation:integer,latestSeq:integer,ackedSeq:integer,hasPending:boolean}] |
 | sync.available | Cloud→本地 | latestSeq:integer；Session 由信封确定 |
 | sync.read | 本地→Cloud | afterSeq:integer，limit:integer，maxBytes:integer |
