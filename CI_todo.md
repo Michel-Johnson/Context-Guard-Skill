@@ -1,5 +1,18 @@
 # CI TODO
 
+## 设备级通讯精简（进行中，尚未部署）
+
+- [x] 地图/任务处理阻塞时独立发送心跳（`tests/interface-transport.test.mjs`）。
+- [x] 地图同步与同 Session 消息确认分离；混合心跳隔离失效绑定，Cloud 只登记通过鉴权的条目（`tests/interface-transport.test.mjs`、`tests/interface-store.test.mjs`、`tests/interface-events.test.mjs`）。
+- [x] 心跳携带宿主执行状态，Cloud API 区分连接在线与 active/stopped/unknown；隔离服务验证状态转换（`tests/interface-events.test.mjs`）。真实宿主及前端展示仍待验收。
+- [x] Cloud Session 深链接保留全部 Session 和 Main 入口（`tests/cloud-workbench-browser.mjs`）。
+- [x] Cloud 模式下损坏的本地日志自动备份恢复，保留地图与操作去重回执；损坏的待提交事务仍单独保护（`tests/workbench-journal-recovery.test.mjs`）。
+- [x] 设备公共服务汇总项目心跳，同 Cloud 一次请求，项目凭据隔离；本地项目移除独立 Cloud 心跳/事件调度（`tests/interface-auth.test.mjs`、`tests/interface-transport.test.mjs`、`tests/interface-events.test.mjs`）。生产安装、恢复与持续运行验收仍待完成。
+- [x] 页面区分在线/执行中/空闲及任务完成结果；删除设备连接类中已被替代的项目级心跳、重试定时器和 Cloud SSE 循环（`tests/interface-events.test.mjs`、浏览器回归）。旧 Map-only 独立产品命令不属于设备 v2 调度路径。
+- [x] Session 执行回报与代码发布分离，服务端递增序号维持 FIFO；完成/失败/取消释放队列，重复回报与重启保持幂等（`tests/interface-workflow.test.mjs`）。
+- [ ] 用真实“测试”Session 验证 2 Bug + 2 TODO、Cloud 页面执行状态和完成顺序。
+- [ ] 安装入口、Cloud 部署和 30 分钟持续心跳验收；局部测试不代表以上功能完成。
+
 - [x] Cloud 保存失败时在顶栏直接展示结构化错误码与简短原因，完整诊断仍保留在“同步与恢复”中。
 
 ## 接口 1.0（本地实现与隔离 Cloud 联调已完成，生产 Cloud 待部署验收）

@@ -5,6 +5,46 @@ import os from 'node:os';
 import path from 'node:path';
 import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
 
+test('four approved Session tasks finish in durable FIFO order across success, failure and cancellation', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-session-fifo-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let store = new ProtocolStore(directory);
+  const session = { id: 'test-session', generation: 1 };
+  const device = { repositoryId: 'repo', deviceId: 'local', agentId: 'device', role: 'device' };
+  const human = { ...device, agentId: 'human', role: 'human' };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'wt', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const tasks = ['z-bug', 'a-bug', 'z-todo', 'a-todo'];
+  for (const taskId of tasks) {
+    const result = await store.submitApprovedTask(human, { operationId: taskId, session }, async () => ({
+      taskId, text: taskId, nodeIds: ['node'], mainVersion: 'main', mode: 'session',
+    }), { verifyRouting: () => true });
+    assert.equal(result.state, taskId === tasks[0] ? 'cloud_queued' : 'queued');
+  }
+  const messages = () => store.transaction(state => Object.values(state.tasks));
+  for (const [index, taskId] of tasks.entries()) {
+    store = new ProtocolStore(directory);
+    const saved = await messages(), active = saved.find(task => task.id === taskId);
+    assert.deepEqual(saved.filter(task => task.busy).map(task => task.id), [taskId]);
+    const deliveryId = active.assignmentNotification.id;
+    const report = (stage, data) => ({ v: 2, id: `${taskId}-${stage}`, type: 'task.report', session,
+      payload: { taskId, stage, data: { deliveryId, ...data } } });
+    const start = report('started', {});
+    await assert.rejects(store.handle(device, { ...start, payload: { ...start.payload, data: { deliveryId: 'another-delivery' } } }), { code: 'CONFLICT' });
+    await store.handle(device, start);
+    assert.equal((await store.taskStatus(human, session, taskId)).state, 'executing');
+    const outcome = ['success', 'failed', 'cancelled', 'success'][index];
+    const finished = report('finished', { outcome, summary: `Actual ${outcome} result` });
+    await assert.rejects(store.handle(human, finished), { code: 'FORBIDDEN' });
+    const result = await store.handle(device, finished);
+    assert.equal(result.data.activatedTaskId, tasks[index + 1]);
+    assert.deepEqual(await store.handle(device, finished), result);
+    assert.equal((await store.taskStatus(human, session, taskId)).state, outcome === 'success' ? 'completed' : outcome);
+  }
+  assert.equal((await messages()).some(task => task.busy), false);
+});
+
 test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the executor busy until the end', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-workflow-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

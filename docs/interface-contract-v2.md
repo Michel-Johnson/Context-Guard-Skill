@@ -42,9 +42,15 @@ v、id、type、payload必填；auth.open/auth.close、项目心跳和session.bi
 
 Cloud仅HTTPS。auth.open按Git remote自动解析GitHub仓库数字ID，不让人填ID；仓库存在不等于有权限。私有仓库优先使用进程已有的 `GH_TOKEN`/`GITHUB_TOKEN`，未配置且匿名查询被拒时可读取本机 `gh auth` 的系统凭据，令牌只保留在校验进程内且不写日志或项目文件。密码只发鉴权入口、不进日志与消息队列；首版返回项目范围短期凭证，本地保存于私有配置，浏览器用HttpOnly/Secure Cookie并验证Origin。到期重新登录，auth.close立即撤销。Agent权限由服务端已有注册记录决定，不能提交role给自己升级；无人值守云端Agent预配置受限凭证，不使用人类批准身份。
 
-每个项目一个本地后台，Session分队列；10秒心跳保证Cloud到本地补漏，本地变化立即上报。Cloud 只在进程内记录通过鉴权和绑定校验的最近心跳：30秒内显示绿色在线点，超时显示红色离线点；该状态不写入业务记忆，也不把历史绑定误报为在线。状态变化通过工作台 access 事件即时通知已打开页面。事件流 /api/v2/events 发送sync.event，payload={latestSeq:integer}，公共信封标明Session；只作提醒。断流仍靠心跳读取；sync.read内每条message也包含完整信封。按消息id去重，sync.ack只确认已有持久处理结果的连续序号，不能因收到通知就推进。重连不覆盖未确认本地编辑。
+每个项目后台保留绑定、凭据和业务队列；设备公共服务统一每10秒汇总心跳。同一 Cloud origin 的项目经 POST `/api/v2/heartbeat` 一次发送，正文为 `[{credential,message}]`，message 是既有 sync.heartbeat 信封，响应为同序消息回执数组。每项凭据独立鉴权，禁止浏览器 Origin；正文限256KiB、最多100项目/100个 Session。不得记录含凭据的请求正文。项目后台的 `/api/device-heartbeat` 只允许设备服务持有的本地管理凭据，GET 读取心跳输入，POST 接收匹配当前请求ID的回执。
+
+Cloud 只在进程内记录通过鉴权和绑定校验的最近心跳：30秒内显示绿色在线点，超时显示红色离线点；该状态不写入业务记忆，也不把历史绑定误报为在线。状态变化通过工作台 access 事件即时通知页面。项目后台不再各自启动 Cloud 心跳或事件流；设备心跳返回队列位置后，各项目消费自己的 sync.read/ack，业务写入仍立即发送。sync.ack 只确认已有持久处理结果，不能因收到通知就推进；重连不覆盖未确认本地编辑。
 
 sync.ack 的每项可附 `deliveryState=stored/received/uncertain`：stored 只表示本地已落盘，received 表示宿主明确接收，uncertain 表示可能已接收、禁止自动重复触发。确定未接收时本地不确认该序号，由下一次心跳使用同一交付编号重试；它不会阻塞其他 Session。
+
+心跳 Session 可附 `execution:{status:"active"|"stopped"|"unknown",at:string}`，由本地宿主状态提供，不依赖 Hook。`at` 是宿主观察时间，不用于延长在线期限；在线仍以服务器接收时间为准。Cloud access 返回此执行状态，离线时返回 unknown；连接在线、宿主运行和业务任务完成是三个不同事实，心跳不能代替任务完成回执。
+
+混合心跳中部分 Session 的绑定失效、越权或确认位置超前时，成功条目继续返回，失败条目放在 `data.rejected:[{id,generation,code}]`，且不更新失败条目的在线状态或名称。全部条目失败时仍返回原错误。地图协调与消息确认并行，地图失败不阻止可靠收件，但任务自身的授权校验仍然执行。
 
 无云端模式复用同一任务、审核、对象和工作台格式，由本地后端承担存储与排队；不连接Cloud。不存在主Agent时plan留待审核，不能默认通过或偷偷启动模型。具体采用何种本地主Agent仍由后续产品决定。
 
@@ -73,6 +79,10 @@ memory/idea 的 refs 必须可按固定版本读取。附件引用使用 `{ref:"
 Cloud网页与本地网页使用相同workbench.read/patch格式；Cloud人类写入校验后加入对应Session下行队列，回传本地的同一变更ID不重复广播。版本由接收后端生成，调用方只提供baseVersion，不自造新版本。全量恢复分页固定快照，不混不同版本页面。
 
 ## task.report 的 data
+
+Cloud 工作台确认分配的任务使用 `task.assign.mode="session"`，由绑定的现有 Session 执行；没有 mode 或 `mode="reviewed"` 的任务保留原 Plan/CI 审核流程。Session 任务先回报 `stage="started",data={deliveryId}`，结束后回报 `stage="finished",data={deliveryId,outcome:"success"|"failed"|"cancelled",summary}`。deliveryId 必须匹配服务端保存的分配通知，只有所属执行方可回报；服务器记录开始/结束时间，重复消息沿用原 ID。
+
+finished 是任务执行结果，不是 Git 合并、Main 发布或审核回执。它释放本 Session 的业务队列，并按服务端递增分配序号启动下一项；收到消息、心跳在线和普通 idle 状态均不能替代该结果。Cloud 保留全部任务与结果，失败和取消也释放队列，不能让后续任务永久等候。生产原生 Session 验收仍以 `CI_todo.md` 为准。
 
 - planReady：{planRef:string,planVersion:string,sourceSha:string}。
 - progress：{seq:integer,summary:string}，同任务seq单调递增，重复不覆盖较新状态。

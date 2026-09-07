@@ -6,9 +6,10 @@ import { randomBytes } from 'node:crypto';
 import { atomicWrite, encode, readJSON } from './io.mjs';
 import { RouteStore } from './portless-routes.mjs';
 import { compatibleRuntime } from './runtime.mjs';
+import { DeviceHeartbeat } from './device-heartbeat.mjs';
 
 const secret = () => randomBytes(32).toString('base64url');
-const PROXY_RUNTIME_SCHEMA = 3;
+const PROXY_RUNTIME_SCHEMA = 4;
 export async function backendIdentity(route) {
   try {
     const response = await fetch(`http://127.0.0.1:${route.port}/__context_guard/health`, { signal: AbortSignal.timeout(1000), redirect: 'error' });
@@ -26,6 +27,9 @@ function headers(input) {
 export async function startNamedProxy({ dir, port = 1355 } = {}) {
   await fs.mkdir(dir, { recursive: true, mode: 0o700 });
   const routes = new RouteStore(dir), instance = secret(), adminToken = secret();
+  const deviceHeartbeat = new DeviceHeartbeat({ dir, onTick: async () => {
+    if ((await readJSON(path.join(dir, 'proxy.json'), null))?.instance !== instance) setImmediate(() => close());
+  } });
   routes.loadRoutes(); // Fail closed on corrupted persisted state, without overwriting it.
   let base, ready = false;
   const sockets = new Set();
@@ -37,7 +41,8 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
       if (!ready) return send(res, 503, { error: 'Proxy initializing' });
       if (req.headers.host === new URL(base).host) {
         if (req.headers.origin && req.headers.origin !== base) return send(res, 403, { error: 'Origin rejected' });
-        if (req.url === '/__cg_proxy/health' && req.method === 'GET') return send(res, 200, { kind: 'context-guard-named', version: 1, runtimeSchema: PROXY_RUNTIME_SCHEMA, capabilities: ['project-key-routes'], instance });
+        if (req.url === '/__cg_proxy/health' && req.method === 'GET') return send(res, 200, { kind: 'context-guard-named', version: 1, runtimeSchema: PROXY_RUNTIME_SCHEMA, capabilities: ['project-key-routes', 'device-heartbeat'], instance,
+          heartbeat: { batches: deviceHeartbeat.batches, errors: deviceHeartbeat.errors, lastSentAt: deviceHeartbeat.lastSentAt } });
         if (req.headers.authorization !== `Bearer ${adminToken}`) return send(res, 401, { error: 'Local proxy capability required' });
         if (req.url === '/__cg_proxy/stop' && req.method === 'POST') {
           send(res, 202, { stopping: true }); setImmediate(() => close()); return;
@@ -86,11 +91,13 @@ export async function startNamedProxy({ dir, port = 1355 } = {}) {
   let closing;
   const close = () => closing ||= (async () => {
     ready = false;
+    await deviceHeartbeat.close();
     const stopped = new Promise(resolve => server.close(resolve));
     for (const socket of sockets) socket.destroy(); await stopped;
     if ((await readJSON(stateFile, null))?.instance === instance) await fs.unlink(stateFile);
   })();
   ready = true;
+  deviceHeartbeat.start();
   return { state, server, close };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

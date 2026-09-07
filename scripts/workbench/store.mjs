@@ -8,7 +8,7 @@ import { hash, encode, atomicWrite, readJSON } from './io.mjs';
 import { inspectJournal, backupJournal, replaceJournal } from './journal.mjs';
 
 export class MapStore extends EventEmitter {
-  constructor(root, { fault = async () => {}, project = async () => {}, file, runtime, eventsFile } = {}) {
+  constructor(root, { fault = async () => {}, project = async () => {}, file, runtime, eventsFile, recoverJournal = false } = {}) {
     super(); this.root = root; this.ctx = path.join(root, '.codex/context');
     this.file = file || path.join(this.ctx, 'map.json'); this.runtime = runtime || path.join(this.ctx, 'private/sync');
     this.pendingFile = path.join(this.runtime, 'pending.json');
@@ -16,6 +16,7 @@ export class MapStore extends EventEmitter {
     this.journalStatusFile = path.join(this.runtime, 'journal-status.json');
     this.tail = Promise.resolve(); this.fault = fault; this.project = project;
     this.version = null; this.doc = null; this.error = null; this.blocked = null; this.projection = { status: 'pending' };
+    this.recoverJournal = recoverJournal;
   }
   serial(fn) { const promise = this.tail.then(fn); this.tail = promise.catch(() => {}); return promise; }
   async init() {
@@ -57,7 +58,7 @@ export class MapStore extends EventEmitter {
       message: parsed.problem?.message || '已补齐日志末尾换行；原件已备份',
     };
     await atomicWrite(this.journalStatusFile, encode(this.journal));
-    if (parsed.problem?.kind === 'corrupt') {
+    if (parsed.problem?.kind === 'corrupt' && !this.recoverJournal) {
       this.blocked = { code: 'JOURNAL_CORRUPT', source: 'journal', backup, line: parsed.problem.line, message: '日志中间损坏或记录校验失败。地图可只读查看；在设置中确认保留当前地图并恢复日志。' };
       return;
     }

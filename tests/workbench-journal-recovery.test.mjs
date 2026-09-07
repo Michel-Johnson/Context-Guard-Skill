@@ -87,6 +87,26 @@ test('interior corruption is read-only until a human accepts the journal gap', a
   assert.equal(blocked.changes().journalGap, true);
 });
 
+test('Cloud journal recovery preserves edits and receipts without blocking subsequent writes', async t => {
+  const root = await fixture();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const original = await new MapStore(root).init();
+  const input = edit(original, 'Unsynced local edit');
+  await original.commit(input, human);
+  await original.close();
+  const raw = '{broken}\n' + await fs.readFile(original.eventsFile, 'utf8');
+  await fs.writeFile(original.eventsFile, raw);
+  const before = await fs.readFile(original.file);
+  const recovered = await new MapStore(root, { recoverJournal: true }).init();
+  t.after(() => recovered.close());
+  assert.equal(recovered.state().readOnly, false);
+  assert.deepEqual(await fs.readFile(recovered.file), before);
+  assert.equal(await fs.readFile(recovered.journal.backup, 'utf8'), raw);
+  assert.equal(recovered.changes().journalGap, true);
+  assert.equal((await recovered.commit(input, human)).duplicate, true);
+  assert.equal((await recovered.commit(edit(recovered, 'Next edit'), human)).committed, true);
+});
+
 test('damaged pending metadata preserves the map and starts read-only', async t => {
   const root = await fixture();
   t.after(() => fs.rm(root, { recursive: true, force: true }));

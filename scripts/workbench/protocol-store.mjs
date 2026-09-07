@@ -153,7 +153,7 @@ export class ProtocolStore extends EventEmitter {
       const brief = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief`, type: 'brief.submit', session: request.session, payload: { taskId, text: resolved.text } }, emitted, workflow);
       await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief-review`, type: 'review.request', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, taskId } }, emitted, workflow);
       await reduceWorkflow(state, principal, { v: 2, id: `${prefix}:approved`, type: 'review.result', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: '用户在 Cloud 工作台确认分配' } }, emitted, workflow);
-      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion } }, emitted, workflow);
+      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion, ...(resolved.mode ? { mode: resolved.mode } : {}) } }, emitted, workflow);
       const result = { deliveryId: request.operationId, taskId, sessionId: request.session.id, state: assigned.stage === 'queued' ? 'queued' : 'cloud_queued', taskVersion: assigned.version };
       state.taskDispatches[dispatchKey] = { fingerprint, result };
       return result;
@@ -170,7 +170,7 @@ export class ProtocolStore extends EventEmitter {
         ? Object.values(queue.consumers || {}).map(consumer => consumer.outcomes?.[task.assignmentSeq]).filter(Boolean)
         : [];
       const delivered = outcomes.find(item => item.deliveryState === 'received') || outcomes.find(item => item.deliveryState) || outcomes[0];
-      const stateName = task.stage === 'queued' ? 'queued'
+      const stateName = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'unknown') : task.stage === 'queued' ? 'queued'
         : ['plan-ready', 'plan-rejected'].includes(task.stage) ? 'waiting_review'
           : task.stage === 'executing' ? 'executing'
             : task.stage !== 'assigned' ? task.stage
@@ -205,13 +205,23 @@ export class ProtocolStore extends EventEmitter {
         return { session: { id: payload.sessionId, generation: binding.generation }, bindingVersion: binding.version };
       }
       if (message.type === 'sync.heartbeat') {
-        return { sessions: payload.sessions.map(s => {
-          requireBinding(state, p, s);
-          const queue = queueFor(state, p, s);
-          const consumer = consumerFor(queue, p);
-          if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
-          return { id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq };
-        }) };
+        const sessions = [], rejected = [];
+        let firstError;
+        for (const s of payload.sessions) {
+          try {
+            requireBinding(state, p, s);
+            const queue = queueFor(state, p, s);
+            const consumer = consumerFor(queue, p);
+            if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
+            sessions.push({ id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq });
+          } catch (error) {
+            if (!['FORBIDDEN', 'STALE_SESSION', 'CONFLICT'].includes(error.code)) throw error;
+            firstError ||= error;
+            rejected.push({ id: s.id, generation: s.generation, code: error.code });
+          }
+        }
+        if (!sessions.length && firstError) throw firstError;
+        return { sessions, ...(rejected.length ? { rejected } : {}) };
       }
       if (message.type === 'sync.read') {
         const queue = queueFor(state, p, message.session);

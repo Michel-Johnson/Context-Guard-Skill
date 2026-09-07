@@ -600,11 +600,12 @@ export async function startCloudServer({
       const observed = presence.get(sessionId);
       const lastSeen = observed?.lastHeartbeatAt || snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
       const status = cloudSessionPresence(observed?.lastHeartbeatAt);
-      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '' };
+      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '', execution: status === 'online' ? observed?.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' } };
     });
     for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) sessions.push({
       id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
       lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
+      execution: cloudSessionPresence(observed.lastHeartbeatAt) === 'online' ? observed.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' },
     });
     if (repository) {
       const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
@@ -754,10 +755,64 @@ export async function startCloudServer({
     .filter(event => event.seq > baseSeq && ['map.committed', 'map.snapshot', 'work.completed'].includes(event.type) && event.workId !== workId && scopesOverlap(scope, event.scope))
     .map(event => ({ seq: event.seq, eventId: event.eventId, type: event.type, actor: event.actor, scope: event.scope, version: event.version }));
 
+  const receiveHeartbeat = async (principal, input) => {
+    const { store } = interfaceStorage(principal);
+    const reply = await store.handle(principal, input);
+    const accepted = input.payload.sessions.filter(item => reply.data.sessions.some(session => session.id === item.id && session.generation === item.generation && item.ackedSeq <= session.ackedSeq));
+    await store.rememberSessionNames(principal, accepted);
+    const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+    const lastHeartbeatAt = new Date().toISOString();
+    let accessChanged = false;
+    for (const session of accepted) {
+      const key = presenceKey(principal.repositoryId, session.id), previous = interfacePresence.get(key);
+      const name = session.name || previous?.name || '', platform = session.platform || previous?.platform || '';
+      const execution = session.execution || { status: 'unknown', at: '' };
+      if (!previous?.online || previous.name !== name || previous.platform !== platform || previous.execution?.status !== execution.status || previous.execution?.at !== execution.at) accessChanged = true;
+      interfacePresence.set(key, { repositoryId: principal.repositoryId, projectId: repository?.projectId || '', sessionId: session.id,
+        generation: session.generation, name, platform, lastHeartbeatAt, online: true, execution });
+    }
+    if (accessChanged && repository?.projectId) {
+      const project = projectById(repository.projectId);
+      if (project) broadcastWorkbenchAccess(project);
+    }
+    const heads = await interfaceMapHeads(principal);
+    reply.data.sessions = reply.data.sessions.map(session => ({ ...session, ...(heads[session.id] || {}) }));
+    return reply;
+  };
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
+      if (route === '/api/v2/heartbeat') {
+        if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 is not configured');
+        if (req.method !== 'POST') protocolFail('INVALID_ARGUMENT', 'Use POST');
+        if (req.headers.origin) protocolFail('FORBIDDEN', 'Device heartbeat is not a browser endpoint');
+        if (!String(req.headers['content-type'] || '').startsWith('application/json')) protocolFail('INVALID_ARGUMENT', 'Expected JSON');
+        const chunks = []; let size = 0;
+        for await (const chunk of req) { size += chunk.length; if (size > MAX_MESSAGE_BYTES) protocolFail('TOO_LARGE', 'Heartbeat exceeds 256 KiB'); chunks.push(chunk); }
+        let batch;
+        try { batch = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { protocolFail('INVALID_ARGUMENT', 'Invalid JSON'); }
+        if (!Array.isArray(batch) || !batch.length || batch.length > 100) protocolFail('INVALID_ARGUMENT', 'Expected 1–100 project heartbeats');
+        let sessions = 0;
+        const ids = new Set();
+        for (const item of batch) {
+          if (!item || typeof item.credential !== 'string' || item.credential.length > 4096 || Object.keys(item).some(key => !['credential', 'message'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Invalid project heartbeat');
+          validateMessage(item.message);
+          if (item.message.type !== 'sync.heartbeat' || ids.has(item.message.id)) protocolFail('INVALID_ARGUMENT', 'Expected distinct heartbeat messages');
+          ids.add(item.message.id); sessions += item.message.payload.sessions.length;
+        }
+        if (sessions > 100) protocolFail('TOO_LARGE', 'Device heartbeat exceeds 100 Sessions');
+        // Each project retains its own authorization. An expired credential may
+        // reject its entry, never prevent another project's liveness update.
+        const replies = await Promise.all(batch.map(async ({ credential, message }) => {
+          try {
+            const principal = await interfaceAuth.authenticate(credential);
+            if (principal.role !== 'device') protocolFail('FORBIDDEN', 'Device credential required');
+            return await receiveHeartbeat(principal, message);
+          } catch (error) { return errorReply(message.id, error); }
+        }));
+        return send(res, 200, replies);
+      }
       if (route === '/api/v2/events') {
         if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 is not configured');
         if (req.method !== 'GET') protocolFail('INVALID_ARGUMENT', 'Use GET');
@@ -842,6 +897,7 @@ export async function startCloudServer({
             if (!repository || !/^\d+$/.test(repository.repositoryId)) protocolFail('FORBIDDEN', 'Select an authorized project');
             principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
           } else principal = await interfaceAuth.authenticate(credential);
+          if (input.type === 'sync.heartbeat') return send(res, 200, await receiveHeartbeat(principal, input));
           const { store, blobs, snapshots } = interfaceStorage(principal);
           if (input.type === 'workbench.patch') {
             await store.authorizeSession(principal, input.session);
@@ -902,25 +958,6 @@ export async function startCloudServer({
             verifyBinding: (identity, payload) => identity.role === 'device' || identity.bindings?.[payload.sessionId] === payload.worktreeId,
             workflow: { verifyRouting: verifyInterfaceRouting },
           });
-          if (input.type === 'sync.heartbeat') {
-            await store.rememberSessionNames(principal, input.payload.sessions);
-            const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
-            const lastHeartbeatAt = new Date().toISOString();
-            let accessChanged = false;
-            for (const session of input.payload.sessions) {
-              const key = presenceKey(principal.repositoryId, session.id), previous = interfacePresence.get(key);
-              const name = session.name || previous?.name || '', platform = session.platform || previous?.platform || '';
-              if (!previous?.online || previous.name !== name || previous.platform !== platform) accessChanged = true;
-              interfacePresence.set(key, { repositoryId: principal.repositoryId, projectId: repository?.projectId || '', sessionId: session.id,
-                generation: session.generation, name, platform, lastHeartbeatAt, online: true });
-            }
-            if (accessChanged && repository?.projectId) {
-              const project = projectById(repository.projectId);
-              if (project) broadcastWorkbenchAccess(project);
-            }
-            const heads = await interfaceMapHeads(principal);
-            reply.data.sessions = reply.data.sessions.map(session => ({ ...session, ...(heads[session.id] || {}) }));
-          }
           return send(res, 200, reply);
         } catch (error) { return send(res, error.status || 503, errorReply(id, error)); }
       }
@@ -1017,7 +1054,7 @@ export async function startCloudServer({
             if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');
             return {
               taskId: `task-${digest(`${project.id}\0${operationId}`).slice(0, 40)}`,
-              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version,
+              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version, mode: 'session',
             };
           }, { verifyRouting: verifyInterfaceRouting });
           return send(res, 200, result);

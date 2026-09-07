@@ -73,6 +73,22 @@ test('IF-008: out-of-order acknowledgements do not skip unprocessed messages', a
   assert.deepEqual(beat.data.sessions, [{ ...session, ackedSeq: 2, latestSeq: 3 }]);
 });
 
+test('heartbeat isolates stale, unauthorized and ahead-of-server Sessions', async t => {
+  const { store } = await fixture(t);
+  for (const [bad, code] of [
+    [{ ...session, generation: 2, ackedSeq: 0 }, 'STALE_SESSION'],
+    [{ id: 'not-owned', generation: 1, ackedSeq: 0 }, 'FORBIDDEN'],
+    [{ ...session, ackedSeq: 1 }, 'CONFLICT'],
+  ]) {
+    const reply = await store.handle(principal, msg(`mixed-${code}`, 'sync.heartbeat', {
+      sessions: [bad, { ...session, ackedSeq: 0 }],
+    }, false));
+    assert.deepEqual(reply.data.sessions, [{ ...session, ackedSeq: 0, latestSeq: 0 }]);
+    assert.deepEqual(reply.data.rejected, [{ id: bad.id, generation: bad.generation, code }]);
+    await assert.rejects(store.handle(principal, msg(`invalid-${code}`, 'sync.heartbeat', { sessions: [bad] }, false)), { code });
+  }
+});
+
 test('IF-028: coordinator acknowledgement cannot consume the executor delivery', async t => {
   const { store } = await fixture(t);
   const coordinator = { ...principal, deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator', bindings: { [session.id]: 'wt-1' } };

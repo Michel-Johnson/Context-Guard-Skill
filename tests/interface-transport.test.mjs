@@ -10,9 +10,40 @@ import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
 import { hash } from '../scripts/workbench/io.mjs';
 import { messageHandler, ProjectMessagePump, sendMessage } from '../scripts/workbench/protocol-client.mjs';
+import { DeviceHeartbeat } from '../scripts/workbench/device-heartbeat.mjs';
 
 const session = { id: 'session-1', generation: 1 };
 const message = { v: 2, id: 'r1', type: 'sync.read', session, payload: { afterSeq: 0, limit: 50 } };
+test('one device tick combines two project backends into one Cloud heartbeat', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-heartbeat-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const projects = [], accepted = [], outgoing = [];
+  for (const [index, projectId] of ['one', 'two'].entries()) {
+    const stateFile = path.join(directory, `${projectId}.json`);
+    await fs.writeFile(stateFile, JSON.stringify({ projectId, url: `http://127.0.0.1:${18000 + index}/`,
+      capabilities: ['device-managed-heartbeat'], adminToken: `local-${projectId}` }));
+    projects.push({ projectId, stateFile });
+  }
+  const device = new DeviceHeartbeat({ registry: async () => ({ projects }), request: async (url, options) => {
+    if (url.hostname !== '127.0.0.1') {
+      assert.equal(url.pathname, '/api/v2/heartbeat');
+      const batch = JSON.parse(options.body); outgoing.push(batch);
+      return batch.map(({ message }) => ({ id: message.id, ok: true, data: { sessions: [] } }));
+    }
+    const projectId = url.port === '18000' ? 'one' : 'two';
+    assert.equal(options.headers.Authorization, `Bearer local-${projectId}`);
+    if (options.method === 'POST') { accepted.push(JSON.parse(options.body).id); return { accepted: true }; }
+    return { origin: 'https://cloud.example', credential: `project-${projectId}`, message: {
+      v: 2, id: projectId, type: 'sync.heartbeat', payload: { sessions: [{ id: projectId, generation: 1, ackedSeq: 0 }] },
+    } };
+  } });
+  await Promise.all([device.poll(), device.poll()]);
+  assert.equal(outgoing.length, 1);
+  assert.deepEqual(outgoing[0].map(item => item.credential).sort(), ['project-one', 'project-two']);
+  assert.deepEqual(accepted.sort(), ['one', 'two']);
+  assert.equal(device.errors, 0);
+  await device.close();
+});
 test('IF-014: local backend exposes v2 binding and queue reads using existing Agent credentials', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-interface-http-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -145,4 +176,78 @@ test('IF-018: a stalled Session cannot prevent a healthy Session acknowledgement
   });
   try { await assert.rejects(pump.poll()); assert.equal(healthyAck, true); }
   finally { release(); await pump.close(); }
+});
+
+test('heartbeats continue while downstream Map work is stalled', async () => {
+  let release, beats = 0;
+  const stalled = new Promise(resolve => { release = resolve; });
+  let observeThird;
+  const third = new Promise(resolve => { observeThird = resolve; });
+  const pump = new ProjectMessagePump({
+    heartbeatMs: 10,
+    sessions: async () => [{ ...session, ackedSeq: 0 }],
+    send: async message => {
+      assert.equal(message.type, 'sync.heartbeat');
+      if (++beats === 3) observeThird();
+      return { sessions: [{ ...session, latestSeq: 0, ackedSeq: 0 }] };
+    },
+    onSession: () => stalled,
+    apply: async () => { throw new Error('No task expected'); },
+  });
+  let timeout;
+  try {
+    pump.start();
+    await Promise.race([third, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Heartbeat blocked by Map work')), 1000); })]);
+    assert.ok(beats >= 3);
+  } finally { clearTimeout(timeout); release(); await pump.close(); }
+});
+
+test('a stalled Map does not block the same Session notification receipt', async () => {
+  let release, acknowledge;
+  const stalled = new Promise(resolve => { release = resolve; });
+  const acknowledged = new Promise(resolve => { acknowledge = resolve; });
+  const order = [];
+  const pump = new ProjectMessagePump({
+    sessions: async () => [{ ...session, ackedSeq: 0 }],
+    onSession: () => stalled,
+    send: async message => {
+      if (message.type === 'sync.heartbeat') return { sessions: [{ ...session, ackedSeq: 0, latestSeq: 1 }] };
+      if (message.type === 'sync.read') return { messages: [{ seq: 1, message: {
+        v: 2, id: 'independent-notification', type: 'sync.event', session, payload: { latestSeq: 1 },
+      } }], nextSeq: 1 };
+      order.push('ack'); acknowledge(); return { ackedSeq: 1 };
+    },
+    apply: async () => { order.push('persist'); return { outcome: 'applied' }; },
+  });
+  let timeout;
+  const work = pump.poll();
+  try {
+    await Promise.race([acknowledged, new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('Map blocked notification delivery')), 1000);
+    })]);
+    assert.deepEqual(order, ['persist', 'ack']);
+  } finally { clearTimeout(timeout); release(); await work; await pump.close(); }
+});
+
+test('later heartbeat rounds drain new notifications while a Map remains stalled', async () => {
+  let release, ackedSeq = 0, latestSeq = 1, maps = 0;
+  const stalled = new Promise(resolve => { release = resolve; });
+  const pump = new ProjectMessagePump({ sessions: async () => [{ ...session, ackedSeq: 0 }],
+    onSession: async () => { maps++; await stalled; },
+    send: async message => {
+      if (message.type === 'sync.heartbeat') return { sessions: [{ ...session, ackedSeq, latestSeq }] };
+      if (message.type === 'sync.read') return { messages: [{ seq: latestSeq, message: {
+        v: 2, id: `notice-${latestSeq}`, type: 'sync.event', session, payload: { latestSeq },
+      } }], nextSeq: latestSeq };
+      ackedSeq = message.payload.items.at(-1).seq; return { ackedSeq };
+    }, apply: async () => ({ outcome: 'applied' }) });
+  const first = pump.poll();
+  try {
+    const deadline = Date.now() + 1000;
+    while (ackedSeq < 1 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(ackedSeq, 1);
+    latestSeq = 2;
+    await pump.poll(await pump.observe());
+    assert.equal(ackedSeq, 2); assert.equal(maps, 1);
+  } finally { release(); await first; await pump.close(); }
 });

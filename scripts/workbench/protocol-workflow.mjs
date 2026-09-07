@@ -80,6 +80,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     if (p.briefRef !== task.brief.ref || p.briefVersion !== task.brief.version || task.briefReview?.decision !== 'approved') fail('CONFLICT', 'Human approval does not match this brief');
     if (!await policy.verifyRouting?.(principal, message)) fail('FORBIDDEN', 'Main version and node access could not be verified');
     task.assignment = structuredClone(p);
+    task.assignmentOrder = state.taskSequence = (state.taskSequence || 0) + 1;
     task.assignmentNotification = { ...structuredClone(message), id: randomUUID() };
     if (Object.values(state.tasks).some(value => belongs(value) && value.busy)) {
       task.busy = false; task.stage = 'queued'; task.queuedAt = new Date().toISOString();
@@ -91,7 +92,14 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   if (message.type === 'task.report') {
     role('executor', 'device');
     if (!task.busy) fail('CONFLICT', 'Task is not active');
-    if (p.stage === 'planReady') {
+    if (['started', 'finished'].includes(p.stage)) {
+      if (task.assignment?.mode !== 'session' || p.data.deliveryId !== task.assignmentNotification?.id) fail('CONFLICT', 'Execution report differs from the dispatched Session task');
+      if (p.stage === 'started') { at('assigned'); task.stage = 'executing'; task.startedAt = new Date().toISOString(); }
+      else {
+        at('executing'); task.stage = 'finished'; task.busy = false;
+        task.result = { ...structuredClone(p.data), finishedAt: new Date().toISOString() };
+      }
+    } else if (p.stage === 'planReady') {
       at('assigned', 'plan-rejected', 'rework'); read(p.data.planRef, p.data.planVersion, 'plan');
       task.plan = { ref: p.data.planRef, version: p.data.planVersion }; task.sourceSha = p.data.sourceSha; task.stage = 'plan-ready';
     } else if (p.stage === 'progress') {
@@ -123,10 +131,10 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     }
     notify();
     const status = changed(task);
-    if (task.stage === 'closed') {
+    if (['closed', 'finished'].includes(task.stage)) {
       const next = Object.values(state.tasks)
         .filter(value => belongs(value) && value.stage === 'queued' && value.assignmentNotification)
-        .sort((left, right) => String(left.queuedAt || '').localeCompare(String(right.queuedAt || '')) || left.id.localeCompare(right.id))[0];
+        .sort((left, right) => (left.assignmentOrder || 0) - (right.assignmentOrder || 0) || String(left.queuedAt || '').localeCompare(String(right.queuedAt || '')) || left.id.localeCompare(right.id))[0];
       if (next) {
         next.busy = true; next.stage = 'assigned'; delete next.queuedAt;
         next.assignmentSeq = emit(next.assignmentNotification); changed(next);
