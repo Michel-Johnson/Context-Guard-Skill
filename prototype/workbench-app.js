@@ -1388,6 +1388,8 @@ function sessionLifecycle(meta){
   if(String(meta?.bindingState||"").toLowerCase()==="unavailable") return {state:"unknown",label:"会话不可用",disabled:true};
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
   const status=String(meta?.status||"").toLowerCase();
+  if(status==="online") return {state:"online",label:"心跳在线",disabled:false};
+  if(status==="offline") return {state:"offline",label:"心跳离线",disabled:false};
   if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
   if(["stopped","completed","done"].includes(status)) return {state:"stopped",label:"已完成",disabled:false};
   return {state:"unknown",label:"状态未知",disabled:false};
@@ -2210,7 +2212,7 @@ function bugProgress(bug){
   const recentlySent = bug?.dispatch?.status==="sent" && Number.isFinite(sentAt) && Date.now()-sentAt<30000
     ? bug.dispatch.session_id
     : null;
-  const active = sessions.filter(id=>sessionLifecycle(sessionMetaOf(id)).state==="active" || id===recentlySent);
+  const active = sessions.filter(id=>["active","online"].includes(sessionLifecycle(sessionMetaOf(id)).state) || id===recentlySent);
   const handling = active.length ? active : sessions;
   const names = handling.map(sessionDisplayName);
   const detail = names.join("、");

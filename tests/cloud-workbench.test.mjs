@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { cloudSessionActivity, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { cloudSessionActivity, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/workbench/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
@@ -20,6 +20,13 @@ test('Cloud Session activity expires without a recent Session event', () => {
   assert.equal(cloudSessionActivity({ lifecycleEvent: 'stop', lastSeen: '2026-09-01T00:00:00.000Z' }, now), 'stopped');
   assert.equal(cloudSessionActivity({ workStatus: 'completed', lastSeen: '2026-09-01T00:00:00.000Z' }, now), 'stopped');
   assert.equal(cloudSessionActivity({ workStatus: 'working', lastSeen: '' }, now), 'unknown');
+});
+
+test('Cloud Session presence is online only while device heartbeats are recent', () => {
+  const now = Date.parse('2026-09-06T08:00:00.000Z');
+  assert.equal(cloudSessionPresence('2026-09-06T07:59:40.000Z', now), 'online');
+  assert.equal(cloudSessionPresence('2026-09-06T07:59:29.999Z', now), 'offline');
+  assert.equal(cloudSessionPresence('', now), 'offline');
 });
 
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {

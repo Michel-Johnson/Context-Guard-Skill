@@ -26,6 +26,7 @@ const scrypt = promisify(cryptoScrypt);
 const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})$/;
 const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 const sessionActivityTtlMs = 2 * 60 * 1000;
+const sessionHeartbeatTtlMs = 30 * 1000;
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
 function cloudWorkItemBrief(node, item, kind) {
@@ -46,6 +47,11 @@ export function cloudSessionActivity({ lifecycleEvent = '', workStatus = '', las
     return Number.isFinite(seen) && currentTime - seen <= ttlMs ? 'active' : 'unknown';
   }
   return 'unknown';
+}
+
+export function cloudSessionPresence(lastHeartbeatAt = '', currentTime = Date.now(), ttlMs = sessionHeartbeatTtlMs) {
+  const seen = Date.parse(lastHeartbeatAt);
+  return Number.isFinite(seen) && currentTime - seen <= ttlMs ? 'online' : 'offline';
 }
 
 export async function createWorkbenchPasswordHash(password) {
@@ -297,6 +303,8 @@ export async function startCloudServer({
   const interfaceConfig = protocolConfig || configuredMemory?.interfaceV2;
   const interfaceStores = new Map();
   const interfaceStreams = new Set();
+  const interfacePresence = new Map();
+  const presenceKey = (repositoryId, sessionId) => `${repositoryId}\0${sessionId}`;
   const interfaceMapHeads = async principal => {
     const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === principal.repositoryId);
     if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) return {};
@@ -564,23 +572,34 @@ export async function startCloudServer({
   const memorySessions = async project => {
     if (!configuredMemory?.projects?.[project.id]) return [];
     const state = await readMemoryProject(configuredMemory, project.id);
+    const repository = interfaceConfig?.repositories?.find(item => item.projectId === project.id);
+    const presence = new Map(repository ? [...interfacePresence.values()]
+      .filter(item => item.repositoryId === repository.repositoryId)
+      .map(item => [item.sessionId, item]) : []);
     const names = await fs.readdir(path.join(worksDir, project.id)).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
     const works = [];
     for (const name of names.filter(name => name.endsWith('.json'))) {
       const work = await readJson(path.join(worksDir, project.id, name), null);
       if (work?.sessionId) works.push(work);
     }
-    return Object.values(state.sessions).map(snapshot => {
-      const latest = works.filter(work => work.sessionId === snapshot.sessionId).sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
+    const sessions = Object.entries(state.sessions).map(([storedSessionId, snapshot]) => {
+      const sessionId = snapshot.sessionId || storedSessionId;
+      const latest = works.filter(work => work.sessionId === sessionId).sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
       const events = String(snapshot.memory?.records?.['sessions.jsonl'] || '').split('\n').flatMap(line => {
-        try { const event = JSON.parse(line); return event.session_id === snapshot.sessionId ? [event] : []; } catch { return []; }
+        try { const event = JSON.parse(line); return event.session_id === sessionId ? [event] : []; } catch { return []; }
       }).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
       const named = events.filter(event => typeof event.thread_name === 'string' && event.thread_name.trim()).at(-1);
       const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
-      const lastSeen = snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
-      const status = cloudSessionActivity({ lifecycleEvent: lifecycle?.event, workStatus: latest?.status, lastSeen });
-      return { id: snapshot.sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen };
-    }).sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
+      const observed = presence.get(sessionId);
+      const lastSeen = observed?.lastHeartbeatAt || snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
+      const status = cloudSessionPresence(observed?.lastHeartbeatAt);
+      return { id: sessionId, name: snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '' };
+    });
+    for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) sessions.push({
+      id: observed.sessionId, name: '', platform: 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
+      lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
+    });
+    return sessions.sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
   const publicationState = async (project, viewId, options = {}) => {
     if (!project || !configuredMemory?.projects?.[project.id]) return { status: 'unavailable', reason: 'MEMORY_NOT_CONFIGURED' };
@@ -861,6 +880,19 @@ export async function startCloudServer({
             workflow: { verifyRouting: verifyInterfaceRouting },
           });
           if (input.type === 'sync.heartbeat') {
+            const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+            const lastHeartbeatAt = new Date().toISOString();
+            let becameOnline = false;
+            for (const session of input.payload.sessions) {
+              const key = presenceKey(principal.repositoryId, session.id), previous = interfacePresence.get(key);
+              if (!previous?.online) becameOnline = true;
+              interfacePresence.set(key, { repositoryId: principal.repositoryId, projectId: repository?.projectId || '', sessionId: session.id,
+                generation: session.generation, lastHeartbeatAt, online: true });
+            }
+            if (becameOnline && repository?.projectId) {
+              const project = projectById(repository.projectId);
+              if (project) broadcastWorkbenchAccess(project);
+            }
             const heads = await interfaceMapHeads(principal);
             reply.data.sessions = reply.data.sessions.map(session => ({ ...session, ...(heads[session.id] || {}) }));
           }
@@ -917,7 +949,10 @@ export async function startCloudServer({
           if (!project) return send(res, 200, { sessions: [], grants: {}, currentSessionId: null });
           const sessions = await memorySessions(project), grants = {};
           const memory = configuredMemory?.projects?.[project.id] ? await readMemoryProject(configuredMemory, project.id) : null;
-          for (const session of sessions) grants[session.id] = { nodes: [...entries(memory.sessions[session.id].memory.map.root).keys()] };
+          for (const session of sessions) {
+            const map = memory.sessions[session.id]?.memory?.map || memory.main?.memory?.map;
+            grants[session.id] = { nodes: map?.root ? [...entries(map.root).keys()] : [] };
+          }
           return send(res, 200, { sessions, grants, currentSessionId: null, project: { id: project.id, kind: 'git', main: { status: 'ready' } } });
         }
         if (action === '/api/access-plan' && req.method === 'POST') {
@@ -1206,12 +1241,26 @@ export async function startCloudServer({
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
     for (const res of directoryClients) if (!res.destroyed) res.write(': heartbeat\n\n');
   }, 15_000); heartbeat.unref();
+  const presenceExpiry = setInterval(() => {
+    const changedProjects = new Set(), currentTime = Date.now();
+    for (const item of interfacePresence.values()) {
+      if (item.online && cloudSessionPresence(item.lastHeartbeatAt, currentTime) === 'offline') {
+        item.online = false;
+        if (item.projectId) changedProjects.add(item.projectId);
+      }
+    }
+    for (const projectId of changedProjects) {
+      const project = projectById(projectId);
+      if (project) broadcastWorkbenchAccess(project);
+    }
+  }, 5000); presenceExpiry.unref();
   const publicationTimer = setInterval(publishMergedSessions, 30_000); publicationTimer.unref();
   setTimeout(publishMergedSessions, 0).unref?.();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
     clearInterval(heartbeat);
+    clearInterval(presenceExpiry);
     clearInterval(publicationTimer);
     stopMemoryEvents();
     for (const res of interfaceStreams) res.end();

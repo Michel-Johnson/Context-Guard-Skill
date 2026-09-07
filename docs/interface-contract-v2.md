@@ -40,9 +40,9 @@ v、id、type、payload必填；auth.open/auth.close、项目心跳和session.bi
 
 ## 连接、安全及离线
 
-Cloud仅HTTPS。auth.open按Git remote自动解析GitHub仓库数字ID，不让人填ID；仓库存在不等于有权限。密码只发鉴权入口、不进日志与消息队列；首版返回项目范围短期凭证，本地保存于私有配置，浏览器用HttpOnly/Secure Cookie并验证Origin。到期重新登录，auth.close立即撤销。Agent权限由服务端已有注册记录决定，不能提交role给自己升级；无人值守云端Agent预配置受限凭证，不使用人类批准身份。
+Cloud仅HTTPS。auth.open按Git remote自动解析GitHub仓库数字ID，不让人填ID；仓库存在不等于有权限。私有仓库优先使用进程已有的 `GH_TOKEN`/`GITHUB_TOKEN`，未配置且匿名查询被拒时可读取本机 `gh auth` 的系统凭据，令牌只保留在校验进程内且不写日志或项目文件。密码只发鉴权入口、不进日志与消息队列；首版返回项目范围短期凭证，本地保存于私有配置，浏览器用HttpOnly/Secure Cookie并验证Origin。到期重新登录，auth.close立即撤销。Agent权限由服务端已有注册记录决定，不能提交role给自己升级；无人值守云端Agent预配置受限凭证，不使用人类批准身份。
 
-每个项目一个本地后台，Session分队列；10秒心跳保证Cloud到本地补漏，本地变化立即上报。事件流 /api/v2/events 发送sync.event，payload={latestSeq:integer}，公共信封标明Session；只作提醒。断流仍靠心跳读取；sync.read内每条message也包含完整信封。按消息id去重，sync.ack只确认已有持久处理结果的连续序号，不能因收到通知就推进。重连不覆盖未确认本地编辑。
+每个项目一个本地后台，Session分队列；10秒心跳保证Cloud到本地补漏，本地变化立即上报。Cloud 只在进程内记录通过鉴权和绑定校验的最近心跳：30秒内显示绿色在线点，超时显示红色离线点；该状态不写入业务记忆，也不把历史绑定误报为在线。状态变化通过工作台 access 事件即时通知已打开页面。事件流 /api/v2/events 发送sync.event，payload={latestSeq:integer}，公共信封标明Session；只作提醒。断流仍靠心跳读取；sync.read内每条message也包含完整信封。按消息id去重，sync.ack只确认已有持久处理结果的连续序号，不能因收到通知就推进。重连不覆盖未确认本地编辑。
 
 sync.ack 的每项可附 `deliveryState=stored/received/uncertain`：stored 只表示本地已落盘，received 表示宿主明确接收，uncertain 表示可能已接收、禁止自动重复触发。确定未接收时本地不确认该序号，由下一次心跳使用同一交付编号重试；它不会阻塞其他 Session。
 

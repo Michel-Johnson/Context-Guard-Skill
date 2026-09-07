@@ -222,6 +222,8 @@ try {
   const closedSession = 'browser-contract-closed';
   const publishedSession = 'browser-contract-published';
   const staleSession = 'browser-contract-stale';
+  const onlineSession = 'browser-contract-online';
+  const offlineSession = 'browser-contract-offline';
   const contractPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
   contractPage.on('pageerror', error => errors.push(error.stack || error.message));
   await contractPage.route('**/api/access*', async route => {
@@ -239,6 +241,8 @@ try {
       { id: closedSession, name: '', platform: 'codex', status: 'closed', bindingState: 'bound' },
       { id: publishedSession, name: '', platform: 'codex', status: 'published', bindingState: 'bound' },
       { id: staleSession, name: '', platform: 'codex', status: 'active', bindingState: 'stale', branch: 'feature/stale' },
+      { id: onlineSession, name: 'cloud-online', platform: 'codex', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z' },
+      { id: offlineSession, name: 'cloud-offline', platform: 'codex', status: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z' },
     ];
     await route.fulfill({ response, json: body });
   });
@@ -258,6 +262,8 @@ try {
   const detailB = await contractPage.locator(`#session-menu [data-session="${sameBranchB}"] .session-option-context`).textContent();
   assert.equal(detailA, '会话 1');
   assert.equal(detailB, '会话 2');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-status.online`).getAttribute('aria-label'), '心跳在线');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"] .session-status.offline`).getAttribute('aria-label'), '心跳离线');
   assert.notEqual(detailA, detailB, 'same-name Sessions remain independently identifiable without changing their primary label');
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), 'cursor 会话 — 会话 1');
   assert.doesNotMatch(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), /shared-worktree|feature\/shared/);
