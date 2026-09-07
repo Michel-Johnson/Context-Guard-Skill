@@ -81,7 +81,7 @@ export function messageHandler({ authenticate, handle, allowedOrigin }) {
 export class ProjectMessagePump {
   constructor({ send, sessions, apply, heartbeatMs = 10000, onError = () => {}, onSession = async () => {} }) {
     this.send = send; this.sessions = sessions; this.apply = apply; this.heartbeatMs = heartbeatMs; this.onError = onError;
-    this.running = null; this.timer = null; this.closed = false;
+    this.running = null; this.observing = null; this.timer = null; this.closed = false;
     this.onSession = onSession;
   }
   request(type, payload, session) { return { v: 2, id: randomUUID(), type, ...(session ? { session } : {}), payload }; }
@@ -92,9 +92,9 @@ export class ProjectMessagePump {
     return this.running;
   }
   async drain() {
-    const sessions = await this.sessions();
-    if (!sessions.length) return;
-    const beat = await this.send(this.request('sync.heartbeat', { sessions }));
+    const observation = await this.observe();
+    if (!observation) return;
+    const { sessions, beat } = observation;
     const pending = [...beat.sessions], errors = [];
     await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
       while (pending.length && !this.closed) {
@@ -104,6 +104,19 @@ export class ProjectMessagePump {
       }
     }));
     if (errors.length) throw new AggregateError(errors, 'Some Sessions could not synchronize');
+  }
+  // Liveness never waits for Map I/O, task delivery or an acknowledgement.
+  // Coalesce only the heartbeat request itself, not the downstream work.
+  observe() {
+    if (this.closed) return Promise.resolve(null);
+    if (!this.observing) this.observing = this.heartbeat().finally(() => { this.observing = null; });
+    return this.observing;
+  }
+  async heartbeat() {
+    const sessions = await this.sessions();
+    if (!sessions.length) return;
+    const beat = await this.send(this.request('sync.heartbeat', { sessions }));
+    return { sessions, beat };
   }
   async drainSession(sessions, remote) {
       const local = sessions.find(s => s.id === remote.id && s.generation === remote.generation);
@@ -131,9 +144,9 @@ export class ProjectMessagePump {
   }
   start() {
     if (this.timer || this.closed) return;
-    const tick = () => this.poll().catch(this.onError);
+    const tick = () => (this.running ? this.observe() : this.poll()).catch(this.onError);
     this.timer = setInterval(tick, this.heartbeatMs); this.timer.unref?.(); tick();
   }
   wake() { return this.poll(); }
-  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await this.running?.catch(() => {}); }
+  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await Promise.allSettled([this.running, this.observing]); }
 }

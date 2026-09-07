@@ -141,6 +141,12 @@ try {
   assert.match(await pendingPage.locator('#cg-sync-status').textContent(), /正在同步到 Cloud/);
   assert.equal(await pendingPage.locator('#cloud-sync-status').getAttribute('aria-label'), '云端同步中');
   assert.equal(await pendingPage.locator(`#cg-sync-session option[value="${lateSessionId}"]`).count(), 1);
+  assert.equal(await pendingPage.locator('#cg-sync-session option[value="session-one"]').count(), 1, 'Cloud deep links retain other registered Sessions');
+  assert.equal(await pendingPage.locator('#cg-sync-session option[value="__all__"]').count(), 1, 'Cloud deep links retain the Main entry');
+  await pendingPage.locator('#session-chip').click();
+  assert.equal(await pendingPage.locator('#session-menu [data-session="session-one"]').count(), 1);
+  assert.equal(await pendingPage.locator('#session-menu [data-session="__all__"]').count(), 1);
+  await pendingPage.locator('#session-chip').click();
   const lateMap = structuredClone(sessionMap);
   lateMap.root.title = 'Late Session map';
   const lateSession = await request(`${service.url}/v1/projects/context-guard/sessions/${lateSessionId}`, {

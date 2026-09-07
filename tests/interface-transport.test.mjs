@@ -146,3 +146,27 @@ test('IF-018: a stalled Session cannot prevent a healthy Session acknowledgement
   try { await assert.rejects(pump.poll()); assert.equal(healthyAck, true); }
   finally { release(); await pump.close(); }
 });
+
+test('heartbeats continue while downstream Map work is stalled', async () => {
+  let release, beats = 0;
+  const stalled = new Promise(resolve => { release = resolve; });
+  let observeThird;
+  const third = new Promise(resolve => { observeThird = resolve; });
+  const pump = new ProjectMessagePump({
+    heartbeatMs: 10,
+    sessions: async () => [{ ...session, ackedSeq: 0 }],
+    send: async message => {
+      assert.equal(message.type, 'sync.heartbeat');
+      if (++beats === 3) observeThird();
+      return { sessions: [{ ...session, latestSeq: 0, ackedSeq: 0 }] };
+    },
+    onSession: () => stalled,
+    apply: async () => { throw new Error('No task expected'); },
+  });
+  let timeout;
+  try {
+    pump.start();
+    await Promise.race([third, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Heartbeat blocked by Map work')), 1000); })]);
+    assert.ok(beats >= 3);
+  } finally { clearTimeout(timeout); release(); await pump.close(); }
+});

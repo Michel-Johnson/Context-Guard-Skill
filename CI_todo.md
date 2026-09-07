@@ -1,5 +1,14 @@
 # CI TODO
 
+## 设备级通讯精简（进行中，尚未部署）
+
+- [x] 地图/任务处理阻塞时独立发送心跳（`tests/interface-transport.test.mjs`）。
+- [x] Cloud Session 深链接保留全部 Session 和 Main 入口（`tests/cloud-workbench-browser.mjs`）。
+- [x] Cloud 模式下损坏的本地日志自动备份恢复，保留地图与操作去重回执；损坏的待提交事务仍单独保护（`tests/workbench-journal-recovery.test.mjs`）。
+- [ ] 单设备跨项目统一通讯服务、真实执行状态回报、旧通讯路径删除。
+- [ ] Cloud FIFO 完成/失败/取消收口；用真实“测试”Session 验证 2 Bug + 2 TODO。
+- [ ] 安装入口、Cloud 部署和 30 分钟持续心跳验收；局部测试不代表以上功能完成。
+
 - [x] Cloud 保存失败时在顶栏直接展示结构化错误码与简短原因，完整诊断仍保留在“同步与恢复”中。
 
 ## 接口 1.0（本地实现与隔离 Cloud 联调已完成，生产 Cloud 待部署验收）

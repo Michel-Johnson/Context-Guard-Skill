@@ -260,7 +260,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const job = previous.then(() => target.version === version ? generateProjections(projectionRoot, projectionDoc, version, () => target.version === version, { sessionId }) : false);
           projectionQueues.set(viewId, job.catch(() => {})); return job;
         };
-    target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions });
+    // In Cloud mode the local journal is an observation cache, not the Map or
+    // the pending write queue. Preserve its raw backup and mark a history gap;
+    // never erase a pending commit, operation receipt, or unsent edit.
+    const recoverJournal = !!sessionId && !!syncDirectory && !!await readJSON(memoryConfigPath(project), null);
+    target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions, recoverJournal });
     await target.init();
     storeViews.set(target, new Set([viewId]));
     target.on('change', state => {

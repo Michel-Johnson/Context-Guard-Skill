@@ -34,7 +34,9 @@ export class WorkbenchSync {
     this.taskStates = new Map();
     this.refreshingAccess = null;
     this.accessRefreshQueued = false;
-    this.urlPinned = Boolean(requestedSession);
+    // Cloud authentication scopes access; a deep link only selects the initial
+    // Session. Local Session-only views keep their existing restriction.
+    this.urlPinned = Boolean(requestedSession) && !this.config?.root?.startsWith('cloud:');
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     this.repairButton = document.createElement('button'); this.repairButton.id = 'cg-sync-repair'; this.repairButton.hidden = true;
