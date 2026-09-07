@@ -114,7 +114,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const project = await resolveProject(root), doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', todos: [
     { id: 'TD1', title: 'Approved integration task', status: 'pending' },
     { id: 'TD2', title: 'Queued integration task', status: 'pending' },
-  ], children: [
+  ], bugs: [{ id: 'B40', title: 'Old record', status: 'open' }, { id: 'B40', title: 'Colliding record', status: 'open' }], children: [
     { id: 'private', title: 'private', todos: [{ id: 'TD3', title: 'Denied task', status: 'pending' }], access: [{ id: 'denied', agentId: 's', allow: 'none' }] },
   ] } };
   const ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
@@ -216,6 +216,10 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   await waitFor(() => local.stores.get('session:s2').doc.root.purpose === 's2 only');
   assert.notEqual(local.stores.get('session:s').doc.root.purpose, 's2 only');
   const cloudCall = (route, body) => fetch(`${cloud.url}/api/workbench/projects/context-guard${route}?view=main`, { method: 'POST', headers: cloudHeaders, body: JSON.stringify(body) });
+  const ambiguous = await cloudCall('/api/session-message', { operationId: 'ambiguous-bug', sessionId: 's', nodeId: 'R', bugId: 'B40' });
+  assert.equal(ambiguous.status, 409);
+  assert.match((await ambiguous.json()).error.message, /duplicated/);
+  assert.equal(delivered.length, 0);
   const plan = await cloudCall('/api/access-plan', { sessionId: 's', nodeId: 'R' });
   assert.equal(plan.status, 200); assert.deepEqual((await plan.json()).missing, []);
   const deniedPlan = await cloudCall('/api/access-plan', { sessionId: 's', nodeId: 'private' });

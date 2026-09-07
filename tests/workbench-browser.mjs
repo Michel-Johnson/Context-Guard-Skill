@@ -406,6 +406,11 @@ try {
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   await page.locator('.node[data-id="N1"]').click();
+  const occupiedBugIds = await read();
+  occupiedBugIds.root.children[0].bugs = Array.from({length:10},(_,i)=>({id:`B${40+i}`,title:`Existing Bug ${i}`,status:'resolved',sessions:[]}));
+  await fs.writeFile(mapPath,encode(occupiedBugIds));
+  await until(async()=> (await read()).root.children[0].bugs.length===10);
+  await page.waitForFunction(()=>data.children[0].bugs.length===10);
   await page.locator('#detail [data-act="add-bug"]').click();
   const scopedDialog = page.locator('.bug-assign-dialog');
   assert.equal(await scopedDialog.getByLabel('Bug 标题').count(), 0);
@@ -415,6 +420,8 @@ try {
   await scopedDialog.getByRole('button', { name: '创建并发送' }).click();
   await until(() => queuedMessages.length === 3);
   await until(async () => (await read()).root.children[0].bugs.some(bug => bug.title === '单会话自动分配' && bug.sessions.includes(session)));
+  const uniqueBugs = (await read()).root.children[0].bugs;
+  assert.equal(new Set(uniqueBugs.map(bug=>bug.id)).size,uniqueBugs.length);
   const scopedClean = await read(); scopedClean.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(scopedClean));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');

@@ -1046,7 +1046,9 @@ export async function startCloudServer({
             const main = await mainMemorySnapshot(project);
             if (!main?.document?.root) protocolFail('NOT_FOUND', 'Published Main memory is unavailable');
             const node = entries(main.document.root).get(nodeId)?.node;
-            const item = bugId ? node?.bugs?.find(value => value?.id === bugId) : node?.todos?.find(value => value?.id === todoId);
+            const matches = (bugId ? node?.bugs : node?.todos)?.filter(value => value?.id === (bugId || todoId)) || [];
+            if (matches.length > 1) protocolFail('CONFLICT', 'Work item ID is duplicated; repair its identity before assigning');
+            const item = matches[0];
             if (!node || !item) protocolFail('NOT_FOUND', 'Work item or owner node is missing');
             if ((bugId && ['resolved', 'dormant', 'wontfix'].includes(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
             const nodeIds = assignmentScope(main.document, nodeId);
