@@ -80,7 +80,7 @@ function mergeSessionValue(base, local, remote, at) {
   if (['origin', 'proposedBy', 'isNew'].includes(field)) return structuredClone(remote);
   if ((base === undefined || Array.isArray(base)) && Array.isArray(local) && Array.isArray(remote)) {
     const indexedBase = keyedSequence(base || [], at), indexedLocal = keyedSequence(local, at), indexedRemote = keyedSequence(remote, at);
-    const order = [...indexedLocal.keys(), ...indexedRemote.keys().filter(key => !indexedLocal.has(key))];
+    const order = [...indexedLocal.keys(), ...[...indexedRemote.keys()].filter(key => !indexedLocal.has(key))];
     const merged = [];
     for (const key of order) {
       const before = indexedBase.get(key), left = indexedLocal.get(key), right = indexedRemote.get(key);
