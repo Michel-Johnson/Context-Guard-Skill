@@ -320,7 +320,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
   return committed.result;
 }
 
-export function createMemoryHandler(configuration = {}) {
+export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}) {
   const { dataDir, adminToken, projects = {} } = configuration;
   validateOptions({ dataDir, adminToken });
   const hub = memoryHub(configuration);
@@ -339,7 +339,7 @@ export function createMemoryHandler(configuration = {}) {
       const project = projects[projectId];
       const credential = req.headers.authorization?.replace(/^Bearer /, '') || '';
       const admin = equal(credential, adminToken);
-      if (!project || (!admin && (!project.token || !equal(credential, project.token)))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
+      if (!project || (!admin && (!project.token || !equal(credential, project.token)) && !await authorizeDevice?.({ credential, projectId, sessionId, scope, method: req.method }))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
       const file = memoryFile(dataDir, projectId);
       if (req.method === 'GET') {
         const state = scope === 'history' ? await readMemoryProject(configuration, projectId) : await readMemoryView(configuration, projectId);

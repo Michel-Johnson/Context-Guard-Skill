@@ -17,7 +17,7 @@ import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator } from '../scripts/workbench/sync-coordinator.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
-import { request } from '../scripts/workbench/cli.mjs';
+import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -156,12 +156,40 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   let seq = 0;
   const message = (type, payload, scoped = true) => ({ v: 2, id: `e2e-${++seq}`, type, ...(scoped ? { session: { id: 's', generation: 1 } } : {}), payload });
-  await sendMessage(local.state.url, local.humanToken, message('auth.open', { repository: 'auto', clientId: 'ignored', password: 'test-only' }, false), { allowLoopback: true });
+  const login = await connectCloudProject(root, { url: cloud.url, password: 'test-only', repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
+  assert.deepEqual(login, { connected: true, projectId: 'context-guard', url: cloud.url });
+  // The same project login authorizes memory. New Sessions need neither a
+  // project token nor Hooks, and cannot read a different device's Session.
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(project.sharedDir, 'memory-client.json'), 'utf8')), { url: cloud.url, projectId: 'context-guard' });
+  assert.equal(JSON.parse(await fs.readFile(path.join(project.sharedDir, 'memory-client.json.before-device-login'), 'utf8')).token, 'test-project');
+  const connection = JSON.parse(await fs.readFile(path.join(project.sharedDir, 'interface-v2/device-connection.json'), 'utf8'));
+  assert.equal(connection.projectId, 'context-guard');
+  assert.ok(connection.capabilities.includes('device-memory'));
+  const memoryRead = resource => fetch(`${cloud.url}/v1/projects/context-guard/${resource}`, { headers: { Authorization: `Bearer ${connection.credential}` } });
+  assert.equal((await memoryRead('main')).status, 200);
+  assert.equal((await memoryRead('sessions/heartbeat-only')).status, 403);
+  assert.equal((await memoryRead('history')).status, 401);
   const first = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's', worktreeRoot: root } });
   const second = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's2', worktreeRoot: root } });
   assert.equal(first.cloudBinding.status, 'ready'); assert.equal(second.cloudBinding.status, 'ready');
+  const protocolFile = path.join(project.sharedDir, 'interface-v2/protocol-v2.json');
+  const registeredState = await fs.readFile(protocolFile, 'utf8');
+  const again = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's', worktreeRoot: root } });
+  assert.deepEqual(again.protocolBinding, first.protocolBinding);
+  assert.equal(await fs.readFile(protocolFile, 'utf8'), registeredState, 'ordinary Map calls must not append repeated binding receipts');
+  assert.equal(local.stores.has('session:s'), false, 'Cloud binding must not download a Map');
+  await request(local.state, '/api/state', { token: first.token });
+  await request(local.state, '/api/state', { token: second.token });
+  assert.equal((await memoryRead('sessions/s')).status, 200);
   const waitFor = async predicate => { const deadline = Date.now() + 15000; while (!await predicate() && Date.now() < deadline) await delay(30); assert.ok(await predicate(), 'condition did not become true'); };
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
+  await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: 's3', event: 'session-start', platform: 'codex', thread_name: 'new-session' }) + '\n');
+  const cli = path.resolve('scripts/workbench/cli.mjs');
+  const { stdout } = await exec(process.execPath, [cli, 'map', 'status', '--root', root, '--session', 's3'], { env: process.env, timeout: 15000, windowsHide: true });
+  assert.equal(JSON.parse(stdout).error, null);
+  const opened = JSON.parse((await exec(process.execPath, [cli, 'workbench', '--root', root, '--session', 's3'], { env: process.env, timeout: 15000, windowsHide: true })).stdout);
+  assert.equal(opened.url, `${cloud.url}/projects/context-guard?session=s3`);
+  assert.equal(opened.cloudBinding.status, 'ready');
   assert.deepEqual((await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).map(item => [item.name, item.platform]), [
     ['session-one', 'codex'], ['session-two', 'codex'],
   ]);
@@ -197,6 +225,21 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   assert.equal(delivered.length, 1);
   const main = await sendMessage(local.state.url, first.token, message('workbench.read', { scope: 'main', cursor: '', limit: 10 }), { allowLoopback: true });
   assert.equal(main.version, 'main-v1'); assert.equal(main.items[0].node.id, 'R');
+  // Binding identity and name outlive the ephemeral presence cache. Restart
+  // Cloud while the local process is stopped: registered Sessions stay listed,
+  // but none can pretend that their heartbeat is still online.
+  cloudEventController.abort(); await cloudEventReader.cancel().catch(() => {});
+  await local.close(); local = null;
+  const cloudPort = Number(new URL(cloud.url).port);
+  await cloud.close();
+  cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), memoryConfig: memory, protocolConfig, port: cloudPort, browserToken: 'test-browser', browserPasswordHash: await createWorkbenchPasswordHash('test-only') });
+  const restored = (await cloudAccess()).sessions;
+  assert.equal(restored.find(item => item.id === 'heartbeat-only').name, 'live-task');
+  assert.equal(restored.find(item => item.id === 'heartbeat-only').status, 'offline');
+  assert.equal(restored.find(item => item.id === 's').name, 'session-one');
+  local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
+  await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
+  assert.equal(delivered.length, 1, 'restart must not redeliver the already accepted task');
 });
 
 test('IF-037: the project heartbeat reconciles actual private Cloud Map edits without a per-Session event connection', async t => {

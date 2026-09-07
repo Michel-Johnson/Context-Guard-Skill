@@ -14,10 +14,13 @@ export async function memoryRequest(project, scope, input, configuration) {
   if (!config) throw new MapError('MEMORY_NOT_CONFIGURED', 'Private memory server is not configured', 503);
   const base = new URL(config.url);
   if (base.username || base.password || base.search || base.hash || (base.protocol !== 'https:' && !(base.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)))) throw new MapError('INSECURE_MEMORY_URL', 'Use HTTPS, or an explicit loopback tunnel', 400);
-  if (!/^[a-z0-9-]+$/.test(config.projectId || '') || !config.token) throw new MapError('INVALID_MEMORY_CONFIG', 'Project ID and scoped token required');
+  const device = configuration ? null : await readJSON(path.join(project.sharedDir, 'interface-v2/device-connection.json'), null);
+  const useDevice = !configuration && device?.origin === config.url && (device.capabilities?.includes('device-memory') || device.disconnected);
+  const credential = useDevice ? device.credential : config.token;
+  if (!/^[a-z0-9-]+$/.test(config.projectId || '') || !credential) throw new MapError('CLOUD_LOGIN_REQUIRED', 'Sign in to this project Cloud once with workbench connect');
   let response, result;
   try {
-    response = await fetch(new URL(`/v1/projects/${config.projectId}/${scope}`, base), { method: input ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${config.token}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, body: input ? JSON.stringify(input) : undefined });
+    response = await fetch(new URL(`/v1/projects/${config.projectId}/${scope}`, base), { method: input ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(30000), headers: { Authorization: `Bearer ${credential}`, ...(input ? { 'Content-Type': 'application/json' } : {}) }, body: input ? JSON.stringify(input) : undefined });
   } catch {
     throw new MapError('MEMORY_UNAVAILABLE', input ? 'Delivery outcome is unknown; preserve the request ID before retrying' : 'Memory service is temporarily unavailable', 503);
   }

@@ -299,7 +299,14 @@ export async function startCloudServer({
   const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
     ? await readJson(path.resolve(process.env.CONTEXT_GUARD_MEMORY_CONFIG), null)
     : null);
-  const memoryHandler = configuredMemory ? createMemoryHandler(configuredMemory) : null;
+  const memoryHandler = configuredMemory ? createMemoryHandler(configuredMemory, { authorizeDevice: async ({ credential, projectId, sessionId, scope, method }) => {
+    if (!interfaceAuth) return false;
+    const principal = await interfaceAuth.authenticate(credential);
+    const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+    if (principal.role !== 'device' || repository?.projectId !== projectId) return false;
+    if (sessionId) return !!await interfaceStorage(principal).store.registeredBinding(principal, sessionId);
+    return method === 'GET' && ['main', 'preferences'].includes(scope);
+  } }) : null;
   const interfaceConfig = protocolConfig || configuredMemory?.interfaceV2;
   const interfaceStores = new Map();
   const interfaceStreams = new Set();
@@ -599,6 +606,18 @@ export async function startCloudServer({
       id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
       lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
     });
+    if (repository) {
+      const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
+      const { store } = interfaceStorage(principal);
+      for (const head of await store.queueHeads(principal)) {
+        const binding = await store.registeredBinding(principal, head.session.id);
+        const existing = sessions.find(item => item.id === head.session.id);
+        if (existing) {
+          existing.name ||= binding.name || '';
+          existing.platform = binding.platform || existing.platform;
+        } else sessions.push({ id: head.session.id, name: binding.name || '', platform: binding.platform || 'agent', status: 'offline', lastSeen: '', lastHeartbeatAt: '', bindingState: 'bound' });
+      }
+    }
     return sessions.sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
   const publicationState = async (project, viewId, options = {}) => {
@@ -809,6 +828,10 @@ export async function startCloudServer({
             const opened = await interfaceAuth.open(input, String(req.socket.remoteAddress));
             const repository = interfaceConfig.repositories.find(item => item.repositoryId === opened.data.repositoryId);
             opened.data.capabilities = repository?.projectId && configuredMemory?.projects?.[repository.projectId] ? ['private-map-heads'] : [];
+            if (opened.data.capabilities.length) {
+              opened.data.projectId = repository.projectId;
+              opened.data.capabilities.push('device-memory');
+            }
             return send(res, 200, { id, ok: true, data: opened.data }, { 'X-Context-Guard-Credential': opened.credential });
           }
           const credential = bearer(req);
@@ -880,6 +903,7 @@ export async function startCloudServer({
             workflow: { verifyRouting: verifyInterfaceRouting },
           });
           if (input.type === 'sync.heartbeat') {
+            await store.rememberSessionNames(principal, input.payload.sessions);
             const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
             const lastHeartbeatAt = new Date().toISOString();
             let accessChanged = false;

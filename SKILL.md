@@ -52,6 +52,16 @@ When Cloud is configured, it is the only human-facing workbench URL. The local
 service remains the Agent/Hook synchronization backend but must not be advertised
 or opened as a second frontend. Use the local page only when Cloud is not configured.
 
+For a new Session in an already connected project, run `context-guard workbench
+--root <project> --session <actual-session-id>` once. It reuses the project login,
+registers the Session and returns its Cloud URL; do not ask for a token or project
+ID. This explicit Skill entry also works with Hooks disabled. The shared backend,
+not the model or Hooks, sends heartbeats for registered Sessions. On a new machine
+or an unconnected project, use `workbench connect --url <cloud-origin> --root
+<project> --session <actual-session-id> --input <private-login-file>` once; the
+input contains only `password`. Git identity determines the Cloud project. Keep
+passwords out of command arguments and memory. See `references/server-memory.md`.
+
 Node atomically saves valid operations and notifies pages after file/Agent changes. Browser cache is only for recovery drafts and UI preferences. Static/GitHack/file views are read-only.
 
 Submit `context-guard map apply --root <project> --session <actual-session-id> --input <request.json>` with the read's `baseVersion`, a unique `operationId`, and explicit create/update/move operations. Keep the same request/ID after uncertain delivery; re-read and reconcile on VERSION_CONFLICT. Do not directly rewrite map.json. See `references/workbench-interface.md` for schema, errors, migration and recovery.

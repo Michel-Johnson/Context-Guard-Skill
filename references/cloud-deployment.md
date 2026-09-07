@@ -179,7 +179,15 @@ shared URLs after authentication.
 
 ## 5. Connect each working copy
 
-Run this inside every local or remote checkout that works on the project:
+For Cloud with private memory and interface v2 configured, log in once per Git
+project/machine using `workbench connect --root <project-path> --url
+https://<cloud-host> --session <actual-session-id> --input <private-login-file>`.
+The JSON input contains only `password`; Git identity resolves the project ID.
+Subsequent Sessions use `workbench --root <project-path> --session
+<actual-session-id>` and share the existing backend login. No per-Session token
+setup or second frontend is needed. See `references/server-memory.md`.
+
+The following token flow is for legacy Map-only servers, not the normal v2 path:
 
 ```bash
 context-guard sync connect --root <project-path> \

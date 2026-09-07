@@ -634,7 +634,30 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
-          const sessionFiles = project.kind === 'git' ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
+          if (!(await access.knownSessions(prepared.sessionProject.worktreeRoot)).includes(prepared.sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
+          const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: prepared.sessionId, role: 'executor' };
+          const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, prepared.sessionId);
+          const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: prepared.sessionId, agentId: prepared.sessionId,
+            worktreeId: prepared.binding.worktreeId, expectedBindingVersion: previousProtocolBinding?.version || '' } };
+          const unchanged = previousProtocolBinding?.worktreeId === prepared.binding.worktreeId && previousProtocolBinding?.agentId === prepared.sessionId;
+          const protocolBinding = unchanged ? { session: { id: prepared.sessionId, generation: previousProtocolBinding.generation }, bindingVersion: previousProtocolBinding.version } : (await protocolStore.handle(identity, bindMessage, {
+            allowMigration: true, verifyBinding: (_p, payload) => payload.sessionId === prepared.sessionId && payload.worktreeId === prepared.binding.worktreeId,
+          })).data;
+          const connection = await projectDevice();
+          let cloudBinding = { status: 'disconnected' };
+          if (connection && await connection.connected()) {
+            try {
+              if (unchanged) await connection.ensureBinding(previousProtocolBinding);
+              else await connection.bind(bindMessage, protocolBinding);
+              cloudBinding = { status: 'ready' };
+            }
+            catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
+          }
+          // Device registration does not depend on downloading the Map. The
+          // first Map read opens its store; heartbeat and task routing can start
+          // immediately, including after publication removed a Session snapshot.
+          const lazyCloudMap = connection && await connection.supports('private-map-heads');
+          const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
           const actor = await access.register(prepared.sessionId, prepared.binding);
           if (sessionFiles) {
             const sessionDocument = await readJSON(sessionFiles.file, null);
@@ -649,19 +672,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               sessionId: prepared.sessionId,
               syncDirectory: sessionFiles.dir,
             });
-          }
-          const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
-          const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, actor.sessionId);
-          const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: actor.sessionId, agentId: actor.sessionId,
-            worktreeId: actor.worktreeId, expectedBindingVersion: previousProtocolBinding?.version || '' } };
-          const protocolBinding = (await protocolStore.handle(identity, bindMessage, {
-            allowMigration: true, verifyBinding: (_p, payload) => access.binding(payload.sessionId)?.worktreeId === payload.worktreeId,
-          })).data;
-          const connection = await projectDevice();
-          let cloudBinding = { status: 'disconnected' };
-          if (connection && await connection.connected()) {
-            try { await connection.bind(bindMessage, protocolBinding); cloudBinding = { status: 'ready' }; }
-            catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
           }
           const credential = token(); agentTokens.set(credential, actor);
           return send(res, 200, { token: credential, actor, protocolBinding, cloudBinding });
