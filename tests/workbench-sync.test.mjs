@@ -9,7 +9,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
-import { MemorySyncCoordinator, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
+import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
@@ -36,6 +36,38 @@ test('browser reconnect retries share one operation and Session switches wait', 
   sync.switchingSession = false; sync.sessionUnavailable = true;
   await sync.retry(); await sync.presence(); await sync.recoverConnection();
   assert.equal(calls, 1, 'unavailable Session must not reconnect');
+});
+
+test('Session reopen merge preserves disjoint append-only records and rejects conflicting content', () => {
+  const base = { v: 1, root: { id: 'T0', title: 'Project', proposal: 'accepted', memories: [], children: [] } };
+  const local = structuredClone(base), main = structuredClone(base);
+  local.root.memories.push({ archiveKey: 'local', text: 'Local Session record' });
+  main.root.memories.push({ archiveKey: 'main', text: 'Main record' });
+  const merged = mergeSessionDocuments(base, local, main);
+  assert.deepEqual(merged.root.memories.map(item => item.archiveKey), ['local', 'main']);
+  assert.throws(() => mergeSessionDocuments(base,
+    { ...local, root: { ...local.root, title: 'Local title' } },
+    { ...main, root: { ...main.root, title: 'Main title' } }), { code: 'MEMORY_CONFLICT' });
+});
+
+test('Workbench keeps the bound Session identity visible while its Map needs recovery', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  const calls = [];
+  Object.assign(sync, {
+    config: { root: '/project' }, viewId: 'session:bound-session', activeSession: 'bound-session',
+    repairButton: null, call: async route => {
+      assert.equal(route, '/api/state');
+      return { version: 'blocked-v1', doc: { root: null }, recovery: { code: 'JOURNAL_CORRUPT', message: 'recover' } };
+    },
+    connect: () => calls.push('connect'),
+    refreshAccess: async () => calls.push('access'),
+    refreshCloudStatus: async () => calls.push('cloud'),
+    setStatus: (status, message) => calls.push(`${status}:${message}`),
+  });
+  assert.equal(await sync.start(), false);
+  assert.deepEqual(calls.slice(0, 3), ['connect', 'access', 'cloud']);
+  assert.equal(calls.at(-1), 'error:recover');
+  assert.equal(sync.pendingSession, '');
 });
 
 test('failed Session switch restores canvas, version and identity together', async () => {
@@ -575,6 +607,78 @@ test('Workbench coordinator automatically reopens the same Session after its pri
   assert.equal(reopened.reopenedFrom, published.snapshot.version);
   assert.equal((await memoryPublicationStatus(configuration, 'project', 'reusable-session')).status, 'ready');
   assert.equal((await readMemoryProject(configuration, 'project')).closedSessions['reusable-session'].publications.length, 1);
+});
+
+test('Workbench coordinator rebases append-only Session and Main changes and clears the preserved reopen conflict', async t => {
+  const f = await fixture();
+  const git = (...args) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'fixture@example.invalid');
+  git('config', 'user.name', 'Fixture');
+  git('add', '.codex/context/map.json');
+  git('commit', '-m', 'baseline');
+  const firstHead = git('rev-parse', 'HEAD');
+  const sharedDir = path.join(f.root, 'advanced-generation-shared');
+  const syncDir = path.join(f.root, 'advanced-generation-sync');
+  const configuration = {
+    dataDir: path.join(f.root, 'advanced-generation-memory'),
+    adminToken: 'memory-admin',
+    projects: { project: { token: 'project-token', root: f.root, ref: 'refs/heads/main' } },
+  };
+  await fs.mkdir(path.join(syncDir, 'remote-sync'), { recursive: true });
+  await fs.mkdir(sharedDir, { recursive: true });
+  const service = await startMemoryServer(configuration);
+  const project = { sharedDir, head: firstHead };
+  await atomicWrite(path.join(sharedDir, 'memory-client.json'), encode({ url: service.url, projectId: 'project', token: 'project-token' }));
+
+  const first = await memoryRequest(project, 'sessions/reopen-session', {
+    operationId: 'reopen-first', baseVersion: null, baseMainVersion: null, sourceCommit: firstHead,
+    memory: { map: f.doc, records: {} },
+  });
+  const firstMain = await memoryRequest(project, 'publish', {
+    operationId: 'reopen-first-publish', baseVersion: null, sessionId: 'reopen-session',
+    sessionVersion: first.snapshot.version, expectedMainSha: firstHead,
+  });
+
+  const mainDoc = structuredClone(f.doc);
+  mainDoc.root.children[0].memories.push({ archiveKey: 'main-memory', text: 'Main append' });
+  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(mainDoc));
+  git('add', '.codex/context/map.json');
+  git('commit', '-m', 'advance main');
+  project.head = git('rev-parse', 'HEAD');
+  const advancing = await memoryRequest(project, 'sessions/main-advance-session', {
+    operationId: 'main-advance', baseVersion: null, baseMainVersion: firstMain.snapshot.version, sourceCommit: project.head,
+    memory: { map: mainDoc, records: {} },
+  });
+  const advancedMain = await memoryRequest(project, 'publish', {
+    operationId: 'main-advance-publish', baseVersion: firstMain.snapshot.version, sessionId: 'main-advance-session',
+    sessionVersion: advancing.snapshot.version, expectedMainSha: project.head,
+  });
+
+  const localDoc = structuredClone(f.doc);
+  localDoc.root.children[0].memories.push({ archiveKey: 'local-memory', text: 'Local append' });
+  await fs.writeFile(path.join(f.ctx, 'map.json'), encode(localDoc));
+  const store = await new MapStore(f.root, {
+    file: path.join(f.ctx, 'map.json'), runtime: path.join(f.root, 'advanced-generation-store-runtime'), eventsFile: path.join(f.root, 'advanced-generation-events.jsonl'),
+  }).init();
+  await atomicWrite(path.join(syncDir, 'remote-sync/server-base.json'), encode(f.doc));
+  await atomicWrite(path.join(syncDir, 'remote-sync/conflict.json'), encode({
+    code: 'MAIN_ADVANCED_BEFORE_SESSION_REOPEN', base: f.doc, local: localDoc, remote: mainDoc, at: new Date().toISOString(),
+  }));
+  await atomicWrite(path.join(syncDir, 'remote-sync/state.json'), encode({
+    configured: true, status: 'conflict', pending: 0, cursor: 0, serverVersion: null,
+    error: null, conflict: { code: 'MAIN_ADVANCED_BEFORE_SESSION_REOPEN', at: new Date().toISOString() },
+  }));
+  const coordinator = new MemorySyncCoordinator({ project, sessionId: 'reopen-session', store, directory: syncDir, managed: true, retryMin: 25, retryMax: 100 });
+  t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
+  await coordinator.start();
+  await until(async () => (await memoryRequest(project, 'sessions/reopen-session')).snapshot?.generation === 2
+    && coordinator.snapshot().status === 'synced', 6000);
+  const reopened = (await memoryRequest(project, 'sessions/reopen-session')).snapshot;
+  assert.equal(reopened.baseMainVersion, advancedMain.snapshot.version);
+  assert.deepEqual(reopened.memory.map.root.children[0].memories.map(item => item.archiveKey), ['local-memory', 'main-memory']);
+  assert.equal(await readJSON(path.join(syncDir, 'remote-sync/conflict.json'), null), null);
+  assert.equal(coordinator.snapshot().conflict, null);
 });
 
 test('Managed coordinator bootstraps a closed Session and accepts changes already present on Main', async t => {

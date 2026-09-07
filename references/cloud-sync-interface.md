@@ -98,8 +98,11 @@ with different content is rejected.
 Publishing removes only the active generation. If that same real Session edits
 again, the workbench first creates its next generation from the latest Main
 snapshot, then resumes ordinary Map patches. `SESSION_REOPEN_REQUIRED` triggers
-this background path; `SESSION_BASELINE_CONFLICT` or overlapping Main/local fields
-preserve the local draft for review. Older generation receipts remain idempotent.
+this background path. Append-only records created independently in the Session
+and latest Main are merged by stable record identity before the next generation
+is created. A change to the same scalar/object field, an ambiguous record
+identity, or delete-vs-edit preserves `base`, `local`, and `remote` in
+`conflict.json` for review. Older generation receipts remain idempotent.
 
 ## Legacy project event protocol
 
@@ -183,9 +186,11 @@ The workbench represents status only:
 
 Network failure leaves the outbox on disk and reconnect uses exponential backoff
 with jitter. Starting while Cloud is unavailable follows the same recovery path.
-Edits to different node fields are merged automatically. Changes to the same
-node field, or delete-vs-edit, create `conflict.json` containing base, local and
-remote documents; the local draft is never overwritten.
+Edits to different node fields and disjoint append-only records are merged
+automatically. Changes to the same node field, ambiguous sequence identities, or
+delete-vs-edit create `conflict.json` containing base, local and remote
+documents; the local draft is never overwritten. A journal-recovery state blocks
+Map writes but does not erase or hide the bound Session identity in the browser.
 
 Never solve a conflict by deleting private state or inventing a new operation
 ID. Review the three saved versions, make an explicit resolution, then restart

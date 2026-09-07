@@ -169,7 +169,15 @@ export class WorkbenchSync {
       this.recoveryState(state);
       this.doc = state.doc; this.version = state.version; this.source = state.source || null; this.captureKey = `cg-sync-draft:${this.config.root}:${this.viewId}`;
       if (this.viewId.startsWith('session:')) this.pendingSession = '';
-      if (state.error || state.recovery) throw new Error(state.error?.message || state.recovery?.message || '服务需要恢复');
+      if (state.error || state.recovery) {
+        // Recovery blocks Map writes, not Session identity. Keep the bound
+        // Session visible so the page never misrepresents a recovery problem as
+        // an unbound workbench.
+        this.connect();
+        await this.refreshAccess();
+        await this.refreshCloudStatus();
+        throw new Error(state.error?.message || state.recovery?.message || '服务需要恢复');
+      }
       if (state.doc?.root === null && state.doc.bootstrap === 'pending') {
         const readOnlyMain = this.viewId === 'main' && state.source?.status !== 'local-folder';
         this.initializationRequired = true;
