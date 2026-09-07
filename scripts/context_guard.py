@@ -963,7 +963,7 @@ def resolve_signal(root: Path, session_id: str, signal_id: str, kind: str) -> di
 def run_node_workbench(args: list[str], payload: object = None) -> dict:
     command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"), *args]
     completed = subprocess.run(command, input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
-        text=True, encoding="utf-8", capture_output=True, timeout=30,
+        text=True, encoding="utf-8", capture_output=True, timeout=180,
         creationflags=WINDOWS_NO_WINDOW)
     try:
         result = json.loads(completed.stdout)

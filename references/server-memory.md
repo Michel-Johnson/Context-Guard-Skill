@@ -29,12 +29,23 @@ example under systemd `ProtectSystem=strict`), omit `remote`: deployment updates
 the mirror and publication only verifies the configured `ref`. Never grant broad
 checkout write access just so the service can run `git fetch`.
 
-Configure a client using `context-guard memory configure --root <project> --input
-<private-file>` containing `url`, `projectId`, `token`. It verifies the endpoint
-before replacing existing configuration. Never put the credential on the command
-line, in a node, in a Session record, or in Git. Keep the administrator credential
-on the server. Agent worktrees use only their project-scoped credential; the human
-browser uses only its HttpOnly workbench cookie.
+Connect once using `context-guard workbench connect --root <project> --url
+<cloud-origin> --session <actual-session-id> --input <private-file>`; the private
+JSON input contains only `password`. Cloud resolves the project from the verified
+GitHub repository and returns its project ID and `device-memory` capability.
+The backend stores one device credential for messages and private memory. Later
+Sessions invoke `workbench --session` without login, token or project ID. Hooks
+are optional for registration through this explicit entry and are not the backend
+heartbeat scheduler. The backend process must be running to send heartbeats.
+
+Device credentials can read Main/preferences and read/write only Sessions bound
+to that device. They cannot publish, restore, inspect history or administer Cloud.
+Existing token-based clients remain compatible until explicitly migrated by login;
+a rejected device credential never silently falls back to a legacy token.
+The legacy `memory configure --input <private-file>` flow remains for standalone
+memory servers (`url`, `projectId`, `token`). Login preserves its previous config
+in a private recovery file. Never put credentials on command lines, in nodes,
+Session records or Git. The browser still uses its separate HttpOnly cookie.
 
 The authenticated API is `/v1/projects/<id>/main`, `/preferences`,
 `/sessions/<session-id>`, `/publish`, `/history`, and `/restore`. Public Cloud routes do not expose these

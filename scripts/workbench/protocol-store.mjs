@@ -290,6 +290,22 @@ export class ProtocolStore extends EventEmitter {
       return binding;
     }, { readOnly: true });
   }
+  async rememberSessionNames(principal, sessions) {
+    requireIdentity(principal);
+    const update = state => {
+      for (const session of sessions) {
+        const binding = requireBinding(state, principal, session);
+        if (session.name) binding.name = session.name;
+        if (session.platform) binding.platform = session.platform;
+      }
+    };
+    const state = await this.immutableState();
+    if (!sessions.some(session => {
+      const binding = requireBinding(state, principal, session);
+      return session.name && session.name !== binding.name || session.platform && session.platform !== binding.platform;
+    })) return;
+    await this.transaction(update);
+  }
   async queueHeads(principal) {
     requireIdentity(principal);
     return this.transaction(state => Object.entries(state.bindings).flatMap(([id, binding]) => {

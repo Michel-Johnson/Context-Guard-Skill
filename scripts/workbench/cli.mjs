@@ -18,6 +18,8 @@ import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named
 import { compatibleRuntime, runtimeIdentity, upgradeableRuntime } from './runtime.mjs';
 import { globalWorkbenchDirectory, readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
 import { RouteStore } from './portless-routes.mjs';
+import { DeviceConnection } from './protocol-device.mjs';
+import { lookupRepository } from './protocol-repository.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function documentHasBug(doc, bugId) {
   const pending = doc?.root ? [doc.root] : [];
@@ -270,6 +272,7 @@ async function initialize(root) {
 export async function diagnoseWorkbench(root, sessionId = '') {
   const openedRoot = await fs.realpath(path.resolve(root));
   const project = await resolveProject(openedRoot);
+  const cloud = await readJSON(memoryConfigPath(project), null);
   const binding = await bindingStatus(project, sessionId);
   const inventory = await serviceInventory(project);
   const projectServices = inventory.records.filter(item => item.belongs && item.live);
@@ -283,7 +286,7 @@ export async function diagnoseWorkbench(root, sessionId = '') {
   const registry = await registeredProject(project).catch(() => null);
   const namedEntry = await readJSON(namedFile, null);
   const canonicalOrigin = namedEntry?.origin || registry?.origin || '';
-  if (canonicalOrigin) {
+  if (canonicalOrigin && !cloud?.url) {
     const expected = ready[0]?.live;
     if (!expected) named = { status: legacy.length ? 'legacy-runtime' : upgradeable.length ? 'upgrade-required' : 'backend-unavailable', url: canonicalOrigin + '/prototype/workbench.html' };
     else {
@@ -292,8 +295,8 @@ export async function diagnoseWorkbench(root, sessionId = '') {
     }
   }
   const runtimeStatus = legacy.length ? 'legacy' : upgradeable.length ? 'upgrade-required' : duplicates ? 'duplicate' : ready.length === 1 ? (named.status === 'mismatch' ? 'named-mismatch' : 'ready') : unknown.length ? 'unknown' : 'stopped';
-  const namedRequired = process.env.CONTEXT_GUARD_NAMED_WORKBENCH !== '0';
-  const candidateUrl = namedRequired
+  const namedRequired = !cloud?.url && process.env.CONTEXT_GUARD_NAMED_WORKBENCH !== '0';
+  const candidateUrl = cloud?.url ? ready[0]?.state?.url || null : namedRequired
     ? named.url || binding.session?.workbenchUrl || null
     : binding.session?.workbenchUrl || named.url || null;
   let verified = false;
@@ -309,7 +312,7 @@ export async function diagnoseWorkbench(root, sessionId = '') {
     project: { id: project.projectId, kind: project.kind, root: openedRoot, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, sharedDir: project.sharedDir, main: project.binding?.main || null, bindingRequired: project.bindingRequired },
     runtime: { status: runtimeStatus, services: inventory.records.map(publicService), named, registry },
     ...binding,
-    workbenchUrl: candidateUrl,
+    workbenchUrl: cloud?.projectId ? new URL(`/projects/${encodeURIComponent(cloud.projectId)}`, cloud.url).href : candidateUrl,
     session: { ...binding.session, verified },
     migrationRequired: legacy.length > 0 || duplicates || named.status === 'mismatch',
     migrationPlan: [...legacy, ...(duplicates ? ready.slice(1) : [])].map(item => ({
@@ -332,7 +335,7 @@ async function stopUpgradeable(project, record) {
     if (!current || current.instance !== record.live.instance) return;
     throw new MapError('UPGRADE_PENDING', 'The older workbench could not be stopped safely. Save open page drafts and retry; no replacement was started.', 409, { cause: error.code || error.message });
   }
-  const deadline = Date.now() + 12000;
+  const deadline = Date.now() + 45000;
   while (Date.now() < deadline) {
     const [live, lock] = await Promise.all([health(state), readJSON(projectLockPath(project), null)]);
     if (!live && lock?.instance !== record.live.instance) return;
@@ -436,7 +439,7 @@ export async function request(state, route, { token = state.adminToken, method =
     method,
     headers: { Authorization: `Bearer ${token}`, ...(encoded === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(encoded) }) },
     body: encoded,
-    timeout: 15000,
+    timeout: 40000,
   });
   if (!response) throw new MapError('HTTP_ERROR', 'Workbench control request failed', 503);
   const result = response.value;
@@ -466,6 +469,21 @@ async function inputJSON(file) {
   if (file && file !== '-') return JSON.parse(await fs.readFile(path.resolve(file), 'utf8'));
   let text = ''; for await (const chunk of process.stdin) text += chunk; return JSON.parse(text);
 }
+export async function connectCloudProject(root, { url, password, repositoryLookup = lookupRepository }) {
+  const project = await ensureProjectBinding(await resolveProject(root));
+  const prior = await readJSON(memoryConfigPath(project), null);
+  const origin = new URL(String(url || prior?.url || ''));
+  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' || !(origin.protocol === 'https:' || origin.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname))) throw new MapError('INVALID_ORIGIN', 'Provide the Cloud HTTPS origin');
+  if (!project.github || project.bindingRequired) throw new MapError('BINDING_REQUIRED', 'A GitHub project with a confirmed Main is required');
+  const device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: origin.origin, allowLoopback: true });
+  const identity = await repositoryLookup(project.github.slug);
+  const result = await device.connect({ v: 2, id: randomUUID(), type: 'auth.open', payload: { repository: `https://github.com/${project.github.slug}`, password, clientId: 'local' } }, identity);
+  if (!result.projectId || !result.capabilities?.includes('device-memory')) throw new MapError('UPGRADE_REQUIRED', 'Cloud must support project login for Map access');
+  // Preserve legacy configuration for explicit recovery, not silent fallback.
+  if (prior?.token) await atomicWrite(memoryConfigPath(project) + '.before-device-login', encode(prior));
+  await atomicWrite(memoryConfigPath(project), encode({ url: origin.origin, projectId: result.projectId }));
+  return { connected: true, projectId: result.projectId, url: origin.origin };
+}
 async function main(args) {
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
@@ -474,6 +492,11 @@ async function main(args) {
   if (command === 'workbench' && opt._[0] === 'bind') {
     if (typeof opt['project-root'] !== 'string') throw new MapError('USAGE', 'workbench bind requires --project-root');
     return bindProject(root, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });
+  }
+  if (command === 'workbench' && opt._[0] === 'connect') {
+    const login = await inputJSON(opt.input || '-');
+    await connectCloudProject(root, { url: opt.url, password: login.password });
+    return main(['workbench', '--root', root, '--session', String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '')]);
   }
   if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
   if (command === 'memory') {
@@ -531,30 +554,32 @@ async function main(args) {
   if (command === 'workbench' && opt.session && project.bindingRequired) {
     throw new MapError('BINDING_REQUIRED', 'Choose the project main branch before binding this Session', 409, { projectId: project.projectId });
   }
-  let sessionId = opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID;
+  let sessionId = opt.session || (command !== 'workbench' && (process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID));
   const isMaintenance = ['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session;
   if (command !== 'workbench' && !isMaintenance && (!sessionId || !(await bindingStatus(project, sessionId)).session.bound)) {
-    throw new MapError('SESSION_BINDING_REQUIRED', 'Ask which workbench to bind to; confirm with workbench --session. No service or map was created.', 409);
+    if (!sessionId || !await readJSON(memoryConfigPath(project), null)) throw new MapError('SESSION_BINDING_REQUIRED', 'Connect this project once with workbench --session before Map actions', 409);
+    await main(['workbench', '--root', root, '--session', String(sessionId)]);
   }
   const state = opt['workbench-url']
     ? await stateForWorkbenchUrl(project, opt['workbench-url'])
     : await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') {
-    const bindInput = opt.session ? { sessionId: opt.session, worktreeRoot: root, allowRebind: !!opt.rebind } : null;
+    const bindInput = sessionId ? { sessionId, worktreeRoot: root, allowRebind: !!opt.rebind } : null;
     if (bindInput) await request(state, '/api/session-prepare', { method: 'POST', body: bindInput });
-    const refreshed = await request(state, '/api/project-refresh', { method: 'POST', body: {} });
+    const cloud = await readJSON(memoryConfigPath(project), null);
+    const refreshed = cloud?.url ? { source: null } : await request(state, '/api/project-refresh', { method: 'POST', body: {} });
     const result = opt['workbench-url']
       ? { url: String(opt['workbench-url']), projectRoot: state.root }
-      : opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
+      : cloud?.url || opt.direct || process.env.CONTEXT_GUARD_NAMED_WORKBENCH === '0'
         ? { url: state.url, projectRoot: state.root }
         : await namedWorkbench(state, request, { name: opt.name });
     await verifyWorkbenchUrl(result.url, { projectId: state.projectId, instance: state.instance });
-    if (bindInput) await request(state, '/api/session', { method: 'POST', body: { ...bindInput, workbenchUrl: result.url } });
+    const registered = bindInput ? await request(state, '/api/session', { method: 'POST', body: { ...bindInput, workbenchUrl: result.url } }) : null;
     const claim = opt['claim-open'] || opt['retry-open'] ? await request(state, '/api/open-claim', { method: 'POST', body: { retry: !!opt['retry-open'] } }) : {};
-    const url = new URL(result.url);
-    if (opt.session) url.searchParams.set('session', String(opt.session));
-    const receipt = opt.session ? await diagnoseWorkbench(root, String(opt.session)) : null;
-    return { ...result, url: url.href, ...claim, root, projectId: state.projectId, source: refreshed.source, ...runtimeIdentity(), ...(receipt ? { binding: receipt.session, runtime: receipt.runtime } : {}) };
+    const url = new URL(cloud?.projectId ? `/projects/${encodeURIComponent(cloud.projectId)}` : result.url, cloud?.url || result.url);
+    if (sessionId) url.searchParams.set('session', String(sessionId));
+    const receipt = sessionId ? await diagnoseWorkbench(root, String(sessionId)) : null;
+    return { ...result, url: url.href, ...claim, root, projectId: state.projectId, source: refreshed.source, ...runtimeIdentity(), ...(receipt ? { binding: receipt.session, runtime: receipt.runtime, cloudBinding: registered.cloudBinding } : {}) };
   }
   let maintenance = false;
   if (['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session) {
