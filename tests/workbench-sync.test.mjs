@@ -50,6 +50,20 @@ test('Session reopen merge preserves disjoint append-only records and rejects co
     { ...main, root: { ...main.root, title: 'Main title' } }), { code: 'MEMORY_CONFLICT' });
 });
 
+test('journal recovery retries a bootstrap blocked by a Session reopen conflict', async () => {
+  const store = { on() {}, off() {} };
+  const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: 'recovery-session', store, directory: '/unused' });
+  coordinator.status = { configured: true, status: 'conflict', pending: 0, conflict: { code: 'MAIN_ADVANCED_BEFORE_SESSION_REOPEN' } };
+  coordinator.persist = async fields => coordinator.update(fields);
+  let initialized = 0;
+  coordinator.initialize = async () => { initialized++; coordinator.update({ status: 'synced' }); };
+  coordinator.onStoreEvent({ actor: { kind: 'system', sessionId: null }, actions: ['journal-recovery'] });
+  await coordinator.serial;
+  assert.equal(initialized, 1);
+  assert.equal(coordinator.snapshot().status, 'synced');
+  assert.equal(coordinator.snapshot().conflict, null);
+});
+
 test('Workbench keeps the bound Session identity visible while its Map needs recovery', async () => {
   const sync = Object.create(WorkbenchSync.prototype);
   const calls = [];
