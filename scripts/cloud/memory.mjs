@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { timingSafeEqual } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
 import { applyOperations, MapError, validate, restoreSessionWorkItemOperations } from '../../prototype/map-model.mjs';
 import { translateChanges, operationGrants } from '../workbench/protocol-map.mjs';
@@ -326,7 +327,14 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
   const hub = memoryHub(configuration);
   const eventClients = new Set();
   const handler = async (req, res) => {
-    const send = (code, value) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(JSON.stringify(value)); return true; };
+    const send = (code, value) => {
+      let body = Buffer.from(JSON.stringify(value));
+      const compressed = body.length >= 1024 && String(req.headers['accept-encoding'] || '').split(',').some(value => value.trim() === 'gzip');
+      if (compressed) body = gzipSync(body);
+      res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        Vary: 'Accept-Encoding', 'Content-Length': body.length, ...(compressed ? { 'Content-Encoding': 'gzip' } : {}) });
+      res.end(body); return true;
+    };
     const url = new URL(req.url, 'http://localhost');
     const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)(?:\/(map|changes|events))?|publish|history|restore)$/);
     if (!route) return false;
