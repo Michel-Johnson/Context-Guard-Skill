@@ -27,3 +27,19 @@ test('IF-039: GitHub supplies repository identity, follows only GitHub redirects
   await assert.rejects(device.connect({ v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', clientId: 'ignored', password: 'test-only' } }, actual), { code: 'FORBIDDEN' });
   assert.equal(await device.connected(), false); assert.deepEqual(calls, ['auth.open', 'auth.close']);
 });
+
+test('IF-039: private GitHub repository identity falls back to the authenticated gh keychain', async () => {
+  const authorizations = []; let tokenRequests = 0;
+  const actual = await lookupRepository('example/private', {
+    token: '',
+    tokenProvider: async () => { tokenRequests += 1; return 'keychain-token'; },
+    fetcher: async (_url, options) => {
+      authorizations.push(options.headers.Authorization || '');
+      if (authorizations.length === 1) return new Response('', { status: 404 });
+      return new Response(JSON.stringify({ id: 789, full_name: 'example/private' }));
+    },
+  });
+  assert.deepEqual(actual, { repositoryId: '789', slug: 'example/private' });
+  assert.deepEqual(authorizations, ['', 'Bearer keychain-token']);
+  assert.equal(tokenRequests, 1);
+});

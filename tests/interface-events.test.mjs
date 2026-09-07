@@ -96,8 +96,8 @@ test('IF-033: event transport rejects wrong origins, malformed hints and idle st
 test('IF-046: real local backend shares Cloud sync across Sessions, delivers reviewed work and reports interruptions', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-full-interface-')), root = path.join(directory, 'repo');
   await fs.mkdir(root);
-  let local, cloud;
-  t.after(async () => { await local?.close(); await cloud?.close(); await fs.rm(directory, { recursive: true, force: true, maxRetries: 5 }); });
+  let local, cloud, heartbeatOnlyDevice, cloudEventController, cloudEventReader;
+  t.after(async () => { cloudEventController?.abort(); await cloudEventReader?.cancel().catch(() => {}); await heartbeatOnlyDevice?.close(); await local?.close(); await cloud?.close(); await fs.rm(directory, { recursive: true, force: true, maxRetries: 5 }); });
   const exec = promisify(execFile);
   const git = async (...args) => (await exec('git', args, { cwd: root, windowsHide: true })).stdout.trim();
   await git('init', '-b', 'main'); await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.invalid');
@@ -121,6 +121,28 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     coordinator: { deviceId: 'cloud-coordinator', agentId: 'coordinator', role: 'coordinator', bindings: { s: project.worktreeId, s2: project.worktreeId } },
   } }] };
   cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), memoryConfig: memory, protocolConfig, port: 0, browserToken: 'test-browser', browserPasswordHash: await createWorkbenchPasswordHash('test-only') });
+  const cloudHeaders = { Cookie: 'cg_workbench=test-browser', 'Content-Type': 'application/json' };
+  const cloudAccess = async () => (await fetch(`${cloud.url}/api/workbench/projects/context-guard/api/access?view=main`, { headers: cloudHeaders })).json();
+  assert.deepEqual((await cloudAccess()).sessions.map(item => [item.id, item.status]), [['s', 'offline'], ['s2', 'offline']]);
+  cloudEventController = new AbortController();
+  const cloudEvents = await fetch(`${cloud.url}/api/workbench/projects/context-guard/api/events?view=main`, { headers: cloudHeaders, signal: cloudEventController.signal });
+  assert.equal(cloudEvents.status, 200);
+  cloudEventReader = cloudEvents.body.getReader();
+  await cloudEventReader.read();
+  heartbeatOnlyDevice = new DeviceConnection({ directory: path.join(directory, 'heartbeat-only-device'), origin: cloud.url, allowLoopback: true });
+  await heartbeatOnlyDevice.connect({ v: 2, id: 'heartbeat-login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'ignored' } });
+  const heartbeatOnlyBinding = await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-bind', type: 'session.bind', payload: {
+    sessionId: 'heartbeat-only', worktreeId: 'heartbeat-worktree', agentId: 'heartbeat-agent', expectedBindingVersion: '',
+  } });
+  await heartbeatOnlyDevice.send({ v: 2, id: 'heartbeat-presence', type: 'sync.heartbeat', payload: { sessions: [{ ...heartbeatOnlyBinding.session, ackedSeq: 0 }] } });
+  const accessEvent = await Promise.race([
+    cloudEventReader.read().then(part => new TextDecoder().decode(part.value || new Uint8Array())),
+    delay(2000).then(() => assert.fail('Cloud workbench did not receive the heartbeat access event')),
+  ]);
+  assert.match(accessEvent, /event: access/);
+  const heartbeatAccess = await cloudAccess();
+  assert.equal(heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only')?.status, 'online');
+  assert.deepEqual(heartbeatAccess.grants['heartbeat-only'].nodes, ['R', 'private']);
   await fs.mkdir(project.sharedDir, { recursive: true });
   await fs.writeFile(path.join(project.sharedDir, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId: 'context-guard', token: 'test-project' }));
   const delivered = [];
@@ -132,10 +154,10 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const second = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's2', worktreeRoot: root } });
   assert.equal(first.cloudBinding.status, 'ready'); assert.equal(second.cloudBinding.status, 'ready');
   const waitFor = async predicate => { const deadline = Date.now() + 15000; while (!await predicate() && Date.now() < deadline) await delay(30); assert.ok(await predicate(), 'condition did not become true'); };
+  await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
   await commitSessionMap(memory, 'context-guard', 's2', { operationId: 's2-edit', baseVersion: 'initial', operations: [{ type: 'update', id: 'R', fields: { purpose: 's2 only' } }] });
   await waitFor(() => local.stores.get('session:s2').doc.root.purpose === 's2 only');
   assert.notEqual(local.stores.get('session:s').doc.root.purpose, 's2 only');
-  const cloudHeaders = { Cookie: 'cg_workbench=test-browser', 'Content-Type': 'application/json' };
   const cloudCall = (route, body) => fetch(`${cloud.url}/api/workbench/projects/context-guard${route}?view=main`, { method: 'POST', headers: cloudHeaders, body: JSON.stringify(body) });
   const plan = await cloudCall('/api/access-plan', { sessionId: 's', nodeId: 'R' });
   assert.equal(plan.status, 200); assert.deepEqual((await plan.json()).missing, []);
