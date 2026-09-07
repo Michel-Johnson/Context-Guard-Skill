@@ -169,7 +169,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
     }
     if (await device.connected()) device.start({
-      managed: true,
       sessions: async () => {
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
         for (const head of await protocolStore.queueHeads(backendPrincipal)) {

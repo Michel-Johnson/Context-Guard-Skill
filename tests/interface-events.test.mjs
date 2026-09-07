@@ -21,7 +21,14 @@ import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-test('IF-032: a stalled SSE cannot hide Cloud changes; durable local inbox survives restart without completing tasks', async t => {
+async function heartbeatDevice(device) {
+  const { origin, ...input } = await device.runtime.prepare();
+  const response = await fetch(new URL('/api/v2/heartbeat', origin), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([input]) });
+  assert.equal(response.status, 200);
+  device.runtime.accept((await response.json())[0]);
+}
+
+test('IF-032: device-driven heartbeat receives Cloud changes without SSE; durable inbox survives restart without completing tasks', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-event-chain-'));
   const cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), port: 0, browserToken: 'test-browser',
     browserPasswordHash: await createWorkbenchPasswordHash('test-only'), protocolConfig: { repositories: [{ slug: 'example/repo', repositoryId: '123',
@@ -39,21 +46,20 @@ test('IF-032: a stalled SSE cannot hide Cloud changes; durable local inbox survi
   let plannerCredential;
   await sendMessage(cloud.url, '', { v: 2, id: 'planner-login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'planner' } }, { allowLoopback: true, receiveCredential: v => { plannerCredential = v; } });
   const errors = [];
-  const runtime = { heartbeatMs: 25, sessions: async () => [{ ...session, ackedSeq: 0 }],
+  const runtime = { sessions: async () => [{ ...session, ackedSeq: 0 }],
     apply: async message => (await local.receiveNotification(backend, message)).data,
-    onError: error => errors.push(error.code),
-    eventReader: async (_origin, _credential, { signal }) => new Promise(resolve => signal.addEventListener('abort', resolve, { once: true })) };
+    onError: error => errors.push(error.code) };
   device.start(runtime); device.start(runtime);
   await sendMessage(cloud.url, plannerCredential, { v: 2, id: 'brief', type: 'brief.submit', session, payload: { taskId: 'task', text: 'Human must review this first' } }, { allowLoopback: true });
   const until = Date.now() + 5000;
-  while ((await local.queueHeads(backend))[0].latestSeq < 1 && Date.now() < until) await delay(20);
+  while ((await local.queueHeads(backend))[0].latestSeq < 1 && Date.now() < until) { await heartbeatDevice(device); await delay(20); }
   assert.equal((await local.queueHeads(backend))[0].latestSeq, 1);
   const read = () => local.handle(executor, { v: 2, id: 'read', type: 'sync.read', session, payload: { afterSeq: 0, limit: 50 } });
   const received = await read();
   assert.equal(received.data.messages[0].message.type, 'brief.submit');
   assert.equal(Object.keys((await local.immutableState()).tasks).length, 0, 'transport receipt is not approval or execution');
   await device.close(); device = new DeviceConnection(options); device.start(runtime);
-  await delay(100); await device.close();
+  await heartbeatDevice(device); await device.close();
   assert.deepEqual(await read(), received);
   assert.deepEqual(errors, []);
 
@@ -287,11 +293,11 @@ test('IF-037: the project heartbeat reconciles actual private Cloud Map edits wi
   await device.connect({ v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', clientId: 'ignored', password: 'test-only' } });
   const { session } = await device.send({ v: 2, id: 'bind', type: 'session.bind', payload: { sessionId: 's', agentId: 'agent', worktreeId: 'wt', expectedBindingVersion: '' } });
   const errors = [];
-  device.start({ heartbeatMs: 25, sessions: async () => [{ ...session, ackedSeq: 0 }], apply: async () => assert.fail('Map hints are not task messages'),
+  device.start({ sessions: async () => [{ ...session, ackedSeq: 0 }], apply: async () => assert.fail('Map hints are not task messages'),
     onSession: head => coordinator.projectHeartbeat(head), onError: error => errors.push(error.message) });
   const committed = await commitSessionMap(memory, 'test', 's', { operationId: 'cloud-edit', baseVersion: 'v1', operations: [{ type: 'update', id: 'R', fields: { purpose: 'from cloud' } }] });
   const until = Date.now() + 5000;
-  while ((store.doc.root.purpose !== 'from cloud' || coordinator.status.serverVersion !== committed.version) && Date.now() < until) await delay(20);
+  while ((store.doc.root.purpose !== 'from cloud' || coordinator.status.serverVersion !== committed.version) && Date.now() < until) { await heartbeatDevice(device); await delay(20); }
   assert.equal(store.doc.root.purpose, 'from cloud'); assert.equal(coordinator.managed, true); assert.equal(coordinator.abort, null);
   assert.equal((await memoryHeads(memory, 'test')).s.mapVersion, coordinator.status.serverVersion);
   const page = await device.send({ v: 2, id: 'cloud-read', type: 'workbench.read', session, payload: { scope: 'session', cursor: '', limit: 10 } });
