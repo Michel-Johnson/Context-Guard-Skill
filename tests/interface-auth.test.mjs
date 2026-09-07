@@ -26,6 +26,45 @@ test('IF-020: credentials expire, revoke and survive restart without storing pla
   await assert.rejects(restarted.authenticate(next.credential), { code: 'UNAUTHORIZED' });
 });
 
+test('device heartbeat batches projects without sharing authorization or blocking healthy entries', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-batch-'));
+  t.after(() => fs.rm(dataDir, { recursive: true, force: true }));
+  const server = await startCloudServer({ dataDir, port: 0, browserToken: 'test-browser',
+    browserPasswordHash: await createWorkbenchPasswordHash('test-only'),
+    protocolConfig: { repositories: [{ slug: 'example/one', repositoryId: '1' }, { slug: 'example/two', repositoryId: '2' }] } });
+  t.after(() => server.close());
+  const send = (route, body, headers = {}) => fetch(new URL(route, server.url), { method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  const batch = [];
+  for (const repo of ['one', 'two']) {
+    const login = await send('/api/v2/messages', { v: 2, id: `login-${repo}`, type: 'auth.open',
+      payload: { repository: `https://github.com/example/${repo}`, password: 'test-only', clientId: 'one-device' } });
+    const credential = login.headers.get('x-context-guard-credential');
+    assert.ok(credential);
+    const bind = await send('/api/v2/messages', { v: 2, id: `bind-${repo}`, type: 'session.bind',
+      payload: { sessionId: repo, worktreeId: repo, agentId: repo, expectedBindingVersion: '' } }, { Authorization: `Bearer ${credential}` });
+    assert.equal(bind.status, 200);
+    batch.push({ credential, message: { v: 2, id: `beat-${repo}`, type: 'sync.heartbeat',
+      payload: { sessions: [{ id: repo, generation: 1, ackedSeq: 0 }] } } });
+  }
+  const response = await send('/api/v2/heartbeat', batch);
+  assert.equal(response.status, 200);
+  const replies = await response.json();
+  assert.deepEqual(replies.map(reply => reply.data.sessions[0].id), ['one', 'two']);
+  const swapped = await (await send('/api/v2/heartbeat', [
+    { ...batch[0], credential: batch[1].credential }, batch[1],
+  ])).json();
+  assert.equal(swapped[0].error.code, 'FORBIDDEN');
+  assert.equal(swapped[1].ok, true);
+  const expired = await (await send('/api/v2/heartbeat', [
+    { ...batch[0], credential: 'revoked' }, batch[1],
+  ])).json();
+  assert.equal(expired[0].error.code, 'UNAUTHORIZED');
+  assert.equal(expired[1].ok, true);
+  assert.equal((await send('/api/v2/heartbeat', batch, { Origin: server.url })).status, 403);
+  assert.equal((await send('/api/v2/heartbeat', [batch[0], batch[0]])).status, 400);
+});
+
 test('active and recently expired device credentials renew without storing the password', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-renew-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

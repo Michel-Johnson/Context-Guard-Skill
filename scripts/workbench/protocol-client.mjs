@@ -82,27 +82,23 @@ export class ProjectMessagePump {
   constructor({ send, sessions, apply, heartbeatMs = 10000, onError = () => {}, onSession = async () => {} }) {
     this.send = send; this.sessions = sessions; this.apply = apply; this.heartbeatMs = heartbeatMs; this.onError = onError;
     this.running = null; this.observing = null; this.timer = null; this.closed = false;
+    this.mapJobs = new Map(); this.deliveryJobs = new Map();
     this.onSession = onSession;
   }
   request(type, payload, session) { return { v: 2, id: randomUUID(), type, ...(session ? { session } : {}), payload }; }
-  async poll() {
+  async poll(observation) {
     if (this.closed) return;
+    if (observation) return this.drain(observation);
     if (this.running) return this.running;
-    this.running = this.drain().finally(() => { this.running = null; });
+    this.running = this.drain(observation).finally(() => { this.running = null; });
     return this.running;
   }
-  async drain() {
-    const observation = await this.observe();
+  async drain(observation = null) {
+    observation ||= await this.observe();
     if (!observation) return;
     const { sessions, beat } = observation;
-    const pending = [...beat.sessions], errors = [];
-    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
-      while (pending.length && !this.closed) {
-        const remote = pending.shift();
-        try { await this.drainSession(sessions, remote); }
-        catch (error) { errors.push(error); }
-      }
-    }));
+    const results = await Promise.allSettled(beat.sessions.map(remote => this.drainSession(sessions, remote)));
+    const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
     if (errors.length) throw new AggregateError(errors, 'Some Sessions could not synchronize');
   }
   // Liveness never waits for Map I/O, task delivery or an acknowledgement.
@@ -124,7 +120,16 @@ export class ProjectMessagePump {
       if (!local) fail('STALE_SESSION', 'Heartbeat returned an unknown binding');
       // Map reconciliation and durable notification delivery are independent.
       // A failed or stalled Map must not suppress receipt of queued tasks.
-      const results = await Promise.allSettled([this.onSession(remote), this.drainNotifications(local, remote)]);
+      const key = `${local.id}:${local.generation}`;
+      const run = (jobs, operation) => {
+        if (jobs.has(key)) return;
+        const job = Promise.resolve().then(operation).finally(() => { jobs.delete(key); });
+        jobs.set(key, job); return job;
+      };
+      const results = await Promise.allSettled([
+        run(this.mapJobs, () => this.onSession(remote)),
+        run(this.deliveryJobs, () => this.drainNotifications(local, remote)),
+      ]);
       const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
       if (errors.length) throw new AggregateError(errors, 'Session synchronization failed');
   }
@@ -151,9 +156,9 @@ export class ProjectMessagePump {
   }
   start() {
     if (this.timer || this.closed) return;
-    const tick = () => (this.running ? this.observe() : this.poll()).catch(this.onError);
+    const tick = () => this.observe().then(observation => observation && this.poll(observation)).catch(this.onError);
     this.timer = setInterval(tick, this.heartbeatMs); this.timer.unref?.(); tick();
   }
   wake() { return this.poll(); }
-  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await Promise.allSettled([this.running, this.observing]); }
+  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await Promise.allSettled([this.running, this.observing, ...this.mapJobs.values(), ...this.deliveryJobs.values()]); }
 }

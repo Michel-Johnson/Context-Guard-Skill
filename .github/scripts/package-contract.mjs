@@ -1,4 +1,5 @@
 export const packedFiles = [
+  "scripts/workbench/device-heartbeat.mjs",
   "scripts/workbench/protocol-delivery.mjs",
   "scripts/workbench/protocol-workflow.mjs",
   "scripts/cloud/protocol-auth.mjs",
@@ -67,6 +68,7 @@ export const packedFiles = [
 ];
 
 export const installedFiles = [
+  "scripts/workbench/device-heartbeat.mjs",
   "scripts/workbench/protocol-delivery.mjs",
   "scripts/workbench/protocol-workflow.mjs",
   "scripts/workbench/hook-status.mjs",

@@ -97,10 +97,32 @@ export class DeviceConnection {
     if (!response.body) { res.end(); return; }
     await pipeline(Readable.fromWeb(response.body), bound, res);
   }
-  start({ sessions, apply, onError = () => {}, onSession, heartbeatMs = 10000, eventReader = readEvents }) {
+  start({ sessions, apply, onError = () => {}, onSession, heartbeatMs = 10000, eventReader = readEvents, managed = false }) {
     if (this.runtime) return;
     const controller = new AbortController();
     const pump = new ProjectMessagePump({ sessions, apply, heartbeatMs, onError: error => onError(error, 'heartbeat'), onSession, send: message => this.send(message) });
+    if (managed) {
+      let pending;
+      this.runtime = {
+        prepare: async () => {
+          const connection = await readJSON(this.file, null);
+          if (!connection?.credential || connection.origin !== this.origin) fail('UNAUTHORIZED', 'Backend is disconnected');
+          const current = await sessions();
+          pending = { sessions: current, message: pump.request('sync.heartbeat', { sessions: current }) };
+          return { origin: this.origin, credential: connection.credential, message: pending.message };
+        },
+        accept: reply => {
+          if (!pending || reply?.id !== pending.message.id) fail('CONFLICT', 'Heartbeat receipt is no longer current');
+          const observed = pending; pending = null;
+          if (!reply.ok) { onError(new ProtocolError(reply.error?.code || 'UNAVAILABLE', 'Device heartbeat rejected'), 'heartbeat'); return; }
+          for (const item of reply.data?.rejected || []) onError(new ProtocolError(item.code, 'Session heartbeat rejected', { sessionId: item.id }), 'heartbeat');
+          pump.poll({ sessions: observed.sessions, beat: reply.data }).catch(error => onError(error, 'heartbeat'));
+          this.retryPending().catch(onError);
+        },
+        close: () => pump.close(),
+      };
+      return;
+    }
     let retrying;
     const retry = () => {
       if (retrying) return retrying;

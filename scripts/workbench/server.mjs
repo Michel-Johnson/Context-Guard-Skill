@@ -20,6 +20,8 @@ import { ProtocolBlobs, serveBlob } from './protocol-blobs.mjs';
 import { workflowTypes } from './protocol-workflow.mjs';
 import { ProtocolDelivery, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
+import { ensureNamedProxy } from './named.mjs';
+import { registeredProject, rememberProject } from './registry.mjs';
 import { WorkbenchSnapshots } from './protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from './protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
@@ -146,6 +148,19 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const protocolMap = new ProtocolMap(path.join(project.sharedDir, 'interface-v2', 'map-intents'));
   const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
   let device;
+  let deviceServiceCheck = null, deviceServiceCheckedAt = 0;
+  const ensureDeviceService = async () => {
+    if (deviceServiceCheck) return deviceServiceCheck;
+    if (Date.now() - deviceServiceCheckedAt < 10000) return;
+    deviceServiceCheck = (async () => {
+      const state = await readJSON(sharedState, null);
+      if (state?.instance !== instance || !await device?.connected()) return;
+      if ((await registeredProject(project))?.runtime?.instance !== instance) await rememberProject(project, { state });
+      await ensureNamedProxy();
+      deviceServiceCheckedAt = Date.now();
+    })().finally(() => { deviceServiceCheck = null; });
+    return deviceServiceCheck;
+  };
   const projectDevice = async () => {
     const config = await readJSON(memoryConfigPath(project), null);
     if (!config?.url) return null;
@@ -154,6 +169,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
     }
     if (await device.connected()) device.start({
+      managed: true,
       sessions: async () => {
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
         for (const head of await protocolStore.queueHeads(backendPrincipal)) {
@@ -201,6 +217,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
       },
     });
+    await ensureDeviceService();
     return device;
   };
   const access = await new Access(root, project.kind === 'git' ? {
@@ -474,6 +491,14 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
+        if (route === '/api/device-heartbeat') {
+          if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires device service credential', 401);
+          const connected = await projectDevice();
+          if (!connected?.runtime?.prepare) throw new MapError('UNAVAILABLE', 'Cloud connection unavailable', 503);
+          if (req.method === 'GET') return send(res, 200, await connected.runtime.prepare());
+          if (req.method === 'POST') { connected.runtime.accept(await body(req)); return send(res, 200, { accepted: true }); }
+          throw new MapError('INVALID_ARGUMENT', 'Use GET or POST', 400);
+        }
         if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
         if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() });
         if (route === '/api/v2/messages') return messageHandler({
@@ -893,6 +918,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const owner = await readJSON(sharedState, null);
         if (owner?.instance === instance) ownershipChecks = 0;
         else if (++ownershipChecks >= 2) await close();
+        if (owner?.instance === instance) await ensureDeviceService();
       } catch {
         // A transient unreadable state file must not terminate a healthy server.
         ownershipChecks = 0;
