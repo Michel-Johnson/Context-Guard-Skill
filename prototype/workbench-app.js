@@ -2487,7 +2487,10 @@ async function createAssignedBug(node){
   const assignment = await promptBugAssignment(node);
   if(!assignment) return;
   foldBug = true;
-  const bid = "B"+(BUG_SEQ++);
+  const used = new Set();
+  walkAll(data,n=>(n.bugs||[]).forEach(bug=>used.add(bug.id)));
+  let bid;
+  do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
   const bug = {id:bid,title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
   node.bugs.push(bug);
   await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
