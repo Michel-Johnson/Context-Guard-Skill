@@ -16,7 +16,7 @@ import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox } from './coordinator-service.mjs';
-import { coordinatorTools, createCoordinatorExecutor } from './coordinator-tools.mjs';
+import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -402,7 +402,7 @@ export async function startCloudServer({
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           return { id, generation: binding.generation };
         };
-        const references = new Set(['map-read.md', 'map-mount.md', 'user-reply.md', 'agent-handoff.md', 'plan-review.md', 'test-check.md']);
+        const references = new Set(coordinatorReferences);
         const execute = createCoordinatorExecutor({
           listSessions: async () => {
             const sessions = [];

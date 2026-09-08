@@ -3,12 +3,13 @@ const strings = { type: 'array', items: string, minItems: 1 };
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
 const task = { sessionId: string, taskId: string };
+export const coordinatorReferences = ['map-read.md', 'map-mount.md', 'user-reply.md', 'agent-handoff.md', 'plan-review.md', 'test-check.md'];
 const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT' }); };
 
 export const coordinatorTools = [
   definition('list_sessions', 'List only the Sessions explicitly assigned to this Coordinator. Registration is not proof of liveness.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
-  definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: string }),
+  definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
   definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { sessionId: string, ref: string, version: string }),
   definition('propose_mount', 'Propose a Main node; this does not write Main or approve it. Wait for a human.', { mainVersion: string, parentId: string, title: string, purpose: string, owns: strings }),
@@ -37,6 +38,8 @@ export function createCoordinatorExecutor(ctx) {
   return async (name, input, { operationId }) => {
     const tool = coordinatorTools.find(item => item.name === name);
     if (!tool) fail('Tool is not registered');
+    if (name === 'read_reference' && typeof input?.name === 'string') input = { ...input,
+      name: input.name.replace(/^references\//, '').replace(/\.md$/, '') + '.md' };
     validateInput(tool, input);
     if (name === 'list_sessions') return ctx.listSessions();
     if (name === 'read_map') return ctx.readMap(input.nodeId);
