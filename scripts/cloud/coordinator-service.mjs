@@ -5,6 +5,64 @@ import { coordinatorStep, correctableToolError, settleRejectedTools } from './co
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 
+// Main already owns the durable event journal. This cursor is only a consumer
+// checkpoint, not another task queue or an authorization to dispatch work.
+export class CoordinatorMapIntake {
+  constructor({ directory, read, service, nodeIds = null }) {
+    this.file = path.join(directory, 'map-intake.json');
+    Object.assign(this, { read, service, nodeIds });
+  }
+  items(node) {
+    if (!node) return [];
+    const own = this.nodeIds && !this.nodeIds.includes(node.id) ? [] : ['todos', 'bugs'].flatMap(field =>
+      (node[field] || []).filter(item => item.id).map(item => ({ nodeId: node.id, kind: field === 'todos' ? 'todo' : 'bug', item })));
+    return [...own, ...(node.children || []).flatMap(child => this.items(child))];
+  }
+  key({ nodeId, kind, item }) { return JSON.stringify([nodeId, kind, item.id]); }
+  async initialize() {
+    return withFileLock(this.file + '.lock', async () => {
+      if (await readJSON(this.file, null)) return;
+      const snapshot = await this.read();
+      // Installing the feature must not replay historical user tasks.
+      await atomicWrite(this.file, encode({ cursor: snapshot.eventCursors?.main || 0,
+        seen: this.items(snapshot.main?.memory?.map?.root).map(item => this.key(item)) }));
+    });
+  }
+  async consume() {
+    return withFileLock(this.file + '.lock', async () => {
+      const checkpoint = await readJSON(this.file, null);
+      if (!checkpoint) throw error('INTAKE_NOT_INITIALIZED', 'Initialize intake before accepting Map edits');
+      const snapshot = await this.read(), seen = new Set(checkpoint.seen);
+      const current = new Map(this.items(snapshot.main?.memory?.map?.root).map(entry => [this.key(entry), entry.item]));
+      for (const event of (snapshot.events || []).filter(event => event.scope === 'main' && event.cursor > checkpoint.cursor).sort((a, b) => a.cursor - b.cursor)) {
+        const items = (event.operations || []).flatMap(op => this.items(op.type === 'update' ? { ...op.fields, id: op.id } : op.node));
+        for (const entry of items) {
+          const key = this.key(entry), { item, nodeId, kind } = entry;
+          if (seen.has(key)) continue;
+          // Empty inline drafts become eligible only when their text is saved.
+          if (item.draft || !(item.desc || item.title || '').trim()) continue;
+          const latest = current.get(key);
+          if (latest && !latest.draft && event.actor?.kind === 'human' && !latest.dispatch?.task_id && !['done', 'resolved', 'dormant'].includes(latest.status)) {
+            await this.service.submit({ id: `intake:${hash(key)}`, text: JSON.stringify({ type: 'human.work-item-created',
+              nodeId, kind, itemId: item.id, mainVersion: event.version,
+              instruction: '人类新建了待澄清事项。读取最新节点中的原文，立即用简短自然语言与人类确认目标和验收条件；不要当作已批准需求，不要直接派单。' }) }, { source: 'workflow' });
+            seen.add(key);
+            // Persist before returning; replay after a lost reply uses the same
+            // conversation ID and cannot invoke a second model turn.
+            checkpoint.seen = [...seen];
+            await atomicWrite(this.file, encode(checkpoint));
+            return true;
+          }
+          seen.add(key);
+        }
+        checkpoint.cursor = event.cursor; checkpoint.seen = [...seen];
+        await atomicWrite(this.file, encode(checkpoint));
+      }
+      return false;
+    });
+  }
+}
+
 // One human conversation per project. HTTP handlers acknowledge a durable turn;
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
@@ -145,11 +203,13 @@ export class CoordinatorService {
 // Consume the existing protocol journal as an independent consumer. Acceptance
 // means the conversation is durable, not that the model has completed its turn.
 export class CoordinatorInbox {
-  constructor({ store, principal, sessionIds, service, intervalMs = 5000 }) {
-    Object.assign(this, { store, principal, sessionIds, service });
+  constructor({ store, principal, sessionIds, service, intake = null, memoryEvents = null, projectId = null, intervalMs = 5000 }) {
+    Object.assign(this, { store, principal, sessionIds, service, intake, memoryEvents });
     this.running = null; this.stopped = false; this.lastError = null;
     this.changed = () => { void this.pump(); };
     store.on('change', this.changed);
+    this.memoryChanged = event => { if (event.projectId === projectId && event.scope === 'main') this.changed(); };
+    memoryEvents?.on('event', this.memoryChanged);
     this.timer = setInterval(this.changed, intervalMs); this.timer.unref();
   }
   async pump() {
@@ -162,6 +222,7 @@ export class CoordinatorInbox {
     if (state.activeTurnId || state.status === 'error') return;
     this.lastError = null;
     if (await this.service.notifyMountReview?.()) return;
+    if (await this.intake?.consume()) return;
     for (const id of this.sessionIds) {
       if (this.stopped) return;
       try {
@@ -185,6 +246,7 @@ export class CoordinatorInbox {
   }
   async close() {
     this.stopped = true; clearInterval(this.timer); this.store.off('change', this.changed);
+    this.memoryEvents?.off('event', this.memoryChanged);
     await this.running;
   }
 }

@@ -2,7 +2,7 @@ import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox } from '../scripts/cloud/coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,6 +12,57 @@ import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.m
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
+
+test('Main intake preserves first edits, skips history, and replays lost replies without duplicate turns', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-map-intake-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const snapshot = { eventCursors: { main: 5 }, main: { memory: { map: { root: { id: 'T0', todos: [{ id: 'old', title: 'existing' }] } } } }, events: [] };
+  let turns = 0, loseReply = true;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    model: { next: async () => { turns++; return { stop: 'end_turn', content: [{ type: 'text', text: 'What is the expected result?' }] }; } } });
+  const submit = service.submit.bind(service);
+  service.submit = async (...args) => { const result = await submit(...args); if (loseReply) { loseReply = false; throw new Error('lost reply'); } return result; };
+  const options = { directory, read: async () => structuredClone(snapshot), service, nodeIds: ['T0'] };
+  let intake = new CoordinatorMapIntake(options);
+  await intake.initialize();
+  snapshot.events.push({ scope: 'main', cursor: 6, version: 'v6', actor: { kind: 'human' }, operations: [
+    { type: 'update', id: 'T0', fields: { todos: [{ id: 'old', title: 'existing' }, { id: 'new', title: 'new request' }, { id: 'draft', draft: true }] } },
+    { type: 'update', id: 'outside', fields: { bugs: [{ id: 'secret', title: 'outside scope' }] } },
+  ] });
+  snapshot.main.memory.map.root.todos = snapshot.events[0].operations[0].fields.todos;
+  await assert.rejects(intake.consume(), /lost reply/);
+  await service.close();
+  intake = new CoordinatorMapIntake(options);
+  await intake.initialize();
+  assert.equal(await intake.consume(), true);
+  await service.close();
+  assert.equal(await intake.consume(), false);
+  assert.equal(turns, 1);
+  const state = await service.state();
+  assert.equal(state.messages.filter(message => message.role === 'user').length, 1);
+  assert.match(state.messages[0].text, /human.work-item-created/);
+  assert.match(state.messages[0].text, /不要直接派单/);
+  assert.doesNotMatch(state.messages[0].text, /outside scope/);
+  snapshot.events.push({ scope: 'main', cursor: 7, version: 'v7', actor: { kind: 'human' }, operations: [
+    { type: 'update', id: 'T0', fields: { todos: [{ id: 'draft', title: 'finished typing' }] } },
+  ] });
+  snapshot.main.memory.map.root.todos = snapshot.events[1].operations[0].fields.todos;
+  assert.equal(await intake.consume(), true);
+  await service.close();
+  assert.equal(turns, 2);
+  snapshot.events.push({ scope: 'main', cursor: 8, version: 'v8', actor: { kind: 'human' }, operations: [
+    { type: 'update', id: 'T0', fields: { bugs: [
+      { id: 'deleted', title: 'removed while busy' }, { id: 'resolved', title: 'finished while busy' },
+      { id: 'assigned', title: 'assigned while busy' },
+    ] } },
+  ] });
+  snapshot.main.memory.map.root.bugs = [
+    { id: 'resolved', title: 'finished while busy', status: 'resolved' },
+    { id: 'assigned', title: 'assigned while busy', dispatch: { task_id: 'existing-task' } },
+  ];
+  assert.equal(await intake.consume(), false);
+  assert.equal(turns, 2, 'deleted, completed and already assigned work must not start a stale clarification');
+});
 
 test('Mount review batches persist, replay a lost Main reply, and notify the existing conversation once', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-review-'));

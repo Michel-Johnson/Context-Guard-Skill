@@ -424,6 +424,24 @@ try {
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
 
+  for (const kind of ['todo', 'bug']) {
+    await coordinator.locator(':scope > summary').click();
+    await page.locator(`[data-act="add-${kind}"]`).click();
+    const dialog = page.locator('dialog.bug-assign-dialog');
+    assert.equal(await dialog.locator('[name="session"]').count(), 0, 'intake must not require an existing Session');
+    await dialog.locator('textarea').fill(`Discuss new ${kind} before dispatch`);
+    const previous = await syncVersion();
+    await dialog.getByRole('button', { name: '创建并讨论', exact: true }).click();
+    await synchronizedAfter(previous);
+    assert.equal(await coordinator.getAttribute('open'), '', 'creating work opens the conversation immediately');
+    const saved = await request(`${service.url}/v1/projects/context-guard/main`, { headers: headers('project-memory-token') });
+    const item = saved.body.snapshot.memory.map.root[kind === 'todo' ? 'todos' : 'bugs'].find(item => item.title === `Discuss new ${kind} before dispatch`);
+    assert.ok(item, 'the requirement must be persisted in Main');
+    assert.equal(item.dispatch, undefined, 'creating a requirement must not dispatch work or approve a brief');
+    assert.deepEqual(item.sessions, []);
+  }
+  record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
+
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;
