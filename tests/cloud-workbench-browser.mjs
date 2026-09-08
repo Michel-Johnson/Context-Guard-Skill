@@ -52,6 +52,8 @@ const request = async (url, options = {}) => {
 try {
   assert.deepEqual(await fs.readFile('prototype/vendor/marked.mjs'), await fs.readFile('node_modules/marked/lib/marked.esm.js'), 'vendor lexer must match the locked dependency');
   assert.deepEqual(await fs.readFile('licenses/Marked-MIT.txt'), await fs.readFile('node_modules/marked/LICENSE.md'), 'ship the upstream license unchanged');
+  const markdownDependency=JSON.parse(await fs.readFile('package-lock.json','utf8')).packages['node_modules/marked'];
+  assert.equal(markdownDependency.resolved, `https://registry.npmjs.org/marked/-/marked-${markdownDependency.version}.tgz`, 'CI must not depend on a developer-only package mirror');
   await fs.mkdir(output, { recursive: true });
   await fs.mkdir(repository);
   await git(repository, 'init', '-b', 'main');

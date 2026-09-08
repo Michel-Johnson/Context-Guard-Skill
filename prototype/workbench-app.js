@@ -4233,7 +4233,7 @@ async function installCoordinatorPanel(sync){
   if(!sync.config?.interfaceCapabilities?.coordinator) return;
   let conversationFragments;
   try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
-  catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
+  catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
   const panel=document.createElement('details');
   panel.id='coordinator-panel';
   const heading=document.createElement('summary'); heading.textContent='Coordinator';
@@ -4246,6 +4246,7 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
+  const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   const render=state=>{
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
@@ -4263,8 +4264,9 @@ async function installCoordinatorPanel(sync){
     }
     for(const [version,proposals] of mountGroups){
       const card=document.createElement('section'), description=document.createElement('p');
-      description.textContent='待确认节点（'+proposals.length+'）：\n'+proposals.map(p=>p.title+'：'+p.purpose+'\n路径：'+p.owns.join('、')).join('\n')+'\nMain：'+version;
+      description.textContent='待确认节点（'+proposals.length+'）：\n'+proposals.map(p=>p.title+'：'+p.purpose+'\n路径：'+p.owns.join('、')).join('\n');
       card.append(description);
+      metadata(card,'Main：'+version);
       for(const [decision,label] of [['approved','确认这些节点'],['rejected','拒绝这些节点']]){
         const button=document.createElement('button');button.type='button';button.textContent=label;
         let request;
@@ -4282,9 +4284,9 @@ async function installCoordinatorPanel(sync){
       if(!approval.brief||!approval.pending) continue;
       const card=document.createElement('section');
       const description=document.createElement('p');
-      description.textContent='待确认需求：'+approval.text+'\n验收条件：'+approval.acceptance+
-        '\n会话：'+approval.sessionId+'\n节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion;
+      description.textContent='待确认需求：'+approval.text+'\n验收条件：'+approval.acceptance;
       card.append(description);
+      metadata(card,'会话：'+approval.sessionId+'\n节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
       for(const [decision,label] of [['approved','确认需求'],['rejected','拒绝需求']]){
         const button=document.createElement('button'); button.type='button'; button.textContent=label;
         const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label};
@@ -4300,8 +4302,11 @@ async function installCoordinatorPanel(sync){
     }
     for(const acceptance of state.acceptances||[]){
       const card=document.createElement('section'), description=document.createElement('p');
-      description.textContent='待人工验收：'+acceptance.taskId+'\n代码 SHA：'+acceptance.sourceSha+'\nCI：'+acceptance.result.verdict+'\n'+acceptance.brief.text;
+      let briefText=acceptance.brief.text;
+      try{const brief=JSON.parse(briefText);if(typeof brief.text==='string')briefText=brief.text;}catch{}
+      description.textContent='待人工验收：'+briefText+'\nCI：'+acceptance.result.verdict;
       card.append(description);
+      metadata(card,'任务：'+acceptance.taskId+'\n代码 SHA：'+acceptance.sourceSha);
       for(const [decision,label] of [['approved','验收通过'],['rejected','验收不通过']]){
         const button=document.createElement('button');button.type='button';button.textContent=label;
         let request;
