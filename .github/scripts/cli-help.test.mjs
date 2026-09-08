@@ -5,11 +5,17 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { wantsHelp } from "../../scripts/workbench/cli.mjs";
+import { wantsHelp, parseInputJSON } from "../../scripts/workbench/cli.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const publicCli = path.join(repositoryRoot, "bin", "context-guard-skill.js");
 const workbenchCli = path.join(repositoryRoot, "scripts", "workbench", "cli.mjs");
+
+test("JSON input errors identify missing input without reflecting the submitted content", () => {
+  assert.throws(() => parseInputJSON(" \n"), { code: "INPUT_REQUIRED" });
+  assert.throws(() => parseInputJSON("private-input-marker{"), error => error.code === "INVALID_JSON" && !error.message.includes("private-input-marker"));
+  assert.deepEqual(parseInputJSON('{"operationId":"handoff"}'), { operationId: "handoff" });
+});
 
 function runCli(script, args, cwd) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -87,6 +93,13 @@ test("public map --help prints usage instead of SESSION_REQUIRED", () => {
   withEmptyRoot((directory) => {
     assertHelpOnly(runCli(publicCli, ["map", "--help"], directory), directory, /\bstatus\b/);
     assertHelpOnly(runCli(publicCli, ["map", "-h", "--root", directory], directory), directory, /\bread\b/);
+  });
+});
+
+test("task handoff and plan help disclose required JSON without starting a project", () => {
+  withEmptyRoot((directory) => {
+    assertHelpOnly(runCli(publicCli, ["map", "task", "handoff", "--help"], directory), directory, /ciTodo.*unitTests.*experiences/);
+    assertHelpOnly(runCli(publicCli, ["map", "task", "plan", "--help"], directory), directory, /operationId.*paths.*steps/);
   });
 });
 

@@ -81,7 +81,18 @@ export function wantsHelp(args) {
   return opt.help !== undefined || opt._.includes('-h');
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
-function commandHelp(command) {
+function commandHelp(command, parts = []) {
+  if (command === 'map' && parts[0] === 'task' && ['plan', 'handoff'].includes(parts[1])) {
+    const handoff = parts[1] === 'handoff';
+    return `Usage: context-guard map task ${parts[1]} --root <project> --session <id> --input <file|->
+
+Required JSON input:
+${handoff ? '{"operationId":"stable-handoff-id","ciTodo":{"items":[{"id":"check-1","description":"What CI must verify"}]},"unitTests":[{"command":"npm test","status":"passed","evidence":"Actual observed test output"}],"experiences":[]}' : '{"operationId":"stable-plan-id","content":{"paths":["src/example.js"],"steps":["Implementation and verification steps"]}}'}
+
+Use --input - to read JSON from stdin. Reuse the same operationId and content after an uncertain reply.
+${handoff ? 'Requires an approved Plan and a clean committed worktree. Success is a server handoff receipt, not a printed summary, CI pass, or merge.' : 'Submits an immutable Plan for Coordinator review; it does not approve development.'}
+${HELP_EXIT_NOTE}`;
+  }
   if (command === 'map') {
     return `Usage: context-guard map <action> --root <project> --session <id> [options]
 
@@ -96,6 +107,11 @@ Actions:
   operation           Look up --id
   projections         Rebuild derived cards
   reconcile           Archive reconciliation from --input
+  execution           Read the actual assigned task and approved Plan
+  task plan           Submit a Plan; use map task plan --help for JSON
+  task handoff        Deliver committed SHA and CI evidence; use map task handoff --help
+  ci context          Read the CI assignment and exact source SHA
+  ci exchange         Submit CI evidence/result via --input JSON
 
 Options:
   --root <dir>        Project root (default: current directory)
@@ -559,9 +575,15 @@ export async function stopServer(root) {
     await pause(25);
   }
 }
+export function parseInputJSON(text) {
+  if (!text.trim()) throw new MapError('INPUT_REQUIRED', 'Provide JSON with --input <file> or --input - and stdin; see this command with --help');
+  try { return JSON.parse(text); } catch { throw new MapError('INVALID_JSON', 'Input is not valid JSON; see this command with --help'); }
+}
 async function inputJSON(file) {
-  if (file && file !== '-') return JSON.parse(await fs.readFile(path.resolve(file), 'utf8'));
-  let text = ''; for await (const chunk of process.stdin) text += chunk; return JSON.parse(text);
+  let text = '';
+  if (file && file !== '-') text = await fs.readFile(path.resolve(file), 'utf8');
+  else for await (const chunk of process.stdin) text += chunk;
+  return parseInputJSON(text);
 }
 export async function connectCloudProject(root, { url, password, repositoryLookup = lookupRepository }) {
   const project = await ensureProjectBinding(await resolveProject(root));
@@ -580,7 +602,8 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
 }
 async function main(args) {
   if (wantsHelp(args)) {
-    console.log(commandHelp(args.find(arg => arg && !arg.startsWith('-')) || ''));
+    const command = args.find(arg => arg && !arg.startsWith('-')) || '';
+    console.log(commandHelp(command, options(args.slice(args.indexOf(command) + 1))._));
     return;
   }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
