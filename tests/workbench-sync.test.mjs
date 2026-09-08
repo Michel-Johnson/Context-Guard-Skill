@@ -13,7 +13,7 @@ import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseS
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
-import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
+import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
@@ -331,6 +331,120 @@ test('Node SQLite discovery reads Codex sessions without starting an external pr
     { id: 'native-session', name: '进程内任务', status: 'active' },
   ]);
   assert.equal(externalCalls, 0);
+});
+
+test('Codex discovery reads the sqlite subdirectory used by current Codex homes', async () => {
+  const f = await fixture();
+  const home = path.join(f.root, 'codex-home');
+  const database = path.join(home, 'sqlite', 'state_5.sqlite');
+  await fs.mkdir(path.dirname(database), { recursive: true });
+  await fs.writeFile(database, 'state');
+  const queries = [];
+  const access = await new Access(f.root, {
+    codexHome: home,
+    querySqlite: async (file, sql) => {
+      queries.push({ file, sql });
+      return [{ id: 'exec-from-sqlite', name: 'exec 任务', cwd: f.root, created_at: 1, updated_at: 2, rollout_path: '' }];
+    },
+  }).init();
+  const sessions = await access.discoverCodexSessions();
+  assert.equal(queries[0].file, database);
+  assert.deepEqual(sessions.map(({ id, name }) => ({ id, name })), [{ id: 'exec-from-sqlite', name: 'exec 任务' }]);
+});
+
+test('Codex thread lookup by id accepts cwd spelling differences and non-user sources', async () => {
+  const f = await fixture();
+  const access = await new Access(f.root, {
+    codexDb: path.join(f.root, 'state.sqlite'),
+    querySqlite: async (_file, sql) => {
+      if (!sql.includes("id='exec-slash'")) return [];
+      return [{ id: 'exec-slash', name: '斜杠 cwd', cwd: `${f.root}${path.sep}`, created_at: 1, updated_at: 2, rollout_path: '' }];
+    },
+  }).init();
+  assert.equal(await access.sessionExists('exec-slash', f.root), true);
+  assert.equal(await access.sessionExists('other-project', f.root), false);
+  await access.register('exec-slash', { worktreeRoot: f.root });
+  assert.equal((await access.snapshot()).sessions.some(item => item.id === 'exec-slash'), true);
+});
+
+test('host-attested Codex thread can register without a lifecycle hook', async () => {
+  const f = await fixture();
+  const access = await new Access(f.root, { codexSessions: async () => [] }).init();
+  await assert.rejects(() => access.register('01a07d62-exec-thread', { worktreeRoot: f.root }), { code: 'UNKNOWN_SESSION' });
+  assert.equal(hostAttestedPlatform('01a07d62-exec-thread', { CODEX_THREAD_ID: 'someone-else' }), '');
+  assert.equal(await recordHostAttestedSession(f.root, '01a07d62-exec-thread', { CODEX_THREAD_ID: 'someone-else' }), false);
+  assert.equal(await recordHostAttestedSession(f.root, '01a07d62-exec-thread', { CODEX_THREAD_ID: '01a07d62-exec-thread' }), true);
+  assert.equal(await recordHostAttestedSession(f.root, '01a07d62-exec-thread', { CODEX_THREAD_ID: '01a07d62-exec-thread' }), false);
+  assert.deepEqual(await access.register('01a07d62-exec-thread', { worktreeRoot: f.root }), { kind: 'agent', sessionId: '01a07d62-exec-thread' });
+  const recorded = (await fs.readFile(path.join(f.ctx, 'sessions.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const host = recorded.find(item => item.session_id === '01a07d62-exec-thread');
+  assert.equal(host.platform, 'codex');
+  assert.equal(host.source, 'host-environment');
+});
+
+test('workbench and map read accept a host-attested Codex exec thread without a prior hook', async () => {
+  const f = await fixture();
+  const running = await startServer({ root: f.root, port: 0 });
+  const env = {
+    ...process.env,
+    CODEX_THREAD_ID: '01a07d62-exec-cli',
+    CLAUDE_SESSION_ID: '',
+    CURSOR_SESSION_ID: '',
+    CONTEXT_GUARD_HEADLESS: '1',
+    CONTEXT_GUARD_NAMED_WORKBENCH: '0',
+  };
+  const cli = (args, extraEnv = env) => execFileSync(process.execPath, ['scripts/workbench/cli.mjs', ...args], {
+    cwd: process.cwd(), env: extraEnv, encoding: 'utf8', windowsHide: true,
+  });
+  try {
+    const denied = await fetch(new URL('/api/session', running.state.url), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: '01a07d62-exec-cli', worktreeRoot: f.root }),
+    });
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).error.code, 'UNKNOWN_SESSION');
+    let invented = '';
+    try {
+      cli(['map', 'read', '--root', f.root, '--session', 'invented-session', '--node', 'N1'], {
+        ...env, CODEX_THREAD_ID: '',
+      });
+    } catch (error) {
+      invented = `${error.stdout || ''}${error.stderr || ''}${error.message || ''}`;
+    }
+    assert.match(invented, /SESSION_BINDING_REQUIRED/);
+    const bound = JSON.parse(cli(['workbench', '--root', f.root, '--session', '01a07d62-exec-cli', '--direct']));
+    assert.equal(bound.binding.bound, true);
+    const read = JSON.parse(cli(['map', 'read', '--root', f.root, '--session', '01a07d62-exec-cli', '--node', 'N1']));
+    assert.equal(read.node.id, 'N1');
+    assert.match(await fs.readFile(path.join(f.ctx, 'sessions.jsonl'), 'utf8'), /host-environment/);
+  } finally {
+    await running.close();
+  }
+});
+
+test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook', async () => {
+  const f = await fixture();
+  const running = await startServer({ root: f.root, port: 0 });
+  try {
+    const read = JSON.parse(execFileSync(process.execPath, [
+      'scripts/workbench/cli.mjs', 'map', 'read', '--root', f.root, '--session', 'exec-auto-bind', '--node', 'N1',
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        CODEX_THREAD_ID: 'exec-auto-bind',
+        CONTEXT_GUARD_HEADLESS: '1',
+        CONTEXT_GUARD_NAMED_WORKBENCH: '0',
+      },
+      encoding: 'utf8',
+      windowsHide: true,
+    }));
+    assert.equal(read.node.id, 'N1');
+    assert.equal(read.error, undefined);
+  } finally {
+    await running.close();
+  }
 });
 
 test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {

@@ -663,7 +663,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
-          if (!(await access.knownSessions(prepared.sessionProject.worktreeRoot)).includes(prepared.sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
+          if (!(await access.sessionExists(prepared.sessionId, prepared.sessionProject.worktreeRoot))) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
           const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: prepared.sessionId, role: 'executor' };
           const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, prepared.sessionId);
           const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: prepared.sessionId, agentId: prepared.sessionId,

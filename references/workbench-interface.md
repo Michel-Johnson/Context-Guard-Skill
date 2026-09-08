@@ -34,7 +34,10 @@ context-guard map changes --root "/path/to/project" --session "actual-hook-sessi
 `workbench` prints JSON with the URL. The Python compatibility command still opens
 the browser unless `--no-open` is used. Node CLI output is JSON; nonzero exit means
 failure. `CODEX_THREAD_ID`, `CLAUDE_SESSION_ID` or `CURSOR_SESSION_ID` can supply the
-session. Only IDs actually recorded by a lifecycle hook can register as an Agent.
+session. A Session can register when a lifecycle hook recorded it, the current
+host process attests that same ID, or Codex local state discovers it in this
+worktree. `codex exec` does not run SessionStart, so the host-attested ID is the
+registration evidence.
 Do not substitute the visible demo session label or invent a human identity.
 Session IDs remain internal protocol keys. The workbench renders the host-provided
 task name plus useful worktree/branch context and never exposes full or shortened

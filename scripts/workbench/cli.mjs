@@ -8,6 +8,7 @@ import { startServer, statePath, projectStatePath, projectLockPath, health, skil
 import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
 import { readJSON, pause } from './io.mjs';
 import { MapError } from '../../prototype/map-model.mjs';
+import { hostAttestedPlatform, recordHostAttestedSession } from './access.mjs';
 import { validateMessage } from './protocol.mjs';
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
@@ -556,8 +557,10 @@ async function main(args) {
   }
   let sessionId = opt.session || (command !== 'workbench' && (process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID));
   const isMaintenance = ['attach-bug', 'update-bug'].includes(command) && !opt.session || command === 'map' && opt._[0] === 'projections' && !opt.session;
+  if (sessionId && !isMaintenance) await recordHostAttestedSession(root, String(sessionId));
   if (command !== 'workbench' && !isMaintenance && (!sessionId || !(await bindingStatus(project, sessionId)).session.bound)) {
-    if (!sessionId || !await readJSON(memoryConfigPath(project), null)) throw new MapError('SESSION_BINDING_REQUIRED', 'Connect this project once with workbench --session before Map actions', 409);
+    const cloud = await readJSON(memoryConfigPath(project), null);
+    if (!sessionId || !cloud && !hostAttestedPlatform(sessionId)) throw new MapError('SESSION_BINDING_REQUIRED', 'Connect this project once with workbench --session before Map actions', 409);
     await main(['workbench', '--root', root, '--session', String(sessionId)]);
   }
   const state = opt['workbench-url']
