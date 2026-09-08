@@ -725,7 +725,7 @@ try {
   await until(async () => (await read()).root.children[0].memories[0].files.length === 1);
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
-  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
   await page.locator('.node[data-id="N2"]').click(); await page.locator('.node[data-id="N1"]').click();
   await page.locator('#detail [data-ed="idea"]').evaluate(el => {
     const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', 'docs/attachment.txt');
@@ -736,7 +736,7 @@ try {
   assert.deepEqual((await read()).root.children.find(x => x.id === 'N2').ideas, []);
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
-  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
   stage = 'delete-reparent';
   const createdChild = (await read()).root.children.find(x => x.id === 'N2')?.children.find(x => x.title === '人类新增子节点');
