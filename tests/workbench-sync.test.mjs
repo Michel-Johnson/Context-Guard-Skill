@@ -737,12 +737,12 @@ test('Managed coordinator bootstraps a closed Session and accepts changes alread
   t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
   await coordinator.start();
   await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2
-    && coordinator.snapshot().status === 'synced', 6000);
+    && coordinator.snapshot().status === 'synced' && !coordinator.snapshot().conflict, 6000);
   const reopened = (await memoryRequest(project, 'sessions/managed-session')).snapshot;
   assert.equal(reopened.memory.map.root.children[0].title, '已经进入 Main');
   assert.deepEqual(reopened.memory.display, { name: '真实 Codex 任务', platform: 'codex' });
-  assert.equal(coordinator.snapshot().status, 'synced');
-  assert.equal(coordinator.snapshot().conflict, null);
+  // Bootstrap can start another upload/reconcile after the first synced snapshot.
+  await until(() => coordinator.snapshot().status === 'synced' && coordinator.snapshot().conflict === null, 2000);
   assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
 });
 
