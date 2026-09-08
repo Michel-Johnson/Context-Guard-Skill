@@ -10,14 +10,11 @@ export async function executionPrompt(message, readObject) {
     const brief = await readObject(p.briefRef, p.briefVersion);
     if (brief.kind !== 'brief' || brief.version !== p.briefVersion || brief.content?.taskId !== p.taskId || typeof brief.content.text !== 'string' || brief.content.text.length > 2000) fail('CONFLICT', 'Approved brief reference differs');
     if (p.mode === 'session') {
-      const report = (stage, data) => JSON.stringify({ v: 2, id: `${message.id}:${stage}`, type: 'task.report', session: message.session,
-        payload: { taskId: p.taskId, stage, data: { deliveryId: message.id, ...data } } });
-      return ['Context Guard：用户已在 Cloud 确认分配，请在当前 Session 执行以下任务。遵守仓库的代码、测试、提交规则；执行回报不代表代码已合入 Main。',
-        `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main：${p.mainVersion}`, brief.content.text,
-        `交付编号：${message.id}；同一编号不得重复执行。`,
-        `开始前和完成后，通过已安装 Context Guard CLI 的 map exchange --root . --session ${message.session.id} --input - 分别提交以下 JSON。不要索取 token，不要改用其他 Session。`,
-        report('started', {}), report('finished', { outcome: 'success', summary: '替换为实际执行结果' }),
-        '只有实际完成才回报 success；失败或取消时分别回报 failed/cancelled，并写明原因。发送不确定时重试相同 JSON 和 id，不伪造完成。'].join('\n');
+      return [brief.content.text,
+        '通过已安装 Context Guard Skill 执行以下命令（当前 Session，遵守仓库规则）：',
+        `开始：map task start ${message.id}`,
+        `完成：map task finish ${message.id} --summary "实际结果"`,
+        '失败或取消时加 --outcome failed/cancelled。重试使用同一编号；完成不代表发布 Main。'].join('\n');
     }
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
       `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main：${p.mainVersion}`, brief.content.text,

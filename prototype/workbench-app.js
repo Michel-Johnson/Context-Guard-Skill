@@ -103,8 +103,6 @@ const I18N = {
     workState:"开发进度",
     pendingChip:"待批",
     proposalReason:"新增依据", proposalBasis:"提案类型", proposalFiles:"实现文件",
-    summarizing:"沉淀中…",
-    dormantExp:"（演示）Agent 总结：定位到根因并修复，验证方式已记录。此经验休眠，仅在同类 Bug 再现时检索。",
     doneMem:"（演示）人确认本任务完成，Agent 把过程草稿收敛成这条结论"
   },
   en: {
@@ -206,8 +204,6 @@ const I18N = {
     workState:"Build status",
     pendingChip:"Pending",
     proposalReason:"Reason", proposalBasis:"Proposal type", proposalFiles:"Implementation files",
-    summarizing:"Settling…",
-    dormantExp:"(Demo) The agent summarized the cause and fix. This lesson is dormant until a similar bug returns.",
     doneMem:"(Demo) The human marked this task done. The agent folded the draft into this memory."
   }
 };
@@ -2191,6 +2187,11 @@ function sessionDisplayName(sessionId){
 }
 function bugProgress(bug){
   const status = String(bug?.status||"open");
+  const summaryId = bug?.resolution?.dispatch?.task_id;
+  if(summaryId){
+    const state = workbenchSync?.taskState(summaryId) || bug.resolution.dispatch.status;
+    if(state!=="completed") return {kind:"settling",label:uiLang==="en"?"Resolved · summary pending":`已解决 · ${state==="failed"||state==="cancelled"?"总结未完成":state==="executing"?"总结中":"待总结"}`,detail:""};
+  }
   if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
   if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
   if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
@@ -3642,8 +3643,8 @@ function renderDetail(){
           <div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
-            ${b.status==='pending'? `<div class="summarizing">${t("summarizing")}</div>`:""}
             ${bugProgressHtml(b)}
+            ${workbenchSync?.taskResult(b.resolution?.dispatch?.task_id)?.outcome==="success" ? `<details><summary>${uiLang==="en"?"Fix summary":"修复总结"}</summary><p style="white-space:pre-wrap">${esc(workbenchSync.taskResult(b.resolution.dispatch.task_id).summary)}</p></details>` : ""}
             ${attach}
           </div>
         </li>`;
@@ -3899,23 +3900,24 @@ function renderDetail(){
 }
 
 /* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
-function crossBug(node, bugId){
+async function crossBug(node, bugId){
   const home = ((node.bugs||[]).some(b=>b.id===bugId) ? node : findBugHome(bugId)) || node;
   const bug = (home.bugs||[]).find(b=>b.id===bugId);
-  if(!bug || bug.status!=="open") return;
-  bug.status = "pending";
-  renderAll();
-  setTimeout(()=>{
-    bug.status = "dormant";
-    home.dormant = home.dormant || [];
-    home.dormant.push({
-      title: bug.title,
-      exp: t("dormantExp"),
-      files: fileList(bug).map(f=>({path:f.path}))
-    });
-    if(bugPathMode && bugFocus && bugFocus.bugId===bugId) exitBugPath(true);
-    else renderAll();
-  }, 1600);
+  const previousSummary = bug?.resolution?.dispatch?.task_id;
+  if(!bug || !["open","fixed","resolved"].includes(bug.status) || previousSummary && !["failed","cancelled"].includes(workbenchSync?.taskState(previousSummary)) || bugDispatching.has(bugId)) return;
+  const sessions = bugSessionsOf(bug);
+  const sessionId = bug.dispatch?.session_id || (sessions.length===1 ? sessions[0] : null);
+  if(!sessionId){ workbenchSync?.setStatus(workbenchSync.status,"缺少唯一负责 Session，尚未提交 Bug 总结"); return; }
+  bugDispatching.add(bugId);
+  try{
+    await workbenchSync.flush();
+    const delivery = await workbenchSync.summarizeBug(sessionId,home.id,bugId,bug.dispatch?.task_id||"",previousSummary||"");
+    bug.status="resolved";
+    bug.resolution={dispatch:{task_id:delivery.taskId,session_id:sessionId,status:delivery.state}};
+    renderAll();
+    await workbenchSync.flush();
+  }catch(error){ workbenchSync?.setStatus(workbenchSync.status,"总结尚未确认："+error.message); }
+  finally{ bugDispatching.delete(bugId); }
 }
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */

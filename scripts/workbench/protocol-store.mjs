@@ -177,7 +177,8 @@ export class ProtocolStore extends EventEmitter {
               : delivered?.deliveryState === 'received' ? 'codex_received'
                 : delivered?.deliveryState === 'uncertain' ? 'uncertain'
                   : delivered ? 'local_received' : 'cloud_queued';
-      return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version };
+      return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version,
+        ...(task.result ? { result: { outcome: task.result.outcome, summary: task.result.summary, finishedAt: task.result.finishedAt } } : {}) };
     }, { readOnly: true });
   }
   async handle(principal, input, options = {}) {
@@ -289,6 +290,16 @@ export class ProtocolStore extends EventEmitter {
       requireBinding(state, principal, session);
       const current = state.localExecutions?.[queueKey(principal, session)];
       return current && !current.closed ? current : null;
+    }, { readOnly: true });
+  }
+  async executionReport(principal, session, { deliveryId, stage, summary, outcome = 'success' }) {
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      const message = queueFor(state, principal, session).items.find(item => item.message.id === deliveryId)?.message;
+      if (!message || message.type !== 'task.assign' || message.payload.mode !== 'session') fail('NOT_FOUND', 'No Session task matches this delivery');
+      if (!['started', 'finished'].includes(stage)) fail('INVALID_ARGUMENT', 'Expected start or finish');
+      return validateMessage({ v: 2, id: `${deliveryId}:${stage}`, type: 'task.report', session,
+        payload: { taskId: message.payload.taskId, stage, data: { deliveryId, ...(stage === 'finished' ? { outcome, summary } : {}) } } });
     }, { readOnly: true });
   }
   async registeredBinding(principal, sessionId) {

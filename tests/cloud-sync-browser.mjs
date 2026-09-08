@@ -1,3 +1,4 @@
+import '../.github/scripts/test-environment.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -9,7 +10,7 @@ import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/
 import { startServer } from '../scripts/workbench/server.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { sessionMemoryDir } from '../scripts/workbench/memory.mjs';
-import { atomicWrite, encode } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, pause } from '../scripts/workbench/io.mjs';
 
 const output = path.resolve(process.argv[2] || `output/playwright/browser-ci/session-sync-${Date.now()}-${randomUUID()}`);
 const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-sync-browser-'));
@@ -25,7 +26,8 @@ const document = {
   v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [],
   root: {
     id: 'T0', title: 'Session Map', purpose: '双向同步测试', kind: 'module', state: 'dirty', proposal: 'accepted',
-    memories: [], ideas: [], todos: [{ id: 'TD1', title: '浏览器挂载任务', desc: '从 Cloud 触发本地 Codex', status: 'pending', sessions: [] }], bugs: [], dormant: [], files: [], owns: [], children: [],
+    memories: [], ideas: [], todos: [{ id: 'TD1', title: '浏览器挂载任务', desc: '从 Cloud 触发本地 Codex', status: 'pending', sessions: [] }],
+    bugs: [{ id: 'B1', title: '已修复的同步问题', status: 'fixed', sessions: [sessionId] }], dormant: [], files: [], owns: [], children: [],
   },
 };
 const headers = token => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
@@ -77,7 +79,7 @@ try {
     method: 'POST', headers: headers(local.humanToken),
     body: JSON.stringify({ v: 2, id: 'browser-device-login', type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password: 'test-only' } }),
   });
-  await request(new URL('/api/session', local.state.url), {
+  const registration = await request(new URL('/api/session', local.state.url), {
     method: 'POST', headers: headers(local.state.adminToken),
     body: JSON.stringify({ sessionId, worktreeRoot: root }),
   });
@@ -132,10 +134,44 @@ try {
   assert.ok(changes.events.length >= 3);
   for (const event of changes.events) assert.equal(event.at, new Date(event.at).toISOString());
 
+  await cloudPage.locator('#session-chip').click();
+  await cloudPage.locator('#session-menu [data-session="__all__"]').click();
+  await cloudPage.locator('.node[data-id="T0"]').click();
+  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
+  await cloudPage.locator('#detail').getByText('已解决 · 待总结', { exact: true }).waitFor();
+  assert.equal(delivered.length, 1, 'summary waits in the same Cloud FIFO');
+  assert.equal(await cloudPage.getByText('（演示）Agent 总结', { exact: false }).count(), 0);
+  const report = (index, stage, outcome = 'success', summary = 'Fixture task completed') => request(new URL('/api/v2/task-report', local.state.url), {
+    method: 'POST', headers: headers(registration.token), body: JSON.stringify({ deliveryId: delivered[index].message.match(/map task start (\S+)/)[1], stage,
+      ...(stage === 'finished' ? { outcome, summary } : {}) }),
+  });
+  const waitDelivery = async count => {
+    const deadline = Date.now() + 25000;
+    while (delivered.length < count && Date.now() < deadline) await pause(100);
+    assert.equal(delivered.length, count);
+  };
+  await report(0, 'started'); await report(0, 'finished');
+  await waitDelivery(2);
+  await report(1, 'started'); await report(1, 'finished', 'failed', 'Temporary verification failure');
+  await cloudPage.locator('#detail').getByText('已解决 · 总结未完成', { exact: true }).waitFor();
+  assert.equal(await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).count(), 0);
+  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
+  await waitDelivery(3);
+  const actualSummary = '原因：同步等待。\n修复：隔离心跳。\n验证：正式回归通过。';
+  await report(2, 'started'); await report(2, 'finished', 'success', actualSummary);
+  await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).waitFor();
+  await cloudPage.reload();
+  await cloudPage.locator('.node[data-id="T0"]').click();
+  const summaryPanel = cloudPage.locator('#detail details').filter({ has: cloudPage.locator('summary', { hasText: '修复总结' }) });
+  await summaryPanel.locator('summary').click();
+  assert.equal((await summaryPanel.locator('p').textContent()).trim(), actualSummary);
+  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
+  await pause(100); assert.equal(delivered.length, 3, 'completed summary cannot dispatch again');
+
   await fs.mkdir(output, { recursive: true });
   await localPage.screenshot({ path: path.join(output, 'local.png'), fullPage: true });
   await cloudPage.screenshot({ path: path.join(output, 'cloud.png'), fullPage: true });
-  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps'] }));
+  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps', 'real-summary-queue', 'summary-failure-retry', 'summary-refresh-persistence'] }));
   passed = true;
 } finally {
   if (!passed) {

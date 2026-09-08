@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { hash } from '../scripts/workbench/io.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -114,7 +115,8 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const project = await resolveProject(root), doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', todos: [
     { id: 'TD1', title: 'Approved integration task', status: 'pending' },
     { id: 'TD2', title: 'Queued integration task', status: 'pending' },
-  ], bugs: [{ id: 'B40', title: 'Old record', status: 'open' }, { id: 'B40', title: 'Colliding record', status: 'open' }], children: [
+  ], bugs: [{ id: 'B40', title: 'Old record', status: 'open' }, { id: 'B40', title: 'Colliding record', status: 'open' },
+    { id: 'B41', title: 'Fixed problem', status: 'fixed', sessions: ['s2'] }], children: [
     { id: 'private', title: 'private', todos: [{ id: 'TD3', title: 'Denied task', status: 'pending' }], access: [{ id: 'denied', agentId: 's', allow: 'none' }] },
   ] } };
   const ctx = path.join(root, '.codex/context'); await fs.mkdir(ctx, { recursive: true });
@@ -240,13 +242,17 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   });
   const queuedResponse = await cloudCall('/api/session-message', { operationId: 'queued-task', sessionId: 's', nodeId: 'R', todoId: 'TD2' });
   assert.equal((await queuedResponse.json()).state, 'queued'); assert.equal(delivered.length, 1);
-  const reports = delivered[0].message.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
-  assert.equal(reports.length, 2);
-  await sendMessage(local.state.url, first.token, reports[0], { allowLoopback: true });
+  const deliveryId = delivered[0].message.match(/map task start (\S+)/)[1];
+  const reportTask = body => request(local.state, '/api/v2/task-report', { token: first.token, method: 'POST', body: { deliveryId, ...body } });
+  await assert.rejects(reportTask({ deliveryId: 'unknown', stage: 'started' }));
+  const startReceipt = await reportTask({ stage: 'started' });
+  assert.deepEqual(await reportTask({ stage: 'started' }), startReceipt);
   const running = await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] });
   assert.equal((await running.json()).tasks[0].state, 'executing');
-  reports[1].payload.data.summary = 'Isolated adapter execution completed';
-  await sendMessage(local.state.url, first.token, reports[1], { allowLoopback: true });
+  const finish = { stage: 'finished', outcome: 'success', summary: 'Isolated adapter execution completed' };
+  const finishReceipt = await reportTask(finish);
+  assert.deepEqual(await reportTask(finish), finishReceipt);
+  await assert.rejects(reportTask({ ...finish, summary: 'changed retry' }));
   await waitFor(() => delivered.length === 2);
   const completed = await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] });
   assert.equal((await completed.json()).tasks[0].state, 'completed');
@@ -272,6 +278,34 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
   assert.equal(delivered.length, 2, 'restart must not redeliver either accepted task');
+  const summaryInput = { operationId: 'summary-one', sessionId: 's2', nodeId: 'R', bugId: 'B41', purpose: 'summary', sourceTaskId: '' };
+  assert.equal((await cloudCall('/api/session-message', { ...summaryInput, sessionId: 's' })).status, 409, 'summary cannot move to another Session');
+  const summaryResponses = await Promise.all([summaryInput, { ...summaryInput, operationId: 'summary-other-browser' }].map(async input => {
+    const response = await cloudCall('/api/session-message', input); assert.equal(response.status, 200); return response.json();
+  }));
+  assert.equal(summaryResponses[0].taskId, summaryResponses[1].taskId, 'concurrent confirmation creates one summary task');
+  const saved = JSON.parse(await fs.readFile(memoryFile, 'utf8')).main.memory.map.root.bugs.find(bug => bug.id === 'B41');
+  assert.equal(saved.status, 'resolved'); assert.equal(saved.resolution.dispatch.task_id, summaryResponses[0].taskId);
+  assert.equal(saved.resolution.summary, undefined, 'confirmation does not fabricate a summary');
+  await waitFor(() => delivered.length === 3);
+  assert.equal(delivered[2].sessionId, 's2'); assert.match(delivered[2].message, /仅根据本会话记录总结/);
+  const summaryDelivery = delivered[2].message.match(/map task start (\S+)/)[1];
+  const freshSecond = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's2', worktreeRoot: root } });
+  const summaryReport = body => request(local.state, '/api/v2/task-report', { token: freshSecond.token, method: 'POST', body: { deliveryId: summaryDelivery, ...body } });
+  const cliStart = await exec(process.execPath, [fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url)), 'map', 'task', 'start', summaryDelivery, '--root', root, '--session', 's2'], { windowsHide: true });
+  assert.equal(JSON.parse(cliStart.stdout).data.stage, 'executing');
+  const freshFirst = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's', worktreeRoot: root } });
+  await assert.rejects(request(local.state, '/api/v2/task-report', { token: freshFirst.token, method: 'POST', body: { deliveryId: summaryDelivery, stage: 'started' } }));
+  const actualSummary = '原因：重复编号。修复：跳过已有编号。验证：实际派单成功。';
+  await assert.rejects(summaryReport({ stage: 'finished', summary: '' }));
+  const cliFinish = await exec(process.execPath, [fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url)), 'map', 'task', 'finish', summaryDelivery, '--summary', actualSummary, '--root', root, '--session', 's2'], { windowsHide: true });
+  assert.equal(JSON.parse(cliFinish.stdout).data.stage, 'finished');
+  const summaryStatus = await cloudCall('/api/task-status', { tasks: [{ taskId: summaryResponses[0].taskId, sessionId: 's2' }] });
+  const summaryResult = (await summaryStatus.json()).tasks[0];
+  assert.equal(summaryResult.state, 'completed'); assert.equal(summaryResult.result.summary, actualSummary);
+  const repeatedSummary = await cloudCall('/api/session-message', { ...summaryInput, operationId: 'summary-after-completion' });
+  assert.equal((await repeatedSummary.json()).taskId, summaryResponses[0].taskId);
+  assert.equal(delivered.length, 3);
 });
 
 test('IF-037: the project heartbeat reconciles actual private Cloud Map edits without a per-Session event connection', async t => {
