@@ -137,8 +137,14 @@ try {
   await cloudPage.locator('#session-chip').click();
   await cloudPage.locator('#session-menu [data-session="__all__"]').click();
   await cloudPage.locator('.node[data-id="T0"]').click();
+  await cloudPage.route('**/api/session-message*', async route => {
+    const response = await route.fetch();
+    await pause(200); // Let the committed Main state notification arrive first.
+    await route.fulfill({ response });
+  });
   await cloudPage.locator('.bug-check[data-bug="B1"]').click();
   await cloudPage.locator('#detail').getByText('已解决 · 待总结', { exact: true }).waitFor();
+  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
   assert.equal(delivered.length, 1, 'summary waits in the same Cloud FIFO');
   assert.equal(await cloudPage.getByText('（演示）Agent 总结', { exact: false }).count(), 0);
   const report = (index, stage, outcome = 'success', summary = 'Fixture task completed') => request(new URL('/api/v2/task-report', local.state.url), {
@@ -157,6 +163,7 @@ try {
   assert.equal(await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).count(), 0);
   await cloudPage.locator('.bug-check[data-bug="B1"]').click();
   await waitDelivery(3);
+  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
   const actualSummary = '原因：同步等待。\n修复：隔离心跳。\n验证：正式回归通过。';
   await report(2, 'started'); await report(2, 'finished', 'success', actualSummary);
   await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).waitFor();

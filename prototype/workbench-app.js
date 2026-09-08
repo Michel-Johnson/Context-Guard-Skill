@@ -3911,11 +3911,10 @@ async function crossBug(node, bugId){
   bugDispatching.add(bugId);
   try{
     await workbenchSync.flush();
-    const delivery = await workbenchSync.summarizeBug(sessionId,home.id,bugId,bug.dispatch?.task_id||"",previousSummary||"");
-    bug.status="resolved";
-    bug.resolution={dispatch:{task_id:delivery.taskId,session_id:sessionId,status:delivery.state}};
-    renderAll();
-    await workbenchSync.flush();
+    await workbenchSync.summarizeBug(sessionId,home.id,bugId,bug.dispatch?.task_id||"",previousSummary||"");
+    // Cloud atomically saves the confirmation. Read that result instead of
+    // submitting a second, stale browser write racing its state notification.
+    await workbenchSync.reload();
   }catch(error){ workbenchSync?.setStatus(workbenchSync.status,"总结尚未确认："+error.message); }
   finally{ bugDispatching.delete(bugId); }
 }
