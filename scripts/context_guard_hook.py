@@ -259,6 +259,15 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
                      if isinstance(item, dict) and item.get("agentId") == current_session_id), None)
         return rule is None or rule.get("allow") == "write"
     grants = [node_id for node_id in grants if can_write_node(node_id)]
+    proposed_writable = [
+        str(node.get("id")) for node in nodes
+        if isinstance(node, dict)
+        and str(node.get("id"))
+        and node.get("proposal") == "proposed"
+        and node.get("proposedBy") == current_session_id
+        and can_write_node(str(node.get("id")))
+    ]
+    grants = list(dict.fromkeys([*grants, *proposed_writable]))
     assigned_todos: list[dict[str, str]] = []
     assigned_bugs: list[dict[str, str]] = []
     for node in nodes:
