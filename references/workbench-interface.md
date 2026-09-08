@@ -327,6 +327,18 @@ and app running. Scheduling delay, model processing and busy-task deferral are
 additional latency; do not promise second-level chat replies. Do not spawn a second
 model process with the current session ID or use private desktop IPC to force a turn.
 
+For native Cloud task delivery on macOS, the local backend first asks the registered
+desktop application to open `codex://threads/<session-uuid>` using the system URL
+handler, then calls the existing `codex queue`. This reuses the original Session;
+it does not create a model service or a new thread. The request avoids activating
+the application, but the desktop may navigate its existing window to that task.
+Only UUIDs are accepted, and no prompt or credential enters the URL. Opening is
+not proof of loading or execution: the task remains received until the actual
+Session reports started. A failed open queues nothing and can be retried; an
+uncertain queue result retains the original delivery receipt and is not resent.
+Other operating systems retain their existing queue adapter; automatic desktop
+loading there has not been implemented or verified.
+
 The adapter needs no new server endpoint and works with an already-running Node
 protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack

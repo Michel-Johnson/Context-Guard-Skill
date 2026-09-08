@@ -6,6 +6,37 @@ import path from 'node:path';
 import { ProtocolDelivery, executionPrompt } from '../scripts/workbench/protocol-delivery.mjs';
 import { spawnSync } from 'node:child_process';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
+import { queueCodexMessage } from '../scripts/workbench/server.mjs';
+
+test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const sessionId = '11111111-1111-4111-8111-111111111111';
+  const input = { id: 'desktop-load', platform: 'codex', sessionId, message: 'Inspect only', root: directory };
+  const calls = [];
+  let openingFails = true;
+  const adapter = payload => queueCodexMessage(payload, { platform: 'darwin', run: async (file, args) => {
+    calls.push({ file, args });
+    if (file === '/usr/bin/open' && openingFails) throw Object.assign(new Error('timeout'), { killed: true, code: 'ETIMEDOUT' });
+  } });
+  const delivery = new ProtocolDelivery(directory, { codex: adapter });
+  await assert.rejects(delivery.deliver(input), error => error.details.deliveryState === 'failed');
+  assert.equal(calls.length, 1, 'opener failure must not queue the task');
+  openingFails = false;
+  await delivery.deliver(input);
+  assert.deepEqual(calls[1], { file: '/usr/bin/open', args: ['-g', `codex://threads/${sessionId}`] });
+  assert.deepEqual(calls[2].args, ['queue', '--thread', sessionId, '--message', input.message]);
+  await new ProtocolDelivery(directory, { codex: adapter }).deliver(input);
+  assert.equal(calls.length, 3, 'receipt replay must neither reopen nor enqueue again');
+  await assert.rejects(adapter({ ...input, sessionId: '../settings?token=x' }), { code: 'INVALID_SESSION' });
+  assert.equal(calls.length, 3);
+  await assert.rejects(new ProtocolDelivery(directory, { codex: payload => queueCodexMessage(payload, {
+    platform: 'darwin', run: async file => { if (file !== '/usr/bin/open') throw Object.assign(new Error('queue reply lost'), { killed: true }); },
+  }) }).deliver({ ...input, id: 'queue-uncertain' }), error => error.details.deliveryState === 'uncertain');
+  const portable = [];
+  await queueCodexMessage(input, { platform: 'linux', run: async (_file, args) => portable.push(args) });
+  assert.deepEqual(portable, [['queue', '--thread', sessionId, '--message', input.message]], 'non-macOS delivery is unchanged');
+});
 
 test('IF-029: host acceptance is not completion and uncertain acceptance never invokes a second model', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-delivery-'));

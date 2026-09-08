@@ -1,6 +1,6 @@
 export const WORKBENCH_PROTOCOL = 2;
 export const WORKBENCH_RUNTIME_SCHEMA = 4;
-export const WORKBENCH_BUILD = 'project-workbench-v15';
+export const WORKBENCH_BUILD = 'project-workbench-v16';
 export const WORKBENCH_CAPABILITIES = Object.freeze([
   'git-common-dir-project',
   'named-origin-verification',
@@ -18,6 +18,7 @@ export const WORKBENCH_CAPABILITIES = Object.freeze([
   'project-cloud-login',
   'independent-cloud-heartbeat',
   'device-managed-heartbeat',
+  'macos-desktop-session-open',
 ]);
 
 export function runtimeIdentity() {

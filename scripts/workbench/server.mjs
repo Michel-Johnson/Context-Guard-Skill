@@ -75,8 +75,20 @@ export function todoSessionMessage(node, todo) {
     '请在当前项目中完成这个开发事项；完成后把 Context Guard 中的 TODO 标记为已完成。',
   ].filter(Boolean).join('\n');
 }
-async function queueCodexMessage({ sessionId, message, root }) {
-  await execFileAsync(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
+export async function queueCodexMessage({ sessionId, message, root }, { run = execFileAsync, platform = process.platform } = {}) {
+  if (platform === 'darwin') {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw Object.assign(new Error('Desktop delivery requires a Session UUID'), { code: 'INVALID_SESSION' });
+    try {
+      await run('/usr/bin/open', ['-g', `codex://threads/${sessionId}`], { cwd: root, timeout: 15000, maxBuffer: 65536 });
+    } catch {
+      // No task has been queued yet: opening can be retried safely, including
+      // after an opener timeout. Never turn this into uncertain task acceptance.
+      throw Object.assign(new Error('Could not request the existing desktop Session; no task was queued'), { code: 'DESKTOP_OPEN_FAILED' });
+    }
+  }
+  // Opening requests a load; only the Session's started report proves execution.
+  // The durable native queue also covers loading that finishes after this call.
+  await run(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
