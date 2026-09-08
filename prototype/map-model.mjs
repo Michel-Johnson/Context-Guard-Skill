@@ -203,7 +203,12 @@ function assignedBug(document, bugId, sessionId) {
   return false;
 }
 
+function assertOperations(operations) {
+  if (!Array.isArray(operations) || operations.length < 1 || operations.length > 2000) throw new MapError('INVALID_OPERATIONS', 'Expected 1–2000 operations');
+}
+
 export function restoreSessionWorkItemOperations(document, operations, sessionId) {
+  assertOperations(operations);
   if (!sessionId) return copy(operations);
   const index = document?.root ? entries(document.root) : new Map();
   return operations.map(operation => {
@@ -244,7 +249,7 @@ function checkFields(fields, allowed = editableFields) {
   if (!object(fields) || Object.keys(fields).some(key => !allowed.includes(key))) throw new MapError('INVALID_FIELDS', 'Unsupported field');
 }
 export function applyOperations(document, operations, actor, grants = []) {
-  if (!Array.isArray(operations) || operations.length < 1 || operations.length > 2000) throw new MapError('INVALID_OPERATIONS', 'Expected 1–2000 operations');
+  assertOperations(operations);
   const doc = copy(document), resultIds = [];
   const human = actor.kind === 'human';
   const allowed = node => human || grants.includes(node.id) || (node.proposal === 'proposed' && node.proposedBy === actor.sessionId);
