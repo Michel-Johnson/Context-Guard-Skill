@@ -198,6 +198,32 @@ test('orphan Bug recovery requires the original attachment receipt from the same
   assert.equal(recovered.root.children[0].bugs[0].desc, '保留内容');
 });
 
+test('map apply rejects incomplete commit requests with validation errors instead of INTERNAL_ERROR', async () => {
+  const f = await fixture();
+  const running = await startServer({ root: f.root, port: 0 });
+  const base = new URL(running.state.url).origin;
+  const call = async body => {
+    const registration = await fetch(base + '/api/session', { method: 'POST', headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: agent.sessionId }) });
+    const { token } = await registration.json();
+    const response = await fetch(base + '/api/commit', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: response.status, data: await response.json() };
+  };
+  try {
+    const missingFields = await call({ operationId: 'op-bad-only' });
+    assert.equal(missingFields.status, 400);
+    assert.equal(missingFields.data.error.code, 'INVALID_ARGUMENT');
+    assert.match(missingFields.data.error.message, /baseVersion/i);
+    await assert.rejects(
+      prepareSessionCommit({ doc: f.doc }, { operationId: 'op-bad-only' }, agent, agent.sessionId),
+      error => error.code === 'INVALID_ARGUMENT' && /baseVersion/i.test(error.message),
+    );
+    const missingOperations = await call({ operationId: 'op-no-ops', baseVersion: running.store.version });
+    assert.equal(missingOperations.status, 400);
+    assert.equal(missingOperations.data.error.code, 'INVALID_ARGUMENT');
+    assert.match(missingOperations.data.error.message, /operations/i);
+  } finally { await running.close(); }
+});
+
 test('update-bug restores an orphan before applying its status', async () => {
   const sessionId = 'session-recovery', bug = { id: 'B4', status: 'resolved' };
   let commit, projections = 0;
@@ -956,7 +982,8 @@ test('write, preserve unknown data, reject stale update, persist idempotency acr
     assert.equal((await store.commit(request, human)).duplicate, true);
     assert.equal(store.doc.root.children.length, 2); assert.equal(store.doc.root.unknownNode, 42); assert.deepEqual(store.doc.unknownTop, { preserve: true });
     assert.equal(hash(await fs.readFile(store.file)), result.version);
-    await assert.rejects(store.commit({ ...request, operations: [] }, human), { code: 'ID_REUSED' });
+    await assert.rejects(store.commit({ ...request, operationId: randomUUID(), operations: [] }, human), { code: 'INVALID_OPERATIONS' });
+    await assert.rejects(store.commit({ ...request, operations: [{ type: 'update', id: 'N1', fields: { title: '不同请求' } }] }, human), { code: 'ID_REUSED' });
   } finally { await store.close(); }
 });
 

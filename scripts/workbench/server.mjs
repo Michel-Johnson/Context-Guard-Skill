@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { MapStore } from './store.mjs';
+import { MapStore, validateCommitRequest } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
@@ -37,6 +37,7 @@ const execFileAsync = promisify(execFile);
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
 export async function prepareSessionCommit(store, input, actor, sessionId) {
+  if (!input?.recoveryOf) validateCommitRequest(input);
   if (!sessionId || !input?.recoveryOf) {
     return { input: sessionId ? { ...input, operations: restoreSessionWorkItemOperations(store.doc, input.operations, sessionId) } : input, actor };
   }

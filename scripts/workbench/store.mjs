@@ -7,6 +7,17 @@ import { MapError, validate, applyOperations, diffTrees } from '../../prototype/
 import { hash, encode, atomicWrite, readJSON } from './io.mjs';
 import { inspectJournal, backupJournal, replaceJournal } from './journal.mjs';
 
+export function validateCommitRequest(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MapError('INVALID_ARGUMENT', 'Commit request must be an object', 400);
+  const { operationId, baseVersion, operations } = input;
+  if (typeof operationId !== 'string' || !/^[\w:.-]{8,160}$/.test(operationId)) {
+    throw new MapError('INVALID_OPERATION_ID', 'Use a stable unique operationId (8–160 characters)', 400);
+  }
+  if (typeof baseVersion !== 'string' || !baseVersion) throw new MapError('INVALID_ARGUMENT', 'baseVersion is required', 400);
+  if (!Array.isArray(operations)) throw new MapError('INVALID_ARGUMENT', 'operations must be an array', 400);
+  if (operations.length < 1 || operations.length > 2000) throw new MapError('INVALID_OPERATIONS', 'Expected 1–2000 operations', 400);
+}
+
 export class MapStore extends EventEmitter {
   constructor(root, { fault = async () => {}, project = async () => {}, file, runtime, eventsFile, recoverJournal = false } = {}) {
     super(); this.root = root; this.ctx = path.join(root, '.codex/context');
@@ -196,8 +207,8 @@ export class MapStore extends EventEmitter {
   }
   async commit(request, actor, grants = [], fence = async () => {}) {
     return this.serial(async () => {
+      validateCommitRequest(request);
       const { operationId, baseVersion, operations } = request;
-      if (typeof operationId !== 'string' || !/^[\w:.-]{8,160}$/.test(operationId)) throw new MapError('INVALID_OPERATION_ID', 'Use a stable unique operationId (8–160 characters)');
       const digest = hash(encode({ baseVersion, operations, actor }));
       const previous = await this.operation(operationId);
       if (previous) {
