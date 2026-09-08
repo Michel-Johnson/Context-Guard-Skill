@@ -559,7 +559,7 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
         "and `map apply --input <request.json>` with that baseVersion and a stable operationId. "
         "Do not write map.json directly or confirm your own proposals. Read references/workbench-interface.md. "
         "An explicit user request to implement, fix, execute, or merge approves that scoped work and its normal delivery steps; do not ask the user to confirm again. "
-        "Record it with `context-guard plan-start --input <plan.json>` using approved:true, summary, node_ids and paths. Ask only if scope is materially ambiguous, a destructive action is required, or new external authority is needed. "
+        "Record it with `printf %s '<plan-json>' | context-guard plan-start --input -` using approved:true, summary, node_ids and paths, or Write the JSON outside the project and pass that path. Ask only if scope is materially ambiguous, a destructive action is required, or new external authority is needed. "
         "Keep the plan active through commit, PR, merge, and installed acceptance; then archive with --input containing verification evidence and assessment {decision:reuse|propose|none,reason} before `plan-finish`. "
         "These commands sync at plan boundaries when Cloud is configured. Use plan-status to recover unfinished work; read references/workbench-interface.md for schemas."
 
@@ -709,7 +709,7 @@ def tool_paths(payload: object, root: Path) -> list[str]:
     def walk(value: object) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
-                if key.lower() in {"path", "paths", "file", "file_path", "filepath"}:
+                if key.lower() in {"path", "paths", "file", "file_path", "filepath", "target_file", "targetfile"}:
                     add(child)
                 walk(child)
         elif isinstance(value, list):
@@ -721,6 +721,65 @@ def tool_paths(payload: object, root: Path) -> list[str]:
     for match in re.finditer(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE):
         add(match.group(1).strip())
     return sorted(found)
+
+
+def tool_target_strings(payload: object) -> list[str]:
+    """Declared write targets, including host paths outside the project."""
+    if not isinstance(payload, dict):
+        return []
+    found: list[str] = []
+
+    def add(value: object) -> None:
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            if isinstance(item, str) and item.strip():
+                found.append(item.strip())
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key.lower() in {"path", "paths", "file", "file_path", "filepath", "target_file", "targetfile"}:
+                    add(child)
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(payload.get("tool_input", {}))
+    command = tool_command(payload)
+    for match in re.finditer(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE):
+        add(match.group(1).strip())
+    return found
+
+
+def write_like_tool(payload: object) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    name = str(payload.get("tool_name") or payload.get("toolName") or "").lower()
+    return any(marker in name for marker in ("apply_patch", "write", "edit", "delete", "move"))
+
+
+def outside_repo_write(payload: object, root: Path) -> bool:
+    """True only when every declared target resolves outside the project."""
+    targets = tool_target_strings(payload)
+    if not targets:
+        return False
+    try:
+        root_resolved = root.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    for item in targets:
+        candidate = Path(item).expanduser()
+        try:
+            resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            continue
+        except (OSError, RuntimeError):
+            return False
+        else:
+            return False
+    return True
 
 
 def protocol_command(words: list[str], allowed: set[str]) -> bool:
@@ -741,8 +800,15 @@ def control_words(words: list[str]) -> bool:
     return protocol_command(words, {
         "plan-start", "plan-finish", "plan-status", "archive-session", "resolve-signal", "split-signal",
         "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync", "workbench",
-        "preferences", "memory",
+        "preferences", "memory", "set-language", "write-candidates", "doctor",
     })
+
+
+def diagnostic_words(words: list[str]) -> bool:
+    """Agents often append a no-op status probe after an audited command."""
+    if not words:
+        return False
+    return Path(words[0]).name in {"echo", "true", "false", "printf"}
 
 
 def shell_segments(command: str) -> list[list[str]] | None:
@@ -776,16 +842,26 @@ def shell_segments(command: str) -> list[list[str]] | None:
             # Discarding diagnostic noise is harmless; every other output target writes.
             if current and current[-1].isdigit():
                 current.pop()
-            if token != ">" or index + 1 >= len(tokens) or tokens[index + 1] != "/dev/null":
-                return None
-            index += 2
-            continue
+            target = tokens[index + 1] if index + 1 < len(tokens) else ""
+            if token == ">" and target == "/dev/null":
+                index += 2
+                continue
+            if token == ">&" and target.isdigit():
+                index += 2
+                continue
+            if token == "&>" and target == "/dev/null":
+                index += 2
+                continue
+            return None
         if token == "<":
             if current and current[-1].isdigit():
                 current.pop()
             if index + 1 >= len(tokens) or tokens[index + 1] in {"|", "||", "&&", ";"}:
                 return None
             index += 2
+            continue
+        if re.fullmatch(r"(?:\d*)>&\d+", token):
+            index += 1
             continue
         if "&" in token:
             return None
@@ -883,7 +959,12 @@ def read_only_shell(command: str) -> bool:
 def control_tool(payload: object) -> bool:
     """Only standalone protocol commands can recover a blocked lifecycle."""
     segments = shell_segments(tool_command(payload))
-    if not segments or not control_words(segments[-1]):
+    if not segments:
+        return False
+    # Drop trailing diagnostic probes (`echo EXIT=$?`) after an audited command.
+    while len(segments) > 1 and diagnostic_words(segments[-1]) and not control_words(segments[-1]):
+        segments = segments[:-1]
+    if not control_words(segments[-1]):
         return False
     # Allow a literal stdin producer before an audited Context Guard command.
     # Arbitrary programs and additional commands never inherit this exemption.
@@ -918,11 +999,10 @@ def git_changed_paths(root: Path) -> list[str]:
 def mutating_tool(payload: object) -> bool:
     if not isinstance(payload, dict):
         return False
-    name = str(payload.get("tool_name") or payload.get("toolName") or "")
-    lowered = name.lower()
-    if any(marker in lowered for marker in ("apply_patch", "write", "edit", "delete", "move")):
+    if write_like_tool(payload):
         return True
-    if lowered not in {"bash", "exec_command", "shell", "run_shell_command"}:
+    name = str(payload.get("tool_name") or payload.get("toolName") or "").lower()
+    if name not in {"bash", "exec_command", "shell", "run_shell_command"}:
         return False
     if control_tool(payload):
         return False
@@ -1313,6 +1393,9 @@ def main() -> int:
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": forbidden}}, ensure_ascii=False))
             return 0
         paths = tool_paths(payload, root)
+        # Request JSON and other host temp writes are not product implementation.
+        if write_like_tool(payload) and not paths and outside_repo_write(payload, root):
+            return hook_response(platform, event)
         snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
         missing = sorted(set(owners.values()) - active_grants(snapshot))
@@ -1329,7 +1412,13 @@ def main() -> int:
         if pending_signals(runtime):
             reason = "Classify pending user signals before implementation: " + ", ".join(pending_signals(runtime))
         elif not plan or plan.get("status") != "working":
-            reason = "Run context-guard plan-start --input <approved-plan.json> before implementation. If the user explicitly requested implementation, fixing, execution, or merging, start the plan without asking them to confirm again."
+            reason = (
+                "Run context-guard plan-start --input - before implementation. "
+                "Pipe approved plan JSON on stdin (approved:true, summary, node_ids, paths); "
+                "do not require a request file the hook would block. "
+                "If the user explicitly requested implementation, fixing, execution, or merging, "
+                "start the plan without asking them to confirm again."
+            )
         elif any(not in_scope(file, plan["paths"]) for file in paths) or set(owners.values()) - set(plan["node_ids"]):
             reason = "Tool exceeds the approved plan scope; do not silently expand it."
         if reason:
