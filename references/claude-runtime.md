@@ -77,3 +77,13 @@ An interrupted or uncertain native turn remains visible and is not automatically
 re-executed. Do not delete its saved intent to retry. Controlled recovery and CI
 delegation must be verified before claiming full lifecycle support. Native turn
 completion is not a successful task, human acceptance, GitHub merge, or archive.
+
+For an explicitly requested continuation of an interrupted turn, the local operator
+may run `workbench claude --recover --root <worktree> --session <uuid> --input
+<private-json>`. Input is `{operationId,deliveryId,message}`: identify the exact
+interrupted delivery and describe what to continue. Both previous processes must
+have exited; a live or uncertain process is never killed by recovery. The original
+record remains unchanged, and a new durable continuation resumes the same native
+Session. Reuse the same operation ID and content after an uncertain response.
+Existing task, Plan and CI permissions still apply; this is not an approval or
+permission to repeat completed work. No background recovery loop is added.

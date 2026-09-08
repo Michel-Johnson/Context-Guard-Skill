@@ -1262,6 +1262,35 @@ test('Session work-item scope hides other assignments and preserves them during 
   assert.deepEqual(changes.changes[0].operations[0].fields.bugs.map(item => item.id), ['B1', 'B3']);
 });
 
+test('Claude recovery HTTP is local-operator-only and requires a bound interrupted receiver', async () => {
+  const f = await fixture(), sessionId = randomUUID();
+  await fs.appendFile(path.join(f.ctx, 'sessions.jsonl'), JSON.stringify({ at: new Date().toISOString(), platform: 'claude', session_id: sessionId, event: 'session-start' }) + '\n');
+  const running = await startServer({ root: f.root, port: 0 });
+  const base = new URL(running.state.url).origin;
+  const call = async (route, token, input, headers = {}) => {
+    const response = await fetch(base + route, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
+    return { status: response.status, data: await response.json() };
+  };
+  try {
+    const registration = await call('/api/session', running.state.adminToken, { sessionId });
+    assert.equal(registration.status, 200);
+    const recovery = { operationId: 'recover', deliveryId: 'absent', message: 'Continue only existing approved work' }, input = { sessionId, recovery };
+    for (const token of [running.humanToken, registration.data.token, 'invalid']) {
+      assert.equal((await call('/api/claude-runtime', token, input)).status, 401);
+    }
+    assert.equal((await call('/api/claude-runtime', running.state.adminToken, input, { Origin: base })).status, 401);
+    assert.equal((await call('/api/claude-runtime', running.state.adminToken, { ...input, sessionId: randomUUID() })).status, 409);
+    const environmentFile = path.join(f.root, 'provider.json'); await fs.writeFile(environmentFile, '{}');
+    const configured = await call('/api/claude-runtime', running.state.adminToken, { sessionId, config: {
+      command: process.execPath, root: f.root, configDir: path.join(f.root, 'claude-config'), environmentFile, name: 'Fixture', model: 'fixture-model', role: 'executor',
+    } });
+    assert.equal(configured.status, 200);
+    const absent = await call('/api/claude-runtime', running.state.adminToken, input);
+    assert.equal(absent.data.error.code, 'RECOVERY_NOT_AVAILABLE');
+    assert.equal((await call('/api/claude-runtime', running.state.adminToken, { ...input, config: {} })).status, 409);
+  } finally { await running.close(); }
+});
+
 test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation and migration preview', async () => {
   const f = await fixture(), delivered = [];
   f.doc.root.children[0].bugs.push(

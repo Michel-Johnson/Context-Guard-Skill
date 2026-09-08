@@ -12,8 +12,12 @@ const exec = promisify(execFile);
 const git = async (root, ...args) => (await exec('git', args, { cwd: root, windowsHide: true })).stdout.trim();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
-const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = pid => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
 const providerKeys = new Set(['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_ATTRIBUTION_HEADER']);
+function verifyRecovery(active, deliveryId) {
+  if (!deliveryId || active?.id !== deliveryId || active.state !== 'interrupted') fail('RECOVERY_NOT_AVAILABLE', 'Recovery does not match the active interrupted delivery');
+  if (alive(active.workerPid) || alive(active.childPid)) fail('RUNTIME_BUSY', 'The previous native process has not exited');
+}
 
 export function claudeArguments(config, { sessionId, resume }) {
   if (!uuid.test(sessionId)) fail('INVALID_SESSION', 'Claude requires a real Session UUID');
@@ -72,9 +76,23 @@ export class ClaudeRuntime {
     const state = await readJSON(this.sessionFile(sessionId), null);
     if (state?.config.role !== 'ci') return null;
     const job = state.active && await readJSON(state.active, null);
-    if (!job?.execution || ['finished', 'failed'].includes(job.state) || job.execution.session.id !== state.config.executorSessionId) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
+    if (!job?.execution || ['finished', 'failed', 'interrupted'].includes(job.state) || job.execution.session.id !== state.config.executorSessionId) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
     if (verifySource && (await git(state.config.root, 'rev-parse', 'HEAD') !== job.execution.sourceSha || await git(state.config.root, 'status', '--porcelain'))) fail('CI_SOURCE_CHANGED', 'CI result requires the unchanged assigned code SHA');
     return { ...job.execution, mode: 'ci', commands: state.config.ciCommands };
+  }
+  async recover(sessionId, input, root) {
+    if (!input || Object.keys(input).some(key => !['operationId', 'deliveryId', 'message'].includes(key)) ||
+        typeof input.operationId !== 'string' || !input.operationId.trim() || input.operationId.length > 128 ||
+        typeof input.deliveryId !== 'string' || !input.deliveryId || input.deliveryId.length > 256 ||
+        typeof input.message !== 'string' || !input.message.trim() || input.message.length > 4000) fail('INVALID_RECOVERY', 'Recovery requires an operationId, exact interrupted deliveryId and continuation message');
+    const state = await readJSON(this.sessionFile(sessionId), null);
+    if (!state || await fs.realpath(root) !== state.config.root) fail('WORKTREE_MISMATCH', 'Recover only the configured worktree');
+    const previous = await readJSON(this.jobFile(sessionId, input.deliveryId), null);
+    if (!previous || previous.state !== 'interrupted') fail('RECOVERY_NOT_AVAILABLE', 'The specified delivery is not interrupted');
+    return this.deliver({ id: `recovery:${input.operationId}`, sessionId, root: state.config.root, platform: 'claude',
+      recoverDeliveryId: input.deliveryId,
+      message: `Context Guard：本地操作者明确要求恢复当前会话。先核对原任务、审核与已有文件/回执，不重复已完成的操作；这不是新任务或新的开发授权。\n${input.message}`,
+      ...(previous.execution ? { execution: previous.execution } : {}) });
   }
   async deliver(input) {
     const file = this.sessionFile(input.sessionId), jobFile = this.jobFile(input.sessionId, input.id);
@@ -85,7 +103,10 @@ export class ClaudeRuntime {
         if (previous.fingerprint !== fingerprint) fail('ID_REUSED', 'Claude delivery identity differs');
         if (previous.state === 'starting') {
           const state = await readJSON(file);
-          if (state.active && state.active !== jobFile) fail('RUNTIME_BUSY', 'Another native turn owns this Session');
+          if (state.active && state.active !== jobFile) {
+            if (!input.recoverDeliveryId) fail('RUNTIME_BUSY', 'Another native turn owns this Session');
+            verifyRecovery(await readJSON(state.active, null), input.recoverDeliveryId);
+          }
           await atomicWrite(file, encode({ ...state, active: jobFile }));
         }
         return; // The saved invocation is never automatically executed twice.
@@ -95,7 +116,11 @@ export class ClaudeRuntime {
       if (await fs.realpath(input.root) !== state.config.root) fail('WORKTREE_MISMATCH', 'Claude delivery targets a different worktree');
       if (state.active) {
         const active = await readJSON(state.active, null);
-        if (!active || !['finished', 'failed'].includes(active.state)) fail('RUNTIME_BUSY', 'Claude turn is active or interrupted; retain the Cloud delivery for retry');
+        if (input.recoverDeliveryId) {
+          verifyRecovery(active, input.recoverDeliveryId);
+        } else if (!active || !['finished', 'failed'].includes(active.state)) fail('RUNTIME_BUSY', 'Claude turn is active or interrupted; retain the Cloud delivery for retry');
+      } else if (input.recoverDeliveryId) {
+        fail('RECOVERY_NOT_AVAILABLE', 'There is no active interrupted delivery to recover');
       }
       if (state.config.role === 'ci') {
         if (input.execution?.session?.id !== state.config.executorSessionId || !/^[a-f0-9]{40}$/.test(input.execution?.sourceSha || '')) fail('CI_ASSIGNMENT_MISMATCH', 'CI requires a verified developer handoff');
@@ -104,7 +129,8 @@ export class ClaudeRuntime {
       }
       const job = { id: input.id, fingerprint, sessionId: input.sessionId, message: input.message,
         ...(input.execution ? { execution: input.execution } : {}),
-        state: 'starting', resume: Boolean(state.initialized), updatedAt: new Date().toISOString() };
+        ...(input.recoverDeliveryId ? { recoveredDeliveryId: input.recoverDeliveryId } : {}),
+        state: 'starting', resume: Boolean(state.initialized || input.recoverDeliveryId), updatedAt: new Date().toISOString() };
       await atomicWrite(jobFile, encode(job));
       await atomicWrite(file, encode({ ...state, active: jobFile }));
     });

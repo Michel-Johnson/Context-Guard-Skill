@@ -68,6 +68,57 @@ test('Claude keeps a single native turn, resumes its Session, and deduplicates a
   await assert.rejects(runtime.deliver({ ...delivery, message: 'Different input' }), { code: 'ID_REUSED' });
 });
 
+test('Explicit Claude recovery retains old intent, refuses live processes and replays one continuation after restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-recovery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
+  const script = path.join(directory, 'native.cjs'), seen = path.join(directory, 'seen.jsonl');
+  await fs.writeFile(script, `const fs=require('fs');let input='';process.stdin.on('data',c=>input+=c).on('end',()=>{
+    const args=process.argv.slice(2),session_id=args[args.indexOf('--resume')+1];
+    fs.appendFileSync(${JSON.stringify(seen)},JSON.stringify({args,input})+'\\n');
+    console.log(JSON.stringify({type:'system',subtype:'init',session_id}));
+    setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),300);
+  });`);
+  const environmentFile = path.join(directory, 'provider.json'); await fs.writeFile(environmentFile, '{}');
+  const runtimeDirectory = path.join(directory, 'runtime'), runtime = new ClaudeRuntime(runtimeDirectory), sessionId = randomUUID();
+  await runtime.configure(sessionId, { command: process.execPath, args: [script], name: 'Recovery', model: 'test-model', role: 'executor', root: directory, configDir: path.join(directory, 'config'), environmentFile, resumeExisting: true });
+  const file = runtime.sessionFile(sessionId), jobFile = runtime.jobFile(sessionId, 'original');
+  await fs.mkdir(path.dirname(jobFile), { recursive: true });
+  const state = { ...await readJSON(file), active: jobFile };
+  await fs.writeFile(file, JSON.stringify(state));
+  const old = { id: 'original', sessionId, message: 'Original work', state: 'interrupted', workerPid: process.pid };
+  await fs.writeFile(jobFile, JSON.stringify(old));
+  const request = { operationId: 'continue-once', deliveryId: 'original', message: 'Inspect prior work; finish only the remaining approved steps.' };
+  await assert.rejects(runtime.recover(sessionId, request, directory), { code: 'RUNTIME_BUSY' });
+  await fs.writeFile(jobFile, JSON.stringify({ ...old, workerPid: null, childPid: process.pid }));
+  await assert.rejects(runtime.recover(sessionId, request, directory), { code: 'RUNTIME_BUSY' });
+  await assert.rejects(runtime.recover(sessionId, { ...request, deliveryId: 'wrong' }, directory), { code: 'RECOVERY_NOT_AVAILABLE' });
+  await assert.rejects(runtime.recover(sessionId, { ...request, unexpected: true }, directory), { code: 'INVALID_RECOVERY' });
+  await assert.rejects(runtime.recover(sessionId, request, os.tmpdir()), { code: 'WORKTREE_MISMATCH' });
+  const originalBytes = JSON.stringify({ ...old, workerPid: null, childPid: null });
+  await fs.writeFile(jobFile, originalBytes);
+  runtime.wake = async () => {}; // Crash after saving the continuation, before starting its worker.
+  await runtime.recover(sessionId, request, directory);
+  const recoveryFile = runtime.jobFile(sessionId, 'recovery:continue-once');
+  assert.equal((await readJSON(recoveryFile)).recoveredDeliveryId, 'original');
+  await fs.writeFile(file, JSON.stringify(state)); // Also exercise the job-to-Session link crash window.
+  const restored = new ClaudeRuntime(runtimeDirectory);
+  const results = await Promise.all([restored.recover(sessionId, request, directory), restored.recover(sessionId, request, directory)]);
+  assert.deepEqual(results[0], results[1]);
+  await assert.rejects(restored.recover(sessionId, { ...request, message: 'Changed request' }, directory), { code: 'ID_REUSED' });
+  const deadline = Date.now() + 10000;
+  while ((await readJSON(recoveryFile)).state !== 'finished' || (await restored.status(sessionId)).status !== 'stopped') {
+    if (Date.now() > deadline) throw new Error('Recovery fixture did not finish');
+    await pause(30);
+  }
+  await restored.recover(sessionId, request, directory);
+  await assert.rejects(restored.recover(sessionId, { ...request, operationId: 'another' }, directory), { code: 'RECOVERY_NOT_AVAILABLE' });
+  const invocations = (await fs.readFile(seen, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(invocations.length, 1);
+  assert.equal(invocations[0].args[invocations[0].args.indexOf('--resume') + 1], sessionId);
+  assert.ok(invocations[0].input.includes(request.message));
+  assert.equal(await fs.readFile(jobFile, 'utf8'), originalBytes, 'never rewrite or remove the old delivery');
+});
+
 test('Claude CI checks out the exact handoff SHA and rejects results after source mutation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-ci-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
@@ -96,4 +147,8 @@ test('Claude CI checks out the exact handoff SHA and rejects results after sourc
     await pause(50);
   }
   await assert.rejects(runtime.ciContext(sessionId), { code: 'CI_NOT_ACTIVE' });
+  const jobFile = runtime.jobFile(sessionId, 'ci-task');
+  await fs.writeFile(jobFile, JSON.stringify({ ...await readJSON(jobFile), state: 'interrupted' }));
+  await fs.writeFile(runtime.sessionFile(sessionId), JSON.stringify({ ...await readJSON(runtime.sessionFile(sessionId)), active: jobFile }));
+  await assert.rejects(runtime.ciContext(sessionId), { code: 'CI_NOT_ACTIVE' }, 'an interrupted CI worker no longer has test authority');
 });
