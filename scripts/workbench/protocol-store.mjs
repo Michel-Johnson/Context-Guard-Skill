@@ -163,9 +163,13 @@ export class ProtocolStore extends EventEmitter {
     requireIdentity(principal);
     return this.transaction(state => {
       requireBinding(state, principal, session);
-      const task = state.tasks[scopedObjectKey(principal, session, `task:${taskId}`)];
+      let task = state.tasks[scopedObjectKey(principal, session, `task:${taskId}`)];
+      if (!task && principal.role === 'human') {
+        const older = Object.values(state.tasks).filter(value => value.repositoryId === principal.repositoryId && value.session.id === session.id && value.id === taskId && value.stage === 'finished');
+        if (older.length === 1) task = older[0];
+      }
       if (!task) fail('NOT_FOUND', 'Task is not registered in this Session');
-      const queue = queueFor(state, principal, session);
+      const queue = queueFor(state, principal, task.session);
       const outcomes = task.assignmentSeq
         ? Object.values(queue.consumers || {}).map(consumer => consumer.outcomes?.[task.assignmentSeq]).filter(Boolean)
         : [];
@@ -179,6 +183,17 @@ export class ProtocolStore extends EventEmitter {
                   : delivered ? 'local_received' : 'cloud_queued';
       return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version,
         ...(task.result ? { result: { outcome: task.result.outcome, summary: task.result.summary, finishedAt: task.result.finishedAt } } : {}) };
+    }, { readOnly: true });
+  }
+  async humanTaskResult(principal, sessionId, taskId) {
+    requireIdentity(principal);
+    if (principal.role !== 'human') fail('FORBIDDEN', 'Human review requires browser authority');
+    return this.transaction(state => {
+      const tasks = Object.values(state.tasks).filter(task => task.repositoryId === principal.repositoryId && task.session.id === sessionId && task.id === taskId);
+      if (tasks.length !== 1) fail('NOT_FOUND', 'Task result is missing or ambiguous');
+      const task = tasks[0];
+      if (task.stage !== 'finished' || !task.result) fail('CONFLICT', 'Agent has not submitted a final result');
+      return { taskId, sessionId, version: task.version, result: structuredClone(task.result) };
     }, { readOnly: true });
   }
   async handle(principal, input, options = {}) {

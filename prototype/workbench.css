@@ -1490,3 +1490,7 @@ html.design-gallery .g-ch-mock{overflow:visible;width:100%;
 .g-ch-mock.g-ch-48 .chip:after{content:"";position:absolute;z-index:-1;left:-3px;right:8px;top:.22em;bottom:.28em;background:var(--mark);opacity:.35;transform:skewX(-18deg) rotate(-1.2deg)}
 .g-ch-49 .chip{--mark-shadow:1px 1px 0 rgba(45,45,45,.12)}
 .g-ch-50 .chip{--mark:#ccff00;--mark-op:1;--mark-skew:-10deg}
+.task-review-actions{display:flex;gap:6px;align-self:flex-start;flex-shrink:0}
+.task-review-actions button{min-width:30px;min-height:30px;padding:2px 6px;line-height:1;color:#36765a}
+.task-review-actions button[data-task-review="rejected"]{color:#b54b4b}
+.task-review-actions button:disabled{opacity:.4;cursor:default}

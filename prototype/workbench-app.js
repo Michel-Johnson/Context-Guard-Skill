@@ -2185,7 +2185,27 @@ function sessionDisplayName(sessionId){
   const meta = sessionMetaOf(sessionId);
   return meta ? sessionMetaLabel(meta) : (uiLang==="en"?"Agent session":"Agent 会话");
 }
+const reviewingItems = new Set();
+function humanReviewProgress(item){
+  if(!item?.review || item.review.taskId!==item.dispatch?.task_id) return null;
+  return item.review.decision==="approved"
+    ? {kind:"resolved",label:uiLang==="en"?"Verified":"验收通过",detail:""}
+    : {kind:"waiting",label:uiLang==="en"?"Rejected · awaiting clarification":"验收未通过 · 待澄清",detail:item.review.reason||""};
+}
+function taskReviewButtons(nodeId, kind, item){
+  const state = workbenchSync?.taskStates.get(item.dispatch?.task_id);
+  const reviewed = item.review?.taskId===item.dispatch?.task_id && item.review?.resultVersion===state?.version;
+  const busy = reviewingItems.has(`${nodeId}:${kind}:${item.id}`);
+  const ready = workbenchSync?.viewId==="main" && state?.result && !reviewed && !busy;
+  return `<div class="task-review-actions"><button type="button" data-task-review="approved" data-review-node="${escAttr(nodeId)}" data-review-kind="${kind}" data-review-item="${escAttr(item.id)}" aria-label="验收通过" title="验收通过：发布已有经验" ${!ready||state.result.outcome!=="success"?'disabled':''}>✓</button><button type="button" data-task-review="rejected" data-review-node="${escAttr(nodeId)}" data-review-kind="${kind}" data-review-item="${escAttr(item.id)}" aria-label="验收不通过" title="验收不通过：记录反馈，等待主 Agent" ${!ready?'disabled':''}>✕</button></div>`;
+}
+function taskSummaryHtml(item){
+  const result = workbenchSync?.taskResult(item.dispatch?.task_id) || workbenchSync?.taskResult(item.resolution?.dispatch?.task_id);
+  return result?.summary ? `<details><summary>${uiLang==="en"?"Agent result":"Agent 结果与经验"}</summary><p style="white-space:pre-wrap">${esc(result.summary)}</p></details>` : "";
+}
 function bugProgress(bug){
+  const human = humanReviewProgress(bug);
+  if(human) return human;
   const status = String(bug?.status||"open");
   const summaryId = bug?.resolution?.dispatch?.task_id;
   if(summaryId){
@@ -2197,7 +2217,7 @@ function bugProgress(bug){
   if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
   if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
   const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
-  if(delivery==="completed") return {kind:"resolved",label:t("bugResolved"),detail:""};
+  if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskQueued")}`,detail:""};
@@ -2233,10 +2253,12 @@ function bugProgressHtml(bug){
 }
 function todoSessionsOf(todo){ return bugSessionsOf(todo); }
 function todoProgress(todo){
+  const human = humanReviewProgress(todo);
+  if(human) return human;
   const status = String(todo?.status||"pending");
   if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
   const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
-  if(delivery==="completed") return {kind:"resolved",label:t("todoDone"),detail:""};
+  if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskQueued")}`,detail:""};
@@ -3557,9 +3579,11 @@ function renderDetail(){
       <div class="actions">
         ${dots}
         ${bugClaimControlHtml({selected:true, unassigned:hit && hit.unassigned, mine, sending, inspector:true})}
-      </div>`;
+      </div>
+      ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(hit.node.id,"bug",bug)+taskSummaryHtml(bug) : ""}`;
     const claim = el.querySelector('[data-act="claim"]');
     if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await toggleBugSession(hit && hit.node, bug); };
+    el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
     return;
   }
 
@@ -3618,12 +3642,15 @@ function renderDetail(){
   const todoHtml = nodeTodos.length
     ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
         const done = todo.status==="done";
+        const unassigned = workbenchSync?.config?.interfaceCapabilities?.humanReview && !todo.dispatch?.task_id && !todo.dispatch?.status && !done;
         const needsAction = todo.dispatch?.status==="scope-required" || todo.dispatch?.status==="failed";
         return `<li class="${done?"todo-done":""}">
-          <button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>
+          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>`}
           <div class="todo-main">
             <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${linkifyText(todo.desc||todo.title||"")}</div>
             ${todo.draft?"":todoProgressHtml(todo)}
+            ${taskSummaryHtml(todo)}
+            ${unassigned?`<button type="button" data-todo-assign="${escAttr(todo.id)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
           </div>
         </li>`;
@@ -3640,11 +3667,12 @@ function renderDetail(){
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
         <li class="${settled?'bug-pending':''}">
-          <div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>
+          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(row.from,"bug",b) : `<div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>`}
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${bugProgressHtml(b)}
-            ${workbenchSync?.taskResult(b.resolution?.dispatch?.task_id)?.outcome==="success" ? `<details><summary>${uiLang==="en"?"Fix summary":"修复总结"}</summary><p style="white-space:pre-wrap">${esc(workbenchSync.taskResult(b.resolution.dispatch.task_id).summary)}</p></details>` : ""}
+            ${taskSummaryHtml(b)}
+            ${workbenchSync?.config?.interfaceCapabilities?.humanReview && !b.dispatch?.task_id && !["resolved","dormant"].includes(b.status)?`<button type="button" data-bug-assign="${escAttr(b.id)}" data-bug-node="${escAttr(row.from)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${attach}
           </div>
         </li>`;
@@ -3723,6 +3751,9 @@ function renderDetail(){
     </details>`:""}`;
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
+  el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
+  el.querySelectorAll("[data-bug-assign]").forEach(button=>button.onclick=async()=>{const owner=findPath(button.dataset.bugNode)?.at(-1),bug=owner?.bugs.find(item=>item.id===button.dataset.bugAssign);const assignment=await promptBugAssignment(owner,bug);if(assignment) await dispatchBugToSession(owner,bug,assignment.sessionId,assignment.plan);});
+  el.querySelectorAll("[data-todo-assign]").forEach(button=>button.onclick=async()=>{const todo=node.todos.find(item=>item.id===button.dataset.todoAssign);const assignment=await promptTodoAssignment(node,todo);if(assignment) await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);});
   el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
   el.querySelectorAll("[data-todo-send]").forEach(button=>button.onclick=()=>sendPendingTodo(node,node.todos.find(todo=>todo.id===button.dataset.todoSend)));
   const q = s=>el.querySelector(s);
@@ -3899,24 +3930,35 @@ function renderDetail(){
   };
 }
 
-/* ================= Bug 叉掉 → Agent 沉淀 → 休眠 ================= */
+/* ================= 人类验收：只持久化决定，不派发总结 ================= */
 async function crossBug(node, bugId){
   const home = ((node.bugs||[]).some(b=>b.id===bugId) ? node : findBugHome(bugId)) || node;
-  const bug = (home.bugs||[]).find(b=>b.id===bugId);
-  const previousSummary = bug?.resolution?.dispatch?.task_id;
-  if(!bug || !["open","fixed","resolved"].includes(bug.status) || previousSummary && !["failed","cancelled"].includes(workbenchSync?.taskState(previousSummary)) || bugDispatching.has(bugId)) return;
-  const sessions = bugSessionsOf(bug);
-  const sessionId = bug.dispatch?.session_id || (sessions.length===1 ? sessions[0] : null);
-  if(!sessionId){ workbenchSync?.setStatus(workbenchSync.status,"缺少唯一负责 Session，尚未提交 Bug 总结"); return; }
-  bugDispatching.add(bugId);
+  return reviewWorkItem(home.id,"bug",bugId,"approved");
+}
+function reviewReason(){
+  return new Promise(resolve=>{
+    const dialog=document.createElement("dialog");
+    dialog.innerHTML='<form method="dialog"><h3>验收不通过</h3><label>不满意的地方（可选）<textarea name="reason" maxlength="2000"></textarea></label><p>反馈将保存，等待后续主 Agent 接入；不会自动返工。</p><button value="submit">提交反馈</button><button value="cancel">取消</button></form>';
+    dialog.onclose=()=>{const reason=dialog.returnValue==="submit"?dialog.querySelector("textarea").value:null;dialog.remove();resolve(reason);};
+    document.body.append(dialog);dialog.showModal();
+  });
+}
+async function reviewWorkItem(nodeId,kind,itemId,decision){
+  const key=`${nodeId}:${kind}:${itemId}`;
+  if(reviewingItems.has(key)) return;
+  const node=findPath(nodeId)?.at(-1), item=node?.[kind==="bug"?"bugs":"todos"]?.find(value=>value.id===itemId);
+  const task=workbenchSync?.taskStates.get(item?.dispatch?.task_id);
+  if(!item || !task?.result){workbenchSync?.setStatus(workbenchSync.status,"Agent 尚未提交结果，不能验收");return;}
+  reviewingItems.add(key);
   try{
+    const reason=decision==="rejected"?await reviewReason():"";
+    if(reason===null) return;
     await workbenchSync.flush();
-    await workbenchSync.summarizeBug(sessionId,home.id,bugId,bug.dispatch?.task_id||"",previousSummary||"");
-    // Cloud atomically saves the confirmation. Read that result instead of
-    // submitting a second, stale browser write racing its state notification.
+    if(workbenchSync.dirty()) throw new Error("请先保存或恢复当前编辑");
+    await workbenchSync.reviewTask({nodeId,kind,itemId,sessionId:item.dispatch.session_id,taskId:task.taskId,resultVersion:task.version,decision,reason});
     await workbenchSync.reload();
-  }catch(error){ workbenchSync?.setStatus(workbenchSync.status,"总结尚未确认："+error.message); }
-  finally{ bugDispatching.delete(bugId); }
+  }catch(error){workbenchSync?.setStatus(workbenchSync.status,"验收尚未确认："+error.message);}
+  finally{reviewingItems.delete(key);renderAll();}
 }
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */

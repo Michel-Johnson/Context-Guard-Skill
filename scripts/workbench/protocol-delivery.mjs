@@ -13,7 +13,8 @@ export async function executionPrompt(message, readObject) {
       return [brief.content.text,
         '通过已安装 Context Guard Skill 执行以下命令（当前 Session，遵守仓库规则）：',
         `开始：map task start ${message.id}`,
-        `完成：map task finish ${message.id} --summary "实际结果"`,
+        `完成：map task finish ${message.id} --summary "实际结果、验证证据与可复用经验"`,
+        '完成时一并提交总结，之后等待人类验收；不要等待勾选后再生成总结。',
         '失败或取消时加 --outcome failed/cancelled。重试使用同一编号；完成不代表发布 Main。'].join('\n');
     }
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',

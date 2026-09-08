@@ -116,4 +116,13 @@ test('IF-030: browser retries and reloads retain the delivery ID and refuse an o
   await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /未返回可靠交付回执/);
   reloaded.call = () => assert.fail('uncertain delivery must not dispatch again');
   await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /不会重复发送/);
+  reloaded.config.interfaceCapabilities.humanReview = true; reloaded.viewId = 'main';
+  const review = { sessionId: 's', taskId: 't', resultVersion: 'v1', nodeId: 'node', itemId: 'todo', kind: 'todo', decision: 'approved' }, reviewIds = [];
+  reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); throw new Error('review reply lost'); };
+  await assert.rejects(reloaded.reviewTask(review));
+  reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); return { operationId: input.operationId, review: input }; };
+  await reloaded.reviewTask(review);
+  assert.equal(reviewIds[0], reviewIds[1], 'review retry preserves its operation identity');
+  reloaded.viewId = 'session:s';
+  await assert.rejects(reloaded.reviewTask(review), /主工作台/);
 });

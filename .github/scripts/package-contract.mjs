@@ -1,4 +1,5 @@
 export const packedFiles = [
+  "scripts/cloud/task-review.mjs",
   "scripts/workbench/device-heartbeat.mjs",
   "scripts/workbench/protocol-delivery.mjs",
   "scripts/workbench/protocol-workflow.mjs",

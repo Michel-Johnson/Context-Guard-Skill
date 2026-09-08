@@ -13,7 +13,7 @@ import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
 import { readEvents } from '../scripts/workbench/protocol-events.mjs';
 import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
-import { commitSessionMap, memoryHeads } from '../scripts/cloud/memory.mjs';
+import { commitSessionMap, commitMainMemoryMap, memoryHeads } from '../scripts/cloud/memory.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator } from '../scripts/workbench/sync-coordinator.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
@@ -21,6 +21,30 @@ import { resolveProject } from '../scripts/workbench/project.mjs';
 import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { reviewInput, reviewOperations, pendingReviewFeedback } from '../scripts/cloud/task-review.mjs';
+import { applyOperations } from '../prototype/map-model.mjs';
+
+test('human review binds the result, preserves feedback and never publishes failed work', () => {
+  const input = reviewInput({ operationId: 'r1', sessionId: 's1', taskId: 't1', resultVersion: 'v1', nodeId: 'R', itemId: 'TD1', kind: 'todo', decision: 'rejected', reason: 'needs correction' });
+  const task = { taskId: 't1', sessionId: 's1', version: 'v1', result: { outcome: 'failed', summary: 'Evidence of failure' } };
+  const document = { v: 1, root: { id: 'R', title: 'Root', todos: [{ id: 'TD1', title: 'Verify task', dispatch: { task_id: 't1', session_id: 's1' } }], memories: [{ id: 'existing', text: 'Preserve this memory' }], children: [] } };
+  assert.throws(() => reviewInput({ ...input, reason: 'x'.repeat(2001) }), /required/);
+  assert.throws(() => reviewOperations(document, { ...input, decision: 'approved' }, task), /success/);
+  assert.throws(() => reviewOperations(document, input, { ...task, version: 'v2' }), /changed/);
+  const rejected = applyOperations(document, reviewOperations(document, input, task).operations, { kind: 'human' }).doc;
+  assert.deepEqual(rejected.root.memories, document.root.memories);
+  assert.equal(pendingReviewFeedback(rejected).length, 1);
+  assert.deepEqual(reviewOperations(rejected, input, task).operations, []);
+  // A new execution or reassignment must not lose previously pending feedback.
+  rejected.root.todos[0].dispatch = { task_id: 't2', session_id: 's2' };
+  const next = { ...input, operationId: 'r2', taskId: 't2', sessionId: 's2', resultVersion: 'v2', decision: 'approved' };
+  const nextTask = { taskId: 't2', sessionId: 's2', version: 'v2', result: { outcome: 'success', summary: 'Verified correction' } };
+  const accepted = applyOperations(rejected, reviewOperations(rejected, next, nextTask).operations, { kind: 'human' }).doc;
+  assert.equal(accepted.root.todos[0].status, 'done');
+  assert.equal(accepted.root.memories.length, 2);
+  assert.equal(pendingReviewFeedback(accepted)[0].sessionId, 's1');
+  assert.throws(() => reviewOperations(accepted, input, task), /changed/);
+});
 
 async function heartbeatDevice(device) {
   const { origin, ...input } = await device.runtime.prepare();
@@ -278,17 +302,19 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
   assert.equal(delivered.length, 2, 'restart must not redeliver either accepted task');
-  const summaryInput = { operationId: 'summary-one', sessionId: 's2', nodeId: 'R', bugId: 'B41', purpose: 'summary', sourceTaskId: '' };
-  assert.equal((await cloudCall('/api/session-message', { ...summaryInput, sessionId: 's' })).status, 409, 'summary cannot move to another Session');
-  const summaryResponses = await Promise.all([summaryInput, { ...summaryInput, operationId: 'summary-other-browser' }].map(async input => {
-    const response = await cloudCall('/api/session-message', input); assert.equal(response.status, 200); return response.json();
-  }));
-  assert.equal(summaryResponses[0].taskId, summaryResponses[1].taskId, 'concurrent confirmation creates one summary task');
-  const saved = JSON.parse(await fs.readFile(memoryFile, 'utf8')).main.memory.map.root.bugs.find(bug => bug.id === 'B41');
-  assert.equal(saved.status, 'resolved'); assert.equal(saved.resolution.dispatch.task_id, summaryResponses[0].taskId);
-  assert.equal(saved.resolution.summary, undefined, 'confirmation does not fabricate a summary');
+  assert.equal((await cloudCall('/api/session-message', { operationId: 'old-summary', sessionId: 's2', nodeId: 'R', bugId: 'B41', purpose: 'summary' })).status, 409);
+  const assignedBug = await (await cloudCall('/api/session-message', { operationId: 'bug-work', sessionId: 's2', nodeId: 'R', bugId: 'B41' })).json();
+  const linkWork = async (field, id, sessionId, taskId) => {
+    const snapshot = JSON.parse(await fs.readFile(memoryFile, 'utf8')).main;
+    await commitMainMemoryMap(memory, 'context-guard', { operationId: `link-${id}`, baseVersion: snapshot.version,
+      operations: [{ type: 'update', id: 'R', fields: { [field]: snapshot.memory.map.root[field].map(item => item.id === id ? { ...item, dispatch: { task_id: taskId, session_id: sessionId } } : item) } }] });
+  };
+  await linkWork('bugs', 'B41', 's2', assignedBug.taskId);
+  await linkWork('todos', 'TD1', 's', assigned.taskId);
+  const bugReview = { operationId: 'review-bug', sessionId: 's2', taskId: assignedBug.taskId, resultVersion: 'not-finished', nodeId: 'R', itemId: 'B41', kind: 'bug', decision: 'approved' };
+  assert.equal((await cloudCall('/api/task-review', bugReview)).status, 409, 'unfinished task cannot be accepted');
   await waitFor(() => delivered.length === 3);
-  assert.equal(delivered[2].sessionId, 's2'); assert.match(delivered[2].message, /仅根据本会话记录总结/);
+  assert.equal(delivered[2].sessionId, 's2'); assert.match(delivered[2].message, /完成时一并提交总结/);
   const summaryDelivery = delivered[2].message.match(/map task start (\S+)/)[1];
   const freshSecond = await request(local.state, '/api/session', { method: 'POST', body: { sessionId: 's2', worktreeRoot: root } });
   const summaryReport = body => request(local.state, '/api/v2/task-report', { token: freshSecond.token, method: 'POST', body: { deliveryId: summaryDelivery, ...body } });
@@ -300,12 +326,35 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   await assert.rejects(summaryReport({ stage: 'finished', summary: '' }));
   const cliFinish = await exec(process.execPath, [fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url)), 'map', 'task', 'finish', summaryDelivery, '--summary', actualSummary, '--root', root, '--session', 's2'], { windowsHide: true });
   assert.equal(JSON.parse(cliFinish.stdout).data.stage, 'finished');
-  const summaryStatus = await cloudCall('/api/task-status', { tasks: [{ taskId: summaryResponses[0].taskId, sessionId: 's2' }] });
+  const summaryStatus = await cloudCall('/api/task-status', { tasks: [{ taskId: assignedBug.taskId, sessionId: 's2' }] });
   const summaryResult = (await summaryStatus.json()).tasks[0];
   assert.equal(summaryResult.state, 'completed'); assert.equal(summaryResult.result.summary, actualSummary);
-  const repeatedSummary = await cloudCall('/api/session-message', { ...summaryInput, operationId: 'summary-after-completion' });
-  assert.equal((await repeatedSummary.json()).taskId, summaryResponses[0].taskId);
-  assert.equal(delivered.length, 3);
+  assert.equal((await cloudCall('/api/task-review', bugReview)).status, 409, 'stale result is rejected');
+  bugReview.resultVersion = summaryResult.version;
+  assert.equal((await fetch(`${cloud.url}/api/workbench/projects/context-guard/api/task-review?view=main`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bugReview) })).status, 401);
+  assert.equal((await cloudCall('/api/task-review', { ...bugReview, sessionId: 's' })).status, 404);
+  const reviewed = await Promise.all(Array.from({ length: 20 }, (_, index) => cloudCall('/api/task-review', { ...bugReview, operationId: `review-browser-${index}` })));
+  assert.ok(reviewed.every(response => response.status === 200), 'concurrent human approvals are idempotent');
+  const persisted = () => fs.readFile(memoryFile, 'utf8').then(text => JSON.parse(text).main.memory.map.root);
+  const saved = await persisted();
+  assert.equal(saved.bugs.find(bug => bug.id === 'B41').review.decision, 'approved');
+  assert.equal(saved.bugs.find(bug => bug.id === 'B41').status, 'resolved');
+  assert.equal(saved.memories.filter(item => item.taskId === assignedBug.taskId).length, 1);
+  assert.equal(saved.memories.find(item => item.taskId === assignedBug.taskId).text, actualSummary);
+  assert.equal((await cloudCall('/api/task-review', { ...bugReview, decision: 'rejected' })).status, 409, 'opposite decision cannot replace this version');
+  const todoResult = (await (await cloudCall('/api/task-status', { tasks: [{ taskId: assigned.taskId, sessionId: 's' }] })).json()).tasks[0];
+  const rejection = { operationId: 'reject-todo', sessionId: 's', taskId: assigned.taskId, resultVersion: todoResult.version, nodeId: 'R', itemId: 'TD1', kind: 'todo', decision: 'rejected', reason: '没有满足验收条件' };
+  assert.equal((await cloudCall('/api/task-review', rejection)).status, 200);
+  assert.equal((await cloudCall('/api/task-review', rejection)).status, 200);
+  const feedback = await fetch(`${cloud.url}/api/workbench/projects/context-guard/api/review-feedback?view=main`, { headers: cloudHeaders }).then(response => response.json());
+  assert.equal(feedback.items.length, 1); assert.equal(feedback.items[0].reason, rejection.reason);
+  assert.equal(feedback.items[0].sessionId, 's');
+  assert.equal((await persisted()).todos.find(todo => todo.id === 'TD1').status, 'pending');
+  await cloud.close();
+  cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), memoryConfig: memory, protocolConfig, port: cloudPort, browserToken: 'test-browser', browserPasswordHash: await createWorkbenchPasswordHash('test-only') });
+  assert.equal((await cloudCall('/api/task-review', rejection)).status, 200, 'restart preserves review idempotency');
+  assert.equal((await persisted()).memories.length, saved.memories.length);
+  assert.equal(delivered.length, 3, 'approval and rejection never dispatch a model task');
 });
 
 test('IF-037: the project heartbeat reconciles actual private Cloud Map edits without a per-Session event connection', async t => {

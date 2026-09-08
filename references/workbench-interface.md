@@ -356,20 +356,27 @@ The start and finish IDs remain stable on retry. Changed retry content is reject
 an unknown delivery or another Session's delivery cannot be reported. Older explicit
 `map exchange` messages remain supported for already-delivered tasks.
 
-Human Bug confirmation in Cloud uses the existing `/api/session-message` endpoint
-with `purpose: summary` and the original `sourceTaskId`. It queues a summary in the
-original Session, marks the Bug resolved, and persists its `resolution.dispatch`
-link before acknowledging the browser. Task creation and the Map link use separate
-durable stores: retries repair the link after a partial failure without creating
-another task. Concurrent confirmations share one summary identity. A failed or
-cancelled summary may be explicitly retried with `retryOf`; an older response cannot
-replace a newer summary link. This is human confirmation, not Agent publication.
+The executing Agent supplies the result, verification evidence and reusable
+experience in its finish `summary`, before human verification. Execution success
+means awaiting verification, not human acceptance. Cloud offers ✓ / ✕ for both
+Bugs and TODOs; neither button queues another model task. Legacy `purpose: summary`
+dispatch returns `ACTION_REPLACED`; existing summary results remain readable.
 
-The queue remains Cloud-owned. The responsible Session reports the actual cause,
-fix and verification in the existing finish `summary`; missing evidence must be
-stated, not invented. Task status exposes the persisted result for rendering after
-refresh. Pending or failed summaries remain visibly unfinished. There is no timer
-that manufactures experience, and no second model process is started for a summary.
+Authenticated human POST `/api/task-review?view=main` under the project workbench
+accepts `{operationId,sessionId,taskId,resultVersion,nodeId,itemId,kind,decision,reason?}`.
+`kind` is `bug|todo`, `decision` is `approved|rejected`; `resultVersion` is the task
+status version. The server checks the exact work-item dispatch and finished result.
+Approval requires success and a nonempty summary. One Main transaction records the
+decision and adds only this result's summary as a stable-ID node memory; it does
+not merge Git code or publish the entire Session Map. Same-version retries and
+concurrent identical decisions deduplicate; conflicting decisions or stale versions
+fail. The client reloads the receipt rather than submitting a second Map edit.
+
+Rejection reopens the item and appends durable `reviewFeedback` with task/result/
+Session identity, reason and server time. GET `/api/review-feedback?view=main`
+returns pending feedback to the authenticated workbench. Feedback is not an
+execution queue: no Agent is assumed, no model is woken, and no automatic rework
+occurs. Main Agent routing, acknowledgement and clarification are future work.
 
 ## Prompt signals and Map TODOs
 
@@ -414,7 +421,11 @@ context-guard plan-start --root <project> --session <actual-session-id> --input 
 capability. Node grants are independently checked. The command reads the nodes,
 requires pending inbox changes to be reviewed/acknowledged, hashes the declared
 files, records timestamps and prepares configured Cloud Sync. A second active
-plan is rejected. There is no invented native "plan approved" Hook event.
+plan is rejected unless `extend:true` explicitly extends the existing approved
+plan. Extensions retain its ID, original file baselines and unfinished acceptance,
+union the scope and record an amendment; prior archive evidence is invalidated.
+Already-dirty new paths require scope review and use Git HEAD as their baseline,
+so extension cannot hide unverified edits. There is no invented native "plan approved" Hook event.
 
 Mutating tools require an active plan. Known paths outside the plan are denied.
 Unknown shell/script scopes are explicitly marked unverified, never described

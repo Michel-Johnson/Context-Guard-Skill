@@ -1365,6 +1365,7 @@ try {
   passed = true;
   console.log(JSON.stringify({ output, checks, errors }));
 } catch (e) {
+  if (page) errors.push(await page.evaluate(() => ({ status: workbenchSync?.status, view: workbenchSync?.viewId, operations: workbenchSync?.operations(), inputDraft: !!workbenchSync?.inputDraft, pendingRequest: !!workbenchSync?.pendingRequest, inflight: !!workbenchSync?.inflight, composing: workbenchSync?.composing, recovery: workbenchSync?.serverRecovery, baseBugs: workbenchSync?.baseTree?.children?.[0]?.bugs, docBugs: workbenchSync?.doc?.root?.children?.[0]?.bugs })).catch(() => 'Sync diagnostics unavailable'));
   if (page) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
   // Only synthetic fixture text/errors; no HTTP headers, tokens, or user directories.
   await fs.writeFile(path.join(output, 'failure.txt'), `stage=${stage}\n${e.stack}\n${JSON.stringify(errors)}`);
