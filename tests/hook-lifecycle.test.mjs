@@ -308,10 +308,43 @@ test('read-only inspection remains available without a plan while writes stay ga
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --diagnose --root "${project}"`,
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --binding-status --root "${project}" --session ${session}`,
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" plan-status --root "${project}" --session ${session}`,
+    `context-guard map status --root "${project}" --session ${session}; echo EXIT=$?`,
+    `context-guard map status --root "${project}" --session ${session} 2>&1; echo EXIT=$?`,
+    `context-guard set-language --root "${project}" --language zh`,
+    `context-guard write-candidates --root "${project}" --input /tmp/cg-candidates.json`,
+    `context-guard map apply --root "${project}" --session ${session} --input /tmp/cg-map-request.json`,
+    'sed -n \'1,20p\' RULE.md 2>&1',
+    'ls 2>&1 | head',
   ];
   for (const command of commands) {
     const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
     assert.equal(result.json.hookSpecificOutput?.permissionDecision, undefined, command);
+    const claude = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command } });
+    assert.equal(claude.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
+
+  const requestWrite = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write',
+    tool_input: { file_path: path.join(os.tmpdir(), 'cg_write_probe.json'), content: '{"approved":true}' },
+  });
+  assert.equal(requestWrite.json.hookSpecificOutput?.permissionDecision, undefined);
+  const projectWrite = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write',
+    tool_input: { file_path: path.join(project, 'src/note.txt'), content: 'no' },
+  });
+  assert.equal(projectWrite.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(projectWrite.json.hookSpecificOutput.permissionDecisionReason, /plan-start --input -/);
+  for (const filePath of [
+    path.join(project, '..', 'other-worktree', 'src', 'a.py'),
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    path.join(os.tmpdir(), 'cg_write_probe.py'),
+  ]) {
+    const blocked = hook('PreToolUse', project, session, {
+      platform: 'claude', tool_name: 'Write',
+      tool_input: { file_path: filePath, content: 'no' },
+    });
+    assert.equal(blocked.json.hookSpecificOutput.permissionDecision, 'deny', filePath);
+    assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   }
 
   for (const command of ['touch src/new.txt', 'sed -ni s/a/b/ src/a.txt', 'git branch new-feature', 'curl -XPOST http://127.0.0.1/api/reset', 'rm context-guard plan-start']) {
@@ -813,10 +846,24 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md && rg -n hook scripts | head -5'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --diagnose --root .'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --root . --session session-1'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s 2>&1; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard set-language --root . --language zh'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard write-candidates --root . --input /tmp/c.json'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md 2>&1'}})
+    assert hook.control_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map apply --input /tmp/r.json; echo EXIT=$?'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | context-guard plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | node /tmp/context-guard-skill.js plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | python3 /tmp/context_guard.py plan-start --input -'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'python3 payload.py | context-guard plan-start --input -'}})
+    assert hook.mutating_tool({'tool_name':'Write','tool_input':{'file_path':'/tmp/cg_write_probe.json','content':'{}'}})
+    request = Path(tempfile.gettempdir()) / 'cg_write_probe.json'
+    assert hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(request)}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(root / 'src/a.txt')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':'../other-worktree/src/a.py'}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(root.parent / 'other-worktree' / 'src' / 'a.py')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(Path.home() / '.claude' / 'settings.json')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(Path(tempfile.gettempdir()) / 'cg_write_probe.py')}}, root)
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rg --pre ./writer pattern .'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'find . -delete'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git diff --output=leak.patch'}})
