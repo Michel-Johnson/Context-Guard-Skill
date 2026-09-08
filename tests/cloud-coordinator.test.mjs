@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox } from '../scripts/cloud/coordinator-service.mjs';
-import { createCoordinatorExecutor } from '../scripts/cloud/coordinator-tools.mjs';
+import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -56,6 +56,18 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
 
 const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };
 const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test-model', token: 'synthetic-private-value' };
+test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
+  const names = [];
+  const execute = createCoordinatorExecutor({ readReference: async name => { names.push(name); return { name }; } });
+  assert.deepEqual(coordinatorTools.find(tool => tool.name === 'read_reference').input_schema.properties.name.enum, coordinatorReferences);
+  for (const name of ['agent-handoff', 'agent-handoff.md', 'references/agent-handoff.md']) {
+    assert.deepEqual(await execute('read_reference', { name }, { operationId: 'reference' }), { name: 'agent-handoff.md' });
+  }
+  for (const name of ['../agent-handoff.md', 'references/../agent-handoff.md', '/etc/passwd', 'server-memory.md']) {
+    await assert.rejects(execute('read_reference', { name }, { operationId: 'denied' }), { code: 'INVALID_ARGUMENT' });
+  }
+  assert.equal(names.length, 3);
+});
 test('Coordinator transport pins the provider/model and never retries or echoes provider secrets', async () => {
   let calls = 0;
   const model = new CoordinatorModel({ ...config, fetch: async (url, options) => {
