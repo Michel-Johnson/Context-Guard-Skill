@@ -36,8 +36,17 @@ export const projectLockPath = project => project.kind === 'git' ? path.join(pro
 const execFileAsync = promisify(execFile);
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
+function missingCommitFields(input) {
+  const missing = [];
+  if (typeof input?.baseVersion !== 'string' || !input.baseVersion) missing.push('baseVersion');
+  if (!Array.isArray(input?.operations)) missing.push('operations');
+  return missing;
+}
+
 export async function prepareSessionCommit(store, input, actor, sessionId) {
   if (!sessionId || !input?.recoveryOf) {
+    const missing = missingCommitFields(input);
+    if (missing.length) throw new MapError('INVALID_ARGUMENT', `Missing required field${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
     return { input: sessionId ? { ...input, operations: restoreSessionWorkItemOperations(store.doc, input.operations, sessionId) } : input, actor };
   }
   const operation = Array.isArray(input.operations) && input.operations.length === 1 ? input.operations[0] : null;

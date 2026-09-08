@@ -161,6 +161,22 @@ test('attach-bug recovers when an old operation receipt outlives the Map entry',
   assert.equal(commit, undefined);
 });
 
+test('map apply rejects a request that only has operationId', async () => {
+  const sessionId = agent.sessionId;
+  await assert.rejects(
+    prepareSessionCommit({ doc: {} }, { operationId: 'op-bad-only' }, agent, sessionId),
+    error => error.code === 'INVALID_ARGUMENT' && error.status === 400 && /baseVersion/.test(error.message) && /operations/.test(error.message),
+  );
+  await assert.rejects(
+    prepareSessionCommit({ doc: {} }, { operationId: 'op-bad-ops', baseVersion: 'v1' }, agent, sessionId),
+    error => error.code === 'INVALID_ARGUMENT' && error.status === 400 && error.message.includes('operations') && !error.message.includes('baseVersion'),
+  );
+  await assert.rejects(
+    prepareSessionCommit({ doc: {} }, { operationId: 'op-bad-base', operations: [{ type: 'update', id: 'N1', fields: { title: 'x' } }] }, agent, sessionId),
+    error => error.code === 'INVALID_ARGUMENT' && error.status === 400 && error.message.includes('baseVersion') && !error.message.includes('operations'),
+  );
+});
+
 test('orphan Bug recovery requires the original attachment receipt from the same Session', async () => {
   const sessionId = agent.sessionId, bug = { id: 'B4', title: '恢复坏例', status: 'open' };
   const input = { recoveryOf: `bug:${sessionId}:${bug.id}`, operations: [{ type: 'attach-bug', id: 'N1', bug }] };
@@ -737,12 +753,12 @@ test('Managed coordinator bootstraps a closed Session and accepts changes alread
   t.after(async () => { await coordinator.close().catch(() => {}); await store.close().catch(() => {}); await service.close().catch(() => {}); });
   await coordinator.start();
   await until(async () => (await memoryRequest(project, 'sessions/managed-session')).snapshot?.generation === 2
-    && coordinator.snapshot().status === 'synced', 6000);
+    && coordinator.snapshot().status === 'synced' && !coordinator.snapshot().conflict, 6000);
   const reopened = (await memoryRequest(project, 'sessions/managed-session')).snapshot;
   assert.equal(reopened.memory.map.root.children[0].title, '已经进入 Main');
   assert.deepEqual(reopened.memory.display, { name: '真实 Codex 任务', platform: 'codex' });
-  assert.equal(coordinator.snapshot().status, 'synced');
-  assert.equal(coordinator.snapshot().conflict, null);
+  // Bootstrap can start another upload/reconcile after the first synced snapshot.
+  await until(() => coordinator.snapshot().status === 'synced' && coordinator.snapshot().conflict === null, 2000);
   assert.equal(coordinator.abort, null, 'managed mode must not open a per-Session event stream');
 });
 
@@ -1225,6 +1241,9 @@ test('Session work-item scope hides other assignments and preserves them during 
   assert.equal(restored.find(item => item.id === 'B1').title, '我的（已修改）');
   assert.deepEqual(restored.find(item => item.id === 'B2').sessions, ['session-b']);
   assert.deepEqual(restored.find(item => item.id === 'B3').sessions, ['session-b']);
+  assert.throws(() => restoreSessionWorkItemOperations(doc, undefined, 'session-a'), { code: 'INVALID_OPERATIONS' });
+  assert.throws(() => restoreSessionWorkItemOperations(doc, null, 'session-a'), { code: 'INVALID_OPERATIONS' });
+  assert.throws(() => restoreSessionWorkItemOperations(doc, [], 'session-a'), { code: 'INVALID_OPERATIONS' });
   assert.throws(() => restoreSessionWorkItemOperations(doc, [{ type: 'update-bug', bug: { id: 'B2', status: 'resolved' } }], 'session-a'), { code: 'FORBIDDEN_WORK_ITEM' });
   assert.throws(() => restoreSessionWorkItemOperations(doc, [{ type: 'update', id: 'N1', fields: { bugs: [{ id: 'B2', title: '伪造覆盖', status: 'open', sessions: ['session-a'] }] } }], 'session-a'), { code: 'FORBIDDEN_WORK_ITEM' });
 
@@ -1318,6 +1337,11 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B1').title, '待分配');
     assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B2').title, '当前 Session 已修改');
     assert.equal(running.store.doc.root.children[0].bugs.find(item => item.id === 'B3').title, '分配给其他 Session');
+    const incomplete = await call('/api/commit', credential, { operationId: 'op-bad-only' });
+    assert.equal(incomplete.status, 400);
+    assert.equal(incomplete.data.error.code, 'INVALID_ARGUMENT');
+    assert.match(incomplete.data.error.message, /baseVersion/);
+    assert.match(incomplete.data.error.message, /operations/);
     assert.equal((await call('/api/commit', credential, edit(running.store, 'CLI权限'))).status, 200);
     await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] });
     assert.equal((await call('/api/commit', credential, edit(running.store, '已撤权'))).status, 403);
