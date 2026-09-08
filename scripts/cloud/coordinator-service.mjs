@@ -10,15 +10,17 @@ const error = (code, message) => Object.assign(new Error(message), { code, statu
 export class CoordinatorService {
   constructor({ directory, model, system, tools, execute, maxSteps = 12, simulated = false }) {
     this.file = path.join(directory, 'conversation.json');
+    this.mountFile = path.join(directory, 'mount-reviews.json');
     this.model = model; this.system = system; this.tools = tools; this.execute = execute;
     this.maxSteps = maxSteps; this.simulated = simulated; this.running = null;
   }
   async state() {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
+    const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
       retryInput: state.status === 'error' ? state.activeInput || null : null,
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
-        .map(([id, receipt]) => ({ id, ...receipt.result })),
+        .map(([id, receipt]) => ({ id, ...receipt.result, ...(receipt.result.kind === 'mount-proposal' ? { pending: !mounts.byProposal[id] } : {}) })),
       promptVersion: state.promptVersion || hash(this.system), simulated: this.simulated,
       messages: state.messages.map(message => ({ role: message.role,
         text: typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
@@ -26,7 +28,64 @@ export class CoordinatorService {
       })).filter(message => message.text || message.tools.length),
     };
   }
+  async reviewMount(input, commit) {
+    if (!input || Object.keys(input).some(key => !['id', 'proposalIds', 'decision', 'reason'].includes(key)) ||
+        typeof input.id !== 'string' || !input.id || input.id.length > 120 ||
+        !Array.isArray(input.proposalIds) || !input.proposalIds.length || input.proposalIds.length > 20 ||
+        input.proposalIds.some(id => typeof id !== 'string' || !id || id.length > 128) ||
+        new Set(input.proposalIds).size !== input.proposalIds.length || !['approved', 'rejected'].includes(input.decision) ||
+        typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 1000) throw error('INVALID_INPUT', 'Select a bounded proposal batch and record the human decision');
+    const proposalIds = [...input.proposalIds].sort();
+    const fingerprint = hash(encode({ proposalIds, decision: input.decision, reason: input.reason }));
+    return withFileLock(this.mountFile + '.lock', async () => {
+      const state = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
+      const previous = state.receipts[input.id];
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) throw error('ID_REUSED', 'Mount review request differs');
+        return previous.result;
+      }
+      const existing = proposalIds.map(id => state.byProposal[id]).filter(Boolean);
+      if (existing.length) {
+        const receipt = state.receipts[existing[0]];
+        if (existing.length !== proposalIds.length || existing.some(id => id !== existing[0]) || receipt.fingerprint !== fingerprint) throw error('CONFLICT', 'These proposals have already been reviewed');
+        state.receipts[input.id] = receipt;
+        await atomicWrite(this.mountFile, encode(state));
+        return receipt.result;
+      }
+      const available = (await this.state()).approvals;
+      const proposals = proposalIds.map(id => available.find(item => item.id === id && item.kind === 'mount-proposal'));
+      if (proposals.some(item => !item)) throw error('NOT_FOUND', 'Mount proposal is not available');
+      if (new Set(proposals.map(item => item.mainVersion)).size !== 1) throw error('CONFLICT', 'Review proposals from the same Main version together');
+      // Stable independently of a browser retry ID, including a crash between
+      // the atomic Main commit and this review receipt. No second task queue.
+      const operationId = `coordinator-mount:${hash(encode(proposalIds))}`;
+      const committed = input.decision === 'approved' ? await commit(proposals, operationId) : null;
+      const result = { id: input.id, proposalIds, decision: input.decision, reason: input.reason,
+        simulated: this.simulated, reviewedAt: new Date().toISOString(), committed,
+        nodes: proposals.map(item => ({ title: item.title, owns: item.owns })) };
+      state.receipts[input.id] = { fingerprint, result, notified: false };
+      for (const id of proposalIds) state.byProposal[id] = input.id;
+      await atomicWrite(this.mountFile, encode(state));
+      return result;
+    });
+  }
+  async notifyMountReview() {
+    const state = await readJSON(this.mountFile, { receipts: {} });
+    const receipt = Object.values(state.receipts).find(item => !item.notified);
+    if (!receipt) return false;
+    const result = receipt.result;
+    await this.submit({ id: `mount:${result.id}`, text: JSON.stringify({ type: 'human.mount-review', reviewId: result.id,
+      decision: result.decision, reason: result.reason, simulated: result.simulated, version: result.committed?.version, nodeIds: result.committed?.nodeIds,
+      instruction: '这是服务器保存的节点审核结果。读取最新 Main；通过后准备需求审核，拒绝后依据反馈修订。此结果不是任务派发授权。' }) }, { source: 'workflow' });
+    await withFileLock(this.mountFile + '.lock', async () => {
+      const latest = await readJSON(this.mountFile);
+      for (const saved of Object.values(latest.receipts)) if (saved.result.id === receipt.result.id) saved.notified = true;
+      await atomicWrite(this.mountFile, encode(latest));
+    });
+    return true;
+  }
   async submit({ id = randomUUID(), text, retry = false }, { source = 'human' } = {}) {
+    if (this.stopping) throw error('UNAVAILABLE', 'Coordinator is shutting down');
     if (typeof id !== 'string' || !id || id.length > 128 || typeof text !== 'string' || !text.trim() || text.length > 8000) throw error('INVALID_INPUT', 'Provide a bounded message and stable request ID');
     await withFileLock(this.file + '.submit.lock', async () => {
       const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
@@ -50,6 +109,7 @@ export class CoordinatorService {
     return { accepted: true, id };
   }
   kick() {
+    if (this.stopping) return;
     if (!this.running) this.running = this.run().finally(() => { this.running = null; });
     this.running.catch(() => {});
   }
@@ -59,7 +119,7 @@ export class CoordinatorService {
       if (!state?.activeTurnId || state.status === 'error') return;
       const save = async value => atomicWrite(this.file, encode(value));
       try {
-        while (state.activeTurnId && state.steps < this.maxSteps) {
+        while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
           state.steps++;
           await save(state);
           state = await coordinatorStep({ turnId: state.activeTurnId, state, model: this.model,
@@ -67,14 +127,14 @@ export class CoordinatorService {
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
           await save(state);
         }
-        if (state.activeTurnId) throw error('STEP_LIMIT', 'Coordinator stopped at its bounded tool-call limit');
+        if (!this.stopping && state.activeTurnId) throw error('STEP_LIMIT', 'Coordinator stopped at its bounded tool-call limit');
       } catch (cause) {
         state.status = 'error'; state.error = { code: cause.code || 'COORDINATOR_FAILED', message: '协调器已暂停；保留原对话与工具回执，可重试或检查配置。' };
         await save(state);
       }
     });
   }
-  async close() { await this.running?.catch(() => {}); }
+  async close({ stop = false } = {}) { if (stop) this.stopping = true; await this.running?.catch(() => {}); }
 }
 
 // Consume the existing protocol journal as an independent consumer. Acceptance
@@ -96,6 +156,7 @@ export class CoordinatorInbox {
     const state = await this.service.state();
     if (state.activeTurnId || state.status === 'error') return;
     this.lastError = null;
+    if (await this.service.notifyMountReview?.()) return;
     for (const id of this.sessionIds) {
       if (this.stopped) return;
       try {

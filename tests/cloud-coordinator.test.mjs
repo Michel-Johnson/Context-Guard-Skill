@@ -11,6 +11,108 @@ import { createHash } from 'node:crypto';
 import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
+import { readMemoryView } from '../scripts/cloud/memory.mjs';
+
+test('Mount review batches persist, replay a lost Main reply, and notify the existing conversation once', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-review-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const proposals = ['a', 'b', 'c'].map(id => [id, { result: { kind: 'mount-proposal', mainVersion: 'main-v1', parentId: 'T0', title: id, owns: [`${id}/`], requiresHumanApproval: true } }]);
+  await fs.writeFile(path.join(directory, 'conversation.json'), JSON.stringify({ messages: [], requests: {}, status: 'idle', toolReceipts: Object.fromEntries(proposals) }));
+  let modelCalls = 0, effects = 0, loseReply = true;
+  const committed = new Map();
+  const commit = async (items, operationId) => {
+    assert.deepEqual(items.map(item => item.id), ['a', 'b']);
+    if (!committed.has(operationId)) { effects++; committed.set(operationId, { version: 'main-v2', nodeIds: ['A', 'B'] }); }
+    if (loseReply) { loseReply = false; throw new Error('lost Main reply'); }
+    return committed.get(operationId);
+  };
+  const options = { directory, system: 'Coordinator', tools: [], execute: async () => {}, simulated: true,
+    model: { next: async () => { modelCalls++; return { stop: 'end_turn', content: [{ type: 'text', text: 'read updated Main' }] }; } } };
+  let service = new CoordinatorService(options);
+  const input = { id: 'review', proposalIds: ['b', 'a'], decision: 'approved', reason: 'confirmed paths' };
+  await assert.rejects(service.reviewMount(input, commit), /lost Main reply/);
+  service = new CoordinatorService(options);
+  const result = await service.reviewMount(input, commit);
+  assert.equal(effects, 1); assert.equal(result.simulated, true);
+  assert.deepEqual(await service.reviewMount({ ...input, id: 'retry-after-reload' }, commit), result);
+  await assert.rejects(service.reviewMount({ ...input, decision: 'rejected' }, commit), { code: 'ID_REUSED' });
+  await assert.rejects(service.reviewMount({ ...input, id: 'other', proposalIds: ['a'] }, commit), { code: 'CONFLICT' });
+  await assert.rejects(service.reviewMount({ ...input, role: 'human' }, commit), { code: 'INVALID_INPUT' });
+  await service.notifyMountReview(); await service.close();
+  const saved = JSON.parse(await fs.readFile(service.mountFile, 'utf8'));
+  for (const receipt of Object.values(saved.receipts)) receipt.notified = false;
+  await fs.writeFile(service.mountFile, JSON.stringify(saved));
+  service = new CoordinatorService(options);
+  await service.notifyMountReview(); await service.close();
+  assert.equal(modelCalls, 1, 'lost notification acknowledgement does not replay the model turn');
+  assert.equal((await service.state()).approvals.find(item => item.id === 'a').pending, false);
+  const rejected = await service.reviewMount({ id: 'reject-c', proposalIds: ['c'], decision: 'rejected', reason: 'wrong node' }, () => { throw new Error('must not write Main'); });
+  assert.equal(rejected.committed, null);
+});
+
+test('Coordinator shutdown finishes its current durable step and restart resumes without repeating tools', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-stop-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let release, entered, calls = 0, effects = 0;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const options = { directory, system: 'Coordinator', tools: [{ name: 'read_map' }], execute: async () => { effects++; return { version: 'v1' }; },
+    model: { next: async () => {
+      calls++;
+      if (calls === 1) { entered(); await gate; return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'read', name: 'read_map', input: {} }] }; }
+      return { stop: 'end_turn', content: [{ type: 'text', text: 'done' }] };
+    } } };
+  const service = new CoordinatorService(options);
+  await service.submit({ id: 'original', text: 'Read the map' }); await waiting;
+  const closing = service.close({ stop: true }); release(); await closing;
+  assert.equal(calls, 1); assert.equal(effects, 1);
+  assert.equal((await service.state()).activeTurnId, 'original');
+  await assert.rejects(service.submit({ id: 'new', text: 'new' }), { code: 'UNAVAILABLE' });
+  const restarted = new CoordinatorService(options); restarted.kick(); await restarted.close();
+  assert.equal((await restarted.state()).status, 'waiting-for-user');
+  assert.equal(calls, 2); assert.equal(effects, 1);
+});
+
+test('Cloud mount confirmation is browser-only, commits a versioned batch atomically, and preserves replay after restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-http-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic-private' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic-admin', projects: {
+    [projectId]: { root: directory, token: 'synthetic-agent', ref: 'refs/heads/main', coordinator: { enabled: true, providerFile, bindings: {}, simulated: true } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { root: { id: 'T0', title: 'Lab', children: [] } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const conversation = path.join(directory, 'coordinators', projectId);
+  await fs.mkdir(conversation, { recursive: true });
+  await fs.writeFile(path.join(conversation, 'conversation.json'), JSON.stringify({ messages: [], requests: {}, status: 'idle', toolReceipts: Object.fromEntries(['a', 'b', 'stale'].map(id => [id, { result: {
+    kind: 'mount-proposal', mainVersion: id === 'stale' ? 'old' : 'v1', parentId: 'T0', title: id, purpose: 'Independent lab responsibility', owns: [`${id}/`], requiresHumanApproval: true,
+  } }])) }));
+  const options = { dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
+    coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Review received' }] }) }),
+  };
+  server = await startCloudServer(options);
+  const input = { id: 'human-mount', proposalIds: ['a', 'b'], decision: 'approved', reason: 'Confirmed both responsibilities' };
+  const send = (body, token = 'test-browser') => fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator/mount-review`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await send(input, 'synthetic-agent')).status, 401);
+  assert.notEqual((await send({ ...input, role: 'human' })).status, 200);
+  assert.equal((await send({ ...input, id: 'stale-review', proposalIds: ['stale'] })).status, 409);
+  assert.equal((await readMemoryView(memoryConfig, projectId)).main.memory.map.root.children.length, 0);
+  const response = await send(input); assert.equal(response.status, 200);
+  const result = await response.json(); assert.equal(result.committed.nodeIds.length, 2);
+  assert.notEqual(result.committed.version, 'v1');
+  await server.close(); server = await startCloudServer(options);
+  assert.deepEqual(await (await send(input)).json(), result);
+  assert.deepEqual(await (await send({ ...input, id: 'after-reload' })).json(), result);
+  const main = (await readMemoryView(memoryConfig, projectId)).main;
+  assert.equal(main.memory.map.root.children.length, 2);
+  assert.ok(main.memory.map.root.children.every(node => node.proposal === 'accepted' && node.origin === 'human'));
+});
 
 test('Completion verifies GitHub repository, tested SHA, required check issuer and server publication in order', async () => {
   const sourceSha = 'a'.repeat(40), mergeSha = 'b'.repeat(40);
