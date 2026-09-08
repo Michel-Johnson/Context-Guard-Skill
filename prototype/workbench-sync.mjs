@@ -612,9 +612,15 @@ export class WorkbenchSync {
   async sendTodo(sessionId, nodeId, todoId) {
     return this.sendWorkItem({ sessionId, nodeId, todoId });
   }
-  async summarizeBug(sessionId, nodeId, bugId, sourceTaskId = '', retryOf = '') {
-    if (!this.config.interfaceCapabilities?.bugSummary) throw new Error('当前后端尚未支持真实 Bug 总结，请先升级');
-    return this.sendWorkItem({ sessionId, nodeId, bugId, sourceTaskId, retryOf, purpose: 'summary' });
+  async reviewTask(input) {
+    if (!this.config.interfaceCapabilities?.humanReview || this.viewId !== 'main') throw new Error('请在 Cloud 主工作台验收');
+    const key = `cg-task-review:${this.config.root}:${JSON.stringify(input)}`;
+    const request = stored(key) || { ...input, operationId: uniqueId() };
+    localStorage.setItem(key, JSON.stringify(request));
+    const result = await this.call('/api/task-review', request);
+    if (result.operationId !== request.operationId || result.review?.taskId !== input.taskId || result.review?.resultVersion !== input.resultVersion || result.review?.decision !== input.decision) throw new Error('验收回执不匹配，请重试原操作');
+    localStorage.removeItem(key);
+    return result;
   }
   async connectCloud(password) {
     const id = uniqueId();
@@ -681,7 +687,7 @@ export class WorkbenchSync {
       let changed = false;
       for (const item of result.tasks || []) {
         const previous = this.taskStates.get(item.taskId);
-        if (!previous || previous.state !== item.state) changed = true;
+        if (!previous || previous.state !== item.state || previous.version !== item.version) changed = true;
         this.taskStates.set(item.taskId, item);
       }
       if (changed) this.a.statusChanged?.();

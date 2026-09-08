@@ -1013,7 +1013,7 @@ def control_tool(payload: object) -> bool:
 def git_changed_paths(root: Path) -> list[str]:
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "-z"], cwd=root, capture_output=True,
+            ["git", "status", "--porcelain", "--untracked-files=all", "-z"], cwd=root, capture_output=True,
             timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError):
@@ -1125,7 +1125,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
     ctx = context_folder(root)
     plan = runtime.get("active_plan")
     if command == "plan-start":
-        if plan:
+        if plan and data.get("extend") is not True:
             raise ValueError("A plan is already active; finish it before opening another")
         if data.get("approved") is not True or not str(data.get("summary", "")).strip():
             raise ValueError("plan-start needs approved:true and summary; an explicit implementation request already satisfies approval")
@@ -1143,6 +1143,31 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         inbox = run_node_workbench(["map", "inbox", "--root", str(root), "--session", session, "--start"])
         if inbox.get("pending"):
             raise ValueError("Read/process and acknowledge Map inbox before starting the plan")
+        if plan:
+            old_paths = plan["paths"]
+            baseline = scope_snapshot(root, paths)
+            dirty_paths = set(git_changed_paths(root))
+            # Keep the original baseline inside the old scope: an extension
+            # must not hide earlier edits or complete pending acceptance.
+            for file, digest in baseline.items():
+                if not any(file == value or file.startswith(value.rstrip("/") + "/") for value in old_paths):
+                    if file in dirty_paths:
+                        prior = subprocess.run(["git", "show", "HEAD:" + file], cwd=root, capture_output=True, timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
+                        plan["scope_review_required"] = True
+                        if prior.returncode:
+                            continue
+                        digest = hashlib.sha256(prior.stdout).hexdigest()
+                    plan["baseline"].setdefault(file, digest)
+            plan["paths"] = sorted(set(old_paths + paths))
+            plan["node_ids"] = sorted(set(plan["node_ids"] + nodes))
+            if sync_configured(ctx):
+                checked_sync(root, session, "track", plan["paths"])
+            plan.setdefault("amendments", []).append({"at": utc_now(), "summary": data["summary"], "paths": paths, "node_ids": nodes})
+            plan["revision"] += 1
+            plan.pop("archive", None)
+            write_hook_runtime(root, session, runtime)
+            append_session_event(root, "plan-extend", "cli", session, {"plan_id": plan["id"], "occurred_at": utc_now()})
+            return plan
         baseline = scope_snapshot(root, paths)
         sync = prepare_plan_sync(root, session, paths) if sync_configured(ctx) else {}
         plan = {"id": "plan-" + hashlib.sha256(f"{session}:{utc_now()}".encode()).hexdigest()[:20],

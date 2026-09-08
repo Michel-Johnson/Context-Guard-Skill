@@ -94,11 +94,11 @@ try {
   await cloudPage.goto(`${cloud.url}/auth?token=cloud-admin&next=${encodeURIComponent('/projects/context-guard')}`);
   await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
   await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.locator('button.todo-check[data-todo="TD1"]').click();
+  await cloudPage.locator('button[data-todo-assign="TD1"]').click();
   const assignmentDialog = cloudPage.locator('dialog[open]');
   await assignmentDialog.locator('select[name="session"]').selectOption(sessionId);
   await assignmentDialog.locator('[data-submit]').click();
-  await cloudPage.waitForFunction(() => document.querySelector('button.todo-check[data-todo="TD1"]')?.title?.includes('Codex 已收到'), null, { timeout: 25000 });
+  await cloudPage.locator('#detail').getByText('Codex 已收到', { exact: true }).waitFor({ timeout: 25000 });
   assert.equal(delivered.length, 1); assert.equal(delivered[0].sessionId, sessionId);
   await cloudPage.locator('#session-chip').click();
   await cloudPage.locator(`#session-menu [data-session="${sessionId}"]`).click();
@@ -137,48 +137,55 @@ try {
   await cloudPage.locator('#session-chip').click();
   await cloudPage.locator('#session-menu [data-session="__all__"]').click();
   await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.route('**/api/session-message*', async route => {
+  await cloudPage.route('**/api/task-review*', async route => {
     const response = await route.fetch();
     await pause(200); // Let the committed Main state notification arrive first.
     await route.fulfill({ response });
   });
-  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
-  await cloudPage.locator('#detail').getByText('已解决 · 待总结', { exact: true }).waitFor();
-  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
-  assert.equal(delivered.length, 1, 'summary waits in the same Cloud FIFO');
-  assert.equal(await cloudPage.getByText('（演示）Agent 总结', { exact: false }).count(), 0);
   const report = (index, stage, outcome = 'success', summary = 'Fixture task completed') => request(new URL('/api/v2/task-report', local.state.url), {
     method: 'POST', headers: headers(registration.token), body: JSON.stringify({ deliveryId: delivered[index].message.match(/map task start (\S+)/)[1], stage,
       ...(stage === 'finished' ? { outcome, summary } : {}) }),
   });
-  const waitDelivery = async count => {
-    const deadline = Date.now() + 25000;
-    while (delivered.length < count && Date.now() < deadline) await pause(100);
-    assert.equal(delivered.length, count);
-  };
-  await report(0, 'started'); await report(0, 'finished');
-  await waitDelivery(2);
-  await report(1, 'started'); await report(1, 'finished', 'failed', 'Temporary verification failure');
-  await cloudPage.locator('#detail').getByText('已解决 · 总结未完成', { exact: true }).waitFor();
-  assert.equal(await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).count(), 0);
-  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
-  await waitDelivery(3);
-  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
   const actualSummary = '原因：同步等待。\n修复：隔离心跳。\n验证：正式回归通过。';
-  await report(2, 'started'); await report(2, 'finished', 'success', actualSummary);
-  await cloudPage.locator('#detail summary').filter({ hasText: '修复总结' }).waitFor();
+  const approve = cloudPage.locator('[data-task-review="approved"][data-review-item="TD1"]');
+  assert.equal(await approve.isDisabled(), true, 'unfinished task cannot be reviewed');
+  await report(0, 'started'); await report(0, 'finished', 'success', actualSummary);
+  await cloudPage.locator('#detail').getByText('待人类验收', { exact: true }).waitFor();
+  await approve.click();
+  await cloudPage.locator('#detail').getByText('验收通过', { exact: true }).waitFor();
+  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
+  assert.equal(await approve.isDisabled(), true);
+  assert.equal(delivered.length, 1, 'acceptance never queues a summary');
   await cloudPage.reload();
   await cloudPage.locator('.node[data-id="T0"]').click();
-  const summaryPanel = cloudPage.locator('#detail details').filter({ has: cloudPage.locator('summary', { hasText: '修复总结' }) });
+  const summaryPanel = cloudPage.locator('#detail details').filter({ has: cloudPage.locator('summary', { hasText: 'Agent 结果与经验' }) });
   await summaryPanel.locator('summary').click();
   assert.equal((await summaryPanel.locator('p').textContent()).trim(), actualSummary);
-  await cloudPage.locator('.bug-check[data-bug="B1"]').click();
-  await pause(100); assert.equal(delivered.length, 3, 'completed summary cannot dispatch again');
+  assert.equal(await approve.isDisabled(), true, 'refresh preserves review');
+  assert.ok((await cloudPage.locator('#detail .mem-list').allTextContents()).join('').includes(actualSummary), 'accepted experience is published');
+  await cloudPage.locator('[data-bug-assign="B1"]').click();
+  await cloudPage.locator('dialog[open] select[name="session"]').selectOption(sessionId);
+  await cloudPage.locator('dialog[open] [data-submit]').click();
+  const deadline = Date.now() + 25000;
+  while (delivered.length < 2 && Date.now() < deadline) await pause(100);
+  assert.equal(delivered.length, 2);
+  await report(1, 'started'); await report(1, 'finished', 'success', 'Agent reports a fix; human must verify it');
+  const reject = cloudPage.locator('[data-task-review="rejected"][data-review-item="B1"]');
+  await reject.click();
+  await cloudPage.locator('dialog[open] textarea[name="reason"]').fill('问题仍然能复现');
+  await cloudPage.locator('dialog[open] button[value="submit"]').click();
+  await cloudPage.locator('#detail').getByText('验收未通过 · 待澄清', { exact: true }).waitFor();
+  const feedback = await cloudPage.request.get(`${cloud.url}/api/workbench/projects/context-guard/api/review-feedback?view=main`).then(response => response.json());
+  assert.equal(feedback.items.length, 1); assert.equal(feedback.items[0].reason, '问题仍然能复现');
+  await cloudPage.reload(); await cloudPage.locator('.node[data-id="T0"]').click();
+  await cloudPage.locator('#detail').getByText('验收未通过 · 待澄清', { exact: true }).waitFor();
+  assert.equal(await reject.isDisabled(), true);
+  assert.equal(delivered.length, 2, 'rejection saves feedback without waking any Agent');
 
   await fs.mkdir(output, { recursive: true });
   await localPage.screenshot({ path: path.join(output, 'local.png'), fullPage: true });
   await cloudPage.screenshot({ path: path.join(output, 'cloud.png'), fullPage: true });
-  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps', 'real-summary-queue', 'summary-failure-retry', 'summary-refresh-persistence'] }));
+  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps', 'human-review-without-model-dispatch', 'atomic-experience-publication', 'review-refresh-persistence', 'rejected-bug-feedback-without-dispatch'] }));
   passed = true;
 } finally {
   if (!passed) {
