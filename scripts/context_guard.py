@@ -881,13 +881,42 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
         return None
     if str(node.get("id", "")) == node_id:
         return node
-    children = node.get("children")
-    if isinstance(children, list):
-        for child in children:
-            found = find_map_node(child, node_id)
-            if found:
-                return found
+    for key in ("children", "_inbox"):
+        items = node.get(key)
+        if isinstance(items, list):
+            for child in items:
+                found = find_map_node(child, node_id)
+                if found:
+                    return found
     return None
+
+
+def require_known_map_node(root: Path, node_id: str, session_id: str = "") -> None:
+    """Validate a node against the same map `map read` uses for this Session."""
+    if not node_id:
+        return
+    if session_id:
+        try:
+            result = run_node_workbench(
+                ["map", "read", "--root", str(root), "--session", session_id, "--node", node_id]
+            )
+        except RuntimeError as exc:
+            details = None
+            try:
+                details = json.loads(str(exc))
+            except ValueError:
+                details = None
+            error = details.get("error") if isinstance(details, dict) else None
+            if isinstance(error, dict) and error.get("code") == "NOT_FOUND":
+                raise ValueError(f"unknown map node: {node_id}") from exc
+            raise
+        if not isinstance(result.get("node"), dict):
+            raise ValueError(f"unknown map node: {node_id}")
+        return
+    map_doc = read_json(context_dir(root) / "map.json", {})
+    map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
+    if find_map_node(map_root, node_id) is None:
+        raise ValueError(f"unknown map node: {node_id}")
 
 
 @serialize_hook_runtime(4)
@@ -912,9 +941,7 @@ def record_todo(
         raise ValueError(f"unknown prompt signal: {signal_id}")
     if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "todo"}:
         raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
-    map_doc = read_json(context_dir(root) / "map.json", {})
-    if find_map_node(map_doc.get("root") if isinstance(map_doc, dict) else None, node_id) is None:
-        raise ValueError(f"unknown map node: {node_id}")
+    require_known_map_node(root, node_id, session_id)
     todo_id = "TD-" + hashlib.sha256(f"{session_id}\0{signal_id}".encode("utf-8")).hexdigest()[:16]
     result = run_node_workbench(
         ["record-todo", "--root", str(root), "--session", session_id],
@@ -1099,10 +1126,8 @@ def record_bad_case(
             raise ValueError(f"unknown prompt signal: {signal_id}")
         if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "bad-case"}:
             raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
-    map_doc = read_json(ctx / "map.json", {})
-    map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
-    if node and find_map_node(map_root, node) is None:
-        raise ValueError(f"unknown map node: {node}")
+    if node:
+        require_known_map_node(root, node, session_id)
     if session_id:
         known = {str(item.get("session_id")) for item in session_records(root)}
         if session_id not in known:
