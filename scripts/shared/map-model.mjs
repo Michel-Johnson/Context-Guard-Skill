@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 // Shared by the workbench and Node service. Unknown stored fields are retained.
 export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
 export class MapError extends Error {
@@ -248,6 +250,72 @@ export function scopeChangesToSession(result, document, sessionId) {
 function checkFields(fields, allowed = editableFields) {
   if (!object(fields) || Object.keys(fields).some(key => !allowed.includes(key))) throw new MapError('INVALID_FIELDS', 'Unsupported field');
 }
+
+function ideaTitle(text) {
+  const line = String(text || '').trim().split(/\r?\n/)[0] || '';
+  return line.slice(0, 120) || 'Idea';
+}
+
+function stableIdeaId(nodeId, idea, index) {
+  if (typeof idea?.id === 'string' && idea.id.trim()) return idea.id.trim();
+  return `I-${createHash('sha256').update(`${nodeId}\0${index}\0${String(idea?.text || '').trim()}`).digest('hex').slice(0, 12)}`;
+}
+
+function nextTodoId(document) {
+  const used = new Set();
+  for (const { node } of entries(document.root).values()) for (const todo of node.todos || []) if (todo?.id) used.add(todo.id);
+  let seq = 1;
+  while (used.has(`TD${seq}`)) seq++;
+  return `TD${seq}`;
+}
+
+function todoForIdea(todos, ideaId) {
+  return (todos || []).find(todo => todo?.source_idea === ideaId);
+}
+
+export function materializeTodosFromIdeas(before, after, actor) {
+  if (!after?.root || actor?.kind !== 'agent' || !actor?.sessionId) return after;
+  const beforeIndex = before?.root ? entries(before.root) : new Map();
+  for (const [nodeId, { node }] of entries(after.root)) {
+    const ideas = node.ideas;
+    if (!Array.isArray(ideas) || !ideas.length) continue;
+    const previous = beforeIndex.get(nodeId)?.node?.ideas || [];
+    if (same(previous, ideas)) continue;
+    node.todos ||= [];
+    const at = new Date().toISOString();
+    for (let index = 0; index < ideas.length; index++) {
+      const idea = ideas[index];
+      if (!object(idea)) continue;
+      const text = String(idea.text || '').trim();
+      if (!text) continue;
+      const ideaId = stableIdeaId(nodeId, idea, index);
+      if (!idea.id) idea.id = ideaId;
+      const title = ideaTitle(text);
+      const existing = todoForIdea(node.todos, ideaId);
+      if (existing) {
+        if (existing.title !== title || existing.desc !== text) {
+          existing.title = title;
+          existing.desc = text;
+          existing.updated_at = at;
+        }
+        continue;
+      }
+      node.todos.push({
+        id: nextTodoId(after),
+        title,
+        desc: text,
+        status: 'pending',
+        sessions: [actor.sessionId],
+        target_session: actor.sessionId,
+        source_idea: ideaId,
+        created_at: at,
+        updated_at: at,
+      });
+    }
+  }
+  return after;
+}
+
 export function applyOperations(document, operations, actor, grants = []) {
   assertOperations(operations);
   const doc = copy(document), resultIds = [];
@@ -366,6 +434,7 @@ export function applyOperations(document, operations, actor, grants = []) {
   }
   const layer = [...(doc.root.children || []), ...(doc.root._inbox || [])].filter(n => n.proposal !== 'cancelled');
   if (layer.length) doc.bootstrap = layer.every(n => n.proposal !== 'proposed') ? 'ready' : 'proposed';
+  materializeTodosFromIdeas(document, doc, actor);
   validate(doc); return { doc, resultIds: [...new Set(resultIds)] };
 }
 // Ignore canvas-only inbox expansion and absent empty arrays. Compare only fields

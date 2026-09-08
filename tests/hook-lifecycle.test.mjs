@@ -107,6 +107,11 @@ test('Hook grants match dynamic all, explicit revocation and per-node read-only 
     assert.deepEqual(snapshot(), []);
     await fs.writeFile(access, JSON.stringify({ sessions: { 'grant-test': { mode: 'explicit', nodes: ['M1', 'M2'] } } }));
     assert.deepEqual(snapshot(), ['M1']);
+    await fs.writeFile(access, JSON.stringify({ sessions: { 'grant-test': { mode: 'explicit', nodes: ['T0'] } } }));
+    const proposed = JSON.parse(JSON.stringify(doc));
+    proposed.root.children[0] = { ...proposed.root.children[0], proposal: 'proposed', proposedBy: 'grant-test', title: 'Proposed module' };
+    await fs.writeFile(path.join(ctx, 'map.json'), JSON.stringify(proposed));
+    assert.deepEqual(snapshot(), ['T0', 'M1'], 'Session-proposed nodes must appear in hook grants');
   } finally { await dispose(project); }
 });
 async function confirmBinding(root, session) {
