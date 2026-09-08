@@ -17,6 +17,7 @@ import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } 
 import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox } from './coordinator-service.mjs';
 import { coordinatorTools, createCoordinatorExecutor } from './coordinator-tools.mjs';
+import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -354,6 +355,17 @@ export async function startCloudServer({
     const readable = filterNodeAccess(doc, [...entries(doc.root).keys()], binding.agentId, 'read');
     return message.payload.nodeIds.every(id => readable.includes(id));
   };
+  const interfaceWorkflow = {
+    verifyRouting: verifyInterfaceRouting,
+    verifyCompletion: async (identity, task, receipts) => {
+      const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === identity.repositoryId);
+      const project = configuredMemory?.projects?.[repository?.projectId];
+      if (!project?.completion) return false;
+      return verifyTaskCompletion({ project, repositoryId: identity.repositoryId, task, receipts,
+        memory: await readMemoryProject(configuredMemory, repository.projectId) });
+    },
+    verifyClose: verifyTaskClose,
+  };
   const interfaceAuth = interfaceConfig ? new ProtocolAuth({
     directory: path.join(dataDir, 'interface-v2'),
     verifyPassword: password => verifyWorkbenchPassword(password, browserPasswordHash),
@@ -417,7 +429,7 @@ export async function startCloudServer({
           readTask: async (id, taskId) => store.taskRecord(principal, await sessionFor(id), taskId),
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
-            return (await store.handle(principal, message, { workflow: { verifyRouting: verifyInterfaceRouting } })).data;
+            return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
           },
         });
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8');
@@ -1032,7 +1044,7 @@ export async function startCloudServer({
               } });
             },
             verifyBinding: (identity, payload) => identity.role === 'device' || identity.bindings?.[payload.sessionId] === payload.worktreeId,
-            workflow: { verifyRouting: verifyInterfaceRouting },
+            workflow: interfaceWorkflow,
           });
           return send(res, 200, reply);
         } catch (error) { return send(res, error.status || 503, errorReply(id, error)); }

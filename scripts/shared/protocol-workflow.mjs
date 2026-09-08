@@ -69,6 +69,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     const receiptId = randomUUID();
     const receipt = put(receiptId, 'reviewReceipt', { ...p, receiptId, issuer: principal.agentId }, receiptId);
     task[`${p.kind}Review`] = { ...receipt, decision: p.decision, reason: p.reason };
+    if (p.kind === 'acceptance') task.acceptanceAt = new Date().toISOString();
     task.stage = p.decision === 'approved' ? ({ brief: 'approved', plan: 'executing', acceptance: 'accepted' }[p.kind]) : `${p.kind}-rejected`;
     delete task.review;
     emit({ ...message, id: randomUUID(), payload: { ...p, receiptId } });
@@ -193,7 +194,9 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     if (!task.busy) fail('CONFLICT', 'Task has no execution slot');
     if (p.action === 'complete') {
       at('accepted', 'cancelled');
-      if (!await policy.verifyCompletion?.(principal, task, p.data)) fail('FORBIDDEN', 'Merge and archive receipts are not verified');
+      const verified = await policy.verifyCompletion?.(principal, task, p.data);
+      if (!verified) fail('FORBIDDEN', 'Merge and archive receipts are not verified');
+      task.completion = { proof: structuredClone(verified), closeReceiptId: message.id };
       task.stage = 'closing';
     } else if (p.action === 'resume') { at('interrupted', 'cancelled'); task.stage = 'resuming'; }
     else { if (['closing', 'closed', 'cancelling'].includes(task.stage)) fail('CONFLICT', 'Control already pending'); task.previousStage = task.stage; task.stage = 'cancelling'; }

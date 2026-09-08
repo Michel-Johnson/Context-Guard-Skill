@@ -33,6 +33,12 @@ export async function executionPrompt(message, readObject) {
       (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON> 交付 CI TODO、测试证据和经验。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
+  if (message.type === 'task.control' && p.action === 'complete') return [
+    `Context Guard：任务 ${p.taskId} 已通过服务端合并与归档校验。保留证据，结束该任务。`,
+    '使用 map exchange --input <JSON文件> 回报关闭；不要重新执行开发或再次合并。',
+    JSON.stringify({ v: 2, id: hash(`close:${message.id}`), type: 'task.report', session: message.session,
+      payload: { taskId: p.taskId, stage: 'closed', data: { controlId: message.id, closeReceiptId: message.id } } }),
+  ].join('\n');
   if (message.type === 'task.control') return `Context Guard：任务 ${p.taskId} 控制请求 ${p.action}。完成对应操作后，使用原控制编号回报；收到不等于完成，不得擅自删除记录。\n${JSON.stringify(p.data)}\n控制编号：${message.id}`;
   return null;
 }

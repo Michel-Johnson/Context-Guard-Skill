@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { verifyTaskClose } from '../scripts/cloud/completion.mjs';
 
 test('four approved Session tasks finish in durable FIFO order across success, failure and cancellation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-session-fifo-'));
@@ -98,11 +99,16 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   const task = Object.values((await store.transaction(state => state)).tasks)[0];
   const complete = { taskId: 'task', action: 'complete', expectedVersion: task.version, data: { archiveReceiptRef: 'archive', gitReceiptRef: 'merge' } };
   await assert.rejects(send(coordinator, 'task.control', complete), { code: 'FORBIDDEN' });
-  await send(coordinator, 'task.control', complete, { workflow: { verifyCompletion: (_p, _task, receipts) => receipts.gitReceiptRef === 'merge' && receipts.archiveReceiptRef === 'archive' } });
+  await send(coordinator, 'task.control', complete, { workflow: { verifyCompletion: (_p, current, receipts) => receipts.gitReceiptRef === 'merge' && receipts.archiveReceiptRef === 'archive' && { sourceSha: current.sourceSha, mergeSha: 'b'.repeat(40) } } });
   const controlId = `request-${counter}`;
-  const closed = { taskId: 'task', stage: 'closed', data: { controlId, closeReceiptId: 'verified-close' } };
+  store = new ProtocolStore(directory);
+  const savedTask = await store.taskRecord(coordinator, session, 'task');
+  assert.equal(savedTask.completion.closeReceiptId, controlId);
+  assert.equal(savedTask.completion.proof.sourceSha, savedTask.sourceSha);
+  const closed = { taskId: 'task', stage: 'closed', data: { controlId, closeReceiptId: controlId } };
   await assert.rejects(send(executor, 'task.report', closed), { code: 'FORBIDDEN' });
-  const closure = await send(executor, 'task.report', closed, { workflow: { verifyClose: (_p, _task, data) => data.closeReceiptId === 'verified-close' } });
+  await assert.rejects(send(executor, 'task.report', { ...closed, data: { controlId, closeReceiptId: 'fabricated' } }, { workflow: { verifyClose: verifyTaskClose } }), { code: 'FORBIDDEN' });
+  const closure = await send(executor, 'task.report', closed, { workflow: { verifyClose: verifyTaskClose } });
   assert.equal(closure.activatedTaskId, 'task-2');
   assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'cloud_queued');
   assert.equal((await send(executor, 'executor.state', { agentId: 'executor', state: 'busy', taskId: 'task-2' })).taskId, 'task-2');

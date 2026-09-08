@@ -8,6 +8,18 @@ import { spawnSync } from 'node:child_process';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 import { queueCodexMessage } from '../scripts/workbench/server.mjs';
 
+test('Verified closure prompt preserves the server control receipt and does not repeat development', async () => {
+  const message = { v: 2, id: 'verified-control', type: 'task.control', session: { id: 'developer', generation: 3 },
+    payload: { taskId: 'task', action: 'complete', expectedVersion: 'v1', data: { gitReceiptRef: 'github-pr:7', archiveReceiptRef: 'published-session' } } };
+  const prompt = await executionPrompt(message);
+  const report = JSON.parse(prompt.split('\n').at(-1));
+  assert.deepEqual(report.session, message.session);
+  assert.equal(report.payload.stage, 'closed');
+  assert.deepEqual(report.payload.data, { controlId: message.id, closeReceiptId: message.id });
+  assert.match(prompt, /不要重新执行开发/);
+  assert.equal(await executionPrompt(message), prompt, 'replay retains the report identity');
+});
+
 test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

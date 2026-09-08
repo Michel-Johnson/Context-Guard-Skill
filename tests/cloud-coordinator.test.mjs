@@ -10,6 +10,49 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
+
+test('Completion verifies GitHub repository, tested SHA, required check issuer and server publication in order', async () => {
+  const sourceSha = 'a'.repeat(40), mergeSha = 'b'.repeat(40);
+  const project = { repository: 'example/lab', ref: 'refs/heads/main', completion: { requiredChecks: [{ name: 'Required', appId: 15368 }] } };
+  const task = { stage: 'accepted', session: { id: 'developer', generation: 1 }, sourceSha,
+    ci: { verdict: 'passed' }, acceptanceReview: { decision: 'approved' }, acceptanceAt: '2026-09-08T01:00:00Z' };
+  const publication = { sessionVersion: 'published-session', sourceCommit: sourceSha, mainSha: mergeSha, mainVersion: 'published-main', publishedAt: '2026-09-08T01:02:00Z' };
+  const memory = { closedSessions: { developer: { publications: [publication] } } };
+  const receipts = { gitReceiptRef: 'github-pr:7', archiveReceiptRef: 'published-session' };
+  const pr = { merged: true, merged_at: '2026-09-08T01:01:00Z', merge_commit_sha: mergeSha,
+    base: { ref: 'main', repo: { id: 123 } }, head: { sha: sourceSha, repo: { id: 123 } } };
+  const checks = { total_count: 1, check_runs: [{ name: 'Required', app: { id: 15368 }, head_sha: sourceSha, status: 'completed', conclusion: 'success', completed_at: '2026-09-08T01:00:30Z' }] };
+  let currentPr = pr, currentChecks = checks, calls = 0;
+  const options = { project, repositoryId: '123', task, memory, receipts, fetch: async (url, init) => {
+    assert.ok(url.startsWith('https://api.github.com/repos/example/lab/'));
+    assert.equal(init.redirect, 'error'); calls++;
+    return Response.json(url.includes('/pulls/') ? currentPr : currentChecks);
+  } };
+  assert.equal((await verifyTaskCompletion(options)).mergeSha, mergeSha);
+  for (const changed of [{ merged: false }, { head: { ...pr.head, sha: 'c'.repeat(40) } }, { base: { ...pr.base, ref: 'other' } },
+    { base: { ...pr.base, repo: { id: 999 } } }, { merged_at: '2026-09-08T00:59:00Z' }, { merge_commit_sha: 'c'.repeat(40) }]) {
+    currentPr = { ...pr, ...changed }; assert.equal(await verifyTaskCompletion(options), false);
+  }
+  currentPr = pr;
+  for (const changed of [{ conclusion: 'failure' }, { status: 'in_progress' }, { app: { id: 999 } }, { head_sha: 'c'.repeat(40) }, { completed_at: '2026-09-08T01:03:00Z' }]) {
+    currentChecks = { ...checks, check_runs: [{ ...checks.check_runs[0], ...changed }] };
+    assert.equal(await verifyTaskCompletion(options), false);
+  }
+  currentChecks = { ...checks, total_count: 101 };
+  assert.equal(await verifyTaskCompletion(options), false);
+  const before = calls;
+  assert.equal(await verifyTaskCompletion({ ...options, receipts: { ...receipts, archiveReceiptRef: 'agent-claim' } }), false);
+  assert.equal(await verifyTaskCompletion({ ...options, task: { ...task, stage: 'awaiting-merge' } }), false);
+  assert.equal(calls, before);
+  await assert.rejects(verifyTaskCompletion({ ...options, fetch: async () => new Response('private error', { status: 503 }) }),
+    error => error.code === 'UNAVAILABLE' && !error.message.includes('private error'));
+  const closing = { ...task, control: { id: 'control' }, completion: { proof: { sourceSha, mergeSha }, closeReceiptId: 'control' } };
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'control', closeReceiptId: 'control' }), true);
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'other', closeReceiptId: 'control' }), false);
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'control', closeReceiptId: 'invented' }), false);
+  assert.equal(verifyTaskClose(null, { ...closing, sourceSha: 'changed' }, { controlId: 'control', closeReceiptId: 'control' }), false);
+});
 
 const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };
 const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test-model', token: 'synthetic-private-value' };

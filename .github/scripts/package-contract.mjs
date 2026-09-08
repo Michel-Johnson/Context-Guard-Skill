@@ -77,6 +77,7 @@ export const packedFiles = [...installedFiles, ...[
   "scripts/cloud/coordinator-tools.mjs",
   "scripts/cloud/coordinator-service.mjs",
   "scripts/cloud/coordinator-model.mjs",
+  "scripts/cloud/completion.mjs",
   "scripts/cloud/task-review.mjs",
   "scripts/cloud/protocol-auth.mjs",
   "scripts/cloud/memory.mjs",
