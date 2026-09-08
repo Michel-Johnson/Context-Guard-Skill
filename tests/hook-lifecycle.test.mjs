@@ -229,7 +229,7 @@ test('an initialized Git source checkout can use its own real Map without enabli
     cwd: source, env: { PWD: source, CODEX_WORKSPACE_ROOT: source, CODEX_PROJECT_ROOT: source, CODEX_CWD: source, WORKSPACE_ROOT: source, PROJECT_ROOT: source },
     input: JSON.stringify({ session_id: 'source-session', cwd: source, source: 'startup', is_background_agent: true }),
   });
-  assert.match(sourceHook.stdout, /binding could not be read/);
+  assert.match(sourceHook.stdout, /binding unreadable/);
 
   const installedHook = run(python, [path.join(installed, 'scripts/context_guard_hook.py'), 'session-start', '--platform', 'codex'], {
     cwd: installed, env: { PWD: installed, CODEX_WORKSPACE_ROOT: installed, CODEX_PROJECT_ROOT: installed, CODEX_CWD: installed, WORKSPACE_ROOT: installed, PROJECT_ROOT: installed },
@@ -248,7 +248,9 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
 
   const started = hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   assert.match(started.json.hookSpecificOutput.additionalContext, /Context Guard Map snapshot/);
-  assert.match(started.json.hookSpecificOutput.additionalContext, /Keep the plan active through commit, PR, merge, and installed acceptance/);
+  assert.match(started.json.hookSpecificOutput.additionalContext, /SKILL\.md/);
+  assert.ok(started.json.hookSpecificOutput.additionalContext.length < 1600);
+  assert.doesNotMatch(started.json.hookSpecificOutput.additionalContext, /--phenomenon|--decisions|--operationId|Classify every/);
 
   const prompted = hook('UserPromptSubmit', project, session, { prompt: '完成 Hook 生命周期开发' });
   const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
@@ -257,7 +259,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   await installMap(project);
   const noPlan = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
   assert.equal(noPlan.json.hookSpecificOutput.permissionDecision, 'deny');
-  assert.match(noPlan.json.hookSpecificOutput.permissionDecisionReason, /without asking them to confirm again/);
+  assert.match(noPlan.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   const planInput = JSON.stringify({ approved: true, summary: 'explicit request is approval', node_ids: ['N1'], paths: ['src/'] });
   for (const command of [
     `printf %s ${JSON.stringify(planInput)} | node ${JSON.stringify(contextScript.replace(/context_guard\.py$/, '../bin/context-guard-skill.js'))} plan-start --input -`,
@@ -272,7 +274,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
     tool_name: 'apply_patch', tool_use_id: 'tool-one',
     tool_input: { command: `*** Update File: ${path.join(project, 'src/scratch.txt')}` },
   });
-  assert.match(prepared.json.hookSpecificOutput.additionalContext, /plan-/);
+  assert.deepEqual(prepared.json, {});
   await fs.writeFile(path.join(project, 'src/scratch.txt'), 'changed\n');
   hook('PostToolUse', project, session, {
     tool_name: 'apply_patch', tool_use_id: 'tool-one', tool_input: { path: path.join(project, 'src/scratch.txt') },
@@ -283,9 +285,9 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   const subagent = hook('SubagentStart', project, session, { agent_id: 'agent-one', agent_type: 'explorer' });
   assert.match(subagent.json.hookSpecificOutput.additionalContext, /Subagent scope is limited/);
   const subagentStopped = hook('SubagentStop', project, session, { agent_id: 'agent-one', agent_type: 'explorer', last_assistant_message: 'done' });
-  assert.match(subagentStopped.json.systemMessage, /subagent boundary/);
+  assert.match(subagentStopped.json.systemMessage, /subagent stopped/);
   const interrupted = hook('Interrupt', project, session);
-  assert.match(interrupted.json.systemMessage, /interrupted plan state/);
+  assert.match(interrupted.json.systemMessage, /interrupted; plan preserved/);
   const deferred = hook('Stop', project, session, { stop_hook_active: false });
   assert.deepEqual(deferred.json, {});
   assert.doesNotMatch(deferred.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
@@ -294,7 +296,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.doesNotMatch(repeatedStop.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
   const resumed = hook('UserPromptSubmit', project, session, { turn_id: 'resume-turn', prompt: '继续' });
   assert.match(resumed.json.hookSpecificOutput.additionalContext, /Active plan: plan-[a-f0-9]+/);
-  assert.match(resumed.json.hookSpecificOutput.additionalContext, /Resume it before starting unrelated work/);
+  assert.doesNotMatch(resumed.json.hookSpecificOutput.additionalContext, /Resume it before|Classify every|record-todo --root/);
   const resumeSignal = resumed.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)[1];
   run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', resumeSignal, '--kind', 'task']);
   assert.throws(() => archivePlan(project, session), /subagent_review/);
@@ -426,7 +428,7 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
   });
-  assert.match(prepared.json.hookSpecificOutput.additionalContext, /plan-/);
+  assert.deepEqual(prepared.json, {});
   await fs.writeFile(path.join(project, 'src/cloud.mjs'), 'ok\n');
   hook('PostToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs') },
@@ -653,7 +655,7 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
     tool_name: 'apply_patch', tool_input: { path: path.join(project, 'src/allowed.mjs') },
   });
   assert.equal(allowed.json.hookSpecificOutput, undefined);
-  assert.match(allowed.json.systemMessage, /normal permission prompt/);
+  assert.deepEqual(allowed.json, {});
 
   const directTodo = hook('PreToolUse', project, session, {
     tool_name: 'apply_patch', tool_use_id: 'direct-todo',
@@ -787,7 +789,7 @@ test('completion receipts require evidence, scope review, all files and fresh co
   assert.throws(() => archivePlan(project, session, '', { verification: '' }), /verification evidence/);
   assert.throws(() => archivePlan(project, session, '', { assessment: {} }), /assessment/);
   const script = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
-  assert.match(script.json.hookSpecificOutput.additionalContext, /scope unknown/);
+  assert.deepEqual(script.json, {});
   const outside = hook('PreToolUse', project, session, { tool_name: 'apply_patch', tool_input: '*** Add File: outside.txt\n+x' });
   assert.equal(outside.json.hookSpecificOutput.permissionDecision, 'deny');
   await fs.writeFile(path.join(project, 'src/dirty.txt'), 'modified again');
