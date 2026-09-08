@@ -28,6 +28,7 @@
 ## 设计草案与历史证据
 
 - [文件与记忆设计](design/file-design.md)：设计方向与合成实验，不是已实施的存储布局。
+- [工作台设计画廊](design/workbench-gallery/index.html)：独立静态设计资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
 - [接口讨论](design/interface-design-discussion.md)、[Session 接口历史草案](design/session-workbench-interface-draft.md)：保留背景，不叠加为现行规则。
 - [可靠性 Review](reliability-review.md)、[消融 Review](ablation-review.md)、[Hook 验收记录](hook-closure-validation.md)：历史证据，当前限制查 CI_todo。
 - [客户端 CI](client-ci.md)、[工作台 CI](workbench-ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。

@@ -41,9 +41,11 @@ async function servePrototype() {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://127.0.0.1');
-      const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'workbench.html';
-      const file = path.normalize(path.join(protoDir, rel));
-      if (!file.startsWith(protoDir + path.sep)) { res.writeHead(403); res.end(); return; }
+      const design = url.pathname.startsWith('/design/');
+      const baseDir = design ? path.join(workspace, 'docs/design') : protoDir;
+      const rel = decodeURIComponent(url.pathname).replace(design ? /^\/design\// : /^\/(?:prototype\/)?/, '') || 'workbench.html';
+      const file = path.normalize(path.join(baseDir, rel));
+      if (!file.startsWith(baseDir + path.sep)) { res.writeHead(403); res.end(); return; }
       const data = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
       res.end(data);
@@ -1106,7 +1108,12 @@ try {
     assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
     recordCheck('phone-preview-banners-hidden');
     recordCheck('phone-add-child-hidden');
-    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=1`);
+    for (const file of ['workbench.html', 'workbench-app.js', 'workbench.css']) {
+      const source = await (await fetch(`http://127.0.0.1:${port}/${file}`)).text();
+      assert.doesNotMatch(source, /__CG_GALLERY|bootDesignGallery|html\.design-gallery|id="design-gallery"/, `${file} must not ship design galleries`);
+    }
+    recordCheck('production-excludes-design-galleries');
+    await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?https://raw.githubusercontent.com/example/repo/sha/index.html?gallery=1`);
     await preview.waitForSelector('.g-item');
     const gallery = await preview.evaluate(() => {
       const items = [...document.querySelectorAll('.g-item')];
@@ -1172,7 +1179,7 @@ try {
     assert.notEqual(frozen.a.barBg, frozen.b.barBg, 'ink bar still differs from live chrome');
     assert.notEqual(frozen.a.barBg, frozen.c.barBg, 'blueprint bar still differs from live chrome');
     recordCheck('chrome-gallery-50');
-    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=add`);
+    await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?gallery=add`);
     await preview.waitForSelector('.g-add-mock');
     const addGal = await preview.evaluate(() => {
       const items = [...document.querySelectorAll('.g-item')];
@@ -1225,7 +1232,7 @@ try {
     assert.notEqual(addFrozen.s1, addFrozen.s2);
     assert.notEqual(addFrozen.s1, addFrozen.s3);
     recordCheck('add-row-gallery-50');
-    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=trash`);
+    await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?gallery=trash`);
     await preview.waitForSelector('.g-tr-mock');
     const trashGal = await preview.evaluate(() => {
       const items = [...document.querySelectorAll('.g-item')];
@@ -1272,7 +1279,7 @@ try {
     const lidMove = await preview.locator('#v01 .ico .lid').evaluate(el => getComputedStyle(el).transform);
     assert.notEqual(lidMove, 'none', `lid should lift on hover, got ${lidMove}`);
     recordCheck('trash-icon-gallery-50');
-    await preview.goto(`http://127.0.0.1:${port}/workbench.html?https://raw.githubusercontent.com/example/repo/sha/prototype/workbench.html?gallery=chip`);
+    await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?gallery=chip`);
     await preview.waitForSelector('.g-ch-mock');
     const chipGal = await preview.evaluate(() => {
       const items = [...document.querySelectorAll('.g-item')];
