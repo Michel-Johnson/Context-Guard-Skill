@@ -237,6 +237,49 @@ test('Coordinator cannot call an unregistered tool such as shell or human approv
   assert.equal(executed, false);
 });
 
+test('Definite tool rejection is returned to the model; later effects are skipped and replayed without execution', async () => {
+  let state = { pending: { stop: 'tool_use', content: [
+    { type: 'tool_use', id: 'wrong-id', name: 'read_task', input: {} },
+    { type: 'tool_use', id: 'later-write', name: 'dispatch_task', input: {} },
+  ] } }, calls = 0;
+  const options = { turnId: 'turn', system: 'Coordinator', tools: [{ name: 'read_task' }, { name: 'dispatch_task' }],
+    save: async value => { state = structuredClone(value); }, execute: async () => { calls++; throw Object.assign(new Error('private diagnostic'), { code: 'NOT_FOUND' }); } };
+  const original = structuredClone(state.pending);
+  await coordinatorStep({ ...options, state });
+  assert.equal(calls, 1);
+  assert.deepEqual(state.messages.at(-1).content.map(x => [x.is_error, JSON.parse(x.content).error.code]), [[true, 'NOT_FOUND'], [true, 'NOT_EXECUTED']]);
+  assert.ok(!JSON.stringify(state).includes('private diagnostic'));
+  await coordinatorStep({ ...options, state: { ...state, pending: original } });
+  assert.equal(calls, 1, 'receipts preserve the rejected and unexecuted outcomes');
+});
+
+test('Human feedback can correct a legacy rejected call but cannot discard an unknown transport outcome', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-correct-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'conversation.json');
+  const failed = { messages: [{ role: 'assistant', content: [{ type: 'tool_use', id: 'bad', name: 'review_plan', input: { taskId: 'mistyped' } }] }],
+    requests: { original: 'saved' }, toolReceipts: {}, status: 'error', error: { code: 'NOT_FOUND' }, activeTurnId: 'original',
+    pending: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'bad', name: 'review_plan', input: { taskId: 'mistyped' } }] } };
+  await fs.writeFile(file, JSON.stringify(failed));
+  let executions = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'review_plan' }],
+    execute: async () => { executions++; }, model: { next: async ({ messages }) => {
+      assert.equal(messages.at(-1).content, 'Reject the unsafe Plan and request a corrected version');
+      assert.equal(messages.at(-2).content[0].is_error, true);
+      return { stop: 'end_turn', content: [{ type: 'text', text: 'Correction received' }] };
+    } } });
+  assert.equal((await service.state()).canCorrect, true);
+  await service.submit({ id: 'correction', text: 'Reject the unsafe Plan and request a corrected version' }); await service.close();
+  assert.equal(executions, 0, 'the formerly rejected approval is never executed');
+  assert.equal((await service.state()).status, 'waiting-for-user');
+  for (const code of ['UNAVAILABLE', 'MODEL_TIMEOUT', 'TOOL_ID_REUSED']) {
+    await fs.writeFile(file, JSON.stringify({ ...failed, error: { code } }));
+    assert.equal((await service.state()).canCorrect, false);
+    await assert.rejects(service.submit({ id: 'correction', text: 'Do not drop the original intent' }), { code: 'COORDINATOR_BUSY' });
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).activeTurnId, 'original');
+  }
+});
+
 test('Coordinator persists a human conversation and only retries a failed turn explicitly', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

@@ -343,6 +343,10 @@ try {
     if (route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON());
       if (submissions.length === 1) return route.abort(); // Delivery is uncertain: preserve the ID.
+      if (submissions.at(-1).text === '更正审批 ID，先核对当前 Plan') {
+        coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false };
+        return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
+      }
       coordinatorState = { ...coordinatorState, status: 'error', error: { code: 'MODEL_TIMEOUT' }, retryInput: submissions[0] };
       return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
     }
@@ -376,10 +380,20 @@ try {
   await page.reload(); await synchronized();
   await coordinator.locator('summary').click();
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
+  await coordinator.locator('textarea').fill('未提交的纠正意见');
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[2].id, submissions[0].id);
   assert.equal(submissions[2].retry, true, 'provider retry survives reload and remains explicit');
+  assert.equal(await coordinator.locator('textarea').inputValue(), '未提交的纠正意见', 'retrying another request must not erase an unsent draft');
+  assert.equal(await coordinator.getByRole('button', { name: '发送', exact: true }).isEnabled(), false, 'unknown transport failure still preserves the original intent');
+  coordinatorState = { ...coordinatorState, canCorrect: true, error: { code: 'NOT_FOUND' } };
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
+  await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
+  await coordinator.getByRole('button', { name: '发送', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('等待回复'));
+  assert.notEqual(submissions.at(-1).id, submissions[0].id);
+  assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, plain-text rendering and durable explicit retries');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });

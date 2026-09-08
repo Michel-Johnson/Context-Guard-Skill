@@ -4242,7 +4242,7 @@ function installCoordinatorPanel(sync){
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
-  let timer=null, pending=null, busy=false, stopped=false, refreshing=false;
+  let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false;
   const render=state=>{
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
     messages.replaceChildren();
@@ -4317,8 +4317,10 @@ function installCoordinatorPanel(sync){
       }
       messages.append(card);
     }
-    if(state.retryInput) pending={...state.retryInput,retry:true};
-    send.disabled=busy||state.status==='running'||state.status==='error';
+    if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
+    canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
+    if(canCorrect)status.textContent+=' · 可补充纠正意见';
+    send.disabled=busy||state.status==='running'||state.status==='error'&&!canCorrect;
     retry.hidden=!pending; retry.disabled=busy||state.status==='running';
   };
   const refresh=async()=>{
@@ -4334,12 +4336,12 @@ function installCoordinatorPanel(sync){
     busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='正在提交…';
     try{
       await sync.call('/api/coordinator',request,'POST','main');
-      pending=null; input.value=''; retry.hidden=true;
+      pending=null; if(input.value.trim()===request.text)input.value=''; retry.hidden=true;
     }catch(error){status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
     if(!pending) await refresh();
   };
-  form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&!pending) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
+  form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);});
   panel.addEventListener('toggle',()=>{if(panel.open) void refresh();else clearTimeout(timer);});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});

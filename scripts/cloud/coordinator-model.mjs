@@ -1,6 +1,31 @@
 import { hash } from '../shared/io.mjs';
 
 const problem = (code, message) => Object.assign(new Error(message), { code });
+export const correctableToolError = code => ['INVALID_ARGUMENT', 'INVALID_INPUT', 'NOT_FOUND', 'FORBIDDEN', 'CONFLICT', 'VERSION_CONFLICT'].includes(code);
+const failedTool = code => ({ isError: true, result: { error: { code,
+  message: '工具未成功。先读取当前权威状态并核对原始 ID/版本；不得猜测 ID、扩大权限或重复未知写入。' } } });
+const toolReply = (call, receipt) => ({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(receipt.result), ...(receipt.isError ? { is_error: true } : {}) });
+
+// A human can correct a definitively rejected call. Successful preceding tools
+// retain their receipts; unexecuted following tools are not silently invoked.
+export function settleRejectedTools(state) {
+  if (state.error?.code === 'STEP_LIMIT' && !state.pending) return true;
+  if (!correctableToolError(state.error?.code) || state.pending?.stop !== 'tool_use') return false;
+  let first = true;
+  const responses = state.pending.content.filter(block => block.type === 'tool_use').map(call => {
+    const id = `coordinator:${hash(`${state.activeTurnId}:${call.id}`)}`;
+    const fingerprint = hash(JSON.stringify({ name: call.name, input: call.input }));
+    let receipt = state.toolReceipts[id];
+    if (receipt && receipt.fingerprint !== fingerprint) throw problem('TOOL_ID_REUSED', 'Tool receipt differs');
+    if (!receipt) {
+      receipt = state.toolReceipts[id] = { fingerprint, ...failedTool(first ? state.error.code : 'NOT_EXECUTED') };
+      first = false;
+    }
+    return toolReply(call, receipt);
+  });
+  state.messages.push({ role: 'user', content: responses }); state.pending = null;
+  return true;
+}
 
 // Provider transport only. Project authorization and workflow decisions belong
 // to the server's existing protocol, never to model-supplied role fields.
@@ -81,7 +106,7 @@ export async function coordinatorStep({ turnId, state, model, system, tools, sav
     await save(state);
     return state;
   }
-  const responses = [];
+  const responses = []; let failed = false;
   for (const call of next.content.filter(block => block.type === 'tool_use')) {
     if (!tools.some(tool => tool.name === call.name)) throw problem('TOOL_FORBIDDEN', 'Coordinator requested an unavailable tool');
     const operationId = `coordinator:${hash(`${turnId}:${call.id}`)}`;
@@ -89,11 +114,19 @@ export async function coordinatorStep({ turnId, state, model, system, tools, sav
     let receipt = state.toolReceipts[operationId];
     if (receipt && receipt.fingerprint !== fingerprint) throw problem('TOOL_ID_REUSED', 'Coordinator reused a tool identifier with different input');
     if (!receipt) {
-      receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) };
+      if (failed) receipt = { fingerprint, ...failedTool('NOT_EXECUTED') };
+      else {
+        try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
+        catch (error) {
+          if (!correctableToolError(error.code)) throw error;
+          receipt = { fingerprint, ...failedTool(error.code) };
+        }
+      }
       state.toolReceipts[operationId] = receipt;
       await save(state);
     }
-    responses.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(receipt.result) });
+    if (receipt.isError) failed = true;
+    responses.push(toolReply(call, receipt));
   }
   state.messages.push({ role: 'user', content: responses });
   state.pending = null; state.status = 'running';
