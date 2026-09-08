@@ -206,6 +206,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
     }
     if (await device.connected()) device.start({
+      onSessionCreations: async requests => {
+        if (!Array.isArray(requests) || requests.length > 20) protocolFail('INVALID_ARGUMENT', 'Bounded Session creation batch required');
+        for (const request of requests) {
+          try {
+            if (!access.binding(request.templateSessionId)) protocolFail('FORBIDDEN', 'The template is no longer bound to this backend');
+            await claudeRuntime.provision(request, { baseRef: project.main?.ref });
+          } catch (error) {
+            device.lastError = error.code || 'SESSION_CREATION_FAILED';
+            await device.recordCreationFailure(request.id, error.code);
+          }
+        }
+      },
       sessions: async () => {
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
         for (const head of await protocolStore.queueHeads(backendPrincipal)) {

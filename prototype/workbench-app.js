@@ -4262,9 +4262,57 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
+  const creation=document.createElement('details'); creation.className='coordinator-session-create'; creation.hidden=true;
+  const creationHeading=document.createElement('summary'); creationHeading.textContent='新建执行会话';
+  const creationForm=document.createElement('form'), creationName=document.createElement('input'), creationTemplate=document.createElement('select');
+  creationName.required=true;creationName.maxLength=200;creationName.placeholder='会话名称';creationName.setAttribute('aria-label','新会话名称');
+  creationTemplate.required=true;creationTemplate.setAttribute('aria-label','本机 Claude 模板');
+  const creationButton=document.createElement('button');creationButton.type='submit';creationButton.textContent='创建会话';
+  const creationStatus=document.createElement('p');creationStatus.setAttribute('role','status');
+  const creationList=document.createElement('ul');
+  creationForm.append(creationName,creationTemplate,creationButton);creation.append(creationHeading,creationForm,creationStatus,creationList);panel.append(creation);
+  const creationKey='cg-session-create:'+location.pathname;
+  let creationPending=null,creatingSession=false,templateKey='';
+  try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
+  const renderCreation=state=>{
+    const templates=state.sessionTemplates||[], records=state.sessionCreations||[];
+    creation.hidden=!templates.length&&!records.length&&!creationPending;
+    const key=JSON.stringify(templates);
+    if(key!==templateKey){
+      const selected=creationTemplate.value;creationTemplate.replaceChildren();
+      for(const item of templates){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;creationTemplate.append(option);}
+      if(templates.some(item=>item.id===selected))creationTemplate.value=selected;templateKey=key;
+    }
+    if(creationPending&&records.some(item=>item.operationId===creationPending.operationId)){
+      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
+      creationStatus.textContent='请求已由 Cloud 保存，请等待本机绑定。';
+    }
+    creationList.replaceChildren();
+    for(const item of records.slice(-10)){const row=document.createElement('li');row.textContent=item.name+' · '+({pending:'等待本机创建',registered:'已绑定',failed:'创建失败'}[item.state]||item.state)+(item.error?' · '+item.error:'');creationList.append(row);}
+    creationButton.textContent=creationPending?'重试创建':'创建会话';
+    creationButton.disabled=creatingSession||(!templates.length&&!creationPending);
+    creationName.disabled=creationTemplate.disabled=creatingSession||!!creationPending;
+    if(creationPending){creationName.value=creationPending.name;creationTemplate.value=creationPending.templateSessionId;}
+  };
+  creationForm.onsubmit=async event=>{
+    event.preventDefault();if(creatingSession)return;
+    if(!creationPending){
+      if(!creationName.value.trim()||!creationTemplate.value)return;
+      creationPending={operationId:crypto.randomUUID(),name:creationName.value.trim(),templateSessionId:creationTemplate.value};
+      try{sessionStorage.setItem(creationKey,JSON.stringify(creationPending));}catch{creationPending=null;creationStatus.textContent='无法保存重试标识，尚未提交。';return;}
+    }
+    creatingSession=true;creationButton.disabled=true;creationName.disabled=creationTemplate.disabled=true;creationStatus.textContent='正在提交创建请求…';
+    try{
+      await sync.call('/api/coordinator/sessions',creationPending,'POST','main');
+      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
+      creationStatus.textContent='Cloud 已保存请求，等待本机创建与绑定。';creationName.value='';
+    }catch(error){creationStatus.textContent='尚未确认创建：'+error.message;}
+    finally{creatingSession=false;await refresh();}
+  };
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   const render=state=>{
+    renderCreation(state);
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
     const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances]);
     if(contentKey!==lastContent){

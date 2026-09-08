@@ -223,7 +223,7 @@ export class CoordinatorInbox {
     this.lastError = null;
     if (await this.service.notifyMountReview?.()) return;
     if (await this.intake?.consume()) return;
-    for (const id of this.sessionIds) {
+    for (const id of typeof this.sessionIds === 'function' ? await this.sessionIds() : this.sessionIds) {
       if (this.stopped) return;
       try {
         const binding = await this.store.registeredBinding(this.principal, id);
