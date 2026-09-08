@@ -5,11 +5,11 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
-import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
@@ -334,10 +334,43 @@ test('read-only inspection remains available without a plan while writes stay ga
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --diagnose --root "${project}"`,
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" workbench --binding-status --root "${project}" --session ${session}`,
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" plan-status --root "${project}" --session ${session}`,
+    `context-guard map status --root "${project}" --session ${session}; echo EXIT=$?`,
+    `context-guard map status --root "${project}" --session ${session} 2>&1; echo EXIT=$?`,
+    `context-guard set-language --root "${project}" --language zh`,
+    `context-guard write-candidates --root "${project}" --input /tmp/cg-candidates.json`,
+    `context-guard map apply --root "${project}" --session ${session} --input /tmp/cg-map-request.json`,
+    'sed -n \'1,20p\' RULE.md 2>&1',
+    'ls 2>&1 | head',
   ];
   for (const command of commands) {
     const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
     assert.equal(result.json.hookSpecificOutput?.permissionDecision, undefined, command);
+    const claude = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command } });
+    assert.equal(claude.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
+
+  const requestWrite = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write',
+    tool_input: { file_path: path.join(os.tmpdir(), 'cg_write_probe.json'), content: '{"approved":true}' },
+  });
+  assert.equal(requestWrite.json.hookSpecificOutput?.permissionDecision, undefined);
+  const projectWrite = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write',
+    tool_input: { file_path: path.join(project, 'src/note.txt'), content: 'no' },
+  });
+  assert.equal(projectWrite.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(projectWrite.json.hookSpecificOutput.permissionDecisionReason, /plan-start --input -/);
+  for (const filePath of [
+    path.join(project, '..', 'other-worktree', 'src', 'a.py'),
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    path.join(os.tmpdir(), 'cg_write_probe.py'),
+  ]) {
+    const blocked = hook('PreToolUse', project, session, {
+      platform: 'claude', tool_name: 'Write',
+      tool_input: { file_path: filePath, content: 'no' },
+    });
+    assert.equal(blocked.json.hookSpecificOutput.permissionDecision, 'deny', filePath);
+    assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   }
 
   for (const command of ['touch src/new.txt', 'sed -ni s/a/b/ src/a.txt', 'git branch new-feature', 'curl -XPOST http://127.0.0.1/api/reset', 'rm context-guard plan-start']) {
@@ -643,6 +676,106 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(directMapWrite.json.hookSpecificOutput.permissionDecision, 'deny');
 });
 
+test('top-level record-todo and record-bad-case use Session Map nodes missing from disk map.json', async t => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-map-'));
+  let workbenchPid = null;
+  t.after(async () => {
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    else {
+      spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+        encoding: 'utf8', timeout: 15_000, windowsHide: true,
+      });
+    }
+    await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
+  });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: project, stdio: 'pipe', windowsHide: true });
+  execFileSync('git', [
+    '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
+    'commit', '--allow-empty', '-m', 'fixture',
+  ], { cwd: project, stdio: 'pipe', windowsHide: true });
+  run(python, [contextScript, 'init', '--root', project]);
+  await saveMainBinding(project, { mode: 'local', branch: 'trunk' });
+  const session = 'session-map-todo';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await fs.mkdir(path.join(project, 'src'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/export.md'), '# export\n');
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', session, '--port', String(port)]);
+  const resolved = await resolveProject(project);
+  const state = JSON.parse(await fs.readFile(path.join(resolved.sharedDir, 'workbench.json'), 'utf8'));
+  workbenchPid = state.pid;
+
+  const snapshot = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'read', '--root', project, '--session', session]).stdout);
+  run(process.execPath, [workbenchCli, 'map', 'apply', '--root', project, '--session', session], {
+    input: JSON.stringify({
+      operationId: 'propose-M3-export',
+      baseVersion: snapshot.version,
+      operations: [{
+        type: 'create',
+        parentId: 'T0',
+        node: {
+          id: 'M3',
+          title: 'Export',
+          kind: 'work',
+          purpose: 'Own markdown export',
+          owns: ['src/export.md'],
+          memories: [{
+            text: 'Adds markdown export',
+            paths: ['src/export.md'],
+            proposalEvidence: {
+              parentId: 'T0',
+              basis: 'new-module',
+              reason: 'Adds a separate export boundary and entry point',
+              files: ['src/export.md'],
+            },
+          }],
+        },
+      }],
+    }),
+  });
+  const diskMap = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  assert.deepEqual(diskMap.root.children, []);
+  assert.equal(diskMap.bootstrap, 'pending');
+  const sessionNode = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(sessionNode.node.id, 'M3');
+
+  const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'todo-turn', prompt: '支持导出 markdown' });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M3', '--title', '支持导出 markdown', '--description', '从 Session Map 节点写入',
+  ]);
+  const recorded = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(recorded.node.todos.length, 1);
+  assert.equal(recorded.node.todos[0].title, '支持导出 markdown');
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8')).root.children, []);
+
+  const badPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-turn', prompt: '导出失败必须记坏例' });
+  const badSignal = badPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  run(python, [
+    contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+    '--node', 'M3', '--title', '导出失败', '--phenomenon', '无法写出 markdown',
+  ]);
+  const withBug = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(withBug.node.bugs.length, 1);
+
+  const missing = spawnSync(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session,
+    '--signal', signalId, '--node', 'MISSING', '--title', 'must fail',
+  ], { encoding: 'utf8', windowsHide: true });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /unknown map node: MISSING/);
+});
+
 test('completion receipts require evidence, scope review, all files and fresh content', async t => {
   const project = await fixture(), session = 'receipt-session';
   t.after(() => dispose(project));
@@ -739,10 +872,24 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md && rg -n hook scripts | head -5'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --diagnose --root .'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --root . --session session-1'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s 2>&1; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard set-language --root . --language zh'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard write-candidates --root . --input /tmp/c.json'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md 2>&1'}})
+    assert hook.control_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map apply --input /tmp/r.json; echo EXIT=$?'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | context-guard plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | node /tmp/context-guard-skill.js plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | python3 /tmp/context_guard.py plan-start --input -'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'python3 payload.py | context-guard plan-start --input -'}})
+    assert hook.mutating_tool({'tool_name':'Write','tool_input':{'file_path':'/tmp/cg_write_probe.json','content':'{}'}})
+    request = Path(tempfile.gettempdir()) / 'cg_write_probe.json'
+    assert hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(request)}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(root / 'src/a.txt')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':'../other-worktree/src/a.py'}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(root.parent / 'other-worktree' / 'src' / 'a.py')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(Path.home() / '.claude' / 'settings.json')}}, root)
+    assert not hook.protocol_request_write({'tool_name':'Write','tool_input':{'file_path':str(Path(tempfile.gettempdir()) / 'cg_write_probe.py')}}, root)
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rg --pre ./writer pattern .'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'find . -delete'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git diff --output=leak.patch'}})
