@@ -86,6 +86,8 @@ try {
 
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  // This suite verifies synchronization, not third-party font availability.
+  await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
   localPage = await context.newPage(); cloudPage = await context.newPage();
   for (const page of [localPage, cloudPage]) page.setDefaultTimeout(12000);
   await localPage.goto(`${local.state.url}?session=${sessionId}`);
