@@ -7,6 +7,7 @@ import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { withFileLock, pause } from '../scripts/workbench/io.mjs';
+import { scopedObjectKey } from '../scripts/workbench/protocol-workflow.mjs';
 
 const principal = { repositoryId: 'repo-1', deviceId: 'device-1', agentId: 'agent-1' };
 test('IF-040: concurrent stale-owner recovery never removes a new live lock', async t => {
@@ -34,6 +35,18 @@ async function fixture(t) {
   await store.handle(principal, bind, { verifyBinding: () => true });
   return { dir, store, bind };
 }
+test('human task results remain reviewable across binding generations but isolated from Agents', async t => {
+  const { store, dir } = await fixture(t);
+  const human = { ...principal, role: 'human' };
+  const task = { repositoryId: principal.repositoryId, session, id: 'old', stage: 'finished', version: 'result-v1', result: { outcome: 'success', summary: 'Verified result' } };
+  await store.transaction(state => { state.tasks[scopedObjectKey(principal, session, 'task:old')] = task; Object.values(state.bindings)[0].generation = 2; });
+  assert.equal((await store.taskStatus(human, { ...session, generation: 2 }, 'old')).result.summary, task.result.summary);
+  assert.equal((await new ProtocolStore(dir).humanTaskResult(human, session.id, 'old')).version, 'result-v1');
+  await assert.rejects(store.humanTaskResult(principal, session.id, 'old'), { code: 'FORBIDDEN' });
+  await assert.rejects(store.humanTaskResult({ ...human, repositoryId: 'other' }, session.id, 'old'), { code: 'NOT_FOUND' });
+  await assert.rejects(store.taskStatus(principal, { ...session, generation: 2 }, 'old'), { code: 'NOT_FOUND' });
+});
+
 test('IF-006: concurrent retries persist one mutation, one notification and one receipt', async t => {
   const { store, dir } = await fixture(t);
   const input = msg('operation', 'object.put', { kind: 'plan', ref: 'p', baseVersion: '', content: {} });
@@ -71,6 +84,22 @@ test('IF-008: out-of-order acknowledgements do not skip unprocessed messages', a
   assert.equal(read.data.nextSeq, 1); assert.equal(read.data.hasMore, true);
   const beat = await store.handle(principal, msg('beat', 'sync.heartbeat', { sessions: [{ ...session, ackedSeq: 0 }] }, false));
   assert.deepEqual(beat.data.sessions, [{ ...session, ackedSeq: 2, latestSeq: 3 }]);
+});
+
+test('heartbeat isolates stale, unauthorized and ahead-of-server Sessions', async t => {
+  const { store } = await fixture(t);
+  for (const [bad, code] of [
+    [{ ...session, generation: 2, ackedSeq: 0 }, 'STALE_SESSION'],
+    [{ id: 'not-owned', generation: 1, ackedSeq: 0 }, 'FORBIDDEN'],
+    [{ ...session, ackedSeq: 1 }, 'CONFLICT'],
+  ]) {
+    const reply = await store.handle(principal, msg(`mixed-${code}`, 'sync.heartbeat', {
+      sessions: [bad, { ...session, ackedSeq: 0 }],
+    }, false));
+    assert.deepEqual(reply.data.sessions, [{ ...session, ackedSeq: 0, latestSeq: 0 }]);
+    assert.deepEqual(reply.data.rejected, [{ id: bad.id, generation: bad.generation, code }]);
+    await assert.rejects(store.handle(principal, msg(`invalid-${code}`, 'sync.heartbeat', { sessions: [bad] }, false)), { code });
+  }
 });
 
 test('IF-028: coordinator acknowledgement cannot consume the executor delivery', async t => {

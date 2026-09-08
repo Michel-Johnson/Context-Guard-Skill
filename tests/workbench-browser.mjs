@@ -406,6 +406,11 @@ try {
   await page.locator(`#session-menu [data-session="${session}"]`).click();
   await page.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, session);
   await page.locator('.node[data-id="N1"]').click();
+  const occupiedBugIds = await read();
+  occupiedBugIds.root.children[0].bugs = Array.from({length:10},(_,i)=>({id:`B${40+i}`,title:`Existing Bug ${i}`,status:'resolved',sessions:[]}));
+  await fs.writeFile(mapPath,encode(occupiedBugIds));
+  await until(async()=> (await read()).root.children[0].bugs.length===10);
+  await page.waitForFunction(()=>data.children[0].bugs.length===10);
   await page.locator('#detail [data-act="add-bug"]').click();
   const scopedDialog = page.locator('.bug-assign-dialog');
   assert.equal(await scopedDialog.getByLabel('Bug 标题').count(), 0);
@@ -415,6 +420,8 @@ try {
   await scopedDialog.getByRole('button', { name: '创建并发送' }).click();
   await until(() => queuedMessages.length === 3);
   await until(async () => (await read()).root.children[0].bugs.some(bug => bug.title === '单会话自动分配' && bug.sessions.includes(session)));
+  const uniqueBugs = (await read()).root.children[0].bugs;
+  assert.equal(new Set(uniqueBugs.map(bug=>bug.id)).size,uniqueBugs.length);
   const scopedClean = await read(); scopedClean.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(scopedClean));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
@@ -708,17 +715,28 @@ try {
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#detail [data-act="ask-file"]').click();
   const chooser = await chooserPromise;
+  let releaseUploadReceipt;
+  const uploadReceiptGate = new Promise(resolve => { releaseUploadReceipt=resolve; });
+  const holdUploadReceipt = async route => {
+    const response = await route.fetch();
+    if(route.request().postDataJSON()?.operations?.some(op=>op.fields?.memories?.[0]?.files?.length===2)) await uploadReceiptGate;
+    await route.fulfill({response});
+  };
+  await page.route('**/api/commit*', holdUploadReceipt);
   await chooser.setFiles(uploadFixture);
   await until(async () => (await read()).root.children[0].memories[0].files.length === 2);
-  await synchronized();
   const uploaded = (await read()).root.children[0].memories[0].files.find(file => file.name === 'uploaded-through-node.txt');
   assert.ok(uploaded?.path.startsWith('docs/shots/'));
   assert.equal(await fs.readFile(path.join(root, uploaded.path), 'utf8'), 'Node-managed attachment');
   await page.locator('#detail [data-act="rm-file"]').nth(1).click();
+  releaseUploadReceipt();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 1);
+  await synchronized();
+  await page.unroute('**/api/commit*', holdUploadReceipt);
+  assert.equal(await page.evaluate(()=>pendingWrite===null), true, 'removing the uploaded reference cancels its pending confirmation');
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
-  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
   await page.locator('.node[data-id="N2"]').click(); await page.locator('.node[data-id="N1"]').click();
   await page.locator('#detail [data-ed="idea"]').evaluate(el => {
     const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', 'docs/attachment.txt');
@@ -729,7 +747,7 @@ try {
   assert.deepEqual((await read()).root.children.find(x => x.id === 'N2').ideas, []);
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
-  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
   stage = 'delete-reparent';
   const createdChild = (await read()).root.children.find(x => x.id === 'N2')?.children.find(x => x.title === '人类新增子节点');
@@ -1358,6 +1376,7 @@ try {
   passed = true;
   console.log(JSON.stringify({ output, checks, errors }));
 } catch (e) {
+  if (page) errors.push(await page.evaluate(() => ({ status: workbenchSync?.status, view: workbenchSync?.viewId, operations: workbenchSync?.operations(), inputDraft: !!workbenchSync?.inputDraft, pendingRequest: !!workbenchSync?.pendingRequest, inflight: !!workbenchSync?.inflight, composing: workbenchSync?.composing, recovery: workbenchSync?.serverRecovery, baseBugs: workbenchSync?.baseTree?.children?.[0]?.bugs, docBugs: workbenchSync?.doc?.root?.children?.[0]?.bugs })).catch(() => 'Sync diagnostics unavailable'));
   if (page) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
   // Only synthetic fixture text/errors; no HTTP headers, tokens, or user directories.
   await fs.writeFile(path.join(output, 'failure.txt'), `stage=${stage}\n${e.stack}\n${JSON.stringify(errors)}`);

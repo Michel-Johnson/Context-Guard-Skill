@@ -20,6 +20,8 @@ import { ProtocolBlobs, serveBlob } from './protocol-blobs.mjs';
 import { workflowTypes } from './protocol-workflow.mjs';
 import { ProtocolDelivery, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
+import { ensureNamedProxy } from './named.mjs';
+import { registeredProject, rememberProject } from './registry.mjs';
 import { WorkbenchSnapshots } from './protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from './protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
@@ -34,8 +36,17 @@ export const projectLockPath = project => project.kind === 'git' ? path.join(pro
 const execFileAsync = promisify(execFile);
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
+function missingCommitFields(input) {
+  const missing = [];
+  if (typeof input?.baseVersion !== 'string' || !input.baseVersion) missing.push('baseVersion');
+  if (!Array.isArray(input?.operations)) missing.push('operations');
+  return missing;
+}
+
 export async function prepareSessionCommit(store, input, actor, sessionId) {
   if (!sessionId || !input?.recoveryOf) {
+    const missing = missingCommitFields(input);
+    if (missing.length) throw new MapError('INVALID_ARGUMENT', `Missing required field${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
     return { input: sessionId ? { ...input, operations: restoreSessionWorkItemOperations(store.doc, input.operations, sessionId) } : input, actor };
   }
   const operation = Array.isArray(input.operations) && input.operations.length === 1 ? input.operations[0] : null;
@@ -73,8 +84,20 @@ export function todoSessionMessage(node, todo) {
     '请在当前项目中完成这个开发事项；完成后把 Context Guard 中的 TODO 标记为已完成。',
   ].filter(Boolean).join('\n');
 }
-async function queueCodexMessage({ sessionId, message, root }) {
-  await execFileAsync(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
+export async function queueCodexMessage({ sessionId, message, root }, { run = execFileAsync, platform = process.platform } = {}) {
+  if (platform === 'darwin') {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw Object.assign(new Error('Desktop delivery requires a Session UUID'), { code: 'INVALID_SESSION' });
+    try {
+      await run('/usr/bin/open', ['-g', `codex://threads/${sessionId}`], { cwd: root, timeout: 15000, maxBuffer: 65536 });
+    } catch {
+      // No task has been queued yet: opening can be retried safely, including
+      // after an opener timeout. Never turn this into uncertain task acceptance.
+      throw Object.assign(new Error('Could not request the existing desktop Session; no task was queued'), { code: 'DESKTOP_OPEN_FAILED' });
+    }
+  }
+  // Opening requests a load; only the Session's started report proves execution.
+  // The durable native queue also covers loading that finishes after this call.
+  await run(process.env.CONTEXT_GUARD_CODEX_COMMAND || 'codex', ['queue', '--thread', sessionId, '--message', message], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
@@ -146,6 +169,19 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const protocolMap = new ProtocolMap(path.join(project.sharedDir, 'interface-v2', 'map-intents'));
   const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
   let device;
+  let deviceServiceCheck = null, deviceServiceCheckedAt = 0;
+  const ensureDeviceService = async () => {
+    if (deviceServiceCheck) return deviceServiceCheck;
+    if (Date.now() - deviceServiceCheckedAt < 10000) return;
+    deviceServiceCheck = (async () => {
+      const state = await readJSON(sharedState, null);
+      if (state?.instance !== instance || !await device?.connected()) return;
+      if ((await registeredProject(project))?.runtime?.instance !== instance) await rememberProject(project, { state });
+      await ensureNamedProxy();
+      deviceServiceCheckedAt = Date.now();
+    })().finally(() => { deviceServiceCheck = null; });
+    return deviceServiceCheck;
+  };
   const projectDevice = async () => {
     const config = await readJSON(memoryConfigPath(project), null);
     if (!config?.url) return null;
@@ -163,6 +199,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const identity = identities.get(head.session.id), heartbeat = { ...head.session, ackedSeq: 0 };
               if (identity?.name) heartbeat.name = identity.name;
               if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
+              heartbeat.execution = { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
               registered.push(heartbeat);
             }
           } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }
@@ -195,11 +232,12 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
       onError: (error, source) => {
         device.lastError = error.code || 'UNAVAILABLE';
-        if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const coordinator of syncCoordinators.values()) if (coordinator.managed && !coordinator.status.conflict) {
+        if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const [view, coordinator] of syncCoordinators) if ((!error.details?.sessionId || view === `session:${error.details.sessionId}`) && coordinator.managed && !coordinator.status.conflict) {
           coordinator.update({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', error: device.lastError });
         }
       },
     });
+    await ensureDeviceService();
     return device;
   };
   const access = await new Access(root, project.kind === 'git' ? {
@@ -260,7 +298,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const job = previous.then(() => target.version === version ? generateProjections(projectionRoot, projectionDoc, version, () => target.version === version, { sessionId }) : false);
           projectionQueues.set(viewId, job.catch(() => {})); return job;
         };
-    target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions });
+    // In Cloud mode the local journal is an observation cache, not the Map or
+    // the pending write queue. Preserve its raw backup and mark a history gap;
+    // never erase a pending commit, operation receipt, or unsent edit.
+    const recoverJournal = !!sessionId && !!syncDirectory && !!await readJSON(memoryConfigPath(project), null);
+    target = new MapStore(storeRoot, { fault, project: projectMap, ...storeOptions, recoverJournal });
     await target.init();
     storeViews.set(target, new Set([viewId]));
     target.on('change', state => {
@@ -469,6 +511,14 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
+        if (route === '/api/device-heartbeat') {
+          if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires device service credential', 401);
+          const connected = await projectDevice();
+          if (!connected?.runtime?.prepare) throw new MapError('UNAVAILABLE', 'Cloud connection unavailable', 503);
+          if (req.method === 'GET') return send(res, 200, await connected.runtime.prepare());
+          if (req.method === 'POST') { connected.runtime.accept(await body(req)); return send(res, 200, { accepted: true }); }
+          throw new MapError('INVALID_ARGUMENT', 'Use GET or POST', 400);
+        }
         if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
         if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() });
         if (route === '/api/v2/messages') return messageHandler({
@@ -575,6 +625,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return reply;
           },
         })(req, res);
+        if (route === '/api/v2/task-report' && req.method === 'POST') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
+          const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
+          const binding = await protocolStore.registeredBinding(principal, actor.sessionId);
+          if (!binding || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'Session binding changed');
+          const message = await protocolStore.executionReport(principal, { id: actor.sessionId, generation: binding.generation }, await body(req));
+          const connection = await projectDevice();
+          if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable; retry the same command');
+          return send(res, 200, { id: message.id, ok: true, data: await connection.send(message) });
+        }
         if (route === '/api/v2/interrupt' && req.method === 'POST') {
           const actor = auth(req, url);
           if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
@@ -888,6 +949,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const owner = await readJSON(sharedState, null);
         if (owner?.instance === instance) ownershipChecks = 0;
         else if (++ownershipChecks >= 2) await close();
+        if (owner?.instance === instance) await ensureDeviceService();
       } catch {
         // A transient unreadable state file must not terminate a healthy server.
         ownershipChecks = 0;

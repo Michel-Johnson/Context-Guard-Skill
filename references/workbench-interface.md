@@ -327,10 +327,56 @@ and app running. Scheduling delay, model processing and busy-task deferral are
 additional latency; do not promise second-level chat replies. Do not spawn a second
 model process with the current session ID or use private desktop IPC to force a turn.
 
+For native Cloud task delivery on macOS, the local backend first asks the registered
+desktop application to open `codex://threads/<session-uuid>` using the system URL
+handler, then calls the existing `codex queue`. This reuses the original Session;
+it does not create a model service or a new thread. The request avoids activating
+the application, but the desktop may navigate its existing window to that task.
+Only UUIDs are accepted, and no prompt or credential enters the URL. Opening is
+not proof of loading or execution: the task remains received until the actual
+Session reports started. A failed open queues nothing and can be retried; an
+uncertain queue result retains the original delivery receipt and is not resent.
+Other operating systems retain their existing queue adapter; automatic desktop
+loading there has not been implemented or verified.
+
 The adapter needs no new server endpoint and works with an already-running Node
 protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack
 workflow; they are not an alternative idle-task scheduler.
+
+### Compact Cloud task commands and Bug summaries
+
+For a Cloud `mode: session` assignment, the installed CLI accepts
+`map task start <delivery-id>` and
+`map task finish <delivery-id> --summary <actual-result>`.
+Use `--outcome failed` or `--outcome cancelled` for those outcomes. The normal
+root/Session resolution applies; credentials, task ID, generation and report IDs
+come from the authenticated Session's persisted notification, not the prompt.
+The start and finish IDs remain stable on retry. Changed retry content is rejected;
+an unknown delivery or another Session's delivery cannot be reported. Older explicit
+`map exchange` messages remain supported for already-delivered tasks.
+
+The executing Agent supplies the result, verification evidence and reusable
+experience in its finish `summary`, before human verification. Execution success
+means awaiting verification, not human acceptance. Cloud offers ✓ / ✕ for both
+Bugs and TODOs; neither button queues another model task. Legacy `purpose: summary`
+dispatch returns `ACTION_REPLACED`; existing summary results remain readable.
+
+Authenticated human POST `/api/task-review?view=main` under the project workbench
+accepts `{operationId,sessionId,taskId,resultVersion,nodeId,itemId,kind,decision,reason?}`.
+`kind` is `bug|todo`, `decision` is `approved|rejected`; `resultVersion` is the task
+status version. The server checks the exact work-item dispatch and finished result.
+Approval requires success and a nonempty summary. One Main transaction records the
+decision and adds only this result's summary as a stable-ID node memory; it does
+not merge Git code or publish the entire Session Map. Same-version retries and
+concurrent identical decisions deduplicate; conflicting decisions or stale versions
+fail. The client reloads the receipt rather than submitting a second Map edit.
+
+Rejection reopens the item and appends durable `reviewFeedback` with task/result/
+Session identity, reason and server time. GET `/api/review-feedback?view=main`
+returns pending feedback to the authenticated workbench. Feedback is not an
+execution queue: no Agent is assumed, no model is woken, and no automatic rework
+occurs. Main Agent routing, acknowledgement and clarification are future work.
 
 ## Prompt signals and Map TODOs
 
@@ -375,7 +421,11 @@ context-guard plan-start --root <project> --session <actual-session-id> --input 
 capability. Node grants are independently checked. The command reads the nodes,
 requires pending inbox changes to be reviewed/acknowledged, hashes the declared
 files, records timestamps and prepares configured Cloud Sync. A second active
-plan is rejected. There is no invented native "plan approved" Hook event.
+plan is rejected unless `extend:true` explicitly extends the existing approved
+plan. Extensions retain its ID, original file baselines and unfinished acceptance,
+union the scope and record an amendment; prior archive evidence is invalidated.
+Already-dirty new paths require scope review and use Git HEAD as their baseline,
+so extension cannot hide unverified edits. There is no invented native "plan approved" Hook event.
 
 Mutating tools require an active plan. Known paths outside the plan are denied.
 Unknown shell/script scopes are explicitly marked unverified, never described

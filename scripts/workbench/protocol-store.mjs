@@ -153,7 +153,7 @@ export class ProtocolStore extends EventEmitter {
       const brief = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief`, type: 'brief.submit', session: request.session, payload: { taskId, text: resolved.text } }, emitted, workflow);
       await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief-review`, type: 'review.request', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, taskId } }, emitted, workflow);
       await reduceWorkflow(state, principal, { v: 2, id: `${prefix}:approved`, type: 'review.result', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: '用户在 Cloud 工作台确认分配' } }, emitted, workflow);
-      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion } }, emitted, workflow);
+      const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion, ...(resolved.mode ? { mode: resolved.mode } : {}) } }, emitted, workflow);
       const result = { deliveryId: request.operationId, taskId, sessionId: request.session.id, state: assigned.stage === 'queued' ? 'queued' : 'cloud_queued', taskVersion: assigned.version };
       state.taskDispatches[dispatchKey] = { fingerprint, result };
       return result;
@@ -163,21 +163,37 @@ export class ProtocolStore extends EventEmitter {
     requireIdentity(principal);
     return this.transaction(state => {
       requireBinding(state, principal, session);
-      const task = state.tasks[scopedObjectKey(principal, session, `task:${taskId}`)];
+      let task = state.tasks[scopedObjectKey(principal, session, `task:${taskId}`)];
+      if (!task && principal.role === 'human') {
+        const older = Object.values(state.tasks).filter(value => value.repositoryId === principal.repositoryId && value.session.id === session.id && value.id === taskId && value.stage === 'finished');
+        if (older.length === 1) task = older[0];
+      }
       if (!task) fail('NOT_FOUND', 'Task is not registered in this Session');
-      const queue = queueFor(state, principal, session);
+      const queue = queueFor(state, principal, task.session);
       const outcomes = task.assignmentSeq
         ? Object.values(queue.consumers || {}).map(consumer => consumer.outcomes?.[task.assignmentSeq]).filter(Boolean)
         : [];
       const delivered = outcomes.find(item => item.deliveryState === 'received') || outcomes.find(item => item.deliveryState) || outcomes[0];
-      const stateName = task.stage === 'queued' ? 'queued'
+      const stateName = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'unknown') : task.stage === 'queued' ? 'queued'
         : ['plan-ready', 'plan-rejected'].includes(task.stage) ? 'waiting_review'
           : task.stage === 'executing' ? 'executing'
             : task.stage !== 'assigned' ? task.stage
               : delivered?.deliveryState === 'received' ? 'codex_received'
                 : delivered?.deliveryState === 'uncertain' ? 'uncertain'
                   : delivered ? 'local_received' : 'cloud_queued';
-      return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version };
+      return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version,
+        ...(task.result ? { result: { outcome: task.result.outcome, summary: task.result.summary, finishedAt: task.result.finishedAt } } : {}) };
+    }, { readOnly: true });
+  }
+  async humanTaskResult(principal, sessionId, taskId) {
+    requireIdentity(principal);
+    if (principal.role !== 'human') fail('FORBIDDEN', 'Human review requires browser authority');
+    return this.transaction(state => {
+      const tasks = Object.values(state.tasks).filter(task => task.repositoryId === principal.repositoryId && task.session.id === sessionId && task.id === taskId);
+      if (tasks.length !== 1) fail('NOT_FOUND', 'Task result is missing or ambiguous');
+      const task = tasks[0];
+      if (task.stage !== 'finished' || !task.result) fail('CONFLICT', 'Agent has not submitted a final result');
+      return { taskId, sessionId, version: task.version, result: structuredClone(task.result) };
     }, { readOnly: true });
   }
   async handle(principal, input, options = {}) {
@@ -205,13 +221,23 @@ export class ProtocolStore extends EventEmitter {
         return { session: { id: payload.sessionId, generation: binding.generation }, bindingVersion: binding.version };
       }
       if (message.type === 'sync.heartbeat') {
-        return { sessions: payload.sessions.map(s => {
-          requireBinding(state, p, s);
-          const queue = queueFor(state, p, s);
-          const consumer = consumerFor(queue, p);
-          if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
-          return { id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq };
-        }) };
+        const sessions = [], rejected = [];
+        let firstError;
+        for (const s of payload.sessions) {
+          try {
+            requireBinding(state, p, s);
+            const queue = queueFor(state, p, s);
+            const consumer = consumerFor(queue, p);
+            if (s.ackedSeq > consumer.ackedSeq) fail('CONFLICT', 'Client acknowledgement is ahead of durable server state');
+            sessions.push({ id: s.id, generation: s.generation, latestSeq: queue.latestSeq, ackedSeq: consumer.ackedSeq });
+          } catch (error) {
+            if (!['FORBIDDEN', 'STALE_SESSION', 'CONFLICT'].includes(error.code)) throw error;
+            firstError ||= error;
+            rejected.push({ id: s.id, generation: s.generation, code: error.code });
+          }
+        }
+        if (!sessions.length && firstError) throw firstError;
+        return { sessions, ...(rejected.length ? { rejected } : {}) };
       }
       if (message.type === 'sync.read') {
         const queue = queueFor(state, p, message.session);
@@ -279,6 +305,16 @@ export class ProtocolStore extends EventEmitter {
       requireBinding(state, principal, session);
       const current = state.localExecutions?.[queueKey(principal, session)];
       return current && !current.closed ? current : null;
+    }, { readOnly: true });
+  }
+  async executionReport(principal, session, { deliveryId, stage, summary, outcome = 'success' }) {
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      const message = queueFor(state, principal, session).items.find(item => item.message.id === deliveryId)?.message;
+      if (!message || message.type !== 'task.assign' || message.payload.mode !== 'session') fail('NOT_FOUND', 'No Session task matches this delivery');
+      if (!['started', 'finished'].includes(stage)) fail('INVALID_ARGUMENT', 'Expected start or finish');
+      return validateMessage({ v: 2, id: `${deliveryId}:${stage}`, type: 'task.report', session,
+        payload: { taskId: message.payload.taskId, stage, data: { deliveryId, ...(stage === 'finished' ? { outcome, summary } : {}) } } });
     }, { readOnly: true });
   }
   async registeredBinding(principal, sessionId) {

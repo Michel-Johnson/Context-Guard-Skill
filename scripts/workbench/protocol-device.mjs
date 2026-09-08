@@ -6,7 +6,6 @@ import { pipeline } from 'node:stream/promises';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
 import { canonical, fail, validateMessage, ProtocolError } from './protocol.mjs';
 import { sendMessage, ProjectMessagePump } from './protocol-client.mjs';
-import { readEvents } from './protocol-events.mjs';
 
 const readTypes = new Set(['sync.heartbeat', 'sync.read', 'workbench.read', 'object.read', 'blob.get']);
 const messageScope = message => message.session?.id || message.payload.sessionId || 'project';
@@ -97,39 +96,28 @@ export class DeviceConnection {
     if (!response.body) { res.end(); return; }
     await pipeline(Readable.fromWeb(response.body), bound, res);
   }
-  start({ sessions, apply, onError = () => {}, onSession, heartbeatMs = 10000, eventReader = readEvents }) {
+  start({ sessions, apply, onError = () => {}, onSession }) {
     if (this.runtime) return;
-    const controller = new AbortController();
-    const pump = new ProjectMessagePump({ sessions, apply, heartbeatMs, onError: error => onError(error, 'heartbeat'), onSession, send: message => this.send(message) });
-    let retrying;
-    const retry = () => {
-      if (retrying) return retrying;
-      retrying = this.retryPending().catch(onError).finally(() => { retrying = null; });
-      return retrying;
-    };
-    const timer = setInterval(retry, heartbeatMs); timer.unref?.();
-    const wait = milliseconds => new Promise(resolve => {
-      const done = () => { clearTimeout(timeout); controller.signal.removeEventListener('abort', done); resolve(); };
-      const timeout = setTimeout(done, milliseconds); timeout.unref?.();
-      controller.signal.addEventListener('abort', done, { once: true });
-      if (controller.signal.aborted) done();
-    });
-    const events = (async () => {
-      let failures = 0;
-      while (!controller.signal.aborted) {
-        try {
+    const pump = new ProjectMessagePump({ sessions, apply, onError: error => onError(error, 'heartbeat'), onSession, send: message => this.send(message) });
+      let pending, retrying;
+      this.runtime = {
+        prepare: async () => {
           const connection = await readJSON(this.file, null);
           if (!connection?.credential || connection.origin !== this.origin) fail('UNAUTHORIZED', 'Backend is disconnected');
-          await eventReader(this.origin, connection.credential, { signal: controller.signal, allowLoopback: this.allowLoopback,
-            onEvent: async () => { failures = 0; await pump.wake(); } });
-        } catch (error) { if (!controller.signal.aborted) onError(error, 'events'); }
-        if (!controller.signal.aborted) await wait(Math.min(30000, 1000 * 2 ** Math.min(failures++, 5)));
-      }
-    })();
-    this.runtime = { close: async () => {
-      controller.abort(); clearInterval(timer); await pump.close(); await events; await retrying;
-    } };
-    retry(); pump.start();
+          const current = await sessions();
+          pending = { sessions: current, message: pump.request('sync.heartbeat', { sessions: current }) };
+          return { origin: this.origin, credential: connection.credential, message: pending.message };
+        },
+        accept: reply => {
+          if (!pending || reply?.id !== pending.message.id) fail('CONFLICT', 'Heartbeat receipt is no longer current');
+          const observed = pending; pending = null;
+          if (!reply.ok) { onError(new ProtocolError(reply.error?.code || 'UNAVAILABLE', 'Device heartbeat rejected'), 'heartbeat'); return; }
+          for (const item of reply.data?.rejected || []) onError(new ProtocolError(item.code, 'Session heartbeat rejected', { sessionId: item.id }), 'heartbeat');
+          pump.poll({ sessions: observed.sessions, beat: reply.data }).catch(error => onError(error, 'heartbeat'));
+          retrying ||= this.retryPending().catch(onError).finally(() => { retrying = null; });
+        },
+        close: async () => { await pump.close(); await retrying; },
+      };
   }
   async close() { const runtime = this.runtime; this.runtime = null; await runtime?.close(); await Promise.all([...(this.enrolling?.values() || [])]); }
   async disconnect(message) {

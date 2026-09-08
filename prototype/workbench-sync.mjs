@@ -34,7 +34,9 @@ export class WorkbenchSync {
     this.taskStates = new Map();
     this.refreshingAccess = null;
     this.accessRefreshQueued = false;
-    this.urlPinned = Boolean(requestedSession);
+    // Cloud authentication scopes access; a deep link only selects the initial
+    // Session. Local Session-only views keep their existing restriction.
+    this.urlPinned = Boolean(requestedSession) && !this.config?.root?.startsWith('cloud:');
     this.panel = document.createElement('details'); this.panel.id = 'cg-sync'; this.panel.className = 'set-block sync-settings';
     this.panel.innerHTML = '<summary>同步与恢复</summary><p id="cg-sync-status"></p><span id="cg-sync-version" hidden></span><div class="sync-actions"><button id="cg-sync-initialize" hidden>将当前图设为真实地图</button><button id="cg-sync-retry">重试</button><button id="cg-sync-export">导出草稿/旧缓存</button><button id="cg-sync-import">导入并比较</button><button id="cg-sync-reload">保留草稿后读取磁盘</button></div><label>Agent 会话<select id="cg-sync-session"></select></label><input id="cg-sync-file" type="file" accept="application/json" hidden>';
     this.repairButton = document.createElement('button'); this.repairButton.id = 'cg-sync-repair'; this.repairButton.hidden = true;
@@ -291,7 +293,6 @@ export class WorkbenchSync {
     // events. Main state must not make the pending Session look synchronized.
     if (this.pendingSession) return;
     if (state.viewId && state.viewId !== this.viewId) return;
-    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     this.recoveryState(state);
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) { await this.reload(); return; }
@@ -301,6 +302,9 @@ export class WorkbenchSync {
     }
     if (this.inflight) { this.deferredState = state; return; }
     if (this.dirty()) { this.saveDraft(); this.setStatus('conflict'); return; }
+    // Only a new state read supersedes another read. Presence/version notices
+    // must not cancel the human's explicit reload while preserving a draft.
+    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     const current = await this.call('/api/state');
     if (generation !== this.loadGeneration) return;
     this.recoveryState(current);
@@ -608,6 +612,16 @@ export class WorkbenchSync {
   async sendTodo(sessionId, nodeId, todoId) {
     return this.sendWorkItem({ sessionId, nodeId, todoId });
   }
+  async reviewTask(input) {
+    if (!this.config.interfaceCapabilities?.humanReview || this.viewId !== 'main') throw new Error('请在 Cloud 主工作台验收');
+    const key = `cg-task-review:${this.config.root}:${JSON.stringify(input)}`;
+    const request = stored(key) || { ...input, operationId: uniqueId() };
+    localStorage.setItem(key, JSON.stringify(request));
+    const result = await this.call('/api/task-review', request);
+    if (result.operationId !== request.operationId || result.review?.taskId !== input.taskId || result.review?.resultVersion !== input.resultVersion || result.review?.decision !== input.decision) throw new Error('验收回执不匹配，请重试原操作');
+    localStorage.removeItem(key);
+    return result;
+  }
   async connectCloud(password) {
     const id = uniqueId();
     const result = await this.call('/api/v2/messages', { v: 2, id, type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password } });
@@ -664,6 +678,7 @@ export class WorkbenchSync {
     }
   }
   taskState(taskId) { return this.taskStates.get(taskId)?.state || ''; }
+  taskResult(taskId) { return this.taskStates.get(taskId)?.result || null; }
   async refreshTaskStatuses() {
     if (!this.config.interfaceCapabilities?.taskDispatch || !this.taskStates.size || this.taskStatusRunning) return;
     this.taskStatusRunning = true;
@@ -672,7 +687,7 @@ export class WorkbenchSync {
       let changed = false;
       for (const item of result.tasks || []) {
         const previous = this.taskStates.get(item.taskId);
-        if (!previous || previous.state !== item.state) changed = true;
+        if (!previous || previous.state !== item.state || previous.version !== item.version) changed = true;
         this.taskStates.set(item.taskId, item);
       }
       if (changed) this.a.statusChanged?.();

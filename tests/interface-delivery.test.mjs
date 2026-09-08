@@ -6,6 +6,37 @@ import path from 'node:path';
 import { ProtocolDelivery, executionPrompt } from '../scripts/workbench/protocol-delivery.mjs';
 import { spawnSync } from 'node:child_process';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
+import { queueCodexMessage } from '../scripts/workbench/server.mjs';
+
+test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const sessionId = '11111111-1111-4111-8111-111111111111';
+  const input = { id: 'desktop-load', platform: 'codex', sessionId, message: 'Inspect only', root: directory };
+  const calls = [];
+  let openingFails = true;
+  const adapter = payload => queueCodexMessage(payload, { platform: 'darwin', run: async (file, args) => {
+    calls.push({ file, args });
+    if (file === '/usr/bin/open' && openingFails) throw Object.assign(new Error('timeout'), { killed: true, code: 'ETIMEDOUT' });
+  } });
+  const delivery = new ProtocolDelivery(directory, { codex: adapter });
+  await assert.rejects(delivery.deliver(input), error => error.details.deliveryState === 'failed');
+  assert.equal(calls.length, 1, 'opener failure must not queue the task');
+  openingFails = false;
+  await delivery.deliver(input);
+  assert.deepEqual(calls[1], { file: '/usr/bin/open', args: ['-g', `codex://threads/${sessionId}`] });
+  assert.deepEqual(calls[2].args, ['queue', '--thread', sessionId, '--message', input.message]);
+  await new ProtocolDelivery(directory, { codex: adapter }).deliver(input);
+  assert.equal(calls.length, 3, 'receipt replay must neither reopen nor enqueue again');
+  await assert.rejects(adapter({ ...input, sessionId: '../settings?token=x' }), { code: 'INVALID_SESSION' });
+  assert.equal(calls.length, 3);
+  await assert.rejects(new ProtocolDelivery(directory, { codex: payload => queueCodexMessage(payload, {
+    platform: 'darwin', run: async file => { if (file !== '/usr/bin/open') throw Object.assign(new Error('queue reply lost'), { killed: true }); },
+  }) }).deliver({ ...input, id: 'queue-uncertain' }), error => error.details.deliveryState === 'uncertain');
+  const portable = [];
+  await queueCodexMessage(input, { platform: 'linux', run: async (_file, args) => portable.push(args) });
+  assert.deepEqual(portable, [['queue', '--thread', sessionId, '--message', input.message]], 'non-macOS delivery is unchanged');
+});
 
 test('IF-029: host acceptance is not completion and uncertain acceptance never invokes a second model', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-delivery-'));
@@ -42,6 +73,11 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   const prompt = await executionPrompt(assignment, read);
   for (const value of ['N1, N2', 'main-v1', 'approved requirement', 'delivery']) assert.ok(prompt.includes(value));
   assert.match(prompt, /先读代码并提交 Plan/);
+  const direct = await executionPrompt({ ...assignment, payload: { ...assignment.payload, mode: 'session' } }, read);
+  for (const value of ['approved requirement', 'map task start delivery', 'map task finish delivery', '--summary']) assert.ok(direct.includes(value));
+  for (const value of ['main-v1', '"stage"', '"session"', '--session s']) assert.equal(direct.includes(value), false);
+  assert.ok(direct.length < 350);
+  assert.equal(direct.includes('收到审核通过后再执行'), false);
   await assert.rejects(executionPrompt(assignment, async () => ({ kind: 'plan', version: 'brief-v1', content: { text: 'wrong' } })), { code: 'CONFLICT' });
   const review = { v: 2, id: 'review', type: 'review.result', session, payload: { kind: 'plan', ref: 'plan', version: 'plan-v1', decision: 'approved', reason: 'matches requirements', receiptId: 'receipt' } };
   await assert.rejects(executionPrompt(review, async () => ({ kind: 'reviewReceipt', content: { ...review.payload, decision: 'rejected' } })), { code: 'CONFLICT' });
@@ -80,4 +116,13 @@ test('IF-030: browser retries and reloads retain the delivery ID and refuse an o
   await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /未返回可靠交付回执/);
   reloaded.call = () => assert.fail('uncertain delivery must not dispatch again');
   await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /不会重复发送/);
+  reloaded.config.interfaceCapabilities.humanReview = true; reloaded.viewId = 'main';
+  const review = { sessionId: 's', taskId: 't', resultVersion: 'v1', nodeId: 'node', itemId: 'todo', kind: 'todo', decision: 'approved' }, reviewIds = [];
+  reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); throw new Error('review reply lost'); };
+  await assert.rejects(reloaded.reviewTask(review));
+  reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); return { operationId: input.operationId, review: input }; };
+  await reloaded.reviewTask(review);
+  assert.equal(reviewIds[0], reviewIds[1], 'review retry preserves its operation identity');
+  reloaded.viewId = 'session:s';
+  await assert.rejects(reloaded.reviewTask(review), /主工作台/);
 });

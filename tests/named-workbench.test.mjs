@@ -308,7 +308,7 @@ test('a recognized older named proxy upgrades in place and preserves its route s
     assert.equal(response.status, 202);
   });
   assert.notEqual(upgraded.instance, instance);
-  assert.equal(upgraded.runtimeSchema, 3);
+  assert.equal(upgraded.runtimeSchema, 4);
   assert.deepEqual(new RouteStore(dir).loadRoutes(), []);
 });
 test('corrupt routes fail closed without overwriting data, and names normalize deterministically', async t => {

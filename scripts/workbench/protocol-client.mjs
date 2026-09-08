@@ -81,34 +81,59 @@ export function messageHandler({ authenticate, handle, allowedOrigin }) {
 export class ProjectMessagePump {
   constructor({ send, sessions, apply, heartbeatMs = 10000, onError = () => {}, onSession = async () => {} }) {
     this.send = send; this.sessions = sessions; this.apply = apply; this.heartbeatMs = heartbeatMs; this.onError = onError;
-    this.running = null; this.timer = null; this.closed = false;
+    this.running = null; this.observing = null; this.timer = null; this.closed = false;
+    this.mapJobs = new Map(); this.deliveryJobs = new Map();
     this.onSession = onSession;
   }
   request(type, payload, session) { return { v: 2, id: randomUUID(), type, ...(session ? { session } : {}), payload }; }
-  async poll() {
+  async poll(observation) {
     if (this.closed) return;
+    if (observation) return this.drain(observation);
     if (this.running) return this.running;
-    this.running = this.drain().finally(() => { this.running = null; });
+    this.running = this.drain(observation).finally(() => { this.running = null; });
     return this.running;
   }
-  async drain() {
+  async drain(observation = null) {
+    observation ||= await this.observe();
+    if (!observation) return;
+    const { sessions, beat } = observation;
+    const results = await Promise.allSettled(beat.sessions.map(remote => this.drainSession(sessions, remote)));
+    const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (errors.length) throw new AggregateError(errors, 'Some Sessions could not synchronize');
+  }
+  // Liveness never waits for Map I/O, task delivery or an acknowledgement.
+  // Coalesce only the heartbeat request itself, not the downstream work.
+  observe() {
+    if (this.closed) return Promise.resolve(null);
+    if (!this.observing) this.observing = this.heartbeat().finally(() => { this.observing = null; });
+    return this.observing;
+  }
+  async heartbeat() {
     const sessions = await this.sessions();
     if (!sessions.length) return;
     const beat = await this.send(this.request('sync.heartbeat', { sessions }));
-    const pending = [...beat.sessions], errors = [];
-    await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
-      while (pending.length && !this.closed) {
-        const remote = pending.shift();
-        try { await this.drainSession(sessions, remote); }
-        catch (error) { errors.push(error); }
-      }
-    }));
-    if (errors.length) throw new AggregateError(errors, 'Some Sessions could not synchronize');
+    for (const rejected of beat.rejected || []) this.onError(new ProtocolError(rejected.code, 'Session heartbeat rejected', { sessionId: rejected.id, generation: rejected.generation }));
+    return { sessions, beat };
   }
   async drainSession(sessions, remote) {
       const local = sessions.find(s => s.id === remote.id && s.generation === remote.generation);
       if (!local) fail('STALE_SESSION', 'Heartbeat returned an unknown binding');
-      await this.onSession(remote);
+      // Map reconciliation and durable notification delivery are independent.
+      // A failed or stalled Map must not suppress receipt of queued tasks.
+      const key = `${local.id}:${local.generation}`;
+      const run = (jobs, operation) => {
+        if (jobs.has(key)) return;
+        const job = Promise.resolve().then(operation).finally(() => { jobs.delete(key); });
+        jobs.set(key, job); return job;
+      };
+      const results = await Promise.allSettled([
+        run(this.mapJobs, () => this.onSession(remote)),
+        run(this.deliveryJobs, () => this.drainNotifications(local, remote)),
+      ]);
+      const errors = results.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Session synchronization failed');
+  }
+  async drainNotifications(local, remote) {
       const session = { id: local.id, generation: local.generation };
       let cursor = remote.ackedSeq;
       // Bound a pass so one large Session cannot monopolize the project worker.
@@ -131,9 +156,9 @@ export class ProjectMessagePump {
   }
   start() {
     if (this.timer || this.closed) return;
-    const tick = () => this.poll().catch(this.onError);
+    const tick = () => this.observe().then(observation => observation && this.poll(observation)).catch(this.onError);
     this.timer = setInterval(tick, this.heartbeatMs); this.timer.unref?.(); tick();
   }
   wake() { return this.poll(); }
-  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await this.running?.catch(() => {}); }
+  async close() { this.closed = true; clearInterval(this.timer); this.timer = null; await Promise.allSettled([this.running, this.observing, ...this.mapJobs.values(), ...this.deliveryJobs.values()]); }
 }
