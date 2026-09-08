@@ -12,6 +12,7 @@ import shlex
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
 from urllib.parse import quote, urlsplit
@@ -559,7 +560,7 @@ def lifecycle_context(root: Path, workbench_url: str | None, current_session_id:
         "and `map apply --input <request.json>` with that baseVersion and a stable operationId. "
         "Do not write map.json directly or confirm your own proposals. Read references/workbench-interface.md. "
         "An explicit user request to implement, fix, execute, or merge approves that scoped work and its normal delivery steps; do not ask the user to confirm again. "
-        "Record it with `printf %s '<plan-json>' | context-guard plan-start --input -` using approved:true, summary, node_ids and paths, or Write the JSON outside the project and pass that path. Ask only if scope is materially ambiguous, a destructive action is required, or new external authority is needed. "
+        "Record it with `printf %s '<plan-json>' | context-guard plan-start --input -` using approved:true, summary, node_ids and paths, or Write a JSON request file under the host temp directory and pass that path. Ask only if scope is materially ambiguous, a destructive action is required, or new external authority is needed. "
         "Keep the plan active through commit, PR, merge, and installed acceptance; then archive with --input containing verification evidence and assessment {decision:reuse|propose|none,reason} before `plan-finish`. "
         "These commands sync at plan boundaries when Cloud is configured. Use plan-status to recover unfinished work; read references/workbench-interface.md for schemas."
 
@@ -759,25 +760,60 @@ def write_like_tool(payload: object) -> bool:
     return any(marker in name for marker in ("apply_patch", "write", "edit", "delete", "move"))
 
 
-def outside_repo_write(payload: object, root: Path) -> bool:
-    """True only when every declared target resolves outside the project."""
+def _resolved_path(value: Path) -> Path | None:
+    try:
+        return value.expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def _under(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+def temp_request_roots() -> list[Path]:
+    raw = [tempfile.gettempdir(), os.environ.get("TMPDIR"), os.environ.get("TEMP"), os.environ.get("TMP")]
+    if os.name != "nt":
+        raw.append("/tmp")
+    found: list[Path] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not item:
+            continue
+        resolved = _resolved_path(Path(item))
+        if resolved is None:
+            continue
+        key = os.path.normcase(str(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(resolved)
+    return found
+
+
+def protocol_request_write(payload: object, root: Path) -> bool:
+    """Allow only host-temp JSON request files, never sibling trees or user hooks."""
     targets = tool_target_strings(payload)
     if not targets:
         return False
-    try:
-        root_resolved = root.resolve()
-    except (OSError, RuntimeError, ValueError):
+    root_resolved = _resolved_path(root)
+    temps = temp_request_roots()
+    if root_resolved is None or not temps:
         return False
     for item in targets:
         candidate = Path(item).expanduser()
-        try:
-            resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
-            resolved.relative_to(root_resolved)
-        except ValueError:
-            continue
-        except (OSError, RuntimeError):
+        resolved = _resolved_path(candidate if candidate.is_absolute() else root / candidate)
+        if resolved is None or resolved.suffix.lower() != ".json":
             return False
-        else:
+        if _under(resolved, root_resolved):
+            return False
+        if any(part.lower() in {".claude", ".codex", ".cursor"} for part in resolved.parts):
+            return False
+        if not any(_under(resolved, temp) for temp in temps):
             return False
     return True
 
@@ -1393,8 +1429,8 @@ def main() -> int:
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": forbidden}}, ensure_ascii=False))
             return 0
         paths = tool_paths(payload, root)
-        # Request JSON and other host temp writes are not product implementation.
-        if write_like_tool(payload) and not paths and outside_repo_write(payload, root):
+        # Host-temp JSON request files are not product implementation.
+        if write_like_tool(payload) and not paths and protocol_request_write(payload, root):
             return hook_response(platform, event)
         snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
