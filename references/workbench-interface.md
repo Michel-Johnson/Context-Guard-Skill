@@ -91,12 +91,13 @@ are both usable. The shared named proxy is infrastructure and is never counted a
 a project workbench. A stale route remains visible for diagnosis instead of being
 deleted silently.
 
-`map read` checks connected pages at a synchronization checkpoint. An unresponsive
-connected page or a live unsaved draft returns `UI_PENDING`. Closed pages are removed
-from the fence; their browser recovery copy does not block the authoritative map. It
-is not safe to proceed by reading a stale card. A read describes that moment, not a
-lock held throughout the model's reasoning. Always pass its `version` when submitting
-the next change.
+`map read` checks connected pages at a synchronization checkpoint. A live unsaved
+draft returns `UI_PENDING`. Unresponsive pages are dropped from the fence after the
+checkpoint timeout so CLI reads return the current disk state; their browser recovery
+copy does not block the authoritative map. Closed pages are removed immediately. It
+is not safe to proceed by reading a stale card from a live dirty page. A read
+describes that moment, not a lock held throughout the model's reasoning. Always pass
+its `version` when submitting the next change.
 
 ## Submit operations
 
@@ -451,8 +452,9 @@ port or use it to isolate a hostile Agent running as the same OS user.
 One compatible Node instance owns a project. An old or duplicate service is never
 silently killed: diagnose it, review the private backup target, and run the exact
 explicit migration command before starting the current runtime.
-`context-guard workbench --root ... --stop` waits for connected page checkpoints;
-dirty pages must be saved or explicitly resolved first.
+`context-guard workbench --root ... --stop` gives connected pages a chance to flush,
+then always stops. Unresponsive or dirty pages cannot keep the backend running;
+open drafts remain in the browser recovery copy.
 
 Runtime files are private; grants/change summaries belong under sessions; cards
 and indexes are derived. No database, extra Test Hub, or release step is involved.

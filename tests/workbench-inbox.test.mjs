@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { AgentInbox, describeChanges } from '../scripts/workbench/inbox.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { request } from '../scripts/workbench/cli.mjs';
+import { attachBugWithRecovery, request } from '../scripts/workbench/cli.mjs';
 import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
 
 const human = { kind: 'human', sessionId: 'workbench' };
@@ -208,17 +208,79 @@ test('concurrent checkpoints retain independent acknowledgements across ordinary
 
 test('HTTP integration uses Agent identity and never requests a browser checkpoint', async t => {
   const f = await fixture(); await f.store.close();
-  const server = await startServer({ root: f.root, port: 0 }); t.after(() => server.close());
+  const server = await startServer({ root: f.root, port: 0, checkpointTimeoutMs: 40 }); t.after(() => server.close());
   const { token } = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: agent.sessionId } });
   const inbox = new AgentInbox(f.root, agent.sessionId, (route, params = {}) => request(server.state, route, { ...params, token }));
-  // A connected but unresponsive page would make /api/state fail with UI_PENDING.
   const abort = new AbortController();
   const stream = await fetch(new URL('/api/events?clientId=unresponsive', server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` }, signal: abort.signal });
   try {
     await inbox.read({ start: true });
     await server.store.commit({ baseVersion: server.store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { purpose: 'HTTP通知' } }] }, human);
     const batch = await inbox.read(); assert.equal(batch.pending, true);
-    await assert.rejects(request(server.state, '/api/state', { token }), { code: 'UI_PENDING' });
+    const snapshot = await request(server.state, '/api/state', { token });
+    assert.equal(snapshot.doc.root.children[0].purpose, 'HTTP通知');
     await inbox.acknowledge(batch.receipt);
   } finally { abort.abort(); await stream.body.cancel().catch(() => {}); }
+});
+
+async function acknowledgeDirty(server, clientId, signal) {
+  const stream = await fetch(new URL(`/api/events?clientId=${clientId}`, server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` }, signal });
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const pump = (async () => {
+    while (!signal.aborted) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let end;
+      while ((end = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+        if (!block.includes('event: checkpoint')) continue;
+        const checkpoint = JSON.parse(block.split('\n').find(line => line.startsWith('data: ')).slice(6)).checkpoint;
+        await request(server.state, '/api/presence', { token: server.humanToken, method: 'POST', body: { clientId, dirty: true, version: server.store.version, checkpoint } });
+      }
+    }
+  })().catch(error => { if (error.name !== 'AbortError') throw error; });
+  return { stream, reader, pump };
+}
+
+test('unresponsive pages do not lock map reads, attach-bug, or workbench stop', async t => {
+  const f = await fixture(); await f.store.close();
+  const server = await startServer({ root: f.root, port: 0, checkpointTimeoutMs: 40 });
+  t.after(() => server.close());
+  const { token } = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: agent.sessionId } });
+  const hung = [];
+  for (const clientId of ['dead-a', 'dead-b']) {
+    hung.push(await fetch(new URL(`/api/events?clientId=${clientId}`, server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` } }));
+  }
+  try {
+    const call = (route, params = {}) => request(server.state, route, { ...params, token });
+    const snapshot = await call('/api/state');
+    assert.equal(snapshot.doc.root.id, 'T0');
+    assert.deepEqual(snapshot.peers, []);
+    const attached = await attachBugWithRecovery(call, agent.sessionId, { node: 'N1', bug: { id: 'B1', title: '死标签挂例', status: 'open' } });
+    assert.equal(attached.committed, true);
+    const stopped = await request(server.state, '/api/stop', { method: 'POST', body: {} });
+    assert.equal(stopped.stopping, true);
+    await server.close();
+  } finally {
+    for (const stream of hung) await stream.body.cancel().catch(() => {});
+  }
+});
+
+test('a live dirty page still fences Agent map reads after acknowledging the checkpoint', async t => {
+  const f = await fixture(); await f.store.close();
+  const server = await startServer({ root: f.root, port: 0 }); t.after(() => server.close());
+  const { token } = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: agent.sessionId } });
+  const abort = new AbortController();
+  const dirty = await acknowledgeDirty(server, 'live-dirty', abort.signal);
+  try {
+    await request(server.state, '/api/presence', { token: server.humanToken, method: 'POST', body: { clientId: 'live-dirty', dirty: true, version: server.store.version } });
+    await assert.rejects(request(server.state, '/api/state', { token }), { code: 'UI_PENDING' });
+  } finally {
+    abort.abort();
+    await dirty.reader.cancel().catch(() => {});
+    await dirty.pump.catch(() => {});
+  }
 });

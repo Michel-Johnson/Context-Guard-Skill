@@ -1280,13 +1280,31 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     });
     cleanPage.destroy(); await pause(30);
     assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected clean page must not block Agent checkpoints');
-    const dirtyPage = await new Promise((resolve, reject) => {
-      const request = http.get(`${base}/api/events?token=${encodeURIComponent(running.humanToken)}&clientId=dirty-reload`, resolve);
-      request.on('error', reject);
-    });
+    const dirtyAbort = new AbortController();
+    const dirtyStream = await fetch(`${base}/api/events?clientId=dirty-reload`, { headers: { Authorization: `Bearer ${running.humanToken}` }, signal: dirtyAbort.signal });
+    const dirtyReader = dirtyStream.body.getReader();
+    const dirtyAck = (async () => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await dirtyReader.read();
+        if (done) return;
+        buffer += decoder.decode(value, { stream: true });
+        let end;
+        while ((end = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+          if (!block.includes('event: checkpoint')) continue;
+          const checkpoint = JSON.parse(block.split('\n').find(line => line.startsWith('data: ')).slice(6)).checkpoint;
+          assert.equal((await call('/api/presence', running.humanToken, { clientId: 'dirty-reload', dirty: true, version: running.store.version, checkpoint })).status, 200);
+        }
+      }
+    })().catch(error => { if (error.name !== 'AbortError') throw error; });
     assert.equal((await call('/api/presence', running.humanToken, { clientId: 'dirty-reload', dirty: true, version: running.store.version })).status, 200);
     assert.equal((await call('/api/state', credential)).status, 409, 'a connected dirty page must block Agent checkpoints');
-    dirtyPage.destroy(); await pause(30);
+    dirtyAbort.abort();
+    await dirtyReader.cancel().catch(() => {});
+    await dirtyAck;
+    await pause(30);
     assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected dirty page must not remain as a phantom checkpoint peer');
     assert.equal((await call('/api/access', credential, { sessionId: agent.sessionId, nodes: ['N1'], actor: 'human' })).status, 403);
     assert.equal((await call('/api/session-message', credential, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 403);
