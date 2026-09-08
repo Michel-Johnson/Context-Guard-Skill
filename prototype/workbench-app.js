@@ -4255,7 +4255,7 @@ async function boot(){
   });
   const connected=await workbenchSync.start();
   if(!connected){
-    await loadMapFromHttp();
+    if(!window.__CG_SERVER) await loadMapFromHttp();
     if(!window.__CG_SERVER) authUnlockAll();
     applyingServerMap=true; renderAll(); applyingServerMap=false;
   }
