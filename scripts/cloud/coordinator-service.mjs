@@ -33,6 +33,7 @@ export class CoordinatorMapIntake {
       const checkpoint = await readJSON(this.file, null);
       if (!checkpoint) throw error('INTAKE_NOT_INITIALIZED', 'Initialize intake before accepting Map edits');
       const snapshot = await this.read(), seen = new Set(checkpoint.seen);
+      const current = new Map(this.items(snapshot.main?.memory?.map?.root).map(entry => [this.key(entry), entry.item]));
       for (const event of (snapshot.events || []).filter(event => event.scope === 'main' && event.cursor > checkpoint.cursor).sort((a, b) => a.cursor - b.cursor)) {
         const items = (event.operations || []).flatMap(op => this.items(op.type === 'update' ? { ...op.fields, id: op.id } : op.node));
         for (const entry of items) {
@@ -40,7 +41,8 @@ export class CoordinatorMapIntake {
           if (seen.has(key)) continue;
           // Empty inline drafts become eligible only when their text is saved.
           if (item.draft || !(item.desc || item.title || '').trim()) continue;
-          if (event.actor?.kind === 'human' && !item.dispatch?.task_id && !['done', 'resolved', 'dormant'].includes(item.status)) {
+          const latest = current.get(key);
+          if (latest && !latest.draft && event.actor?.kind === 'human' && !latest.dispatch?.task_id && !['done', 'resolved', 'dormant'].includes(latest.status)) {
             await this.service.submit({ id: `intake:${hash(key)}`, text: JSON.stringify({ type: 'human.work-item-created',
               nodeId, kind, itemId: item.id, mainVersion: event.version,
               instruction: '人类新建了待澄清事项。读取最新节点中的原文，立即用简短自然语言与人类确认目标和验收条件；不要当作已批准需求，不要直接派单。' }) }, { source: 'workflow' });

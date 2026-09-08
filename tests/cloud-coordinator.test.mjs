@@ -29,6 +29,7 @@ test('Main intake preserves first edits, skips history, and replays lost replies
     { type: 'update', id: 'T0', fields: { todos: [{ id: 'old', title: 'existing' }, { id: 'new', title: 'new request' }, { id: 'draft', draft: true }] } },
     { type: 'update', id: 'outside', fields: { bugs: [{ id: 'secret', title: 'outside scope' }] } },
   ] });
+  snapshot.main.memory.map.root.todos = snapshot.events[0].operations[0].fields.todos;
   await assert.rejects(intake.consume(), /lost reply/);
   await service.close();
   intake = new CoordinatorMapIntake(options);
@@ -45,9 +46,22 @@ test('Main intake preserves first edits, skips history, and replays lost replies
   snapshot.events.push({ scope: 'main', cursor: 7, version: 'v7', actor: { kind: 'human' }, operations: [
     { type: 'update', id: 'T0', fields: { todos: [{ id: 'draft', title: 'finished typing' }] } },
   ] });
+  snapshot.main.memory.map.root.todos = snapshot.events[1].operations[0].fields.todos;
   assert.equal(await intake.consume(), true);
   await service.close();
   assert.equal(turns, 2);
+  snapshot.events.push({ scope: 'main', cursor: 8, version: 'v8', actor: { kind: 'human' }, operations: [
+    { type: 'update', id: 'T0', fields: { bugs: [
+      { id: 'deleted', title: 'removed while busy' }, { id: 'resolved', title: 'finished while busy' },
+      { id: 'assigned', title: 'assigned while busy' },
+    ] } },
+  ] });
+  snapshot.main.memory.map.root.bugs = [
+    { id: 'resolved', title: 'finished while busy', status: 'resolved' },
+    { id: 'assigned', title: 'assigned while busy', dispatch: { task_id: 'existing-task' } },
+  ];
+  assert.equal(await intake.consume(), false);
+  assert.equal(turns, 2, 'deleted, completed and already assigned work must not start a stale clarification');
 });
 
 test('Mount review batches persist, replay a lost Main reply, and notify the existing conversation once', async t => {
