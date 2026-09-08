@@ -123,6 +123,27 @@ try {
   record('Persistent cookie keeps login across refresh and a reopened page');
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Main map/);
+  // A failed authoritative read must not load an unrelated static/local Map.
+  const startupPage = await context.newPage();
+  let fallbackReads = 0;
+  await startupPage.route('**/.codex/context/map.json', route => { fallbackReads++; return route.fulfill({ json: sessionMap }); });
+  await startupPage.route('**/api/state*', route => route.fulfill({ contentType: 'application/json', body: '{' }));
+  let releaseFonts;
+  const fontsHeld = new Promise(resolve => { releaseFonts = resolve; });
+  await startupPage.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, async route => { await fontsHeld; await route.abort(); });
+  await startupPage.goto(`${service.url}/projects/context-guard`);
+  await startupPage.locator('#cg-sync[data-status="error"]').waitFor({ state: 'attached' });
+  assert.equal(fallbackReads, 0);
+  assert.equal(await startupPage.getByText('Session map', { exact: true }).count(), 0);
+  await startupPage.unroute('**/api/state*');
+  await startupPage.locator('#btn-settings').click();
+  await startupPage.locator('#cg-sync > summary').click();
+  await startupPage.locator('#cg-sync-retry').click();
+  await startupPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
+  assert.match(await startupPage.locator('.node[data-id="T0"]').textContent(), /Main map/);
+  releaseFonts();
+  await startupPage.close();
+  record('Failed startup preserves project authority; retry works while external fonts stall');
   assert.equal(await page.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
   assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
   await page.locator('#session-chip').click();
