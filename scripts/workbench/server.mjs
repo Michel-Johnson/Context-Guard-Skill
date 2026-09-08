@@ -10,7 +10,7 @@ import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
 import { generateProjections } from './projections.mjs';
-import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
+import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath, discoveryRoots } from './project.mjs';
 import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
@@ -323,11 +323,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     }
     catch (error) { if (error.code !== 'MEMORY_NOT_CONFIGURED') throw error; }
     if (!existing) {
-      const seed = remoteSession?.memory?.map || main?.memory?.map || await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'));
+      const mapRoot = sessionProject.openedRoot || sessionProject.worktreeRoot;
+      const seed = remoteSession?.memory?.map || main?.memory?.map || await readJSON(path.join(mapRoot, '.codex/context/map.json'));
       if (main) await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
       await atomicWrite(file, encode(seed));
     } else if (main && !baseline?.map) {
-      const legacySeed = await readJSON(path.join(sessionProject.worktreeRoot, '.codex/context/map.json'), null);
+      const mapRoot = sessionProject.openedRoot || sessionProject.worktreeRoot;
+      const legacySeed = await readJSON(path.join(mapRoot, '.codex/context/map.json'), null);
       if (hash(encode(existing)) === hash(encode(main.memory.map))) {
         await atomicWrite(baseFile, encode({ version: main.version, map: main.memory.map }));
       } else if (legacySeed && hash(encode(existing)) === hash(encode(legacySeed))) {
@@ -663,7 +665,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
             for (const peer of viewPeers(view)) peer.res?.end();
           }
-          if (!(await access.knownSessions(prepared.sessionProject.worktreeRoot)).includes(prepared.sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
+          if (!(await access.isKnownSession(prepared.sessionId, discoveryRoots(prepared.sessionProject)))) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
           const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: prepared.sessionId, role: 'executor' };
           const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, prepared.sessionId);
           const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: prepared.sessionId, agentId: prepared.sessionId,

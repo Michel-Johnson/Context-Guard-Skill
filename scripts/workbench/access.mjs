@@ -238,36 +238,86 @@ export class Access {
     try { return await promise; }
     finally { if (this.codexQuery?.promise === promise) this.codexQuery = null; }
   }
+  async codexPathAliases(roots) {
+    const list = [...new Set((Array.isArray(roots) ? roots : [roots]).filter(Boolean))];
+    const aliases = new Set();
+    for (const root of list) {
+      aliases.add(root);
+      aliases.add(path.toNamespacedPath(root));
+      const real = await fs.realpath(root).catch(() => null);
+      if (real) {
+        aliases.add(real);
+        aliases.add(path.toNamespacedPath(real));
+      }
+    }
+    return [...aliases];
+  }
   async discoverCodexSessions(roots = [this.root]) {
     if (this.codexSessions) {
-      const batches = await Promise.all(roots.map(root => this.codexSessions(root)));
+      const list = [...new Set((Array.isArray(roots) ? roots : [roots]).filter(Boolean))];
+      const batches = await Promise.all(list.map(root => this.codexSessions(root)));
       return batches.flat();
     }
     const database = await this.stateDatabase();
     if (!database) return [];
     // Codex can persist Win32 extended-length paths while Git bindings use
     // ordinary paths. Both spellings refer to the same explicitly bound root.
-    const aliases = [...new Set(roots.flatMap(root => [root, path.toNamespacedPath(root)]))];
+    const aliases = await this.codexPathAliases(roots);
     const escaped = aliases.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
-    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
+    const baseSql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped})`;
+    const queries = [
+      `${baseSql} and thread_source='user' and archived=0 order by updated_at desc limit 100`,
+      `${baseSql} order by updated_at desc limit 100`,
+    ];
+    for (const sql of queries) {
+      try {
+        const rows = await this.loadCodexRows(database, sql);
+        if (!rows.length && sql !== queries.at(-1)) continue;
+        return await Promise.all(rows.map(async row => {
+          const state = await this.rolloutState(row.rollout_path);
+          return {
+            id: String(row.id),
+            name: String(row.name || row.title || '').trim(),
+            platform: 'codex',
+            status: state.status,
+            statusSeen: state.lastSeen,
+            statusSource: 'codex-rollout',
+            firstSeen: isoTime(row.created_at),
+            lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
+            lastEvent: state.lastEvent,
+            worktreeRoot: String(row.cwd || ''),
+          };
+        }));
+      } catch {
+        if (sql === queries.at(-1)) return [];
+      }
+    }
+    return [];
+  }
+  async discoverCodexSessionById(sessionId, roots = [this.root]) {
+    if (!sessionId || this.codexSessions) return null;
+    const database = await this.stateDatabase();
+    if (!database) return null;
+    const aliases = new Set(await this.codexPathAliases(roots));
+    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where id = '${String(sessionId).replaceAll("'", "''")}' limit 1`;
     try {
       const rows = await this.loadCodexRows(database, sql);
-      return await Promise.all(rows.map(async row => {
-        const state = await this.rolloutState(row.rollout_path);
-        return {
-          id: String(row.id),
-          name: String(row.name || row.title || '').trim(),
-          platform: 'codex',
-          status: state.status,
-          statusSeen: state.lastSeen,
-          statusSource: 'codex-rollout',
-          firstSeen: isoTime(row.created_at),
-          lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
-          lastEvent: state.lastEvent,
-          worktreeRoot: String(row.cwd || ''),
-        };
-      }));
-    } catch { return []; }
+      const row = rows[0];
+      if (!row || !aliases.has(String(row.cwd || ''))) return null;
+      const state = await this.rolloutState(row.rollout_path);
+      return {
+        id: String(row.id),
+        name: String(row.name || row.title || '').trim(),
+        platform: 'codex',
+        status: state.status,
+        statusSeen: state.lastSeen,
+        statusSource: 'codex-rollout',
+        firstSeen: isoTime(row.created_at),
+        lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
+        lastEvent: state.lastEvent,
+        worktreeRoot: String(row.cwd || ''),
+      };
+    } catch { return null; }
   }
   async sessionRegistry() {
     const roots = this.bindingRoots();
@@ -344,10 +394,18 @@ export class Access {
       grants,
     };
   }
-  async knownSessions(root = null) {
-    if (!root) return (await this.sessionRegistry()).map(item => item.id);
-    const [hook, codex] = await Promise.all([this.hookSessionRegistry(root), this.discoverCodexSessions([root])]);
-    return [...new Set([...hook, ...codex].map(item => item.id))];
+  async knownSessions(roots = null) {
+    if (!roots) return (await this.sessionRegistry()).map(item => item.id);
+    const list = [...new Set((Array.isArray(roots) ? roots : [roots]).filter(Boolean))];
+    const [hookBatches, codex] = await Promise.all([
+      Promise.all(list.map(root => this.hookSessionRegistry(root))),
+      this.discoverCodexSessions(list),
+    ]);
+    return [...new Set([...hookBatches.flat(), ...codex].map(item => item.id))];
+  }
+  async isKnownSession(sessionId, roots) {
+    if ((await this.knownSessions(roots)).includes(sessionId)) return true;
+    return !!(await this.discoverCodexSessionById(sessionId, roots));
   }
   watch(onChange) {
     let timer, checking = false, signature;
@@ -374,7 +432,8 @@ export class Access {
   async register(sessionId, binding = {}) {
     if (!Object.keys(binding).length && !this.binding(sessionId)) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind this Session explicitly before granting scope', 409);
     const worktreeRoot = binding.worktreeRoot || this.binding(sessionId)?.worktreeRoot || this.root;
-    if (!(await this.knownSessions(worktreeRoot)).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
+    const discoveryRoots = [...new Set([binding.openedRoot, worktreeRoot, this.root].filter(Boolean))];
+    if (!(await this.isKnownSession(sessionId, discoveryRoots))) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
     const stored = {
       ...(this.binding(sessionId) || {}),
       ...binding,

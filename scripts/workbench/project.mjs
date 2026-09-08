@@ -265,12 +265,17 @@ export async function mainWorktree(project) {
   return null;
 }
 
+export function discoveryRoots(project) {
+  return [...new Set([project?.openedRoot, project?.worktreeRoot].filter(Boolean))];
+}
+
 export async function sessionBinding(project, sessionId, { workbenchUrl = null } = {}) {
   return {
     sessionId,
     projectId: project.projectId,
     worktreeId: project.worktreeId,
     gitDir: project.gitDir || null,
+    openedRoot: project.openedRoot || project.worktreeRoot,
     worktreeRoot: project.worktreeRoot,
     branch: project.branch,
     head: project.head,
