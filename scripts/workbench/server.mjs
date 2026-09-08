@@ -211,7 +211,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         for (const request of requests) {
           try {
             if (!access.binding(request.templateSessionId)) protocolFail('FORBIDDEN', 'The template is no longer bound to this backend');
-            await claudeRuntime.provision(request, { baseRef: project.main?.ref });
+            await claudeRuntime.provision(request, { baseRef: project.mainRef });
           } catch (error) {
             device.lastError = error.code || 'SESSION_CREATION_FAILED';
             await device.recordCreationFailure(request.id, error.code);
