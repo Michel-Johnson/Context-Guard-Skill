@@ -82,9 +82,9 @@ export class ClaudeRuntime {
       }
       const root = receipt.root;
       if (await fs.stat(root).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; })) {
-        if (await git(root, 'rev-parse', '--show-toplevel') !== await fs.realpath(root) ||
+        if (await fs.realpath(await git(root, 'rev-parse', '--show-toplevel')) !== await fs.realpath(root) ||
             await git(root, 'branch', '--show-current') !== receipt.branch ||
-            await git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir') !== await git(template.config.root, 'rev-parse', '--path-format=absolute', '--git-common-dir')) fail('WORKTREE_MISMATCH', 'Preserve the existing creation directory');
+            await fs.realpath(await git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')) !== await fs.realpath(await git(template.config.root, 'rev-parse', '--path-format=absolute', '--git-common-dir'))) fail('WORKTREE_MISMATCH', 'Preserve the existing creation directory');
       } else {
         await git(template.config.root, 'worktree', 'add', '-b', receipt.branch, root, receipt.sha);
       }
