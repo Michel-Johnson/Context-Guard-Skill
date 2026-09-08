@@ -100,6 +100,8 @@ test("task handoff and plan help disclose required JSON without starting a proje
   withEmptyRoot((directory) => {
     assertHelpOnly(runCli(publicCli, ["map", "task", "handoff", "--help"], directory), directory, /ciTodo.*unitTests.*experiences/);
     assertHelpOnly(runCli(publicCli, ["map", "task", "plan", "--help"], directory), directory, /operationId.*paths.*steps/);
+    assertHelpOnly(runCli(publicCli, ["map", "ci", "exchange", "--help"], directory), directory, /"type":"object.read"/);
+    assertHelpOnly(runCli(publicCli, ["map", "ci", "context", "--help"], directory), directory, /"type":"ci.result"/);
   });
 });
 
