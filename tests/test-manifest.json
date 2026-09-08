@@ -60,6 +60,8 @@
     }
   ],
   "productFiles": [
+    "tests/claude-runtime.test.mjs",
+    "tests/cloud-coordinator.test.mjs",
     "tests/interface-auth.test.mjs",
     "tests/interface-blobs.test.mjs",
     "tests/interface-delivery.test.mjs",

@@ -529,6 +529,9 @@ export async function request(state, route, { token = state.adminToken, method =
     headers: { Authorization: `Bearer ${token}`, ...(encoded === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(encoded) }) },
     body: encoded,
     timeout: 40000,
+    // A valid Map may occupy 16 MiB; control reads also include event metadata.
+    // Health probes keep their smaller default budget.
+    maxBytes: 32 * 1024 * 1024,
   });
   if (!response) throw new MapError('HTTP_ERROR', 'Workbench control request failed', 503);
   const result = response.value;
@@ -635,6 +638,11 @@ async function main(args) {
   if (command === 'workbench' && (opt.diagnose || opt._[0] === 'status')) {
     return diagnoseWorkbench(root, String(opt.session || process.env.CODEX_THREAD_ID || ''));
   }
+  if (command === 'workbench' && opt._[0] === 'claude') {
+    const project = await resolveProject(root);
+    if (!(await bindingStatus(project, String(opt.session || ''))).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the real Claude Session before configuring delivery', 409);
+    return request(await ensureServer(root), '/api/claude-runtime', { method: 'POST', body: { sessionId: opt.session, config: await inputJSON(opt.input) } });
+  }
   if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
     const project = await saveMainBinding(root, {
       mode: opt['local-main'] ? 'local' : 'remote',
@@ -687,6 +695,12 @@ async function main(args) {
   const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
+  if (action === 'execution') return call('/api/v2/execution');
+  if (action === 'ci') {
+    if (opt._[1] === 'context') return call('/api/v2/execution');
+    if (opt._[1] === 'exchange') return call('/api/v2/ci', { method: 'POST', body: await inputJSON(opt.input) });
+    throw new MapError('INVALID_ARGUMENT', 'Use map ci context|exchange --input <message.json>');
+  }
   if (action === 'interrupted') return call('/api/v2/interrupt', { method: 'POST', body: {
     id: opt['event-id'], occurredAt: opt['occurred-at'], reason: 'Local host interrupted the task',
   } });
@@ -697,6 +711,35 @@ async function main(args) {
     return call('/api/v2/messages', { method: 'POST', body: message });
   }
   if (action === 'task') {
+    if (['plan', 'handoff'].includes(opt._[1])) {
+      const input = await inputJSON(opt.input), execution = await call('/api/v2/execution');
+      if (execution.active?.mode !== 'reviewed' || !execution.session) throw new MapError('FORBIDDEN', 'An assigned reviewed task is required');
+      if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 96) throw new MapError('INVALID_ARGUMENT', 'Provide a stable operationId of at most 96 characters');
+      const taskId = execution.active.taskId;
+      const identity = createHash('sha256').update(JSON.stringify([taskId, input.operationId])).digest('hex');
+      const git = (...args) => {
+        const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
+        if (result.status !== 0) throw new MapError('GIT_FAILED', 'Cannot verify the worktree revision');
+        return result.stdout.trim();
+      };
+      const sourceSha = git('rev-parse', 'HEAD');
+      const exchange = async (type, payload, suffix) => (await call('/api/v2/messages', { method: 'POST', body: validateMessage({ v: 2, id: `${identity}:${suffix}`, type, session: execution.session, payload }) })).data;
+      const put = async (kind, content, suffix) => exchange('object.put', { kind, content, ref: `${kind}:${identity}:${suffix}`, baseVersion: '' }, suffix);
+      if (opt._[1] === 'plan') {
+        if (!input.content || !Array.isArray(input.content.paths) || !input.content.paths.length) throw new MapError('INVALID_ARGUMENT', 'Plan content must include its explicit paths');
+        const plan = await put('plan', input.content, 'plan');
+        await exchange('task.report', { taskId, stage: 'planReady', data: { planRef: plan.ref, planVersion: plan.version, sourceSha } }, 'report');
+        return { taskId, planRef: plan.ref, planVersion: plan.version, sourceSha, state: 'awaiting-plan-review' };
+      }
+      if (!execution.active.approval) throw new MapError('FORBIDDEN', 'The Coordinator must approve the Plan before handoff');
+      if (git('status', '--porcelain')) throw new MapError('UNCOMMITTED_HANDOFF', 'Commit the delivered work; CI must test the exact clean SHA');
+      if (!Array.isArray(input.ciTodo?.items) || !input.ciTodo.items.length || !Array.isArray(input.unitTests) || !input.unitTests.length || !Array.isArray(input.experiences)) throw new MapError('INVALID_ARGUMENT', 'Handoff requires CI TODO items, unit-test evidence and an experiences array');
+      const ciTodo = await put('ciTodo', input.ciTodo, 'todo'), unitTestRefs = [], experienceRefs = [];
+      for (const [index, content] of input.unitTests.entries()) unitTestRefs.push((await put('evidence', content, `test-${index}`)).ref);
+      for (const [index, content] of input.experiences.entries()) experienceRefs.push((await put('experience', content, `experience-${index}`)).ref);
+      const result = await exchange('task.report', { taskId, stage: 'handoff', data: { sourceSha, ciTodoRef: ciTodo.ref, unitTestRefs, experienceRefs } }, 'report');
+      return { ...result, sourceSha };
+    }
     const stage = { start: 'started', finish: 'finished' }[opt._[1]];
     if (!stage || !opt._[2]) throw new MapError('INVALID_ARGUMENT', 'Use map task start|finish <delivery-id>; finish requires --summary');
     return call('/api/v2/task-report', { method: 'POST', body: { deliveryId: opt._[2], stage,

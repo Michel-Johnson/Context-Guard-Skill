@@ -15,6 +15,12 @@ Human–agent project memory for Codex, Cursor, and Claude. Hooks activate it; t
 
 ## What to do
 
+When an orchestration task explicitly assigns an Agent role, read [roles.md](roles.md)
+and only that role's prompt. Role instructions do not grant protocol permissions
+or replace human approval. For a locally managed Claude CLI receiver, read
+[references/claude-runtime.md](references/claude-runtime.md) when configuring or
+diagnosing native delivery; ordinary Map reads do not require a receiver.
+
 Four stores only:
 
 1. **Sessions** — lifecycle hooks append `.codex/context/sessions.jsonl` and create `sessions/{id}.md`

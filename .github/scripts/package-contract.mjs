@@ -1,5 +1,11 @@
 // Shared install contents are listed once; npm adds only server/release files.
 export const installedFiles = [
+  "references/claude-runtime.md",
+  "scripts/workbench/claude-runtime.mjs",
+  "roles.md",
+  "Coordinator.md",
+  "Developer.md",
+  "Tester.md",
   "scripts/workbench/device-heartbeat.mjs",
   "scripts/workbench/protocol-delivery.mjs",
   "scripts/shared/protocol-workflow.mjs",
@@ -68,6 +74,9 @@ export const installedFiles = [
 ];
 
 export const packedFiles = [...installedFiles, ...[
+  "scripts/cloud/coordinator-tools.mjs",
+  "scripts/cloud/coordinator-service.mjs",
+  "scripts/cloud/coordinator-model.mjs",
   "scripts/cloud/task-review.mjs",
   "scripts/cloud/protocol-auth.mjs",
   "scripts/cloud/memory.mjs",

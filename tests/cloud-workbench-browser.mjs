@@ -305,6 +305,67 @@ try {
   await page.locator('#session-chip').click();
   record('Verified publication updates durable Main without exposing an admin token');
 
+  assert.equal(await page.locator('#coordinator-panel').count(), 0, 'ordinary projects do not gain a Coordinator');
+  await page.addInitScript(() => {
+    let config;
+    Object.defineProperty(window, '__CG_SERVER', {
+      configurable: true,
+      get: () => config,
+      set: value => { config = value; config.interfaceCapabilities.coordinator = true; },
+    });
+  });
+  await page.route(/\/bootstrap(?:\?|$)/, async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.interfaceCapabilities = { ...body.interfaceCapabilities, coordinator: true };
+    await route.fulfill({ response, json: body });
+  });
+  const submissions = [];
+  let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
+    approvals: [{ id: 'proposal-1', pending: true, brief: { ref: 'brief-1', version: 'v1' }, text: '模拟需求确认', acceptance: '明确验收标准', sessionId: 'assigned-session', nodeIds: ['T0'], mainVersion: 'main-v1' }] };
+  const approvals = [];
+  await page.route(/\/api\/coordinator\/approval(?:\?|$)/, async route => {
+    approvals.push(route.request().postDataJSON());
+    if (approvals.length === 1) return route.abort();
+    coordinatorState.approvals[0].pending = false;
+    return route.fulfill({ json: { receiptId: 'human-receipt' } });
+  });
+  await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
+    if (route.request().method() === 'POST') {
+      submissions.push(route.request().postDataJSON());
+      if (submissions.length === 1) return route.abort(); // Delivery is uncertain: preserve the ID.
+      coordinatorState = { ...coordinatorState, status: 'error', error: { code: 'MODEL_TIMEOUT' }, retryInput: submissions[0] };
+      return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
+    }
+    await route.fulfill({ json: coordinatorState });
+  });
+  await page.reload(); await synchronized();
+  const coordinator = page.locator('#coordinator-panel');
+  await coordinator.locator('summary').click();
+  await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
+  assert.equal(await coordinator.locator('img').count(), 0, 'model output must be plain text');
+  await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('确认尚未成功'));
+  await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
+  await coordinator.getByRole('button', { name: '确认需求', exact: true }).waitFor({ state: 'detached' });
+  assert.equal(approvals[0].id, approvals[1].id);
+  assert.equal(submissions.length, 0, 'human confirmation is a script request, not a model prompt');
+  await coordinator.locator('textarea').fill('模拟需求');
+  await coordinator.getByRole('button', { name: '发送', exact: true }).click();
+  await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
+  assert.match(await coordinator.getByRole('status').textContent(), /尚未确认提交/);
+  await coordinator.getByRole('button', { name: '重试原请求' }).click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
+  assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
+  await page.reload(); await synchronized();
+  await coordinator.locator('summary').click();
+  await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
+  await coordinator.getByRole('button', { name: '重试原请求' }).click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
+  assert.equal(submissions[2].id, submissions[0].id);
+  assert.equal(submissions[2].retry, true, 'provider retry survives reload and remains explicit');
+  record('Coordinator feature gate, plain-text rendering and durable explicit retries');
+
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;

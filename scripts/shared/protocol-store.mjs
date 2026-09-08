@@ -117,8 +117,13 @@ export class ProtocolStore extends EventEmitter {
     return this.execute(principal, message, (state, p, input, emit) => {
       state.localExecutions ||= {};
       const key = queueKey(p, input.session), current = state.localExecutions[key];
-      if (input.type === 'task.assign') state.localExecutions[key] = { taskId: input.payload.taskId, assignedAt: new Date().toISOString(), closed: false };
-      if (input.type === 'task.report' && input.payload.stage === 'closed' && current?.taskId === input.payload.taskId) current.closed = true;
+      if (input.type === 'task.assign') state.localExecutions[key] = { taskId: input.payload.taskId, mode: input.payload.mode || 'reviewed', nodeIds: input.payload.nodeIds, assignedAt: new Date().toISOString(), closed: false };
+      if (input.type === 'task.report' && current?.taskId === input.payload.taskId) {
+        if (['closed', 'finished'].includes(input.payload.stage)) current.closed = true;
+        if (input.payload.stage === 'planReady') { current.plan = { ref: input.payload.data.planRef, version: input.payload.data.planVersion, sourceSha: input.payload.data.sourceSha }; current.approval = null; }
+      }
+      if (input.type === 'review.result' && input.payload.kind === 'plan' && current?.plan?.ref === input.payload.ref && current.plan.version === input.payload.version) current.approval = input.payload.decision === 'approved' ? input.payload.receiptId : null;
+      if (input.type === 'task.rework' && current?.taskId === input.payload.taskId) { current.plan = null; current.approval = null; }
       emit(input); return { outcome: 'applied' };
     });
   }
@@ -183,6 +188,15 @@ export class ProtocolStore extends EventEmitter {
                   : delivered ? 'local_received' : 'cloud_queued';
       return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version,
         ...(task.result ? { result: { outcome: task.result.outcome, summary: task.result.summary, finishedAt: task.result.finishedAt } } : {}) };
+    }, { readOnly: true });
+  }
+  async taskRecord(principal, session, taskId) {
+    requireIdentity(principal);
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      const task = state.tasks[scopedObjectKey(principal, session, `task:${taskId}`)];
+      if (!task) fail('NOT_FOUND', 'Task is not registered in this Session');
+      return structuredClone(task);
     }, { readOnly: true });
   }
   async humanTaskResult(principal, sessionId, taskId) {

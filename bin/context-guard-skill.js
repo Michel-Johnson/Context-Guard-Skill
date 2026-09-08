@@ -12,6 +12,10 @@ const sourceHooksPath = path.join(packageRoot, "hooks.json");
 const pythonScript = path.join(sourceSkillDir, "scripts", "context_guard.py");
 const skillInstallEntries = [
   "SKILL.md",
+  "roles.md",
+  "Coordinator.md",
+  "Developer.md",
+  "Tester.md",
   "README.md",
   "README.zh-CN.md",
   "THIRD_PARTY_NOTICES.md",
@@ -57,12 +61,11 @@ function expandHome(inputPath) {
 const PLATFORM_SPECS = {
   codex: { env: "CODEX_HOME", folder: ".codex", hooksFile: "hooks.json", configFile: "config.toml" },
   cursor: { env: "CURSOR_HOME", folder: ".cursor", hooksFile: "hooks.json" },
-  claude: { env: "CLAUDE_HOME", folder: ".claude", hooksFile: "settings.json" }
+  claude: { env: "CLAUDE_CONFIG_DIR", legacyEnv: "CLAUDE_HOME", folder: ".claude", hooksFile: "settings.json" }
 };
 
 function platformHome(platform) {
-  const spec = PLATFORM_SPECS[platform];
-  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
+  return platformHomeBySpec(PLATFORM_SPECS[platform]);
 }
 
 function platformTargets(platform) {
@@ -95,13 +98,13 @@ function selectedPlatforms(requested) {
   if (requested === "all") return Object.keys(PLATFORM_SPECS);
   if (requested !== "auto") return [requested];
   const detected = Object.entries(PLATFORM_SPECS)
-    .filter(([, spec]) => Boolean(process.env[spec.env]) || fs.existsSync(platformHomeBySpec(spec)))
+    .filter(([, spec]) => Boolean(process.env[spec.env] || process.env[spec.legacyEnv]) || fs.existsSync(platformHomeBySpec(spec)))
     .map(([name]) => name);
   return detected.length ? detected : ["codex"];
 }
 
 function platformHomeBySpec(spec) {
-  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
+  return path.resolve(expandHome(process.env[spec.env] || process.env[spec.legacyEnv] || path.join(os.homedir(), spec.folder)));
 }
 
 function parseInstallArgs(args) {

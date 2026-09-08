@@ -161,6 +161,10 @@ def hook_response(platform: str, event: str, additional_context: str = "") -> in
     if additional_context:
         if platform == "cursor":
             payload["additional_context"] = additional_context
+        elif platform == "claude" and event in {"stop", "subagent-stop", "session-end"}:
+            # Claude treats additionalContext at Stop as another model turn.
+            # A diagnostic (e.g. unbound Session) must not restart generation.
+            payload["systemMessage"] = additional_context
         else:
             payload["hookSpecificOutput"] = {
                 "hookEventName": HOOK_EVENT_NAMES.get(event, event),
@@ -501,7 +505,7 @@ def session_display_name(payload: object, platform: str, root: Path, current_ses
         value = codex_thread_name(root, current_session_id)
         if value:
             return value
-    return payload_value(
+    named = payload_value(
         payload,
         (
             "thread_name",
@@ -512,6 +516,33 @@ def session_display_name(payload: object, platform: str, root: Path, current_ses
             "conversationTitle",
         ),
     )[:240]
+    if named or platform != "claude":
+        return named
+    # Native Claude hooks provide the transcript path, but not the --name value.
+    # Read only a bounded tail of this Session's own transcript metadata.
+    transcript = payload_value(payload, ("transcript_path",))
+    if not transcript:
+        return ""
+    try:
+        directory = Path(os.environ.get("CLAUDE_CONFIG_DIR") or os.environ.get("CLAUDE_HOME") or Path.home() / ".claude").expanduser().resolve() / "projects"
+        file = Path(transcript).resolve()
+        file.relative_to(directory)
+        if file.name != current_session_id + ".jsonl":
+            return ""
+        with file.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - 262144))
+            lines = stream.read(262144).decode("utf-8", errors="replace").splitlines()
+        for line in reversed(lines):
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, dict) and item.get("type") == "custom-title" and item.get("sessionId") == current_session_id:
+                return str(item.get("customTitle") or "").strip()[:200]
+    except (OSError, ValueError):
+        pass
+    return ""
 
 
 def language_setup_context(root: Path, ctx: Path) -> str:
@@ -969,6 +1000,13 @@ def read_only_shell(command: str) -> bool:
     return segments is not None and all(read_only_words(segment) for segment in segments)
 
 
+def ci_tool_allowed(payload: object, execution: dict):
+    active = execution.get("active") or {}
+    if active.get("mode") != "ci" and not execution.get("ci"):
+        return None
+    return active.get("mode") == "ci" and tool_command(payload).strip() in (active.get("commands") or [])
+
+
 def control_tool(payload: object) -> bool:
     """Only standalone protocol commands can recover a blocked lifecycle."""
     segments = shell_segments(tool_command(payload))
@@ -1110,6 +1148,28 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         nodes = data.get("node_ids")
         if not isinstance(nodes, list) or not nodes or not all(isinstance(item, str) for item in nodes):
             raise ValueError("plan-start needs node_ids")
+        # A Cloud-reviewed task needs the actual Coordinator receipt, not the
+        # developer's approved:true attestation. Ordinary manual plans retain
+        # their existing explicit-user-approval contract.
+        execution = run_node_workbench(["map", "execution", "--root", str(root), "--session", session])
+        active = execution.get("active") or {}
+        if active.get("mode") == "ci" or execution.get("ci"):
+            raise ValueError("CI uses its assigned test authorization; it cannot start a development Plan")
+        if active.get("mode") == "reviewed":
+            reviewed = execution.get("plan") or {}
+            approved = active.get("plan") or {}
+            if not active.get("approval") or reviewed.get("kind") != "plan" or reviewed.get("version") != approved.get("version"):
+                raise ValueError("Coordinator must approve this exact Cloud Plan before development")
+            if data.get("taskId") != active.get("taskId") or data.get("planRef") != approved.get("ref") or data.get("planVersion") != approved.get("version"):
+                raise ValueError("plan-start must identify the approved taskId, planRef and planVersion")
+            allowed_paths = scope_paths(root, (reviewed.get("content") or {}).get("paths"))
+            if set(nodes) - set(active.get("nodeIds") or []) or any(not any(value == allowed or value.startswith(allowed.rstrip("/") + "/") for allowed in allowed_paths) for value in paths):
+                raise ValueError("Local plan scope exceeds the approved Cloud Plan")
+            if plan:
+                raise ValueError("Finish the previous local plan before starting a Cloud-reviewed Plan")
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
+            if head.returncode or head.stdout.strip() != approved.get("sourceSha"):
+                raise ValueError("Worktree HEAD differs from the approved Plan base SHA")
         # Fresh API read checks page drafts and actual session authorization.
         state = run_node_workbench(["map", "status", "--root", str(root), "--session", session])
         missing = set(nodes) - set(state.get("grants") or [])
@@ -1431,6 +1491,18 @@ def main() -> int:
         # Host-temp JSON request files are not product implementation.
         if write_like_tool(payload) and not paths and protocol_request_write(payload, root):
             return hook_response(platform, event)
+        if platform == "claude":
+            execution = run_node_workbench(["map", "execution", "--root", str(root), "--session", current_session_id])
+            ci = execution.get("active") or {}
+            ci_allowed = ci_tool_allowed(payload, execution)
+            if ci_allowed is not None:
+                if ci_allowed:
+                    append_session_event(root, event, platform, current_session_id, session_details(audit_details(
+                        payload, event, current_session_id, runtime, {"result": "ci-test-authorized", "sourceSha": ci.get("sourceSha"), "taskId": ci.get("taskId")},
+                    )))
+                    return hook_response(platform, event)
+                print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "CI may run only its assigned test commands; business source edits are forbidden."}}, ensure_ascii=False))
+                return 0
         snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
         missing = sorted(set(owners.values()) - active_grants(snapshot))

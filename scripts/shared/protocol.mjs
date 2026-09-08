@@ -86,7 +86,7 @@ export const payloadRules = {
   'task.assign': object({ taskId: id, briefRef: id, briefVersion: version, sessionId: id, nodeIds: ids, mainVersion: version, mode: optional(choice('session', 'reviewed')) }),
   'task.report': v => { object({ taskId: id, stage: choice(...Object.keys(reportData)), data: jsonObject })(v); reportData[v.stage](v.data); },
   'task.rework': object({ taskId: id, sourceSha: sha, ciResultRef: id, failedTestIds: ids }),
-  'ci.request': object({ taskId: id, sourceSha: sha, ciTodoRef: id, unitTestRefs: refs }),
+  'ci.request': object({ taskId: id, sourceSha: sha, ciTodoRef: id, unitTestRefs: refs, references: optional(jsonObject) }),
   'ci.result': object({ taskId: id, sourceSha: sha, verdict: choice('passed', 'failed', 'incomplete'), checks: array(v => { object({ testId: id, todoId: id, status: choice('passed', 'failed', 'incomplete'), evidenceRef: id, reproductionRef: optional(id) })(v); check(v.status !== 'failed' || !!v.reproductionRef, 'failed check reproduction'); }, 1) }),
   'executor.state': v => { object({ agentId: id, state: choice('busy', 'idle'), taskId: optional(id) })(v); check(v.state === 'busy' ? !!v.taskId : v.taskId === undefined, 'executor task'); },
   'session.bind': object({ sessionId: id, worktreeId: id, agentId: id, expectedBindingVersion: emptyVersion }),

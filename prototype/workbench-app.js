@@ -4229,6 +4229,76 @@ function renderAll(){
   syncLinkRepoBtn();
   persist();
 }
+function installCoordinatorPanel(sync){
+  if(!sync.config?.interfaceCapabilities?.coordinator) return;
+  const panel=document.createElement('details');
+  panel.id='coordinator-panel';
+  const heading=document.createElement('summary'); heading.textContent='Coordinator';
+  const status=document.createElement('p'); status.setAttribute('role','status');
+  const messages=document.createElement('div'); messages.className='coordinator-messages';
+  const form=document.createElement('form');
+  const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
+  input.setAttribute('aria-label','发送给 Coordinator');
+  const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
+  const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
+  form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
+  let timer=null, pending=null, busy=false, stopped=false, refreshing=false;
+  const render=state=>{
+    status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
+    messages.replaceChildren();
+    for(const message of state.messages){
+      const row=document.createElement('p');
+      row.textContent=(message.role==='assistant'?'Coordinator：':'输入：')+(message.text||message.tools.map(tool=>tool.name).join('、'));
+      messages.append(row);
+    }
+    for(const approval of state.approvals||[]){
+      if(!approval.brief||!approval.pending) continue;
+      const card=document.createElement('section');
+      const description=document.createElement('p');
+      description.textContent='待确认需求：'+approval.text+'\n验收条件：'+approval.acceptance+
+        '\n会话：'+approval.sessionId+'\n节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion;
+      card.append(description);
+      for(const [decision,label] of [['approved','确认需求'],['rejected','拒绝需求']]){
+        const button=document.createElement('button'); button.type='button'; button.textContent=label;
+        const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label};
+        button.addEventListener('click',async()=>{
+          for(const other of card.querySelectorAll('button')) other.disabled=true;
+          status.textContent='正在提交确认…';
+          try{await sync.call('/api/coordinator/approval',request,'POST','main');await refresh();}
+          catch(error){status.textContent='确认尚未成功：'+error.message;for(const other of card.querySelectorAll('button')) other.disabled=false;}
+        });
+        card.append(button);
+      }
+      messages.append(card);
+    }
+    if(state.retryInput) pending={...state.retryInput,retry:true};
+    send.disabled=busy||state.status==='running'||state.status==='error';
+    retry.hidden=!pending; retry.disabled=busy||state.status==='running';
+  };
+  const refresh=async()=>{
+    clearTimeout(timer);
+    if(stopped||refreshing) return;
+    refreshing=true;
+    try{render(await sync.call('/api/coordinator',undefined,'GET','main'));}
+    catch(error){status.textContent='读取失败：'+error.message;}
+    finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,3000);}
+  };
+  const submit=async request=>{
+    if(busy) return;
+    busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='正在提交…';
+    try{
+      await sync.call('/api/coordinator',request,'POST','main');
+      pending=null; input.value=''; retry.hidden=true;
+    }catch(error){status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}
+    finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
+    if(!pending) await refresh();
+  };
+  form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&!pending) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
+  retry.addEventListener('click',()=>{if(pending) void submit(pending);});
+  panel.addEventListener('toggle',()=>{if(panel.open) void refresh();else clearTimeout(timer);});
+  window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});
+  window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
+}
 async function boot(){
   const stored = readStoredUiLang();
   if(stored) uiLang = stored;
@@ -4254,6 +4324,7 @@ async function boot(){
     statusChanged:()=>renderAll()
   });
   const connected=await workbenchSync.start();
+  if(connected) installCoordinatorPanel(workbenchSync);
   if(!connected){
     if(!window.__CG_SERVER) await loadMapFromHttp();
     if(!window.__CG_SERVER) authUnlockAll();

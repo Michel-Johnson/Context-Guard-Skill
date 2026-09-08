@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { errorReply, fail, MAX_MESSAGE_BYTES, ProtocolError, validateMessage } from '../shared/protocol.mjs';
 
 // Never interpret a legacy HTML/JSON response as successful v2 delivery.
-export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential } = {}) {
+export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential, ciSessionId } = {}) {
   validateMessage(message);
+  if (ciSessionId && (typeof ciSessionId !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/.test(ciSessionId))) fail('INVALID_ARGUMENT', 'Invalid CI Session identity');
   const base = new URL(origin);
   if (base.protocol !== 'https:' && !(allowLoopback && base.protocol === 'http:' && ['127.0.0.1', '[::1]', 'localhost'].includes(base.hostname))) fail('FORBIDDEN', 'Cloud transport requires HTTPS');
   if (base.username || base.password) fail('INVALID_ARGUMENT', 'Credentials must not be part of the URL');
@@ -11,7 +12,7 @@ export async function sendMessage(origin, credential, message, { fetcher = fetch
   try {
     response = await fetcher(new URL('/api/v2/messages', base), {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}` }, body: JSON.stringify(message),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential}`, ...(ciSessionId ? { 'X-Context-Guard-CI-Session': ciSessionId } : {}) }, body: JSON.stringify(message),
     });
   } catch { fail('UNAVAILABLE', 'Connection failed; keep the pending message and retry with the same ID'); }
   const possibleLegacy = [404, 405, 426].includes(response.status);

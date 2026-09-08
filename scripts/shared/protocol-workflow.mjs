@@ -146,7 +146,9 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   if (message.type === 'ci.request') {
     role('coordinator', 'ci'); at('awaiting-ci');
     if (p.sourceSha !== task.sourceSha || p.ciTodoRef !== task.handoff.ciTodoRef || canonical(p.unitTestRefs) !== canonical(task.handoff.unitTestRefs)) fail('CONFLICT', 'CI request differs from the handoff');
-    task.stage = 'testing'; notify(); return changed(task);
+    const references = Object.fromEntries([p.ciTodoRef, ...p.unitTestRefs].map(ref => [ref, task.references[ref]]));
+    if (p.references && canonical(p.references) !== canonical(references)) fail('CONFLICT', 'CI object versions differ from the handoff');
+    task.stage = 'testing'; notify({ ...message, payload: { ...p, references } }); return changed(task);
   }
   if (message.type === 'ci.result') {
     role('ci'); at('testing');
