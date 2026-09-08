@@ -76,6 +76,94 @@ function options(args) {
   }
   return opts;
 }
+function isHelpFlag(arg) {
+  return arg === '--help' || arg === '-h';
+}
+const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
+function commandHelp(command) {
+  if (command === 'map') {
+    return `Usage: context-guard map <action> --root <project> --session <id> [options]
+
+Actions:
+  status              Print map version and recovery state
+  read                Read the map or one --node
+  changes             Read changes after --cursor
+  inbox               Read the Session inbox (--start for the first page)
+  ack                 Acknowledge --receipt
+  watch               Wait up to --wait-ms for inbox events
+  apply               Commit --input operations
+  operation           Look up --id
+  projections         Rebuild derived cards
+  reconcile           Archive reconciliation from --input
+
+Options:
+  --root <dir>        Project root (default: current directory)
+  --session <id>      Real lifecycle Session ID (or CODEX_THREAD_ID)
+  --node <id>         Node id for map read
+  --cursor <token>    Change cursor
+  --input <file|->    JSON request file or stdin
+  --id <operation>    Operation id
+  --receipt <id>      Inbox receipt
+  --wait-ms <n>       Watch timeout
+  --start             Start a new inbox page
+${HELP_EXIT_NOTE}`;
+  }
+  if (command === 'memory') {
+    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|publish|history|restore] [options]
+
+Options:
+  --root <dir>        Project root (default: current directory)
+  --session <id>      Session ID
+  --input <file|->    Private JSON for configure/publish/restore
+${HELP_EXIT_NOTE}`;
+  }
+  if (command === 'preferences') {
+    return `Usage: context-guard preferences [--root <project>] [--language <code>]
+
+Options:
+  --root <dir>        Project root (default: current directory)
+  --language <code>   Persist the project record language
+${HELP_EXIT_NOTE}`;
+  }
+  if (command === 'serve') {
+    return `Usage: context-guard workbench serve --root <project> [--host 127.0.0.1] [--port 8877]
+
+Foreground Node backend. Prefer \`context-guard workbench\` to start the managed service.
+${HELP_EXIT_NOTE}`;
+  }
+  if (command === 'workbench') {
+    return `Usage: context-guard workbench [options]
+
+Start or print the project workbench URL. --session is optional.
+
+  context-guard workbench --root <project>
+  context-guard workbench --diagnose --root <project> [--session <id>]
+  context-guard workbench --list [--root <project>]
+  context-guard workbench --stop --root <project>
+  context-guard workbench --binding-status --root <project> [--session <id>]
+  context-guard workbench --bind-main <branch> [--remote <name>] --root <project>
+  context-guard workbench --local-main <branch> --root <project>
+
+Options:
+  --root <dir>           Project root (default: current directory)
+  --session <id>         Bind or pin this Session
+  --port <n>             Backend port (default: 8877)
+  --stop                 Stop the project workbench
+  --list                 List registered workbenches
+  --diagnose             Inspect runtime without starting a service
+  --binding-status       Print binding and runtime verification
+  --bind-main <branch>   Confirm the remote Main branch
+  --local-main <branch>  Confirm a local Main branch
+  --remote <name>        Git remote for --bind-main (default: origin)
+  --rebind               Move an existing Session after confirmation
+  --workbench-url <url>  Bind to an existing workbench URL
+${HELP_EXIT_NOTE}`;
+  }
+  return `Usage: context-guard <workbench|map|memory|preferences> [options]
+
+Use --help or -h after a command to print that command's usage and exit.
+${HELP_EXIT_NOTE}`;
+}
 function processAlive(pid) {
   if (!Number.isInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; }
@@ -485,6 +573,10 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
   return { connected: true, projectId: result.projectId, url: origin.origin };
 }
 async function main(args) {
+  if (args.some(isHelpFlag)) {
+    console.log(commandHelp(args.find(arg => arg && !arg.startsWith('-')) || ''));
+    return;
+  }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
     return globalWorkbenchInventory({ currentRoot: root });

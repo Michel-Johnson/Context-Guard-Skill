@@ -444,6 +444,25 @@ async function serve(root) {
 }
 
 async function main(args) {
+  if (args.some(arg => arg === '--help' || arg === '-h')) {
+    console.log(`Usage: context-guard sync <action> [options]
+
+Actions:
+  connect             Save Cloud credentials (--url, --project, --token or --token-stdin)
+  ensure              Start or reuse the local sync service
+  status              Print local sync state
+  pull                Pull remote Map changes
+  prepare             Prepare a Session sync (--session, --nodes, --paths)
+  track               Track Session paths
+  checkpoint          Check conflicts without publishing
+  finish              Finish a Session sync
+
+Options:
+  --root <dir>        Project root (default: current directory)
+  --session <id>      Lifecycle Session ID
+  -h, --help          Print usage and exit. Does not start a service or write .codex/context.`);
+    return;
+  }
   const [action = 'status', ...rest] = args, options = parseOptions(rest);
   const root = path.resolve(options.root || process.cwd());
   const sessionId = String(options.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
