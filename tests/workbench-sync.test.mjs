@@ -1449,11 +1449,25 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     cleanPage.destroy(); await pause(30);
     assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected clean page must not block Agent checkpoints');
     const dirtyPage = await new Promise((resolve, reject) => {
-      const request = http.get(`${base}/api/events?token=${encodeURIComponent(running.humanToken)}&clientId=dirty-reload`, resolve);
+      const request = http.get(`${base}/api/events?token=${encodeURIComponent(running.humanToken)}&clientId=dirty-reload`, response => {
+        let buffer = '';
+        response.on('data', chunk => {
+          buffer += chunk.toString('utf8');
+          let end;
+          while ((end = buffer.indexOf('\n\n')) >= 0) {
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            if (!block.includes('event: checkpoint')) continue;
+            const checkpoint = JSON.parse(block.split('\n').find(line => line.startsWith('data: ')).slice(6)).checkpoint;
+            call('/api/presence', running.humanToken, { clientId: 'dirty-reload', dirty: true, version: running.store.version, checkpoint }).catch(reject);
+          }
+        });
+        resolve(response);
+      });
       request.on('error', reject);
     });
     assert.equal((await call('/api/presence', running.humanToken, { clientId: 'dirty-reload', dirty: true, version: running.store.version })).status, 200);
-    assert.equal((await call('/api/state', credential)).status, 409, 'a connected dirty page must block Agent checkpoints');
+    assert.equal((await call('/api/state', credential)).status, 409, 'a responsive dirty page must block Agent checkpoints');
     dirtyPage.destroy(); await pause(30);
     assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected dirty page must not remain as a phantom checkpoint peer');
     assert.equal((await call('/api/access', credential, { sessionId: agent.sessionId, nodes: ['N1'], actor: 'human' })).status, 403);
