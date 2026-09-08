@@ -1,26 +1,30 @@
 # CI TODO
 
-## Bug 真实总结与精简派单（开发中，未部署）
+## Bug 真实总结与精简派单（已部署，安装入口与真实桌面验收通过）
 
 - [x] 派单只保留一次任务内容和 start/finish 短命令；脚本从当前 Session 的持久收件箱补齐消息身份，覆盖越权、未知编号、空总结与重复回报（`tests/interface-events.test.mjs`、`tests/interface-delivery.test.mjs`）。
 - [x] 用户确认 Bug 解决后，在原 Session 的 Cloud 队列派发总结任务；成功回报前不生成经验，刷新后可读取真实总结（`tests/interface-events.test.mjs`、`tests/cloud-sync-browser.mjs`，隔离环境）。
 - [x] 同一 Bug 并发确认去重，失败保留并可重试，刷新显示真实总结（接口与浏览器隔离测试）。
-- [ ] 部署后通过安装入口完成真实桌面端总结，并重启 Cloud 验证结果恢复。
+- [x] PR #171/#172 已合并并更新全局 Skill 与完整 Cloud；安装文件逐字节一致。两个真实 Bug 总结由原桌面 Session 执行并在 Cloud 展示；第一次总结在服务重启后保留，第二次确认无重复保存冲突。
 - [x] 状态通知不再取消用户主动重读；完整浏览器回归覆盖输入法草稿冲突后的恢复（`tests/workbench-browser.mjs`）。
 
 ## 设备级通讯精简（已部署，已加载桌面 Session 派单验收通过）
 
 - [x] 地图/任务处理阻塞时独立发送心跳（`tests/interface-transport.test.mjs`）。
 - [x] 地图同步与同 Session 消息确认分离；混合心跳隔离失效绑定，Cloud 只登记通过鉴权的条目（`tests/interface-transport.test.mjs`、`tests/interface-store.test.mjs`、`tests/interface-events.test.mjs`）。
-- [x] 心跳携带宿主执行状态，Cloud API 区分连接在线与 active/stopped/unknown；隔离服务验证状态转换（`tests/interface-events.test.mjs`）。真实宿主及前端展示仍待验收。
+- [x] 心跳携带宿主执行状态，Cloud API 区分连接在线与 active/stopped/unknown；隔离服务验证状态转换（`tests/interface-events.test.mjs`）。真实桌面派单及总结过程中已观察执行状态，结束后回到空闲。
 - [x] Cloud Session 深链接保留全部 Session 和 Main 入口（`tests/cloud-workbench-browser.mjs`）。
 - [x] Cloud 模式下损坏的本地日志自动备份恢复，保留地图与操作去重回执；损坏的待提交事务仍单独保护（`tests/workbench-journal-recovery.test.mjs`）。
-- [x] 设备公共服务汇总项目心跳，同 Cloud 一次请求，项目凭据隔离；本地项目移除独立 Cloud 心跳/事件调度（`tests/interface-auth.test.mjs`、`tests/interface-transport.test.mjs`、`tests/interface-events.test.mjs`）。生产安装、恢复与持续运行验收仍待完成。
+- [x] 设备公共服务汇总项目心跳，同 Cloud 一次请求，项目凭据隔离；本地项目移除独立 Cloud 心跳/事件调度（`tests/interface-auth.test.mjs`、`tests/interface-transport.test.mjs`、`tests/interface-events.test.mjs`）。安装入口、服务升级恢复及下述 30 分钟持续心跳验收通过，不代表任意长时间网络故障均已验证。
 - [x] 页面区分在线/执行中/空闲及任务完成结果；删除设备连接类中已被替代的项目级心跳、重试定时器和 Cloud SSE 循环（`tests/interface-events.test.mjs`、浏览器回归）。旧 Map-only 独立产品命令不属于设备 v2 调度路径。
 - [x] Session 执行回报与代码发布分离，服务端递增序号维持 FIFO；完成/失败/取消释放队列，重复回报与重启保持幂等（`tests/interface-workflow.test.mjs`）。
 - [x] 安装入口向已加载的真实“测试”Session 派发 2 Bug + 2 TODO；复用现有桌面实例，Cloud FIFO 逐项执行且四项均返回 completed，无临时 App Server 辅助。未加载 Session 的冷启动仍单列如下。
 - [x] 安装入口与 Cloud 部署版本一致；真实设备持续心跳观测 30 分钟，178 次采样无失败、最大心跳年龄 8.6 秒。该项不代表原生派单已通过。
-- [ ] 修复未加载 Codex 会话的唤醒：`codex queue` 成功只代表消息入队，真实会话保持未加载；不能据此宣称模型已启动。临时 App Server 验证与正式桌面运行实例的接线必须区分。
+- [ ] 桌面唤醒差异收口：`codex queue` 已通过复用现有桌面的真实执行验收；此前未加载会话出现只入队、不执行。需对齐成功调用的入口及宿主状态并补未加载场景回归，不能推断桌面不支持，也不能把打开会话后的成功或另起 App Server 算作该场景通过。
+- [x] macOS 原会话公开链接加载接入本地派单脚本；正式适配器测试覆盖加载先于投递、加载超时不入队、非法 Session ID、重启重放不重复加载/投递、投递结果未知保护。测试替身不等于实机自动打开验收。
+- [ ] macOS 安装入口自动加载未加载会话并处理 Cloud 任务的实机验收；人工点击公开链接已验证 notLoaded → idle，不替代脚本自动调用证据。Windows/Linux 自动加载未实现，本轮不声称覆盖。
+
+本轮证据：PR #156/#157/#171/#172 的 Required CI 均通过；最终功能版本 `aac5d27`，本地 `npm test` 305 通过、1 平台跳过，29 项安装边界和两组浏览器回归通过。Hooks 按用户要求保持关闭，doctor 的 Hook 信任汇总/执行/注入证据未通过，不作为本轮已验收能力。
 
 - [x] Cloud 保存失败时在顶栏直接展示结构化错误码与简短原因，完整诊断仍保留在“同步与恢复”中。
 
