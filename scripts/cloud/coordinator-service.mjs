@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
-import { coordinatorStep } from './coordinator-model.mjs';
+import { coordinatorStep, correctableToolError, settleRejectedTools } from './coordinator-model.mjs';
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 
@@ -18,6 +18,7 @@ export class CoordinatorService {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
     const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
+      canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
       retryInput: state.status === 'error' ? state.activeInput || null : null,
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
         .map(([id, receipt]) => ({ id, ...receipt.result, ...(receipt.result.kind === 'mount-proposal' ? { pending: !mounts.byProposal[id] } : {}) })),
@@ -91,7 +92,11 @@ export class CoordinatorService {
       const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
       const fingerprint = hash(text);
       if (state.requests[id] && state.requests[id] !== fingerprint) throw error('ID_REUSED', 'Conversation request ID differs');
-      if (this.running || state.activeTurnId && state.activeTurnId !== id) throw error('COORDINATOR_BUSY', 'Coordinator is processing the previous turn');
+      if (this.running) throw error('COORDINATOR_BUSY', 'Coordinator is processing the previous turn');
+      if (state.activeTurnId && state.activeTurnId !== id) {
+        if (source !== 'human' || state.status !== 'error' || !settleRejectedTools(state)) throw error('COORDINATOR_BUSY', 'Preserve the original turn until its outcome is known');
+        state.activeTurnId = null;
+      }
       if (state.requests[id]) {
         if (state.status !== 'error' || !retry) return;
         if (state.activeTurnId !== id) throw error('INVALID_RETRY', 'Retry the failed turn with its original identity');
