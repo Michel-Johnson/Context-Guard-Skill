@@ -68,9 +68,80 @@ export async function updateBugWithRecovery(call, sessionId, input) {
   await call('/api/projections', { method: 'POST', body: { wait: true } });
   return !exists ? { ...result, recovered: true } : result;
 }
+function wantsHelp(args) {
+  return args.some(arg => arg === '--help' || arg === '-h');
+}
+const COMMAND_HELP = {
+  workbench: `Context Guard workbench
+
+Usage:
+  context-guard workbench [--root <project>] [--session <id>] [options]
+  context-guard workbench list [--root <project>]
+  context-guard workbench bind --project-root <path> [--root <worktree>]
+  context-guard workbench connect --url <origin> [--session <id>]
+  context-guard workbench diagnose|status [--root <project>] [--session <id>]
+  context-guard workbench migrate --retire <pid:instance,...> [--root <project>]
+  context-guard workbench --stop [--root <project>]
+
+Options:
+  --root <path>         Project or worktree root (default: cwd)
+  --session <id>        Lifecycle Session ID
+  --port <number>       Direct loopback port (default: 8877)
+  --direct              Use direct loopback URL instead of named entry
+  --name <slug>         Named localhost hostname slug
+  --list                List registered workbench projects
+  --binding-status      Show binding and runtime diagnostic JSON
+  --diagnose, --status  Alias for --binding-status
+  --stop                Stop the project workbench service
+  --bind-main <branch>  Record remote main branch binding
+  --local-main <branch> Use a local branch as main binding
+  --workbench-url <url> Reuse an existing workbench URL
+  -h, --help            Show this help and exit without starting services`,
+  map: `Context Guard map
+
+Usage:
+  context-guard map <action> --root <project> --session <id> [options]
+
+Actions:
+  status, read, changes, inbox, ack, watch, apply, operation, projections, reconcile
+
+Options:
+  --root <path>         Project or worktree root (default: cwd)
+  --session <id>        Lifecycle Session ID (required for map actions)
+  --node <id>           Limit read/status to one map node
+  --input <file>        JSON input file or "-" for stdin
+  -h, --help            Show this help and exit without contacting the workbench`,
+  memory: `Context Guard memory
+
+Usage:
+  context-guard memory [--root <project>] [--session <id>]
+  context-guard memory configure --input <file> [--root <project>] [--session <id>]
+  context-guard memory sync|prepare|rebase|publish|history|restore [options]
+
+Options:
+  --root <path>         Project or worktree root (default: cwd)
+  --session <id>        Lifecycle Session ID
+  --input <file>        JSON input file or "-" for stdin
+  -h, --help            Show this help and exit without contacting the workbench`,
+  preferences: `Context Guard preferences
+
+Usage:
+  context-guard preferences [--root <project>] [--language <code>]
+
+Options:
+  --root <path>         Project or worktree root (default: cwd)
+  --language <code>     Record language code (for example zh or en)
+  -h, --help            Show this help and exit`,
+};
+function printCommandHelp(command) {
+  const text = COMMAND_HELP[command];
+  if (text) console.log(text.trimEnd());
+  else console.log(`Context Guard ${command}\n\nSupported commands: workbench, map, memory, preferences.\nUse -h or --help with one of them.`);
+}
 function options(args) {
   const opts = { _: [] };
   for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-h') { opts.help = true; continue; }
     if (args[i].startsWith('--')) { const key = args[i].slice(2); opts[key] = args[i + 1] && !args[i + 1].startsWith('--') ? args[++i] : true; }
     else opts._.push(args[i]);
   }
@@ -485,7 +556,12 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
   return { connected: true, projectId: result.projectId, url: origin.origin };
 }
 async function main(args) {
-  const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  const [command, ...rest] = args;
+  if (wantsHelp(rest)) {
+    printCommandHelp(command);
+    return;
+  }
+  const opt = options(rest), root = path.resolve(opt.root || process.cwd());
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
     return globalWorkbenchInventory({ currentRoot: root });
   }
