@@ -76,8 +76,9 @@ function options(args) {
   }
   return opts;
 }
-function isHelpFlag(arg) {
-  return arg === '--help' || arg === '-h';
+export function wantsHelp(args) {
+  const opt = options(args);
+  return opt.help !== undefined || opt._.includes('-h');
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
 function commandHelp(command) {
@@ -573,7 +574,7 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
   return { connected: true, projectId: result.projectId, url: origin.origin };
 }
 async function main(args) {
-  if (args.some(isHelpFlag)) {
+  if (wantsHelp(args)) {
     console.log(commandHelp(args.find(arg => arg && !arg.startsWith('-')) || ''));
     return;
   }

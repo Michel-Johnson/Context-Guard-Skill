@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { wantsHelp } from "../../scripts/workbench/cli.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const publicCli = path.join(repositoryRoot, "bin", "context-guard-skill.js");
@@ -100,5 +101,23 @@ test("public memory, preferences, and sync --help do not require a project", () 
     assertHelpOnly(runCli(publicCli, ["memory", "--help"], directory), directory, /\bconfigure\b/);
     assertHelpOnly(runCli(publicCli, ["preferences", "--help"], directory), directory, /--language/);
     assertHelpOnly(runCli(publicCli, ["sync", "--help"], directory), directory, /\bcheckpoint\b/);
+  });
+});
+
+test("help flags are not consumed when they are option values", () => {
+  assert.equal(wantsHelp(["workbench", "--help"]), true);
+  assert.equal(wantsHelp(["workbench", "-h"]), true);
+  assert.equal(wantsHelp(["workbench", "--root", "/tmp", "-h"]), true);
+  assert.equal(wantsHelp(["map", "apply", "--input", "-h"]), false);
+  assert.equal(wantsHelp(["map", "apply", "--input", "-h", "--help"]), true);
+  assert.equal(wantsHelp(["workbench", "--session", "-h"]), false);
+  assert.equal(wantsHelp(["sync", "connect", "--token", "-h"]), false);
+  withEmptyRoot((directory) => {
+    const result = runCli(publicCli, ["sync", "connect", "--token", "-h"], directory);
+    assert.notEqual(result.status, 0, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout, /Usage:/);
+    const payload = parseJson(result.stdout);
+    assert.equal(payload?.error?.code, "USAGE");
+    assert.equal(fs.existsSync(path.join(directory, ".codex")), false);
   });
 });

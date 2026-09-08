@@ -25,6 +25,10 @@ function parseOptions(args) {
   }
   return result;
 }
+function wantsHelp(args) {
+  const parsed = parseOptions(args);
+  return parsed.help !== undefined || parsed._.includes('-h');
+}
 
 export function syncPaths(root) {
   const dir = path.join(root, '.codex/context/private/cloud-sync');
@@ -444,7 +448,7 @@ async function serve(root) {
 }
 
 async function main(args) {
-  if (args.some(arg => arg === '--help' || arg === '-h')) {
+  if (wantsHelp(args)) {
     console.log(`Usage: context-guard sync <action> [options]
 
 Actions:
