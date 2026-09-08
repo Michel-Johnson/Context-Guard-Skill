@@ -603,6 +603,12 @@ async function main(args) {
     if (message.session && message.session.id !== sessionId) throw new MapError('FORBIDDEN', 'Message targets a different Session', 403);
     return call('/api/v2/messages', { method: 'POST', body: message });
   }
+  if (action === 'task') {
+    const stage = { start: 'started', finish: 'finished' }[opt._[1]];
+    if (!stage || !opt._[2]) throw new MapError('INVALID_ARGUMENT', 'Use map task start|finish <delivery-id>; finish requires --summary');
+    return call('/api/v2/task-report', { method: 'POST', body: { deliveryId: opt._[2], stage,
+      ...(stage === 'finished' ? { outcome: opt.outcome || 'success', summary: opt.summary } : {}) } });
+  }
   if (['inbox', 'ack', 'watch'].includes(action)) {
     const dir = sessionMemoryDir(project, sessionId);
     const inbox = new AgentInbox(root, sessionId, call, project.kind === 'git' ? { ctx: dir, pendingFile: path.join(dir, 'sync/pending.json'), eventsDir: dir } : {});

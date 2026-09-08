@@ -1,6 +1,14 @@
 # CI TODO
 
-## 设备级通讯精简（进行中，尚未部署）
+## Bug 真实总结与精简派单（开发中，未部署）
+
+- [x] 派单只保留一次任务内容和 start/finish 短命令；脚本从当前 Session 的持久收件箱补齐消息身份，覆盖越权、未知编号、空总结与重复回报（`tests/interface-events.test.mjs`、`tests/interface-delivery.test.mjs`）。
+- [x] 用户确认 Bug 解决后，在原 Session 的 Cloud 队列派发总结任务；成功回报前不生成经验，刷新后可读取真实总结（`tests/interface-events.test.mjs`、`tests/cloud-sync-browser.mjs`，隔离环境）。
+- [x] 同一 Bug 并发确认去重，失败保留并可重试，刷新显示真实总结（接口与浏览器隔离测试）。
+- [ ] 部署后通过安装入口完成真实桌面端总结，并重启 Cloud 验证结果恢复。
+- [x] 状态通知不再取消用户主动重读；完整浏览器回归覆盖输入法草稿冲突后的恢复（`tests/workbench-browser.mjs`）。
+
+## 设备级通讯精简（已部署，已加载桌面 Session 派单验收通过）
 
 - [x] 地图/任务处理阻塞时独立发送心跳（`tests/interface-transport.test.mjs`）。
 - [x] 地图同步与同 Session 消息确认分离；混合心跳隔离失效绑定，Cloud 只登记通过鉴权的条目（`tests/interface-transport.test.mjs`、`tests/interface-store.test.mjs`、`tests/interface-events.test.mjs`）。
@@ -10,8 +18,9 @@
 - [x] 设备公共服务汇总项目心跳，同 Cloud 一次请求，项目凭据隔离；本地项目移除独立 Cloud 心跳/事件调度（`tests/interface-auth.test.mjs`、`tests/interface-transport.test.mjs`、`tests/interface-events.test.mjs`）。生产安装、恢复与持续运行验收仍待完成。
 - [x] 页面区分在线/执行中/空闲及任务完成结果；删除设备连接类中已被替代的项目级心跳、重试定时器和 Cloud SSE 循环（`tests/interface-events.test.mjs`、浏览器回归）。旧 Map-only 独立产品命令不属于设备 v2 调度路径。
 - [x] Session 执行回报与代码发布分离，服务端递增序号维持 FIFO；完成/失败/取消释放队列，重复回报与重启保持幂等（`tests/interface-workflow.test.mjs`）。
-- [ ] 用真实“测试”Session 验证 2 Bug + 2 TODO、Cloud 页面执行状态和完成顺序。
-- [ ] 安装入口、Cloud 部署和 30 分钟持续心跳验收；局部测试不代表以上功能完成。
+- [x] 安装入口向已加载的真实“测试”Session 派发 2 Bug + 2 TODO；复用现有桌面实例，Cloud FIFO 逐项执行且四项均返回 completed，无临时 App Server 辅助。未加载 Session 的冷启动仍单列如下。
+- [x] 安装入口与 Cloud 部署版本一致；真实设备持续心跳观测 30 分钟，178 次采样无失败、最大心跳年龄 8.6 秒。该项不代表原生派单已通过。
+- [ ] 修复未加载 Codex 会话的唤醒：`codex queue` 成功只代表消息入队，真实会话保持未加载；不能据此宣称模型已启动。临时 App Server 验证与正式桌面运行实例的接线必须区分。
 
 - [x] Cloud 保存失败时在顶栏直接展示结构化错误码与简短原因，完整诊断仍保留在“同步与恢复”中。
 

@@ -29,14 +29,14 @@ const sessionActivityTtlMs = 2 * 60 * 1000;
 const sessionHeartbeatTtlMs = 30 * 1000;
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
-function cloudWorkItemBrief(node, item, kind) {
+function cloudWorkItemBrief(node, item, kind, summarizing = false) {
   const label = kind === 'bug' ? 'Bug' : 'TODO';
+  const title = compactText(item.title), description = compactText(item.desc || item.description);
   return [
-    `Context Guard Cloud 向你分配了一个 ${label}。`,
-    `${label}: ${compactText(item.id, 128)} · ${compactText(item.title)}`,
-    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
-    compactText(item.desc || item.description) ? `描述: ${compactText(item.desc || item.description)}` : '',
-    kind === 'bug' && compactText(item.record, 500) ? `记录: ${compactText(item.record, 500)}` : '',
+    `${summarizing ? '总结 ' : ''}${label} ${compactText(item.id, 128)}｜${compactText(node.title, 128)}`,
+    summarizing ? '已解决问题（背景，不执行）：' : '',
+    description && description.startsWith(title) ? description : [title, description].filter(Boolean).join('\n'),
+    summarizing ? '用户已确认解决。仅根据本会话记录总结“原因、修复、验证”，将真实总结作为完成命令的 summary；不再修代码。证据不足就明确注明，不编造。' : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -995,7 +995,7 @@ export async function startCloudServer({
         const viewId = String(url.searchParams.get('view') || 'main');
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig } }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig, bugSummary: !!project && !!interfaceConfig } }); }
         requireWorkbench(req, url);
         if (action === '/api/state' && req.method === 'GET') {
           const state = await scopedWorkbenchState(scope, project, viewId);
@@ -1037,12 +1037,19 @@ export async function startCloudServer({
           const input = await requestBody(req);
           const operationId = compactText(input.operationId, 128), sessionId = compactText(input.sessionId, 128), nodeId = compactText(input.nodeId, 128);
           const bugId = compactText(input.bugId, 128), todoId = compactText(input.todoId, 128);
+          const summarizing = input.purpose === 'summary';
+          if (input.purpose && !summarizing || summarizing && (!bugId || viewId !== 'main')) throw new MapError('INVALID_ARGUMENT', 'Bug summaries require the Main workbench', 400);
           if (!operationId || !sessionId || !nodeId || Boolean(bugId) === Boolean(todoId)) throw new MapError('INVALID_ARGUMENT', 'operationId, Session, node and exactly one work item are required', 400);
           const { principal, store } = interfaceProject(project);
           const binding = await store.registeredBinding(principal, sessionId);
           if (!binding) throw new MapError('SESSION_OFFLINE', 'This Session has not connected its local backend', 409);
           const session = { id: sessionId, generation: binding.generation };
-          const result = await store.submitApprovedTask(principal, { operationId, session, nodeId, bugId, todoId }, async () => {
+          // One summary per original Bug assignment, even across concurrent browser clicks.
+          const sourceTaskId = compactText(input.sourceTaskId, 128);
+          const retryOf = compactText(input.retryOf, 128);
+          if (summarizing && retryOf && !['failed', 'cancelled'].includes((await store.taskStatus(principal, session, retryOf)).state)) protocolFail('CONFLICT', 'Only a failed or cancelled summary can be retried');
+          const taskOperation = summarizing ? `bug-summary:${digest(JSON.stringify([nodeId, bugId, sessionId, sourceTaskId, retryOf])).slice(0, 40)}` : operationId;
+          const result = await store.submitApprovedTask(principal, { operationId: taskOperation, session, nodeId, bugId, todoId, ...(summarizing ? { purpose: 'summary', sourceTaskId, retryOf } : {}) }, async () => {
             const main = await mainMemorySnapshot(project);
             if (!main?.document?.root) protocolFail('NOT_FOUND', 'Published Main memory is unavailable');
             const node = entries(main.document.root).get(nodeId)?.node;
@@ -1050,16 +1057,37 @@ export async function startCloudServer({
             if (matches.length > 1) protocolFail('CONFLICT', 'Work item ID is duplicated; repair its identity before assigning');
             const item = matches[0];
             if (!node || !item) protocolFail('NOT_FOUND', 'Work item or owner node is missing');
-            if ((bugId && ['resolved', 'dormant', 'wontfix'].includes(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
+            if (!summarizing && ((bugId && ['resolved', 'dormant', 'wontfix'].includes(item.status)) || (todoId && item.status === 'done'))) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
+            if (summarizing) {
+              const owner = item.dispatch?.session_id || (item.sessions?.length === 1 ? item.sessions[0] : null);
+              if (owner !== sessionId || (item.dispatch?.task_id || '') !== sourceTaskId) protocolFail('CONFLICT', 'Summary must use the original assigned Session and task');
+              if ((item.resolution?.dispatch?.task_id || '') !== retryOf) protocolFail('CONFLICT', 'Summary confirmation already exists or has advanced');
+            }
             const nodeIds = assignmentScope(main.document, nodeId);
             const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
             if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');
             return {
-              taskId: `task-${digest(`${project.id}\0${operationId}`).slice(0, 40)}`,
-              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version, mode: 'session',
+              taskId: `task-${digest(`${project.id}\0${taskOperation}`).slice(0, 40)}`,
+              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo', summarizing), nodeIds, mainVersion: main.version, mode: 'session',
             };
           }, { verifyRouting: verifyInterfaceRouting });
-          return send(res, 200, result);
+          if (summarizing) {
+            // The task is durable first. Retrying after a lost response repairs its Map link
+            // without submitting another task or replacing concurrent human edits.
+            for (let attempt = 0; ; attempt++) {
+              const snapshot = await mainMemorySnapshot(project), node = entries(snapshot.document.root).get(nodeId)?.node;
+              const matches = node?.bugs?.filter(bug => bug.id === bugId) || [];
+              if (matches.length !== 1 || (matches[0].dispatch?.task_id || '') !== sourceTaskId) protocolFail('CONFLICT', 'Bug changed before summary confirmation was saved');
+              if (matches[0].resolution?.dispatch?.task_id === result.taskId) break;
+              if ((matches[0].resolution?.dispatch?.task_id || '') !== retryOf) protocolFail('CONFLICT', 'A newer summary confirmation must not be replaced');
+              const bugs = node.bugs.map(bug => bug !== matches[0] ? bug : { ...bug, status: 'resolved', resolution: { dispatch: { task_id: result.taskId, session_id: sessionId, status: result.state } } });
+              try {
+                await commitMainMemoryMap(configuredMemory, project.id, { operationId: `link:${taskOperation}`, baseVersion: snapshot.version, operations: [{ type: 'update', id: nodeId, fields: { bugs } }] });
+                await broadcastWorkbench(scope, project, viewId); break;
+              } catch (error) { if (error.code !== 'VERSION_CONFLICT' || attempt >= 2) throw error; }
+            }
+          }
+          return send(res, 200, { ...result, deliveryId: operationId });
         }
         if (action === '/api/task-status' && req.method === 'POST') {
           if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before reading tasks', 409);
@@ -1284,7 +1312,7 @@ export async function startCloudServer({
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';
-        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, durableDelivery: !!projectId && !!interfaceConfig } }).replace(/</g, '\\u003c');
+        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, durableDelivery: !!projectId && !!interfaceConfig, bugSummary: !!projectId && !!interfaceConfig } }).replace(/</g, '\\u003c');
         const marker = `<script>window.__CG_SERVER=${config};</script>`;
         const html = (await fs.readFile(htmlPath, 'utf8')).replace('<!-- CG_SERVER_BOOT -->', marker);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });

@@ -293,7 +293,6 @@ export class WorkbenchSync {
     // events. Main state must not make the pending Session look synchronized.
     if (this.pendingSession) return;
     if (state.viewId && state.viewId !== this.viewId) return;
-    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     this.recoveryState(state);
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) { await this.reload(); return; }
@@ -303,6 +302,9 @@ export class WorkbenchSync {
     }
     if (this.inflight) { this.deferredState = state; return; }
     if (this.dirty()) { this.saveDraft(); this.setStatus('conflict'); return; }
+    // Only a new state read supersedes another read. Presence/version notices
+    // must not cancel the human's explicit reload while preserving a draft.
+    const generation = this.loadGeneration = (this.loadGeneration || 0) + 1;
     const current = await this.call('/api/state');
     if (generation !== this.loadGeneration) return;
     this.recoveryState(current);
@@ -610,6 +612,10 @@ export class WorkbenchSync {
   async sendTodo(sessionId, nodeId, todoId) {
     return this.sendWorkItem({ sessionId, nodeId, todoId });
   }
+  async summarizeBug(sessionId, nodeId, bugId, sourceTaskId = '', retryOf = '') {
+    if (!this.config.interfaceCapabilities?.bugSummary) throw new Error('当前后端尚未支持真实 Bug 总结，请先升级');
+    return this.sendWorkItem({ sessionId, nodeId, bugId, sourceTaskId, retryOf, purpose: 'summary' });
+  }
   async connectCloud(password) {
     const id = uniqueId();
     const result = await this.call('/api/v2/messages', { v: 2, id, type: 'auth.open', payload: { repository: 'auto', clientId: 'local-backend', password } });
@@ -666,6 +672,7 @@ export class WorkbenchSync {
     }
   }
   taskState(taskId) { return this.taskStates.get(taskId)?.state || ''; }
+  taskResult(taskId) { return this.taskStates.get(taskId)?.result || null; }
   async refreshTaskStatuses() {
     if (!this.config.interfaceCapabilities?.taskDispatch || !this.taskStates.size || this.taskStatusRunning) return;
     this.taskStatusRunning = true;

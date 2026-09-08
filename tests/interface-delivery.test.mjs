@@ -43,7 +43,9 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   for (const value of ['N1, N2', 'main-v1', 'approved requirement', 'delivery']) assert.ok(prompt.includes(value));
   assert.match(prompt, /先读代码并提交 Plan/);
   const direct = await executionPrompt({ ...assignment, payload: { ...assignment.payload, mode: 'session' } }, read);
-  for (const value of ['main-v1', 'approved requirement', '"stage":"started"', '"stage":"finished"', '"deliveryId":"delivery"', '--session s']) assert.ok(direct.includes(value));
+  for (const value of ['approved requirement', 'map task start delivery', 'map task finish delivery', '--summary']) assert.ok(direct.includes(value));
+  for (const value of ['main-v1', '"stage"', '"session"', '--session s']) assert.equal(direct.includes(value), false);
+  assert.ok(direct.length < 350);
   assert.equal(direct.includes('收到审核通过后再执行'), false);
   await assert.rejects(executionPrompt(assignment, async () => ({ kind: 'plan', version: 'brief-v1', content: { text: 'wrong' } })), { code: 'CONFLICT' });
   const review = { v: 2, id: 'review', type: 'review.result', session, payload: { kind: 'plan', ref: 'plan', version: 'plan-v1', decision: 'approved', reason: 'matches requirements', receiptId: 'receipt' } };

@@ -332,6 +332,33 @@ protocol-2 workbench. Creating a host automation is an explicit user action, not
 an installation side effect. Hooks remind active sessions of the same inbox/ack
 workflow; they are not an alternative idle-task scheduler.
 
+### Compact Cloud task commands and Bug summaries
+
+For a Cloud `mode: session` assignment, the installed CLI accepts
+`map task start <delivery-id>` and
+`map task finish <delivery-id> --summary <actual-result>`.
+Use `--outcome failed` or `--outcome cancelled` for those outcomes. The normal
+root/Session resolution applies; credentials, task ID, generation and report IDs
+come from the authenticated Session's persisted notification, not the prompt.
+The start and finish IDs remain stable on retry. Changed retry content is rejected;
+an unknown delivery or another Session's delivery cannot be reported. Older explicit
+`map exchange` messages remain supported for already-delivered tasks.
+
+Human Bug confirmation in Cloud uses the existing `/api/session-message` endpoint
+with `purpose: summary` and the original `sourceTaskId`. It queues a summary in the
+original Session, marks the Bug resolved, and persists its `resolution.dispatch`
+link before acknowledging the browser. Task creation and the Map link use separate
+durable stores: retries repair the link after a partial failure without creating
+another task. Concurrent confirmations share one summary identity. A failed or
+cancelled summary may be explicitly retried with `retryOf`; an older response cannot
+replace a newer summary link. This is human confirmation, not Agent publication.
+
+The queue remains Cloud-owned. The responsible Session reports the actual cause,
+fix and verification in the existing finish `summary`; missing evidence must be
+stated, not invented. Task status exposes the persisted result for rendering after
+refresh. Pending or failed summaries remain visibly unfinished. There is no timer
+that manufactures experience, and no second model process is started for a summary.
+
 ## Prompt signals and Map TODOs
 
 `UserPromptSubmit` stores a stable private signal ID. The Agent classifies it by

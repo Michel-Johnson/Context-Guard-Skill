@@ -604,6 +604,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return reply;
           },
         })(req, res);
+        if (route === '/api/v2/task-report' && req.method === 'POST') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
+          const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
+          const binding = await protocolStore.registeredBinding(principal, actor.sessionId);
+          if (!binding || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'Session binding changed');
+          const message = await protocolStore.executionReport(principal, { id: actor.sessionId, generation: binding.generation }, await body(req));
+          const connection = await projectDevice();
+          if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable; retry the same command');
+          return send(res, 200, { id: message.id, ok: true, data: await connection.send(message) });
+        }
         if (route === '/api/v2/interrupt' && req.method === 'POST') {
           const actor = auth(req, url);
           if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
