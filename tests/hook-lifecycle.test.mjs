@@ -5,11 +5,11 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
-import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
@@ -615,6 +615,106 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
     tool_input: { path: path.join(project, '.codex/context/map.json'), content: '{}' },
   });
   assert.equal(directMapWrite.json.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('top-level record-todo and record-bad-case use Session Map nodes missing from disk map.json', async t => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-map-'));
+  let workbenchPid = null;
+  t.after(async () => {
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    else {
+      spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+        encoding: 'utf8', timeout: 15_000, windowsHide: true,
+      });
+    }
+    await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
+  });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: project, stdio: 'pipe', windowsHide: true });
+  execFileSync('git', [
+    '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
+    'commit', '--allow-empty', '-m', 'fixture',
+  ], { cwd: project, stdio: 'pipe', windowsHide: true });
+  run(python, [contextScript, 'init', '--root', project]);
+  await saveMainBinding(project, { mode: 'local', branch: 'trunk' });
+  const session = 'session-map-todo';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await fs.mkdir(path.join(project, 'src'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/export.md'), '# export\n');
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', session, '--port', String(port)]);
+  const resolved = await resolveProject(project);
+  const state = JSON.parse(await fs.readFile(path.join(resolved.sharedDir, 'workbench.json'), 'utf8'));
+  workbenchPid = state.pid;
+
+  const snapshot = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'read', '--root', project, '--session', session]).stdout);
+  run(process.execPath, [workbenchCli, 'map', 'apply', '--root', project, '--session', session], {
+    input: JSON.stringify({
+      operationId: 'propose-M3-export',
+      baseVersion: snapshot.version,
+      operations: [{
+        type: 'create',
+        parentId: 'T0',
+        node: {
+          id: 'M3',
+          title: 'Export',
+          kind: 'work',
+          purpose: 'Own markdown export',
+          owns: ['src/export.md'],
+          memories: [{
+            text: 'Adds markdown export',
+            paths: ['src/export.md'],
+            proposalEvidence: {
+              parentId: 'T0',
+              basis: 'new-module',
+              reason: 'Adds a separate export boundary and entry point',
+              files: ['src/export.md'],
+            },
+          }],
+        },
+      }],
+    }),
+  });
+  const diskMap = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  assert.deepEqual(diskMap.root.children, []);
+  assert.equal(diskMap.bootstrap, 'pending');
+  const sessionNode = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(sessionNode.node.id, 'M3');
+
+  const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'todo-turn', prompt: '支持导出 markdown' });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M3', '--title', '支持导出 markdown', '--description', '从 Session Map 节点写入',
+  ]);
+  const recorded = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(recorded.node.todos.length, 1);
+  assert.equal(recorded.node.todos[0].title, '支持导出 markdown');
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8')).root.children, []);
+
+  const badPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-turn', prompt: '导出失败必须记坏例' });
+  const badSignal = badPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  run(python, [
+    contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', badSignal,
+    '--node', 'M3', '--title', '导出失败', '--phenomenon', '无法写出 markdown',
+  ]);
+  const withBug = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M3',
+  ]).stdout);
+  assert.equal(withBug.node.bugs.length, 1);
+
+  const missing = spawnSync(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session,
+    '--signal', signalId, '--node', 'MISSING', '--title', 'must fail',
+  ], { encoding: 'utf8', windowsHide: true });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /unknown map node: MISSING/);
 });
 
 test('completion receipts require evidence, scope review, all files and fresh content', async t => {
