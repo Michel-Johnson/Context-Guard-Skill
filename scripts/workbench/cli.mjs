@@ -6,16 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { startServer, statePath, projectStatePath, projectLockPath, health, skillRoot, loopbackJSON } from './server.mjs';
 import { resolveProject, ensureProjectBinding, saveMainBinding, bindingStatus, listWorktrees, projectPreferences } from './project.mjs';
-<<<<<<< HEAD
 import { readJSON, pause } from '../shared/io.mjs';
 import { MapError } from '../shared/map-model.mjs';
 import { validateMessage } from '../shared/protocol.mjs';
-=======
-import { readJSON, pause } from './io.mjs';
-import { MapError } from '../../prototype/map-model.mjs';
 import { hostAttestedPlatform, recordHostAttestedSession } from './access.mjs';
-import { validateMessage } from './protocol.mjs';
->>>>>>> 1454cd3 (Register Codex exec thread IDs without a SessionStart hook)
 import { AgentInbox } from './inbox.mjs';
 import { buildArchiveReconciliation } from './reconcile.mjs';
 import { memoryRequest, memoryStatus, prepareMemory, rebaseMemory, synchronizeMemory, memoryConfigPath, sessionMemoryDir } from './memory.mjs';

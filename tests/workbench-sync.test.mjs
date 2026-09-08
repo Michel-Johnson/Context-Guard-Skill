@@ -411,7 +411,6 @@ test('host-attested Codex thread can register without a lifecycle hook', async (
 
 test('workbench and map read accept a host-attested Codex exec thread without a prior hook', async () => {
   const f = await fixture();
-  const running = await startServer({ root: f.root, port: 0 });
   const env = {
     ...process.env,
     CODEX_THREAD_ID: '01a07d62-exec-cli',
@@ -423,6 +422,7 @@ test('workbench and map read accept a host-attested Codex exec thread without a 
   const cli = (args, extraEnv = env) => execFileSync(process.execPath, ['scripts/workbench/cli.mjs', ...args], {
     cwd: process.cwd(), env: extraEnv, encoding: 'utf8', windowsHide: true,
   });
+  const running = await startServer({ root: f.root, port: 0 });
   try {
     const denied = await fetch(new URL('/api/session', running.state.url), {
       method: 'POST',
@@ -431,47 +431,42 @@ test('workbench and map read accept a host-attested Codex exec thread without a 
     });
     assert.equal(denied.status, 403);
     assert.equal((await denied.json()).error.code, 'UNKNOWN_SESSION');
-    let invented = '';
-    try {
-      cli(['map', 'read', '--root', f.root, '--session', 'invented-session', '--node', 'N1'], {
-        ...env, CODEX_THREAD_ID: '',
-      });
-    } catch (error) {
-      invented = `${error.stdout || ''}${error.stderr || ''}${error.message || ''}`;
-    }
-    assert.match(invented, /SESSION_BINDING_REQUIRED/);
-    const bound = JSON.parse(cli(['workbench', '--root', f.root, '--session', '01a07d62-exec-cli', '--direct']));
-    assert.equal(bound.binding.bound, true);
-    const read = JSON.parse(cli(['map', 'read', '--root', f.root, '--session', '01a07d62-exec-cli', '--node', 'N1']));
-    assert.equal(read.node.id, 'N1');
-    assert.match(await fs.readFile(path.join(f.ctx, 'sessions.jsonl'), 'utf8'), /host-environment/);
   } finally {
     await running.close();
   }
+  let invented = '';
+  try {
+    cli(['map', 'read', '--root', f.root, '--session', 'invented-session', '--node', 'N1'], {
+      ...env, CODEX_THREAD_ID: '',
+    });
+  } catch (error) {
+    invented = `${error.stdout || ''}${error.stderr || ''}${error.message || ''}`;
+  }
+  assert.match(invented, /SESSION_BINDING_REQUIRED/);
+  const bound = JSON.parse(cli(['workbench', '--root', f.root, '--session', '01a07d62-exec-cli', '--direct']));
+  assert.equal(bound.binding.bound, true);
+  const read = JSON.parse(cli(['map', 'read', '--root', f.root, '--session', '01a07d62-exec-cli', '--node', 'N1']));
+  assert.equal(read.node.id, 'N1');
+  assert.match(await fs.readFile(path.join(f.ctx, 'sessions.jsonl'), 'utf8'), /host-environment/);
 });
 
 test('map read with CODEX_THREAD_ID binds without Cloud connect or a prior hook', async () => {
   const f = await fixture();
-  const running = await startServer({ root: f.root, port: 0 });
-  try {
-    const read = JSON.parse(execFileSync(process.execPath, [
-      'scripts/workbench/cli.mjs', 'map', 'read', '--root', f.root, '--session', 'exec-auto-bind', '--node', 'N1',
-    ], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        CODEX_THREAD_ID: 'exec-auto-bind',
-        CONTEXT_GUARD_HEADLESS: '1',
-        CONTEXT_GUARD_NAMED_WORKBENCH: '0',
-      },
-      encoding: 'utf8',
-      windowsHide: true,
-    }));
-    assert.equal(read.node.id, 'N1');
-    assert.equal(read.error, undefined);
-  } finally {
-    await running.close();
-  }
+  const read = JSON.parse(execFileSync(process.execPath, [
+    'scripts/workbench/cli.mjs', 'map', 'read', '--root', f.root, '--session', 'exec-auto-bind', '--node', 'N1',
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CODEX_THREAD_ID: 'exec-auto-bind',
+      CONTEXT_GUARD_HEADLESS: '1',
+      CONTEXT_GUARD_NAMED_WORKBENCH: '0',
+    },
+    encoding: 'utf8',
+    windowsHide: true,
+  }));
+  assert.equal(read.node.id, 'N1');
+  assert.equal(read.error, null);
 });
 
 test('rollout lifecycle parser maps work to spinner state and completion to check state', () => {
