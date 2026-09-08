@@ -289,6 +289,7 @@ export async function startCloudServer({
   publicOrigin = process.env.CONTEXT_GUARD_CLOUD_ORIGIN || '',
   memoryConfig,
   protocolConfig,
+  coordinatorModelFactory = config => new CoordinatorModel(config),
   faultInjector = async () => {},
 } = {}) {
   const registryFile = path.join(dataDir, 'projects.json');
@@ -421,7 +422,7 @@ export async function startCloudServer({
         });
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8');
         const service = new CoordinatorService({ directory: path.join(dataDir, 'coordinators', project.id),
-          model: new CoordinatorModel(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
+          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
         service.inbox = new CoordinatorInbox({ store, principal, sessionIds: Object.keys(config.bindings), service });
         service.kick();
         return service;
@@ -1078,6 +1079,18 @@ export async function startCloudServer({
             const state = await coordinator.state();
             state.eventError = coordinator.inbox.lastError;
             const { store, principal } = interfaceProject(project);
+            state.acceptances = [];
+            for (const sessionId of Object.keys(configuredMemory.projects[project.id].coordinator.bindings)) {
+              const binding = await store.registeredBinding(principal, sessionId);
+              if (!binding) continue;
+              const session = { id: sessionId, generation: binding.generation };
+              for (const task of await store.workflowTasks(principal, session)) {
+                if (task.stage !== 'awaiting-merge' || task.ci?.verdict !== 'passed') continue;
+                const read = async ref => (await store.handle(principal, { v: 2, id: randomUUID(), type: 'object.read', session, payload: ref })).data.content;
+                state.acceptances.push({ taskId: task.id, sessionId, sourceSha: task.sourceSha, ci: task.ci,
+                  brief: await read(task.brief), result: await read({ ref: task.ci.ref, version: task.ci.version }) });
+              }
+            }
             for (const approval of state.approvals) {
               if (!approval.brief) continue;
               const binding = await store.registeredBinding(principal, approval.sessionId);
@@ -1100,6 +1113,20 @@ export async function startCloudServer({
             session: { id: proposal.sessionId, generation: binding.generation },
             payload: { kind: 'brief', ref: proposal.brief.ref, version: proposal.brief.version, decision: input.decision,
               reason: (configuredMemory.projects[project.id].coordinator.simulated ? '[模拟人工确认] ' : '') + (input.reason || '') } });
+          return send(res, 200, (await store.handle(principal, message)).data);
+        }
+        if (action === '/api/coordinator/acceptance' && project && req.method === 'POST') {
+          await coordinatorFor(project);
+          const input = await requestBody(req);
+          if (!input || Object.keys(input).some(key => !['id', 'sessionId', 'taskId', 'ref', 'version', 'decision', 'reason'].includes(key)) ||
+              !Object.hasOwn(configuredMemory.projects[project.id].coordinator.bindings, input.sessionId)) protocolFail('INVALID_ARGUMENT', 'Select an assigned task and exact CI result');
+          const { store, principal } = interfaceProject(project), binding = await store.registeredBinding(principal, input.sessionId);
+          if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
+          const session = { id: input.sessionId, generation: binding.generation }, task = await store.taskRecord(principal, session, input.taskId);
+          if (task.ci?.ref !== input.ref || task.ci?.version !== input.version || task.ci?.verdict !== 'passed') protocolFail('CONFLICT', 'Acceptance must reference the current passed CI result');
+          if (typeof input.reason !== 'string' || !input.reason.trim()) protocolFail('INVALID_ARGUMENT', 'Record the human acceptance result or rejection reason');
+          const message = validateMessage({ v: 2, id: input.id, type: 'review.result', session, payload: { kind: 'acceptance', ref: input.ref, version: input.version,
+            decision: input.decision, reason: (configuredMemory.projects[project.id].coordinator.simulated ? '[模拟人工验收] ' : '') + input.reason } });
           return send(res, 200, (await store.handle(principal, message)).data);
         }
         if (action === '/api/state' && req.method === 'GET') {

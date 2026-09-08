@@ -72,7 +72,7 @@ export class ClaudeRuntime {
     const state = await readJSON(this.sessionFile(sessionId), null);
     if (state?.config.role !== 'ci') return null;
     const job = state.active && await readJSON(state.active, null);
-    if (!job?.execution || job.execution.session.id !== state.config.executorSessionId) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
+    if (!job?.execution || ['finished', 'failed'].includes(job.state) || job.execution.session.id !== state.config.executorSessionId) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
     if (verifySource && (await git(state.config.root, 'rev-parse', 'HEAD') !== job.execution.sourceSha || await git(state.config.root, 'status', '--porcelain'))) fail('CI_SOURCE_CHANGED', 'CI result requires the unchanged assigned code SHA');
     return { ...job.execution, mode: 'ci', commands: state.config.ciCommands };
   }

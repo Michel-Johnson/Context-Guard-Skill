@@ -4271,6 +4271,29 @@ function installCoordinatorPanel(sync){
       }
       messages.append(card);
     }
+    for(const acceptance of state.acceptances||[]){
+      const card=document.createElement('section'), description=document.createElement('p');
+      description.textContent='待人工验收：'+acceptance.taskId+'\n代码 SHA：'+acceptance.sourceSha+'\nCI：'+acceptance.result.verdict+'\n'+acceptance.brief.text;
+      card.append(description);
+      for(const [decision,label] of [['approved','验收通过'],['rejected','验收不通过']]){
+        const button=document.createElement('button');button.type='button';button.textContent=label;
+        let request;
+        button.addEventListener('click',async()=>{
+          if(!request){
+            const reason=decision==='rejected'?window.prompt('请说明不满意的方面，Coordinator 将据此与你核对。'):label;
+            if(!reason?.trim())return;
+            request={id:`acceptance:${acceptance.ci.version}:${decision}`,sessionId:acceptance.sessionId,taskId:acceptance.taskId,
+              ref:acceptance.ci.ref,version:acceptance.ci.version,decision,reason};
+          }
+          for(const other of card.querySelectorAll('button'))other.disabled=true;
+          status.textContent='正在提交验收…';
+          try{await sync.call('/api/coordinator/acceptance',request,'POST','main');await refresh();}
+          catch(error){status.textContent='验收尚未确认：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
+        });
+        card.append(button);
+      }
+      messages.append(card);
+    }
     if(state.retryInput) pending={...state.retryInput,retry:true};
     send.disabled=busy||state.status==='running'||state.status==='error';
     retry.hidden=!pending; retry.disabled=busy||state.status==='running';

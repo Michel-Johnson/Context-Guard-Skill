@@ -307,12 +307,14 @@ export async function globalWorkbenchInventory({ dir = globalWorkbenchDirectory(
     const owned = records.filter(record => record.belongs && record.live);
     const unknown = records.filter(record => record.belongs && record.status === 'unknown');
     const ready = owned.filter(record => record.status === 'ready');
-    const legacy = owned.filter(record => ['legacy', 'upgradeable'].includes(record.status));
+    const legacy = owned.filter(record => record.status === 'legacy');
+    const upgradeable = owned.filter(record => record.status === 'upgradeable');
     const namedReady = routeResults.some(result => result.named.status === 'ready');
     const namedMismatch = routeResults.some(result => result.named.status === 'mismatch');
     const routeStatus = namedReady ? 'ready' : namedMismatch ? 'mismatch' : entry.routes.length ? 'stale' : 'missing';
-    const backendStatus = owned.length > 1 ? 'duplicate' : ready.length ? 'ready' : legacy.length ? 'legacy' : unknown.length ? 'unknown' : 'stopped';
+    const backendStatus = owned.length > 1 ? 'duplicate' : ready.length ? 'ready' : legacy.length ? 'legacy' : upgradeable.length ? 'upgrade-required' : unknown.length ? 'unknown' : 'stopped';
     const status = backendStatus === 'duplicate' ? 'duplicate'
+      : backendStatus === 'upgrade-required' ? 'upgrade-required'
       : backendStatus === 'legacy' ? 'legacy'
         : backendStatus === 'unknown' ? 'unknown'
           : backendStatus === 'stopped' ? entry.routes.length ? 'route-stale' : 'stopped'

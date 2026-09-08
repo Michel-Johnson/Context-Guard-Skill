@@ -334,6 +334,8 @@ function readObject(target, platform) {
   return value;
 }
 
+const CLAUDE_EVENTS = ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "PreCompact", "PostCompact", "SubagentStop", "Stop", "StopFailure", "SessionEnd"];
+
 function plannedHooks(platform, skillTarget, hooksTarget) {
   if (!fs.existsSync(sourceHooksPath)) {
     throw new Error(`source hooks file is missing: ${sourceHooksPath}`);
@@ -344,7 +346,11 @@ function plannedHooks(platform, skillTarget, hooksTarget) {
   }
   const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
   if (platform === "claude") {
-    const supported = new Set(["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"]);
+    for (const [name, source, from, to] of [["PostToolUseFailure", "PostToolUse", "post-tool-use", "post-tool-use-failure"], ["SessionEnd", "Stop", "stop", "session-end"], ["StopFailure", "Interrupt", "interrupt", "stop-failure"]]) {
+      rawIncoming.hooks[name] = JSON.parse(JSON.stringify(rawIncoming.hooks[source]));
+      for (const group of rawIncoming.hooks[name]) for (const hook of group.hooks) hook.command = hook.command.replace(`context_guard_hook.py ${from} `, `context_guard_hook.py ${to} `);
+    }
+    const supported = new Set(CLAUDE_EVENTS);
     rawIncoming.hooks = Object.fromEntries(Object.entries(rawIncoming.hooks || {}).filter(([event]) => supported.has(event)));
   }
   const incoming = rewriteGroupedHookCommands(rawIncoming, skillTarget, platform);
@@ -491,7 +497,7 @@ function doctor(args) {
   if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") platforms = ["codex"];
   const eventNames = {
     codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "SubagentStop", "Stop", "Interrupt"],
-    claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
+    claude: CLAUDE_EVENTS,
     cursor: ["sessionStart", "subagentStart", "beforeSubmitPrompt", "subagentStop", "stop"]
   };
   for (const platform of platforms) {

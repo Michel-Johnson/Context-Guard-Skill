@@ -84,7 +84,8 @@ export function createCoordinatorExecutor(ctx) {
       if (!current.ci) fail('No CI result is available');
       const ci = await exchange('object.read', { ref: current.ci.ref, version: current.ci.version }, ':ci');
       return exchange('task.rework', { taskId: input.taskId, sourceSha: current.sourceSha, ciResultRef: current.ci.ref,
-        failedTestIds: ci.content.checks.filter(check => check.status === 'failed').map(check => check.testId) });
+        failedTestIds: current.stage === 'acceptance-rejected' ? [] : ci.content.checks.filter(check => check.status !== 'passed').map(check => check.testId),
+        ...(current.stage === 'acceptance-rejected' ? { reason: current.acceptanceReview.reason } : {}) });
     }
     fail('Tool is not implemented');
   };

@@ -67,6 +67,12 @@ backend restart can recover a lost acknowledgement from the receiver's saved
 intent without launching the same prompt again. Native workers outlive backend
 restarts; they do not own another heartbeat service.
 
+The Claude installer includes failure, permission, pre/post-compaction and
+SessionEnd hooks in addition to start/tool/stop events. Non-decision events only
+record state; they do not restart model generation. See the native
+[Claude Hook contract](https://code.claude.com/docs/en/hooks). Signal IDs are read
+from `plan-status.pending_signals`, never inferred from lifecycle event IDs.
+
 An interrupted or uncertain native turn remains visible and is not automatically
 re-executed. Do not delete its saved intent to retry. Controlled recovery and CI
 delegation must be verified before claiming full lifecycle support. Native turn

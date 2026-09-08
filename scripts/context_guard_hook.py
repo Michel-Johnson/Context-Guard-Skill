@@ -149,6 +149,9 @@ HOOK_EVENT_NAMES = {
     "subagent-stop": "SubagentStop",
     "pre-tool-use": "PreToolUse",
     "post-tool-use": "PostToolUse",
+    "post-tool-use-failure": "PostToolUseFailure",
+    "session-end": "SessionEnd",
+    "stop-failure": "StopFailure",
     "permission-request": "PermissionRequest",
     "interrupt": "Interrupt",
     "pre-compact": "PreCompact",
@@ -158,6 +161,9 @@ HOOK_EVENT_NAMES = {
 
 def hook_response(platform: str, event: str, additional_context: str = "") -> int:
     payload: dict[str, object] = {}
+    if platform == "claude" and event in {"pre-compact", "post-compact", "session-end", "stop-failure"}:
+        print("{}")  # These native events cannot deliver model context or block.
+        return 0
     if additional_context:
         if platform == "cursor":
             payload["additional_context"] = additional_context
@@ -1323,11 +1329,11 @@ def main() -> int:
             target = previous.get("worktreeRoot")
             prior = f" It is currently recorded against {target}; use --rebind only after explicit confirmation." if target else ""
             status = str(current_workbench.get("status") or "unknown") if current_workbench else ""
-            established = bool(current_workbench and current_workbench.get("registered"))
+            established = bool(current_workbench and (current_workbench.get("registered") or current_workbench.get("runningInstances") == 1))
             binding_state = str(previous.get("state") or "unbound")
             safe_existing_binding = binding_state in {"current", "moved"}
             automatic = (not target or safe_existing_binding) and not binding.get("bindingRequired") and established and status in {
-                "ready", "direct-only", "route-stale", "stopped"
+                "ready", "direct-only", "route-stale", "stopped", "upgrade-required"
             }
             if automatic:
                 try:
@@ -1345,7 +1351,7 @@ def main() -> int:
                     return hook_response(
                         platform, event,
                         "Context Guard automatic binding unverified. "
-                        f"Run {context_guard_cli()} workbench --diagnose --root {json.dumps(str(root))}. "
+                        f"Run {context_guard_cli()} workbench --root {json.dumps(str(root))} --session {json.dumps(current_session_id)} to retry the same binding. "
                         "Existing workbench preserved.",
                     )
             elif current_workbench:
@@ -1551,8 +1557,8 @@ def main() -> int:
             return permission_response(event, "deny", "Context Guard Map authorization is missing for: " + ", ".join(missing) + ". Authorize it in the workbench first.")
         return permission_response(event)
 
-    if event == "post-tool-use":
-        if control_tool(payload):
+    if event in {"post-tool-use", "post-tool-use-failure"}:
+        if event == "post-tool-use" and control_tool(payload):
             return hook_response(platform, event)
         plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
         paths = tool_paths(payload, root)
@@ -1564,7 +1570,7 @@ def main() -> int:
             plan["actual_paths"] = sorted(set((plan.get("actual_paths") or []) + paths))
             # Local observations only; Cloud upload/check happens at plan-finish.
             write_hook_runtime(root, current_session_id, runtime)
-        failed = bool(isinstance(payload, dict) and (payload.get("error") or payload.get("is_error") is True))
+        failed = event == "post-tool-use-failure" or bool(isinstance(payload, dict) and (payload.get("error") or payload.get("is_error") is True))
         response = payload.get("tool_response", {}) if isinstance(payload, dict) else {}
         failed = failed or (isinstance(response, dict) and (response.get("isError") is True or bool(response.get("exit_code"))))
         if plan and failed:
@@ -1645,7 +1651,7 @@ def main() -> int:
         restored += " Pending signals: " + (", ".join(pending_signals(runtime)) or "none") + "."
         return hook_response(platform, event, memory_notice + "\n\n" + context_text + "\n\n" + restored)
 
-    if event == "interrupt":
+    if event in {"interrupt", "stop-failure"}:
         event_id, _, _ = event_identity(payload, event, current_session_id)
         runtime["interrupted"] = {
             "at": utc_now(),
@@ -1661,6 +1667,12 @@ def main() -> int:
         append_session_event(root, event, platform, current_session_id, session_details(audit_details(payload, event, current_session_id, runtime, {"result": "interrupted"})))
         print(json.dumps({"systemMessage": "Context Guard: interrupted; plan preserved."}, ensure_ascii=False))
         return 0
+
+    if event == "session-end":
+        append_session_event(root, event, platform, current_session_id, session_details(audit_details(
+            payload, event, current_session_id, runtime, {"result": "ended", "reason": payload_value(payload, ("reason",))},
+        )))
+        return hook_response(platform, event)
 
     if event == "subagent-stop":
         agent_id = payload_value(payload, ("agent_id", "agentId"))

@@ -90,6 +90,11 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   const annotated = await send(executor, 'object.read', ciResult.ciTodo);
   assert.deepEqual(annotated.content.items, [{ id: 'todo-1', title: 'Cross-module regression', status: 'done', testIds: ['CI-1'] }, { id: 'todo-2', title: 'Recovery', status: 'done', testIds: ['CI-2'] }]);
   store = new ProtocolStore(directory);
+  const beforeAcceptance = await store.taskRecord(coordinator, session, 'task');
+  await assert.rejects(send(coordinator, 'task.control', { taskId: 'task', action: 'complete', expectedVersion: beforeAcceptance.version, data: { archiveReceiptRef: 'archive' } }, { workflow: { verifyCompletion: () => true } }), { code: 'CONFLICT' });
+  const acceptance = { kind: 'acceptance', ref: beforeAcceptance.ci.ref, version: beforeAcceptance.ci.version, decision: 'approved', reason: 'Human verified the tested SHA' };
+  await assert.rejects(send(coordinator, 'review.result', acceptance), { code: 'FORBIDDEN' });
+  await send(human, 'review.result', acceptance);
   const task = Object.values((await store.transaction(state => state)).tasks)[0];
   const complete = { taskId: 'task', action: 'complete', expectedVersion: task.version, data: { archiveReceiptRef: 'archive', gitReceiptRef: 'merge' } };
   await assert.rejects(send(coordinator, 'task.control', complete), { code: 'FORBIDDEN' });

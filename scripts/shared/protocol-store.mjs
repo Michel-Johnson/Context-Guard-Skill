@@ -199,6 +199,13 @@ export class ProtocolStore extends EventEmitter {
       return structuredClone(task);
     }, { readOnly: true });
   }
+  async workflowTasks(principal, session) {
+    requireIdentity(principal);
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      return Object.values(state.tasks).filter(task => task.repositoryId === principal.repositoryId && canonical(task.session) === canonical(session));
+    }, { readOnly: true });
+  }
   async humanTaskResult(principal, sessionId, taskId) {
     requireIdentity(principal);
     if (principal.role !== 'human') fail('FORBIDDEN', 'Human review requires browser authority');

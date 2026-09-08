@@ -175,6 +175,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
   let device;
   const ciConnections = new Map();
+  const ciRetries = new Map();
+  const ciChannel = (sessionId, connection) => {
+    if (!ciConnections.has(sessionId) || ciConnections.get(sessionId).origin !== connection.origin) {
+      const channel = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', sessionId), origin: connection.origin, allowLoopback: true,
+        transport: (origin, credential, message, options) => sendMessage(origin, credential, message, { ...options, ciSessionId: sessionId }) });
+      channel.file = connection.file; // Device login is shared; this is not another heartbeat service.
+      ciConnections.set(sessionId, channel);
+    }
+    return ciConnections.get(sessionId);
+  };
   let deviceServiceCheck = null, deviceServiceCheckedAt = 0;
   const ensureDeviceService = async () => {
     if (deviceServiceCheck) return deviceServiceCheck;
@@ -206,6 +216,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               if (identity?.name) heartbeat.name = identity.name;
               if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
               const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id) : null;
+              if (native?.role === 'ci') ciChannel(head.session.id, device);
               if (native?.name) heartbeat.name = native.name;
               heartbeat.execution = native?.configured && Date.parse(native.at) >= (Date.parse(identity?.statusSeen) || 0)
                 ? { status: native.status, at: native.at }
@@ -240,7 +251,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         return { ...result, deliveryState: 'stored' };
       },
-      onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
+      onSession: head => {
+        syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head);
+        const ci = ciConnections.get(head.id);
+        if (ci && !ciRetries.has(head.id)) ciRetries.set(head.id, ci.retryPending().catch(error => { device.lastError = error.code || 'CI_RETRY_FAILED'; }).finally(() => ciRetries.delete(head.id)));
+      },
       onError: (error, source) => {
         device.lastError = error.code || 'UNAVAILABLE';
         if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const [view, coordinator] of syncCoordinators) if ((!error.details?.sessionId || view === `session:${error.details.sessionId}`) && coordinator.managed && !coordinator.status.conflict) {
@@ -677,13 +692,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha)) protocolFail('FORBIDDEN', 'CI message exceeds its assigned test scope');
           const connection = await projectDevice();
           if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable');
-          if (!ciConnections.has(actor.sessionId) || ciConnections.get(actor.sessionId).origin !== connection.origin) {
-            const channel = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', actor.sessionId), origin: connection.origin, allowLoopback: true,
-              transport: (origin, credential, message, options) => sendMessage(origin, credential, message, { ...options, ciSessionId: actor.sessionId }) });
-            channel.file = connection.file; // Reuse device login; no additional heartbeat or credential.
-            ciConnections.set(actor.sessionId, channel);
-          }
-          return send(res, 200, { id: message.id, ok: true, data: await ciConnections.get(actor.sessionId).send(message) });
+          return send(res, 200, { id: message.id, ok: true, data: await ciChannel(actor.sessionId, connection).send(message) });
         }
         if (route === '/api/v2/task-report' && req.method === 'POST') {
           const actor = auth(req, url);

@@ -156,6 +156,7 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
     proposal: { result: { sessionId: session.id, taskId: 'task', brief, requiresHumanApproval: true } },
   } }));
   const server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser',
+    coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Workflow event received' }] }) }),
     protocolConfig: { repositories: [{ repositoryId, projectId, slug: 'example/lab' }] },
     memoryConfig: { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic-admin', projects: {
       [projectId]: { root: directory, ref: 'refs/heads/main', token: 'synthetic-memory', coordinator: { enabled: true, providerFile, bindings: { session: 'worktree' }, simulated: true } },
@@ -177,6 +178,32 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
   const after = await (await fetch(endpoint, { headers })).json();
   assert.equal(after.approvals[0].pending, false);
   assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'approved');
+  let sequence = 0;
+  const protocol = async (actor, type, payload, options) => (await store.handle(actor, { v: 2, id: `acceptance-fixture-${++sequence}`, type, session, payload }, options)).data;
+  const sourceSha = 'a'.repeat(40);
+  await protocol(coordinator, 'task.assign', { taskId: 'task', sessionId: session.id, briefRef: brief.ref, briefVersion: brief.version, nodeIds: ['T0'], mainVersion: 'main', mode: 'reviewed' }, { workflow: { verifyRouting: () => true } });
+  const plan = await protocol(device, 'object.put', { kind: 'plan', ref: 'plan', baseVersion: '', content: { paths: ['frontend/'], steps: ['test'] } });
+  await protocol(device, 'task.report', { taskId: 'task', stage: 'planReady', data: { planRef: plan.ref, planVersion: plan.version, sourceSha } });
+  await protocol(coordinator, 'review.request', { kind: 'plan', taskId: 'task', ref: plan.ref, version: plan.version, requirementsRef: brief.ref, requirementsVersion: brief.version, rulesVersion: 'rules' });
+  await protocol(coordinator, 'review.result', { kind: 'plan', ref: plan.ref, version: plan.version, decision: 'approved', reason: 'Reviewed exact Plan' });
+  await protocol(device, 'object.put', { kind: 'ciTodo', ref: 'ci-todo', baseVersion: '', content: { items: [{ id: 'check', title: 'Test' }] } });
+  await protocol(device, 'object.put', { kind: 'evidence', ref: 'test-evidence', baseVersion: '', content: { exitCode: 0 } });
+  await protocol(device, 'task.report', { taskId: 'task', stage: 'handoff', data: { sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'], experienceRefs: [] } });
+  await protocol(coordinator, 'ci.request', { taskId: 'task', sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'] });
+  await protocol({ ...coordinator, role: 'ci', agentId: 'ci' }, 'ci.result', { taskId: 'task', sourceSha, verdict: 'passed', checks: [{ testId: 'test', todoId: 'check', status: 'passed', evidenceRef: 'test-evidence' }] });
+  const pending = (await (await fetch(endpoint, { headers })).json()).acceptances[0];
+  assert.equal(pending.sourceSha, sourceSha);
+  const review = { id: 'human-reject', sessionId: session.id, taskId: 'task', ref: pending.ci.ref, version: pending.ci.version, decision: 'rejected', reason: 'The requested interaction is still wrong' };
+  const accept = body => fetch(endpoint + '/acceptance', { method: 'POST', headers, body: JSON.stringify(body) });
+  assert.equal((await accept({ ...review, version: 'stale' })).status, 409);
+  const rejection = await accept(review); assert.equal(rejection.status, 200);
+  assert.deepEqual(await (await accept(review)).json(), await rejection.json());
+  const rejected = await store.taskRecord(coordinator, session, 'task');
+  assert.equal(rejected.stage, 'acceptance-rejected');
+  assert.match(rejected.acceptanceReview.reason, /模拟人工验收/);
+  await assert.rejects(protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: 'invented feedback' }), { code: 'CONFLICT' });
+  await protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: rejected.acceptanceReview.reason });
+  assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'rework');
 });
 
 test('Coordinator consumes existing workflow notifications and lost acknowledgements do not repeat model turns', async t => {

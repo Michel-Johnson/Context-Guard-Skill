@@ -107,7 +107,7 @@ export class CoordinatorInbox {
         const page = await send('sync.read', { afterSeq: head.sessions[0].ackedSeq, limit: 100 });
         for (const item of page.messages) {
           const { type, payload } = item.message;
-          const actionable = type === 'review.result' && payload.kind === 'brief' || type === 'ci.result' ||
+          const actionable = type === 'review.result' && ['brief', 'acceptance'].includes(payload.kind) || type === 'ci.result' ||
             type === 'task.report' && ['planReady', 'handoff', 'interrupted', 'closed'].includes(payload.stage);
           const summary = type === 'review.result' ? payload : { taskId: payload.taskId, stage: payload.stage, verdict: payload.verdict };
           if (actionable) await this.service.submit({ id: `event:${item.message.id}`, text: JSON.stringify({ session, type, payload: summary, instruction: '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });

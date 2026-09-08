@@ -266,6 +266,8 @@ test('a recognized installed runtime upgrade preserves the project and replaces 
   assert.equal(old.status, 0, old.stderr);
   const oldResult = JSON.parse(old.stdout), before = await diagnoseWorkbench(root);
   assert.equal(before.runtime.status, 'upgrade-required');
+  const inventory = await globalWorkbenchInventory({ currentRoot: root });
+  assert.equal(inventory.currentProject.status, 'upgrade-required', 'a recognized upgrade must not be mislabeled as unknown legacy');
   const upgraded = await ensureServer(root, 0); t.after(() => stopServer(root));
   assert.notEqual(upgraded.instance, oldResult.instance);
   assert.equal((await diagnoseWorkbench(root)).runtime.status, 'ready');
