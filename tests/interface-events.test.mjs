@@ -17,6 +17,7 @@ import { commitSessionMap, commitMainMemoryMap, memoryHeads } from '../scripts/c
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator } from '../scripts/workbench/sync-coordinator.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
+import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
@@ -227,6 +228,27 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   assert.equal((await memoryRead('sessions/s')).status, 200);
   const waitFor = async predicate => { const deadline = Date.now() + 15000; while (!await predicate() && Date.now() < deadline) await delay(30); assert.ok(await predicate(), 'condition did not become true'); };
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));
+  // Exercise the actual backend heartbeat callback, not provision() alone:
+  // resolveProject exposes mainRef, not the CLI inventory's nested main.ref.
+  const creationStore = new ProtocolStore(path.join(directory, 'cloud', 'interface-v2', hash('123')));
+  const creationHuman = { repositoryId: '123', deviceId: 'browser', agentId: 'human', role: 'human' };
+  const creationCalls = [];
+  const creationProbe = t.mock.method(ClaudeRuntime.prototype, 'provision', async (input, options) => {
+    creationCalls.push({ input, options });
+    throw Object.assign(new Error('Preparation probe; no model launched'), { code: 'CREATION_PROBE' });
+  });
+  const creation = await creationStore.requestSessionCreation(creationHuman, { operationId: 'backend-main-ref', templateSessionId: 's', name: 'Creation probe' });
+  await waitFor(async () => {
+    const { origin, ...beat } = await request(local.state, '/api/device-heartbeat');
+    const response = await fetch(new URL('/api/v2/heartbeat', origin), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([beat]) });
+    const [reply] = await response.json();
+    assert.equal(reply.ok, true);
+    await request(local.state, '/api/device-heartbeat', { method: 'POST', body: reply });
+    return (await creationStore.sessionCreations(creationHuman)).find(item => item.id === creation.id)?.state === 'failed';
+  });
+  assert.ok(creationCalls.length > 0);
+  assert.ok(creationCalls.every(call => call.input.id === creation.id && call.options.baseRef === 'refs/remotes/origin/main'));
+  creationProbe.mock.restore();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: 's3', event: 'session-start', platform: 'codex', thread_name: 'new-session' }) + '\n');
   const cli = path.resolve('scripts/workbench/cli.mjs');
   const { stdout } = await exec(process.execPath, [cli, 'map', 'status', '--root', root, '--session', 's3'], { env: process.env, timeout: 15000, windowsHide: true });
