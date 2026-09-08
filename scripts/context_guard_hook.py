@@ -739,10 +739,31 @@ def protocol_command(words: list[str], allowed: set[str]) -> bool:
 def control_words(words: list[str]) -> bool:
     """Protocol writes are their own audited recovery path, not product edits."""
     return protocol_command(words, {
+        "init", "set-language", "write-candidates", "doctor",
         "plan-start", "plan-finish", "plan-status", "archive-session", "resolve-signal", "split-signal",
         "record-todo", "record-bad-case", "record-bad-case-fix", "map", "sync", "workbench",
         "preferences", "memory",
     })
+
+
+def _consume_shell_redirect(tokens: list[str], index: int) -> int | None:
+    """Advance past a read-only stdout/stderr redirection, or reject file writes."""
+    token = tokens[index]
+    if token.isdigit() and index + 1 < len(tokens) and tokens[index + 1] in {">", ">>", ">&", "&>"}:
+        index += 1
+        token = tokens[index]
+    elif token not in {">", ">>", ">&", "&>", "<<", "<<<"}:
+        return None
+    if token in {"<<", "<<<", ">>"}:
+        return None
+    index += 1
+    if token in {"&>", ">&"}:
+        if index >= len(tokens) or not tokens[index].isdigit():
+            return None
+        return index + 1
+    if index >= len(tokens) or tokens[index] != "/dev/null":
+        return None
+    return index + 1
 
 
 def shell_segments(command: str) -> list[list[str]] | None:
@@ -772,13 +793,9 @@ def shell_segments(command: str) -> list[list[str]] | None:
             current = []
             index += 1
             continue
-        if token in {">", ">>", ">&", "&>", "<<", "<<<"}:
-            # Discarding diagnostic noise is harmless; every other output target writes.
-            if current and current[-1].isdigit():
-                current.pop()
-            if token != ">" or index + 1 >= len(tokens) or tokens[index + 1] != "/dev/null":
-                return None
-            index += 2
+        redirect_end = _consume_shell_redirect(tokens, index)
+        if redirect_end is not None:
+            index = redirect_end
             continue
         if token == "<":
             if current and current[-1].isdigit():
@@ -913,6 +930,67 @@ def git_changed_paths(root: Path) -> list[str]:
         if value and not value.startswith(".codex/context/private/"):
             paths.add(value)
     return sorted(paths)
+
+
+def write_tool_paths(payload: object, root: Path) -> list[str]:
+    """Declared write targets, including absolute paths outside the project root."""
+    if not isinstance(payload, dict):
+        return []
+    found: list[str] = []
+
+    def add(value: object) -> None:
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            if not isinstance(item, str) or not item.strip():
+                continue
+            candidate = Path(item).expanduser()
+            try:
+                resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+            except (OSError, ValueError):
+                continue
+            found.append(resolved.as_posix())
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key.lower() in {"path", "paths", "file", "file_path", "filepath"}:
+                    add(child)
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(payload.get("tool_input", {}))
+    return sorted(set(found))
+
+
+def bootstrap_staging_write(payload: object, root: Path) -> bool:
+    """Cold-start writes that stage audited Context Guard input, not product edits."""
+    if not isinstance(payload, dict):
+        return False
+    name = str(payload.get("tool_name") or payload.get("toolName") or "").lower()
+    if not any(marker in name for marker in ("write", "edit")):
+        return False
+    paths = write_tool_paths(payload, root)
+    if not paths:
+        return False
+    root_resolved = root.resolve()
+    for item in paths:
+        candidate = Path(item)
+        try:
+            candidate.resolve().relative_to(root_resolved)
+        except ValueError:
+            return True
+    document = read_json(context_folder(root) / "map.json", {})
+    if not isinstance(document, dict) or document.get("bootstrap") != "pending":
+        return False
+    root_node = document.get("root")
+    if root_node is None:
+        return True
+    if isinstance(root_node, dict):
+        children = root_node.get("children")
+        return isinstance(children, list) and not children
+    return False
 
 
 def mutating_tool(payload: object) -> bool:
@@ -1312,6 +1390,12 @@ def main() -> int:
             )))
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": forbidden}}, ensure_ascii=False))
             return 0
+        if bootstrap_staging_write(payload, root):
+            append_session_event(root, event, platform, current_session_id, session_details(audit_details(
+                payload, event, current_session_id, runtime,
+                {"result": "bootstrap-staging", "paths": tool_paths(payload, root)},
+            )))
+            return hook_response(platform, event)
         paths = tool_paths(payload, root)
         snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)

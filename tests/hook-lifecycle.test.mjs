@@ -329,6 +329,59 @@ test('read-only inspection remains available without a plan while writes stay ga
   assert.doesNotMatch(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /Direct map/);
 });
 
+test('first-session bootstrap keeps cold-start CLI, diagnostic shells and staging writes available without a plan', async t => {
+  const project = await fixture();
+  t.after(() => dispose(project));
+  const session = 'first-session-bootstrap';
+  const ctx = path.join(project, '.codex/context');
+  run(python, [contextScript, 'init', '--root', project]);
+  await fs.writeFile(path.join(ctx, 'map.json'), `${JSON.stringify({
+    v: 1, project: path.basename(project), bootstrap: 'pending', flows: [], root: null,
+  }, null, 2)}\n`);
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true, platform: 'claude' });
+
+  const skillCli = path.join(repository, 'bin/context-guard-skill.js');
+  const readOnlyCommands = [
+    `node "${skillCli}" map status --root "${project}" --session ${session}; echo EXIT=$?`,
+    `rg -n "bootstrap" scripts 2>&1`,
+    `node "${skillCli}" set-language --root "${project}" --language zh`,
+    `node "${skillCli}" write-candidates --root "${project}" --input -`,
+    `node "${skillCli}" map status --root "${project}" --session ${session} 2>&1`,
+  ];
+  for (const command of readOnlyCommands) {
+    const result = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command } });
+    assert.equal(result.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
+
+  const tmpProbe = path.join(os.tmpdir(), `cg_write_probe_${session}.json`);
+  for (const toolInput of [
+    { path: tmpProbe, content: '{"probe":true}' },
+    { path: path.join(project, 'l1-candidates.json'), content: '{"candidates":[]}' },
+  ]) {
+    const result = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Write', tool_input: toolInput });
+    assert.equal(result.json.hookSpecificOutput?.permissionDecision, undefined, toolInput.path);
+  }
+
+  const blocked = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write', tool_input: { path: path.join(project, 'src/bootstrap-blocked.txt'), content: 'blocked' },
+  });
+  assert.equal(blocked.json.hookSpecificOutput?.permissionDecision, undefined, 'empty-map bootstrap may stage in-repo request files');
+  await fs.writeFile(path.join(ctx, 'map.json'), `${JSON.stringify({
+    v: 1, project: path.basename(project), bootstrap: 'ready', flows: [],
+    root: {
+      id: 'N1', title: 'Runtime', kind: 'module', state: 'dirty', proposal: 'accepted', isNew: false,
+      purpose: 'Own runtime code', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: ['src/'], children: [],
+    },
+  }, null, 2)}\n`);
+  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
+  const gated = hook('PreToolUse', project, session, {
+    platform: 'claude', tool_name: 'Write', tool_input: { path: path.join(project, 'src/after-bootstrap.txt'), content: 'blocked' },
+  });
+  assert.equal(gated.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(gated.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
+});
+
 test('configured Cloud hooks prepare once, track paths, checkpoint and require finish', async t => {
   const project = await fixture();
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hook-cloud-'));
@@ -713,6 +766,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md && rg -n hook scripts | head -5'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --diagnose --root .'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --root . --session session-1'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard set-language --root . --language zh'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard write-candidates --root . --input -'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rg pattern . 2>&1'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard map status --root . --session s 2>&1'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | context-guard plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | node /tmp/context-guard-skill.js plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | python3 /tmp/context_guard.py plan-start --input -'}})
