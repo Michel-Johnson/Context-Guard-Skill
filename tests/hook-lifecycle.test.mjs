@@ -374,6 +374,9 @@ test('read-only inspection remains available without a plan while writes stay ga
     `node "${path.join(repository, 'bin/context-guard-skill.js')}" plan-status --root "${project}" --session ${session}`,
     `context-guard map status --root "${project}" --session ${session}; echo EXIT=$?`,
     `context-guard map status --root "${project}" --session ${session} 2>&1; echo EXIT=$?`,
+    `cd "${project}" && context-guard map status --root "${project}" --session ${session}`,
+    `cd "${project}"; context-guard map status --root "${project}" --session ${session}; echo EXIT=$?`,
+    `export CG_ROOT="${project}" && context-guard map status --root "${project}" --session ${session}`,
     `context-guard set-language --root "${project}" --language zh`,
     `context-guard write-candidates --root "${project}" --input /tmp/cg-candidates.json`,
     `context-guard map apply --root "${project}" --session ${session} --input /tmp/cg-map-request.json`,
@@ -912,6 +915,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --root . --session session-1'}})
     assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s; echo EXIT=$?'}})
     assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map status --root /tmp/p --session s 2>&1; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'cd /tmp/p && context-guard map status --root /tmp/p --session s'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'cd /tmp/p; context-guard map status --root /tmp/p --session s; echo EXIT=$?'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'export FOO=bar && context-guard map status --root /tmp/p --session s'}})
+    assert hook.control_tool({'tool_name':'Bash','tool_input':{'command':'cd /tmp/p && context-guard map apply --input /tmp/r.json; echo EXIT=$?'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard set-language --root . --language zh'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard write-candidates --root . --input /tmp/c.json'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md 2>&1'}})

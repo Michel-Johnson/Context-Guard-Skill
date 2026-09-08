@@ -861,6 +861,18 @@ def diagnostic_words(words: list[str]) -> bool:
     return Path(words[0]).name in {"echo", "true", "false", "printf"}
 
 
+def shell_prefix_words(words: list[str]) -> bool:
+    """Harmless shell setup before an audited Context Guard command."""
+    if not words:
+        return False
+    name = Path(words[0].strip("(")).name
+    if name == "cd" and len(words) == 2:
+        return True
+    if name == "export" and len(words) == 2 and "=" in words[1]:
+        return True
+    return read_only_words(words) and not control_words(words)
+
+
 def shell_segments(command: str) -> list[list[str]] | None:
     """Parse a conservative shell subset used for inspection pipelines."""
     if not command.strip():
@@ -1021,6 +1033,9 @@ def control_tool(payload: object) -> bool:
     # Drop trailing diagnostic probes (`echo EXIT=$?`) after an audited command.
     while len(segments) > 1 and diagnostic_words(segments[-1]) and not control_words(segments[-1]):
         segments = segments[:-1]
+    # Agents often prefix audited commands with `cd`, `export`, or read-only setup.
+    while len(segments) > 1 and shell_prefix_words(segments[0]):
+        segments = segments[1:]
     if not control_words(segments[-1]):
         return False
     # Allow a literal stdin producer before an audited Context Guard command.
