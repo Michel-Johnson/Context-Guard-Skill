@@ -1,0 +1,4 @@
+{
+  "name": "Context Guard Skill",
+  "install": "npm install && npm run security:setup && npx playwright install chromium"
+}
