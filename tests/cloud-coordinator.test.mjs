@@ -512,4 +512,12 @@ test('CI delegation requires server registration, the owning device and an indep
     { message: { ...message, payload: { ...message.payload, ref: 'developer-evidence' } } },
     { receivers: { ci: { ...receivers.ci, worktreeId: 'dev-worktree' } } },
   ]) await assert.rejects(authorizeCiReceiver({ ...options, ...changes }), { code: 'FORBIDDEN' });
+  const creation = await store.requestSessionCreation({ ...principal, role: 'human' }, { operationId: 'new-developer', templateSessionId: 'developer', name: 'New developer' });
+  await store.handle(principal, { v: 2, id: 'created-bind', type: 'session.bind', payload: { sessionId: creation.sessionId, worktreeId: 'created-worktree', agentId: creation.sessionId, expectedBindingVersion: '' } }, { verifyBinding: () => true });
+  const createdMessage = { ...message, id: 'created-evidence', session: { id: creation.sessionId, generation: 1 } };
+  await assert.rejects(authorizeCiReceiver({ ...options, message: createdMessage }), { code: 'FORBIDDEN' });
+  const createdPrincipal = await authorizeCiReceiver({ ...options, message: createdMessage, templates: ['developer'] });
+  assert.deepEqual(createdPrincipal.bindings, { [creation.sessionId]: 'created-worktree' });
+  assert.ok((await store.handle(createdPrincipal, createdMessage)).data.version);
+  await assert.rejects(authorizeCiReceiver({ ...options, message: createdMessage, templates: ['developer'], principal: { ...principal, deviceId: 'other' } }), { code: 'FORBIDDEN' });
 });

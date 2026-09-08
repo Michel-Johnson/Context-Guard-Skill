@@ -60,7 +60,7 @@ export const payloadRules = {
   'object.read': object({ ref: id, version }),
   'auth.open': object({ repository: string(2048), password: string(1024), clientId: id }),
   'auth.close': object({}),
-  'sync.heartbeat': object({ sessions: array(object({
+  'sync.heartbeat': object({ creationResults: optional(array(object({ id, error: string(80) }), 0, 20)), sessions: array(object({
     id,
     generation: integer(1),
     ackedSeq: integer(),

@@ -35,6 +35,32 @@ async function fixture(t) {
   await store.handle(principal, bind, { verifyBinding: () => true });
   return { dir, store, bind };
 }
+test('Native Session creation is human requested, device scoped and durable without duplicate identities', async t => {
+  const { dir, store } = await fixture(t);
+  const human = { ...principal, role: 'human' }, device = { ...principal, role: 'device' };
+  const input = { operationId: 'create-one', templateSessionId: session.id, name: 'New developer' };
+  await assert.rejects(store.requestSessionCreation(device, input), { code: 'FORBIDDEN' });
+  await assert.rejects(store.requestSessionCreation(human, { ...input, command: 'arbitrary shell' }), { code: 'INVALID_ARGUMENT' });
+  const [first, concurrent] = await Promise.all([store.requestSessionCreation(human, input), store.requestSessionCreation(human, input)]);
+  assert.deepEqual(first, concurrent);
+  assert.match(first.sessionId, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(await new ProtocolStore(dir).requestSessionCreation(human, input), first);
+  await assert.rejects(store.requestSessionCreation(human, { ...input, name: 'Different' }), { code: 'ID_REUSED' });
+  assert.deepEqual(await store.pendingSessionCreations(device), [first]);
+  assert.deepEqual(await store.pendingSessionCreations({ ...device, deviceId: 'other' }), []);
+  assert.deepEqual(await store.pendingSessionCreations({ ...device, repositoryId: 'other' }), []);
+  await assert.rejects(store.finishSessionCreation({ ...device, deviceId: 'other' }, { id: first.id }), { code: 'FORBIDDEN' });
+  await assert.rejects(store.finishSessionCreation(device, { id: first.id }), { code: 'CONFLICT' });
+  await store.handle(device, { v: 2, id: 'new-bind', type: 'session.bind', payload: {
+    sessionId: first.sessionId, worktreeId: 'new-worktree', agentId: first.sessionId, expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const finished = await store.finishSessionCreation(device, { id: first.id });
+  assert.equal(finished.state, 'registered');
+  assert.equal(finished.sessionId, first.sessionId);
+  assert.deepEqual(await new ProtocolStore(dir).finishSessionCreation(device, { id: first.id }), finished);
+  assert.deepEqual(await store.pendingSessionCreations(device), []);
+  await assert.rejects(store.finishSessionCreation(device, { id: first.id, error: 'FAILED' }), { code: 'ID_REUSED' });
+});
 test('human task results remain reviewable across binding generations but isolated from Agents', async t => {
   const { store, dir } = await fixture(t);
   const human = { ...principal, role: 'human' };

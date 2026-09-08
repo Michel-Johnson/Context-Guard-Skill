@@ -60,6 +60,15 @@ export class DeviceConnection {
     }
   }
   async connected() { const value = await readJSON(this.file, null); return value?.origin === this.origin && !!value.credential; }
+  async recordCreationFailure(id, error) {
+    if (!/^[a-f0-9]{64}$/.test(id || '')) fail('INVALID_ARGUMENT', 'Invalid creation identity');
+    const file = path.join(this.directory, 'creation-results.json');
+    await withFileLock(file + '.lock', async () => {
+      const values = await readJSON(file, {});
+      values[id] ||= { id, error: /^[A-Z][A-Z0-9_]{0,79}$/.test(error || '') ? error : 'SESSION_CREATION_FAILED' };
+      await atomicWrite(file, encode(values));
+    });
+  }
   async supports(capability) {
     const value = await readJSON(this.file, null);
     return value?.origin === this.origin && !!value.credential && value.capabilities?.includes(capability) === true;
@@ -96,27 +105,44 @@ export class DeviceConnection {
     if (!response.body) { res.end(); return; }
     await pipeline(Readable.fromWeb(response.body), bound, res);
   }
-  start({ sessions, apply, onError = () => {}, onSession }) {
+  start({ sessions, apply, onError = () => {}, onSession, onSessionCreations = async () => {} }) {
     if (this.runtime) return;
     const pump = new ProjectMessagePump({ sessions, apply, onError: error => onError(error, 'heartbeat'), onSession, send: message => this.send(message) });
-      let pending, retrying;
+      let pending, retrying, creating, settling;
       this.runtime = {
         prepare: async () => {
           const connection = await readJSON(this.file, null);
           if (!connection?.credential || connection.origin !== this.origin) fail('UNAUTHORIZED', 'Backend is disconnected');
           const current = await sessions();
-          pending = { sessions: current, message: pump.request('sync.heartbeat', { sessions: current }) };
+          const creationResults = Object.values(await readJSON(path.join(this.directory, 'creation-results.json'), {})).slice(0, 20);
+          pending = { sessions: current, message: pump.request('sync.heartbeat', { sessions: current, ...(creationResults.length ? { creationResults } : {}) }) };
           return { origin: this.origin, credential: connection.credential, message: pending.message };
         },
         accept: reply => {
           if (!pending || reply?.id !== pending.message.id) fail('CONFLICT', 'Heartbeat receipt is no longer current');
           const observed = pending; pending = null;
           if (!reply.ok) { onError(new ProtocolError(reply.error?.code || 'UNAVAILABLE', 'Device heartbeat rejected'), 'heartbeat'); return; }
+          if (reply.data?.creationResults?.length) {
+            const receipts = reply.data.creationResults;
+            settling = Promise.resolve(settling).then(async () => {
+              const file = path.join(this.directory, 'creation-results.json');
+              await withFileLock(file + '.lock', async () => {
+                const values = await readJSON(file, {});
+                for (const receipt of receipts) if (typeof receipt.accepted === 'boolean' && values[receipt.id]?.error === receipt.error) {
+                  if (!receipt.accepted) onError(new ProtocolError(receipt.code, 'Creation result rejected'), 'session-create');
+                  delete values[receipt.id];
+                }
+                await atomicWrite(file, encode(values));
+              });
+            }).catch(onError);
+          }
           for (const item of reply.data?.rejected || []) onError(new ProtocolError(item.code, 'Session heartbeat rejected', { sessionId: item.id }), 'heartbeat');
           pump.poll({ sessions: observed.sessions, beat: reply.data }).catch(error => onError(error, 'heartbeat'));
           retrying ||= this.retryPending().catch(onError).finally(() => { retrying = null; });
+          if (reply.data?.sessionCreations?.length) creating ||= Promise.resolve().then(() => onSessionCreations(reply.data.sessionCreations))
+            .catch(error => onError(error, 'session-create')).finally(() => { creating = null; });
         },
-        close: async () => { await pump.close(); await retrying; },
+        close: async () => { await pump.close(); await retrying; await creating; await settling; },
       };
   }
   async close() { const runtime = this.runtime; this.runtime = null; await runtime?.close(); await Promise.all([...(this.enrolling?.values() || [])]); }

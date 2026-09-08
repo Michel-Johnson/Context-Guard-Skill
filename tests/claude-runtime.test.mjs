@@ -11,6 +11,59 @@ import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { pause, readJSON, hash } from '../scripts/shared/io.mjs';
 import { canonical } from '../scripts/shared/protocol.mjs';
 
+test('Native creation isolates the worktree and profile, pins Main and preserves retry identity', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-native-create-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid');
+  await fs.writeFile(path.join(directory, 'tracked.txt'), 'Main baseline');
+  git('add', 'tracked.txt'); git('commit', '-m', 'baseline');
+  const sha = git('rev-parse', 'HEAD'), configDir = path.join(directory, '.git', 'template');
+  await fs.mkdir(path.join(configDir, 'skills', 'context-guard'), { recursive: true });
+  await fs.writeFile(path.join(configDir, 'skills', 'context-guard', 'SKILL.md'), 'fixture Skill');
+  await fs.writeFile(path.join(configDir, 'settings.json'), JSON.stringify({
+    permissions: { allow: [`Read(${directory}/**)`] }, hooks: { SessionStart: [{ command: `${configDir}/skills/context-guard/hook.py` }] },
+  }));
+  await fs.writeFile(path.join(configDir, 'old-transcript.json'), 'do not copy');
+  const runtime = new ClaudeRuntime(path.join(directory, '.git', 'runtime')), templateSessionId = randomUUID();
+  const config = { command: process.execPath, root: directory, configDir, environmentFile: path.join(directory, '.git', 'provider.json'),
+    name: 'Template', model: 'fixture', role: 'executor', resumeExisting: true, allowSessionCreation: true,
+    systemPromptFile: path.join(configDir, 'skills', 'context-guard', 'Developer.md') };
+  await runtime.configure(templateSessionId, config);
+  runtime.wake = async () => {}; // This test verifies preparation, not a real model invocation.
+  const request = { id: hash('creation'), sessionId: randomUUID(), templateSessionId, name: 'New developer' };
+  const first = await runtime.provision(request, { baseRef: 'refs/heads/main' });
+  const state = await readJSON(runtime.sessionFile(request.sessionId));
+  assert.notEqual(first.root, directory);
+  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: first.root, encoding: 'utf8', windowsHide: true }).trim(), sha);
+  assert.equal(state.initialized, false);
+  assert.equal(state.config.allowSessionCreation, false);
+  assert.equal(state.config.environmentFile, config.environmentFile);
+  assert.equal(state.config.systemPromptFile, path.join(state.config.configDir, 'skills', 'context-guard', 'Developer.md'));
+  const settings = await readJSON(path.join(state.config.configDir, 'settings.json'));
+  assert.equal(settings.permissions.allow[0], `Read(${first.root}/**)`);
+  assert.equal(settings.hooks.SessionStart[0].command, `${state.config.configDir}/skills/context-guard/hook.py`);
+  await assert.rejects(fs.stat(path.join(state.config.configDir, 'old-transcript.json')), { code: 'ENOENT' });
+  const jobBefore = await fs.readFile(state.active, 'utf8');
+  const restarted = new ClaudeRuntime(runtime.directory); restarted.wake = async () => {};
+  assert.deepEqual(await restarted.provision(request, { baseRef: 'refs/heads/main' }), first);
+  assert.equal(await fs.readFile(state.active, 'utf8'), jobBefore);
+  const ciId = randomUUID(), ciRoot = path.join(directory, '.git', 'ci-worktree');
+  git('worktree', 'add', '--detach', ciRoot, sha);
+  const ciConfig = { ...config, role: 'ci', root: ciRoot, executorSessionId: templateSessionId, ciCommands: ['npm test'], allowSessionCreation: false };
+  await runtime.configure(ciId, ciConfig);
+  assert.deepEqual(await runtime.ciReceiver(request.sessionId), { sessionId: ciId, root: await fs.realpath(ciRoot) });
+  assert.equal(await runtime.acceptsCiExecutor(ciConfig, request.sessionId), true);
+  assert.equal(await runtime.acceptsCiExecutor(ciConfig, randomUUID()), false);
+  await runtime.deliver({ id: 'created-ci', sessionId: ciId, root: ciRoot, platform: 'claude', message: 'Test the exact SHA',
+    execution: { session: { id: request.sessionId, generation: 1 }, taskId: 'created-task', sourceSha: sha } });
+  const ciContext = await runtime.ciContext(ciId, { verifySource: true });
+  assert.equal(ciContext.session.id, request.sessionId);
+  assert.equal(ciContext.sourceSha, sha);
+  await assert.rejects(runtime.provision({ ...request, name: 'Other' }, { baseRef: 'refs/heads/main' }), { code: 'ID_REUSED' });
+  await assert.rejects(runtime.provision({ ...request, id: hash('child'), templateSessionId: request.sessionId, sessionId: randomUUID() }, { baseRef: 'refs/heads/main' }), { code: 'CREATION_NOT_ENABLED' });
+});
+
 test('Claude invocation pins the actual Session, model, name and permission boundary', () => {
   const sessionId = randomUUID(), config = { name: 'Developer', model: 'configured-model', args: [] };
   const args = claudeArguments(config, { sessionId, resume: false });
