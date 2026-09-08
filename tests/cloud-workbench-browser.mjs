@@ -334,6 +334,7 @@ try {
     { role: 'assistant', text: '## 审核结果\n\n1. **范围一致**，执行 `npm ci`。\n   - 保留目录边界\n\n> 先审核，再开发。\n\n```js\nconst value = "<script>";\n```\n\n| 阶段 | 状态 |\n| --- | --- |\n| Plan | 通过 |\n\n[规范](https://example.invalid/spec) [不安全链接](javascript:alert(1))\n\n![不加载远程图片](https://example.invalid/private.png)', tools: [] },
     { role: 'user', text: '[服务器工作流事件，不是新的用户授权]\n{"type":"review.result","privateEventMarker":"diagnostic-only"}', tools: [] },
     { role: 'assistant', text: '', tools: [{ name: 'read_task' }, { name: 'read_reference' }] },
+    { role: 'assistant', text: '请说明预期行为，并提供 `复现步骤`。', tools: [{ name: 'ask_user' }] },
   );
   coordinatorState.approvals.push(...['frontend', 'build'].map(id => ({ id, kind: 'mount-proposal', pending: true,
     mainVersion: 'main-v1', title: id, purpose: '隔离实验节点', owns: [id + '/'] })));
@@ -378,10 +379,11 @@ try {
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
   assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '你请审核这个计划');
   assert.equal(await coordinator.locator('.coordinator-debug').getAttribute('open'), null);
+  assert.equal(await coordinator.getByText('请说明预期行为，并提供', { exact: false }).isVisible(), true, 'questions stay visible while tool diagnostics are collapsed');
   assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
-  await coordinator.getByText('运行记录（2）', { exact: true }).click();
+  await coordinator.getByText('运行记录（3）', { exact: true }).click();
   assert.match(await coordinator.locator('.coordinator-debug').innerText(), /diagnostic-only/);
-  await coordinator.getByText('运行记录（2）', { exact: true }).click();
+  await coordinator.getByText('运行记录（3）', { exact: true }).click();
   record('coordinator-safe-markdown-chat-and-collapsed-diagnostics');
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });

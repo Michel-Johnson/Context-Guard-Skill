@@ -13,6 +13,27 @@ import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 
+test('Successful ask_user questions appear in public chat without exposing other tool inputs', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-question-chat-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const options = { directory, system: 'Coordinator', tools: coordinatorTools, execute: createCoordinatorExecutor({
+    readMap: async () => ({ privateMarker: 'not-public' }),
+  }), model: { next: async () => ++calls === 1 ? { stop: 'tool_use', content: [
+    { type: 'tool_use', id: 'read', name: 'read_map', input: { nodeId: 'internal-node' } },
+    { type: 'tool_use', id: 'question', name: 'ask_user', input: { question: '**预期行为**是什么？\n\n请提供复现步骤。' } },
+    { type: 'tool_use', id: 'invalid', name: 'ask_user', input: { question: 'Invalid question', extra: true } },
+  ] } : { stop: 'end_turn', content: [{ type: 'text', text: '等待你的回复。' }] } } };
+  const service = new CoordinatorService(options);
+  await service.submit({ id: 'request', text: '讨论新 Bug' }); await service.close();
+  const state = await service.state(), chat = JSON.stringify(state.messages);
+  assert.match(chat, /预期行为/);
+  assert.doesNotMatch(chat, /not-public|internal-node|Invalid question/);
+  assert.equal(state.approvals.length, 0, 'asking is never human approval');
+  const restored = new CoordinatorService(options);
+  assert.deepEqual((await restored.state()).messages, state.messages);
+});
+
 test('Main intake preserves first edits, skips history, and replays lost replies without duplicate turns', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-map-intake-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

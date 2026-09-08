@@ -81,10 +81,19 @@ export class CoordinatorService {
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
         .map(([id, receipt]) => ({ id, ...receipt.result, ...(receipt.result.kind === 'mount-proposal' ? { pending: !mounts.byProposal[id] } : {}) })),
       promptVersion: state.promptVersion || hash(this.system), simulated: this.simulated,
-      messages: state.messages.map(message => ({ role: message.role,
-        text: typeof message.content === 'string' ? message.content : message.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
-        tools: Array.isArray(message.content) ? message.content.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) : [],
-      })).filter(message => message.text || message.tools.length),
+      messages: state.messages.map((message, index) => {
+        const blocks = Array.isArray(message.content) ? message.content : [];
+        const text = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
+        const replies = state.messages[index + 1]?.content;
+        // Only successful ask_user calls become visible questions. Other tool
+        // inputs/results remain private diagnostics, not chat or authorization.
+        const questions = message.role === 'assistant' && Array.isArray(replies) ? blocks.filter(block =>
+          block.type === 'tool_use' && block.name === 'ask_user' && typeof block.input?.question === 'string' &&
+          block.input.question.length <= 8000 && replies.some(reply => reply.type === 'tool_result' && reply.tool_use_id === block.id && !reply.is_error)
+        ).map(block => block.input.question) : [];
+        return { role: message.role, text: [text, ...questions].filter(Boolean).join('\n\n'),
+          tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
+      }).filter(message => message.text || message.tools.length),
     };
   }
   async reviewMount(input, commit) {
