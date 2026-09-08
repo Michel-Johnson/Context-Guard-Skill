@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Marked
+
+- Upstream: https://github.com/markedjs/marked
+- Pinned version: npm `marked@15.0.12` (Node 18 compatible); integrity is recorded in package-lock.json.
+- Distributed browser module: `prototype/vendor/marked.mjs`, copied from `lib/marked.esm.js` without behavioral changes.
+- MIT license and upstream copyright notices: [licenses/Marked-MIT.txt](licenses/Marked-MIT.txt).
+- Used only as a Markdown lexer. Context Guard builds restricted DOM nodes instead of inserting generated HTML; remote images are not fetched.
+
 ## Portless
 
 - Upstream: https://github.com/vercel-labs/portless
