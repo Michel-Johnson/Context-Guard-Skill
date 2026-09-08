@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { MapError, entries } from '../../prototype/map-model.mjs';
-import { hash, atomicWrite, encode, readJSON } from './io.mjs';
+import { MapError, entries } from '../shared/map-model.mjs';
+import { hash, atomicWrite, encode, readJSON } from '../shared/io.mjs';
 
 const limit = 8 * 1024 * 1024;
 const inside = (root, file) => file.startsWith(root + path.sep);

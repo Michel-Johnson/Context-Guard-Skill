@@ -4,16 +4,16 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../../prototype/map-model.mjs';
-import { atomicWrite } from '../workbench/io.mjs';
+import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../shared/map-model.mjs';
+import { atomicWrite } from '../shared/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
-import { WorkbenchSnapshots } from '../workbench/protocol-snapshots.mjs';
-import { verifyChangeReferences } from '../workbench/protocol-map.mjs';
+import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
+import { verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
-import { ProtocolStore } from '../workbench/protocol-store.mjs';
+import { ProtocolStore } from '../shared/protocol-store.mjs';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-review.mjs';
-import { ProtocolBlobs, serveBlob } from '../workbench/protocol-blobs.mjs';
-import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../workbench/protocol.mjs';
+import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
+import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -1289,10 +1289,10 @@ export async function startCloudServer({
       }
       if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments)\.mjs$/.test(route)) {
         requirePrivateRead(req, url);
-        const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
+        const source = await fs.readFile(path.join(root, path.basename(route) === 'map-model.mjs' ? 'scripts/shared' : 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
-      if (req.method === 'GET' && /\/workbench-(?:app|fixtures)\.js$/.test(route)) {
+      if (req.method === 'GET' && /\/workbench-(?:app|data)\.js$/.test(route)) {
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);

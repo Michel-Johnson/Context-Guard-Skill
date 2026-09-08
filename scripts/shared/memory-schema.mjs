@@ -1,4 +1,4 @@
-import { MapError, validate } from '../../prototype/map-model.mjs';
+import { MapError, validate } from './map-model.mjs';
 export function validateMemory(value) {
   if (!value || typeof value !== 'object' || !value.map) throw new MapError('INVALID_MEMORY', 'A map and records are required');
   validate(value.map);

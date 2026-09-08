@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { entries } from '../../prototype/map-model.mjs';
+import { entries } from '../shared/map-model.mjs';
 
 const PROPOSAL_BASES = new Set(['new-module', 'new-interface', 'new-component', 'new-responsibility']);
 const PROPOSAL_FIELDS = new Set(['parentId', 'title', 'purpose', 'reason', 'basis', 'files', 'kind']);

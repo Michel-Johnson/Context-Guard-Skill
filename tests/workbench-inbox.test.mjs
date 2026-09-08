@@ -10,7 +10,7 @@ import { AgentInbox, describeChanges } from '../scripts/workbench/inbox.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { atomicWrite, encode, hash, pause } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, hash, pause } from '../scripts/shared/io.mjs';
 
 const human = { kind: 'human', sessionId: 'workbench' };
 const agent = { kind: 'agent', sessionId: 'inbox-test' };

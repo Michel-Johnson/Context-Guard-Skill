@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { hash } from '../scripts/workbench/io.mjs';
-import { ProtocolBlobs } from '../scripts/workbench/protocol-blobs.mjs';
+import { hash } from '../scripts/shared/io.mjs';
+import { ProtocolBlobs } from '../scripts/shared/protocol-blobs.mjs';
 
 test('IF-019: interrupted blob resumes, repeats safely, verifies digest and supports ranged reads', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-blobs-'));

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { encode } from '../scripts/workbench/io.mjs';
+import { encode } from '../scripts/shared/io.mjs';
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-attachments-'));

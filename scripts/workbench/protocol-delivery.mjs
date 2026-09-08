@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
-import { canonical, fail, validateMessage } from './protocol.mjs';
+import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
+import { canonical, fail, validateMessage } from '../shared/protocol.mjs';
 
 export const executionNotifications = new Set(['task.assign', 'task.rework', 'task.control']);
 export async function executionPrompt(message, readObject) {

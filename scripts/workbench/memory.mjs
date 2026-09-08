@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
+import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { bindingStatus, resolveProject } from './project.mjs';
-import { MapError } from '../../prototype/map-model.mjs';
-import { validateMemory } from './memory-schema.mjs';
+import { MapError } from '../shared/map-model.mjs';
+import { validateMemory } from '../shared/memory-schema.mjs';
 import { Access } from './access.mjs';
 export const sessionMemoryDir = (project, sessionId) => path.join(project.sharedDir, 'session-memory', hash(`${sessionId}\0${project.worktreeId}`));
 export const memoryConfigPath = project => path.join(project.sharedDir, 'memory-client.json');

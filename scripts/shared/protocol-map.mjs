@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
 import { canonical, fail, ProtocolError } from './protocol.mjs';
-import { entries, scopeDocumentToSession, applyOperations } from '../../prototype/map-model.mjs';
+import { entries, scopeDocumentToSession, applyOperations } from './map-model.mjs';
 
 const collections = { todo: 'todos', bug: 'bugs', memory: 'memories', idea: 'ideas', message: 'messages', access: 'access' };
 // Retry receipts must retain both the old and new endpoints of a relation.

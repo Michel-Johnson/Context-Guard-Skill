@@ -30,7 +30,8 @@ function createRepository(name) {
   fs.mkdirSync(root);
   git(root, "init", "--initial-branch=main", "--quiet");
   write(root, "README.md", "Safe public documentation.\n");
-  git(root, "add", "README.md");
+  write(root, "tests/test-manifest.json", fs.readFileSync(path.join(toolRoot, "tests/test-manifest.json"), "utf8"));
+  git(root, "add", "README.md", "tests/test-manifest.json");
   git(root, "commit", "--quiet", "-m", "Initial safe state");
   return root;
 }
@@ -214,6 +215,18 @@ try {
       cwd: product, env, encoding: "utf8", windowsHide: true, timeout: 120_000
     });
     assert.equal(result.status, 0, result.stderr);
+  });
+  check("product guard uses staged approval and rejects missing manifests", () => {
+    const product = createRepository("manifest-policy");
+    const python = pythonInvocation();
+    const guard = () => spawnSync(python.command, [...python.prefix, path.join(toolRoot, "scripts/branch_guard.py")], { cwd: product, env, encoding: "utf8", windowsHide: true });
+    write(product, "tests/unapproved.test.mjs", "// not approved\n"); git(product, "add", "tests/unapproved.test.mjs");
+    const manifest = JSON.parse(fs.readFileSync(path.join(product, "tests/test-manifest.json"), "utf8"));
+    manifest.productFiles.push("tests/unapproved.test.mjs");
+    write(product, "tests/test-manifest.json", JSON.stringify(manifest));
+    assert.notEqual(guard().status, 0, "unstaged policy must not authorize a staged test");
+    git(product, "add", "tests/test-manifest.json"); assert.equal(guard().status, 0);
+    git(product, "rm", "--cached", "tests/test-manifest.json"); assert.notEqual(guard().status, 0);
   });
   const npm = npmInvocation();
   const packed = JSON.parse(run(npm.command, [...npm.args, "pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot], { cwd: toolRoot }))[0];

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { entries } from '../../prototype/map-model.mjs';
-import { atomicWrite, encode, readJSON } from './io.mjs';
+import { entries } from '../shared/map-model.mjs';
+import { atomicWrite, encode, readJSON } from '../shared/io.mjs';
 const start = '<!-- context-guard:generated:start -->', end = '<!-- context-guard:generated:end -->';
 const fields = text => Object.fromEntries(text.split(/\r?\n/).filter(x => /^- [^:]+:/.test(x)).map(x => { const i = x.indexOf(':'); return [x.slice(2, i).trim(), x.slice(i + 1).trim()]; }));
 async function markdownIndex(ctx, folder, make) {

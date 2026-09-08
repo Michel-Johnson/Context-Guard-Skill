@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { hash, encode, atomicWrite } from './io.mjs';
+import { hash, encode, atomicWrite } from '../shared/io.mjs';
 
 // Never repair an interior record as though it were an interrupted final append.
 export function inspectJournal(raw) {

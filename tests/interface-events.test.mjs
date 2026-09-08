@@ -6,10 +6,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
-import { hash } from '../scripts/workbench/io.mjs';
+import { hash } from '../scripts/shared/io.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DeviceConnection } from '../scripts/workbench/protocol-device.mjs';
-import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { readEvents } from '../scripts/workbench/protocol-events.mjs';
 import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
@@ -22,7 +22,7 @@ import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from '../scripts/cloud/task-review.mjs';
-import { applyOperations } from '../prototype/map-model.mjs';
+import { applyOperations } from '../scripts/shared/map-model.mjs';
 
 test('human review binds the result, preserves feedback and never publishes failed work', () => {
   const input = reviewInput({ operationId: 'r1', sessionId: 's1', taskId: 't1', resultVersion: 'v1', nodeId: 'R', itemId: 'TD1', kind: 'todo', decision: 'rejected', reason: 'needs correction' });

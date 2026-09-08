@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { applyOperations, diffTrees, MapError, same, validate } from '../../prototype/map-model.mjs';
-import { atomicWrite, encode, hash, readJSON } from './io.mjs';
+import { applyOperations, diffTrees, MapError, same, validate } from '../shared/map-model.mjs';
+import { atomicWrite, encode, hash, readJSON } from '../shared/io.mjs';
 import { memoryConfigPath, memoryRequest } from './memory.mjs';
 
 const equalDocument = (a, b) => !!a && !!b && hash(encode(a)) === hash(encode(b));

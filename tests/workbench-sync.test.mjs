@@ -15,8 +15,8 @@ import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '.
 import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
-import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../prototype/map-model.mjs';
-import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/workbench/io.mjs';
+import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../scripts/shared/map-model.mjs';
+import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };

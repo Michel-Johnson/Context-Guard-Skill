@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { atomicWrite, encode, hash, readJSON, withFileLock } from '../workbench/io.mjs';
-import { fail, validateMessage } from '../workbench/protocol.mjs';
+import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
+import { fail, validateMessage } from '../shared/protocol.mjs';
 
 export function repositorySlug(value) {
   const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(value || '');

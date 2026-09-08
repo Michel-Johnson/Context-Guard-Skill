@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { memoryRequest } from '../scripts/workbench/memory.mjs';
 import { startMemoryServer } from '../scripts/cloud/memory.mjs';
-import { hash } from '../scripts/workbench/io.mjs';
+import { hash } from '../scripts/shared/io.mjs';
 
 test('IF-016: legacy memory transport classifies empty, HTML, truncated and denied replies', async t => {
   let kind = 'html';

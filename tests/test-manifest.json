@@ -58,5 +58,37 @@
       "command": "npm --prefix site test",
       "pattern": "site/**/*.test.mjs"
     }
+  ],
+  "productFiles": [
+    "tests/interface-auth.test.mjs",
+    "tests/interface-blobs.test.mjs",
+    "tests/interface-delivery.test.mjs",
+    "tests/interface-device.test.mjs",
+    "tests/interface-events.test.mjs",
+    "tests/interface-map.test.mjs",
+    "tests/interface-memory-errors.test.mjs",
+    "tests/interface-protocol.test.mjs",
+    "tests/interface-repository.test.mjs",
+    "tests/interface-snapshots.test.mjs",
+    "tests/interface-store.test.mjs",
+    "tests/interface-transport.test.mjs",
+    "tests/interface-workflow.test.mjs",
+    "tests/ci-smoke.mjs",
+    "tests/cloud-sync-client.test.mjs",
+    "tests/cloud-sync-browser.mjs",
+    "tests/cloud-workbench.test.mjs",
+    "tests/cloud-workbench-browser.mjs",
+    "tests/workbench-sync.test.mjs",
+    "tests/workbench-inbox.test.mjs",
+    "tests/hook-lifecycle.test.mjs",
+    "tests/hook-runtime-concurrency.test.mjs",
+    "tests/named-workbench.test.mjs",
+    "tests/test-manifest.json",
+    "tests/workbench-browser.mjs",
+    "tests/workbench-journal-recovery.test.mjs",
+    "tests/workbench-journal-recovery-browser.mjs",
+    "tests/workbench-attachments.test.mjs",
+    "tests/crash-worker.mjs",
+    "tests/win-file-lock.py"
   ]
 }

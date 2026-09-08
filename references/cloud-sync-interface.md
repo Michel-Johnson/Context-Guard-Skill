@@ -12,6 +12,11 @@ kept temporarily for compatibility and must not be started beside the workbench
 for the same Session. Full development-memory rules remain in
 `references/server-memory.md`.
 
+Implementation layout: current Session coordination lives in `scripts/workbench/`,
+shared protocol/model/storage in `scripts/shared/`. The historical
+`scripts/sync/client.mjs` entry only forwards to `scripts/legacy/map-sync.mjs`;
+it is retained for existing CLI/Hook callers, not a second default transport.
+
 ## Model
 
 Cloud is a directory of projects. It does not merge projects into one Map. Each

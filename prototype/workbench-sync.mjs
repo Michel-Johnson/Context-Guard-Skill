@@ -1,4 +1,4 @@
-import { copy, diffTrees, entries, same } from './map-model.mjs';
+import { copy, diffTrees, entries, same } from '../scripts/shared/map-model.mjs';
 export const ALL_SESSIONS = '__all__';
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
@@ -358,7 +358,7 @@ export class WorkbenchSync {
         this.recoveryState(current);
         this.version = result.version;
         // The request may predate later local typing. Never mark that later draft saved.
-        const { applyOperations } = await import('./map-model.mjs');
+        const { applyOperations } = await import('../scripts/shared/map-model.mjs');
         this.baseTree = applyOperations({ root: this.baseTree }, this.pendingRequest.operations, { kind: 'human', sessionId: 'workbench' }).doc.root;
         this.pendingRequest = null; this.revision++;
         if (current.version !== result.version) { this.setStatus('conflict'); return; }
