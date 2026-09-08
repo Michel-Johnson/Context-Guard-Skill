@@ -95,6 +95,26 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   await assert.rejects(executionPrompt(review, async () => ({ kind: 'reviewReceipt', content: { ...review.payload, decision: 'rejected' } })), { code: 'CONFLICT' });
 });
 
+test('Rework delivery preserves human rejection and CI feedback without changing task identity', async () => {
+  for (const [reason, failedTestIds] of [
+    ['验收未通过：移动端按钮被遮挡。\n请保留原来的桌面布局。', []],
+    ['CI 失败：离线请求没有展示重试入口。', ['offline-retry']],
+    [undefined, ['legacy-test']],
+  ]) {
+    const message = { v: 2, id: 'rework-delivery', type: 'task.rework', session: { id: 'developer', generation: 1 },
+      payload: { taskId: 'original-task', sourceSha: 'a'.repeat(40), ciResultRef: 'ci:original-task:result', failedTestIds, ...(reason ? { reason } : {}) } };
+    const prompt = await executionPrompt(message);
+    if (reason) assert.ok(prompt.includes(`返工原因：${reason}\n代码：`), 'feedback must not be omitted or summarized');
+    else assert.equal(prompt.includes('返工原因：'), false, 'legacy CI feedback must not invent a reason');
+    assert.equal(prompt.includes('undefined'), false);
+    assert.ok(prompt.includes('原任务 original-task 返工，不创建新任务'));
+    assert.ok(prompt.includes(`失败测试：${failedTestIds.join(', ')}`));
+    assert.ok(prompt.includes('CI：ci:original-task:result'));
+    assert.ok(prompt.endsWith('交付编号：rework-delivery'));
+    assert.equal(await executionPrompt(message), prompt, 'replay preserves feedback and delivery identity');
+  }
+});
+
 test('IF-044: interruption hook retries the original event and never saves adapter error output', () => {
   const script = `import sys, pathlib\nsys.path.insert(0, str(pathlib.Path('scripts').resolve()))\nimport context_guard_hook as h\nsaved=[]\ncalls=[]\nh.write_hook_runtime=lambda *args: saved.append(args[-1].copy())\nruntime={'pending_interrupts':[{'id':'event-1','at':'2026-01-01T00:00:00Z'}]}\ndef offline(args):\n calls.append(args)\n raise RuntimeError('private adapter output')\nh.run_node_workbench=offline\nh.sync_pending_interrupt(pathlib.Path('.'), 's', runtime)\nassert runtime['interrupt_sync']=='pending' and len(runtime['pending_interrupts'])==1\nassert 'private adapter output' not in str(saved)\ndef online(args):\n calls.append(args)\n return {'queued':True}\nh.run_node_workbench=online\nh.sync_pending_interrupt(pathlib.Path('.'), 's', runtime)\nassert runtime['pending_interrupts']==[] and runtime['interrupt_sync']=='confirmed'\nassert calls[0]==calls[1]\n`;
   const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', script], { encoding: 'utf8', windowsHide: true });
