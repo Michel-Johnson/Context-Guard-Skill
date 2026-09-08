@@ -81,7 +81,39 @@ export function wantsHelp(args) {
   return opt.help !== undefined || opt._.includes('-h');
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
-function commandHelp(command) {
+function commandHelp(command, parts = []) {
+  if (command === 'map' && parts[0] === 'ci') {
+    return `Usage: context-guard map ci context --root <worktree> --session <native-ci-id>
+       context-guard map ci exchange --root <worktree> --session <native-ci-id> --input <file|->
+
+Read context first: its active object supplies taskId, sourceSha, ciTodoRef, references and commands. active:null means no assigned CI task.
+exchange requires ONE protocol message, not {action:...}. The backend supplies the logical developer Session.
+Keep id short (at most 128 characters) and stable on retry. Do not put a session field in these examples.
+
+Read a reference using its exact version from active.references:
+{"v":2,"id":"read-ci-todo-1","type":"object.read","payload":{"ref":"<active.ciTodoRef>","version":"<active.references[active.ciTodoRef]>"}}
+
+Store actual test evidence under the native CI Session prefix:
+{"v":2,"id":"save-evidence-1","type":"object.put","payload":{"kind":"evidence","ref":"ci:<native-ci-id>:check-1","baseVersion":"","content":{"command":"npm test","exitCode":0,"output":"<actual observed output>"}}}
+
+Report every CI TODO using its real item ID and saved evidence reference:
+{"v":2,"id":"report-ci-1","type":"ci.result","payload":{"taskId":"<active.taskId>","sourceSha":"<active.sourceSha>","verdict":"passed","checks":[{"testId":"check-1","todoId":"<actual TODO id>","status":"passed","evidenceRef":"ci:<native-ci-id>:check-1"}]}}
+
+verdict/status: passed, failed, incomplete. Failed checks also require a saved reproductionRef.
+Never claim a pass for an unrun check. Do not alter business source, request a development Plan, or supply credentials.
+${HELP_EXIT_NOTE}`;
+  }
+  if (command === 'map' && parts[0] === 'task' && ['plan', 'handoff'].includes(parts[1])) {
+    const handoff = parts[1] === 'handoff';
+    return `Usage: context-guard map task ${parts[1]} --root <project> --session <id> --input <file|->
+
+Required JSON input:
+${handoff ? '{"operationId":"stable-handoff-id","ciTodo":{"items":[{"id":"check-1","description":"What CI must verify"}]},"unitTests":[{"command":"npm test","status":"passed","evidence":"Actual observed test output"}],"experiences":[]}' : '{"operationId":"stable-plan-id","content":{"paths":["src/example.js"],"steps":["Implementation and verification steps"]}}'}
+
+Use --input - to read JSON from stdin. Reuse the same operationId and content after an uncertain reply.
+${handoff ? 'Requires an approved Plan and a clean committed worktree. Success is a server handoff receipt, not a printed summary, CI pass, or merge.' : 'Submits an immutable Plan for Coordinator review; it does not approve development.'}
+${HELP_EXIT_NOTE}`;
+  }
   if (command === 'map') {
     return `Usage: context-guard map <action> --root <project> --session <id> [options]
 
@@ -96,6 +128,11 @@ Actions:
   operation           Look up --id
   projections         Rebuild derived cards
   reconcile           Archive reconciliation from --input
+  execution           Read the actual assigned task and approved Plan
+  task plan           Submit a Plan; use map task plan --help for JSON
+  task handoff        Deliver committed SHA and CI evidence; use map task handoff --help
+  ci context          Read the CI assignment and exact source SHA
+  ci exchange         Submit CI evidence/result via --input JSON
 
 Options:
   --root <dir>        Project root (default: current directory)
@@ -559,9 +596,15 @@ export async function stopServer(root) {
     await pause(25);
   }
 }
+export function parseInputJSON(text) {
+  if (!text.trim()) throw new MapError('INPUT_REQUIRED', 'Provide JSON with --input <file> or --input - and stdin; see this command with --help');
+  try { return JSON.parse(text); } catch { throw new MapError('INVALID_JSON', 'Input is not valid JSON; see this command with --help'); }
+}
 async function inputJSON(file) {
-  if (file && file !== '-') return JSON.parse(await fs.readFile(path.resolve(file), 'utf8'));
-  let text = ''; for await (const chunk of process.stdin) text += chunk; return JSON.parse(text);
+  let text = '';
+  if (file && file !== '-') text = await fs.readFile(path.resolve(file), 'utf8');
+  else for await (const chunk of process.stdin) text += chunk;
+  return parseInputJSON(text);
 }
 export async function connectCloudProject(root, { url, password, repositoryLookup = lookupRepository }) {
   const project = await ensureProjectBinding(await resolveProject(root));
@@ -580,7 +623,8 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
 }
 async function main(args) {
   if (wantsHelp(args)) {
-    console.log(commandHelp(args.find(arg => arg && !arg.startsWith('-')) || ''));
+    const command = args.find(arg => arg && !arg.startsWith('-')) || '';
+    console.log(commandHelp(command, options(args.slice(args.indexOf(command) + 1))._));
     return;
   }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
