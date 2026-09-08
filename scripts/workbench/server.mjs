@@ -540,6 +540,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (route === '/api/claude-runtime' && req.method === 'POST') {
           if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
           const input = await body(req), binding = access.binding(input.sessionId);
+          if (input.recovery) {
+            if (input.config || !binding) throw new MapError('WORKTREE_MISMATCH', 'Recover only a registered Claude worktree', 409);
+            return send(res, 200, await claudeRuntime.recover(input.sessionId, input.recovery, binding.worktreeRoot));
+          }
           if (!binding || await fs.realpath(input.config?.root || '') !== binding.worktreeRoot) throw new MapError('WORKTREE_MISMATCH', 'Configure only the bound Claude worktree', 409);
           if (input.config.role === 'ci') {
             const executor = access.binding(input.config.executorSessionId);

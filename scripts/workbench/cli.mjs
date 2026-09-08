@@ -643,7 +643,7 @@ async function main(args) {
   if (command === 'workbench' && opt._[0] === 'claude') {
     const project = await resolveProject(root);
     if (!(await bindingStatus(project, String(opt.session || ''))).session.bound) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind the real Claude Session before configuring delivery', 409);
-    return request(await ensureServer(root), '/api/claude-runtime', { method: 'POST', body: { sessionId: opt.session, config: await inputJSON(opt.input) } });
+    return request(await ensureServer(root), '/api/claude-runtime', { method: 'POST', body: { sessionId: opt.session, [opt.recover ? 'recovery' : 'config']: await inputJSON(opt.input) } });
   }
   if (command === 'workbench' && (opt['bind-main'] || opt['local-main'])) {
     const project = await saveMainBinding(root, {
