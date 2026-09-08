@@ -715,14 +715,25 @@ try {
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#detail [data-act="ask-file"]').click();
   const chooser = await chooserPromise;
+  let releaseUploadReceipt;
+  const uploadReceiptGate = new Promise(resolve => { releaseUploadReceipt=resolve; });
+  const holdUploadReceipt = async route => {
+    const response = await route.fetch();
+    if(route.request().postDataJSON()?.operations?.some(op=>op.fields?.memories?.[0]?.files?.length===2)) await uploadReceiptGate;
+    await route.fulfill({response});
+  };
+  await page.route('**/api/commit*', holdUploadReceipt);
   await chooser.setFiles(uploadFixture);
   await until(async () => (await read()).root.children[0].memories[0].files.length === 2);
-  await synchronized();
   const uploaded = (await read()).root.children[0].memories[0].files.find(file => file.name === 'uploaded-through-node.txt');
   assert.ok(uploaded?.path.startsWith('docs/shots/'));
   assert.equal(await fs.readFile(path.join(root, uploaded.path), 'utf8'), 'Node-managed attachment');
   await page.locator('#detail [data-act="rm-file"]').nth(1).click();
+  releaseUploadReceipt();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 1);
+  await synchronized();
+  await page.unroute('**/api/commit*', holdUploadReceipt);
+  assert.equal(await page.evaluate(()=>pendingWrite===null), true, 'removing the uploaded reference cancels its pending confirmation');
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
   await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);

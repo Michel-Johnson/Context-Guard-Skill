@@ -921,7 +921,8 @@ function bindFileUi(el, node){
       e.preventDefault();
       const owner = ownerOf(node, b.dataset.fk, b.dataset.fi);
       if(!owner) return;
-      fileList(owner).splice(+b.dataset.i, 1);
+      const [removed] = fileList(owner).splice(+b.dataset.i, 1);
+      if(pendingWrite?.saved?.path===removed?.path && pendingWrite?.target && attachmentApi().attachmentOwner(data,pendingWrite.target)===owner) clearAttach();
       renderAll();
     };
   });
