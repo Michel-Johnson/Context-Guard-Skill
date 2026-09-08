@@ -5,6 +5,31 @@ honors that variable first and retains `CLAUDE_HOME` as a legacy fallback. Keep
 executor and CI profiles and real Session IDs separate; use one shared project
 backend and device heartbeat service, not a timer in every Hook.
 
+## Cloud-created developer Sessions
+
+The operator may opt an existing developer receiver into creation with
+`allowSessionCreation:true` in its private runtime configuration. Cloud must also
+list that receiver's Session ID in the project's `coordinator.sessionTemplates`;
+both opt-ins are required. This does not enable permission bypass or install
+anything into Codex's configuration.
+
+The human uses **Coordinator → 新建执行会话**, selects the configured template and
+supplies a name. Cloud persists the request and generated UUID; the existing
+device heartbeat transports it. The backend creates an independent Git worktree
+from the registered Main ref and a private Claude profile containing only the
+template's installed Skill and reviewed settings. It does not copy old chats.
+Only the native startup binding changes the request to `registered`; that state
+is not proof of task execution or current online status. Failed preparation is
+reported through the same heartbeat, with durable retry until acknowledgment.
+
+Created developers use the template's existing independent CI receiver. The
+receiver stays serial; each handoff and CI capability still names the actual
+developer Session and exact SHA. Cloud verifies the persisted creation relation
+and current device/worktree binding. Removing Cloud's template opt-in revokes this
+inherited delegation. No task is assigned merely by creating a Session.
+
+## Configure an existing receiver
+
 After the real Claude Session has emitted its native startup Hook and bound to
 the project, the local operator can configure its receiver:
 

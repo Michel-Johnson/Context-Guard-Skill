@@ -127,6 +127,74 @@ export class ProtocolStore extends EventEmitter {
       emit(input); return { outcome: 'applied' };
     });
   }
+  async requestSessionCreation(principal, input) {
+    requireIdentity(principal);
+    if (principal.role !== 'human') fail('FORBIDDEN', 'Only the human can request a new native Session');
+    if (!input || Object.keys(input).some(k => !['operationId', 'templateSessionId', 'name'].includes(k)) ||
+        ['operationId', 'templateSessionId', 'name'].some(k => typeof input[k] !== 'string' || !input[k].trim() || input[k].length > (k === 'name' ? 200 : 128))) fail('INVALID_ARGUMENT', 'Provide a stable request, configured template Session and name');
+    const result = await this.transaction(state => {
+      const template = state.bindings[bindingKey(principal, input.templateSessionId)];
+      if (!template) fail('NOT_FOUND', 'Template Session is not registered in this project');
+      state.sessionCreations ||= {};
+      const id = key([...principalKey(principal), 'session-create', input.operationId]);
+      const fingerprint = hash(canonical(input)), previous = state.sessionCreations[id];
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) fail('ID_REUSED', 'Session creation request differs');
+        return previous.result;
+      }
+      const result = { id, operationId: input.operationId, sessionId: randomUUID(), templateSessionId: input.templateSessionId,
+        name: input.name.trim(), state: 'pending', createdAt: new Date().toISOString() };
+      state.sessionCreations[id] = { repositoryId: principal.repositoryId, deviceId: template.deviceId,
+        templateWorktreeId: template.worktreeId, fingerprint, result };
+      return result;
+    });
+    this.emit('change');
+    return result;
+  }
+  async pendingSessionCreations(principal) {
+    requireIdentity(principal);
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the owning device can receive creation requests');
+    return this.transaction(state => Object.values(state.sessionCreations || {})
+      .filter(item => item.repositoryId === principal.repositoryId && item.deviceId === principal.deviceId && item.result.state === 'pending')
+      .slice(0, 20).map(item => item.result), { readOnly: true });
+  }
+  async sessionCreations(principal) {
+    requireIdentity(principal);
+    if (principal.role !== 'human') fail('FORBIDDEN', 'Only the project human can inspect creation records');
+    return this.transaction(state => Object.values(state.sessionCreations || {})
+      .filter(item => item.repositoryId === principal.repositoryId).map(item => item.result), { readOnly: true });
+  }
+  async creationTemplate(principal, sessionId) {
+    requireIdentity(principal);
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Device identity required');
+    return this.transaction(state => {
+      const item = Object.values(state.sessionCreations || {}).find(item => item.repositoryId === principal.repositoryId &&
+        item.deviceId === principal.deviceId && item.result.sessionId === sessionId && item.result.state === 'registered');
+      if (!item) return null;
+      const binding = requireBinding(state, principal, { id: sessionId, generation: item.result.generation });
+      return binding.worktreeId === item.result.worktreeId ? item.result.templateSessionId : null;
+    }, { readOnly: true });
+  }
+  async finishSessionCreation(principal, input) {
+    requireIdentity(principal);
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the owning device can report creation');
+    if (!input || Object.keys(input).some(k => !['id', 'error'].includes(k)) || typeof input.id !== 'string' ||
+        input.error !== undefined && (typeof input.error !== 'string' || !/^[A-Z][A-Z0-9_]{0,79}$/.test(input.error))) fail('INVALID_ARGUMENT', 'Provide the original creation ID and optional error code');
+    return this.transaction(state => {
+      const item = state.sessionCreations?.[input.id];
+      if (!item || item.repositoryId !== principal.repositoryId || item.deviceId !== principal.deviceId) fail('FORBIDDEN', 'Creation is not assigned to this device');
+      if (item.result.state !== 'pending') {
+        if (item.result.error !== input.error) fail('ID_REUSED', 'Creation outcome differs');
+        return item.result;
+      }
+      const binding = state.bindings[bindingKey(principal, item.result.sessionId)];
+      if (!input.error && (!binding || binding.deviceId !== principal.deviceId || binding.worktreeId === item.templateWorktreeId)) fail('CONFLICT', 'Register the new Session in an independent worktree before acknowledging');
+      item.result = { ...item.result, state: input.error ? 'failed' : 'registered',
+        ...(input.error ? { error: input.error } : { worktreeId: binding.worktreeId, generation: binding.generation }),
+        completedAt: new Date().toISOString() };
+      return item.result;
+    });
+  }
   async submitApprovedTask(principal, request, resolveTask, workflow = {}) {
     requireIdentity(principal);
     if (principal.role !== 'human') fail('FORBIDDEN', 'Only a human can approve a Cloud work item');
@@ -237,6 +305,12 @@ export class ProtocolStore extends EventEmitter {
         if (previous && (!options.allowMigration || previous.deviceId !== p.deviceId || payload.expectedBindingVersion !== previous.version)) fail('CONFLICT', 'Migration requires the owning device and current binding version', { currentVersion: previous.version });
         if (!previous && payload.expectedBindingVersion) fail('CONFLICT', 'Binding does not exist', { currentVersion: '' });
         const binding = { sessionId: payload.sessionId, deviceId: p.deviceId, agentId: payload.agentId, worktreeId: payload.worktreeId, generation: (previous?.generation || 0) + 1, version: randomUUID() };
+        for (const creation of Object.values(state.sessionCreations || {})) {
+          if (creation.repositoryId !== p.repositoryId || creation.result.sessionId !== payload.sessionId || creation.result.state !== 'pending') continue;
+          if (creation.deviceId !== p.deviceId || creation.templateWorktreeId === binding.worktreeId) fail('FORBIDDEN', 'Create this Session only on its assigned device and an independent worktree');
+          creation.result = { ...creation.result, state: 'registered', worktreeId: binding.worktreeId,
+            generation: binding.generation, completedAt: new Date().toISOString() };
+        }
         state.bindings[id] = binding;
         queueFor(state, p, { id: payload.sessionId, generation: binding.generation });
         return { session: { id: payload.sessionId, generation: binding.generation }, bindingVersion: binding.version };

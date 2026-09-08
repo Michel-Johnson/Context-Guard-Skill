@@ -442,6 +442,32 @@ try {
   }
   record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
 
+  coordinatorState.sessionTemplates=[{id:'developer-template',name:'Claude Developer'}];
+  coordinatorState.sessionCreations=[];
+  const creations=[];
+  await page.route(/\/api\/coordinator\/sessions(?:\?|$)/,async route=>{
+    const input=route.request().postDataJSON();creations.push(input);
+    if(creations.length===1)return route.abort();
+    coordinatorState.sessionCreations=[{...input,id:'creation-record',sessionId:'new-native-session',state:'pending'}];
+    return route.fulfill({status:202,json:coordinatorState.sessionCreations[0]});
+  });
+  const creation=coordinator.locator('.coordinator-session-create');
+  await creation.waitFor({state:'visible'});
+  await creation.locator('summary').click();
+  await creation.getByRole('textbox',{name:'新会话名称'}).fill('New isolated Claude');
+  await creation.getByRole('button',{name:'创建会话',exact:true}).click();
+  await creation.getByRole('button',{name:'重试创建',exact:true}).waitFor();
+  await page.reload();await synchronized();
+  await coordinator.locator(':scope > summary').click();
+  await creation.locator('summary').click();
+  assert.equal(await creation.getByRole('textbox',{name:'新会话名称'}).inputValue(),'New isolated Claude');
+  await creation.getByRole('button',{name:'重试创建',exact:true}).click();
+  await creation.getByText('New isolated Claude · 等待本机创建',{exact:true}).waitFor();
+  assert.deepEqual(creations[0],creations[1],'reload retries the same creation identity, not a second Session');
+  coordinatorState.sessionCreations[0].state='registered';
+  await creation.getByText('New isolated Claude · 已绑定',{exact:true}).waitFor();
+  record('New Session UI preserves uncertain creation across reload and waits for real binding state');
+
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;

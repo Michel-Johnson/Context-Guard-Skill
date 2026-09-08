@@ -49,7 +49,7 @@ export class ClaudeRuntime {
     await withFileLock(file + '.lock', async () => {
       const state = await readJSON(file, {});
       if (state.active) fail('RUNTIME_BUSY', 'Stop the native turn before changing its configuration');
-      await atomicWrite(file, encode({ ...state, initialized: state.initialized || config.resumeExisting === true, config: { ...config, root: await fs.realpath(config.root) }, sessionId }));
+      await atomicWrite(file, encode({ ...state, initialized: state.initialized || config.resumeExisting === true, config: { ...config, rootAlias: config.root, root: await fs.realpath(config.root) }, sessionId }));
     });
     return { configured: true, sessionId, role: config.role };
   }
@@ -62,21 +62,85 @@ export class ClaudeRuntime {
       at: job?.updatedAt || state.updatedAt || '', deliveryId: job?.id || null,
       error: job?.error || null };
   }
+  async provision(request, { baseRef }) {
+    if (!request || !uuid.test(request.sessionId || '') || !uuid.test(request.templateSessionId || '') ||
+        request.sessionId === request.templateSessionId || typeof request.id !== 'string' || !/^[a-f0-9]{64}$/.test(request.id) ||
+        typeof request.name !== 'string' || !request.name.trim() || request.name.length > 200) fail('INVALID_CREATION', 'Use the bounded Cloud creation request');
+    const directory = path.dirname(this.sessionFile(request.sessionId));
+    const receiptFile = path.join(directory, 'creation.json');
+    return withFileLock(receiptFile + '.lock', async () => {
+      const fingerprint = hash(canonical({ id: request.id, sessionId: request.sessionId, templateSessionId: request.templateSessionId, name: request.name }));
+      let receipt = await readJSON(receiptFile, null);
+      if (receipt && receipt.fingerprint !== fingerprint) fail('ID_REUSED', 'Native creation identity differs');
+      const template = await readJSON(this.sessionFile(request.templateSessionId), null);
+      if (template?.config.role !== 'executor' || template.config.allowSessionCreation !== true) fail('CREATION_NOT_ENABLED', 'The local operator must enable this developer template');
+      if (!receipt) {
+        if (typeof baseRef !== 'string' || !baseRef.startsWith('refs/')) fail('MAIN_REQUIRED', 'Use the registered project Main ref');
+        const sha = await git(template.config.root, 'rev-parse', '--verify', `${baseRef}^{commit}`);
+        receipt = { fingerprint, templateSessionId: request.templateSessionId, root: path.join(directory, 'worktree'), configDir: path.join(directory, 'profile'), sha, branch: `claude/session-${request.sessionId}` };
+        await atomicWrite(receiptFile, encode(receipt));
+      }
+      const root = receipt.root;
+      if (await fs.stat(root).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; })) {
+        if (await fs.realpath(await git(root, 'rev-parse', '--show-toplevel')) !== await fs.realpath(root) ||
+            await git(root, 'branch', '--show-current') !== receipt.branch ||
+            await fs.realpath(await git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')) !== await fs.realpath(await git(template.config.root, 'rev-parse', '--path-format=absolute', '--git-common-dir'))) fail('WORKTREE_MISMATCH', 'Preserve the existing creation directory');
+      } else {
+        await git(template.config.root, 'worktree', 'add', '-b', receipt.branch, root, receipt.sha);
+      }
+      const existing = await readJSON(this.sessionFile(request.sessionId), null);
+      if (!existing) {
+        // Copy only the installed Skill and reviewed settings, never transcripts,
+        // global configuration, or another Session's memory.
+        const source = template.config.configDir, target = receipt.configDir;
+        const settings = await readJSON(path.join(source, 'settings.json'), null);
+        if (!settings) fail('SETTINGS_REQUIRED', 'Template needs installed Claude settings and hooks');
+        const roots = new RegExp([...new Set([source, template.config.root, template.config.rootAlias || template.config.root])].sort((a, b) => b.length - a.length)
+          .map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+        const relocate = value => {
+          if (typeof value === 'string') return value.replace(roots, match => match === source ? target : root);
+          if (Array.isArray(value)) return value.map(relocate);
+          if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, relocate(child)]));
+          return value;
+        };
+        await fs.mkdir(path.join(target, 'skills'), { recursive: true, mode: 0o700 });
+        await fs.cp(path.join(source, 'skills', 'context-guard'), path.join(target, 'skills', 'context-guard'), { recursive: true });
+        await atomicWrite(path.join(target, 'settings.json'), encode(relocate(settings)));
+        await this.configure(request.sessionId, { ...template.config, root, configDir: target,
+          systemPromptFile: template.config.systemPromptFile ? relocate(template.config.systemPromptFile) : undefined,
+          name: request.name.trim(), resumeExisting: false, allowSessionCreation: false });
+      }
+      const prior = await readJSON(this.jobFile(request.sessionId, `create:${request.id}`), null);
+      if (prior && ['failed', 'interrupted'].includes(prior.state)) fail('NATIVE_START_FAILED', 'The saved native startup did not complete; preserve its evidence');
+      const delivery = await this.deliver({ id: `create:${request.id}`, sessionId: request.sessionId, root, platform: 'claude',
+        message: '这是人类请求创建的独立开发会话。读取已安装的 Context Guard Skill，让原生启动 Hook 完成会话绑定，然后只回复“会话已准备”。没有分配开发任务，不要修改业务文件、创建 Plan 或声明任务完成。' });
+      return { sessionId: request.sessionId, root, state: 'starting', deliveryId: delivery.deliveryId };
+    });
+  }
   async ciReceiver(executorSessionId) {
+    const creation = await readJSON(path.join(path.dirname(this.sessionFile(executorSessionId)), 'creation.json'), null);
     const candidates = [];
     for (const name of await fs.readdir(this.directory).catch(error => { if (error.code === 'ENOENT') return []; throw error; })) {
       if (!uuid.test(name)) continue;
       const state = await readJSON(this.sessionFile(name), null);
-      if (state?.config.role === 'ci' && state.config.executorSessionId === executorSessionId) candidates.push({ sessionId: name, root: state.config.root });
+      if (state?.config.role === 'ci' && [executorSessionId, creation?.templateSessionId].includes(state.config.executorSessionId)) candidates.push({ sessionId: name, root: state.config.root });
     }
     if (candidates.length !== 1) fail('CI_RECEIVER_REQUIRED', 'Configure exactly one independent CI receiver for this developer Session');
     return candidates[0];
+  }
+  async acceptsCiExecutor(config, sessionId) {
+    if (!uuid.test(sessionId || '')) return false;
+    if (sessionId === config.executorSessionId) return true;
+    const creation = await readJSON(path.join(path.dirname(this.sessionFile(sessionId)), 'creation.json'), null);
+    const executor = await readJSON(this.sessionFile(sessionId), null);
+    return creation?.templateSessionId === config.executorSessionId && executor?.config.role === 'executor' &&
+      executor.config.root === await fs.realpath(creation.root);
   }
   async ciContext(sessionId, { verifySource = false } = {}) {
     const state = await readJSON(this.sessionFile(sessionId), null);
     if (state?.config.role !== 'ci') return null;
     const job = state.active && await readJSON(state.active, null);
-    if (!job?.execution || ['finished', 'failed', 'interrupted'].includes(job.state) || job.execution.session.id !== state.config.executorSessionId) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
+    if (!job?.execution || ['finished', 'failed', 'interrupted'].includes(job.state) || !await this.acceptsCiExecutor(state.config, job.execution.session.id)) fail('CI_NOT_ACTIVE', 'No assigned CI task is active');
     if (verifySource && (await git(state.config.root, 'rev-parse', 'HEAD') !== job.execution.sourceSha || await git(state.config.root, 'status', '--porcelain'))) fail('CI_SOURCE_CHANGED', 'CI result requires the unchanged assigned code SHA');
     return { ...job.execution, mode: 'ci', commands: state.config.ciCommands };
   }
@@ -123,7 +187,7 @@ export class ClaudeRuntime {
         fail('RECOVERY_NOT_AVAILABLE', 'There is no active interrupted delivery to recover');
       }
       if (state.config.role === 'ci') {
-        if (input.execution?.session?.id !== state.config.executorSessionId || !/^[a-f0-9]{40}$/.test(input.execution?.sourceSha || '')) fail('CI_ASSIGNMENT_MISMATCH', 'CI requires a verified developer handoff');
+        if (!await this.acceptsCiExecutor(state.config, input.execution?.session?.id) || !/^[a-f0-9]{40}$/.test(input.execution?.sourceSha || '')) fail('CI_ASSIGNMENT_MISMATCH', 'CI requires a verified developer handoff');
         if (await git(state.config.root, 'status', '--porcelain')) fail('CI_SOURCE_CHANGED', 'Preserve dirty CI files before changing the assigned SHA');
         await git(state.config.root, 'checkout', '--detach', input.execution.sourceSha);
       }

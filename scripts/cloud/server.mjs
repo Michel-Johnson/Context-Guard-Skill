@@ -267,15 +267,18 @@ function scopesOverlap(left, right) {
   return (left?.paths || []).some(a => (right?.paths || []).some(b => pathOverlap(a, b)));
 }
 
-export async function authorizeCiReceiver({ principal, ciSessionId, message, receivers, store }) {
+export async function authorizeCiReceiver({ principal, ciSessionId, message, receivers, store, templates = [] }) {
   const receiver = receivers?.[ciSessionId];
-  if (principal.role !== 'device' || !receiver || message.session?.id !== receiver.executorSessionId) protocolFail('FORBIDDEN', 'CI receiver is not assigned to this task Session');
+  if (principal.role !== 'device' || !receiver || !message.session?.id) protocolFail('FORBIDDEN', 'CI receiver is not assigned to this task Session');
+  const executorId = message.session.id;
+  if (executorId !== receiver.executorSessionId && (!templates.includes(receiver.executorSessionId) ||
+      await store.creationTemplate(principal, executorId) !== receiver.executorSessionId)) protocolFail('FORBIDDEN', 'CI receiver is not assigned to this task Session');
   if (!['object.read', 'object.put', 'ci.result'].includes(message.type) || message.type === 'object.put' &&
       (message.payload.kind !== 'evidence' || !message.payload.ref.startsWith(`ci:${ciSessionId}:`))) protocolFail('FORBIDDEN', 'CI may only read task references and write its own test evidence/result');
   const ciBinding = await store.registeredBinding(principal, ciSessionId);
-  const executorBinding = await store.registeredBinding(principal, receiver.executorSessionId);
+  const executorBinding = await store.registeredBinding(principal, executorId);
   if (!ciBinding || ciBinding.worktreeId !== receiver.worktreeId || !executorBinding || executorBinding.worktreeId === ciBinding.worktreeId) protocolFail('FORBIDDEN', 'CI must use its registered independent worktree on the owning device');
-  return { ...principal, agentId: ciSessionId, role: 'ci', bindings: { [receiver.executorSessionId]: executorBinding.worktreeId } };
+  return { ...principal, agentId: ciSessionId, role: 'ci', bindings: { [executorId]: executorBinding.worktreeId } };
 }
 
 export async function startCloudServer({
@@ -399,10 +402,23 @@ export async function startCloudServer({
     if (!coordinators.has(project.id)) {
       const creating = (async () => {
         if (!path.isAbsolute(config.providerFile || '') || !config.bindings || typeof config.bindings !== 'object') throw new MapError('INVALID_COORDINATOR_CONFIG', 'Configure provider and explicit Session bindings', 503);
-        const { repository, store } = interfaceProject(project);
-        const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-coordinator', agentId: `coordinator:${project.id}`, role: 'coordinator', bindings: config.bindings, nodeIds: config.nodeIds || null };
+        const { repository, store, principal: human } = interfaceProject(project);
+        const bindings = { ...config.bindings };
+        const refreshBindings = async () => {
+          const next = { ...config.bindings };
+          for (const item of await store.sessionCreations(human)) {
+            if (item.state !== 'registered' || !config.sessionTemplates?.includes(item.templateSessionId)) continue;
+            const binding = await store.registeredBinding(human, item.sessionId);
+            if (binding?.worktreeId === item.worktreeId && binding.generation === item.generation) next[item.sessionId] = item.worktreeId;
+          }
+          for (const id of Object.keys(bindings)) if (!Object.hasOwn(next, id)) delete bindings[id];
+          Object.assign(bindings, next);
+          return Object.keys(bindings);
+        };
+        const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-coordinator', agentId: `coordinator:${project.id}`, role: 'coordinator', bindings, nodeIds: config.nodeIds || null };
         const sessionFor = async id => {
-          if (!Object.hasOwn(config.bindings, id)) protocolFail('FORBIDDEN', 'This Session is not assigned to the Coordinator');
+          await refreshBindings();
+          if (!Object.hasOwn(bindings, id)) protocolFail('FORBIDDEN', 'This Session is not assigned to the Coordinator');
           const binding = await store.registeredBinding(principal, id);
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           return { id, generation: binding.generation };
@@ -411,9 +427,9 @@ export async function startCloudServer({
         const execute = createCoordinatorExecutor({
           listSessions: async () => {
             const sessions = [];
-            for (const id of Object.keys(config.bindings)) {
+            for (const id of await refreshBindings()) {
               const binding = await store.registeredBinding(principal, id);
-              if (binding && binding.worktreeId === config.bindings[id]) sessions.push({ id, generation: binding.generation, worktreeId: binding.worktreeId, name: binding.name || '', platform: binding.platform || '' });
+              if (binding && binding.worktreeId === bindings[id]) sessions.push({ id, generation: binding.generation, worktreeId: binding.worktreeId, name: binding.name || '', platform: binding.platform || '' });
             }
             return { sessions };
           },
@@ -442,7 +458,8 @@ export async function startCloudServer({
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
         const intake = mapIntakeFor(project, service);
         await intake.initialize();
-        service.inbox = new CoordinatorInbox({ store, principal, sessionIds: Object.keys(config.bindings), service,
+        service.bindings = bindings; service.refreshBindings = refreshBindings;
+        service.inbox = new CoordinatorInbox({ store, principal, sessionIds: refreshBindings, service,
           intake, memoryEvents: memoryHub(configuredMemory), projectId: project.id });
         service.kick();
         return service;
@@ -849,6 +866,16 @@ export async function startCloudServer({
   const receiveHeartbeat = async (principal, input) => {
     const { store } = interfaceStorage(principal);
     const reply = await store.handle(principal, input);
+    if (input.payload.creationResults?.length) {
+      reply.data.creationResults = [];
+      for (const result of input.payload.creationResults) {
+        try { await store.finishSessionCreation(principal, result); reply.data.creationResults.push({ ...result, accepted: true }); }
+        catch (error) {
+          if (['FORBIDDEN', 'ID_REUSED', 'INVALID_ARGUMENT'].includes(error.code)) reply.data.creationResults.push({ ...result, accepted: false, code: error.code });
+          // Unknown storage failures are retried from the same durable local result.
+        }
+      }
+    }
     const accepted = input.payload.sessions.filter(item => reply.data.sessions.some(session => session.id === item.id && session.generation === item.generation && item.ackedSeq <= session.ackedSeq));
     await store.rememberSessionNames(principal, accepted);
     const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
@@ -899,9 +926,29 @@ export async function startCloudServer({
           try {
             const principal = await interfaceAuth.authenticate(credential);
             if (principal.role !== 'device') protocolFail('FORBIDDEN', 'Device credential required');
-            return await receiveHeartbeat(principal, message);
+            const reply = await receiveHeartbeat(principal, message);
+            const creations = await interfaceStorage(principal).store.pendingSessionCreations(principal);
+            if (creations.length) reply.data.sessionCreations = creations;
+            return reply;
           } catch (error) { return errorReply(message.id, error); }
         }));
+        // Keep optional creation work from overflowing a multi-project device
+        // heartbeat. Omitted requests remain durable and return on later beats.
+        const creations = replies.map(reply => {
+          const items = reply.data?.sessionCreations || [];
+          if (reply.data) delete reply.data.sessionCreations;
+          return items;
+        });
+        let remaining = MAX_MESSAGE_BYTES - Buffer.byteLength(JSON.stringify(replies)) - 64;
+        for (let i = 0; i < replies.length; i++) {
+          const selected = []; let bytes = 32;
+          for (const item of creations[i]) {
+            const size = Buffer.byteLength(JSON.stringify(item)) + 1;
+            if (bytes + size > remaining) break;
+            selected.push(item); bytes += size;
+          }
+          if (selected.length) { replies[i].data.sessionCreations = selected; remaining -= bytes; }
+        }
         return send(res, 200, replies);
       }
       if (route === '/api/v2/events') {
@@ -991,6 +1038,7 @@ export async function startCloudServer({
           if (req.headers['x-context-guard-ci-session']) {
             const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
             principal = await authorizeCiReceiver({ principal, ciSessionId: req.headers['x-context-guard-ci-session'], message: input,
+              templates: configuredMemory?.projects?.[repository?.projectId]?.coordinator?.sessionTemplates || [],
               receivers: configuredMemory?.projects?.[repository?.projectId]?.coordinator?.ciReceivers, store: interfaceStorage(principal).store });
           }
           if (input.type === 'sync.heartbeat') return send(res, 200, await receiveHeartbeat(principal, input));
@@ -1093,14 +1141,30 @@ export async function startCloudServer({
         const action = workbench[3];
         if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
         requireWorkbench(req, url);
+        if (action === '/api/coordinator/sessions' && project && req.method === 'POST') {
+          const config = configuredMemory?.projects?.[project.id]?.coordinator;
+          const input = await requestBody(req);
+          if (!config?.enabled || !Array.isArray(config.sessionTemplates) || !config.sessionTemplates.includes(input.templateSessionId) ||
+              !Object.hasOwn(config.bindings || {}, input.templateSessionId) || config.ciReceivers?.[input.templateSessionId]) protocolFail('FORBIDDEN', 'Select an explicitly configured developer template');
+          const { store, principal } = interfaceProject(project);
+          return send(res, 202, await store.requestSessionCreation(principal, input));
+        }
         if (action === '/api/coordinator' && project) {
           const coordinator = await coordinatorFor(project);
           if (req.method === 'GET') {
+            await coordinator.refreshBindings();
             const state = await coordinator.state();
             state.eventError = coordinator.inbox.lastError;
             const { store, principal } = interfaceProject(project);
+            state.sessionCreations = (await store.sessionCreations(principal)).slice(-100);
+            state.sessionTemplates = [];
+            for (const id of configuredMemory.projects[project.id].coordinator.sessionTemplates || []) {
+              if (!Object.hasOwn(coordinator.bindings, id)) continue;
+              const binding = await store.registeredBinding(principal, id);
+              if (binding) state.sessionTemplates.push({ id, name: binding.name || 'Claude 开发环境' });
+            }
             state.acceptances = [];
-            for (const sessionId of Object.keys(configuredMemory.projects[project.id].coordinator.bindings)) {
+            for (const sessionId of Object.keys(coordinator.bindings)) {
               const binding = await store.registeredBinding(principal, sessionId);
               if (!binding) continue;
               const session = { id: sessionId, generation: binding.generation };
@@ -1147,10 +1211,11 @@ export async function startCloudServer({
           return send(res, 200, (await store.handle(principal, message)).data);
         }
         if (action === '/api/coordinator/acceptance' && project && req.method === 'POST') {
-          await coordinatorFor(project);
+          const coordinator = await coordinatorFor(project);
+          await coordinator.refreshBindings();
           const input = await requestBody(req);
           if (!input || Object.keys(input).some(key => !['id', 'sessionId', 'taskId', 'ref', 'version', 'decision', 'reason'].includes(key)) ||
-              !Object.hasOwn(configuredMemory.projects[project.id].coordinator.bindings, input.sessionId)) protocolFail('INVALID_ARGUMENT', 'Select an assigned task and exact CI result');
+              !Object.hasOwn(coordinator.bindings, input.sessionId)) protocolFail('INVALID_ARGUMENT', 'Select an assigned task and exact CI result');
           const { store, principal } = interfaceProject(project), binding = await store.registeredBinding(principal, input.sessionId);
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           const session = { id: input.sessionId, generation: binding.generation }, task = await store.taskRecord(principal, session, input.taskId);

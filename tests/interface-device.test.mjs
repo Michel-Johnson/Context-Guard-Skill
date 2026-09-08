@@ -7,6 +7,35 @@ import path from 'node:path';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
 import { DeviceConnection } from '../scripts/workbench/protocol-device.mjs';
 import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
+import { createHash } from 'node:crypto';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+
+test('Creation failures survive local restart and are acknowledged through the device heartbeat', async t => {
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'cg-creation-feedback-'));
+  t.after(()=>fs.rm(directory,{recursive:true,force:true}));
+  const cloudDir=path.join(directory,'cloud');
+  const cloud=await startCloudServer({dataDir:cloudDir,port:0,browserToken:'test-browser',browserPasswordHash:await createWorkbenchPasswordHash('test-only'),protocolConfig:{repositories:[{slug:'example/repo',repositoryId:'123'}]}});
+  t.after(()=>cloud.close());
+  const options={directory:path.join(directory,'local'),origin:cloud.url,allowLoopback:true};
+  let device=new DeviceConnection(options);
+  await device.connect({v:2,id:'connect',type:'auth.open',payload:{repository:'https://github.com/example/repo',password:'test-only',clientId:'device'}});
+  const bound=await device.send({v:2,id:'bind',type:'session.bind',payload:{sessionId:'s',worktreeId:'wt',agentId:'s',expectedBindingVersion:''}});
+  const store=new ProtocolStore(path.join(cloudDir,'interface-v2',createHash('sha256').update('123').digest('hex')));
+  const human={repositoryId:'123',deviceId:'browser',agentId:'human',role:'human'};
+  const created=await store.requestSessionCreation(human,{operationId:'create',templateSessionId:'s',name:'New developer'});
+  await device.recordCreationFailure(created.id,'SETTINGS_REQUIRED');
+  await device.close();device=new DeviceConnection(options);
+  device.start({sessions:async()=>[{...bound.session,ackedSeq:0}],apply:async()=>({outcome:'applied'})});
+  const prepared=await device.runtime.prepare();
+  assert.deepEqual(prepared.message.payload.creationResults,[{id:created.id,error:'SETTINGS_REQUIRED'}]);
+  const response=await fetch(cloud.url+'/api/v2/heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify([{credential:prepared.credential,message:prepared.message}])});
+  const [reply]=await response.json();
+  assert.equal(reply.ok,true);
+  assert.equal(reply.data.creationResults[0].accepted,true);
+  assert.equal((await store.sessionCreations(human))[0].state,'failed');
+  device.runtime.accept(reply);await device.close();
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(options.directory,'creation-results.json'),'utf8')),{});
+});
 
 test('IF-022: password authorizes a backend which enrolls Agents; lost replies replay after restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-'));
