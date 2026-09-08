@@ -2636,7 +2636,7 @@ async function toggleBugSession(node, bug){
 function renderBugPanel(){
   const list = openBugList();
   const countEl = document.getElementById("bug-count");
-  if(countEl) countEl.textContent = list.length;
+  if(countEl) countEl.textContent = list.filter(({bug})=>!["resolved","wontfix"].includes(bugProgress(bug).kind)).length;
   const ul = document.getElementById("bug-panel-list");
   if(!ul) return;
   if(!list.length){
