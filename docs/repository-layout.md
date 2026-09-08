@@ -13,7 +13,7 @@
 | `scripts/workbench/` | 本地服务、绑定、宿主投递和同步；目前也混有两端共用协议，第二阶段需审查提取 |
 | `scripts/sync/` | 旧 Map-only 兼容入口；删除前核对调用者及迁移路径，不默认继续扩展 |
 | `scripts/*.py` | Agent / Hook / Map 工具及开发分支检查；本轮不改 Hook |
-| `prototype/` | 实际生产工作台及地图模型，名称是历史遗留；设计画廊与 fixtures 混入问题留待代码阶段分离 |
+| `prototype/` | 实际生产工作台及地图模型，名称是历史遗留；设计画廊已迁至 `docs/design/workbench-gallery/`，演示 fixtures 仍待分离 |
 | `site/` | 官网与交互演示；不成为生产工作台的第二套业务实现 |
 | `tests/` | 产品正式回归及显式 helper |
 | `.github/`、`.githooks/` | CI/CD 与开发安全；其中产品测试的归位需要同步调整发现和过滤规则 |
