@@ -2318,12 +2318,13 @@ function scopePreview(plan){
 async function promptWorkAssignment(node, item=null, kind="bug"){
   const fixedSession = currentSessionId();
   const creating = !item;
+  const clarify = creating && !fixedSession && workbenchSync?.config?.interfaceCapabilities?.coordinator;
   const todo = kind==="todo";
   const dialog = document.createElement("dialog");
   dialog.className = "bug-assign-dialog";
   dialog.innerHTML = `<form>
     ${creating?`<label>${esc(t(todo?"todoDescLabel":"bugDescLabel"))}<textarea name="desc" required maxlength="10000"></textarea></label>`:""}
-    ${fixedSession
+    ${clarify ? '<p>创建后由 Coordinator 与你澄清需求，确认后再选择执行会话。</p>' : fixedSession
       ? `<input type="hidden" name="session" value="${escAttr(fixedSession)}">`
       : `<label>${esc(t("targetSession"))}<select name="session" required>${sessionOptionsHtml("",true)}</select></label>`}
     <div class="scope-warning" data-scope hidden></div>
@@ -2348,6 +2349,7 @@ async function promptWorkAssignment(node, item=null, kind="bug"){
   let resolveDialog;
   const result = new Promise(resolve=>{ resolveDialog=resolve; });
   async function updatePlan(){
+    if(clarify){ submit.disabled=false; submit.textContent='创建并讨论'; return; }
     const sid = select.value;
     const turn = ++generation;
     plan = null; submit.disabled = true; warning.hidden = true;
@@ -2366,16 +2368,16 @@ async function promptWorkAssignment(node, item=null, kind="bug"){
       workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message);
     }
   }
-  select.onchange = updatePlan;
+  if(select) select.onchange = updatePlan;
   dialog.querySelector("[data-cancel]").onclick = ()=>finish(null);
   dialog.addEventListener("cancel",e=>{ e.preventDefault(); finish(null); });
   form.onsubmit = e=>{
     e.preventDefault();
-    if(!plan || plan.sessionId!==select.value) return;
+    if(!clarify && (!plan || plan.sessionId!==select.value)) return;
     const desc = creating ? String(form.elements.desc.value||"").trim() : "";
     const title = desc.split(/\r?\n/)[0].trim().slice(0,120);
     if(creating && !desc){ form.elements.desc.focus(); return; }
-    finish({sessionId:select.value, plan, title, desc});
+    finish({sessionId:select?.value || null, plan, title, desc, clarify});
   };
   dialog.showModal();
   if(creating) form.elements.desc.focus();
@@ -2385,6 +2387,18 @@ async function promptWorkAssignment(node, item=null, kind="bug"){
 
 function promptBugAssignment(node,bug=null){ return promptWorkAssignment(node,bug,"bug"); }
 function promptTodoAssignment(node,todo=null){ return promptWorkAssignment(node,todo,"todo"); }
+
+async function saveCoordinatorIntake(){
+  renderAll();
+  const panel=document.getElementById('coordinator-panel');
+  if(panel) panel.open=true;
+  try{
+    await workbenchSync.flush();
+    workbenchSync.setStatus(workbenchSync.status,'事项已保存，Coordinator 将与你澄清需求');
+  }catch(error){
+    workbenchSync.setStatus(workbenchSync.status,'事项尚未同步，请重试保存：'+error.message);
+  }
+}
 
 async function dispatchBugToSession(node,bug,sessionId,plan){
   if(!node || !bug || !sessionId || bugDispatching.has(bug.id)) return false;
@@ -2419,6 +2433,7 @@ async function createAssignedBug(node){
   do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
   const bug = {id:bid,title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
   node.bugs.push(bug);
+  if(assignment.clarify){ await saveCoordinatorIntake(); return; }
   await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
 }
 
@@ -2461,6 +2476,7 @@ async function createAssignedTodo(node){
   foldTodo = true;
   const todo = {id:nextTodoId(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
   node.todos.push(todo);
+  if(assignment.clarify){ await saveCoordinatorIntake(); return; }
   await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
 }
 

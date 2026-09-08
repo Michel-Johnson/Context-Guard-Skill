@@ -15,7 +15,7 @@ import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-rev
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox } from './coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
 
@@ -388,6 +388,11 @@ export async function startCloudServer({
 
   const projectById = id => registry.projects.find(project => project.id === id);
   const coordinators = new Map();
+  const mapIntakeFor = (project, service) => new CoordinatorMapIntake({
+    directory: path.join(dataDir, 'coordinators', project.id), service,
+    read: () => readMemoryProject(configuredMemory, project.id),
+    nodeIds: configuredMemory.projects[project.id].coordinator.nodeIds || null,
+  });
   const coordinatorFor = async project => {
     const config = configuredMemory?.projects?.[project.id]?.coordinator;
     if (!config?.enabled) throw new MapError('COORDINATOR_DISABLED', 'Coordinator is not enabled for this project', 404);
@@ -435,7 +440,10 @@ export async function startCloudServer({
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8');
         const service = new CoordinatorService({ directory: path.join(dataDir, 'coordinators', project.id),
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
-        service.inbox = new CoordinatorInbox({ store, principal, sessionIds: Object.keys(config.bindings), service });
+        const intake = mapIntakeFor(project, service);
+        await intake.initialize();
+        service.inbox = new CoordinatorInbox({ store, principal, sessionIds: Object.keys(config.bindings), service,
+          intake, memoryEvents: memoryHub(configuredMemory), projectId: project.id });
         service.kick();
         return service;
       })();
@@ -1283,6 +1291,9 @@ export async function startCloudServer({
             return send(res, 200, result);
           }
           if (project) {
+            // Persist intake's initial cursor without starting the model: a
+            // provider failure must not prevent the human from saving work.
+            if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) await mapIntakeFor(project).initialize();
             const result = await commitMainMemoryMap(configuredMemory, project.id, input);
             await broadcastWorkbench(scope, project, viewId);
             return send(res, 200, result);
