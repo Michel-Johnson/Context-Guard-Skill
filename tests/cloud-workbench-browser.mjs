@@ -50,6 +50,8 @@ const request = async (url, options = {}) => {
 };
 
 try {
+  assert.deepEqual(await fs.readFile('prototype/vendor/marked.mjs'), await fs.readFile('node_modules/marked/lib/marked.esm.js'), 'vendor lexer must match the locked dependency');
+  assert.deepEqual(await fs.readFile('licenses/Marked-MIT.txt'), await fs.readFile('node_modules/marked/LICENSE.md'), 'ship the upstream license unchanged');
   await fs.mkdir(output, { recursive: true });
   await fs.mkdir(repository);
   await git(repository, 'init', '-b', 'main');
@@ -321,8 +323,16 @@ try {
     await route.fulfill({ response, json: body });
   });
   const submissions = [];
+  const markdownImageRequests = [];
+  page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     approvals: [{ id: 'proposal-1', pending: true, brief: { ref: 'brief-1', version: 'v1' }, text: '模拟需求确认', acceptance: '明确验收标准', sessionId: 'assigned-session', nodeIds: ['T0'], mainVersion: 'main-v1' }] };
+  coordinatorState.messages.push(
+    { role: 'user', text: '[实验：模拟人工输入]\n请审核这个计划', tools: [] },
+    { role: 'assistant', text: '## 审核结果\n\n1. **范围一致**，执行 `npm ci`。\n   - 保留目录边界\n\n> 先审核，再开发。\n\n```js\nconst value = "<script>";\n```\n\n| 阶段 | 状态 |\n| --- | --- |\n| Plan | 通过 |\n\n[规范](https://example.invalid/spec) [不安全链接](javascript:alert(1))\n\n![不加载远程图片](https://example.invalid/private.png)', tools: [] },
+    { role: 'user', text: '[服务器工作流事件，不是新的用户授权]\n{"type":"review.result","privateEventMarker":"diagnostic-only"}', tools: [] },
+    { role: 'assistant', text: '', tools: [{ name: 'read_task' }, { name: 'read_reference' }] },
+  );
   coordinatorState.approvals.push(...['frontend', 'build'].map(id => ({ id, kind: 'mount-proposal', pending: true,
     mainVersion: 'main-v1', title: id, purpose: '隔离实验节点', owns: [id + '/'] })));
   const mountReviews = [];
@@ -354,9 +364,25 @@ try {
   });
   await page.reload(); await synchronized();
   const coordinator = page.locator('#coordinator-panel');
-  await coordinator.locator('summary').click();
+  await coordinator.locator(':scope > summary').click();
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
-  assert.equal(await coordinator.locator('img').count(), 0, 'model output must be plain text');
+  assert.equal(await coordinator.locator('img,script,iframe').count(), 0, 'Markdown cannot inject HTML or fetch remote images');
+  assert.equal(await coordinator.locator('.coordinator-markdown strong').textContent(), '范围一致');
+  assert.equal(await coordinator.locator('.coordinator-markdown ol > li > ul > li').textContent(), '保留目录边界');
+  assert.equal(await coordinator.locator('.coordinator-markdown pre code').textContent(), 'const value = "<script>";');
+  assert.equal(await coordinator.locator('.coordinator-markdown table tbody tr').count(), 1);
+  assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
+  assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
+  assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '你请审核这个计划');
+  assert.equal(await coordinator.locator('.coordinator-debug').getAttribute('open'), null);
+  assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
+  await coordinator.getByText('运行记录（2）', { exact: true }).click();
+  assert.match(await coordinator.locator('.coordinator-debug').innerText(), /diagnostic-only/);
+  await coordinator.getByText('运行记录（2）', { exact: true }).click();
+  record('coordinator-safe-markdown-chat-and-collapsed-diagnostics');
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('节点审核尚未成功'));
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
@@ -378,7 +404,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
   await page.reload(); await synchronized();
-  await coordinator.locator('summary').click();
+  await coordinator.locator(':scope > summary').click();
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
   await coordinator.locator('textarea').fill('未提交的纠正意见');
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
@@ -394,7 +420,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('等待回复'));
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
-  record('Coordinator feature gate, plain-text rendering and durable explicit retries');
+  record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

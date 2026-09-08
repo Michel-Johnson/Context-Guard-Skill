@@ -4229,8 +4229,11 @@ function renderAll(){
   syncLinkRepoBtn();
   persist();
 }
-function installCoordinatorPanel(sync){
+async function installCoordinatorPanel(sync){
   if(!sync.config?.interfaceCapabilities?.coordinator) return;
+  let conversationFragments;
+  try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
+  catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
   const panel=document.createElement('details');
   panel.id='coordinator-panel';
   const heading=document.createElement('summary'); heading.textContent='Coordinator';
@@ -4239,18 +4242,19 @@ function installCoordinatorPanel(sync){
   const form=document.createElement('form');
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
   input.setAttribute('aria-label','发送给 Coordinator');
+  input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
-  let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false;
+  let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   const render=state=>{
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
-    messages.replaceChildren();
-    for(const message of state.messages){
-      const row=document.createElement('p');
-      row.textContent=(message.role==='assistant'?'Coordinator：':'输入：')+(message.text||message.tools.map(tool=>tool.name).join('、'));
-      messages.append(row);
-    }
+    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances]);
+    if(contentKey!==lastContent){
+    const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
+    const scrollTop=messages.scrollTop, debugOpen=messages.querySelector('.coordinator-debug')?.open;
+    const transcript=conversationFragments(state.messages||[]);
+    messages.replaceChildren(transcript.body);
     const mountGroups=new Map();
     for(const proposal of state.approvals||[]){
       if(proposal.kind!=='mount-proposal'||!proposal.pending) continue;
@@ -4317,6 +4321,10 @@ function installCoordinatorPanel(sync){
       }
       messages.append(card);
     }
+    if(transcript.diagnostics){transcript.diagnostics.open=!!debugOpen;messages.append(transcript.diagnostics);}
+    messages.scrollTop=follow?messages.scrollHeight:scrollTop;
+    lastContent=contentKey;
+    }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
@@ -4342,6 +4350,7 @@ function installCoordinatorPanel(sync){
     if(!pending) await refresh();
   };
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
+  input.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing&&!send.disabled){event.preventDefault();form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);});
   panel.addEventListener('toggle',()=>{if(panel.open) void refresh();else clearTimeout(timer);});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});

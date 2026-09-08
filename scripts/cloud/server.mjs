@@ -1443,9 +1443,9 @@ export async function startCloudServer({
           return send(res, 200, result);
         }
       }
-      if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments)\.mjs$/.test(route)) {
+      if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments|coordinator-markdown|marked)\.mjs$/.test(route)) {
         requirePrivateRead(req, url);
-        const source = await fs.readFile(path.join(root, path.basename(route) === 'map-model.mjs' ? 'scripts/shared' : 'prototype', path.basename(route)));
+        const source = await fs.readFile(path.join(root, path.basename(route) === 'map-model.mjs' ? 'scripts/shared' : path.basename(route) === 'marked.mjs' ? 'prototype/vendor' : 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
       if (req.method === 'GET' && /\/workbench-(?:app|data)\.js$/.test(route)) {
