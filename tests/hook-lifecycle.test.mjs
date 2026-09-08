@@ -5,11 +5,12 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
-import { resolveProject, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { sessionMemoryDir } from '../scripts/workbench/memory.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
@@ -437,6 +438,65 @@ test('detached workbench exits when its project state is removed', async t => {
   await waitForProcessExit(pid);
   pid = null;
   await fs.rm(project, { recursive: true, force: true });
+});
+
+test('record-todo validates nodes against the Session Map instead of legacy map.json', async t => {
+  const project = await fixture();
+  let workbenchPid = null;
+  t.after(async () => {
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    await dispose(project);
+  });
+
+  execFileSync('git', ['init', '-b', 'main'], { cwd: project, windowsHide: true });
+  execFileSync('git', ['config', 'user.name', 'Context Guard Test'], { cwd: project, windowsHide: true });
+  execFileSync('git', ['config', 'user.email', 'context-guard@example.invalid'], { cwd: project, windowsHide: true });
+  execFileSync('git', ['commit', '--allow-empty', '-m', 'fixture'], { cwd: project, windowsHide: true });
+  run(python, [contextScript, 'init', '--root', project]);
+  await saveMainBinding(project, { mode: 'local', branch: 'main' });
+  execFileSync('git', ['add', '.'], { cwd: project, windowsHide: true });
+  execFileSync('git', ['commit', '-m', 'context guard init'], { cwd: project, windowsHide: true });
+
+  const session = 'session-map-record-todo';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+
+  const projectInfo = await resolveProject(project);
+  const sessionMapDir = sessionMemoryDir(projectInfo, session);
+  const legacyMap = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  const sessionMap = structuredClone(legacyMap);
+  sessionMap.root.children = [{
+    id: 'M3',
+    title: 'Export',
+    kind: 'work',
+    proposal: 'accepted',
+    purpose: 'Export markdown',
+    owns: ['src/export.mjs'],
+    memories: [],
+    todos: [],
+    bugs: [],
+    children: [],
+  }];
+  await fs.mkdir(sessionMapDir, { recursive: true });
+  await fs.writeFile(path.join(sessionMapDir, 'map.json'), `${JSON.stringify(sessionMap, null, 2)}\n`);
+  assert.ok(!legacyMap.root.children?.some(node => node.id === 'M3'));
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(port)]);
+  const workbenchState = JSON.parse(await fs.readFile(path.join(project, '.codex/context/private/workbench.json'), 'utf8'));
+  workbenchPid = workbenchState.pid;
+
+  const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'export-turn', prompt: '需要导出 markdown' });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run(python, [contextScript, 'record-todo', '--root', project, '--session', session,
+    '--signal', signalId, '--node', 'M3', '--title', '支持导出 markdown', '--description', '实现导出']);
+
+  const after = JSON.parse(await fs.readFile(path.join(sessionMapDir, 'map.json'), 'utf8'));
+  const m3 = after.root.children.find(node => node.id === 'M3');
+  assert.equal(m3.todos.length, 1);
+  assert.equal(m3.todos[0].title, '支持导出 markdown');
+  assert.equal(m3.todos[0].source_signal, signalId);
 });
 
 test('permission, TODO, bad-case and durable cross-session inbox use the real Map', async t => {

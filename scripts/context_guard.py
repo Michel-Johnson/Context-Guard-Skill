@@ -890,6 +890,37 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+def authoritative_map_file(root: Path, session_id: str = "") -> Path:
+    ctx = context_dir(root)
+    map_file = ctx / "map.json"
+    if not session_id:
+        return map_file
+    probe = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=str(root.resolve()),
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+        creationflags=WINDOWS_NO_WINDOW,
+    )
+    if probe.returncode != 0:
+        return map_file
+    shared = Path(probe.stdout.strip()) / "context-guard"
+    bindings = read_json(shared / "workbench-bindings.json", {})
+    sessions = bindings.get("sessions") if isinstance(bindings, dict) else None
+    bound = sessions.get(session_id) if isinstance(sessions, dict) else None
+    if isinstance(bound, dict) and bound.get("worktreeRoot") == str(root.resolve()):
+        scope = hashlib.sha256((session_id + "\0" + str(bound.get("worktreeId", ""))).encode("utf-8")).hexdigest()
+        return shared / "session-memory" / scope / "map.json"
+    return map_file
+
+
+def load_authoritative_map(root: Path, session_id: str = "") -> dict[str, object]:
+    doc = read_json(authoritative_map_file(root, session_id), {})
+    return doc if isinstance(doc, dict) else {}
+
+
 @serialize_hook_runtime(4)
 def record_todo(
     root: Path,
@@ -912,8 +943,8 @@ def record_todo(
         raise ValueError(f"unknown prompt signal: {signal_id}")
     if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "todo"}:
         raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
-    map_doc = read_json(context_dir(root) / "map.json", {})
-    if find_map_node(map_doc.get("root") if isinstance(map_doc, dict) else None, node_id) is None:
+    map_doc = load_authoritative_map(root, session_id)
+    if find_map_node(map_doc.get("root"), node_id) is None:
         raise ValueError(f"unknown map node: {node_id}")
     todo_id = "TD-" + hashlib.sha256(f"{session_id}\0{signal_id}".encode("utf-8")).hexdigest()[:16]
     result = run_node_workbench(
@@ -1099,7 +1130,7 @@ def record_bad_case(
             raise ValueError(f"unknown prompt signal: {signal_id}")
         if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "bad-case"}:
             raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
-    map_doc = read_json(ctx / "map.json", {})
+    map_doc = load_authoritative_map(root, session_id) if session_id else read_json(ctx / "map.json", {})
     map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
     if node and find_map_node(map_root, node) is None:
         raise ValueError(f"unknown map node: {node}")
