@@ -8,7 +8,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py session-start --platform codex",
             "timeout": 20,
-            "statusMessage": "Initializing context folder"
+            "statusMessage": "Checking Session context"
           }
         ]
       }
@@ -45,7 +45,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py pre-tool-use --platform codex",
             "timeout": 20,
-            "statusMessage": "Preparing cloud development window"
+            "statusMessage": "Checking tool scope"
           }
         ]
       }
@@ -70,7 +70,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py post-tool-use --platform codex",
             "timeout": 20,
-            "statusMessage": "Recording cloud development scope"
+            "statusMessage": "Recording tool result"
           }
         ]
       }
@@ -108,7 +108,7 @@
             "type": "command",
             "command": "python3 ./scripts/context_guard_hook.py subagent-stop --platform codex",
             "timeout": 10,
-            "statusMessage": "Reviewing subagent scope and evidence"
+            "statusMessage": "Recording subagent stop"
           }
         ]
       }

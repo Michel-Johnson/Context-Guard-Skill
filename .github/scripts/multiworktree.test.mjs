@@ -188,11 +188,11 @@ test('a later lifecycle hook heals an unavailable Cloud Session without a sync d
   await memory.close(); memory = null;
 
   const unavailable = await hook(root, sessionId, 'session-start');
-  assert.match(unavailable.stdout, /Cloud Session registration is pending/i);
+  assert.match(unavailable.stdout, /Cloud Session registration pending/i);
   memory = await startMemoryServer({ ...memoryOptions, port: Number(memoryPort) });
   const healed = await hook(root, sessionId, 'user-prompt-submit');
   assert.equal(healed.code, 0, healed.stderr);
-  assert.doesNotMatch(healed.stdout, /synchronization is pending/i);
+  assert.doesNotMatch(healed.stdout, /Cloud Session sync pending/i);
   const remote = await call(memory, '/v1/projects/example/sessions/' + sessionId, memoryOptions.projects.example.token);
   assert.equal(remote.status, 200, JSON.stringify(remote));
   assert.equal(remote.data.snapshot.sessionId, sessionId);
