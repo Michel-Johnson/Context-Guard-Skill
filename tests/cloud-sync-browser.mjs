@@ -175,6 +175,7 @@ try {
   await cloudPage.locator('dialog[open] textarea[name="reason"]').fill('问题仍然能复现');
   await cloudPage.locator('dialog[open] button[value="submit"]').click();
   await cloudPage.locator('#detail').getByText('验收未通过 · 待澄清', { exact: true }).waitFor();
+  assert.equal(await cloudPage.locator('#bug-count').textContent(), '1', 'rejected verification still counts as unresolved');
   const feedback = await cloudPage.request.get(`${cloud.url}/api/workbench/projects/context-guard/api/review-feedback?view=main`).then(response => response.json());
   assert.equal(feedback.items.length, 1); assert.equal(feedback.items[0].reason, '问题仍然能复现');
   await cloudPage.reload(); await cloudPage.locator('.node[data-id="T0"]').click();

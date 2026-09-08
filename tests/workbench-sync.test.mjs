@@ -22,6 +22,17 @@ import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
 
+test('human cleanup removes attached and unassigned Bugs without changing other memory', () => {
+  const doc = { v: 1, root: { id: 'R', title: 'root', bugs: [{ id: 'B1', title: 'test' }], todos: [{ id: 'TD1', title: 'keep task' }], memories: [{ text: 'keep memory' }], children: [] }, unassigned_bugs: [{ id: 'B2', title: 'unassigned test' }] };
+  const operations = [{ type: 'update', id: 'R', fields: { bugs: [] } }, { type: 'document', fields: { unassigned_bugs: [] } }];
+  const cleaned = applyOperations(doc, operations, human).doc;
+  assert.deepEqual(cleaned.root.bugs, []); assert.deepEqual(cleaned.unassigned_bugs, []);
+  assert.deepEqual(cleaned.root.todos, doc.root.todos); assert.deepEqual(cleaned.root.memories, doc.root.memories);
+  assert.equal(doc.root.bugs.length, 1, 'input remains usable as a recovery snapshot');
+  assert.throws(() => applyOperations(doc, operations, agent, ['R']), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(doc, [{ type: 'document', fields: { unassigned_bugs: {} } }], human), { code: 'INVALID_MAP' });
+});
+
 test('browser reconnect retries share one operation and Session switches wait', async () => {
   const sync = Object.create(WorkbenchSync.prototype);
   let release, calls = 0;

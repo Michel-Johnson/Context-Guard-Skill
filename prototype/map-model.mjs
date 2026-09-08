@@ -309,7 +309,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       else flows[position] = next;
     } else if (op.type === 'document') {
       if (!human) throw new MapError('FORBIDDEN', 'Only the workbench can change document metadata', 403);
-      checkFields(op.fields, ['bootstrap', 'flows']); Object.assign(doc, copy(op.fields));
+      checkFields(op.fields, ['bootstrap', 'flows', 'unassigned_bugs']); Object.assign(doc, copy(op.fields));
     } else if (op.type === 'recover-bug') {
       if (actor.kind !== 'recovery' || !actor.sessionId) throw new MapError('FORBIDDEN_RECOVERY', 'Bug recovery requires a verified original receipt', 403);
       if (!target || !allowed(target.node) || !object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '')) throw new MapError('INVALID_BUG_RECOVERY', 'Invalid bug recovery', 403);

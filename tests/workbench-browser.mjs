@@ -374,9 +374,10 @@ try {
   await fs.writeFile(mapPath, encode(resolvedBug));
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('已解决'));
   assert.equal(await bugRow.locator('.bug-dot.resolved').count(), 1);
+  assert.equal(await page.locator('#bug-count').textContent(), '0', 'resolved Bugs remain readable but are not counted as unresolved');
   const cleanBug = await read(); cleanBug.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(cleanBug));
-  await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
+  await page.waitForFunction(() => data.children[0].bugs.length === 0 && document.querySelector('#bug-count')?.textContent === '0');
   await page.locator('#btn-bugs').click();
   const failedDelivery = await read();
   failedDelivery.root.children[0].bugs.push({ id: 'B99', title: '发送失败测试', status: 'open', sessions: [] });
