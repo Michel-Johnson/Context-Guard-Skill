@@ -79,6 +79,60 @@ function isoTime(value) {
   return new Date(0).toISOString();
 }
 
+export function hostAttestedPlatform(sessionId, env = process.env) {
+  const id = String(sessionId || '').trim();
+  if (!id) return '';
+  if (String(env.CODEX_THREAD_ID || '').trim() === id) return 'codex';
+  if (String(env.CLAUDE_SESSION_ID || '').trim() === id) return 'claude';
+  if (String(env.CURSOR_SESSION_ID || '').trim() === id) return 'cursor';
+  return '';
+}
+
+export function normalizeHostPath(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  const normalized = path.normalize(text).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+export async function recordHostAttestedSession(root, sessionId, env = process.env) {
+  const id = String(sessionId || '').trim();
+  const platform = hostAttestedPlatform(id, env);
+  if (!platform) return false;
+  const file = path.join(root, '.codex/context/sessions.jsonl');
+  const text = await fs.readFile(file, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+  for (const line of text.split('\n').filter(Boolean)) {
+    try {
+      const event = JSON.parse(line);
+      if (typeof event.session_id === 'string' && event.session_id.trim() === id) return false;
+    } catch {}
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, `${JSON.stringify({
+    at: new Date().toISOString(),
+    event: 'session-start',
+    platform,
+    session_id: id,
+    source: 'host-environment',
+    worktree_root: root,
+  })}\n`);
+  return true;
+}
+
+async function rootPathAliases(root) {
+  const values = [root];
+  const real = await fs.realpath(root).catch(() => '');
+  if (real && real !== root) values.push(real);
+  const aliases = [];
+  for (const value of values.filter(Boolean)) {
+    aliases.push(value, path.toNamespacedPath(value));
+    const stripped = value.replace(/[\\/]+$/, '');
+    if (stripped && stripped !== value) aliases.push(stripped);
+    if (!value.endsWith('/') && !value.endsWith('\\')) aliases.push(value + path.sep);
+  }
+  return [...new Set(aliases.filter(Boolean))];
+}
+
 export class Access {
   constructor(root, options = {}) {
     this.root = root;
@@ -87,6 +141,7 @@ export class Access {
     this.bindingsFile = options.bindingsFile || path.join(this.ctx, 'sessions/workbench-bindings.json');
     this.sessionsFile = path.join(this.ctx, 'sessions.jsonl');
     this.codexHome = options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+    this.sqliteHome = options.sqliteHome || process.env.CODEX_SQLITE_HOME || null;
     this.codexDb = options.codexDb || null;
     this.sqliteCommand = options.sqliteCommand || 'sqlite3';
     this.execFile = options.execFile || execFileAsync;
@@ -155,13 +210,20 @@ export class Access {
   }
   async stateDatabase() {
     if (this.codexDb) return this.codexDb;
-    const files = await fs.readdir(this.codexHome, { withFileTypes: true }).catch(() => []);
-    const candidates = await Promise.all(files
-      .filter(item => item.isFile() && /^state(?:_\d+)?\.sqlite$/.test(item.name))
-      .map(async item => {
-        const file = path.join(this.codexHome, item.name);
-        return { file, mtime: (await fs.stat(file).catch(() => ({ mtimeMs: 0 }))).mtimeMs };
-      }));
+    const homes = [...new Set([
+      this.sqliteHome,
+      this.codexHome && path.join(this.codexHome, 'sqlite'),
+      this.codexHome,
+    ].filter(Boolean).map(home => path.resolve(home)))];
+    const candidates = [];
+    for (const home of homes) {
+      const files = await fs.readdir(home, { withFileTypes: true }).catch(() => []);
+      for (const item of files) {
+        if (!item.isFile() || !/^state(?:_\d+)?\.sqlite$/.test(item.name)) continue;
+        const file = path.join(home, item.name);
+        candidates.push({ file, mtime: (await fs.stat(file).catch(() => ({ mtimeMs: 0 }))).mtimeMs });
+      }
+    }
     candidates.sort((a, b) => b.mtime - a.mtime);
     if (candidates[0]) this.codexDb = candidates[0].file;
     return this.codexDb;
@@ -238,6 +300,20 @@ export class Access {
     try { return await promise; }
     finally { if (this.codexQuery?.promise === promise) this.codexQuery = null; }
   }
+  mapCodexRow(row, state) {
+    return {
+      id: String(row.id),
+      name: String(row.name || row.title || '').trim(),
+      platform: 'codex',
+      status: state.status,
+      statusSeen: state.lastSeen,
+      statusSource: 'codex-rollout',
+      firstSeen: isoTime(row.created_at),
+      lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
+      lastEvent: state.lastEvent,
+      worktreeRoot: String(row.cwd || ''),
+    };
+  }
   async discoverCodexSessions(roots = [this.root]) {
     if (this.codexSessions) {
       const batches = await Promise.all(roots.map(root => this.codexSessions(root)));
@@ -245,29 +321,38 @@ export class Access {
     }
     const database = await this.stateDatabase();
     if (!database) return [];
-    // Codex can persist Win32 extended-length paths while Git bindings use
-    // ordinary paths. Both spellings refer to the same explicitly bound root.
-    const aliases = [...new Set(roots.flatMap(root => [root, path.toNamespacedPath(root)]))];
+    // Codex can persist Win32 extended-length paths, trailing slashes, or a
+    // realpath while Git bindings use the ordinary worktree spelling.
+    const aliases = [...new Set((await Promise.all(roots.map(root => rootPathAliases(root)))).flat())];
     const escaped = aliases.map(root => `'${root.replaceAll("'", "''")}'`).join(',');
     const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where cwd in (${escaped}) and thread_source='user' and archived=0 order by updated_at desc limit 100`;
     try {
       const rows = await this.loadCodexRows(database, sql);
-      return await Promise.all(rows.map(async row => {
-        const state = await this.rolloutState(row.rollout_path);
-        return {
-          id: String(row.id),
-          name: String(row.name || row.title || '').trim(),
-          platform: 'codex',
-          status: state.status,
-          statusSeen: state.lastSeen,
-          statusSource: 'codex-rollout',
-          firstSeen: isoTime(row.created_at),
-          lastSeen: [isoTime(row.updated_at), state.lastSeen].filter(Boolean).sort().at(-1),
-          lastEvent: state.lastEvent,
-          worktreeRoot: String(row.cwd || ''),
-        };
-      }));
+      return await Promise.all(rows.map(async row => this.mapCodexRow(row, await this.rolloutState(row.rollout_path))));
     } catch { return []; }
+  }
+  async discoverCodexThread(sessionId, root = this.root) {
+    const id = String(sessionId || '').trim();
+    if (!id) return null;
+    if (this.codexSessions) {
+      return (await this.codexSessions(root)).find(item => item?.id === id) || null;
+    }
+    const database = await this.stateDatabase();
+    if (!database) return null;
+    const sql = `select id, name, title, cwd, created_at, updated_at, rollout_path from threads where id='${id.replaceAll("'", "''")}' and archived=0 limit 1`;
+    try {
+      const [row] = await this.loadCodexRows(database, sql);
+      if (!row) return null;
+      const aliases = new Set((await rootPathAliases(root)).map(normalizeHostPath));
+      if (!aliases.has(normalizeHostPath(row.cwd))) return null;
+      return this.mapCodexRow(row, await this.rolloutState(row.rollout_path));
+    } catch { return null; }
+  }
+  async sessionExists(sessionId, root = this.root) {
+    const id = String(sessionId || '').trim();
+    if (!id) return false;
+    if ((await this.knownSessions(root)).includes(id)) return true;
+    return !!(await this.discoverCodexThread(id, root));
   }
   async sessionRegistry() {
     const roots = this.bindingRoots();
@@ -374,7 +459,7 @@ export class Access {
   async register(sessionId, binding = {}) {
     if (!Object.keys(binding).length && !this.binding(sessionId)) throw new MapError('SESSION_BINDING_REQUIRED', 'Bind this Session explicitly before granting scope', 409);
     const worktreeRoot = binding.worktreeRoot || this.binding(sessionId)?.worktreeRoot || this.root;
-    if (!(await this.knownSessions(worktreeRoot)).includes(sessionId)) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
+    if (!(await this.sessionExists(sessionId, worktreeRoot))) throw new MapError('UNKNOWN_SESSION', 'Session must first be recorded by a lifecycle hook or discovered in this Context Guard worktree', 403);
     const stored = {
       ...(this.binding(sessionId) || {}),
       ...binding,

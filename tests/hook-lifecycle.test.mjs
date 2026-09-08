@@ -109,6 +109,21 @@ test('Hook grants match dynamic all, explicit revocation and per-node read-only 
     assert.deepEqual(snapshot(), ['M1']);
   } finally { await dispose(project); }
 });
+
+test('SessionStart records CODEX_THREAD_ID when the hook payload omits session_id', async () => {
+  const project = await fixture();
+  try {
+    run(python, [contextScript, 'init', '--root', project], { cwd: project });
+    run(python, [hookScript, 'session-start', '--platform', 'codex'], {
+      cwd: project,
+      env: { CODEX_THREAD_ID: '01a07d62-hook-exec' },
+      input: JSON.stringify({ cwd: project }),
+    });
+    const events = (await fs.readFile(path.join(project, '.codex/context/sessions.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.ok(events.some(item => item.session_id === '01a07d62-hook-exec' && item.event === 'session-start'));
+  } finally { await dispose(project); }
+});
+
 async function confirmBinding(root, session) {
   const project = await resolveProject(root);
   const file = sessionBindingsPath(project);
