@@ -4,6 +4,8 @@
 
 Language: **English** | [中文](README.zh-CN.md)
 
+[Repository documentation and file layout](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/README.md)
+
 Context Guard is a durable project-memory skill for Codex, Cursor, and Claude. It keeps the task route, branches, bad cases, and verification paths inside the project's own `.codex/context/` folder, so agents can understand where the work is, what went wrong before, and how to avoid repeating fixed mistakes across sessions.
 
 ## What It Does
@@ -21,17 +23,18 @@ v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
 
 People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
 
-**Cloud:** the Cloud home page is a directory of independent project Maps. Public pages are read-only. An authorized Cloud workbench can edit a project, and each project uses its own sync token and ordered event stream rather than the administrative credential.
+**Cloud:** when configured, Cloud is the only human-facing workbench; the local service handles synchronization and host delivery. Private deployments require browser login. A device logs in once per project, and new Sessions reuse that connection with `context-guard workbench --root <project> --session <actual-session-id>`. They do not need separate tokens or project IDs. See [the connection contract](references/server-memory.md).
 
-**Local:** every lifecycle reply first verifies the actual Session binding. An unbound Session first checks the global live inventory and offers the matching readable named URL; it still waits for confirmation and does not initialize a Map, start a service, or auto-open a browser. After confirmation, linked worktrees reuse one project service while their Session views remain isolated. A private global registry outside the replaceable Skill install preserves project URLs and bindings across upgrades; live probes keep registered, running, stopped, legacy and duplicate states distinct, and a temporarily unavailable bound Session self-repairs by project identity instead of asking again.
+**Local:** verify the actual Session binding and reuse the project's established service. First-time project setup, ambiguous identity and worktree migration require a user choice; a new Session in an already connected project does not require repeated confirmation. Session views remain isolated across linked worktrees. The shared backend sends heartbeats independently of optional Hooks; a binding record alone does not prove that backend is online.
 
 **Development policy for this repository:** source code follows the existing
 branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
 release artifacts. All development memory must come from the user-designated
 private server, with local caches and isolated Session records. All Sessions reads
 the server's committed-main baseline. The private service/client and local
-acceptance tests are implemented; real deployment, native Hook trust verification,
-and historical migration remain pending separate approval. See [the memory contract](references/server-memory.md).
+acceptance tests and one production deployment/migration have been verified.
+Native Hook trust and actual host delivery have separate acceptance limits;
+further migrations need approval. See [the memory contract](references/server-memory.md).
 Other projects do not automatically inherit this repository's server configuration.
 
 ```bash

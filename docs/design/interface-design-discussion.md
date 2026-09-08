@@ -1,10 +1,10 @@
 # 接口、同步、升级与鉴权：讨论清单
 
-当前传输格式草案见 [接口规范 v2](interface-contract-v2.md)；本文保留设计问题，不作为另一套协议。
+当前传输格式见 [接口规范 v2](../interface-contract-v2.md)；本文保留历史设计问题，不作为另一套协议。
 
 状态：待讨论，尚未定稿。本文记录产品问题和设计议题，不授权实现，不替代现有接口规范，也不表示相关功能已经完成。
 
-下一步草案：[Session 工作台接口规范 v0.1](session-workbench-interface-draft.md)。新增的明确边界是 Main 只经合并更新、GitHub 与 Cloud 两条合并通道、Cloud 可作为本地 Session 后端的远程前端。具体上传内容仍待决定。
+相关历史草案：[Session 工作台接口规范 v0.3](session-workbench-interface-draft.md)。其中 Main 写入和两条合并通道属于当时提案；现行权限与发布边界见 [服务器记忆规范](../../references/server-memory.md)，不能把历史提案叠加到当前实现。
 
 ## 一、用户期望
 

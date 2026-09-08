@@ -4,6 +4,8 @@
 
 语言：[English](README.md) | **中文**
 
+[仓库文档与文件归属入口](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/README.md)
+
 Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。它把任务主线、支线、bad case 和验证链路保存在项目自己的 `.codex/context/` 里，让 Agent 在不同 session 之间也能知道“现在做到哪里、踩过哪些坑、下次怎么检查”。
 
 ## 能做什么
@@ -21,11 +23,11 @@ Context Guard 是一个面向 Codex、Cursor 和 Claude 的项目记忆 skill。
 
 人在 `prototype/workbench.html` 里看图。Agent 读 `.codex/context/` 里的小索引，不操作画布。
 
-**云端：** Cloud 首页只汇集多个项目入口，每个项目独立维护自己的 Map。公开页面只读；通过工作台令牌授权后的 Cloud 工作台可以编辑。项目使用独立同步令牌和事件流，不共享管理令牌。
+**云端：** 配置 Cloud 后，它是唯一的人类工作台前端，本地服务只负责同步和宿主投递。私有部署需要浏览器登录。设备每个项目登录一次，新 Session 使用 `context-guard workbench --root <项目目录> --session <真实-session-id>` 复用连接，不必另配 token 或项目 ID。见 [连接规范](references/server-memory.md)。
 
-**本地：** 每次生命周期回复先校验真实 Session 的绑定。未绑定时先读取全局运行态，并用可读命名域名提示同项目的工作台；仍须用户确认，不建图、不启动服务、也不自动打开浏览器。用户确认后，同一 Git 项目的多个工作树复用一个服务，但各自 Session 视图隔离。全局私有注册表位于 Skill 安装目录之外，升级后继续复用项目域名与既有绑定；实时探测会区分已登记、运行、停止、旧版和重复实例，已绑定但暂时失效的 Session 会按项目身份自愈，不重复询问。
+**本地：** 校验真实 Session 绑定并复用项目已有服务。首次项目配置、身份歧义和工作树迁移才需要用户选择，已连接项目的新 Session 不重复索要确认。多个工作树共享服务，各 Session 地图隔离。共享后端独立于可选 Hook 发送心跳；存在绑定记录不代表后端正在运行。
 
-**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 只读服务器上与已合并主分支对应的基线。私有服务/客户端和本地自动化验收已实现；真实部署、原生 Hook 信任验证和历史迁移仍需另行批准，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
+**本仓库开发规范：** 源码照原有分支/PR 规则进入 GitHub main，整个 `.codex/` 不进 Git 或分发产物。所有开发记忆从用户指定的私有服务器读取，本地仅作缓存；Session 记忆隔离，All Sessions 展示服务器的已发布 Main 基线。私有服务/客户端、自动化验收和一次生产部署迁移已验证；原生 Hook 信任与宿主实际投递单独验收，新增迁移仍需批准，见 [服务器记忆规范](references/server-memory.md)。其他项目不会自动继承本仓库的服务器配置。
 
 ```bash
 context-guard workbench --binding-status --root /path/to/project --session <真实-session-id>

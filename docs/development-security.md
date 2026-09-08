@@ -15,9 +15,10 @@ server is its authority, while local records are caches or pending drafts. This
 does not permit uploading credentials or machine runtime state as memory. Server
 reads and writes both need authorization; public read-only access is not private.
 Connection details stay out of public source. The private memory backend/client
-has local automated acceptance, while deployment, native Hook trust verification,
-and historical migration remain pending in `CI_todo.md`; current Map sync alone
-is insufficient.
+has automated acceptance and one verified production deployment/migration; see
+the memory contract and `CI_todo.md` for evidence and remaining limits. Further
+migrations require separate approval. Native Hook trust and actual host delivery
+remain separate acceptance items; Map-only sync alone is not the private memory store.
 
 Product branches retain approved `.github/` checks and the explicitly listed
 cross-platform product tests in `scripts/branch_guard.py`. Temporary experiments,
