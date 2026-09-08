@@ -30,7 +30,9 @@
     "scripts/map_owns.py",
     "scripts/cloud/",
     "scripts/sync/",
-    "scripts/workbench/"
+    "scripts/workbench/",
+    "scripts/shared/",
+    "scripts/legacy/"
   ],
   "scripts": {
     "postinstall": "node bin/postinstall.js",

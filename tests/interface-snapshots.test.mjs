@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { WorkbenchSnapshots } from '../scripts/workbench/protocol-snapshots.mjs';
-import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
+import { WorkbenchSnapshots } from '../scripts/shared/protocol-snapshots.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 
 test('IF-034: fixed-version pages survive edits and restart, but never bypass Session or node grants', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-pages-'));

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ProtocolStore } from '../scripts/workbench/protocol-store.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { withFileLock, pause } from '../scripts/workbench/io.mjs';
-import { scopedObjectKey } from '../scripts/workbench/protocol-workflow.mjs';
+import { withFileLock, pause } from '../scripts/shared/io.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 
 const principal = { repositoryId: 'repo-1', deviceId: 'device-1', agentId: 'agent-1' };
 test('IF-040: concurrent stale-owner recovery never removes a new live lock', async t => {

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { ProtocolMap, nodeProjection, relationProjection, translateChanges, operationGrants } from '../scripts/workbench/protocol-map.mjs';
+import { ProtocolMap, nodeProjection, relationProjection, translateChanges, operationGrants } from '../scripts/shared/protocol-map.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
-import { applyOperations, filterNodeAccess } from '../prototype/map-model.mjs';
+import { applyOperations, filterNodeAccess } from '../scripts/shared/map-model.mjs';
 import { documentOperations } from '../scripts/workbench/sync-coordinator.mjs';
 
 test('IF-036: v2 Map mutations keep legacy records, atomic receipts and stable record targets', async t => {

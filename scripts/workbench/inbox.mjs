@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { watch } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { MapError, entries, validate } from '../../prototype/map-model.mjs';
-import { atomicWrite, encode, hash, pause, readJSON } from './io.mjs';
+import { MapError, entries, validate } from '../shared/map-model.mjs';
+import { atomicWrite, encode, hash, pause, readJSON } from '../shared/io.mjs';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function valuePreview(value) {

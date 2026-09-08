@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { atomicWrite, encode, readJSON } from '../workbench/io.mjs';
+import { atomicWrite, encode, readJSON } from '../shared/io.mjs';
 
 // Never retain historical snapshots/receipts in the hot read cache. Disk remains
 // authoritative; inode and nanosecond timestamps also detect external replaces.

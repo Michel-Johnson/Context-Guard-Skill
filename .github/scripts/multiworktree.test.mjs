@@ -15,7 +15,7 @@ import { WorkbenchSync } from '../../prototype/workbench-sync.mjs';
 import { startMemoryServer } from '../../scripts/cloud/memory.mjs';
 import { memoryConfigPath, memoryStatus, synchronizeMemory, prepareMemory, sessionMemoryDir } from '../../scripts/workbench/memory.mjs';
 import { summarizeHooks } from '../../scripts/workbench/hook-status.mjs';
-import { readJSON } from '../../scripts/workbench/io.mjs';
+import { readJSON } from '../../scripts/shared/io.mjs';
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const python = process.platform === 'win32' ? 'python' : 'python3';
 function run(command, args, cwd = repo, input) {

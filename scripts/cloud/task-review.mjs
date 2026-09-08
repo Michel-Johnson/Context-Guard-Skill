@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { entries, MapError } from '../../prototype/map-model.mjs';
+import { entries, MapError } from '../shared/map-model.mjs';
 
 export function reviewInput(value) {
   const fields = ['operationId', 'sessionId', 'taskId', 'resultVersion', 'nodeId', 'itemId'];

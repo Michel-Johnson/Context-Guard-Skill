@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startCloudServer } from '../scripts/cloud/server.mjs';
 import { checkpointSync, connectSync, ensureService, finishSync, prepareSync, pullSync, syncStatus, trackSync } from '../scripts/sync/client.mjs';
-import { atomicWrite, encode } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode } from '../scripts/shared/io.mjs';
 import { memoryConfigPath, sessionMemoryDir } from '../scripts/workbench/memory.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 

@@ -3,8 +3,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { atomicWrite, encode, readJSON, withFileLock, hash } from './io.mjs';
-import { MapError } from '../../prototype/map-model.mjs';
+import { atomicWrite, encode, readJSON, withFileLock, hash } from '../shared/io.mjs';
+import { MapError } from '../shared/map-model.mjs';
 
 const execFileAsync = promisify(execFile);
 const digest = value => createHash('sha256').update(String(value)).digest('hex');

@@ -5,9 +5,12 @@
 ## 仓库整理
 
 - [x] 第一阶段：设计草案集中到 `docs/design/`，建立文档入口与现有文件职责表；不改 Hook、角色设计和运行接口。
-- [ ] 第二阶段：生产工作台与设计试验分离、公共协议归位、旧同步入口及重复规则的代码审查与回归验收。
-  - 设计画廊 HTML/JS/CSS 已从生产工作台移至 `docs/design/workbench-gallery/`，保留四组设计浏览器回归；生产资源排除断言待完整验证和部署。
-  - 公共协议提取、演示 fixtures 分离及旧同步入口迁移尚未完成，不将本次画廊迁移视为第二阶段全部完成。
+- [x] 第二阶段源码整理与本地回归：生产/演示分离、公共协议归位、旧同步兼容区迁移、重复 I/O 与清单去重。合并与安装/生产验收另按 RULE 执行并归档，不用源码测试代替。
+  - PR #178（`7d9b215`）画廊迁移已通过 CI、安装一致性与真实 Cloud 页面验收。
+  - 演示地图、示例 Session/Bug 和预设项目移到 `site/demo/`；生产仅加载空白数据结构，浏览器回归验证初始化不写入演示模块。
+  - Map/记忆校验、消息协议、事务/工作流、快照/附件与 I/O 位于 `scripts/shared/`；正式测试限制共享层反向依赖服务，并检查 Cloud 不再导入 workbench 实现。
+  - 旧 Map-only 实现迁入 `scripts/legacy/`，保留 `scripts/sync/client.mjs` 薄兼容入口；正常工作台仅复用共享路径工具。旧调用仍有使用者，不删除功能或更改传输契约。
+  - 安装/npm 文件清单复用、测试批准清单集中到 test-manifest；正式回归检查暂存策略、目录覆盖与演示数据不分发。Hook 和角色设计不变。
 
 ## Bug 计数与测试数据清理
 
@@ -98,7 +101,7 @@
 - [x] Cloud 未登录首页展示密码登录页；密码哈希、持久安全 Cookie、退出、错误限速及浏览器登录流程（`tests/cloud-workbench.test.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] 私有记忆写入保留带服务器时间的完整历史；恢复生成新版本并用 CAS 阻止静默覆盖（`tests/cloud-workbench.test.mjs`）
 - [x] 工作台托管的 Session Map 后台同步：事件驱动上传/接收、持久 outbox、断线与冷启动恢复、SSE 游标续传、响应丢失幂等、字段级合并和三方冲突保留（`tests/workbench-sync.test.mjs`、`tests/cloud-workbench.test.mjs`、`tests/cloud-sync-browser.mjs`）
-- [ ] 删除或迁移旧 Map-only `sync serve/connect/pull` 协议；当前带 Session 的 `sync ensure/status` 已转交工作台，旧命令仍为兼容入口
+- [x] 旧 Map-only `sync serve/connect/pull` 实现已迁到 `scripts/legacy/map-sync.mjs`；带 Session 的 `sync ensure/status` 继续转交工作台，旧路径为薄兼容入口，现有 Hook/CLI 消费者保留回归。
 - [x] `sync serve/ensure` 长驻进程、断线重连和 SSE 游标恢复（`tests/cloud-sync-client.test.mjs`）
 - [x] `sync checkpoint` 独立检查冲突但不发布 Session Map（`tests/cloud-sync-client.test.mjs`）
 - [x] 显式 `plan-start` / 工具观察 / Map 归档 / `plan-finish` / Stop 流程；Cloud 成功与完成后本地回执丢失重试（`tests/hook-lifecycle.test.mjs`）

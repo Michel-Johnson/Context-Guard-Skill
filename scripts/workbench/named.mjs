@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
-import { readJSON, pause } from './io.mjs';
+import { readJSON, pause } from '../shared/io.mjs';
 import { projectId, projectName, resolveProject } from './project.mjs';
 import { compatibleRuntime, WORKBENCH_RUNTIME_SCHEMA } from './runtime.mjs';
 import { globalWorkbenchDirectory, registeredProject, rememberProject } from './registry.mjs';

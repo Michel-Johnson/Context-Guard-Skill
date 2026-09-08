@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { hash } from '../scripts/workbench/io.mjs';
+import { hash } from '../scripts/shared/io.mjs';
 import { messageHandler, ProjectMessagePump, sendMessage } from '../scripts/workbench/protocol-client.mjs';
 import { DeviceHeartbeat } from '../scripts/workbench/device-heartbeat.mjs';
 

@@ -8,27 +8,27 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
-import { atomicWrite, encode, readJSON, pause, hash } from './io.mjs';
+import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
 import { generateProjections } from './projections.mjs';
 import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
 import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
 import { runtimeIdentity } from './runtime.mjs';
 import { Attachments } from './attachments.mjs';
-import { ProtocolStore } from './protocol-store.mjs';
-import { ProtocolBlobs, serveBlob } from './protocol-blobs.mjs';
-import { workflowTypes } from './protocol-workflow.mjs';
+import { ProtocolStore } from '../shared/protocol-store.mjs';
+import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
+import { workflowTypes } from '../shared/protocol-workflow.mjs';
 import { ProtocolDelivery, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { ensureNamedProxy } from './named.mjs';
 import { registeredProject, rememberProject } from './registry.mjs';
-import { WorkbenchSnapshots } from './protocol-snapshots.mjs';
-import { ProtocolMap, verifyChangeReferences } from './protocol-map.mjs';
+import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
+import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler } from './protocol-client.mjs';
-import { fail as protocolFail, ProtocolError, validateMessage } from './protocol.mjs';
-import { syncPaths } from '../sync/client.mjs';
-import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../../prototype/map-model.mjs';
+import { fail as protocolFail, ProtocolError, validateMessage } from '../shared/protocol.mjs';
+import { syncPaths } from '../shared/sync-paths.mjs';
+import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
@@ -916,8 +916,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));
         }
-        if (['/prototype/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
-        else if (['/prototype/workbench-app.js', '/prototype/workbench-fixtures.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        if (route === '/prototype/map-model.mjs') { file = path.join(skillRoot, 'scripts/shared/map-model.mjs'); contentType = 'text/javascript; charset=utf-8'; }
+        else if (['/scripts/shared/map-model.mjs', '/prototype/workbench-sync.mjs', '/prototype/attachments.mjs'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
+        else if (['/prototype/workbench-app.js', '/prototype/workbench-data.js'].includes(route)) { file = path.join(skillRoot, route.slice(1)); contentType = 'text/javascript; charset=utf-8'; }
         else if (route === '/prototype/workbench.css') { file = path.join(skillRoot, route.slice(1)); contentType = 'text/css; charset=utf-8'; }
         else if (route === '/.codex/context/map.json') { file = mainStore.file; contentType = 'application/json; charset=utf-8'; }
         else if (['/.codex/context/preferences.json', '/.codex/context/candidates.json', '/.codex/context/l1-candidates.json'].includes(route)) { file = path.join(root, route.slice(1)); contentType = 'application/json; charset=utf-8'; }

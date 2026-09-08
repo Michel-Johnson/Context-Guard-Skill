@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
-import { encode, hash } from '../scripts/workbench/io.mjs';
+import { encode, hash } from '../scripts/shared/io.mjs';
 
 const human = { kind: 'human', sessionId: 'workbench' };
 

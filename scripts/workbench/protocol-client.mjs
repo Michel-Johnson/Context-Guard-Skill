@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { errorReply, fail, MAX_MESSAGE_BYTES, ProtocolError, validateMessage } from './protocol.mjs';
+import { errorReply, fail, MAX_MESSAGE_BYTES, ProtocolError, validateMessage } from '../shared/protocol.mjs';
 
 // Never interpret a legacy HTML/JSON response as successful v2 delivery.
 export async function sendMessage(origin, credential, message, { fetcher = fetch, timeoutMs = 10000, allowLoopback = false, receiveCredential } = {}) {

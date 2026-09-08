@@ -5,7 +5,8 @@ import { createHash } from "node:crypto";
 const sourceUrl = new URL("../../prototype/workbench.html", import.meta.url);
 const source = await readFile(sourceUrl, "utf8");
 const styles = await readFile(new URL("../../prototype/workbench.css", import.meta.url), "utf8");
-const fixtures = await readFile(new URL("../../prototype/workbench-fixtures.js", import.meta.url), "utf8");
+const defaults = await readFile(new URL("../../prototype/workbench-data.js", import.meta.url), "utf8");
+const fixtures = await readFile(new URL("../demo/workbench-fixtures.js", import.meta.url), "utf8");
 const application = await readFile(new URL("../../prototype/workbench-app.js", import.meta.url), "utf8");
 const mapMarker = "const CONTEXT_GUARD_MAP = ";
 const markerStart = fixtures.indexOf(mapMarker);
@@ -112,14 +113,14 @@ const bootCall = /\bboot\(\);(?=\s*<\/script>\s*<\/body>)/;
 const applicationBoot = /\bboot\(\);\s*$/;
 const syncImport = 'try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); attachmentModule=await import("./attachments.mjs"); }';
 const styleLink = '<link rel="stylesheet" href="./workbench.css?v=bug-claim">';
-const fixtureScript = '<script src="./workbench-fixtures.js?v=bug-claim"></script>';
+const fixtureScript = '<script src="./workbench-data.js?v=bug-claim"></script>';
 const applicationScript = '<script src="./workbench-app.js?v=bug-claim"></script>';
 if (!charset.test(source) || !source.includes("</body>") || !applicationBoot.test(application) || !application.includes(syncImport)
   || !source.includes(styleLink) || !source.includes(fixtureScript) || !source.includes(applicationScript))
   throw new Error("产品 HTML 结构已改变，请重新核对演示接入。");
 const prepareData = `
 // 只配置宣传示例数据，保留产品控件和行为；不展示其他项目的内置样例。
-window.__CG_TOUR_MAP__ = window.__CG_TOUR_LOCALIZE__(clone(CONTEXT_GUARD_MAP));
+window.__CG_TOUR_MAP__ = window.__CG_TOUR_LOCALIZE__(clone(window.__CG_WORKBENCH_DATA.catalog["context-guard"].blueprint));
 // adoptTree 不覆盖根节点 purpose；先翻译初始示例，避免语言残留。
 Object.assign(data, window.__CG_TOUR_LOCALIZE__(data));
 uiLang = window.__CG_TOUR_LANG__;
@@ -132,7 +133,7 @@ function buildWorkbench(language) {
   let html = source
   .replace(/<link[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g, "")
   .replace(styleLink, `<style>${styles}</style>`)
-  .replace(fixtureScript, `<script>${fixtures}</script>`)
+  .replace(fixtureScript, `<script>${defaults}</script><script>${fixtures}</script>`)
   .replace(applicationScript, `<script>${application}</script>`)
   .replace(charset, (meta) => `${meta}\n${isolation(language)}<style>${fontCss}\n#cg-sync{display:none!important}html.cg-embedded .phone-preview-banner{display:none!important}</style>`)
   // GitHub Pages 演示始终使用内置数据；避免尝试加载不存在且被 CSP 禁止的本地同步模块。
@@ -160,7 +161,7 @@ await writeFile(
   new URL("source.json", output),
   JSON.stringify(
     {
-      source: "prototype/workbench.html + workbench.css + workbench-fixtures.js + workbench-app.js",
+      source: "prototype/workbench.html + workbench.css + workbench-data.js + site/demo/workbench-fixtures.js + workbench-app.js",
       sha256: digest,
       changes: [
         "隔离真实 I/O，注入内置示例文件响应",

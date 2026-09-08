@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { encode, pause, hash, readJSON } from '../scripts/workbench/io.mjs';
+import { encode, pause, hash, readJSON } from '../scripts/shared/io.mjs';
 import { isolatedEnvironment, run } from '../.github/scripts/client-protocol.mjs';
 import { chromium } from 'playwright';
 const workspace = fileURLToPath(new URL('../', import.meta.url));
@@ -42,11 +42,16 @@ async function servePrototype() {
     try {
       const url = new URL(req.url, 'http://127.0.0.1');
       const design = url.pathname.startsWith('/design/');
-      const baseDir = design ? path.join(workspace, 'docs/design') : protoDir;
-      const rel = decodeURIComponent(url.pathname).replace(design ? /^\/design\// : /^\/(?:prototype\/)?/, '') || 'workbench.html';
+      const demo = url.pathname.startsWith('/demo/');
+      const shared = url.pathname === '/scripts/shared/map-model.mjs';
+      const baseDir = design ? path.join(workspace, 'docs/design') : demo ? path.join(workspace, 'site/demo') : shared ? path.join(workspace, 'scripts/shared') : protoDir;
+      const rel = shared ? 'map-model.mjs' : decodeURIComponent(url.pathname).replace(design ? /^\/design\// : demo ? /^\/demo\// : /^\/(?:prototype\/)?/, '') || 'workbench.html';
       const file = path.normalize(path.join(baseDir, rel));
       if (!file.startsWith(baseDir + path.sep)) { res.writeHead(403); res.end(); return; }
-      const data = await fs.readFile(file);
+      let data = await fs.readFile(file);
+      if (rel === 'workbench.html' && url.searchParams.get('production') !== '1') {
+        data = Buffer.from(data.toString().replace('<script src="./workbench-app.js?v=bug-claim"></script>', '<script src="/demo/workbench-fixtures.js"></script><script src="./workbench-app.js?v=bug-claim"></script>'));
+      }
       res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
       res.end(data);
     } catch { res.writeHead(404); res.end(); }
@@ -158,7 +163,7 @@ try {
   await page.waitForSelector('#cg-sync[data-status="error"]', { state: 'attached' });
   await openSyncSettings();
   await page.getByRole('button', { name: '将当前图设为真实地图' }).click(); await synchronized();
-  const initialized = await read(); assert.equal(initialized.root.id, 'T0'); assert.ok(initialized.root.children.length > 0); assert.equal(initialized.bootstrap, 'ready');
+  const initialized = await read(); assert.equal(initialized.root.id, 'T0'); assert.equal(initialized.root.children.length, 0, 'production initialization must not persist demo modules'); assert.equal(initialized.root.bugs.length, 0); assert.equal(initialized.bootstrap, 'proposed', 'an empty project is not a finalized architecture');
   recordCheck('empty-map-explicitly-initializes-current-workbench');
   stage = 'backend-password-ui';
   let loginRequest;
@@ -1108,10 +1113,15 @@ try {
     assert.ok(banners.every(b => !b.shown && !b.covers), `phone preview banners must not cover the map ${JSON.stringify(banners)}`);
     recordCheck('phone-preview-banners-hidden');
     recordCheck('phone-add-child-hidden');
-    for (const file of ['workbench.html', 'workbench-app.js', 'workbench.css']) {
-      const source = await (await fetch(`http://127.0.0.1:${port}/${file}`)).text();
+    for (const file of ['workbench.html', 'workbench-app.js', 'workbench-data.js', 'workbench.css']) {
+      const source = await (await fetch(`http://127.0.0.1:${port}/${file}?production=1`)).text();
       assert.doesNotMatch(source, /__CG_GALLERY|bootDesignGallery|html\.design-gallery|id="design-gallery"/, `${file} must not ship design galleries`);
+      assert.doesNotMatch(source, /workbench-fixtures|OPENCLAW_MAP|CONTEXT_GUARD_MAP|S-live|B50/, `${file} must not ship demo records`);
     }
+    await preview.goto(`http://127.0.0.1:${port}/workbench.html?production=1`);
+    await preview.waitForSelector('#viewport');
+    assert.equal(await preview.evaluate(() => Object.keys(window.__CG_WORKBENCH_DATA.catalog).length), 1);
+    assert.equal(await preview.evaluate(() => window.__CG_WORKBENCH_DATA.catalog['context-guard'].blueprint.bugs.length), 0);
     recordCheck('production-excludes-design-galleries');
     await preview.goto(`http://127.0.0.1:${port}/design/workbench-gallery/index.html?https://raw.githubusercontent.com/example/repo/sha/index.html?gallery=1`);
     await preview.waitForSelector('.g-item');

@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cloudSessionActivity, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
-import { atomicWrite, readJSON } from '../scripts/workbench/io.mjs';
+import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
 const execFileAsync = promisify(execFile);

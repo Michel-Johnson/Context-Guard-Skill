@@ -314,81 +314,11 @@ function idTaken(id){
   scan(data);
   return found;
 }
-const { OPENCLAW_MAP, CONTEXT_GUARD_MAP, CG_OWNS, OPENCLAW_NOTES, CONTEXT_GUARD_NOTES, U } = window.__CG_WORKBENCH_FIXTURES;
+const { U, catalog } = window.__CG_WORKBENCH_DATA;
 
 const clone = o => JSON.parse(JSON.stringify(o));
-const catalog = {
-  "context-guard": {
-    id:"context-guard",
-    name:"Context Guard",
-    heading:"Context Guard 架构导图",
-    source:"Michel-Johnson/Context-Guard-Skill",
-    blueprint: CONTEXT_GUARD_MAP,
-    live:null, auth:null, bootstrap:"proposed", firstUseOpen:false,
-    notes: CONTEXT_GUARD_NOTES,
-    analyze:[
-      {do:"打开 README 与 SKILL.md，弄清 skill 合同", find:"人与 Agent 共用项目记忆，不是聊天摘要"},
-      {do:"按包边界拆 scripts / prototype / .codex/context", find:"合同、工作台、context、skill 文件是不同开工面"},
-      {do:"把工作台拆到函数：renderNode、visibleChildren、检查器、持久化", find:"prototype/workbench.html 里每一块都是可改单元"},
-      {do:"把开发粒度写进 architecture.md：文件和函数，不是七句口号", find:"进入模块先看到子模块卡；文件挂在子模块下"},
-      {do:"先拿出几种第一层拆法给人对，定了再往下拆", find:"卡名和用途要一眼能看懂；定稿大约 4–8 张，不是一上来倒整棵树"}
-    ],
-    l1Cuts:[
-      {id:"surfaces", title:"按开工面切", why:"合同、工作台、文件、CLI 是不同的改法。", fromBlueprint:true},
-      {id:"jobs", title:"按人要干的事切", why:"先问这次人在干什么，再落到文件。", modules:[
-        {id:"C1", title:"第一次把仓库画成图", purpose:"和人商量第一层怎么切，定了再往下拆"},
-        {id:"C2", title:"看图、改记忆、点头", purpose:"人在工作台里确认，不在命令行里"},
-        {id:"C3", title:"Agent 按路径找卡", purpose:"小索引跳到坏例、任务、那张卡，不读整张地图"},
-        {id:"C4", title:"记下坏例和一类活", purpose:"bugs/fixes 和 tasks 说明书，挂在节点上"},
-        {id:"C5", title:"把 skill 装进这个仓库", purpose:"init、语言、SessionStart hook"}
-      ]},
-      {id:"folders", title:"按仓库目录切", why:"跟文件夹长得像。容易变成目录树，一般不该当第一层。", modules:[
-        {id:"F1", title:"SKILL.md", purpose:"技能说明书"},
-        {id:"F2", title:"prototype/", purpose:"工作台 HTML"},
-        {id:"F3", title:".codex/context/", purpose:"会话、坏例、任务、地图文件"},
-        {id:"F4", title:"scripts/", purpose:"init 和 hook"}
-      ]}
-    ]
-  },
-  openclaw: {
-    id:"openclaw",
-    name:"OpenClaw",
-    heading:"OpenClaw 架构导图",
-    source:"openclaw/openclaw",
-    blueprint: OPENCLAW_MAP,
-    live:null, auth:null, bootstrap:"pending", firstUseOpen:true,
-    notes: OPENCLAW_NOTES,
-    analyze:[
-      {do:"读 README 与 pnpm-workspace，找单一运行时入口", find:"src/gateway 是控制面，不是并列微服务"},
-      {do:"顺着 connect.ts、agent-runner.ts、sessionKey 把协议和调度拆开", find:"握手、turn、队列是不同文件"},
-      {do:"读 packages/agent-core 循环和 memory-host-sdk", find:"loop、裁剪、memory 槽、sandbox 都要单独成节点"},
-      {do:"按渠道实现文件拆（baileys.ts、grammy.ts、pairing），不要只列渠道名", find:"WhatsApp 单会话不变量写在 baileys.ts 旁边"},
-      {do:"控制面先拆成 CLI / TUI / Control UI / 远程 四张子模块卡，命令文件挂在卡下", find:"点进控制面 UI 先看到子模块，不是二十几个文件平铺"},
-      {do:"TUI 与 Control UI 的主循环、双后端、transcript 写进对应子模块，不要空壳也不要平铺", find:"tui.ts、GatewayChatClient、ui/src/chat 都在子模块里"},
-      {do:"先拿出几种第一层拆法给人对，定了再往下拆；边写 architecture.md", find:"卡名要一眼能看懂；OpenClaw 定稿可以 8 张主干，小仓库可以只有 4 张"}
-    ],
-    l1Cuts:[
-      {id:"runtime", title:"按运行面切", why:"人碰到的是 Gateway、聊天渠道、控制面板、手机伴侣，不是文件夹。", fromBlueprint:true},
-      {id:"jobs", title:"按人要干的事切", why:"先问接下来要改哪一类活，再对文件。", modules:[
-        {id:"J1", title:"接到已有聊天里", purpose:"WhatsApp / Telegram 等渠道怎么把消息送进助手"},
-        {id:"J2", title:"跑完一轮对话", purpose:"选模型、调工具、写记忆，一次 agent 调用怎么走完"},
-        {id:"J3", title:"在本机操作 Gateway", purpose:"CLI、终端界面、浏览器控制面，人怎么改状态"},
-        {id:"J4", title:"给这台设备装伴侣", purpose:"手机和电脑以 node 连上；Linux 只跑远程命令"},
-        {id:"J5", title:"谁能连上、怎么部署", purpose:"配对、默认安全、隧道和安装"}
-      ]},
-      {id:"folders", title:"按仓库目录切", why:"跟文件夹长得像。容易变成目录树，一般不该当第一层。", modules:[
-        {id:"D1", title:"src/gateway", purpose:"Gateway 进程和协议文件"},
-        {id:"D2", title:"packages/agent-core", purpose:"agent 循环和工具"},
-        {id:"D3", title:"src/channels", purpose:"各聊天渠道实现"},
-        {id:"D4", title:"apps", purpose:"macOS / iOS / Android / Linux"},
-        {id:"D5", title:"ui", purpose:"Control UI 前端"},
-        {id:"D6", title:"scripts 与 CLI", purpose:"命令行入口"}
-      ]}
-    ]
-  }
-};
 let repoId = "context-guard";
-const data = clone(CONTEXT_GUARD_MAP);
+const data = clone(catalog[repoId].blueprint);
 let selectedId = "T0";
 let focusId = null;
 let viewRootId = "T0";
@@ -1172,36 +1102,8 @@ function restore(){
   }
   return false;
 }
-function demoBug(id, title, extra={}){
-  return {
-    id,
-    title,
-    desc: extra.desc || "",
-    status: extra.status || "open",
-    files: [],
-    sessions: extra.sessions ? extra.sessions.slice() : [],
-    record: ".codex/context/bugs/"+id+".md",
-    ...(extra.dispatch ? {dispatch: extra.dispatch} : {})
-  };
-}
-const DEMO_SESSION_METAS = [
-  {id:"S-live", status:"active", platform:"Cursor", name:"午后"},
-  {id:"S-dead", status:"stopped", platform:"Codex", name:"昨晚"}
-];
-const DEMO_OPEN_BUGS = [
-  { parentId:"M1", bug: demoBug("B20", "原生 prompt 会打断看图", {desc:"检查器编辑和建图确认必须留在页面里", sessions:["S-live"]}) },
-  { parentId:"M1", bug: demoBug("B40", "顶栏还没人认领", {desc:"待处理：没有 Session"}) },
-  { parentId:"M1", bug: demoBug("B41", "发出去了但没送到", {desc:"待处理 · 发送失败", dispatch:{status:"failed", at:"2026-09-01T00:00:00.000Z"}}) },
-  { parentId:"M1", bug: demoBug("B42", "当前窗口正在改检查器", {desc:"处理中 · 活着的会话", sessions:["S-live"]}) },
-  { parentId:"M1", bug: demoBug("B43", "昨晚那次做完人走了", {desc:"待接手：会话已停", sessions:["S-dead"]}) },
-  { parentId:"M1", bug: demoBug("B44", "两个会话都还挂着", {desc:"处理中 · 一个活一个停", sessions:["S-live","S-dead"]}) },
-  { parentId:"M1", bug: demoBug("B45", "修完在写记忆", {desc:"收尾中", status:"pending"}) },
-  { parentId:"M1", bug: demoBug("B46", "测试已经过了", {desc:"已修复", status:"fixed"}) },
-  { parentId:"M1", bug: demoBug("B47", "人点过可以关", {desc:"已解决", status:"resolved"}) },
-  { parentId:"M1", bug: demoBug("B48", "这期先不做", {desc:"已延期", status:"deferred"}) },
-  { parentId:"M1", bug: demoBug("B49", "设计如此不改", {desc:"不处理", status:"wontfix"}) },
-  { parentId:"M1", bug: demoBug("B50", "手机竖屏时抽屉把手被底栏挡住，标题折成两行看点和分配会不会挤掉", {desc:"长标题", sessions:["S-live"]}) }
-];
+const DEMO_SESSION_METAS = window.__CG_WORKBENCH_DATA.demoSessions || [];
+const DEMO_OPEN_BUGS = window.__CG_WORKBENCH_DATA.demoBugs || [];
 function ensureDemoBugs(tree){
   if(!tree) return;
   let fallback = null;

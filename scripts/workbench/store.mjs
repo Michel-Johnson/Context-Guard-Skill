@@ -3,8 +3,8 @@ import path from 'node:path';
 import { watch } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { MapError, validate, applyOperations, diffTrees } from '../../prototype/map-model.mjs';
-import { hash, encode, atomicWrite, readJSON } from './io.mjs';
+import { MapError, validate, applyOperations, diffTrees } from '../shared/map-model.mjs';
+import { hash, encode, atomicWrite, readJSON } from '../shared/io.mjs';
 import { inspectJournal, backupJournal, replaceJournal } from './journal.mjs';
 
 export class MapStore extends EventEmitter {

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { startServer } from '../scripts/workbench/server.mjs';
-import { encode, hash } from '../scripts/workbench/io.mjs';
+import { encode, hash } from '../scripts/shared/io.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');

@@ -1,6 +1,6 @@
 import { readProjectRegistry } from './registry.mjs';
-import { readJSON } from './io.mjs';
-import { MAX_MESSAGE_BYTES } from './protocol.mjs';
+import { readJSON } from '../shared/io.mjs';
+import { MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 
 async function jsonRequest(url, options = {}) {
   const { timeoutMs = 8000, ...requestOptions } = options;

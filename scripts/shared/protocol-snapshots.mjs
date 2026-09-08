@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
 import { canonical, fail, MAX_MESSAGE_BYTES } from './protocol.mjs';
-import { entries } from '../../prototype/map-model.mjs';
+import { entries } from './map-model.mjs';
 import { nodeProjection, relationProjection } from './protocol-map.mjs';
 
 // Snapshots are private, immutable read projections, never a second Map authority.

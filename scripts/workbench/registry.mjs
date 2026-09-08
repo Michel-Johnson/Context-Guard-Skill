@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { atomicWrite, encode, readJSON, withFileLock } from './io.mjs';
-import { MapError } from '../../prototype/map-model.mjs';
+import { atomicWrite, encode, readJSON, withFileLock } from '../shared/io.mjs';
+import { MapError } from '../shared/map-model.mjs';
 
 export const globalWorkbenchDirectory = () => path.resolve(
   process.env.CONTEXT_GUARD_NAMED_STATE_DIR || path.join(os.homedir(), '.context-guard/named-workbench'),

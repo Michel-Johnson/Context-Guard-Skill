@@ -1,4 +1,4 @@
-import { fail } from './protocol.mjs';
+import { fail } from '../shared/protocol.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 

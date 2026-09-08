@@ -10,7 +10,7 @@ import { createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/
 import { startServer } from '../scripts/workbench/server.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { sessionMemoryDir } from '../scripts/workbench/memory.mjs';
-import { atomicWrite, encode, pause } from '../scripts/workbench/io.mjs';
+import { atomicWrite, encode, pause } from '../scripts/shared/io.mjs';
 
 const output = path.resolve(process.argv[2] || `output/playwright/browser-ci/session-sync-${Date.now()}-${randomUUID()}`);
 const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-sync-browser-'));

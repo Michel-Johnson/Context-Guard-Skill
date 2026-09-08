@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
-import { atomicWrite, encode, readJSON } from './io.mjs';
+import { atomicWrite, encode, readJSON } from '../shared/io.mjs';
 import { RouteStore } from './portless-routes.mjs';
 import { compatibleRuntime } from './runtime.mjs';
 import { DeviceHeartbeat } from './device-heartbeat.mjs';

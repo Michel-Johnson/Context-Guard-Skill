@@ -27,6 +27,13 @@ function requireFile(file) {
 }
 
 if (manifest.schemaVersion !== 1) fail("unsupported manifest schema version");
+const productFiles = manifest.productFiles;
+if (!Array.isArray(productFiles) || productFiles.some(file => typeof file !== 'string' || !file.startsWith('tests/'))) fail('invalid productFiles');
+if (new Set(productFiles).size !== productFiles.length) fail('duplicate productFiles');
+for (const file of productFiles) requireFile(file);
+for (const file of walk('tests')) {
+  if (!productFiles.includes(file)) fail(`product test file needs explicit manifest approval: ${file}`);
+}
 const automatic = manifest.automaticNodeTests;
 const excluded = new Set(automatic.excluded);
 const discovered = automatic.roots

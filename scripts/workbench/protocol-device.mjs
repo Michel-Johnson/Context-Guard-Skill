@@ -3,8 +3,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { atomicWrite, encode, hash, readJSON, withFileLock } from './io.mjs';
-import { canonical, fail, validateMessage, ProtocolError } from './protocol.mjs';
+import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
+import { canonical, fail, validateMessage, ProtocolError } from '../shared/protocol.mjs';
 import { sendMessage, ProjectMessagePump } from './protocol-client.mjs';
 
 const readTypes = new Set(['sync.heartbeat', 'sync.read', 'workbench.read', 'object.read', 'blob.get']);

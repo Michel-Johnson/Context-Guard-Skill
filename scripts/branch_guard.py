@@ -2,44 +2,13 @@
 """Keep temporary tests/fake repos off main while retaining approved CI/CD checks."""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
 WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 TEST_MARK = "test-layout"
-PRODUCT_TESTS = {
-    "tests/interface-auth.test.mjs",
-    "tests/interface-blobs.test.mjs",
-    "tests/interface-delivery.test.mjs",
-    "tests/interface-device.test.mjs",
-    "tests/interface-events.test.mjs",
-    "tests/interface-map.test.mjs",
-    "tests/interface-memory-errors.test.mjs",
-    "tests/interface-protocol.test.mjs",
-    "tests/interface-repository.test.mjs",
-    "tests/interface-snapshots.test.mjs",
-    "tests/interface-store.test.mjs",
-    "tests/interface-transport.test.mjs",
-    "tests/interface-workflow.test.mjs",
-    "tests/ci-smoke.mjs",
-    "tests/cloud-sync-client.test.mjs",
-    "tests/cloud-sync-browser.mjs",
-    "tests/cloud-workbench.test.mjs",
-    "tests/cloud-workbench-browser.mjs",
-    "tests/workbench-sync.test.mjs",
-    "tests/workbench-inbox.test.mjs",
-    "tests/hook-lifecycle.test.mjs",
-    "tests/hook-runtime-concurrency.test.mjs",
-    "tests/named-workbench.test.mjs",
-    "tests/test-manifest.json",
-    "tests/workbench-browser.mjs",
-    "tests/workbench-journal-recovery.test.mjs",
-    "tests/workbench-journal-recovery-browser.mjs",
-    "tests/workbench-attachments.test.mjs",
-    "tests/crash-worker.mjs",
-    "tests/win-file-lock.py",
-}
 PRODUCT_FORBIDDEN = (
     "tests/",
     "fixtures/",
@@ -88,10 +57,19 @@ def main() -> int:
             return 1
         return 0
 
+    try:
+        manifest = json.loads(git("show", ":tests/test-manifest.json"))
+        approved = manifest["productFiles"]
+        if not isinstance(approved, list) or any(not isinstance(p, str) or not p.startswith("tests/") for p in approved):
+            raise ValueError("invalid productFiles")
+        product_tests = set(approved)
+    except (subprocess.CalledProcessError, ValueError, KeyError, TypeError):
+        print("Invalid staged test manifest; product test policy is unavailable", file=sys.stderr)
+        return 1
     bad = [
         p
         for p in paths
-        if (p.startswith(PRODUCT_FORBIDDEN) and p not in PRODUCT_TESTS) or p in EVAL_SCRIPTS
+        if (p.startswith(PRODUCT_FORBIDDEN) and p not in product_tests) or p in EVAL_SCRIPTS
     ]
     if bad:
         print(

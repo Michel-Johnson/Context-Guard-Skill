@@ -1,4 +1,4 @@
-import { fail, MAX_MESSAGE_BYTES, validateMessage } from './protocol.mjs';
+import { fail, MAX_MESSAGE_BYTES, validateMessage } from '../shared/protocol.mjs';
 
 // SSE is only a hint. Independent heartbeats remain responsible for catching gaps.
 export async function readEvents(origin, credential, { signal, onEvent, fetcher = fetch, allowLoopback = false, idleMs = 25000 }) {
