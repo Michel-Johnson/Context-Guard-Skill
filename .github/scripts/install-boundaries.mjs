@@ -124,6 +124,18 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
     });
   }
 
+  check("claude-native-config-directory", ({ env, invoke, home }) => {
+    const directory = path.join(env.HOME, "isolated-claude-config");
+    const legacy = path.join(env.HOME, "legacy-claude");
+    invoke(["install"], true, { ...env, CLAUDE_CONFIG_DIR: directory, CLAUDE_HOME: legacy });
+    assert.ok(fs.existsSync(path.join(directory, "settings.json")));
+    for (const role of ["Coordinator.md", "Developer.md", "Tester.md", "roles.md"]) {
+      assert.equal(fs.readFileSync(path.join(directory, "skills", "context-guard", role), "utf8"), fs.readFileSync(path.join(packageDirectory, role), "utf8"));
+    }
+    assert.ok(!fs.existsSync(legacy));
+    for (const client of clients) assert.ok(!fs.existsSync(home(client)));
+  });
+
   for (const client of clients) {
     check(`repeat-${client}`, ({ home, skill, config, invoke, env }) => {
       fs.mkdirSync(home(client));

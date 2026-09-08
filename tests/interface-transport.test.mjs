@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { startServer } from '../scripts/workbench/server.mjs';
+import { startServer, loopbackJSON } from '../scripts/workbench/server.mjs';
 import { request } from '../scripts/workbench/cli.mjs';
 import { hash } from '../scripts/shared/io.mjs';
 import { messageHandler, ProjectMessagePump, sendMessage } from '../scripts/workbench/protocol-client.mjs';
@@ -14,6 +14,17 @@ import { DeviceHeartbeat } from '../scripts/workbench/device-heartbeat.mjs';
 
 const session = { id: 'session-1', generation: 1 };
 const message = { v: 2, id: 'r1', type: 'sync.read', session, payload: { afterSeq: 0, limit: 50 } };
+test('control reads accept valid large histories while probes retain a bounded response', async t => {
+  const value = { history: 'x'.repeat(1100000) };
+  const server = http.createServer((_req, res) => res.end(JSON.stringify(value)));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  assert.deepEqual(await request({ url }, '/api/changes'), value);
+  const limited = await loopbackJSON(new URL(url));
+  assert.equal(limited.ok, false);
+  assert.equal(limited.value.error.code, 'RESPONSE_TOO_LARGE');
+});
 test('one device tick combines two project backends into one Cloud heartbeat', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-heartbeat-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

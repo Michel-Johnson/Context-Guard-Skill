@@ -63,13 +63,14 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     task.review = structuredClone(p); notify(); return changed(task);
   }
   if (message.type === 'review.result') {
-    role(p.kind === 'brief' ? 'human' : 'coordinator');
+    role(p.kind === 'plan' ? 'coordinator' : 'human');
     if (p.receiptId) fail('FORBIDDEN', 'Review receipts are issued by the backend');
-    at(p.kind === 'brief' ? 'brief' : 'plan-ready');
+    at(p.kind === 'brief' ? 'brief' : p.kind === 'acceptance' ? 'awaiting-merge' : 'plan-ready');
     const receiptId = randomUUID();
     const receipt = put(receiptId, 'reviewReceipt', { ...p, receiptId, issuer: principal.agentId }, receiptId);
-    task[`${p.kind}Review`] = { ...receipt, decision: p.decision };
-    task.stage = p.decision === 'approved' ? (p.kind === 'brief' ? 'approved' : 'executing') : `${p.kind}-rejected`;
+    task[`${p.kind}Review`] = { ...receipt, decision: p.decision, reason: p.reason };
+    if (p.kind === 'acceptance') task.acceptanceAt = new Date().toISOString();
+    task.stage = p.decision === 'approved' ? ({ brief: 'approved', plan: 'executing', acceptance: 'accepted' }[p.kind]) : `${p.kind}-rejected`;
     delete task.review;
     emit({ ...message, id: randomUUID(), payload: { ...p, receiptId } });
     const status = changed(task);
@@ -146,7 +147,9 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   if (message.type === 'ci.request') {
     role('coordinator', 'ci'); at('awaiting-ci');
     if (p.sourceSha !== task.sourceSha || p.ciTodoRef !== task.handoff.ciTodoRef || canonical(p.unitTestRefs) !== canonical(task.handoff.unitTestRefs)) fail('CONFLICT', 'CI request differs from the handoff');
-    task.stage = 'testing'; notify(); return changed(task);
+    const references = Object.fromEntries([p.ciTodoRef, ...p.unitTestRefs].map(ref => [ref, task.references[ref]]));
+    if (p.references && canonical(p.references) !== canonical(references)) fail('CONFLICT', 'CI object versions differ from the handoff');
+    task.stage = 'testing'; notify({ ...message, payload: { ...p, references } }); return changed(task);
   }
   if (message.type === 'ci.result') {
     role('ci'); at('testing');
@@ -172,23 +175,28 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     });
     task.ciTodoResult = put(todoRef, 'ciTodo', { ...todo.content, items: annotated, ciResultRef: task.ci.ref });
     task.stage = p.verdict === 'passed' ? 'awaiting-merge' : 'ci-failed';
+    if (p.verdict === 'passed') task.review = { kind: 'acceptance', ref: task.ci.ref, version: task.ci.version };
+    delete task.acceptanceReview;
     notify();
     return { ...changed(task), ...task.ci, ciTodo: task.ciTodoResult };
   }
   if (message.type === 'task.rework') {
-    role('coordinator'); at('ci-failed');
+    role('coordinator'); at('ci-failed', 'acceptance-rejected');
     if (p.sourceSha !== task.sourceSha || p.ciResultRef !== task.ci.ref) fail('CONFLICT', 'Rework does not reference the failed revision');
     const result = read(task.ci.ref, task.ci.version, 'ciResult');
+    if (task.stage === 'acceptance-rejected' && (p.reason !== task.acceptanceReview?.reason || p.failedTestIds.length)) fail('CONFLICT', 'Preserve the human rejection feedback; do not invent failed CI tests');
     if (p.failedTestIds.some(id => !result.content.checks.some(check => check.testId === id && check.status !== 'passed'))) fail('CONFLICT', 'Rework test IDs differ from CI evidence');
-    task.stage = 'rework'; notify(); return changed(task);
+    task.rework = structuredClone(p); task.stage = 'rework'; notify(); return changed(task);
   }
   if (message.type === 'task.control') {
     role('coordinator');
     if (p.expectedVersion !== task.version) fail('CONFLICT', 'Task changed', { currentVersion: task.version });
     if (!task.busy) fail('CONFLICT', 'Task has no execution slot');
     if (p.action === 'complete') {
-      at('awaiting-merge', 'cancelled');
-      if (!await policy.verifyCompletion?.(principal, task, p.data)) fail('FORBIDDEN', 'Merge and archive receipts are not verified');
+      at('accepted', 'cancelled');
+      const verified = await policy.verifyCompletion?.(principal, task, p.data);
+      if (!verified) fail('FORBIDDEN', 'Merge and archive receipts are not verified');
+      task.completion = { proof: structuredClone(verified), closeReceiptId: message.id };
       task.stage = 'closing';
     } else if (p.action === 'resume') { at('interrupted', 'cancelled'); task.stage = 'resuming'; }
     else { if (['closing', 'closed', 'cancelling'].includes(task.stage)) fail('CONFLICT', 'Control already pending'); task.previousStage = task.stage; task.stage = 'cancelling'; }

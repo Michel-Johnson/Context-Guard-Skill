@@ -134,7 +134,7 @@ export class Access {
         // A blocked Stop means governance is unfinished, not that the Agent is
         // still generating a response. Keep those two states separate so stale
         // bindings never render as a permanently spinning Session.
-        const stopped = ['stop', 'stop-blocked', 'subagent-stop'].includes(event.event);
+        const stopped = ['stop', 'stop-blocked', 'subagent-stop', 'session-end', 'stop-failure'].includes(event.event);
         const activated = ['session-start', 'subagent-start', 'user-prompt-submit'].includes(event.event);
         const status = stopped ? 'stopped' : activated ? 'active' : previous?.status || 'unknown';
         sessions.set(id, {

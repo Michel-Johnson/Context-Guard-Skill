@@ -53,6 +53,42 @@ async function fixture() {
   return project;
 }
 
+test('Claude unbound Stop is a diagnostic, not another model turn', async t => {
+  const project = await fixture();
+  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  const result = hook('Stop', project, 'claude-unbound', { platform: 'claude' });
+  assert.match(result.json.systemMessage, /unbound|binding unavailable/i);
+  assert.equal(result.json.hookSpecificOutput, undefined);
+  assert.equal(result.json.decision, undefined);
+});
+
+test('Claude CI permits exact assigned test commands, not source edits or an inactive CI role', () => {
+  const result = run(python, ['-c', `import sys,json;sys.path.insert(0,${JSON.stringify(path.join(repository, 'scripts'))});import context_guard_hook as h
+ci={"active":{"mode":"ci","commands":["npm test"]}}
+command=lambda value:{"tool_name":"Bash","tool_input":{"command":value}}
+assert h.ci_tool_allowed(command("npm test"),ci) is True
+assert h.ci_tool_allowed(command("npm test && git commit -am changed"),ci) is False
+assert h.ci_tool_allowed({"tool_name":"Write","tool_input":{"file_path":"src/app.js","content":"changed"}},ci) is False
+assert h.ci_tool_allowed(command("npm test"),{"ci":True,"active":None}) is False
+assert h.ci_tool_allowed(command("npm test"),{"active":{"mode":"reviewed"}}) is None
+print("CI_BOUNDARY_OK")`]);
+  assert.equal(result.stdout.trim(), 'CI_BOUNDARY_OK');
+});
+
+test('Claude display name uses only the bounded own-session transcript metadata', async t => {
+  const project = await fixture();
+  t.after(() => fs.rm(project, { recursive: true, force: true }));
+  const config = path.join(project, 'claude'), transcript = path.join(config, 'projects', 'lab', 'session-one.jsonl');
+  await fs.mkdir(path.dirname(transcript), { recursive: true });
+  await fs.writeFile(transcript, 'x'.repeat(300000) + '\n' + JSON.stringify({ type: 'custom-title', sessionId: 'session-one', customTitle: 'Claude Developer Lab' }) + '\n');
+  const read = (file, session) => run(python, ['-c', 'import sys,json; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from context_guard_hook import session_display_name; print(json.dumps(session_display_name({"transcript_path":sys.argv[2]},"claude",Path.cwd(),sys.argv[3])))', path.join(repository, 'scripts'), file, session], { cwd: project, env: { CLAUDE_CONFIG_DIR: config } }).stdout.trim();
+  assert.equal(JSON.parse(read(transcript, 'session-one')), 'Claude Developer Lab');
+  assert.equal(JSON.parse(read(transcript, 'session-two')), '');
+  const outside = path.join(project, 'session-one.jsonl');
+  await fs.copyFile(transcript, outside);
+  assert.equal(JSON.parse(read(outside, 'session-one')), '');
+});
+
 test('Hook grants match dynamic all, explicit revocation and per-node read-only access', async () => {
   const project = await fixture();
   try {

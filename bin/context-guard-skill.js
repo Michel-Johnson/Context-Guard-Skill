@@ -12,6 +12,10 @@ const sourceHooksPath = path.join(packageRoot, "hooks.json");
 const pythonScript = path.join(sourceSkillDir, "scripts", "context_guard.py");
 const skillInstallEntries = [
   "SKILL.md",
+  "roles.md",
+  "Coordinator.md",
+  "Developer.md",
+  "Tester.md",
   "README.md",
   "README.zh-CN.md",
   "THIRD_PARTY_NOTICES.md",
@@ -57,12 +61,11 @@ function expandHome(inputPath) {
 const PLATFORM_SPECS = {
   codex: { env: "CODEX_HOME", folder: ".codex", hooksFile: "hooks.json", configFile: "config.toml" },
   cursor: { env: "CURSOR_HOME", folder: ".cursor", hooksFile: "hooks.json" },
-  claude: { env: "CLAUDE_HOME", folder: ".claude", hooksFile: "settings.json" }
+  claude: { env: "CLAUDE_CONFIG_DIR", legacyEnv: "CLAUDE_HOME", folder: ".claude", hooksFile: "settings.json" }
 };
 
 function platformHome(platform) {
-  const spec = PLATFORM_SPECS[platform];
-  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
+  return platformHomeBySpec(PLATFORM_SPECS[platform]);
 }
 
 function platformTargets(platform) {
@@ -95,13 +98,13 @@ function selectedPlatforms(requested) {
   if (requested === "all") return Object.keys(PLATFORM_SPECS);
   if (requested !== "auto") return [requested];
   const detected = Object.entries(PLATFORM_SPECS)
-    .filter(([, spec]) => Boolean(process.env[spec.env]) || fs.existsSync(platformHomeBySpec(spec)))
+    .filter(([, spec]) => Boolean(process.env[spec.env] || process.env[spec.legacyEnv]) || fs.existsSync(platformHomeBySpec(spec)))
     .map(([name]) => name);
   return detected.length ? detected : ["codex"];
 }
 
 function platformHomeBySpec(spec) {
-  return path.resolve(expandHome(process.env[spec.env] || path.join(os.homedir(), spec.folder)));
+  return path.resolve(expandHome(process.env[spec.env] || process.env[spec.legacyEnv] || path.join(os.homedir(), spec.folder)));
 }
 
 function parseInstallArgs(args) {
@@ -331,6 +334,8 @@ function readObject(target, platform) {
   return value;
 }
 
+const CLAUDE_EVENTS = ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "PreCompact", "PostCompact", "SubagentStop", "Stop", "StopFailure", "SessionEnd"];
+
 function plannedHooks(platform, skillTarget, hooksTarget) {
   if (!fs.existsSync(sourceHooksPath)) {
     throw new Error(`source hooks file is missing: ${sourceHooksPath}`);
@@ -341,7 +346,11 @@ function plannedHooks(platform, skillTarget, hooksTarget) {
   }
   const rawIncoming = JSON.parse(fs.readFileSync(sourceHooksPath, "utf8"));
   if (platform === "claude") {
-    const supported = new Set(["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"]);
+    for (const [name, source, from, to] of [["PostToolUseFailure", "PostToolUse", "post-tool-use", "post-tool-use-failure"], ["SessionEnd", "Stop", "stop", "session-end"], ["StopFailure", "Interrupt", "interrupt", "stop-failure"]]) {
+      rawIncoming.hooks[name] = JSON.parse(JSON.stringify(rawIncoming.hooks[source]));
+      for (const group of rawIncoming.hooks[name]) for (const hook of group.hooks) hook.command = hook.command.replace(`context_guard_hook.py ${from} `, `context_guard_hook.py ${to} `);
+    }
+    const supported = new Set(CLAUDE_EVENTS);
     rawIncoming.hooks = Object.fromEntries(Object.entries(rawIncoming.hooks || {}).filter(([event]) => supported.has(event)));
   }
   const incoming = rewriteGroupedHookCommands(rawIncoming, skillTarget, platform);
@@ -488,7 +497,7 @@ function doctor(args) {
   if ((options.target || options.hooksTarget || options.configTarget) && options.platform === "auto") platforms = ["codex"];
   const eventNames = {
     codex: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "SubagentStop", "Stop", "Interrupt"],
-    claude: ["SessionStart", "SubagentStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStop", "Stop"],
+    claude: CLAUDE_EVENTS,
     cursor: ["sessionStart", "subagentStart", "beforeSubmitPrompt", "subagentStop", "stop"]
   };
   for (const platform of platforms) {

@@ -10,6 +10,18 @@ Map 复用现有事务和协调逻辑，v2 提供读写、固定分页、恢复�
 
 ## 公共格式（只定义一次）
 
+### 实验中的合并与最终关闭校验（开发分支，未部署）
+
+Cloud 私有记忆配置的 `projects[projectId].completion` 可显式启用校验：
+`{"requiredChecks":[{"name":"Required","appId":15368}],"tokenFile":"/absolute/private/github-read-token"}`。
+`repository` 和 `ref` 沿用服务端项目配置。私有仓库凭据仅需该仓库 PR/Checks 读取权限；文件必须仅所有者可读，不交给模型，不复制个人全仓库令牌。公开仓库可省略 `tokenFile`。
+
+Coordinator 的 `complete_task` 传 `gitReceiptRef:"github-pr:<PR编号>"` 和 `archiveReceiptRef:<已发布Session版本>`。
+服务端检查人工验收、CI 通过、GitHub PR 的仓库/目标分支/准确 SHA、指定名称与 App 的检查，以及自己的发布历史；要求验收早于合并、CI 早于合并、归档晚于合并。Agent 不能上传一个“合并成功”对象替代这些事实。
+通过后保存校验结果并派发关闭控制；执行端按原控制编号回报 `closed`，验证持久回执后才释放 FIFO 队列。重启不丢失此校验结果。
+
+当前保守限制：仅同仓库 PR、最多 100 个最新 Check Run，发布时 Main SHA 必须与该 PR 合并 SHA 一致。超限、后续 Main 推进、网络错误或未配置均拒绝关闭；不自动重试合并、不丢弃任务。真实私有仓库交付仍列在 `CI_todo.md`，单元校验不代表完整闭环验收。
+
 通信使用 UTF-8 JSON。HTTP 入口 POST /api/v2/messages；本地宿主可调用 `context-guard map exchange --root <目录> --session <真实Session> --input -`，从标准输入传完整信封，从标准输出读取回执。CLI 复用已核验的本地绑定，不向 Agent 暴露 Cloud 凭证。不绑定模型 harness。
 
 ```json

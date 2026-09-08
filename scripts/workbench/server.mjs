@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { ClaudeRuntime } from './claude-runtime.mjs';
 import { MapStore } from './store.mjs';
 import { Access, token } from './access.mjs';
 import { atomicWrite, encode, readJSON, pause, hash } from '../shared/io.mjs';
@@ -25,7 +26,7 @@ import { registeredProject, rememberProject } from './registry.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
-import { messageHandler } from './protocol-client.mjs';
+import { messageHandler, sendMessage } from './protocol-client.mjs';
 import { fail as protocolFail, ProtocolError, validateMessage } from '../shared/protocol.mjs';
 import { syncPaths } from '../shared/sync-paths.mjs';
 import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
@@ -105,7 +106,7 @@ export async function queueCodexMessage({ sessionId, message, root }, { run = ex
     maxBuffer: 1024 * 1024,
   });
 }
-function loopbackJSON(target, { method = 'GET', headers = {}, body, timeout = 600 } = {}) {
+function loopbackJSON(target, { method = 'GET', headers = {}, body, timeout = 600, maxBytes = 1024 * 1024 } = {}) {
   return new Promise(resolve => {
     let settled = false;
     const finish = value => { if (!settled) { settled = true; resolve(value); } };
@@ -116,7 +117,10 @@ function loopbackJSON(target, { method = 'GET', headers = {}, body, timeout = 60
         let size = 0;
         res.on('data', chunk => {
           size += chunk.length;
-          if (size > 1024 * 1024) { req.destroy(); finish(null); }
+          if (size > maxBytes) {
+            finish({ ok: false, status: 502, value: { error: { code: 'RESPONSE_TOO_LARGE', message: 'Workbench response exceeds the client size limit' } } });
+            req.destroy();
+          }
           else chunks.push(chunk);
         });
         res.on('end', () => {
@@ -144,6 +148,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
   root = await fs.realpath(path.resolve(root));
   let project = await ensureProjectBinding(await resolveProject(root));
+  const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
   let namedEntry = await readJSON(namedFile, null), openClaimed = false;
@@ -169,6 +174,17 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const protocolMap = new ProtocolMap(path.join(project.sharedDir, 'interface-v2', 'map-intents'));
   const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
   let device;
+  const ciConnections = new Map();
+  const ciRetries = new Map();
+  const ciChannel = (sessionId, connection) => {
+    if (!ciConnections.has(sessionId) || ciConnections.get(sessionId).origin !== connection.origin) {
+      const channel = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', sessionId), origin: connection.origin, allowLoopback: true,
+        transport: (origin, credential, message, options) => sendMessage(origin, credential, message, { ...options, ciSessionId: sessionId }) });
+      channel.file = connection.file; // Device login is shared; this is not another heartbeat service.
+      ciConnections.set(sessionId, channel);
+    }
+    return ciConnections.get(sessionId);
+  };
   let deviceServiceCheck = null, deviceServiceCheckedAt = 0;
   const ensureDeviceService = async () => {
     if (deviceServiceCheck) return deviceServiceCheck;
@@ -199,7 +215,12 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const identity = identities.get(head.session.id), heartbeat = { ...head.session, ackedSeq: 0 };
               if (identity?.name) heartbeat.name = identity.name;
               if (identity?.platform && identity.platform !== 'unknown') heartbeat.platform = identity.platform;
-              heartbeat.execution = { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
+              const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id) : null;
+              if (native?.role === 'ci') ciChannel(head.session.id, device);
+              if (native?.name) heartbeat.name = native.name;
+              heartbeat.execution = native?.configured && Date.parse(native.at) >= (Date.parse(identity?.statusSeen) || 0)
+                ? { status: native.status, at: native.at }
+                : { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
               registered.push(heartbeat);
             }
           } catch (error) { device.lastError = error.code || 'UNAVAILABLE'; }
@@ -212,24 +233,29 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (executionNotifications.has(message.type) || message.type === 'review.result' && message.payload.kind === 'plan') {
           const session = (await access.sessionRegistry()).find(item => item.id === message.session.id);
           if (!session) protocolFail('FORBIDDEN', 'Host Session is unavailable');
-          // Pull adapters can consume the durable inbox on every supported host.
-          // Only the already-supported Codex queue has a native push adapter.
-          if (session.platform !== 'codex') return result;
+          if (!['codex', 'claude'].includes(session.platform)) return result;
           const target = await storeFor(project.kind === 'git' ? `session:${session.id}` : 'main');
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
           const prompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
-          const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }) });
+          const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime });
           try {
-            await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: session.platform, sessionId: session.id, root: session.worktreeRoot || root, message: prompt });
+            const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
+            if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
+            await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
+              ...(ci ? { execution: { session: message.session, taskId: message.payload.taskId, sourceSha: message.payload.sourceSha, ciTodoRef: message.payload.ciTodoRef, references: message.payload.references || {} } } : {}) });
             return { ...result, deliveryState: 'received' };
           } catch (error) {
-            if (error?.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'uncertain', reason: 'Codex acceptance could not be confirmed' };
+            if (error?.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'uncertain', reason: 'Native host acceptance could not be confirmed' };
             throw error;
           }
         }
         return { ...result, deliveryState: 'stored' };
       },
-      onSession: head => syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head),
+      onSession: head => {
+        syncCoordinators.get(`session:${head.id}`)?.projectHeartbeat(head);
+        const ci = ciConnections.get(head.id);
+        if (ci && !ciRetries.has(head.id)) ciRetries.set(head.id, ci.retryPending().catch(error => { device.lastError = error.code || 'CI_RETRY_FAILED'; }).finally(() => ciRetries.delete(head.id)));
+      },
       onError: (error, source) => {
         device.lastError = error.code || 'UNAVAILABLE';
         if (source === 'heartbeat' && !(error instanceof AggregateError)) for (const [view, coordinator] of syncCoordinators) if ((!error.details?.sessionId || view === `session:${error.details.sessionId}`) && coordinator.managed && !coordinator.status.conflict) {
@@ -511,6 +537,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         const requestOrigin = direct ? base : namedEntry.origin;
         if (req.headers.origin && req.headers.origin !== requestOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin requests are not allowed', 403);
         const url = new URL(req.url, base), route = url.pathname;
+        if (route === '/api/claude-runtime' && req.method === 'POST') {
+          if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
+          const input = await body(req), binding = access.binding(input.sessionId);
+          if (!binding || await fs.realpath(input.config?.root || '') !== binding.worktreeRoot) throw new MapError('WORKTREE_MISMATCH', 'Configure only the bound Claude worktree', 409);
+          if (input.config.role === 'ci') {
+            const executor = access.binding(input.config.executorSessionId);
+            if (!executor || executor.worktreeRoot === binding.worktreeRoot) protocolFail('FORBIDDEN', 'CI needs an independent registered worktree');
+          }
+          return send(res, 200, await claudeRuntime.configure(input.sessionId, input.config));
+        }
         if (route === '/api/device-heartbeat') {
           if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires device service credential', 401);
           const connected = await projectDevice();
@@ -625,6 +661,39 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return reply;
           },
         })(req, res);
+        if (route === '/api/v2/execution' && req.method === 'GET') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');
+          if ((await claudeRuntime.status(actor.sessionId).catch(() => null))?.role === 'ci') {
+            try { return send(res, 200, { active: await claudeRuntime.ciContext(actor.sessionId) }); }
+            catch (error) { if (error.code === 'CI_NOT_ACTIVE') return send(res, 200, { active: null, ci: true }); throw error; }
+          }
+          const principal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: actor.sessionId, role: 'executor' };
+          const binding = await protocolStore.registeredBinding(principal, actor.sessionId);
+          if (!binding || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'Session binding changed');
+          const session = { id: actor.sessionId, generation: binding.generation };
+          const active = await protocolStore.activeExecution(principal, session);
+          let plan = null;
+          if (active?.mode === 'reviewed' && active.approval && active.plan) {
+            const connection = await projectDevice();
+            if (!connection) protocolFail('UNAVAILABLE', 'Cloud is required to verify the approved Plan');
+            plan = await connection.send({ v: 2, id: randomUUID(), type: 'object.read', session, payload: { ref: active.plan.ref, version: active.plan.version } });
+          }
+          return send(res, 200, { session, active, plan });
+        }
+        if (route === '/api/v2/ci' && req.method === 'POST') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent' || access.binding(actor.sessionId)?.worktreeId !== actor.worktreeId) protocolFail('FORBIDDEN', 'A current CI Session binding is required');
+          const input = await body(req), context = await claudeRuntime.ciContext(actor.sessionId, { verifySource: input.type === 'ci.result' });
+          if (!context || input.session && JSON.stringify(input.session) !== JSON.stringify(context.session)) protocolFail('FORBIDDEN', 'CI message targets a different developer Session');
+          const message = validateMessage({ ...input, session: context.session });
+          if (!['object.read', 'object.put', 'ci.result'].includes(message.type) || message.type === 'object.put' &&
+              (message.payload.kind !== 'evidence' || !message.payload.ref.startsWith(`ci:${actor.sessionId}:`)) || message.type === 'ci.result' &&
+              (message.payload.taskId !== context.taskId || message.payload.sourceSha !== context.sourceSha)) protocolFail('FORBIDDEN', 'CI message exceeds its assigned test scope');
+          const connection = await projectDevice();
+          if (!connection) protocolFail('UNAVAILABLE', 'Cloud connection is unavailable');
+          return send(res, 200, { id: message.id, ok: true, data: await ciChannel(actor.sessionId, connection).send(message) });
+        }
         if (route === '/api/v2/task-report' && req.method === 'POST') {
           const actor = auth(req, url);
           if (actor.kind !== 'agent') protocolFail('FORBIDDEN', 'A registered Agent is required');

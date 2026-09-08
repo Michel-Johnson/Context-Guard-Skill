@@ -10,7 +10,10 @@ import { SecurityError, forbiddenPath, snapshot, history, scan, scanPackage, sca
 
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "context-guard-security-tests-"));
 const env = { ...process.env, GIT_AUTHOR_NAME: "Security Test", GIT_AUTHOR_EMAIL: "test@example.invalid",
-  GIT_COMMITTER_NAME: "Security Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };
+  GIT_COMMITTER_NAME: "Security Test", GIT_COMMITTER_EMAIL: "test@example.invalid",
+  // Synthetic repositories must not inherit or replace the developer's hooks.
+  // Custom-hook refusal is tested explicitly with repository-local settings.
+  GIT_CONFIG_GLOBAL: path.join(temporaryRoot, "isolated-gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };
 let count = 0;
 let passed = false;
 function run(command, args, options = {}) {

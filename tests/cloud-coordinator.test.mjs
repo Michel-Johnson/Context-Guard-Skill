@@ -1,0 +1,307 @@
+import '../.github/scripts/test-environment.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
+import { CoordinatorService, CoordinatorInbox } from '../scripts/cloud/coordinator-service.mjs';
+import { createCoordinatorExecutor } from '../scripts/cloud/coordinator-tools.mjs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
+
+test('Completion verifies GitHub repository, tested SHA, required check issuer and server publication in order', async () => {
+  const sourceSha = 'a'.repeat(40), mergeSha = 'b'.repeat(40);
+  const project = { repository: 'example/lab', ref: 'refs/heads/main', completion: { requiredChecks: [{ name: 'Required', appId: 15368 }] } };
+  const task = { stage: 'accepted', session: { id: 'developer', generation: 1 }, sourceSha,
+    ci: { verdict: 'passed' }, acceptanceReview: { decision: 'approved' }, acceptanceAt: '2026-09-08T01:00:00Z' };
+  const publication = { sessionVersion: 'published-session', sourceCommit: sourceSha, mainSha: mergeSha, mainVersion: 'published-main', publishedAt: '2026-09-08T01:02:00Z' };
+  const memory = { closedSessions: { developer: { publications: [publication] } } };
+  const receipts = { gitReceiptRef: 'github-pr:7', archiveReceiptRef: 'published-session' };
+  const pr = { merged: true, merged_at: '2026-09-08T01:01:00Z', merge_commit_sha: mergeSha,
+    base: { ref: 'main', repo: { id: 123 } }, head: { sha: sourceSha, repo: { id: 123 } } };
+  const checks = { total_count: 1, check_runs: [{ name: 'Required', app: { id: 15368 }, head_sha: sourceSha, status: 'completed', conclusion: 'success', completed_at: '2026-09-08T01:00:30Z' }] };
+  let currentPr = pr, currentChecks = checks, calls = 0;
+  const options = { project, repositoryId: '123', task, memory, receipts, fetch: async (url, init) => {
+    assert.ok(url.startsWith('https://api.github.com/repos/example/lab/'));
+    assert.equal(init.redirect, 'error'); calls++;
+    return Response.json(url.includes('/pulls/') ? currentPr : currentChecks);
+  } };
+  assert.equal((await verifyTaskCompletion(options)).mergeSha, mergeSha);
+  for (const changed of [{ merged: false }, { head: { ...pr.head, sha: 'c'.repeat(40) } }, { base: { ...pr.base, ref: 'other' } },
+    { base: { ...pr.base, repo: { id: 999 } } }, { merged_at: '2026-09-08T00:59:00Z' }, { merge_commit_sha: 'c'.repeat(40) }]) {
+    currentPr = { ...pr, ...changed }; assert.equal(await verifyTaskCompletion(options), false);
+  }
+  currentPr = pr;
+  for (const changed of [{ conclusion: 'failure' }, { status: 'in_progress' }, { app: { id: 999 } }, { head_sha: 'c'.repeat(40) }, { completed_at: '2026-09-08T01:03:00Z' }]) {
+    currentChecks = { ...checks, check_runs: [{ ...checks.check_runs[0], ...changed }] };
+    assert.equal(await verifyTaskCompletion(options), false);
+  }
+  currentChecks = { ...checks, total_count: 101 };
+  assert.equal(await verifyTaskCompletion(options), false);
+  const before = calls;
+  assert.equal(await verifyTaskCompletion({ ...options, receipts: { ...receipts, archiveReceiptRef: 'agent-claim' } }), false);
+  assert.equal(await verifyTaskCompletion({ ...options, task: { ...task, stage: 'awaiting-merge' } }), false);
+  assert.equal(calls, before);
+  await assert.rejects(verifyTaskCompletion({ ...options, fetch: async () => new Response('private error', { status: 503 }) }),
+    error => error.code === 'UNAVAILABLE' && !error.message.includes('private error'));
+  const closing = { ...task, control: { id: 'control' }, completion: { proof: { sourceSha, mergeSha }, closeReceiptId: 'control' } };
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'control', closeReceiptId: 'control' }), true);
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'other', closeReceiptId: 'control' }), false);
+  assert.equal(verifyTaskClose(null, closing, { controlId: 'control', closeReceiptId: 'invented' }), false);
+  assert.equal(verifyTaskClose(null, { ...closing, sourceSha: 'changed' }, { controlId: 'control', closeReceiptId: 'control' }), false);
+});
+
+const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };
+const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test-model', token: 'synthetic-private-value' };
+test('Coordinator transport pins the provider/model and never retries or echoes provider secrets', async () => {
+  let calls = 0;
+  const model = new CoordinatorModel({ ...config, fetch: async (url, options) => {
+    calls++;
+    assert.equal(String(url), 'https://provider.example/api/anthropic/v1/messages');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.headers.Authorization, `Bearer ${config.token}`);
+    assert.equal(JSON.parse(options.body).model, config.model);
+    return Response.json(text);
+  } });
+  assert.equal((await model.next({ system: 'role', messages: [{ role: 'user', content: 'hello' }] })).stop, 'end_turn');
+  assert.equal(calls, 1);
+  assert.ok(!JSON.stringify(model).includes(config.token));
+  model.fetch = async () => { calls++; return new Response(config.token, { status: 401 }); };
+  await assert.rejects(model.next({ system: 'role', messages: [] }), error => error.code === 'MODEL_HTTP_401' && !error.message.includes(config.token));
+  assert.equal(calls, 2);
+});
+
+test('Coordinator rejects model substitution, partial output, duplicate calls, and oversized responses', async () => {
+  for (const body of [
+    { ...text, model: 'other-model' }, { ...text, stop_reason: 'max_tokens' },
+    { ...text, stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'same', name: 'read_map', input: {} }, { type: 'tool_use', id: 'same', name: 'read_map', input: {} }] },
+  ]) {
+    const model = new CoordinatorModel({ ...config, fetch: async () => Response.json(body) });
+    await assert.rejects(model.next({ system: '', messages: [] }), { code: 'MODEL_INVALID_RESPONSE' });
+  }
+  const large = new CoordinatorModel({ ...config, fetch: async () => new Response('x'.repeat(4 * 1024 * 1024 + 1)) });
+  await assert.rejects(large.next({ system: '', messages: [] }), { code: 'MODEL_RESPONSE_TOO_LARGE' });
+});
+
+test('Coordinator deadline aborts the request and exposes a stable timeout error', async () => {
+  const model = new CoordinatorModel({ ...config, timeoutMs: 5, fetch: (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new Error(config.token)), { once: true });
+  }) });
+  await assert.rejects(model.next({ system: '', messages: [] }), { code: 'MODEL_TIMEOUT' });
+});
+
+test('Coordinator restarts from a saved tool intent with the same operation identity', async () => {
+  const tools = [{ name: 'read_map', input_schema: { type: 'object' } }];
+  let disk = { messages: [{ role: 'user', content: 'Read Main' }] }, requests = 0, effects = 0;
+  const receipts = new Map(); let failAfterEffect = true;
+  const options = { turnId: 'turn-1', system: 'Coordinator prompt v1', tools,
+    model: { next: async () => { requests++; return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'call-1', name: 'read_map', input: { node: 'T0' } }] }; } },
+    save: async state => { disk = structuredClone(state); },
+    execute: async (_name, _input, { operationId }) => {
+      if (!receipts.has(operationId)) { effects++; receipts.set(operationId, { version: 'main-v1' }); }
+      if (failAfterEffect) { failAfterEffect = false; throw new Error('lost protocol reply'); }
+      return receipts.get(operationId);
+    },
+  };
+  await assert.rejects(coordinatorStep({ ...options, state: structuredClone(disk) }), /lost protocol reply/);
+  assert.equal(disk.pending.stop, 'tool_use');
+  await coordinatorStep({ ...options, state: structuredClone(disk) });
+  assert.equal(effects, 1); assert.equal(requests, 1);
+  assert.equal(disk.messages.at(-1).content[0].type, 'tool_result');
+  await assert.rejects(coordinatorStep({ ...options, state: structuredClone(disk), system: 'changed prompt' }), { code: 'PROMPT_CHANGED' });
+});
+
+test('Coordinator cannot call an unregistered tool such as shell or human approval', async () => {
+  let executed = false;
+  for (const name of ['shell', 'human_approve']) {
+    await assert.rejects(coordinatorStep({ turnId: 'turn-1', system: 'Coordinator', state: { pending: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'call-1', name, input: {} }] } },
+      tools: [{ name: 'read_map' }], save: async () => {}, execute: async () => { executed = true; } }), { code: 'TOOL_FORBIDDEN' });
+  }
+  assert.equal(executed, false);
+});
+
+test('Coordinator persists a human conversation and only retries a failed turn explicitly', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const options = { directory, system: 'Coordinator', tools: [], simulated: true,
+    execute: async () => { throw new Error('No tools allowed'); },
+    model: { next: async () => { calls++; if (calls === 1) throw Object.assign(new Error('provider timeout'), { code: 'MODEL_TIMEOUT' }); return { stop: 'end_turn', content: [{ type: 'text', text: '请确认需求。' }] }; } },
+  };
+  const service = new CoordinatorService(options);
+  const input = { id: 'human-1', text: '查看地图' };
+  await service.submit(input); await service.close();
+  assert.equal((await service.state()).error.code, 'MODEL_TIMEOUT');
+  const restarted = new CoordinatorService(options);
+  await restarted.submit(input); await restarted.close();
+  assert.equal(calls, 1);
+  await restarted.submit({ ...input, retry: true }); await restarted.close();
+  const state = await restarted.state();
+  assert.equal(calls, 2); assert.equal(state.status, 'waiting-for-user');
+  assert.equal(state.messages.filter(x => x.role === 'user').length, 1);
+  assert.match(state.messages[0].text, /模拟人工输入/);
+  assert.equal(state.messages.at(-1).text, '请确认需求。');
+  await assert.rejects(restarted.submit({ ...input, text: '另一个请求' }), { code: 'ID_REUSED' });
+});
+
+test('Coordinator tools pin approved routing and refuse stale Plan approval or human impersonation', async () => {
+  const calls = [], current = { brief: { ref: 'brief', version: 'b1' }, plan: { ref: 'plan', version: 'p2' } };
+  const execute = createCoordinatorExecutor({
+    readTask: async () => current,
+    readReference: async () => ({ version: 'rules-v1' }),
+    exchange: async (sessionId, id, type, payload) => {
+      calls.push({ sessionId, id, type, payload });
+      return type === 'object.read' ? { content: { text: JSON.stringify({ v: 1, taskId: 'task-1', nodeIds: ['M1'], mainVersion: 'main-v1' }) } } : { ok: true };
+    },
+  });
+  const identity = { sessionId: 'session-1', taskId: 'task-1' };
+  await execute('dispatch_task', { ...identity, briefRef: 'brief', briefVersion: 'b1' }, { operationId: 'op-1' });
+  assert.deepEqual(calls.at(-1).payload.nodeIds, ['M1']);
+  assert.equal(calls.at(-1).payload.mode, 'reviewed');
+  assert.equal(calls.at(-1).payload.mainVersion, 'main-v1');
+  await assert.rejects(execute('dispatch_task', { ...identity, briefRef: 'brief', briefVersion: 'b1', mode: 'session' }, { operationId: 'op-2' }), { code: 'INVALID_ARGUMENT' });
+  const before = calls.length;
+  await assert.rejects(execute('review_plan', { ...identity, planRef: 'plan', planVersion: 'p1', decision: 'approved', reason: 'reviewed old version' }, { operationId: 'op-3' }), /Plan changed/);
+  assert.equal(calls.length, before);
+  await assert.rejects(execute('human_approve', identity, { operationId: 'op-4' }), /not registered/);
+});
+
+test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
+  const sessions = [{ id: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
+  const execute = createCoordinatorExecutor({
+    listSessions: async () => ({ sessions }),
+    readMap: async nodeId => { assert.equal(nodeId, undefined); return { node: { id: 'root' }, version: 'v1' }; },
+  });
+  assert.deepEqual(await execute('list_sessions', {}, { operationId: 'list' }), { sessions });
+  assert.equal((await execute('read_map', {}, { operationId: 'root' })).node.id, 'root');
+  await assert.rejects(execute('list_sessions', { repositoryId: 'other' }, { operationId: 'other' }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('Cloud requirement confirmation uses browser authority, exact prepared version and durable replay', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-http-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify(config));
+  const repositoryId = '123', projectId = 'context-guard';
+  const store = new ProtocolStore(path.join(directory, 'interface-v2', createHash('sha256').update(repositoryId).digest('hex')));
+  const device = { repositoryId, deviceId: 'local', agentId: 'device', role: 'device' };
+  const coordinator = { repositoryId, deviceId: 'cloud-coordinator', agentId: 'coordinator:context-guard', role: 'coordinator', bindings: { session: 'worktree' } };
+  const session = { id: 'session', generation: 1 };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: { sessionId: session.id, worktreeId: 'worktree', agentId: 'executor', expectedBindingVersion: '' } }, { verifyBinding: () => true });
+  const brief = (await store.handle(coordinator, { v: 2, id: 'brief', type: 'brief.submit', session, payload: { taskId: 'task', text: 'Simulated requirement' } })).data;
+  await store.handle(coordinator, { v: 2, id: 'request', type: 'review.request', session, payload: { taskId: 'task', kind: 'brief', ref: brief.ref, version: brief.version } });
+  const conversation = path.join(directory, 'coordinators', projectId);
+  await fs.mkdir(conversation, { recursive: true });
+  await fs.writeFile(path.join(conversation, 'conversation.json'), JSON.stringify({ messages: [], status: 'idle', toolReceipts: {
+    proposal: { result: { sessionId: session.id, taskId: 'task', brief, requiresHumanApproval: true } },
+  } }));
+  const server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser',
+    coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Workflow event received' }] }) }),
+    protocolConfig: { repositories: [{ repositoryId, projectId, slug: 'example/lab' }] },
+    memoryConfig: { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic-admin', projects: {
+      [projectId]: { root: directory, ref: 'refs/heads/main', token: 'synthetic-memory', coordinator: { enabled: true, providerFile, bindings: { session: 'worktree' }, simulated: true } },
+    } },
+  });
+  t.after(() => server.close());
+  const endpoint = `${server.url}/api/workbench/projects/${projectId}/api/coordinator`;
+  const headers = { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' };
+  const input = { id: 'approve-proposal', proposalId: 'proposal', decision: 'approved', reason: 'verified' };
+  const send = (body, auth = headers) => fetch(endpoint + '/approval', { method: 'POST', headers: auth, body: JSON.stringify(body) });
+  assert.equal((await send(input, { 'Content-Type': 'application/json' })).status, 401);
+  assert.notEqual((await send({ ...input, role: 'human' })).status, 200);
+  const before = await (await fetch(endpoint, { headers })).json();
+  assert.equal(before.approvals[0].pending, true);
+  const response = await send(input); assert.equal(response.status, 200);
+  const result = await response.json(); assert.ok(result.receiptId);
+  assert.deepEqual(await (await send(input)).json(), result);
+  assert.notEqual((await send({ ...input, id: 'reject-later', decision: 'rejected' })).status, 200);
+  const after = await (await fetch(endpoint, { headers })).json();
+  assert.equal(after.approvals[0].pending, false);
+  assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'approved');
+  let sequence = 0;
+  const protocol = async (actor, type, payload, options) => (await store.handle(actor, { v: 2, id: `acceptance-fixture-${++sequence}`, type, session, payload }, options)).data;
+  const sourceSha = 'a'.repeat(40);
+  await protocol(coordinator, 'task.assign', { taskId: 'task', sessionId: session.id, briefRef: brief.ref, briefVersion: brief.version, nodeIds: ['T0'], mainVersion: 'main', mode: 'reviewed' }, { workflow: { verifyRouting: () => true } });
+  const plan = await protocol(device, 'object.put', { kind: 'plan', ref: 'plan', baseVersion: '', content: { paths: ['frontend/'], steps: ['test'] } });
+  await protocol(device, 'task.report', { taskId: 'task', stage: 'planReady', data: { planRef: plan.ref, planVersion: plan.version, sourceSha } });
+  await protocol(coordinator, 'review.request', { kind: 'plan', taskId: 'task', ref: plan.ref, version: plan.version, requirementsRef: brief.ref, requirementsVersion: brief.version, rulesVersion: 'rules' });
+  await protocol(coordinator, 'review.result', { kind: 'plan', ref: plan.ref, version: plan.version, decision: 'approved', reason: 'Reviewed exact Plan' });
+  await protocol(device, 'object.put', { kind: 'ciTodo', ref: 'ci-todo', baseVersion: '', content: { items: [{ id: 'check', title: 'Test' }] } });
+  await protocol(device, 'object.put', { kind: 'evidence', ref: 'test-evidence', baseVersion: '', content: { exitCode: 0 } });
+  await protocol(device, 'task.report', { taskId: 'task', stage: 'handoff', data: { sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'], experienceRefs: [] } });
+  await protocol(coordinator, 'ci.request', { taskId: 'task', sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'] });
+  await protocol({ ...coordinator, role: 'ci', agentId: 'ci' }, 'ci.result', { taskId: 'task', sourceSha, verdict: 'passed', checks: [{ testId: 'test', todoId: 'check', status: 'passed', evidenceRef: 'test-evidence' }] });
+  const pending = (await (await fetch(endpoint, { headers })).json()).acceptances[0];
+  assert.equal(pending.sourceSha, sourceSha);
+  const review = { id: 'human-reject', sessionId: session.id, taskId: 'task', ref: pending.ci.ref, version: pending.ci.version, decision: 'rejected', reason: 'The requested interaction is still wrong' };
+  const accept = body => fetch(endpoint + '/acceptance', { method: 'POST', headers, body: JSON.stringify(body) });
+  assert.equal((await accept({ ...review, version: 'stale' })).status, 409);
+  const rejection = await accept(review); assert.equal(rejection.status, 200);
+  assert.deepEqual(await (await accept(review)).json(), await rejection.json());
+  const rejected = await store.taskRecord(coordinator, session, 'task');
+  assert.equal(rejected.stage, 'acceptance-rejected');
+  assert.match(rejected.acceptanceReview.reason, /模拟人工验收/);
+  await assert.rejects(protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: 'invented feedback' }), { code: 'CONFLICT' });
+  await protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: rejected.acceptanceReview.reason });
+  assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'rework');
+});
+
+test('Coordinator consumes existing workflow notifications and lost acknowledgements do not repeat model turns', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-inbox-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(path.join(directory, 'protocol'));
+  const principal = { repositoryId: 'repo', deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator', bindings: { s: 'wt' } };
+  const executor = { repositoryId: 'repo', deviceId: 'device', agentId: 'executor', role: 'executor' };
+  const human = { ...executor, role: 'human', agentId: 'human' }, session = { id: 's', generation: 1 };
+  await store.handle(executor, { v: 2, id: 'bind', type: 'session.bind', payload: { sessionId: 's', worktreeId: 'wt', agentId: 'executor', expectedBindingVersion: '' } }, { verifyBinding: () => true });
+  const send = async (actor, id, type, payload) => (await store.handle(actor, { v: 2, id, type, session, payload })).data;
+  const brief = await send(principal, 'brief', 'brief.submit', { taskId: 'task', text: 'Explicit requirement' });
+  await send(principal, 'review', 'review.request', { taskId: 'task', kind: 'brief', ref: brief.ref, version: brief.version });
+  await send(human, 'decision', 'review.result', { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: 'Explicit simulated human approval' });
+  let turns = 0;
+  const options = { directory: path.join(directory, 'conversation'), system: 'Coordinator', tools: [], execute: async () => {}, simulated: true,
+    model: { next: async () => { turns++; return { stop: 'end_turn', content: [{ type: 'text', text: 'received' }] }; } } };
+  let service = new CoordinatorService(options);
+  const original = store.handle.bind(store); let loseAck = true;
+  store.handle = async (actor, message, ...args) => {
+    if (message.type === 'sync.ack' && message.payload.items[0].seq === 3 && loseAck) { loseAck = false; throw new Error('lost acknowledgement before persistence'); }
+    return original(actor, message, ...args);
+  };
+  let inbox = new CoordinatorInbox({ store, principal, sessionIds: ['s'], service, intervalMs: 60000 });
+  await inbox.pump(); await service.close(); await inbox.close();
+  assert.equal(turns, 1);
+  assert.match((await service.state()).messages[0].text, /服务器工作流事件/);
+  assert.doesNotMatch((await service.state()).messages[0].text, /模拟人工输入/);
+  service = new CoordinatorService(options);
+  inbox = new CoordinatorInbox({ store, principal, sessionIds: ['s'], service, intervalMs: 60000 });
+  await inbox.pump(); await service.close(); await inbox.pump(); await inbox.close();
+  assert.equal(turns, 1);
+  const head = await original(principal, { v: 2, id: 'head', type: 'sync.heartbeat', payload: { sessions: [{ ...session, ackedSeq: 0 }] } });
+  assert.equal(head.data.sessions[0].ackedSeq, 3);
+});
+
+test('CI delegation requires server registration, the owning device and an independent worktree', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-ci-delegation-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(directory), principal = { repositoryId: 'repo', deviceId: 'device', agentId: 'device', role: 'device' };
+  for (const [sessionId, worktreeId] of [['developer', 'dev-worktree'], ['ci', 'ci-worktree']]) {
+    await store.handle(principal, { v: 2, id: sessionId, type: 'session.bind', payload: { sessionId, worktreeId, agentId: sessionId, expectedBindingVersion: '' } }, { verifyBinding: () => true });
+  }
+  const receivers = { ci: { executorSessionId: 'developer', worktreeId: 'ci-worktree' } };
+  const message = { v: 2, id: 'evidence', type: 'object.put', session: { id: 'developer', generation: 1 }, payload: { kind: 'evidence', ref: 'ci:ci:run', baseVersion: '', content: { exitCode: 0 } } };
+  const options = { principal, ciSessionId: 'ci', message, receivers, store };
+  const delegated = await authorizeCiReceiver(options);
+  assert.equal(delegated.role, 'ci'); assert.deepEqual(delegated.bindings, { developer: 'dev-worktree' });
+  assert.ok((await store.handle(delegated, message)).data.version);
+  for (const changes of [
+    { ciSessionId: 'unknown' }, { principal: { ...principal, deviceId: 'other' } },
+    { principal: { ...principal, role: 'executor' } },
+    { message: { ...message, session: { id: 'unassigned', generation: 1 } } },
+    { message: { ...message, payload: { ...message.payload, kind: 'plan' } } },
+    { message: { ...message, payload: { ...message.payload, ref: 'developer-evidence' } } },
+    { receivers: { ci: { ...receivers.ci, worktreeId: 'dev-worktree' } } },
+  ]) await assert.rejects(authorizeCiReceiver({ ...options, ...changes }), { code: 'FORBIDDEN' });
+});
