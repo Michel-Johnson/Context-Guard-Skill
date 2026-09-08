@@ -323,6 +323,15 @@ try {
   const submissions = [];
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     approvals: [{ id: 'proposal-1', pending: true, brief: { ref: 'brief-1', version: 'v1' }, text: '模拟需求确认', acceptance: '明确验收标准', sessionId: 'assigned-session', nodeIds: ['T0'], mainVersion: 'main-v1' }] };
+  coordinatorState.approvals.push(...['frontend', 'build'].map(id => ({ id, kind: 'mount-proposal', pending: true,
+    mainVersion: 'main-v1', title: id, purpose: '隔离实验节点', owns: [id + '/'] })));
+  const mountReviews = [];
+  await page.route(/\/api\/coordinator\/mount-review(?:\?|$)/, async route => {
+    mountReviews.push(route.request().postDataJSON());
+    if (mountReviews.length === 1) return route.abort();
+    for (const approval of coordinatorState.approvals) if (approval.kind === 'mount-proposal') approval.pending = false;
+    return route.fulfill({ json: { committed: { version: 'main-v2', nodeIds: ['frontend', 'build'] } } });
+  });
   const approvals = [];
   await page.route(/\/api\/coordinator\/approval(?:\?|$)/, async route => {
     approvals.push(route.request().postDataJSON());
@@ -344,6 +353,13 @@ try {
   await coordinator.locator('summary').click();
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.equal(await coordinator.locator('img').count(), 0, 'model output must be plain text');
+  await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('节点审核尚未成功'));
+  await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
+  await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).waitFor({ state: 'detached' });
+  assert.deepEqual(mountReviews[0].proposalIds, ['frontend', 'build']);
+  assert.deepEqual(mountReviews[1], mountReviews[0], 'the batch retry preserves its original request');
+  assert.equal(submissions.length, 0, 'node confirmation uses the script endpoint, not a model request');
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('确认尚未成功'));
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();

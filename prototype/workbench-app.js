@@ -4251,6 +4251,29 @@ function installCoordinatorPanel(sync){
       row.textContent=(message.role==='assistant'?'Coordinator：':'输入：')+(message.text||message.tools.map(tool=>tool.name).join('、'));
       messages.append(row);
     }
+    const mountGroups=new Map();
+    for(const proposal of state.approvals||[]){
+      if(proposal.kind!=='mount-proposal'||!proposal.pending) continue;
+      if(!mountGroups.has(proposal.mainVersion)) mountGroups.set(proposal.mainVersion,[]);
+      mountGroups.get(proposal.mainVersion).push(proposal);
+    }
+    for(const [version,proposals] of mountGroups){
+      const card=document.createElement('section'), description=document.createElement('p');
+      description.textContent='待确认节点（'+proposals.length+'）：\n'+proposals.map(p=>p.title+'：'+p.purpose+'\n路径：'+p.owns.join('、')).join('\n')+'\nMain：'+version;
+      card.append(description);
+      for(const [decision,label] of [['approved','确认这些节点'],['rejected','拒绝这些节点']]){
+        const button=document.createElement('button');button.type='button';button.textContent=label;
+        let request;
+        button.addEventListener('click',async()=>{
+          if(!request){const reason=decision==='approved'?'确认所示节点及路径':window.prompt('请说明节点挂载需要调整的地方');if(!reason?.trim())return;
+            request={id:crypto.randomUUID(),proposalIds:proposals.map(p=>p.id),decision,reason};}
+          for(const other of card.querySelectorAll('button'))other.disabled=true;
+          status.textContent='正在保存节点审核…';
+          try{await sync.call('/api/coordinator/mount-review',request,'POST','main');await refresh();}
+          catch(error){status.textContent='节点审核尚未成功：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
+        });card.append(button);
+      }messages.append(card);
+    }
     for(const approval of state.approvals||[]){
       if(!approval.brief||!approval.pending) continue;
       const card=document.createElement('section');

@@ -1113,6 +1113,17 @@ export async function startCloudServer({
           }
           if (req.method === 'POST') return send(res, 202, await coordinator.submit(await requestBody(req)));
         }
+        if (action === '/api/coordinator/mount-review' && project && req.method === 'POST') {
+          const coordinator = await coordinatorFor(project), input = await requestBody(req);
+          const result = await coordinator.reviewMount(input, (proposals, operationId) => commitMainMemoryMap(configuredMemory, project.id, {
+            operationId, baseVersion: proposals[0].mainVersion,
+            operations: proposals.map(proposal => ({ type: 'create', parentId: proposal.parentId,
+              node: { id: `NCM${digest(proposal.id).slice(0, 20)}`, title: proposal.title, purpose: proposal.purpose,
+                kind: 'module', state: 'untested', owns: proposal.owns, proposal: 'accepted' } })),
+          }));
+          void coordinator.inbox.pump();
+          return send(res, 200, result);
+        }
         if (action === '/api/coordinator/approval' && project && req.method === 'POST') {
           const input = await requestBody(req), coordinator = await coordinatorFor(project);
           if (!input || Object.keys(input).some(key => !['id', 'proposalId', 'decision', 'reason'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Unexpected approval fields');
@@ -1498,7 +1509,12 @@ export async function startCloudServer({
     clearInterval(heartbeat);
     clearInterval(presenceExpiry);
     clearInterval(publicationTimer);
-    for (const pending of coordinators.values()) void pending.then(service => service.inbox.close()).catch(() => {});
+    const coordinatorShutdown = Promise.all([...coordinators.values()].map(async pending => {
+      const service = await pending.catch(() => null);
+      if (!service) return;
+      await service.inbox.close(); await service.close({ stop: true });
+    }));
+    coordinatorShutdown.catch(() => {});
     stopMemoryEvents();
     for (const res of interfaceStreams) res.end();
     for (const res of directoryClients) res.end();
@@ -1506,7 +1522,7 @@ export async function startCloudServer({
     for (const set of projectClients.values()) for (const res of set) res.end();
     server.close(error => {
       if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
-      else resolve();
+      else coordinatorShutdown.then(resolve, reject);
     });
     server.closeIdleConnections?.();
     const forceClose = setTimeout(() => {
