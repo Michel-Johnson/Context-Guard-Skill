@@ -96,11 +96,10 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     if (workflow) continue;
     if (!message.text) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
-    const label = doc.createElement('div'); label.className = 'coordinator-speaker'; label.textContent = message.role === 'assistant' ? 'Coordinator' : '你';
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
     if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
-    row.append(label, content); body.append(row);
+    row.append(content); body.append(row);
   }
   return { body };
 }

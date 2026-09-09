@@ -899,11 +899,10 @@ html.cg-phone .drawer h2{font-size:18px}
 }
 #coordinator-panel > summary { cursor: pointer; font-weight: 650; font-size: 17px; }
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
+#coordinator-panel > [role=status]:empty { display: none; }
 #coordinator-panel .coordinator-messages { max-height: min(55vh, 580px); overflow: auto; overflow-wrap: anywhere; overscroll-behavior: contain; padding: 0 6px 8px 0; scrollbar-gutter: stable; }
 #coordinator-panel .coordinator-message { margin: 0 0 22px; }
 #coordinator-panel .coordinator-message.user { max-width: 86%; margin-left: auto; }
-#coordinator-panel .coordinator-speaker { font-size: 11px; color: #8a806c; margin-bottom: 5px; }
-#coordinator-panel .user .coordinator-speaker { text-align: right; }
 #coordinator-panel .user .coordinator-markdown { background: #fff0a9; border-radius: 16px 16px 4px 16px; padding: 10px 14px; }
 #coordinator-panel .coordinator-markdown p { margin: 0 0 12px; }
 #coordinator-panel .coordinator-markdown > :last-child { margin-bottom: 0; }
@@ -917,18 +916,18 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-markdown pre code { background: none; padding: 0; }
 #coordinator-panel .coordinator-markdown blockquote { border-left: 3px solid #c8b978; padding-left: 12px; margin: 12px 0; color: #675f51; }
 #coordinator-panel .coordinator-markdown a { color: #27624b; text-decoration: underline; text-underline-offset: 3px; }
-#coordinator-panel .coordinator-markdown hr { border: 0; border-top: 1px solid #ddd4bf; margin: 18px 0; }
+#coordinator-panel .coordinator-markdown hr { display: none; }
 #coordinator-panel .coordinator-table { overflow-x: auto; }
 #coordinator-panel .coordinator-markdown table { border-collapse: collapse; margin: 10px 0; width: 100%; }
 #coordinator-panel .coordinator-markdown th,#coordinator-panel .coordinator-markdown td { border: 1px solid #ddd4bf; padding: 7px 10px; text-align: left; }
 #coordinator-panel .coordinator-markdown th { background: #f3eddb; }
 #coordinator-panel .coordinator-markdown input[type=checkbox] { margin-right: 6px; }
-#coordinator-panel .coordinator-meta { border-top: 1px solid #e2dac7; padding-top: 10px; color: #817660; font-size: 12px; }
+#coordinator-panel .coordinator-meta { padding-top: 10px; color: #817660; font-size: 12px; }
 #coordinator-panel .coordinator-meta summary { cursor: pointer; }
 #coordinator-panel .coordinator-meta pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; }
 #coordinator-panel .coordinator-messages > section { border: 1px solid #dccfaa; background: #faf3dc; border-radius: 12px; padding: 12px; margin: 14px 0; }
 #coordinator-panel .coordinator-messages > section p { white-space: pre-wrap; margin: 0 0 8px; }
-#coordinator-panel form { border-top: 1px solid #e2dac7; padding-top: 12px; margin-top: 4px; }
+#coordinator-panel form { padding-top: 12px; margin-top: 4px; }
 #coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 78px; max-height: 160px; padding: 10px 12px; resize: vertical; font: inherit; }
 #coordinator-panel textarea:focus { outline: 2px solid #bba759; outline-offset: 1px; }
 #coordinator-panel button { margin: 8px 8px 0 0; padding: 7px 16px; border: 1px solid #bdae89; border-radius: 9px; font: inherit; cursor: pointer; }

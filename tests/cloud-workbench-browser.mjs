@@ -377,7 +377,10 @@ try {
   assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
-  assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '你请审核这个计划');
+  assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '请审核这个计划');
+  assert.equal(await coordinator.locator('.coordinator-speaker').count(), 0);
+  assert.equal(await coordinator.getByRole('status').count(), 0, 'normal status is not displayed');
+  assert.equal(await coordinator.locator('form').evaluate(node => getComputedStyle(node).borderTopWidth), '0px');
   assert.equal(await coordinator.locator('.coordinator-debug').count(), 0);
   assert.equal(await coordinator.getByText('请说明预期行为，并提供', { exact: false }).isVisible(), true, 'questions stay visible while tool diagnostics are collapsed');
   assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
@@ -444,7 +447,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('等待回复'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && !document.querySelector('#coordinator-panel button[type=submit]').disabled);
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
