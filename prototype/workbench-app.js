@@ -4286,11 +4286,17 @@ async function installCoordinatorPanel(sync){
   const render=state=>{
     const renderedConversation=selected;
     status.textContent=state.error?'处理暂停：'+state.error.code:'';
-    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences]);
+    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
-    const transcript=conversationFragments(state.messages||[],document,{nodes:state.nodeReferences||[],onNode:async id=>{
+    const transcript=conversationFragments(state.messages||[],document,{nodes:state.nodeReferences||[],
+      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',onSupplement:()=>input.focus(),
+      onAnswer:(question,option)=>{
+        if(busy||pending||send.disabled)return;
+        for(const button of messages.querySelectorAll('.coordinator-choices button'))button.disabled=true;
+        void submit({id:crypto.randomUUID(),text:question.text+'\n\n我的选择：'+option});
+      },onNode:async id=>{
       try{
         if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
         const node=getNode(id);

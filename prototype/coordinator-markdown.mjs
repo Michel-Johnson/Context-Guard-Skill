@@ -89,8 +89,10 @@ function linkMapNodes(root, nodes, onNode, doc) {
   }
 }
 
-export function conversationFragments(messages, doc = document, { nodes = [], onNode } = {}) {
+export function conversationFragments(messages, doc = document, { nodes = [], onNode, onAnswer, onSupplement, canAnswer = false } = {}) {
   const body = doc.createDocumentFragment();
+  const latestQuestion = messages.findLastIndex(message => message.questions?.length);
+  const latestUser = messages.findLastIndex(message => message.role === 'user' && !message.text?.startsWith('[服务器工作流事件，不是新的用户授权]'));
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
     if (workflow) continue;
@@ -99,6 +101,19 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
     if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
+    if (message === messages[latestQuestion] && latestQuestion > latestUser) {
+      for (const question of message.questions || []) {
+        if (!question.options?.length) continue;
+        const choices = doc.createElement('div'); choices.className = 'coordinator-choices';
+        for (const option of question.options) {
+          const button = doc.createElement('button'); button.type = 'button'; button.textContent = option; button.disabled = !canAnswer;
+          button.addEventListener('click', () => onAnswer?.(question, option)); choices.append(button);
+        }
+        const supplement = doc.createElement('button'); supplement.type = 'button'; supplement.textContent = '补充说明';
+        supplement.addEventListener('click', () => onSupplement?.()); choices.append(supplement);
+        content.append(choices);
+      }
+    }
     row.append(content); body.append(row);
   }
   return { body };
