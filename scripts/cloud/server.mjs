@@ -1207,6 +1207,11 @@ export async function startCloudServer({
             const state = await coordinator.state();
             state.conversationId = conversationId;
             state.conversations = await conversationsFor(project).list();
+            const memory = await readMemoryProject(configuredMemory, project.id);
+            const allowedNodes = configuredMemory.projects[project.id].coordinator.nodeIds;
+            state.nodeReferences = (memory.main?.memory?.map?.root ? [...entries(memory.main.memory.map.root).values()] : [])
+              .map(entry => entry.node).filter(node => node.proposal !== 'cancelled' && (!allowedNodes || allowedNodes.includes(node.id)))
+              .map(node => ({ id: node.id, title: node.title }));
             state.eventError = coordinator.inbox.lastError;
             const { store, principal } = interfaceProject(project);
             state.sessionCreations = (await store.sessionCreations(principal)).slice(-100);

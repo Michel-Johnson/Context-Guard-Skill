@@ -383,6 +383,31 @@ try {
   assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
   assert.equal(await coordinator.getByText(/运行记录/).count(), 0);
   record('coordinator-safe-markdown-chat-without-diagnostics-controls');
+  const navigationVersion = await syncVersion();
+  await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div'); host.id = 'node-link-test';
+    host.append(conversationFragments([{ role: 'assistant', text: '推荐：**前端交互**；未知节点；重名；`前端交互`；[前端交互](https://example.invalid)' }], document, {
+      nodes: [{ id: 'target', title: '前端交互' }, { id: 'a', title: '重名' }, { id: 'b', title: '重名' }],
+      onNode: id => { host.dataset.selected = id; },
+    }).body);
+    document.body.append(host);
+  });
+  assert.equal(await page.locator('#node-link-test button').count(), 1, 'ambiguous titles, unknown nodes, code and links are not converted');
+  await page.locator('#node-link-test button').evaluate(button => button.click());
+  assert.equal(await page.locator('#node-link-test').getAttribute('data-selected'), 'target');
+  await page.locator('#node-link-test').evaluate(node => node.remove());
+  coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
+  coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
+  await page.reload(); await synchronized();
+  await coordinator.locator(':scope > summary').click();
+  await coordinator.getByRole('button', { name: '定位节点', exact: true }).click();
+  assert.equal(await coordinator.getAttribute('open'), null);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(), 1);
+  assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
+  assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
+  await coordinator.locator(':scope > summary').click();
+  record('coordinator-node-navigation-without-approval');
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
