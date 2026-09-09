@@ -4279,13 +4279,13 @@ async function installCoordinatorPanel(sync){
     panel.open=true;void refresh();
   };
   window.addEventListener('coordinator-open-item',async event=>{
-    panel.open=true;status.textContent='正在打开事项对话…';
+    panel.open=true;status.textContent='';
     try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
     catch(error){status.textContent='无法打开事项对话：'+error.message;}
   });
   const render=state=>{
     const renderedConversation=selected;
-    status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
+    status.textContent=state.error?'处理暂停：'+state.error.code:'';
     const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
@@ -4318,7 +4318,7 @@ async function installCoordinatorPanel(sync){
           if(!request){const reason=decision==='approved'?'确认所示节点及路径':window.prompt('请说明节点挂载需要调整的地方');if(!reason?.trim())return;
             request={id:crypto.randomUUID(),proposalIds:proposals.map(p=>p.id),decision,reason};}
           for(const other of card.querySelectorAll('button'))other.disabled=true;
-          status.textContent='正在保存节点审核…';
+          status.textContent='';
           try{await sync.call(conversationUrl('/api/coordinator/mount-review',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='节点审核尚未成功：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
         });card.append(button);
@@ -4336,7 +4336,7 @@ async function installCoordinatorPanel(sync){
         const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label};
         button.addEventListener('click',async()=>{
           for(const other of card.querySelectorAll('button')) other.disabled=true;
-          status.textContent='正在提交确认…';
+          status.textContent='';
           try{await sync.call(conversationUrl('/api/coordinator/approval',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='确认尚未成功：'+error.message;for(const other of card.querySelectorAll('button')) other.disabled=false;}
         });
@@ -4362,7 +4362,7 @@ async function installCoordinatorPanel(sync){
               ref:acceptance.ci.ref,version:acceptance.ci.version,decision,reason};
           }
           for(const other of card.querySelectorAll('button'))other.disabled=true;
-          status.textContent='正在提交验收…';
+          status.textContent='';
           try{await sync.call(conversationUrl('/api/coordinator/acceptance',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='验收尚未确认：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
         });
@@ -4391,7 +4391,7 @@ async function installCoordinatorPanel(sync){
   const submit=async request=>{
     if(busy) return;
     const id=selected;
-    busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='正在提交…';
+    busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='';
     try{
       await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
       if(id===selected){pending=null;if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
