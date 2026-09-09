@@ -16,7 +16,7 @@ import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/
 import { commitSessionMap, commitMainMemoryMap, memoryHeads } from '../scripts/cloud/memory.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator } from '../scripts/workbench/sync-coordinator.mjs';
-import { startServer } from '../scripts/workbench/server.mjs';
+import { interruptedTaskReport, startServer } from '../scripts/workbench/server.mjs';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
 import { resolveProject } from '../scripts/workbench/project.mjs';
 import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
@@ -24,6 +24,16 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from '../scripts/cloud/task-review.mjs';
 import { applyOperations } from '../scripts/shared/map-model.mjs';
+
+test('native Claude interruption produces one stable task report', () => {
+  const session = { id: 'session-1', generation: 2 };
+  const native = { status: 'interrupted', deliveryId: '2:delivery-1', at: '2026-09-09T14:58:34.370Z', error: 'CLAUDE_TIMEOUT_OR_INTERRUPTED' };
+  const report = interruptedTaskReport(session, { taskId: 'task-1' }, native);
+  assert.deepEqual(report, { v: 2, id: 'interrupt:session-1:2:delivery-1', type: 'task.report', session,
+    payload: { taskId: 'task-1', stage: 'interrupted', data: { reason: native.error, occurredAt: native.at } } });
+  assert.equal(interruptedTaskReport(session, null, native), null);
+  assert.equal(interruptedTaskReport(session, { taskId: 'task-1' }, { ...native, status: 'failed' }), null);
+});
 
 test('human review binds the result, preserves feedback and never publishes failed work', () => {
   const input = reviewInput({ operationId: 'r1', sessionId: 's1', taskId: 't1', resultVersion: 'v1', nodeId: 'R', itemId: 'TD1', kind: 'todo', decision: 'rejected', reason: 'needs correction' });
