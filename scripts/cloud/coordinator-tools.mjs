@@ -19,7 +19,7 @@ export const coordinatorTools = [
   definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
   definition('complete_task', 'After human acceptance, request closure with a merged GitHub PR and published Session memory version. The server independently verifies both; this tool does not merge code.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
-  definition('ask_user', 'Ask the human a question. No approval is implied by asking.', { question: string }),
+  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true } }, ['question']),
 ];
 
 function validateInput(tool, input) {
@@ -44,7 +44,10 @@ export function createCoordinatorExecutor(ctx) {
     if (name === 'list_sessions') return ctx.listSessions();
     if (name === 'read_map') return ctx.readMap(input.nodeId);
     if (name === 'read_reference') return ctx.readReference(input.name);
-    if (name === 'ask_user') return { question: input.question, approval: 'not-granted' };
+    if (name === 'ask_user') {
+      if (input.options && (input.options.length < 2 || input.options.length > 6 || new Set(input.options).size !== input.options.length || input.options.some(option => option.length > 120))) fail('Provide 2–6 unique short options');
+      return { question: input.question, ...(input.options ? { options: input.options } : {}), approval: 'not-granted' };
+    }
     if (name === 'propose_mount') {
       const parent = await ctx.readMap(input.parentId);
       if (parent.version !== input.mainVersion) fail('Main changed; read the parent again');

@@ -156,6 +156,27 @@ test('Successful ask_user questions appear in public chat without exposing other
   assert.deepEqual((await restored.state()).messages, state.messages);
 });
 
+test('Choice questions persist and stop before a redundant model summary; answers grant no approval', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-choice-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const execute = createCoordinatorExecutor({});
+  await assert.rejects(execute('ask_user', { question: 'Which?', options: ['same', 'same'] }, { operationId: 'bad' }));
+  let calls = 0;
+  const options = { directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => {
+    calls++;
+    return { stop: 'tool_use', content: [{ type: 'text', text: 'Internal preamble' }, { type: 'tool_use', id: 'choice', name: 'ask_user', input: { question: '要上传什么？', options: ['网站构建产物', '其他文件'] } }] };
+  } } };
+  const service = new CoordinatorService(options);
+  await service.submit({ id: 'question', text: 'Upload' }); await service.close();
+  assert.equal(calls, 1);
+  const state = await service.state();
+  assert.equal(state.status, 'waiting-for-user');
+  assert.equal(state.approvals.length, 0);
+  assert.deepEqual(state.messages.at(-1).questions[0].options, ['网站构建产物', '其他文件']);
+  assert.doesNotMatch(JSON.stringify(state.messages), /Internal preamble/);
+  assert.deepEqual((await new CoordinatorService(options).state()).messages, state.messages);
+});
+
 test('Main intake preserves first edits, skips history, and replays lost replies without duplicate turns', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-map-intake-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

@@ -129,8 +129,9 @@ export class CoordinatorService {
         const questions = message.role === 'assistant' && Array.isArray(replies) ? blocks.filter(block =>
           block.type === 'tool_use' && block.name === 'ask_user' && typeof block.input?.question === 'string' &&
           block.input.question.length <= 8000 && replies.some(reply => reply.type === 'tool_result' && reply.tool_use_id === block.id && !reply.is_error)
-        ).map(block => block.input.question) : [];
-        return { role: message.role, text: [text, ...questions].filter(Boolean).join('\n\n'),
+        ).map(block => ({ id: block.id, text: block.input.question, options: block.input.options || [] })) : [];
+        return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
+          ...(questions.length ? { questions } : {}),
           tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
       }).filter(message => message.text || message.tools.length),
     };

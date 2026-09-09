@@ -411,6 +411,21 @@ try {
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   await coordinator.locator(':scope > summary').click();
   record('coordinator-node-navigation-without-approval');
+  coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
+  await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
+  await coordinator.getByRole('button',{name:'补充说明',exact:true}).click();
+  assert.equal(await coordinator.locator('textarea').evaluate(node=>node===document.activeElement),true);
+  await coordinator.locator('textarea').fill('保留我的补充');
+  await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
+  await coordinator.getByRole('button',{name:'重试原请求',exact:true}).waitFor();
+  assert.equal(submissions.length,1);
+  assert.equal(submissions[0].text,'要上传什么？\n\n我的选择：网站构建产物');
+  assert.equal(await coordinator.locator('textarea').inputValue(),'保留我的补充');
+  assert.equal(await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).isEnabled(),false);
+  assert.equal(approvals.length+mountReviews.length,0,'choice answers are never approvals');
+  // Reload clears the deliberately uncertain local request; this mock has not persisted it.
+  submissions.length=0;coordinatorState.messages.pop();
+  await page.reload();await synchronized();await coordinator.locator(':scope > summary').click();
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();

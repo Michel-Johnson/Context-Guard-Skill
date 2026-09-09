@@ -129,7 +129,8 @@ export async function coordinatorStep({ turnId, state, model, system, tools, sav
     responses.push(toolReply(call, receipt));
   }
   state.messages.push({ role: 'user', content: responses });
-  state.pending = null; state.status = 'running';
+  state.pending = null;
+  state.status = !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';
   await save(state);
   return state;
 }
