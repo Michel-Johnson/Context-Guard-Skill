@@ -903,6 +903,11 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-messages { max-height: min(55vh, 580px); overflow: auto; overflow-wrap: anywhere; overscroll-behavior: contain; padding: 0 6px 8px 0; scrollbar-gutter: stable; }
 #coordinator-panel .coordinator-message { margin: 0 0 22px; }
 #coordinator-panel .coordinator-message.user { max-width: 86%; margin-left: auto; }
+#coordinator-panel .coordinator-question { margin: 12px 0; padding: 14px; background: #faf3dc; border-radius: 12px; border: 1px solid #dccfaa; }
+#coordinator-panel .coordinator-question textarea { margin-top: 12px; min-height: 64px; }
+#coordinator-panel .coordinator-choices button[aria-pressed=true] { background: #ffe87e; border-color: #766126; }
+#coordinator-panel .coordinator-answer { white-space: pre-wrap; background: #fff0a9; padding: 10px; border-radius: 8px; }
+#coordinator-panel .coordinator-typing,#coordinator-panel .coordinator-question-status { color: #817660; font-size: 13px; }
 #coordinator-panel .user .coordinator-markdown { background: #fff0a9; border-radius: 16px 16px 4px 16px; padding: 10px 14px; }
 #coordinator-panel .coordinator-markdown p { margin: 0 0 12px; }
 #coordinator-panel .coordinator-markdown > :last-child { margin-bottom: 0; }

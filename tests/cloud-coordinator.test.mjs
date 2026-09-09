@@ -175,6 +175,15 @@ test('Choice questions persist and stop before a redundant model summary; answer
   assert.deepEqual(state.messages.at(-1).questions[0].options, ['网站构建产物', '其他文件']);
   assert.doesNotMatch(JSON.stringify(state.messages), /Internal preamble/);
   assert.deepEqual((await new CoordinatorService(options).state()).messages, state.messages);
+  const questionId = state.messages.at(-1).questions[0].id;
+  await assert.rejects(service.submit({ id: 'unknown', text: 'Answer', answerTo: 'other-conversation-question' }), { code: 'NOT_FOUND' });
+  await service.submit({ id: 'answer', text: '网站构建产物', answerTo: questionId }); await service.close();
+  await service.submit({ id: 'answer', text: '网站构建产物', answerTo: questionId }); await service.close();
+  assert.equal(calls, 2, 'a repeated answer request does not run the model twice');
+  const restored = await new CoordinatorService(options).state();
+  assert.deepEqual(restored.messages.flatMap(message => message.questions || []).find(question => question.id === questionId).answer, { text: '网站构建产物', requestId: 'answer' });
+  assert.equal(restored.approvals.length, 0);
+  await assert.rejects(service.submit({ id: 'second-answer', text: 'Changed', answerTo: questionId }), { code: 'ALREADY_ANSWERED' });
 });
 
 test('Main intake preserves first edits, skips history, and replays lost replies without duplicate turns', async t => {

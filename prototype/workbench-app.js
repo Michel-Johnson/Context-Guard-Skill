@@ -4261,21 +4261,22 @@ async function installCoordinatorPanel(sync){
   const heading=document.createElement('summary'); heading.textContent='Coordinator';
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.textContent='正在回复…';typing.hidden=true;
   const form=document.createElement('form');
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
-  form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
+  form.append(input,send,retry); panel.append(heading,status,messages,typing,form); document.body.append(panel);
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
-  let selected='legacy';const drafts=new Map();
+  let selected='legacy';const drafts=new Map(),questionDrafts=new Map();
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
   const selectConversation=id=>{
     drafts.set(selected,{text:input.value,pending});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
-    lastContent=null;canCorrect=false;messages.replaceChildren();send.disabled=true;
+    lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
     panel.open=true;void refresh();
   };
   window.addEventListener('coordinator-open-item',async event=>{
@@ -4286,16 +4287,18 @@ async function installCoordinatorPanel(sync){
   const render=state=>{
     const renderedConversation=selected;
     status.textContent=state.error?'处理暂停：'+state.error.code:'';
+    const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
+    typing.hidden=state.status!=='running'||answering;
     const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
     const transcript=conversationFragments(state.messages||[],document,{nodes:state.nodeReferences||[],
-      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',onSupplement:()=>input.focus(),
-      onAnswer:(question,option)=>{
+      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
+      questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
+      onAnswer:(question,answer)=>{
         if(busy||pending||send.disabled)return;
-        for(const button of messages.querySelectorAll('.coordinator-choices button'))button.disabled=true;
-        void submit({id:crypto.randomUUID(),text:question.text+'\n\n我的选择：'+option});
+        void submit({id:crypto.randomUUID(),text:answer,answerTo:question.id});
       },onNode:async id=>{
       try{
         if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
@@ -4391,18 +4394,22 @@ async function installCoordinatorPanel(sync){
     refreshing=true;
     const id=selected;
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');if(id===selected)render(state);}
-    catch(error){status.textContent='读取失败：'+error.message;}
+    catch(error){typing.hidden=true;status.textContent='读取失败：'+error.message;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?3000:0);}
   };
   const submit=async request=>{
     if(busy) return;
     const id=selected;
     busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='';
+    const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
+    typing.hidden=!!answeringCard;
+    if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
+    for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
       await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
       if(id===selected){pending=null;if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
       else{const draft=drafts.get(id);if(draft){draft.pending=null;if(draft.text.trim()===request.text)draft.text='';}}
-    }catch(error){if(id===selected){status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}}
+    }catch(error){if(id===selected){typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}}
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
     if(!pending||id!==selected) await refresh();
   };

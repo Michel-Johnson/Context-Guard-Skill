@@ -41,7 +41,7 @@ export class CoordinatorModel {
   }
 
   async next({ system, messages, tools = [] }) {
-    const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages, ...(tools.length ? { tools } : {}) });
+    const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > 512 * 1024) throw problem('CONTEXT_TOO_LARGE', 'Coordinator context needs explicit compaction');
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), this.timeoutMs);

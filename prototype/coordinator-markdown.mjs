@@ -89,31 +89,45 @@ function linkMapNodes(root, nodes, onNode, doc) {
   }
 }
 
-export function conversationFragments(messages, doc = document, { nodes = [], onNode, onAnswer, onSupplement, canAnswer = false } = {}) {
+export function conversationFragments(messages, doc = document, { nodes = [], onNode, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
-  const latestQuestion = messages.findLastIndex(message => message.questions?.length);
-  const latestUser = messages.findLastIndex(message => message.role === 'user' && !message.text?.startsWith('[服务器工作流事件，不是新的用户授权]'));
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
-    if (workflow) continue;
-    if (!message.text) continue;
+    if (workflow || message.answerTo || !message.text) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
-    content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
-    if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
-    if (message === messages[latestQuestion] && latestQuestion > latestUser) {
-      for (const question of message.questions || []) {
-        if (!question.options?.length) continue;
+    if (!message.questions?.length) content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
+    for (const question of message.questions || []) {
+      const card = doc.createElement('section'); card.className = 'coordinator-question'; card.dataset.questionId = question.id;
+      const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);
+      const activity = doc.createElement('p'); activity.className = 'coordinator-question-status'; activity.setAttribute('role', 'status');
+      activity.textContent = '正在回复…'; activity.hidden = !(running && question.answer?.requestId === activeTurnId);
+      if (question.answer) {
+        const answer = doc.createElement('p'); answer.className = 'coordinator-answer'; answer.textContent = '你的回答：' + question.answer.text; card.append(answer);
+      } else {
+        const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
         const choices = doc.createElement('div'); choices.className = 'coordinator-choices';
-        for (const option of question.options) {
+        const optionButtons = [];
+        for (const option of question.options || []) {
           const button = doc.createElement('button'); button.type = 'button'; button.textContent = option; button.disabled = !canAnswer;
-          button.addEventListener('click', () => onAnswer?.(question, option)); choices.append(button);
+          button.setAttribute('aria-pressed', String(draft.option === option)); optionButtons.push(button);
+          button.addEventListener('click', () => {
+            draft.option = draft.option === option ? '' : option;
+            for (const item of optionButtons) item.setAttribute('aria-pressed', String(item.textContent === draft.option));
+            update();
+          }); choices.append(button);
         }
-        const supplement = doc.createElement('button'); supplement.type = 'button'; supplement.textContent = '补充说明';
-        supplement.addEventListener('click', () => onSupplement?.()); choices.append(supplement);
-        content.append(choices);
+        const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000;
+        input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
+        const send = doc.createElement('button'); send.type = 'button'; send.textContent = '提交回答';
+        const update = () => { send.disabled = !canAnswer || !(draft.option || draft.text.trim()); };
+        input.addEventListener('input', () => { draft.text = input.value; update(); });
+        send.addEventListener('click', () => onAnswer?.(question, [draft.option, draft.text.trim()].filter(Boolean).join('\n\n')));
+        update(); card.append(choices, input, send);
       }
+      card.append(activity); content.append(card);
     }
+    if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
     row.append(content); body.append(row);
   }
   return { body };

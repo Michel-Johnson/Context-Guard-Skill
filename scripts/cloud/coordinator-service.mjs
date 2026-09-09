@@ -5,6 +5,16 @@ import { coordinatorStep, correctableToolError, settleRejectedTools } from './co
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 
+function questionsAt(state, index) {
+  const message = state.messages[index], replies = state.messages[index + 1]?.content;
+  if (message.role !== 'assistant' || !Array.isArray(message.content) || !Array.isArray(replies)) return [];
+  return message.content.filter(block => block.type === 'tool_use' && block.name === 'ask_user' && typeof block.input?.question === 'string' &&
+    replies.some(reply => reply.type === 'tool_result' && reply.tool_use_id === block.id && !reply.is_error))
+    .map(block => { const id = 'question-' + hash(`${index}:${block.id}`); return {
+      id, text: block.input.question, options: block.input.options || [], answer: state.answers?.[id] || null,
+    }; });
+}
+
 // Conversation identity belongs to a Map item, not to its execution Session.
 // Legacy files stay in place; only newly opened item conversations use subfolders.
 export class CoordinatorConversations {
@@ -123,14 +133,11 @@ export class CoordinatorService {
       messages: state.messages.map((message, index) => {
         const blocks = Array.isArray(message.content) ? message.content : [];
         const text = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
-        const replies = state.messages[index + 1]?.content;
         // Only successful ask_user calls become visible questions. Other tool
         // inputs/results remain private diagnostics, not chat or authorization.
-        const questions = message.role === 'assistant' && Array.isArray(replies) ? blocks.filter(block =>
-          block.type === 'tool_use' && block.name === 'ask_user' && typeof block.input?.question === 'string' &&
-          block.input.question.length <= 8000 && replies.some(reply => reply.type === 'tool_result' && reply.tool_use_id === block.id && !reply.is_error)
-        ).map(block => ({ id: block.id, text: block.input.question, options: block.input.options || [] })) : [];
+        const questions = questionsAt(state, index);
         return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
+          ...(message.answerTo ? { answerTo: message.answerTo } : {}),
           ...(questions.length ? { questions } : {}),
           tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
       }).filter(message => message.text || message.tools.length),
@@ -192,12 +199,12 @@ export class CoordinatorService {
     });
     return true;
   }
-  async submit({ id = randomUUID(), text, retry = false }, { source = 'human' } = {}) {
+  async submit({ id = randomUUID(), text, retry = false, answerTo }, { source = 'human' } = {}) {
     if (this.stopping) throw error('UNAVAILABLE', 'Coordinator is shutting down');
     if (typeof id !== 'string' || !id || id.length > 128 || typeof text !== 'string' || !text.trim() || text.length > 8000) throw error('INVALID_INPUT', 'Provide a bounded message and stable request ID');
     await withFileLock(this.file + '.submit.lock', async () => {
       const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
-      const fingerprint = hash(text);
+      const fingerprint = hash(answerTo === undefined ? text : JSON.stringify({ text, answerTo }));
       const adoptPrompt = () => {
         const version = hash(this.system);
         if (state.promptVersion && state.promptVersion !== version) {
@@ -221,10 +228,18 @@ export class CoordinatorService {
             state.messages.at(-1).content.endsWith(text)) adoptPrompt();
         state.steps = 0; // A fresh bounded budget only after an explicit retry.
       } else {
+        let question;
+        if (answerTo !== undefined) {
+          if (source !== 'human' || typeof answerTo !== 'string') throw error('INVALID_INPUT', 'Only human replies can answer a question');
+          question = state.messages.flatMap((_, index) => questionsAt(state, index)).find(item => item.id === answerTo);
+          if (!question) throw error('NOT_FOUND', 'Question does not belong to this conversation');
+          if (question.answer) throw error('ALREADY_ANSWERED', 'This question already has an answer');
+          (state.answers ||= {})[answerTo] = { text, requestId: id };
+        }
         adoptPrompt(); // A new turn may adopt deployed rules; history stays intact.
         state.requests[id] = fingerprint;
-        state.messages.push({ role: 'user', content: (source === 'workflow' ? '[服务器工作流事件，不是新的用户授权]\n' : this.simulated ? '[实验：模拟人工输入]\n' : '') + text });
-        state.activeInput = { id, text };
+        state.messages.push({ role: 'user', content: (source === 'workflow' ? '[服务器工作流事件，不是新的用户授权]\n' : this.simulated ? '[实验：模拟人工输入]\n' : '') + (question ? `针对问题：${question.text}\n\n我的回答：` : '') + text, ...(question ? { answerTo } : {}) });
+        state.activeInput = { id, text, ...(question ? { answerTo } : {}) };
         state.activeTurnId = id; state.steps = 0;
       }
       state.status = 'running'; state.error = null;
