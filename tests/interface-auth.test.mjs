@@ -80,6 +80,31 @@ test('active and recently expired device credentials renew without storing the p
   now = 9100; await assert.rejects(auth.authenticate(opened.credential), { code: 'UNAUTHORIZED' });
 });
 
+test('Cloud device credentials can initialize the shared language preference', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-preferences-'));
+  const memoryConfig = { dataDir: path.join(dataDir, 'memory'), adminToken: 'memory-admin', projects: {
+    'context-guard': { token: 'project-token' },
+  } };
+  const protocolConfig = { repositories: [{ slug: 'example/repo', repositoryId: '123', projectId: 'context-guard', clients: {
+    device: { deviceId: 'device', agentId: 'agent', role: 'device' },
+  } }] };
+  const server = await startCloudServer({ dataDir, port: 0, browserToken: 'browser-token',
+    browserPasswordHash: await createWorkbenchPasswordHash('test-only'), memoryConfig, protocolConfig });
+  t.after(async () => { await server.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const login = await fetch(new URL('/api/v2/messages', server.url), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ v: 2, id: 'preferences-login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'device' } }) });
+  assert.equal(login.status, 200);
+  const credential = login.headers.get('x-context-guard-credential'); assert.ok(credential);
+  const headers = { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json' };
+  const read = await fetch(new URL('/v1/projects/context-guard/preferences', server.url), { headers });
+  assert.equal(read.status, 200); assert.equal((await read.json()).preferences, null);
+  const write = await fetch(new URL('/v1/projects/context-guard/preferences', server.url), { method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'set-language-zh', baseVersion: null, language: 'zh' }) });
+  assert.equal(write.status, 200, await write.text());
+  const saved = await fetch(new URL('/v1/projects/context-guard/preferences', server.url), { headers });
+  assert.equal((await saved.json()).preferences.language, 'zh');
+});
+
 test('IF-024: Cloud binary upload enforces binding, hash completion and byte ranges', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-cloud-blob-'));
   t.after(() => fs.rm(dataDir, { recursive: true, force: true }));
