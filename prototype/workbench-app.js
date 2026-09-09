@@ -2390,12 +2390,13 @@ async function promptWorkAssignment(node, item=null, kind="bug"){
 function promptBugAssignment(node,bug=null){ return promptWorkAssignment(node,bug,"bug"); }
 function promptTodoAssignment(node,todo=null){ return promptWorkAssignment(node,todo,"todo"); }
 
-async function saveCoordinatorIntake(){
+async function saveCoordinatorIntake(node,item,kind){
   renderAll();
   const panel=document.getElementById('coordinator-panel');
   if(panel) panel.open=true;
   try{
     await workbenchSync.flush();
+    window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:node.id,itemId:item.id,kind}}));
     workbenchSync.setStatus(workbenchSync.status,'事项已保存，Coordinator 将与你澄清需求');
   }catch(error){
     workbenchSync.setStatus(workbenchSync.status,'事项尚未同步，请重试保存：'+error.message);
@@ -2435,7 +2436,7 @@ async function createAssignedBug(node){
   do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
   const bug = {id:bid,title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
   node.bugs.push(bug);
-  if(assignment.clarify){ await saveCoordinatorIntake(); return; }
+  if(assignment.clarify){ await saveCoordinatorIntake(node,bug,'bug'); return; }
   await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
 }
 
@@ -2478,7 +2479,7 @@ async function createAssignedTodo(node){
   foldTodo = true;
   const todo = {id:nextTodoId(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
   node.todos.push(todo);
-  if(assignment.clarify){ await saveCoordinatorIntake(); return; }
+  if(assignment.clarify){ await saveCoordinatorIntake(node,todo,'todo'); return; }
   await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
 }
 
@@ -3571,6 +3572,7 @@ function renderDetail(){
             <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${linkifyText(todo.desc||todo.title||"")}</div>
             ${todo.draft?"":todoProgressHtml(todo)}
             ${taskSummaryHtml(todo)}
+            ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(todo.id)}" data-coordinator-node="${escAttr(node.id)}" data-coordinator-kind="todo">对话</button>`:""}
             ${unassigned?`<button type="button" data-todo-assign="${escAttr(todo.id)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
           </div>
@@ -3593,6 +3595,7 @@ function renderDetail(){
             ${title}
             ${bugProgressHtml(b)}
             ${taskSummaryHtml(b)}
+            ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(b.id)}" data-coordinator-node="${escAttr(row.from)}" data-coordinator-kind="bug">对话</button>`:""}
             ${workbenchSync?.config?.interfaceCapabilities?.humanReview && !b.dispatch?.task_id && !["resolved","dormant"].includes(b.status)?`<button type="button" data-bug-assign="${escAttr(b.id)}" data-bug-node="${escAttr(row.from)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${attach}
           </div>
@@ -3674,6 +3677,7 @@ function renderDetail(){
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
   el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
   el.querySelectorAll("[data-bug-assign]").forEach(button=>button.onclick=async()=>{const owner=findPath(button.dataset.bugNode)?.at(-1),bug=owner?.bugs.find(item=>item.id===button.dataset.bugAssign);const assignment=await promptBugAssignment(owner,bug);if(assignment) await dispatchBugToSession(owner,bug,assignment.sessionId,assignment.plan);});
+  el.querySelectorAll('[data-coordinator-item]').forEach(button=>button.onclick=()=>window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:button.dataset.coordinatorNode,itemId:button.dataset.coordinatorItem,kind:button.dataset.coordinatorKind}})));
   el.querySelectorAll("[data-todo-assign]").forEach(button=>button.onclick=async()=>{const todo=node.todos.find(item=>item.id===button.dataset.todoAssign);const assignment=await promptTodoAssignment(node,todo);if(assignment) await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);});
   el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
   el.querySelectorAll("[data-todo-send]").forEach(button=>button.onclick=()=>sendPendingTodo(node,node.todos.find(todo=>todo.id===button.dataset.todoSend)));
@@ -4256,6 +4260,7 @@ async function installCoordinatorPanel(sync){
   panel.id='coordinator-panel';
   const heading=document.createElement('summary'); heading.textContent='Coordinator';
   const status=document.createElement('p'); status.setAttribute('role','status');
+  const picker=document.createElement('select');picker.setAttribute('aria-label','Coordinator 事项对话');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
   const form=document.createElement('form');
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
@@ -4263,7 +4268,7 @@ async function installCoordinatorPanel(sync){
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
-  form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
+  form.append(input,send,retry); panel.append(heading,picker,status,messages,form); document.body.append(panel);
   const creation=document.createElement('details'); creation.className='coordinator-session-create'; creation.hidden=true;
   const creationHeading=document.createElement('summary'); creationHeading.textContent='新建执行会话';
   const creationForm=document.createElement('form'), creationName=document.createElement('input'), creationTemplate=document.createElement('select');
@@ -4313,7 +4318,27 @@ async function installCoordinatorPanel(sync){
   };
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
+  let selected='legacy';const drafts=new Map();
+  const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
+  const selectConversation=id=>{
+    drafts.set(selected,{text:input.value,pending});selected=id;
+    input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
+    lastContent=null;canCorrect=false;messages.replaceChildren();send.disabled=true;
+    panel.open=true;void refresh();
+  };
+  picker.onchange=()=>selectConversation(picker.value);
+  window.addEventListener('coordinator-open-item',async event=>{
+    panel.open=true;status.textContent='正在打开事项对话…';
+    try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
+    catch(error){status.textContent='无法打开事项对话：'+error.message;}
+  });
   const render=state=>{
+    picker.replaceChildren();
+    for(const item of state.conversations||[{id:'legacy',title:'历史总对话'}]){
+      const option=document.createElement('option');option.value=item.id;option.textContent=(item.kind?item.kind.toUpperCase()+' · ':'')+item.title;picker.append(option);
+    }
+    picker.value=selected;
+    const renderedConversation=selected;
     renderCreation(state);
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
     const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances]);
@@ -4341,7 +4366,7 @@ async function installCoordinatorPanel(sync){
             request={id:crypto.randomUUID(),proposalIds:proposals.map(p=>p.id),decision,reason};}
           for(const other of card.querySelectorAll('button'))other.disabled=true;
           status.textContent='正在保存节点审核…';
-          try{await sync.call('/api/coordinator/mount-review',request,'POST','main');await refresh();}
+          try{await sync.call(conversationUrl('/api/coordinator/mount-review',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='节点审核尚未成功：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
         });card.append(button);
       }messages.append(card);
@@ -4359,7 +4384,7 @@ async function installCoordinatorPanel(sync){
         button.addEventListener('click',async()=>{
           for(const other of card.querySelectorAll('button')) other.disabled=true;
           status.textContent='正在提交确认…';
-          try{await sync.call('/api/coordinator/approval',request,'POST','main');await refresh();}
+          try{await sync.call(conversationUrl('/api/coordinator/approval',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='确认尚未成功：'+error.message;for(const other of card.querySelectorAll('button')) other.disabled=false;}
         });
         card.append(button);
@@ -4385,7 +4410,7 @@ async function installCoordinatorPanel(sync){
           }
           for(const other of card.querySelectorAll('button'))other.disabled=true;
           status.textContent='正在提交验收…';
-          try{await sync.call('/api/coordinator/acceptance',request,'POST','main');await refresh();}
+          try{await sync.call(conversationUrl('/api/coordinator/acceptance',renderedConversation),request,'POST','main');await refresh();}
           catch(error){status.textContent='验收尚未确认：'+error.message;for(const other of card.querySelectorAll('button'))other.disabled=false;}
         });
         card.append(button);
@@ -4406,19 +4431,22 @@ async function installCoordinatorPanel(sync){
     clearTimeout(timer);
     if(stopped||refreshing) return;
     refreshing=true;
-    try{render(await sync.call('/api/coordinator',undefined,'GET','main'));}
+    const id=selected;
+    try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');if(id===selected)render(state);}
     catch(error){status.textContent='读取失败：'+error.message;}
-    finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,3000);}
+    finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?3000:0);}
   };
   const submit=async request=>{
     if(busy) return;
+    const id=selected;
     busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='正在提交…';
     try{
-      await sync.call('/api/coordinator',request,'POST','main');
-      pending=null; if(input.value.trim()===request.text)input.value=''; retry.hidden=true;
-    }catch(error){status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}
+      await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
+      if(id===selected){pending=null;if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
+      else{const draft=drafts.get(id);if(draft){draft.pending=null;if(draft.text.trim()===request.text)draft.text='';}}
+    }catch(error){if(id===selected){status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}}
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
-    if(!pending) await refresh();
+    if(!pending||id!==selected) await refresh();
   };
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing&&!send.disabled){event.preventDefault();form.requestSubmit();}});
