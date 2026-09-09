@@ -720,7 +720,12 @@ export async function startCloudServer({
     const sessionId = viewId.slice('session:'.length);
     const snapshot = (await readMemoryProject(configuredMemory, project.id)).sessions[sessionId];
     if (!snapshot) throw new MapError('UNKNOWN_VIEW', 'Session memory is not available', 404);
-    return { version: snapshot.version, document: snapshot.memory.map, source: { status: 'session', sessionId, sourceCommit: snapshot.sourceCommit, baseMainVersion: snapshot.baseMainVersion, updatedAt: snapshot.updatedAt || null } };
+    // Coordinator assignments are a read-only projection shared by Main and
+    // Session views.  Session memory is intentionally left untouched, but the
+    // selected Session must still show the current dispatch/status for items
+    // that the Coordinator assigned to it.
+    const document = await coordinatorAssignmentProjection(project, snapshot.memory.map);
+    return { version: snapshot.version, document, source: { status: 'session', sessionId, sourceCommit: snapshot.sourceCommit, baseMainVersion: snapshot.baseMainVersion, updatedAt: snapshot.updatedAt || null } };
   };
   const mainMemorySnapshot = async project => {
     if (!configuredMemory?.projects?.[project.id]) return null;
