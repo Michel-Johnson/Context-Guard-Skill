@@ -15,7 +15,7 @@ import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-rev
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake } from './coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
 
@@ -391,15 +391,32 @@ export async function startCloudServer({
 
   const projectById = id => registry.projects.find(project => project.id === id);
   const coordinators = new Map();
+  const conversationsFor = project => new CoordinatorConversations(path.join(dataDir, 'coordinators', project.id));
+  const itemConversation = async (project, { nodeId, kind, itemId }) => {
+    const config = configuredMemory?.projects?.[project.id]?.coordinator;
+    if (!config?.enabled) protocolFail('FORBIDDEN', 'Coordinator is not enabled');
+    const snapshot = await readMemoryProject(configuredMemory, project.id);
+    const node = entries(snapshot.main.memory.map.root).get(nodeId)?.node;
+    const item = node?.[kind === 'todo' ? 'todos' : kind === 'bug' ? 'bugs' : '']?.find(item => item.id === itemId);
+    if (!item || config.nodeIds && !config.nodeIds.includes(nodeId)) protocolFail('FORBIDDEN', 'Map item is not available');
+    return conversationsFor(project).ensure({ nodeId, kind, item });
+  };
   const mapIntakeFor = (project, service) => new CoordinatorMapIntake({
     directory: path.join(dataDir, 'coordinators', project.id), service,
+    onItem: async entry => {
+      const conversations = conversationsFor(project), id = await conversations.ensure(entry);
+      const dispatch = entry.item.dispatch;
+      if (dispatch?.session_id && dispatch.task_id) await conversations.bind(id, dispatch.session_id, dispatch.task_id);
+    },
     read: () => readMemoryProject(configuredMemory, project.id),
     nodeIds: configuredMemory.projects[project.id].coordinator.nodeIds || null,
   });
-  const coordinatorFor = async project => {
+  const coordinatorFor = async (project, conversationId = 'legacy') => {
     const config = configuredMemory?.projects?.[project.id]?.coordinator;
     if (!config?.enabled) throw new MapError('COORDINATOR_DISABLED', 'Coordinator is not enabled for this project', 404);
-    if (!coordinators.has(project.id)) {
+    const conversations = conversationsFor(project), conversation = await conversations.get(conversationId);
+    const key = `${project.id}:${conversationId}`;
+    if (!coordinators.has(key)) {
       const creating = (async () => {
         if (!path.isAbsolute(config.providerFile || '') || !config.bindings || typeof config.bindings !== 'object') throw new MapError('INVALID_COORDINATOR_CONFIG', 'Configure provider and explicit Session bindings', 503);
         const { repository, store, principal: human } = interfaceProject(project);
@@ -415,7 +432,10 @@ export async function startCloudServer({
           Object.assign(bindings, next);
           return Object.keys(bindings);
         };
-        const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-coordinator', agentId: `coordinator:${project.id}`, role: 'coordinator', bindings, nodeIds: config.nodeIds || null };
+        const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-coordinator', agentId: conversationId === 'legacy' ? `coordinator:${project.id}` : `coordinator:${conversationId}`, role: 'coordinator', bindings, nodeIds: config.nodeIds || null };
+        const assertTask = async (sessionId, taskId) => {
+          if (await conversations.owner(sessionId, taskId) !== conversationId) protocolFail('FORBIDDEN', 'Task belongs to another conversation');
+        };
         const sessionFor = async id => {
           await refreshBindings();
           if (!Object.hasOwn(bindings, id)) protocolFail('FORBIDDEN', 'This Session is not assigned to the Coordinator');
@@ -447,27 +467,50 @@ export async function startCloudServer({
             const text = await fs.readFile(path.join(root, 'references', name), 'utf8');
             return { name, version: digest(text), text };
           },
-          readTask: async (id, taskId) => store.taskRecord(principal, await sessionFor(id), taskId),
+          readTask: async (id, taskId) => { await assertTask(id, taskId); return store.taskRecord(principal, await sessionFor(id), taskId); },
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
+            if (type === 'brief.submit') {
+              const existing = (await store.workflowTasks(principal, message.session)).find(task => task.id === payload.taskId);
+              if (existing) await assertTask(sessionId, payload.taskId);
+              await conversations.bind(conversationId, sessionId, payload.taskId);
+            }
+            if (payload.taskId) await assertTask(sessionId, payload.taskId);
             return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
           },
         });
-        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8');
-        const service = new CoordinatorService({ directory: path.join(dataDir, 'coordinators', project.id),
+        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (conversationId === 'legacy' ? '' :
+          `\n本对话仅负责这一 Map 事项：${JSON.stringify(conversation)}。先读取该节点的最新原文；不要处理其他事项。`);
+        const directory = conversationId === 'legacy' ? conversations.directory : path.join(conversations.directory, 'items', conversationId);
+        const service = new CoordinatorService({ directory,
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
-        const intake = mapIntakeFor(project, service);
-        await intake.initialize();
+        const intake = conversationId === 'legacy' ? mapIntakeFor(project, { submit: async (request, options) => {
+          const item = JSON.parse(request.text), id = await itemConversation(project, item);
+          return (await coordinatorFor(project, id)).submit(request, options);
+        } }) : null;
+        await intake?.initialize();
         service.bindings = bindings; service.refreshBindings = refreshBindings;
-        service.inbox = new CoordinatorInbox({ store, principal, sessionIds: refreshBindings, service,
+        service.inbox = conversationId !== 'legacy' ? {
+          lastError: null, close: async () => {}, pump: async () => (await coordinatorFor(project)).inbox.pump(),
+        } : new CoordinatorInbox({ store, principal, sessionIds: refreshBindings, service,
+          services: async () => Promise.all((await conversations.list()).map(item => coordinatorFor(project, item.id))),
+          routeEvent: async (type, payload, session) => {
+            let taskId = payload.taskId;
+            if (!taskId && type === 'review.result') {
+              const object = await store.handle(principal, { v: 2, id: randomUUID(), type: 'object.read', session,
+                payload: { ref: payload.ref, version: payload.version } });
+              taskId = object.data.content.taskId;
+            }
+            return coordinatorFor(project, await conversations.owner(session.id, taskId));
+          },
           intake, memoryEvents: memoryHub(configuredMemory), projectId: project.id });
         service.kick();
         return service;
       })();
-      coordinators.set(project.id, creating);
-      creating.catch(() => { if (coordinators.get(project.id) === creating) coordinators.delete(project.id); });
+      coordinators.set(key, creating);
+      creating.catch(() => { if (coordinators.get(key) === creating) coordinators.delete(key); });
     }
-    return coordinators.get(project.id);
+    return coordinators.get(key);
   };
   const mapFile = id => path.join(mapsDir, `${id}.json`);
   const eventsFile = id => path.join(eventsDir, `${id}.jsonl`);
@@ -1137,6 +1180,7 @@ export async function startCloudServer({
         const project = workbench[2] ? projectById(decodeURIComponent(workbench[2])) : null;
         if (workbench[2] && !project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const viewId = String(url.searchParams.get('view') || 'main');
+        const conversationId = url.searchParams.get('conversation') || 'legacy';
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
         if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
@@ -1149,11 +1193,20 @@ export async function startCloudServer({
           const { store, principal } = interfaceProject(project);
           return send(res, 202, await store.requestSessionCreation(principal, input));
         }
+        if (action === '/api/coordinator/conversations' && project && req.method === 'POST') {
+          const input = await requestBody(req);
+          if (!input || Object.keys(input).some(key => !['nodeId', 'kind', 'itemId'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Select a Map item');
+          const id = await itemConversation(project, input);
+          await coordinatorFor(project, id);
+          return send(res, 200, { id });
+        }
         if (action === '/api/coordinator' && project) {
-          const coordinator = await coordinatorFor(project);
+          const coordinator = await coordinatorFor(project, conversationId);
           if (req.method === 'GET') {
             await coordinator.refreshBindings();
             const state = await coordinator.state();
+            state.conversationId = conversationId;
+            state.conversations = await conversationsFor(project).list();
             state.eventError = coordinator.inbox.lastError;
             const { store, principal } = interfaceProject(project);
             state.sessionCreations = (await store.sessionCreations(principal)).slice(-100);
@@ -1169,6 +1222,7 @@ export async function startCloudServer({
               if (!binding) continue;
               const session = { id: sessionId, generation: binding.generation };
               for (const task of await store.workflowTasks(principal, session)) {
+                if (await conversationsFor(project).owner(sessionId, task.id) !== conversationId) continue;
                 if (task.stage !== 'awaiting-merge' || task.ci?.verdict !== 'passed') continue;
                 const read = async ref => (await store.handle(principal, { v: 2, id: randomUUID(), type: 'object.read', session, payload: ref })).data.content;
                 state.acceptances.push({ taskId: task.id, sessionId, sourceSha: task.sourceSha, ci: task.ci,
@@ -1186,7 +1240,7 @@ export async function startCloudServer({
           if (req.method === 'POST') return send(res, 202, await coordinator.submit(await requestBody(req)));
         }
         if (action === '/api/coordinator/mount-review' && project && req.method === 'POST') {
-          const coordinator = await coordinatorFor(project), input = await requestBody(req);
+          const coordinator = await coordinatorFor(project, conversationId), input = await requestBody(req);
           const result = await coordinator.reviewMount(input, (proposals, operationId) => commitMainMemoryMap(configuredMemory, project.id, {
             operationId, baseVersion: proposals[0].mainVersion,
             operations: proposals.map(proposal => ({ type: 'create', parentId: proposal.parentId,
@@ -1197,7 +1251,7 @@ export async function startCloudServer({
           return send(res, 200, result);
         }
         if (action === '/api/coordinator/approval' && project && req.method === 'POST') {
-          const input = await requestBody(req), coordinator = await coordinatorFor(project);
+          const input = await requestBody(req), coordinator = await coordinatorFor(project, conversationId);
           if (!input || Object.keys(input).some(key => !['id', 'proposalId', 'decision', 'reason'].includes(key))) protocolFail('INVALID_ARGUMENT', 'Unexpected approval fields');
           const proposal = (await coordinator.state()).approvals.find(value => value.id === input.proposalId && value.brief);
           if (!proposal) protocolFail('NOT_FOUND', 'Requirement approval is not available');
@@ -1211,7 +1265,7 @@ export async function startCloudServer({
           return send(res, 200, (await store.handle(principal, message)).data);
         }
         if (action === '/api/coordinator/acceptance' && project && req.method === 'POST') {
-          const coordinator = await coordinatorFor(project);
+          const coordinator = await coordinatorFor(project, conversationId);
           await coordinator.refreshBindings();
           const input = await requestBody(req);
           if (!input || Object.keys(input).some(key => !['id', 'sessionId', 'taskId', 'ref', 'version', 'decision', 'reason'].includes(key)) ||
@@ -1219,6 +1273,7 @@ export async function startCloudServer({
           const { store, principal } = interfaceProject(project), binding = await store.registeredBinding(principal, input.sessionId);
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           const session = { id: input.sessionId, generation: binding.generation }, task = await store.taskRecord(principal, session, input.taskId);
+          if (await conversationsFor(project).owner(input.sessionId, input.taskId) !== conversationId) protocolFail('FORBIDDEN', 'Task belongs to another conversation');
           if (task.ci?.ref !== input.ref || task.ci?.version !== input.version || task.ci?.verdict !== 'passed') protocolFail('CONFLICT', 'Acceptance must reference the current passed CI result');
           if (typeof input.reason !== 'string' || !input.reason.trim()) protocolFail('INVALID_ARGUMENT', 'Record the human acceptance result or rejection reason');
           const message = validateMessage({ v: 2, id: input.id, type: 'review.result', session, payload: { kind: 'acceptance', ref: input.ref, version: input.version,
@@ -1578,7 +1633,8 @@ export async function startCloudServer({
   setTimeout(publishMergedSessions, 0).unref?.();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   for (const project of registry.projects) {
-    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) void coordinatorFor(project).catch(() => {});
+    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) void conversationsFor(project).list().then(items =>
+      Promise.all(items.map(item => coordinatorFor(project, item.id)))).catch(() => {});
   }
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {

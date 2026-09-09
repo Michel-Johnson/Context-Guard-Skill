@@ -426,6 +426,14 @@ try {
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
 
+  const itemConversations=[];
+  await page.route(/\/api\/coordinator\/conversations(?:\?|$)/,async route=>{
+    const item=route.request().postDataJSON(), id=item.kind+'-'+item.itemId;
+    itemConversations.push({...item,id});
+    coordinatorState.conversations=[{id:'legacy',title:'历史总对话'},...itemConversations.map(item=>({...item,title:item.itemId}))];
+    return route.fulfill({json:{id}});
+  });
+
   for (const kind of ['todo', 'bug']) {
     await coordinator.locator(':scope > summary').click();
     await page.locator(`[data-act="add-${kind}"]`).click();
@@ -441,7 +449,17 @@ try {
     assert.ok(item, 'the requirement must be persisted in Main');
     assert.equal(item.dispatch, undefined, 'creating a requirement must not dispatch work or approve a brief');
     assert.deepEqual(item.sessions, []);
+    await page.waitForFunction(id=>document.querySelector('[aria-label="Coordinator 事项对话"]')?.value===id,kind+'-'+item.id);
   }
+  assert.notEqual(itemConversations[0].id,itemConversations[1].id);
+  const picker=coordinator.getByLabel('Coordinator 事项对话');
+  await coordinator.locator('textarea').fill('Bug 独立草稿');
+  await picker.selectOption(itemConversations[0].id);
+  assert.equal(await coordinator.locator('textarea').inputValue(),'');
+  await coordinator.locator('textarea').fill('TODO 独立草稿');
+  await page.waitForTimeout(100);
+  await picker.selectOption(itemConversations[1].id);
+  assert.equal(await coordinator.locator('textarea').inputValue(),'Bug 独立草稿');
   record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
 
   coordinatorState.sessionTemplates=[{id:'developer-template',name:'Claude Developer'}];

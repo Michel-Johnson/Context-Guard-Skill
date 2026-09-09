@@ -5,12 +5,46 @@ import { coordinatorStep, correctableToolError, settleRejectedTools } from './co
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 
+// Conversation identity belongs to a Map item, not to its execution Session.
+// Legacy files stay in place; only newly opened item conversations use subfolders.
+export class CoordinatorConversations {
+  constructor(directory) { this.directory = directory; this.file = path.join(directory, 'conversations.json'); }
+  async state() { return readJSON(this.file, { items: {}, tasks: {} }); }
+  async list() { return [{ id: 'legacy', title: '历史总对话' }, ...Object.values((await this.state()).items)]; }
+  async get(id) {
+    if (id === 'legacy') return { id, title: '历史总对话' };
+    if (!/^item-[a-f0-9]{64}$/.test(id)) throw error('NOT_FOUND', 'Unknown conversation');
+    const item = (await this.state()).items[id];
+    if (!item) throw error('NOT_FOUND', 'Unknown conversation');
+    return item;
+  }
+  async ensure({ nodeId, kind, item }) {
+    const id = `item-${hash(JSON.stringify([nodeId, kind, item.id]))}`;
+    await withFileLock(this.file + '.lock', async () => {
+      const state = await this.state();
+      state.items[id] = { id, nodeId, kind, itemId: item.id, title: (item.title || item.desc || item.id).slice(0, 200) };
+      await atomicWrite(this.file, encode(state));
+    });
+    return id;
+  }
+  async owner(sessionId, taskId) { return (await this.state()).tasks[JSON.stringify([sessionId, taskId])] || 'legacy'; }
+  async bind(id, sessionId, taskId) {
+    await this.get(id);
+    await withFileLock(this.file + '.lock', async () => {
+      const state = await this.state(), key = JSON.stringify([sessionId, taskId]);
+      if (state.tasks[key] && state.tasks[key] !== id) throw error('FORBIDDEN', 'Task belongs to another conversation');
+      state.tasks[key] = id;
+      await atomicWrite(this.file, encode(state));
+    });
+  }
+}
+
 // Main already owns the durable event journal. This cursor is only a consumer
 // checkpoint, not another task queue or an authorization to dispatch work.
 export class CoordinatorMapIntake {
-  constructor({ directory, read, service, nodeIds = null }) {
+  constructor({ directory, read, service, nodeIds = null, onItem = null }) {
     this.file = path.join(directory, 'map-intake.json');
-    Object.assign(this, { read, service, nodeIds });
+    Object.assign(this, { read, service, nodeIds, onItem });
   }
   items(node) {
     if (!node) return [];
@@ -33,6 +67,7 @@ export class CoordinatorMapIntake {
       const checkpoint = await readJSON(this.file, null);
       if (!checkpoint) throw error('INTAKE_NOT_INITIALIZED', 'Initialize intake before accepting Map edits');
       const snapshot = await this.read(), seen = new Set(checkpoint.seen);
+      let blocked = false;
       const current = new Map(this.items(snapshot.main?.memory?.map?.root).map(entry => [this.key(entry), entry.item]));
       for (const event of (snapshot.events || []).filter(event => event.scope === 'main' && event.cursor > checkpoint.cursor).sort((a, b) => a.cursor - b.cursor)) {
         const items = (event.operations || []).flatMap(op => this.items(op.type === 'update' ? { ...op.fields, id: op.id } : op.node));
@@ -42,10 +77,12 @@ export class CoordinatorMapIntake {
           // Empty inline drafts become eligible only when their text is saved.
           if (item.draft || !(item.desc || item.title || '').trim()) continue;
           const latest = current.get(key);
+          if (latest && !latest.draft && event.actor?.kind === 'human') await this.onItem?.({ nodeId, kind, item: latest });
           if (latest && !latest.draft && event.actor?.kind === 'human' && !latest.dispatch?.task_id && !['done', 'resolved', 'dormant'].includes(latest.status)) {
-            await this.service.submit({ id: `intake:${hash(key)}`, text: JSON.stringify({ type: 'human.work-item-created',
+            try { await this.service.submit({ id: `intake:${hash(key)}`, text: JSON.stringify({ type: 'human.work-item-created',
               nodeId, kind, itemId: item.id, mainVersion: event.version,
-              instruction: '人类新建了待澄清事项。读取最新节点中的原文，立即用简短自然语言与人类确认目标和验收条件；不要当作已批准需求，不要直接派单。' }) }, { source: 'workflow' });
+              instruction: '人类新建了待澄清事项。读取最新节点中的原文，立即用简短自然语言与人类确认目标和验收条件；不要当作已批准需求，不要直接派单。' }) }, { source: 'workflow' }); }
+            catch (cause) { if (cause.code !== 'COORDINATOR_BUSY') throw cause; blocked = true; continue; }
             seen.add(key);
             // Persist before returning; replay after a lost reply uses the same
             // conversation ID and cannot invoke a second model turn.
@@ -55,7 +92,8 @@ export class CoordinatorMapIntake {
           }
           seen.add(key);
         }
-        checkpoint.cursor = event.cursor; checkpoint.seen = [...seen];
+        if (!blocked) checkpoint.cursor = event.cursor;
+        checkpoint.seen = [...seen];
         await atomicWrite(this.file, encode(checkpoint));
       }
       return false;
@@ -63,7 +101,7 @@ export class CoordinatorMapIntake {
   }
 }
 
-// One human conversation per project. HTTP handlers acknowledge a durable turn;
+// One independent conversation. HTTP handlers acknowledge a durable turn;
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
   constructor({ directory, model, system, tools, execute, maxSteps = 12, simulated = false }) {
@@ -212,8 +250,8 @@ export class CoordinatorService {
 // Consume the existing protocol journal as an independent consumer. Acceptance
 // means the conversation is durable, not that the model has completed its turn.
 export class CoordinatorInbox {
-  constructor({ store, principal, sessionIds, service, intake = null, memoryEvents = null, projectId = null, intervalMs = 5000 }) {
-    Object.assign(this, { store, principal, sessionIds, service, intake, memoryEvents });
+  constructor({ store, principal, sessionIds, service, intake = null, routeEvent = null, services = null, memoryEvents = null, projectId = null, intervalMs = 5000 }) {
+    Object.assign(this, { store, principal, sessionIds, service, intake, routeEvent, services, memoryEvents });
     this.running = null; this.stopped = false; this.lastError = null;
     this.changed = () => { void this.pump(); };
     store.on('change', this.changed);
@@ -222,16 +260,22 @@ export class CoordinatorInbox {
     this.timer = setInterval(this.changed, intervalMs); this.timer.unref();
   }
   async pump() {
-    if (this.running || this.stopped || this.service.running) return;
+    if (this.running || this.stopped) return;
     this.running = this.consume().catch(cause => { this.lastError = { code: cause.code || 'COORDINATOR_INBOX_FAILED' }; }).finally(() => { this.running = null; });
     return this.running;
   }
   async consume() {
-    const state = await this.service.state();
-    if (state.activeTurnId || state.status === 'error') return;
-    this.lastError = null;
-    if (await this.service.notifyMountReview?.()) return;
+    // Intake creates independent conversations even while the legacy one is busy.
     if (await this.intake?.consume()) return;
+    const available = async service => {
+      const state = await service.state();
+      return !service.running && !state.activeTurnId && state.status !== 'error';
+    };
+    if (!this.routeEvent && !await available(this.service)) return;
+    this.lastError = null;
+    for (const service of this.services ? await this.services() : [this.service]) {
+      if (await available(service)) await service.notifyMountReview?.();
+    }
     for (const id of typeof this.sessionIds === 'function' ? await this.sessionIds() : this.sessionIds) {
       if (this.stopped) return;
       try {
@@ -240,15 +284,27 @@ export class CoordinatorInbox {
         const session = { id, generation: binding.generation };
         const send = async (type, payload, messageId = randomUUID()) => (await this.store.handle(this.principal, { v: 2, id: messageId, type, ...(type === 'sync.heartbeat' ? {} : { session }), payload })).data;
         const head = await send('sync.heartbeat', { sessions: [{ ...session, ackedSeq: 0 }] });
-        const page = await send('sync.read', { afterSeq: head.sessions[0].ackedSeq, limit: 100 });
-        for (const item of page.messages) {
-          const { type, payload } = item.message;
-          const actionable = type === 'review.result' && ['brief', 'acceptance'].includes(payload.kind) || type === 'ci.result' ||
-            type === 'task.report' && ['planReady', 'handoff', 'interrupted', 'closed'].includes(payload.stage);
-          const summary = type === 'review.result' ? payload : { taskId: payload.taskId, stage: payload.stage, verdict: payload.verdict };
-          if (actionable) await this.service.submit({ id: `event:${item.message.id}`, text: JSON.stringify({ session, type, payload: summary, instruction: '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });
-          await send('sync.ack', { items: [{ seq: item.seq, outcome: 'applied' }] }, `coordinator-ack:${id}:${session.generation}:${item.seq}`);
-          if (actionable) return;
+        let afterSeq = head.sessions[0].ackedSeq;
+        // Scan to the captured head, not merely the first page behind a paused
+        // conversation. New events are picked up by the next bounded pump.
+        while (!this.stopped && afterSeq < head.sessions[0].latestSeq) {
+          const page = await send('sync.read', { afterSeq, limit: 100 });
+          if (!page.messages.length) break;
+          for (const item of page.messages) {
+            const { type, payload } = item.message;
+            const actionable = (type === 'review.result' && ['brief', 'acceptance'].includes(payload.kind) || type === 'ci.result' ||
+              type === 'task.report' && ['planReady', 'handoff', 'interrupted', 'closed'].includes(payload.stage));
+            const summary = type === 'review.result' ? payload : { taskId: payload.taskId, stage: payload.stage, verdict: payload.verdict };
+            if (actionable) {
+              const target = this.routeEvent ? await this.routeEvent(type, payload, session) : this.service;
+              // Leave this event unacknowledged, but allow other conversations to
+              // progress. The existing contiguous cursor replays the gap later.
+              if (!await available(target)) continue;
+              await target.submit({ id: `event:${item.message.id}`, text: JSON.stringify({ session, type, payload: summary, instruction: '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });
+            }
+            await send('sync.ack', { items: [{ seq: item.seq, outcome: 'applied' }] }, `coordinator-ack:${id}:${session.generation}:${item.seq}`);
+          }
+          afterSeq = page.nextSeq;
         }
       } catch (cause) { this.lastError = { code: cause.code || 'COORDINATOR_INBOX_FAILED', sessionId: id }; }
     }

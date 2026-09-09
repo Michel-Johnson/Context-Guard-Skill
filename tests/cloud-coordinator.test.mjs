@@ -2,7 +2,7 @@ import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake } from '../scripts/cloud/coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,6 +12,64 @@ import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.m
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
+
+test('Item conversations preserve identity, task ownership and legacy history across restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversations-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const registry = new CoordinatorConversations(directory);
+  const a = await registry.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', title: 'First' } });
+  const b = await registry.ensure({ nodeId: 'T0', kind: 'bug', item: { id: '1', title: 'Second' } });
+  assert.notEqual(a, b);
+  assert.equal(await registry.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', title: 'Renamed' } }), a);
+  await registry.bind(a, 'session', 'task');
+  await assert.rejects(registry.bind(b, 'session', 'task'), { code: 'FORBIDDEN' });
+  const restored = new CoordinatorConversations(directory);
+  assert.equal(await restored.owner('session', 'task'), a);
+  assert.equal(await restored.owner('other-session', 'task'), 'legacy');
+  assert.equal((await restored.list())[0].id, 'legacy');
+  await assert.rejects(restored.get('../conversation'), { code: 'NOT_FOUND' });
+});
+
+test('Cloud item conversations have separate messages and survive restart without cloning legacy history', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-item-http-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: { enabled: true, providerFile, bindings: {} } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { root: {
+    id: 'T0', title: 'Lab', children: [], todos: [{ id: 'TD1', title: 'First' }], bugs: [{ id: 'B1', title: 'Second' }],
+  } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const options = { dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
+    coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Response' }] }) }),
+  };
+  const headers = { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' };
+  const call = async (suffix, body) => {
+    const response = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator${suffix}`, {
+      headers, method: body ? 'POST' : 'GET', ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    assert.ok(response.ok, await response.clone().text()); return response.json();
+  };
+  server = await startCloudServer(options);
+  const a = (await call('/conversations', { nodeId: 'T0', kind: 'todo', itemId: 'TD1' })).id;
+  const b = (await call('/conversations', { nodeId: 'T0', kind: 'bug', itemId: 'B1' })).id;
+  await call('', { id: 'legacy', text: 'Old project discussion' });
+  await call('?conversation=' + a, { id: 'same-id', text: 'Only first item' });
+  await call('?conversation=' + b, { id: 'same-id', text: 'Only second item' });
+  await server.close(); server = await startCloudServer(options);
+  const first = await call('?conversation=' + a), second = await call('?conversation=' + b);
+  assert.match(JSON.stringify(first.messages), /Only first item/);
+  assert.doesNotMatch(JSON.stringify(first.messages), /Only second item|Old project discussion/);
+  assert.match(JSON.stringify(second.messages), /Only second item/);
+  assert.doesNotMatch(JSON.stringify(second.messages), /Only first item|Old project discussion/);
+  assert.match(JSON.stringify((await call('')).messages), /Old project discussion/);
+  assert.equal(first.conversations.length, 3);
+});
 
 test('Successful ask_user questions appear in public chat without exposing other tool inputs', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-question-chat-'));
@@ -83,6 +141,26 @@ test('Main intake preserves first edits, skips history, and replays lost replies
   ];
   assert.equal(await intake.consume(), false);
   assert.equal(turns, 2, 'deleted, completed and already assigned work must not start a stale clarification');
+});
+
+test('A busy item does not block another intake or advance past its unconsumed event', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-intake-busy-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const snapshot = { eventCursors: {}, main: { memory: { map: { root: { id: 'T0' } } } }, events: [] };
+  let busy = true; const received = [];
+  const intake = new CoordinatorMapIntake({ directory, read: async () => snapshot, service: { submit: async request => {
+    const item = JSON.parse(request.text);
+    if (item.itemId === 'a' && busy) throw Object.assign(new Error('Busy'), { code: 'COORDINATOR_BUSY' });
+    received.push(item.itemId);
+  } } });
+  await intake.initialize();
+  const todos = [{ id: 'a', title: 'First' }, { id: 'b', title: 'Second' }];
+  snapshot.main.memory.map.root.todos = todos;
+  snapshot.events.push({ scope: 'main', cursor: 1, version: 'v1', actor: { kind: 'human' }, operations: [{ type: 'update', id: 'T0', fields: { todos } }] });
+  await intake.consume(); assert.deepEqual(received, ['b']);
+  busy = false;
+  await intake.consume(); await intake.consume();
+  assert.deepEqual(received, ['b', 'a']);
 });
 
 test('Mount review batches persist, replay a lost Main reply, and notify the existing conversation once', async t => {
@@ -510,6 +588,41 @@ test('Coordinator consumes existing workflow notifications and lost acknowledgem
   assert.equal(turns, 1);
   const head = await original(principal, { v: 2, id: 'head', type: 'sync.heartbeat', payload: { sessions: [{ ...session, ackedSeq: 0 }] } });
   assert.equal(head.data.sessions[0].ackedSeq, 3);
+});
+
+test('One inbox routes independent conversations past a paused task and restores the skipped event', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-routed-inbox-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(path.join(directory, 'protocol'));
+  const principal = { repositoryId: 'repo', deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator', bindings: { s: 'wt' } };
+  const executor = { repositoryId: 'repo', deviceId: 'device', agentId: 'executor', role: 'executor' };
+  const session = { id: 's', generation: 1 };
+  await store.handle(executor, { v: 2, id: 'bind', type: 'session.bind', payload: { sessionId: 's', worktreeId: 'wt', agentId: 'executor', expectedBindingVersion: '' } }, { verifyBinding: () => true });
+  const routes = new Map();
+  let paused = true;
+  const received = { a: [], b: [] };
+  const services = Object.fromEntries(['a', 'b'].map(key => [key, {
+    state: async () => ({ status: key === 'a' && paused ? 'error' : 'idle' }),
+    submit: async request => { if (!received[key].some(item => item.id === request.id)) received[key].push(request); },
+  }]));
+  for (const id of ['a', 'b']) {
+    const send = async (actor, type, payload) => (await store.handle(actor, { v: 2, id: id + type, type, session, payload })).data;
+    const brief = await send(principal, 'brief.submit', { taskId: id, text: id });
+    routes.set(brief.ref, services[id]);
+    await send(principal, 'review.request', { taskId: id, kind: 'brief', ref: brief.ref, version: brief.version });
+    await send({ ...executor, role: 'human' }, 'review.result', { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: 'Confirmed' });
+  }
+  const options = { store, principal, sessionIds: ['s'], service: services.a, routeEvent: async (_, payload) => routes.get(payload.ref), intervalMs: 60000 };
+  const handle = store.handle.bind(store);
+  store.handle = (actor, message, ...args) => handle(actor, message.type === 'sync.read' ? { ...message, payload: { ...message.payload, limit: 2 } } : message, ...args);
+  let inbox = new CoordinatorInbox(options);
+  await inbox.pump(); await inbox.close();
+  assert.equal(received.a.length, 0); assert.equal(received.b.length, 1);
+  paused = false;
+  inbox = new CoordinatorInbox(options);
+  await inbox.pump(); await inbox.close();
+  assert.equal(received.a.length, 1); assert.equal(received.b.length, 1);
+  assert.doesNotMatch(received.a[0].text, /"taskId":"b"/);
 });
 
 test('CI delegation requires server registration, the owning device and an independent worktree', async t => {
