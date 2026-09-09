@@ -4,6 +4,7 @@ import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.
 import { coordinatorStep, correctableToolError, settleRejectedTools } from './coordinator-model.mjs';
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
+const workItemIdentity = item => item.instanceId || item.createdAt || item.id;
 
 function questionsAt(state, index) {
   const message = state.messages[index], replies = state.messages[index + 1]?.content;
@@ -29,7 +30,7 @@ export class CoordinatorConversations {
     return item;
   }
   async ensure({ nodeId, kind, item }) {
-    const id = `item-${hash(JSON.stringify([nodeId, kind, item.id]))}`;
+    const id = `item-${hash(JSON.stringify([nodeId, kind, workItemIdentity(item)]))}`;
     await withFileLock(this.file + '.lock', async () => {
       const state = await this.state();
       state.items[id] = { id, nodeId, kind, itemId: item.id, title: (item.title || item.desc || item.id).slice(0, 200) };
@@ -62,7 +63,7 @@ export class CoordinatorMapIntake {
       (node[field] || []).filter(item => item.id).map(item => ({ nodeId: node.id, kind: field === 'todos' ? 'todo' : 'bug', item })));
     return [...own, ...(node.children || []).flatMap(child => this.items(child))];
   }
-  key({ nodeId, kind, item }) { return JSON.stringify([nodeId, kind, item.id]); }
+  key({ nodeId, kind, item }) { return JSON.stringify([nodeId, kind, workItemIdentity(item)]); }
   async initialize() {
     return withFileLock(this.file + '.lock', async () => {
       if (await readJSON(this.file, null)) return;

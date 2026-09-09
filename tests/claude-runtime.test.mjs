@@ -74,6 +74,22 @@ test('Claude invocation pins the actual Session, model, name and permission boun
   assert.throws(() => claudeArguments(config, { sessionId: 'guessed' }), { code: 'INVALID_SESSION' });
 });
 
+test('Claude status preserves an exited interrupted delivery for Cloud presence', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-interrupted-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const runtime = new ClaudeRuntime(path.join(directory, 'runtime')), sessionId = randomUUID();
+  await runtime.configure(sessionId, { command: process.execPath, root: directory, configDir: path.join(directory, 'config'),
+    environmentFile: path.join(directory, 'provider.json'), name: 'Interrupted', model: 'fixture', role: 'executor' });
+  const job = runtime.jobFile(sessionId, 'interrupted-delivery');
+  await fs.mkdir(path.dirname(job), { recursive: true });
+  await fs.writeFile(job, JSON.stringify({ id: 'interrupted-delivery', state: 'interrupted', updatedAt: '2026-09-09T14:58:34.370Z', workerPid: 999999 }));
+  const state = await readJSON(runtime.sessionFile(sessionId));
+  await fs.writeFile(runtime.sessionFile(sessionId), JSON.stringify({ ...state, active: job }));
+  const status = await runtime.status(sessionId);
+  assert.equal(status.status, 'interrupted');
+  assert.equal(status.at, '2026-09-09T14:58:34.370Z');
+});
+
 test('Claude keeps a single native turn, resumes its Session, and deduplicates after backend restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-runtime-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));

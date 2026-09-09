@@ -25,6 +25,17 @@ const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const idPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
+export function applyCoordinatorAssignments(document, assignments) {
+  if (!document?.root || !assignments?.size) return document;
+  const projectItems = node => ({ ...node,
+    todos: (node.todos || []).map(item => assignments.has(`${node.id}:todo:${item.id}`) && !item.dispatch
+      ? { ...item, dispatch: assignments.get(`${node.id}:todo:${item.id}`) } : item),
+    bugs: (node.bugs || []).map(item => assignments.has(`${node.id}:bug:${item.id}`) && !item.dispatch
+      ? { ...item, dispatch: assignments.get(`${node.id}:bug:${item.id}`) } : item),
+    children: (node.children || []).map(projectItems),
+  });
+  return { ...document, root: projectItems(document.root) };
+}
 const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
 const scrypt = promisify(cryptoScrypt);
@@ -323,7 +334,8 @@ export async function startCloudServer({
     const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
     if (principal.role !== 'device' || repository?.projectId !== projectId) return false;
     if (sessionId) return !!await interfaceStorage(principal).store.registeredBinding(principal, sessionId);
-    return method === 'GET' && ['main', 'preferences'].includes(scope);
+    return ['GET', 'POST'].includes(method) && ['main', 'preferences'].includes(scope) &&
+      (method === 'GET' || scope === 'preferences');
   } }) : null;
   const interfaceConfig = protocolConfig || configuredMemory?.interfaceV2;
   const interfaceStores = new Map();
@@ -717,7 +729,8 @@ export async function startCloudServer({
       const document = emptyProjectDocument(project);
       return { version: versionOf(document), document, source: { status: 'baseline-pending', mainSha: null, publishedAt: null } };
     }
-    return { version: snapshot.version, document: snapshot.memory.map, source: { status: 'main', mainSha: snapshot.mainSha || null, publishedAt: snapshot.publishedAt || null } };
+    const document = await coordinatorAssignmentProjection(project, snapshot.memory.map);
+    return { version: snapshot.version, document, source: { status: 'main', mainSha: snapshot.mainSha || null, publishedAt: snapshot.publishedAt || null } };
   };
   const scopedWorkbenchState = async (scope, project, viewId = 'main') => {
     const snapshot = viewId.startsWith('session:')
@@ -726,6 +739,29 @@ export async function startCloudServer({
         ? await mainMemorySnapshot(project) || await workbenchSnapshot(scope, project)
         : await workbenchSnapshot(scope, project);
     return { version: snapshot.version, doc: snapshot.document, viewId, source: snapshot.source || null, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
+  };
+  const coordinatorAssignmentProjection = async (project, document) => {
+    const config = configuredMemory?.projects?.[project?.id]?.coordinator;
+    if (!project || !config?.enabled || !document?.root) return document;
+    const registry = await conversationsFor(project).state();
+    const { store, principal } = interfaceProject(project);
+    const assignments = new Map();
+    for (const [rawKey, conversationId] of Object.entries(registry.tasks || {})) {
+      let pair;
+      try { pair = JSON.parse(rawKey); } catch { continue; }
+      const [sessionId, taskId] = pair || [];
+      const owner = registry.items?.[conversationId];
+      if (!owner || !sessionId || !taskId) continue;
+      const binding = await store.registeredBinding(principal, sessionId).catch(() => null);
+      if (!binding) continue;
+      const task = await store.taskRecord(principal, { id: sessionId, generation: binding.generation }, taskId).catch(() => null);
+      if (!task) continue;
+      const status = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'failed')
+        : task.stage === 'queued' ? 'queued' : task.stage;
+      assignments.set(`${owner.nodeId}:${owner.kind}:${owner.itemId}`, { status, task_id: task.id, session_id: sessionId, at: task.updatedAt || task.startedAt || '' });
+    }
+    if (!assignments.size) return document;
+    return applyCoordinatorAssignments(document, assignments);
   };
   const memorySessions = async project => {
     if (!configuredMemory?.projects?.[project.id]) return [];

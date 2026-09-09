@@ -76,6 +76,8 @@ test('Item conversations preserve identity, task ownership and legacy history ac
   assert.equal(await restored.owner('other-session', 'task'), 'legacy');
   assert.equal((await restored.list())[0].id, 'legacy');
   await assert.rejects(restored.get('../conversation'), { code: 'NOT_FOUND' });
+  const recreated = await restored.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', instanceId: 'new-instance', title: 'Recreated' } });
+  assert.notEqual(recreated, a, 'recreated display IDs must not reuse the old conversation');
 });
 
 test('Identical request and tool IDs in different conversations cannot share effect receipts', async t => {

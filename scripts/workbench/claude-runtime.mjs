@@ -57,8 +57,13 @@ export class ClaudeRuntime {
     const state = await readJSON(this.sessionFile(sessionId), null);
     if (!state) return { configured: false };
     const job = state.active ? await readJSON(state.active, null) : null;
+    const status = !job ? 'stopped'
+      : job.state === 'interrupted' ? 'interrupted'
+        : job.state === 'failed' ? 'failed'
+          : ['starting', 'dispatching', 'running'].includes(job.state) ? alive(job.workerPid) ? 'active' : 'unknown'
+            : 'stopped';
     return { configured: true, name: state.config.name, role: state.config.role,
-      status: job && ['starting', 'dispatching', 'running', 'interrupted'].includes(job.state) ? alive(job.workerPid) ? 'active' : 'unknown' : 'stopped',
+      status,
       at: job?.updatedAt || state.updatedAt || '', deliveryId: job?.id || null,
       error: job?.error || null };
   }
