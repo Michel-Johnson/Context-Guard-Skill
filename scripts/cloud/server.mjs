@@ -482,7 +482,7 @@ export async function startCloudServer({
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (conversationId === 'legacy' ? '' :
           `\n本对话仅负责这一 Map 事项：${JSON.stringify(conversation)}。先读取该节点的最新原文；不要处理其他事项。`);
         const directory = conversationId === 'legacy' ? conversations.directory : path.join(conversations.directory, 'items', conversationId);
-        const service = new CoordinatorService({ directory,
+        const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
         const intake = conversationId === 'legacy' ? mapIntakeFor(project, { submit: async (request, options) => {
           const item = JSON.parse(request.text), id = await itemConversation(project, item);

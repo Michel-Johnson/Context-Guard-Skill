@@ -104,11 +104,12 @@ export class CoordinatorMapIntake {
 // One independent conversation. HTTP handlers acknowledge a durable turn;
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
-  constructor({ directory, model, system, tools, execute, maxSteps = 12, simulated = false }) {
+  constructor({ directory, model, system, tools, execute, maxSteps = 12, simulated = false, namespace = '' }) {
     this.file = path.join(directory, 'conversation.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
     this.model = model; this.system = system; this.tools = tools; this.execute = execute;
     this.maxSteps = maxSteps; this.simulated = simulated; this.running = null;
+    this.namespace = namespace;
   }
   async state() {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
@@ -232,7 +233,7 @@ export class CoordinatorService {
         while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
           state.steps++;
           await save(state);
-          state = await coordinatorStep({ turnId: state.activeTurnId, state, model: this.model,
+          state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
             system: this.system, tools: this.tools, save, execute: this.execute });
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
           await save(state);

@@ -30,6 +30,21 @@ test('Item conversations preserve identity, task ownership and legacy history ac
   await assert.rejects(restored.get('../conversation'), { code: 'NOT_FOUND' });
 });
 
+test('Identical request and tool IDs in different conversations cannot share effect receipts', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversation-effects-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const identities = [];
+  for (const namespace of ['a', 'b']) {
+    let calls = 0;
+    const service = new CoordinatorService({ directory: path.join(directory, namespace), namespace, system: 'Coordinator', tools: [{ name: 'ask_user' }],
+      execute: async (_, __, identity) => { identities.push(identity.operationId); return { question: 'Confirm?' }; },
+      model: { next: async () => ++calls === 1 ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'same-tool', name: 'ask_user', input: { question: 'Confirm?' } }] } : { stop: 'end_turn', content: [] } },
+    });
+    await service.submit({ id: 'same-request', text: 'Discuss' }); await service.close();
+  }
+  assert.equal(identities.length, 2); assert.notEqual(identities[0], identities[1]);
+});
+
 test('Cloud item conversations have separate messages and survive restart without cloning legacy history', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-item-http-'));
   let server;
