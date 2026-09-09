@@ -378,13 +378,11 @@ try {
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
   assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '你请审核这个计划');
-  assert.equal(await coordinator.locator('.coordinator-debug').getAttribute('open'), null);
+  assert.equal(await coordinator.locator('.coordinator-debug').count(), 0);
   assert.equal(await coordinator.getByText('请说明预期行为，并提供', { exact: false }).isVisible(), true, 'questions stay visible while tool diagnostics are collapsed');
   assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
-  await coordinator.getByText('运行记录（3）', { exact: true }).click();
-  assert.match(await coordinator.locator('.coordinator-debug').innerText(), /diagnostic-only/);
-  await coordinator.getByText('运行记录（3）', { exact: true }).click();
-  record('coordinator-safe-markdown-chat-and-collapsed-diagnostics');
+  assert.equal(await coordinator.getByText(/运行记录/).count(), 0);
+  record('coordinator-safe-markdown-chat-without-diagnostics-controls');
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
@@ -449,44 +447,27 @@ try {
     assert.ok(item, 'the requirement must be persisted in Main');
     assert.equal(item.dispatch, undefined, 'creating a requirement must not dispatch work or approve a brief');
     assert.deepEqual(item.sessions, []);
-    await page.waitForFunction(id=>document.querySelector('[aria-label="Coordinator 事项对话"]')?.value===id,kind+'-'+item.id);
+    await page.waitForFunction(id=>document.querySelector('#coordinator-panel')?.dataset.conversation===id,kind+'-'+item.id);
   }
   assert.notEqual(itemConversations[0].id,itemConversations[1].id);
-  const picker=coordinator.getByLabel('Coordinator 事项对话');
+  const openItem=async item=>{
+    if(await coordinator.getAttribute('open')!==null) await coordinator.locator(':scope > summary').click();
+    await page.locator(`[data-coordinator-item="${item.itemId}"][data-coordinator-kind="${item.kind}"]`).click();
+    await page.waitForFunction(id=>document.querySelector('#coordinator-panel')?.dataset.conversation===id,item.id);
+  };
   await coordinator.locator('textarea').fill('Bug 独立草稿');
-  await picker.selectOption(itemConversations[0].id);
+  await openItem(itemConversations[0]);
   assert.equal(await coordinator.locator('textarea').inputValue(),'');
   await coordinator.locator('textarea').fill('TODO 独立草稿');
   await page.waitForTimeout(100);
-  await picker.selectOption(itemConversations[1].id);
+  await openItem(itemConversations[1]);
   assert.equal(await coordinator.locator('textarea').inputValue(),'Bug 独立草稿');
   record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
 
-  coordinatorState.sessionTemplates=[{id:'developer-template',name:'Claude Developer'}];
-  coordinatorState.sessionCreations=[];
-  const creations=[];
-  await page.route(/\/api\/coordinator\/sessions(?:\?|$)/,async route=>{
-    const input=route.request().postDataJSON();creations.push(input);
-    if(creations.length===1)return route.abort();
-    coordinatorState.sessionCreations=[{...input,id:'creation-record',sessionId:'new-native-session',state:'pending'}];
-    return route.fulfill({status:202,json:coordinatorState.sessionCreations[0]});
-  });
-  const creation=coordinator.locator('.coordinator-session-create');
-  await creation.waitFor({state:'visible'});
-  await creation.locator('summary').click();
-  await creation.getByRole('textbox',{name:'新会话名称'}).fill('New isolated Claude');
-  await creation.getByRole('button',{name:'创建会话',exact:true}).click();
-  await creation.getByRole('button',{name:'重试创建',exact:true}).waitFor();
-  await page.reload();await synchronized();
-  await coordinator.locator(':scope > summary').click();
-  await creation.locator('summary').click();
-  assert.equal(await creation.getByRole('textbox',{name:'新会话名称'}).inputValue(),'New isolated Claude');
-  await creation.getByRole('button',{name:'重试创建',exact:true}).click();
-  await creation.getByText('New isolated Claude · 等待本机创建',{exact:true}).waitFor();
-  assert.deepEqual(creations[0],creations[1],'reload retries the same creation identity, not a second Session');
-  coordinatorState.sessionCreations[0].state='registered';
-  await creation.getByText('New isolated Claude · 已绑定',{exact:true}).waitFor();
-  record('New Session UI preserves uncertain creation across reload and waits for real binding state');
+  assert.equal(await coordinator.locator('.coordinator-session-create').count(),0);
+  assert.equal(await coordinator.getByLabel('Coordinator 事项对话').count(),0);
+  assert.equal(await coordinator.getByText(/运行记录/).count(),0);
+  record('Coordinator hides removed controls while per-item conversation entry remains usable');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

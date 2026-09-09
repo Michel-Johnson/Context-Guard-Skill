@@ -59,16 +59,10 @@ export function markdownFragment(text, doc = document) {
 }
 
 export function conversationFragments(messages, doc = document) {
-  const body = doc.createDocumentFragment(), diagnostics = doc.createElement('details');
-  diagnostics.className = 'coordinator-debug';
-  const summary = doc.createElement('summary'); diagnostics.append(summary);
-  let count = 0;
+  const body = doc.createDocumentFragment();
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
-    if (workflow || message.tools?.length) {
-      count++; const record = doc.createElement('pre'); record.textContent = workflow ? message.text : message.tools.map(tool => tool.name).join('、');
-      diagnostics.append(record); if (workflow) continue;
-    }
+    if (workflow) continue;
     if (!message.text) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
     const label = doc.createElement('div'); label.className = 'coordinator-speaker'; label.textContent = message.role === 'assistant' ? 'Coordinator' : '你';
@@ -76,6 +70,5 @@ export function conversationFragments(messages, doc = document) {
     content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
     row.append(label, content); body.append(row);
   }
-  summary.textContent = `运行记录（${count}）`;
-  return { body, diagnostics: count ? diagnostics : null };
+  return { body };
 }

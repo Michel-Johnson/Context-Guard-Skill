@@ -4260,7 +4260,6 @@ async function installCoordinatorPanel(sync){
   panel.id='coordinator-panel';
   const heading=document.createElement('summary'); heading.textContent='Coordinator';
   const status=document.createElement('p'); status.setAttribute('role','status');
-  const picker=document.createElement('select');picker.setAttribute('aria-label','Coordinator 事项对话');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
   const form=document.createElement('form');
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
@@ -4268,83 +4267,29 @@ async function installCoordinatorPanel(sync){
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
-  form.append(input,send,retry); panel.append(heading,picker,status,messages,form); document.body.append(panel);
-  const creation=document.createElement('details'); creation.className='coordinator-session-create'; creation.hidden=true;
-  const creationHeading=document.createElement('summary'); creationHeading.textContent='新建执行会话';
-  const creationForm=document.createElement('form'), creationName=document.createElement('input'), creationTemplate=document.createElement('select');
-  creationName.required=true;creationName.maxLength=200;creationName.placeholder='会话名称';creationName.setAttribute('aria-label','新会话名称');
-  creationTemplate.required=true;creationTemplate.setAttribute('aria-label','本机 Claude 模板');
-  const creationButton=document.createElement('button');creationButton.type='submit';creationButton.textContent='创建会话';
-  const creationStatus=document.createElement('p');creationStatus.setAttribute('role','status');
-  const creationList=document.createElement('ul');
-  creationForm.append(creationName,creationTemplate,creationButton);creation.append(creationHeading,creationForm,creationStatus,creationList);panel.append(creation);
-  const creationKey='cg-session-create:'+location.pathname;
-  let creationPending=null,creatingSession=false,templateKey='';
-  try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
-  const renderCreation=state=>{
-    const templates=state.sessionTemplates||[], records=state.sessionCreations||[];
-    creation.hidden=!templates.length&&!records.length&&!creationPending;
-    const key=JSON.stringify(templates);
-    if(key!==templateKey){
-      const selected=creationTemplate.value;creationTemplate.replaceChildren();
-      for(const item of templates){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;creationTemplate.append(option);}
-      if(templates.some(item=>item.id===selected))creationTemplate.value=selected;templateKey=key;
-    }
-    if(creationPending&&records.some(item=>item.operationId===creationPending.operationId)){
-      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
-      creationStatus.textContent='请求已由 Cloud 保存，请等待本机绑定。';
-    }
-    creationList.replaceChildren();
-    for(const item of records.slice(-10)){const row=document.createElement('li');row.textContent=item.name+' · '+({pending:'等待本机创建',registered:'已绑定',failed:'创建失败'}[item.state]||item.state)+(item.error?' · '+item.error:'');creationList.append(row);}
-    creationButton.textContent=creationPending?'重试创建':'创建会话';
-    creationButton.disabled=creatingSession||(!templates.length&&!creationPending);
-    creationName.disabled=creationTemplate.disabled=creatingSession||!!creationPending;
-    if(creationPending){creationName.value=creationPending.name;creationTemplate.value=creationPending.templateSessionId;}
-  };
-  creationForm.onsubmit=async event=>{
-    event.preventDefault();if(creatingSession)return;
-    if(!creationPending){
-      if(!creationName.value.trim()||!creationTemplate.value)return;
-      creationPending={operationId:crypto.randomUUID(),name:creationName.value.trim(),templateSessionId:creationTemplate.value};
-      try{sessionStorage.setItem(creationKey,JSON.stringify(creationPending));}catch{creationPending=null;creationStatus.textContent='无法保存重试标识，尚未提交。';return;}
-    }
-    creatingSession=true;creationButton.disabled=true;creationName.disabled=creationTemplate.disabled=true;creationStatus.textContent='正在提交创建请求…';
-    try{
-      await sync.call('/api/coordinator/sessions',creationPending,'POST','main');
-      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
-      creationStatus.textContent='Cloud 已保存请求，等待本机创建与绑定。';creationName.value='';
-    }catch(error){creationStatus.textContent='尚未确认创建：'+error.message;}
-    finally{creatingSession=false;await refresh();}
-  };
+  form.append(input,send,retry); panel.append(heading,status,messages,form); document.body.append(panel);
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   let selected='legacy';const drafts=new Map();
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
   const selectConversation=id=>{
-    drafts.set(selected,{text:input.value,pending});selected=id;
+    drafts.set(selected,{text:input.value,pending});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
     lastContent=null;canCorrect=false;messages.replaceChildren();send.disabled=true;
     panel.open=true;void refresh();
   };
-  picker.onchange=()=>selectConversation(picker.value);
   window.addEventListener('coordinator-open-item',async event=>{
     panel.open=true;status.textContent='正在打开事项对话…';
     try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
     catch(error){status.textContent='无法打开事项对话：'+error.message;}
   });
   const render=state=>{
-    picker.replaceChildren();
-    for(const item of state.conversations||[{id:'legacy',title:'历史总对话'}]){
-      const option=document.createElement('option');option.value=item.id;option.textContent=(item.kind?item.kind.toUpperCase()+' · ':'')+item.title;picker.append(option);
-    }
-    picker.value=selected;
     const renderedConversation=selected;
-    renderCreation(state);
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
     const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
-    const scrollTop=messages.scrollTop, debugOpen=messages.querySelector('.coordinator-debug')?.open;
+    const scrollTop=messages.scrollTop;
     const transcript=conversationFragments(state.messages||[]);
     messages.replaceChildren(transcript.body);
     const mountGroups=new Map();
@@ -4417,7 +4362,6 @@ async function installCoordinatorPanel(sync){
       }
       messages.append(card);
     }
-    if(transcript.diagnostics){transcript.diagnostics.open=!!debugOpen;messages.append(transcript.diagnostics);}
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastContent=contentKey;
     }
