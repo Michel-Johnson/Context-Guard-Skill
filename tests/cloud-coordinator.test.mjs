@@ -13,6 +13,20 @@ import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 
+test('Coordinator routing prompt assigns node discovery to the agent while preserving human approval', async () => {
+  const prompt = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');
+  const mount = await fs.readFile(new URL('../references/map-mount.md', import.meta.url), 'utf8');
+  const read = await fs.readFile(new URL('../references/map-read.md', import.meta.url), 'utf8');
+  assert.match(prompt, /节点定位由你负责/);
+  assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
+  assert.match(prompt, /推荐不等于批准或派单/);
+  assert.match(mount, /只问缺失的业务信息/);
+  assert.match(mount, /没有匹配节点时说明已查范围并提出新节点建议/);
+  assert.match(mount, /不要求用户找出正确节点/);
+  assert.match(read, /不自动等于最终执行节点/);
+  assert.doesNotMatch(prompt + mount, /没有对应节点就问用户|问清正确节点后改挂/);
+});
+
 test('Item conversations preserve identity, task ownership and legacy history across restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversations-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
