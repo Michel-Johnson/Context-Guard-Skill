@@ -188,7 +188,7 @@ jobs:
         run: |
           # GitHub's Ubuntu image may ship a stale Google Chrome APT index;
           # Playwright's pinned Chromium does not depend on that repository.
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.list.save
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.*
           npx --no-install playwright install --with-deps chromium
 
       - name: Exercise real workbench, public CLI and session inbox
