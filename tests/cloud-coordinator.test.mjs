@@ -27,6 +27,40 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.doesNotMatch(prompt + mount, /没有对应节点就问用户|问清正确节点后改挂/);
 });
 
+test('Prompt upgrades apply at new turns and recover a pre-model rejection without replaying history', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-prompt-upgrade-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const calls = [];
+  const options = { directory, tools: [], execute: async () => {}, model: { next: async ({ system }) => {
+    calls.push(system); return { stop: 'end_turn', content: [{ type: 'text', text: 'Done' }] };
+  } } };
+  let service = new CoordinatorService({ ...options, system: 'old' });
+  await service.submit({ id: 'first', text: 'First' }); await service.close();
+  service = new CoordinatorService({ ...options, system: 'new' });
+  await service.submit({ id: 'second', text: 'Second' }); await service.close();
+  assert.deepEqual(calls, ['old', 'new']);
+  let saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.promptChanges.length, 1);
+  saved.requests.third = createHash('sha256').update('Third').digest('hex');
+  saved.messages.push({ role: 'user', content: 'Third' });
+  Object.assign(saved, { status: 'error', error: { code: 'PROMPT_CHANGED' }, activeTurnId: 'third', activeInput: { id: 'third', text: 'Third' }, steps: 1, pending: null });
+  await fs.writeFile(service.file, JSON.stringify(saved));
+  service = new CoordinatorService({ ...options, system: 'latest' });
+  await service.submit({ id: 'third', text: 'Third', retry: true }); await service.close();
+  assert.deepEqual(calls, ['old', 'new', 'latest']);
+  saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.messages.filter(m => m.role === 'user').length, 3);
+  assert.equal(saved.promptChanges.length, 2);
+  // A paused tool turn must still retain its original prompt, even on retry.
+  Object.assign(saved, { status: 'error', error: { code: 'PROMPT_CHANGED' }, activeTurnId: 'third', steps: 2,
+    pending: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'pending', name: 'shell', input: {} }] } });
+  await fs.writeFile(service.file, JSON.stringify(saved));
+  service = new CoordinatorService({ ...options, system: 'must-not-adopt' });
+  await service.submit({ id: 'third', text: 'Third', retry: true }); await service.close();
+  assert.equal((await service.state()).error.code, 'PROMPT_CHANGED');
+  assert.equal(calls.length, 3);
+});
+
 test('Item conversations preserve identity, task ownership and legacy history across restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversations-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

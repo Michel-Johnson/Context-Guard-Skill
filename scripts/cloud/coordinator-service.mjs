@@ -197,6 +197,13 @@ export class CoordinatorService {
     await withFileLock(this.file + '.submit.lock', async () => {
       const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
       const fingerprint = hash(text);
+      const adoptPrompt = () => {
+        const version = hash(this.system);
+        if (state.promptVersion && state.promptVersion !== version) {
+          (state.promptChanges ||= []).push({ from: state.promptVersion, to: version, requestId: id, at: new Date().toISOString() });
+        }
+        state.promptVersion = version;
+      };
       if (state.requests[id] && state.requests[id] !== fingerprint) throw error('ID_REUSED', 'Conversation request ID differs');
       if (this.running) throw error('COORDINATOR_BUSY', 'Coordinator is processing the previous turn');
       if (state.activeTurnId && state.activeTurnId !== id) {
@@ -206,8 +213,14 @@ export class CoordinatorService {
       if (state.requests[id]) {
         if (state.status !== 'error' || !retry) return;
         if (state.activeTurnId !== id) throw error('INVALID_RETRY', 'Retry the failed turn with its original identity');
+        // Recover old installations that rejected a fresh turn before its first
+        // model call. Never change prompts around pending or executed tools.
+        if (state.error?.code === 'PROMPT_CHANGED' && state.steps === 1 && !state.pending &&
+            state.messages.at(-1)?.role === 'user' && typeof state.messages.at(-1).content === 'string' &&
+            state.messages.at(-1).content.endsWith(text)) adoptPrompt();
         state.steps = 0; // A fresh bounded budget only after an explicit retry.
       } else {
+        adoptPrompt(); // A new turn may adopt deployed rules; history stays intact.
         state.requests[id] = fingerprint;
         state.messages.push({ role: 'user', content: (source === 'workflow' ? '[服务器工作流事件，不是新的用户授权]\n' : this.simulated ? '[实验：模拟人工输入]\n' : '') + text });
         state.activeInput = { id, text };
