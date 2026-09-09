@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskClose } from '../scripts/cloud/completion.mjs';
+import { reduceWorkflow } from '../scripts/shared/protocol-workflow.mjs';
 
 test('four approved Session tasks finish in durable FIFO order across success, failure and cancellation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-session-fifo-'));
@@ -46,7 +47,7 @@ test('four approved Session tasks finish in durable FIFO order across success, f
   assert.equal((await messages()).some(task => task.busy), false);
 });
 
-test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the executor busy until the end', async t => {
+test('IF-027: acceptance releases execution while verified closure remains independent and cannot release another task', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-workflow-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let store = new ProtocolStore(directory), counter = 0;
@@ -70,6 +71,10 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   const queued = await send(coordinator, 'task.assign', { taskId: 'task-2', briefRef: secondBrief.ref, briefVersion: secondBrief.version, sessionId: 's', nodeIds: ['node'], mainVersion: 'main-1' }, { workflow: { verifyRouting: () => true } });
   assert.equal(queued.stage, 'queued');
   assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'queued');
+  const thirdBrief = await send(coordinator, 'brief.submit', { taskId: 'task-3', text: 'Third queued follow-up' });
+  await send(coordinator, 'review.request', { taskId: 'task-3', kind: 'brief', ref: thirdBrief.ref, version: thirdBrief.version });
+  await send(human, 'review.result', { kind: 'brief', ref: thirdBrief.ref, version: thirdBrief.version, decision: 'approved', reason: 'Third task approved' });
+  await send(coordinator, 'task.assign', { taskId: 'task-3', briefRef: thirdBrief.ref, briefVersion: thirdBrief.version, sessionId: 's', nodeIds: ['node'], mainVersion: 'main-1' }, { workflow: { verifyRouting: () => true } });
   await assert.rejects(send(executor, 'executor.state', { agentId: 'executor', state: 'idle' }), { code: 'CONFLICT' });
   const plan = await send(executor, 'object.put', { kind: 'plan', ref: 'plan', baseVersion: '', content: { steps: ['Inspect', 'Implement', 'Test'] } });
   await send(executor, 'task.report', { taskId: 'task', stage: 'planReady', data: { planRef: plan.ref, planVersion: plan.version, sourceSha } });
@@ -95,7 +100,19 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   await assert.rejects(send(coordinator, 'task.control', { taskId: 'task', action: 'complete', expectedVersion: beforeAcceptance.version, data: { archiveReceiptRef: 'archive' } }, { workflow: { verifyCompletion: () => true } }), { code: 'CONFLICT' });
   const acceptance = { kind: 'acceptance', ref: beforeAcceptance.ci.ref, version: beforeAcceptance.ci.version, decision: 'approved', reason: 'Human verified the tested SHA' };
   await assert.rejects(send(coordinator, 'review.result', acceptance), { code: 'FORBIDDEN' });
-  await send(human, 'review.result', acceptance);
+  const rejectedState = await store.transaction(state => structuredClone(state));
+  await reduceWorkflow(rejectedState, human, { type: 'review.result', session, payload: { ...acceptance, decision: 'rejected', reason: 'Needs rework' } }, () => 0);
+  assert.equal(Object.values(rejectedState.tasks).find(item => item.id === 'task').busy, true, 'rejection retains execution for rework');
+  assert.equal(Object.values(rejectedState.tasks).find(item => item.id === 'task-2').stage, 'queued');
+  const accepted = await send(human, 'review.result', acceptance);
+  assert.equal(accepted.activatedTaskId, 'task-2');
+  const replay = await store.handle(human, { v: 2, id: `request-${counter}`, type: 'review.result', session, payload: acceptance });
+  assert.deepEqual(replay.data, accepted, 'lost acceptance responses replay without advancing again');
+  store = new ProtocolStore(directory);
+  assert.equal((await store.taskRecord(coordinator, session, 'task')).busy, false);
+  assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'cloud_queued');
+  assert.equal((await store.taskStatus(human, session, 'task-3')).state, 'queued');
+  await assert.rejects(send(executor, 'task.report', { taskId: 'task', stage: 'progress', data: { seq: 2, summary: 'Late execution cannot resume' } }), { code: 'CONFLICT' });
   const task = Object.values((await store.transaction(state => state)).tasks)[0];
   const complete = { taskId: 'task', action: 'complete', expectedVersion: task.version, data: { archiveReceiptRef: 'archive', gitReceiptRef: 'merge' } };
   await assert.rejects(send(coordinator, 'task.control', complete), { code: 'FORBIDDEN' });
@@ -109,7 +126,8 @@ test('IF-027: approved brief, reviewed Plan, CI and verified closure keep the ex
   await assert.rejects(send(executor, 'task.report', closed), { code: 'FORBIDDEN' });
   await assert.rejects(send(executor, 'task.report', { ...closed, data: { controlId, closeReceiptId: 'fabricated' } }, { workflow: { verifyClose: verifyTaskClose } }), { code: 'FORBIDDEN' });
   const closure = await send(executor, 'task.report', closed, { workflow: { verifyClose: verifyTaskClose } });
-  assert.equal(closure.activatedTaskId, 'task-2');
+  assert.equal(closure.activatedTaskId, undefined);
+  assert.equal((await store.taskStatus(human, session, 'task-3')).state, 'queued');
   assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'cloud_queued');
   assert.equal((await send(executor, 'executor.state', { agentId: 'executor', state: 'busy', taskId: 'task-2' })).taskId, 'task-2');
 });

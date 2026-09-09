@@ -85,9 +85,9 @@ ci.result 的 checks 元素建议为 {testId:string,ciTodoId:string,status:passe
 
 CI Agent 主动读取 GitHub 检查状态，不要求 GitHub 主动发送。证据需绑定准确 SHA 与检查运行标识；没有结果、运行中或查询失败不等于通过。检查证据的完整对象格式待定。
 
-执行方只暴露 busy/idle 两种状态：从任务分配开始，到所需 Main 合并及收口完成之前始终 busy，包括 Plan 审核、CI 和返工；移交 CI 不释放。连接在线情况另行记录，不引入第三种执行方状态。Cloud 持有唯一任务调度队列。
+执行方只暴露 busy/idle 两种状态：任务分配后占用执行槽，包括 Plan 审核、CI 和返工；移交 CI 不释放。人工验收通过时释放执行槽并推进同 Session FIFO，任务本身仍须完成可信合并和归档校验后才能关闭。连接在线情况另行记录，不引入第三种执行方状态。Cloud 持有唯一任务调度队列。
 
-待写入节点摘要：主 Agent 在 Cloud 运行，harness 待定；简短任务说明先经人确认，再发送执行方。主 Agent 审核固定版本 Plan；CI Agent 主动查询 GitHub CI。执行方只有忙/闲，直到必要合并及收口完成才释放。详见本文第 2 节。
+待写入节点摘要：主 Agent 在 Cloud 运行，harness 待定；简短任务说明先经人确认，再发送执行方。主 Agent 审核固定版本 Plan；CI Agent 主动查询 GitHub CI。执行方只有忙/闲，人工验收通过后释放；合并归档与任务关闭继续独立校验。详见本文第 2 节。
 
 ## 3. agent-本地
 

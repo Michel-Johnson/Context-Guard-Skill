@@ -25,6 +25,17 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     return { ref, version };
   };
   const changed = task => { task.version = randomUUID(); return { taskId: task.id, version: task.version, stage: task.stage }; };
+  const releaseSlot = task => {
+    task.busy = false;
+    if (Object.values(state.tasks).some(value => belongs(value) && value.busy)) return {};
+    const next = Object.values(state.tasks)
+      .filter(value => belongs(value) && value.stage === 'queued' && value.assignmentNotification)
+      .sort((left, right) => (left.assignmentOrder || 0) - (right.assignmentOrder || 0) || String(left.queuedAt || '').localeCompare(String(right.queuedAt || '')) || left.id.localeCompare(right.id))[0];
+    if (!next) return {};
+    next.busy = true; next.stage = 'assigned'; delete next.queuedAt;
+    next.assignmentSeq = emit(next.assignmentNotification); changed(next);
+    return { activatedTaskId: next.id };
+  };
   const notify = (source = message) => emit({ ...source, id: randomUUID() });
   if (message.type === 'brief.submit') {
     role('coordinator');
@@ -74,7 +85,8 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     delete task.review;
     emit({ ...message, id: randomUUID(), payload: { ...p, receiptId } });
     const status = changed(task);
-    return { ...status, taskVersion: status.version, receiptId, version: receipt.version };
+    const released = p.kind === 'acceptance' && p.decision === 'approved' ? releaseSlot(task) : {};
+    return { ...status, ...released, taskVersion: status.version, receiptId, version: receipt.version };
   }
   if (message.type === 'task.assign') {
     role('coordinator'); at('approved');
@@ -92,7 +104,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   }
   if (message.type === 'task.report') {
     role('executor', 'device');
-    if (!task.busy) fail('CONFLICT', 'Task is not active');
+    if (!task.busy && !(p.stage === 'closed' && task.stage === 'closing')) fail('CONFLICT', 'Task is not active');
     if (['started', 'finished'].includes(p.stage)) {
       if (task.assignment?.mode !== 'session' || p.data.deliveryId !== task.assignmentNotification?.id) fail('CONFLICT', 'Execution report differs from the dispatched Session task');
       if (p.stage === 'started') { at('assigned'); task.stage = 'executing'; task.startedAt = new Date().toISOString(); }
@@ -132,16 +144,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     }
     notify();
     const status = changed(task);
-    if (['closed', 'finished'].includes(task.stage)) {
-      const next = Object.values(state.tasks)
-        .filter(value => belongs(value) && value.stage === 'queued' && value.assignmentNotification)
-        .sort((left, right) => (left.assignmentOrder || 0) - (right.assignmentOrder || 0) || String(left.queuedAt || '').localeCompare(String(right.queuedAt || '')) || left.id.localeCompare(right.id))[0];
-      if (next) {
-        next.busy = true; next.stage = 'assigned'; delete next.queuedAt;
-        next.assignmentSeq = emit(next.assignmentNotification); changed(next);
-        status.activatedTaskId = next.id;
-      }
-    }
+    if (['closed', 'finished'].includes(task.stage)) Object.assign(status, releaseSlot(task));
     return status;
   }
   if (message.type === 'ci.request') {
@@ -191,7 +194,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   if (message.type === 'task.control') {
     role('coordinator');
     if (p.expectedVersion !== task.version) fail('CONFLICT', 'Task changed', { currentVersion: task.version });
-    if (!task.busy) fail('CONFLICT', 'Task has no execution slot');
+    if (!task.busy && p.action !== 'complete') fail('CONFLICT', 'Task has no execution slot');
     if (p.action === 'complete') {
       at('accepted', 'cancelled');
       const verified = await policy.verifyCompletion?.(principal, task, p.data);

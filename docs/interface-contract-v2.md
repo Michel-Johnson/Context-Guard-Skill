@@ -4,7 +4,7 @@
 
 ### 1.0 实现进度
 
-已实现消息校验、设备鉴权、Session 绑定、持久队列、对象版本、任务审核/CI 状态机和分块附件。已授权的本地后端启动项目级事件连接、10 秒心跳补读和上行重试；Cloud 通知先写入本地收件箱，再由本地宿主交付 Agent，各消费者独立确认。此确认不代表模型执行或任务完成。附件登记与二进制内容走同一 Cloud 连接，凭证不交给 Agent。Cloud 工作台的任务按钮使用稳定 operationId，执行方忙时留在 Cloud 队列，任务关闭后按进入顺序激活下一项。
+已实现消息校验、设备鉴权、Session 绑定、持久队列、对象版本、任务审核/CI 状态机和分块附件。已授权的本地后端启动项目级事件连接、10 秒心跳补读和上行重试；Cloud 通知先写入本地收件箱，再由本地宿主交付 Agent，各消费者独立确认。此确认不代表模型执行或任务完成。附件登记与二进制内容走同一 Cloud 连接，凭证不交给 Agent。Cloud 工作台的任务按钮使用稳定 operationId，执行方忙时留在 Cloud 队列，人工验收通过后按进入顺序激活下一项，最终关闭仍需可信合并和归档。
 
 Map 复用现有事务和协调逻辑，v2 提供读写、固定分页、恢复快照、消息/关系/权限及附件引用校验；支持的 Cloud 通过项目共用事件流与心跳驱动 Map 同步。Codex 原生队列接收任务及审核通知；其他宿主从同一持久收件箱读取，尚未提供自动唤醒适配。中断 Hook 自动保存并重试上报。源码准备允许记忆传输暂时待同步，但授权、冲突、归档和 CI 门禁不放宽。真实业务 Cloud Main 合并白名单尚未确定，可信合并/收口回执不伪造；相关入口继续失败关闭。最终 GitHub CI、部署与安装后验收仍待完成，不能把隔离测试等同于已上线；逐项证据见 `CI_todo.md`。
 
@@ -18,7 +18,7 @@ Cloud 私有记忆配置的 `projects[projectId].completion` 可显式启用校�
 
 Coordinator 的 `complete_task` 传 `gitReceiptRef:"github-pr:<PR编号>"` 和 `archiveReceiptRef:<已发布Session版本>`。
 服务端检查人工验收、CI 通过、GitHub PR 的仓库/目标分支/准确 SHA、指定名称与 App 的检查，以及自己的发布历史；要求验收早于合并、CI 早于合并、归档晚于合并。Agent 不能上传一个“合并成功”对象替代这些事实。
-通过后保存校验结果并派发关闭控制；执行端按原控制编号回报 `closed`，验证持久回执后才释放 FIFO 队列。重启不丢失此校验结果。
+通过后保存校验结果并派发关闭控制；执行端按原控制编号回报 `closed`，验证持久回执后才标记关闭；执行槽已在人工验收通过时释放，晚到关闭回执不得再次推进正在占用的队列。重启不丢失此校验结果。
 
 当前保守限制：仅同仓库 PR、最多 100 个最新 Check Run，发布时 Main SHA 必须与该 PR 合并 SHA 一致。超限、后续 Main 推进、网络错误或未配置均拒绝关闭；不自动重试合并、不丢弃任务。真实私有仓库交付仍列在 `CI_todo.md`，单元校验不代表完整闭环验收。
 
@@ -121,7 +121,7 @@ POST /api/session-message
 
 ### 路由节点与查询 Main
 
-task.assign增加nodeIds:string[]（必填、非空、去重、最多100个）和mainVersion:string（必填）。单节点也用数组，不另设nodeId。主Agent基于此Main版本路由；Cloud校验节点存在且执行方有读取权限，任务、需求版本、节点与Main版本逐跳原样交付。没有已发布Main或节点不存在则拒绝，不猜测映射。路由不授予额外权限，也不覆盖Session工作稿。同一 Session 已有 busy 任务时，新任务进入 Cloud 队列，不向本地提前触发；前一任务完成必要合并并关闭后才激活下一项。
+task.assign增加nodeIds:string[]（必填、非空、去重、最多100个）和mainVersion:string（必填）。单节点也用数组，不另设nodeId。主Agent基于此Main版本路由；Cloud校验节点存在且执行方有读取权限，任务、需求版本、节点与Main版本逐跳原样交付。没有已发布Main或节点不存在则拒绝，不猜测映射。路由不授予额外权限，也不覆盖Session工作稿。同一 Session 已有 busy 任务时，新任务进入 Cloud 队列，不向本地提前触发；前一任务人工验收通过后释放执行槽并激活下一项，合并归档收尾不占执行槽。
 
 执行Agent → 本地后端 → Cloud复用workbench.read；主Agent也可直接向Cloud调用。payload字段：scope:main/session（必填）、nodeIds?:string[]、version?:string、cursor:string、limit:integer、recovery?:boolean。scope=main读取已发布Main，公共信封session仅标调用方。旧v2示例没写scope的原意是session，新请求必须明确。
 
@@ -145,7 +145,7 @@ CURSOR_EXPIRED附{recoveryRequired:true}：调用workbench.read，recovery=true�
 
 执行任务的事件在任务关闭并确认前不得因日志过期丢弃；只有可从快照恢复的工作台变化可被压缩。恢复中仍有本地编辑则先比较保留，不用远端快照静默覆盖。恢复数据不完整返回UNAVAILABLE，不声称已同步。
 
-任务被分配至必要Main合并和经验归档完成前一直busy，CI失败回原执行方。任务说明先由人确认不可变版本，执行Agent读代码写Plan，主Agent审核Plan，再开发。task.report仅报告阶段，不给调用方直接释放任务的权限。
+任务被分配至人工验收通过前一直busy，验收通过后释放执行槽但不等于任务已关闭，CI失败回原执行方。任务说明先由人确认不可变版本，执行Agent读代码写Plan，主Agent审核Plan，再开发。task.report仅报告阶段，不给调用方直接释放任务的权限。
 
 ## 附件和合并边界
 
