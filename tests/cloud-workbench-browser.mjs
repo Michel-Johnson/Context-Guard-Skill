@@ -404,12 +404,14 @@ try {
   coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
   await page.reload(); await synchronized();
   await coordinator.locator(':scope > summary').click();
+  await coordinator.locator('textarea').fill('跳转时保留草稿');
   await coordinator.getByRole('button', { name: '定位节点', exact: true }).click();
-  assert.equal(await coordinator.getAttribute('open'), null);
+  assert.equal(await coordinator.getAttribute('open'), '', 'node navigation keeps the conversation open');
+  assert.equal(await coordinator.locator('textarea').inputValue(), '跳转时保留草稿');
+  await coordinator.locator('textarea').fill('');
   assert.equal(await page.locator('.node.selected[data-id="T0"]').count(), 1);
   assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
-  await coordinator.locator(':scope > summary').click();
   record('coordinator-node-navigation-without-approval');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();

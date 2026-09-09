@@ -4301,7 +4301,7 @@ async function installCoordinatorPanel(sync){
         if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
         const node=getNode(id);
         if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
-        clearRelationMode();focusId=null;panel.open=false;
+        clearRelationMode();focusId=null;
         enterView(id,{unpack:false});
       }catch(error){status.textContent='无法定位节点：'+error.message;}
     }});
