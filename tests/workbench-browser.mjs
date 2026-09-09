@@ -840,6 +840,11 @@ try {
     await preview.locator('#workbench-tools > summary').click();
     assert.equal(await preview.locator('#btn-auth').isVisible(), true);
     assert.equal(await preview.locator('#btn-rel').isVisible(), true);
+    const toolsViewport = preview.viewportSize();
+    await preview.setViewportSize({ width: 790, height: 900 });
+    const toolsBounds = await preview.locator('.workbench-tools-menu').boundingBox();
+    assert.ok(toolsBounds.x >= 0 && toolsBounds.x + toolsBounds.width <= 790, 'expanded tools must stay inside the narrow viewport');
+    await preview.setViewportSize(toolsViewport);
     await preview.locator('#workbench-tools > summary').click();
     assert.equal(await preview.locator('#dir-toggle').isVisible(), false);
     await preview.locator('#workbench-tools > summary').click();

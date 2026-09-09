@@ -55,7 +55,7 @@ header.top h1{margin:0;font-size:16px}
 .workbench-tools>summary::after{content:"▾"}
 .workbench-tools[open]>summary::after{content:"▴"}
 .workbench-tools>summary:focus-visible{outline:2px solid var(--module);outline-offset:3px}
-.workbench-tools-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:70;display:flex;align-items:center;gap:12px;padding:12px;max-width:calc(100vw - 32px);width:max-content;flex-wrap:wrap;background:var(--paper);border:2px solid var(--line-ink);border-radius:12px;box-shadow:var(--shadow)}
+.workbench-tools-menu{position:absolute;top:calc(100% + 10px);left:0;z-index:70;display:flex;align-items:center;gap:12px;padding:12px;max-width:calc(100vw - 32px);width:max-content;flex-wrap:wrap;background:var(--paper);border:2px solid var(--line-ink);border-radius:12px;box-shadow:var(--shadow)}
 .workbench-tools:not([open])>.workbench-tools-menu{display:none}
 .nav-crumbs a,.nav-crumbs .here,.nav-crumbs .sep,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{flex:0 0 auto;white-space:nowrap}
 .nav-crumbs a,.nav-crumbs .here,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{
