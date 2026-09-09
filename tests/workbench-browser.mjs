@@ -63,6 +63,7 @@ async function chromeHeights(target) {
   return target.evaluate(() => {
     const els = [
       document.querySelector('.nav-crumbs .here'),
+      document.querySelector('#workbench-tools > summary'),
       document.getElementById('dir-toggle'),
       document.getElementById('rel-toggle'),
       document.getElementById('btn-auth'),
@@ -834,6 +835,15 @@ try {
     await preview.locator('.nav-crumbs a').first().click();
     await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
     recordCheck('context-card-merged');
+    assert.equal(await preview.locator('#workbench-tools').getAttribute('open'), null);
+    assert.equal(await preview.locator('#btn-auth').isVisible(), false);
+    await preview.locator('#workbench-tools > summary').click();
+    assert.equal(await preview.locator('#btn-auth').isVisible(), true);
+    assert.equal(await preview.locator('#btn-rel').isVisible(), true);
+    await preview.locator('#workbench-tools > summary').click();
+    assert.equal(await preview.locator('#dir-toggle').isVisible(), false);
+    await preview.locator('#workbench-tools > summary').click();
+    recordCheck('workbench-tools-collapse-and-expand');
     const dirToggle = preview.locator('#dir-toggle');
     await dirToggle.waitFor({ state: 'visible' });
     assert.equal(await preview.locator('#dir-toggle button').count(), 0);
