@@ -106,6 +106,16 @@ export async function queueCodexMessage({ sessionId, message, root }, { run = ex
     maxBuffer: 1024 * 1024,
   });
 }
+
+// A native Claude turn can be terminated by its timeout without emitting the
+// Claude Interrupt hook. Keep the workflow authoritative by deriving one
+// stable interruption report from the persisted delivery and current local
+// execution. The DeviceConnection outbox makes retries idempotent.
+export function interruptedTaskReport(session, execution, native) {
+  if (native?.status !== 'interrupted' || !native.deliveryId || !native.at || !execution?.taskId || !session?.id || !Number.isSafeInteger(session.generation)) return null;
+  return { v: 2, id: `interrupt:${session.id}:${native.deliveryId}`, type: 'task.report', session,
+    payload: { taskId: execution.taskId, stage: 'interrupted', data: { reason: native.error || 'Local Claude execution interrupted', occurredAt: native.at } } };
+}
 function loopbackJSON(target, { method = 'GET', headers = {}, body, timeout = 600, maxBytes = 1024 * 1024 } = {}) {
   return new Promise(resolve => {
     let settled = false;
@@ -230,6 +240,11 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id) : null;
               if (native?.role === 'ci') ciChannel(head.session.id, device);
               if (native?.name) heartbeat.name = native.name;
+              if (native?.role === 'executor' && native.status === 'interrupted') {
+                const execution = await protocolStore.activeExecution(backendPrincipal, head.session).catch(() => null);
+                const report = interruptedTaskReport(head.session, execution, native);
+                if (report) await device.send(report).catch(error => { device.lastError = error.code || 'INTERRUPTION_REPORT_FAILED'; });
+              }
               heartbeat.execution = native?.configured && Date.parse(native.at) >= (Date.parse(identity?.statusSeen) || 0)
                 ? { status: native.status, at: native.at }
                 : { status: ['active', 'stopped'].includes(identity?.status) ? identity.status : 'unknown', at: identity?.statusSeen || '' };
