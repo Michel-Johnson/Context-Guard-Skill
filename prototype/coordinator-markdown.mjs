@@ -58,7 +58,38 @@ export function markdownFragment(text, doc = document) {
   return root;
 }
 
-export function conversationFragments(messages, doc = document) {
+// Only exact, unique titles from the server's Main navigation become buttons.
+// Unknown/ambiguous text stays text; code and external links are never rewritten.
+function linkMapNodes(root, nodes, onNode, doc) {
+  if (!onNode) return;
+  const unique = new Map();
+  for (const node of nodes) {
+    if (typeof node.id !== 'string' || typeof node.title !== 'string' || !node.title.trim()) continue;
+    unique.set(node.title, unique.has(node.title) ? null : node);
+  }
+  const candidates = [...unique.values()].filter(Boolean).sort((a, b) => b.title.length - a.title.length);
+  const walker = doc.createTreeWalker(root, 4), texts = [];
+  while (walker.nextNode()) if (!walker.currentNode.parentElement?.closest('a,code,pre,button')) texts.push(walker.currentNode);
+  for (const text of texts) {
+    let remaining = text.textContent; const fragment = doc.createDocumentFragment(); let changed = false;
+    while (remaining) {
+      let match = null, offset = remaining.length;
+      for (const node of candidates) {
+        const at = remaining.indexOf(node.title);
+        if (at >= 0 && at < offset) { match = node; offset = at; }
+      }
+      if (!match) { fragment.append(doc.createTextNode(remaining)); break; }
+      fragment.append(doc.createTextNode(remaining.slice(0, offset)));
+      const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
+      button.textContent = match.title; button.title = '在地图中查看此节点'; button.dataset.nodeId = match.id;
+      button.addEventListener('click', () => onNode(match.id)); fragment.append(button);
+      remaining = remaining.slice(offset + match.title.length); changed = true;
+    }
+    if (changed) text.replaceWith(fragment);
+  }
+}
+
+export function conversationFragments(messages, doc = document, { nodes = [], onNode } = {}) {
   const body = doc.createDocumentFragment();
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
@@ -68,6 +99,7 @@ export function conversationFragments(messages, doc = document) {
     const label = doc.createElement('div'); label.className = 'coordinator-speaker'; label.textContent = message.role === 'assistant' ? 'Coordinator' : '你';
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
+    if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
     row.append(label, content); body.append(row);
   }
   return { body };

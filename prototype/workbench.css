@@ -934,4 +934,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel button { margin: 8px 8px 0 0; padding: 7px 16px; border: 1px solid #bdae89; border-radius: 9px; font: inherit; cursor: pointer; }
 #coordinator-panel button[type=submit] { background: #ffe87e; font-weight: 600; }
 #coordinator-panel button:disabled { opacity: .5; cursor: default; }
+#coordinator-panel .coordinator-node-link { display: inline; margin: 0; padding: 2px 7px; color: #27624b; background: #fff2ad; font-weight: 650; vertical-align: baseline; }
+#coordinator-panel .coordinator-node-link:hover { background: #ffe87e; }
+#coordinator-panel .coordinator-node-link:focus-visible { outline: 2px solid #27624b; outline-offset: 2px; }
 @media(max-width: 520px){#coordinator-panel{right: 8px;bottom: 8px;width: calc(100vw - 16px);padding: 12px;}#coordinator-panel .coordinator-messages{max-height: 48vh;}}

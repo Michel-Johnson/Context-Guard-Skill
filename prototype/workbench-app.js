@@ -4286,11 +4286,19 @@ async function installCoordinatorPanel(sync){
   const render=state=>{
     const renderedConversation=selected;
     status.textContent=(state.simulated?'模拟实验 · ':'')+({idle:'等待输入',running:'处理中',error:'处理暂停', 'waiting-for-user':'等待回复'}[state.status]||state.status)+(state.error?' · '+state.error.code:'');
-    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances]);
+    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
-    const transcript=conversationFragments(state.messages||[]);
+    const transcript=conversationFragments(state.messages||[],document,{nodes:state.nodeReferences||[],onNode:async id=>{
+      try{
+        if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
+        const node=getNode(id);
+        if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
+        clearRelationMode();focusId=null;panel.open=false;
+        enterView(id,{unpack:false});
+      }catch(error){status.textContent='无法定位节点：'+error.message;}
+    }});
     messages.replaceChildren(transcript.body);
     const mountGroups=new Map();
     for(const proposal of state.approvals||[]){

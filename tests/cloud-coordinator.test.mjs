@@ -132,6 +132,7 @@ test('Cloud item conversations have separate messages and survive restart withou
   assert.doesNotMatch(JSON.stringify(second.messages), /Only first item|Old project discussion/);
   assert.match(JSON.stringify((await call('')).messages), /Old project discussion/);
   assert.equal(first.conversations.length, 3);
+  assert.deepEqual(first.nodeReferences, [{ id: 'T0', title: 'Lab' }]);
 });
 
 test('Successful ask_user questions appear in public chat without exposing other tool inputs', async t => {
