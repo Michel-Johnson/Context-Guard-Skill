@@ -20,6 +20,20 @@ test('Verified closure prompt preserves the server control receipt and does not 
   assert.equal(await executionPrompt(message), prompt, 'replay retains the report identity');
 });
 
+test('Resume control prompt preserves the control receipt and requires a resumed report', async () => {
+  const message = { v: 2, id: 'resume-control', type: 'task.control', session: { id: 'developer', generation: 3 },
+    payload: { taskId: 'task', action: 'resume', expectedVersion: 'v9', data: { reason: '用户明确要求继续' } } };
+  const prompt = await executionPrompt(message);
+  const report = JSON.parse(prompt.split('\n').find(line => line.startsWith('{')));
+  assert.equal(report.type, 'task.report');
+  assert.equal(report.payload.stage, 'resumed');
+  assert.equal(report.payload.data.controlId, message.id);
+  assert.deepEqual(report.session, message.session);
+  assert.match(prompt, /不是新任务/);
+  assert.match(prompt, /Plan 未批准/);
+  assert.equal(await executionPrompt(message), prompt, 'replay retains the resume report identity');
+});
+
 test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
