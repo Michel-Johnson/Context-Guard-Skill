@@ -185,7 +185,11 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Install isolated CI browser and system dependencies
-        run: npx --no-install playwright install --with-deps chromium
+        run: |
+          # GitHub's Ubuntu image may ship a stale Google Chrome APT index;
+          # Playwright's pinned Chromium does not depend on that repository.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.*
+          npx --no-install playwright install --with-deps chromium
 
       - name: Exercise real workbench, public CLI and session inbox
         run: npm run test:browser

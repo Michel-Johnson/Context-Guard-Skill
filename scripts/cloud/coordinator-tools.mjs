@@ -18,6 +18,7 @@ export const coordinatorTools = [
   definition('review_plan', 'Review the exact submitted Plan; cannot approve a brief or human acceptance.', { ...task, planRef: string, planVersion: string, decision: { enum: ['approved', 'rejected'] }, reason: string }),
   definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
+  definition('resume_task', 'Resume an interrupted task only after the human explicitly asks to continue; preserves the original task, Session, Plan and evidence.', { ...task, reason: string }),
   definition('complete_task', 'After human acceptance, request closure with a merged GitHub PR and published Session memory version. The server independently verifies both; this tool does not merge code.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
   definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true } }, ['question']),
 ];
@@ -67,6 +68,8 @@ export function createCoordinatorExecutor(ctx) {
         nodeIds: input.nodeIds, mainVersion: input.mainVersion, brief, requiresHumanApproval: true };
     }
     const current = await ctx.readTask(input.sessionId, input.taskId);
+    if (name === 'resume_task') return exchange('task.control', { taskId: input.taskId, action: 'resume', expectedVersion: current.version,
+      data: { reason: input.reason } });
     if (name === 'complete_task') return exchange('task.control', { taskId: input.taskId, action: 'complete', expectedVersion: current.version,
       data: { gitReceiptRef: input.gitReceiptRef, archiveReceiptRef: input.archiveReceiptRef } });
     if (name === 'dispatch_task') {

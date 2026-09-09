@@ -33,6 +33,14 @@ export async function executionPrompt(message, readObject) {
       (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON> 交付 CI TODO、测试证据和经验。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n${p.reason ? `返工原因：${p.reason}\n` : ''}代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
+  if (message.type === 'task.control' && p.action === 'resume') return [
+    `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
+    '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
+    '确认可以继续后，用 map exchange --input <JSON文件> 回报 resumed；消息必须保留原控制编号：',
+    JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
+      payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
+    '回报后按已批准 Plan 继续；若 Plan 未批准或范围仍不清楚，保持只读并通过 ask_user 请求确认。',
+  ].join('\n');
   if (message.type === 'task.control' && p.action === 'complete') return [
     `Context Guard：任务 ${p.taskId} 已通过服务端合并与归档校验。保留证据，结束该任务。`,
     '使用 map exchange --input <JSON文件> 回报关闭；不要重新执行开发或再次合并。',

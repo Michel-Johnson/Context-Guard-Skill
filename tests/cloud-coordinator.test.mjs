@@ -572,6 +572,19 @@ test('Coordinator tools pin approved routing and refuse stale Plan approval or h
   await assert.rejects(execute('human_approve', identity, { operationId: 'op-4' }), /not registered/);
 });
 
+test('Coordinator can resume an interrupted task only with the current version and explicit reason', async () => {
+  const calls = [], current = { version: 'v7', stage: 'interrupted' };
+  const execute = createCoordinatorExecutor({
+    readTask: async () => current,
+    exchange: async (sessionId, id, type, payload) => { calls.push({ sessionId, id, type, payload }); return { ok: true }; },
+  });
+  const result = await execute('resume_task', { sessionId: 'session-1', taskId: 'task-1', reason: '用户明确要求继续' }, { operationId: 'resume-op' });
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(calls, [{ sessionId: 'session-1', id: 'resume-op', type: 'task.control', payload: {
+    taskId: 'task-1', action: 'resume', expectedVersion: 'v7', data: { reason: '用户明确要求继续' },
+  } }]);
+});
+
 test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
   const sessions = [{ id: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
   const execute = createCoordinatorExecutor({
