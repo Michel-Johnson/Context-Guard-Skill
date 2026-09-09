@@ -923,9 +923,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-markdown th,#coordinator-panel .coordinator-markdown td { border: 1px solid #ddd4bf; padding: 7px 10px; text-align: left; }
 #coordinator-panel .coordinator-markdown th { background: #f3eddb; }
 #coordinator-panel .coordinator-markdown input[type=checkbox] { margin-right: 6px; }
-#coordinator-panel .coordinator-debug,#coordinator-panel .coordinator-meta { border-top: 1px solid #e2dac7; padding-top: 10px; color: #817660; font-size: 12px; }
-#coordinator-panel .coordinator-debug summary,#coordinator-panel .coordinator-meta summary { cursor: pointer; }
-#coordinator-panel .coordinator-debug pre,#coordinator-panel .coordinator-meta pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; }
+#coordinator-panel .coordinator-meta { border-top: 1px solid #e2dac7; padding-top: 10px; color: #817660; font-size: 12px; }
+#coordinator-panel .coordinator-meta summary { cursor: pointer; }
+#coordinator-panel .coordinator-meta pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; }
 #coordinator-panel .coordinator-messages > section { border: 1px solid #dccfaa; background: #faf3dc; border-radius: 12px; padding: 12px; margin: 14px 0; }
 #coordinator-panel .coordinator-messages > section p { white-space: pre-wrap; margin: 0 0 8px; }
 #coordinator-panel form { border-top: 1px solid #e2dac7; padding-top: 12px; margin-top: 4px; }
