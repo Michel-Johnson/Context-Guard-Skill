@@ -71,7 +71,7 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
-    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskWaitingReview:"等待 Plan 审核",
+    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
     allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
     projectOverview:"项目总览",
     bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
@@ -173,7 +173,7 @@ const I18N = {
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
-    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskWaitingReview:"Waiting for Plan review",
+    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskInterrupted:"Interrupted", taskWaitingReview:"Waiting for Plan review",
     allSessions:"Main workbench · All sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
     projectOverview:"Projects",
     bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
@@ -2131,6 +2131,7 @@ function bugProgress(bug){
   const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
+  if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskQueued")}`,detail:""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskCloudQueued")}`,detail:""};
@@ -2172,6 +2173,7 @@ function todoProgress(todo){
   const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
+  if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskQueued")}`,detail:""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskCloudQueued")}`,detail:""};
