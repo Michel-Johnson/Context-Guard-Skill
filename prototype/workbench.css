@@ -76,6 +76,7 @@ header.top h1{margin:0;font-size:16px}
 .session-status.active{border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
 .session-status.online::before{content:"•";color:var(--green);font-size:24px;font-weight:900;line-height:12px}
 .session-status.offline::before{content:"•";color:var(--red);font-size:24px;font-weight:900;line-height:12px}
+.session-status.interrupted::before,.session-status.failed::before{content:"×";color:var(--red);font-size:20px;font-weight:900;line-height:12px}
 .session-status.stopped::before{content:"✓";color:var(--green);font-size:15px;font-weight:900;line-height:1}
 .session-status.unknown::before{content:"•";color:var(--muted);font-size:20px;font-weight:900;line-height:12px}
 .session-status.empty{display:none}

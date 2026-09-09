@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { cloudSessionActivity, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
@@ -27,6 +27,15 @@ test('Cloud Session presence is online only while device heartbeats are recent',
   assert.equal(cloudSessionPresence('2026-09-06T07:59:40.000Z', now), 'online');
   assert.equal(cloudSessionPresence('2026-09-06T07:59:29.999Z', now), 'offline');
   assert.equal(cloudSessionPresence('', now), 'offline');
+});
+
+test('Coordinator assignment projection marks the matching Main work item without mutating the source', () => {
+  const document = { root: { id: 'T0', todos: [{ id: 'TD1', title: 'Deploy' }], bugs: [], children: [{ id: 'N1', todos: [{ id: 'TD2' }], bugs: [], children: [] }] } };
+  const assignments = new Map([['T0:todo:TD1', { status: 'executing', task_id: 'task-1', session_id: 'session-1' }]]);
+  const projected = applyCoordinatorAssignments(document, assignments);
+  assert.deepEqual(projected.root.todos[0].dispatch, assignments.get('T0:todo:TD1'));
+  assert.equal(projected.root.children[0].todos[0].dispatch, undefined);
+  assert.equal(document.root.todos[0].dispatch, undefined);
 });
 
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {

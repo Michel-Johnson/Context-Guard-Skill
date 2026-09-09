@@ -1289,7 +1289,14 @@ function sessionLifecycle(meta){
   if(String(meta?.bindingState||"").toLowerCase()==="unavailable") return {state:"unknown",label:"会话不可用",disabled:true};
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
   const status=String(meta?.status||"").toLowerCase();
-  if(status==="online") return {state:"online",label:meta?.execution?.status==="active"?"心跳在线 · 执行中":meta?.execution?.status==="stopped"?"心跳在线 · 空闲":"心跳在线",disabled:false};
+  if(status==="online"){
+    if(!meta?.execution) return {state:"online",label:"心跳在线",disabled:false};
+    const execution=String(meta?.execution?.status||"unknown");
+    if(execution==="interrupted") return {state:"interrupted",label:"会话中断",disabled:false};
+    if(execution==="failed") return {state:"failed",label:"会话失败",disabled:false};
+    if(execution==="unknown") return {state:"unknown",label:"执行状态未知",disabled:false};
+    return {state:"online",label:execution==="active"?"心跳在线 · 执行中":"心跳在线 · 空闲",disabled:false};
+  }
   if(status==="offline") return {state:"offline",label:"心跳离线",disabled:false};
   if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
   if(["stopped","completed","done"].includes(status)) return {state:"stopped",label:"已完成",disabled:false};
@@ -2434,7 +2441,7 @@ async function createAssignedBug(node){
   walkAll(data,n=>(n.bugs||[]).forEach(bug=>used.add(bug.id)));
   let bid;
   do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
-  const bug = {id:bid,title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
+  const bug = {id:bid,instanceId:crypto.randomUUID(),title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
   node.bugs.push(bug);
   if(assignment.clarify){ await saveCoordinatorIntake(node,bug,'bug'); return; }
   await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
@@ -2477,7 +2484,7 @@ async function createAssignedTodo(node){
   const assignment = await promptTodoAssignment(node);
   if(!assignment) return;
   foldTodo = true;
-  const todo = {id:nextTodoId(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
+  const todo = {id:nextTodoId(),instanceId:crypto.randomUUID(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
   node.todos.push(todo);
   if(assignment.clarify){ await saveCoordinatorIntake(node,todo,'todo'); return; }
   await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);

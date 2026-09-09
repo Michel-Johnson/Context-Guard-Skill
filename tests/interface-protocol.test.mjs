@@ -59,6 +59,11 @@ test('IF-056: heartbeat accepts bounded Session display metadata for Cloud prese
   assert.equal(validateMessage(heartbeat).payload.sessions[0].name, 'online');
   heartbeat.payload.sessions[0].name = 'x'.repeat(241);
   assert.throws(() => validateMessage(heartbeat), { code: 'INVALID_ARGUMENT' });
+  for (const status of ['interrupted', 'failed']) {
+    const messageValue = message(catalog.interfaces.find(i => i.type === 'sync.heartbeat'));
+    messageValue.payload.sessions[0].execution = { status, at: '2026-09-09T14:58:34.370Z' };
+    assert.equal(validateMessage(messageValue).payload.sessions[0].execution.status, status);
+  }
 });
 test('IF-004: bounded requests, failed test evidence, atomic change shapes', () => {
   const input = message(catalog.interfaces.find(i => i.type === 'object.put'));

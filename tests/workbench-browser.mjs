@@ -231,6 +231,7 @@ try {
   const publishedSession = 'browser-contract-published';
   const staleSession = 'browser-contract-stale';
   const onlineSession = 'browser-contract-online';
+  const interruptedSession = 'browser-contract-interrupted';
   const offlineSession = 'browser-contract-offline';
   const contractPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
   contractPage.on('pageerror', error => errors.push(error.stack || error.message));
@@ -250,6 +251,7 @@ try {
       { id: publishedSession, name: '', platform: 'codex', status: 'published', bindingState: 'bound' },
       { id: staleSession, name: '', platform: 'codex', status: 'active', bindingState: 'stale', branch: 'feature/stale' },
       { id: onlineSession, name: 'cloud-online', platform: 'codex', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z' },
+      { id: interruptedSession, name: 'cloud-interrupted', platform: 'claude', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z', execution: { status: 'interrupted', at: '2026-01-02T00:00:00.000Z' } },
       { id: offlineSession, name: 'cloud-offline', platform: 'codex', status: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z' },
     ];
     await route.fulfill({ response, json: body });
@@ -271,6 +273,7 @@ try {
   assert.equal(detailA, '会话 1');
   assert.equal(detailB, '会话 2');
   assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-status.online`).getAttribute('aria-label'), '心跳在线');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${interruptedSession}"] .session-status.interrupted`).getAttribute('aria-label'), '会话中断');
   assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"] .session-status.offline`).getAttribute('aria-label'), '心跳离线');
   assert.notEqual(detailA, detailB, 'same-name Sessions remain independently identifiable without changing their primary label');
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), 'cursor 会话 — 会话 1');
