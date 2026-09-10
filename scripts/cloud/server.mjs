@@ -1686,8 +1686,13 @@ export async function startCloudServer({
   setTimeout(publishMergedSessions, 0).unref?.();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   for (const project of registry.projects) {
-    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) void conversationsFor(project).list().then(items =>
-      Promise.all(items.map(item => coordinatorFor(project, item.id)))).catch(() => {});
+    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) void conversationsFor(project).list().then(async items => {
+      const services = await Promise.all(items.map(item => coordinatorFor(project, item.id)));
+      // Start the first inbox pump immediately. This is what discovers durable
+      // interrupted tasks after a Cloud restart; the interval remains as the
+      // liveness fallback for later events.
+      await Promise.all(services.map(service => service.inbox.pump()));
+    }).catch(cause => console.error(`[context-guard] coordinator startup deferred: ${cause.message}`));
   }
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
