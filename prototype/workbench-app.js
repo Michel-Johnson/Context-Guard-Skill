@@ -2130,6 +2130,9 @@ function bugProgress(bug){
   if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
   const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
+  if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
+  if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
+  if(["resuming","assigned","plan-ready"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing":"准备中",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
@@ -2172,6 +2175,9 @@ function todoProgress(todo){
   if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
   const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
+  if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
+  if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
+  if(["resuming","assigned","plan-ready"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing":"准备中",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};

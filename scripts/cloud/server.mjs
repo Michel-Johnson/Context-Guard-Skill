@@ -28,10 +28,15 @@ const digest = value => createHash('sha256').update(String(value)).digest('hex')
 export function applyCoordinatorAssignments(document, assignments) {
   if (!document?.root || !assignments?.size) return document;
   const projectItems = node => ({ ...node,
-    todos: (node.todos || []).map(item => assignments.has(`${node.id}:todo:${item.id}`) && !item.dispatch
-      ? { ...item, dispatch: assignments.get(`${node.id}:todo:${item.id}`) } : item),
-    bugs: (node.bugs || []).map(item => assignments.has(`${node.id}:bug:${item.id}`) && !item.dispatch
-      ? { ...item, dispatch: assignments.get(`${node.id}:bug:${item.id}`) } : item),
+    // The map snapshot can contain the dispatch receipt from before the
+    // Coordinator advanced the task.  Always overlay the current assignment
+    // so a stale `pending` receipt cannot mask an executing/awaiting-merge
+    // task in the workbench.  This is a read-only projection; the source map
+    // remains unchanged.
+    todos: (node.todos || []).map(item => assignments.has(`${node.id}:todo:${item.id}`)
+      ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:todo:${item.id}`) } } : item),
+    bugs: (node.bugs || []).map(item => assignments.has(`${node.id}:bug:${item.id}`)
+      ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:bug:${item.id}`) } } : item),
     children: (node.children || []).map(projectItems),
   });
   return { ...document, root: projectItems(document.root) };

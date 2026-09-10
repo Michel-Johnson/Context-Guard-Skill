@@ -194,6 +194,10 @@ export class WorkbenchSync {
       this.a.apply(state.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const hasRecovery = this.loadRecovery();
       this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
+      // Task stages/results live in the protocol store rather than the map
+      // version. Read them immediately so a fresh page does not show a stale
+      // receipt until the first heartbeat.
+      await this.refreshTaskStatuses().catch(() => {});
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
       this.setStatus('synced', hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
       return true;
@@ -297,6 +301,8 @@ export class WorkbenchSync {
     if (state.error || state.recovery) { this.setStatus('error', state.error?.message || '服务需要恢复'); return; }
     if (this.initializationRequired) { await this.reload(); return; }
     if (state.version === this.version) {
+      // Coordinator/CI transitions do not bump the map version.
+      await this.refreshTaskStatuses().catch(() => {});
       if (!this.dirty()) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
       return;
     }
