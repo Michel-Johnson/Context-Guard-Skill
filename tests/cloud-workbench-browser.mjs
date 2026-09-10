@@ -529,6 +529,29 @@ try {
   assert.equal(await coordinator.getByText(/运行记录/).count(),0);
   record('Coordinator hides removed controls while per-item conversation entry remains usable');
 
+  const acceptanceRequests = [];
+  await page.route(/\/api\/coordinator\/acceptance(?:\?|$)/, async route => {
+    acceptanceRequests.push(route.request().postDataJSON());
+    coordinatorState = { ...coordinatorState, acceptances: [] };
+    await route.fulfill({ json: { accepted: true } });
+  });
+  coordinatorState = { ...coordinatorState, acceptances: [{
+    taskId: 'task-review-ui', sessionId: 'session-one', sourceSha: 'sha-review-ui',
+    brief: { text: '这是一个超过六十个字符的验收说明，用于确认任务信息会自动按句子分段并以 Markdown 结构显示。' },
+    result: { verdict: 'passed' }, ci: { ref: 'ci-review-ui', version: 'ci-version-review-ui' },
+  }] };
+  await page.reload(); await synchronized(); await coordinator.locator(':scope > summary').click();
+  await coordinator.getByRole('button', { name: '验收不通过', exact: true }).click();
+  const reviewDialog = page.locator('dialog.coordinator-review-dialog');
+  await reviewDialog.waitFor();
+  await reviewDialog.locator('textarea').fill('需要补充部署路径和回滚验证。');
+  await reviewDialog.getByRole('button', { name: '提交反馈', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('dialog.coordinator-review-dialog'));
+  assert.equal(acceptanceRequests.length, 1);
+  assert.equal(acceptanceRequests[0].decision, 'rejected');
+  assert.equal(acceptanceRequests[0].reason, '需要补充部署路径和回滚验证。');
+  record('Coordinator acceptance rejection opens an inline feedback dialog');
+
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;
