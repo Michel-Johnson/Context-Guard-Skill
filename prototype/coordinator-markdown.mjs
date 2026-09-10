@@ -1,5 +1,30 @@
 import { lexer } from './vendor/marked.mjs';
 
+// Keep long plain-language replies readable even when the model returns one
+// giant paragraph.  Split at sentence punctuation (or a bounded fallback),
+// while leaving Markdown blocks and fenced code untouched.
+function paragraphize(source, limit = 60) {
+  const lines = String(source || '').replace(/\r\n?/g, '\n').split('\n');
+  const output = [];
+  let fence = false;
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) { fence = !fence; output.push(line); continue; }
+    if (fence || line.length <= limit || /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)/.test(line)) { output.push(line); continue; }
+    let rest = line;
+    while (rest.length > limit) {
+      const boundary = Math.min(rest.length - 1, limit + 20);
+      let cut = -1;
+      for (let i = boundary; i >= Math.max(0, limit - 20); i--) {
+        if (/[。！？；.!?;:：]/.test(rest[i])) { cut = i + 1; break; }
+      }
+      if (cut < 1) cut = limit;
+      output.push(rest.slice(0, cut)); output.push(''); rest = rest.slice(cut).trimStart();
+    }
+    output.push(rest);
+  }
+  return output.join('\n');
+}
+
 // Build a restricted DOM from Markdown tokens. Never insert model-provided HTML,
 // fetch remote images, or attach an unvalidated URL to an active element.
 export function markdownFragment(text, doc = document) {
@@ -52,7 +77,7 @@ export function markdownFragment(text, doc = document) {
       append(node, token.tokens || [{ type: 'text', text: token.text || '' }], depth + 1); parent.append(node);
     }
   };
-  const source = String(text || '');
+  const source = paragraphize(String(text || ''));
   try { if (source.length > 64000) throw new Error('Large response'); append(root, lexer(source, { gfm: true })); }
   catch { root.replaceChildren(doc.createTextNode(source)); }
   return root;
