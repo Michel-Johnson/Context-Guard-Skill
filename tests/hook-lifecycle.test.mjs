@@ -394,6 +394,10 @@ test('read-only inspection remains available without a plan while writes stay ga
     `context-guard map apply --root "${project}" --session ${session} --input /tmp/cg-map-request.json`,
     'sed -n \'1,20p\' RULE.md 2>&1',
     'ls 2>&1 | head',
+    'python3 --version',
+    'python3 --version 2>&1',
+    'node -v',
+    'node -e "console.log(\'node-ok\')"',
   ];
   for (const command of commands) {
     const result = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
@@ -439,6 +443,46 @@ test('read-only inspection remains available without a plan while writes stay ga
   assert.equal(protectedTextOnly.json.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   assert.doesNotMatch(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /Direct map/);
+});
+
+test('interpreter version probes stay read-only without a plan or signal classification', async t => {
+  const project = await fixture();
+  t.after(() => dispose(project));
+  const session = 'interpreter-probe-session';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await installMap(project);
+
+  const probes = [
+    'python3 --version',
+    'python3 --version 2>&1',
+    'node -v',
+    'node --version',
+    'node -e "console.log(\'node-ok\')"',
+  ];
+  for (const command of probes) {
+    const codex = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: command } });
+    assert.equal(codex.json.hookSpecificOutput?.permissionDecision, undefined, command);
+    const claude = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command } });
+    assert.equal(claude.json.hookSpecificOutput?.permissionDecision, undefined, command);
+  }
+
+  const prompted = hook('UserPromptSubmit', project, session, { prompt: '先探测运行环境' });
+  const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId, 'expected a pending user signal');
+  for (const command of probes) {
+    const pending = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command } });
+    assert.equal(pending.json.hookSpecificOutput?.permissionDecision, undefined, `pending signal must not block ${command}`);
+  }
+
+  const mutating = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command: 'python3 fix.py' } });
+  assert.equal(mutating.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(mutating.json.hookSpecificOutput.permissionDecisionReason, /PreToolUse blocked; command was not executed:/);
+  assert.match(mutating.json.hookSpecificOutput.permissionDecisionReason, /Classify pending user signals|plan-start/);
+
+  const scriptProbe = hook('PreToolUse', project, session, { platform: 'claude', tool_name: 'Bash', tool_input: { command: 'node -e "require(\'fs\').writeFileSync(\'x\',\'y\')"' } });
+  assert.equal(scriptProbe.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(scriptProbe.json.hookSpecificOutput.permissionDecisionReason, /PreToolUse blocked; command was not executed:/);
 });
 
 test('configured Cloud hooks prepare once, track paths, checkpoint and require finish', async t => {
@@ -1038,6 +1082,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard set-language --root . --language zh'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard write-candidates --root . --input /tmp/c.json'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md 2>&1'}})
+    assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'python3 --version'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'node -v'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'node -e "console.log(\\'node-ok\\')"'}})
+    assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'node -e "require(\\'fs\\').writeFileSync(\\'x\\',\\'y\\')"'}})
     assert hook.control_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map apply --input /tmp/r.json; echo EXIT=$?'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | context-guard plan-start --input -'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'printf %s JSON | node /tmp/context-guard-skill.js plan-start --input -'}})
