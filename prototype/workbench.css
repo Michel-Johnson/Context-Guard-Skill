@@ -937,6 +937,12 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-messages > section { border: 1px solid #dccfaa; background: #faf3dc; border-radius: 12px; padding: 12px; margin: 14px 0; }
 #coordinator-panel .coordinator-messages > section p { white-space: pre-wrap; margin: 0 0 8px; }
 #coordinator-panel .coordinator-messages > section > .coordinator-markdown { margin-bottom: 10px; }
+.coordinator-review-inline { margin-top: 12px; padding: 12px; border: 1px solid #c8b978; border-radius: 10px; background: #fff8d8; }
+.coordinator-review-inline h3 { margin: 0 0 8px; font-size: 1em; }
+.coordinator-review-inline label { display: block; font-size: 13px; font-weight: 600; }
+.coordinator-review-inline textarea { display: block; margin-top: 6px; min-height: 82px; }
+.coordinator-review-inline p { margin: 8px 0 0; color: #746e5e; font-size: 12px; }
+.coordinator-review-inline form > div { margin-top: 4px; }
 .coordinator-review-dialog { width: min(460px, calc(100vw - 32px)); border: 2px solid #333; border-radius: 16px; padding: 20px; background: #fffcf4; color: #302d26; box-shadow: 5px 6px 0 #333; }
 .coordinator-review-dialog::backdrop { background: rgb(48 45 38 / 28%); }
 .coordinator-review-dialog textarea { margin-top: 8px; min-height: 100px; }
