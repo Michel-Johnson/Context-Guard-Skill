@@ -21,6 +21,8 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /意图必须保真/);
   assert.match(prompt, /部署、发布、启动服务/);
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
+  assert.match(prompt, /每个问题都必须调用一次 `ask_user`/);
+  assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
   assert.match(prompt, /推荐不等于批准或派单/);
   assert.match(mount, /只问缺失的业务信息/);
