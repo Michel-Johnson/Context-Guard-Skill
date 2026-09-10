@@ -506,6 +506,13 @@ export async function startCloudServer({
           lastError: null, close: async () => {}, pump: async () => (await coordinatorFor(project)).inbox.pump(),
         } : new CoordinatorInbox({ store, principal, sessionIds: refreshBindings, service,
           services: async () => Promise.all((await conversations.list()).map(item => coordinatorFor(project, item.id))),
+          autoResume: async ({ session, taskId, messageId, reason }) => {
+            const current = await store.taskRecord(principal, session, taskId);
+            if (current.stage !== 'interrupted' || !current.busy) return { skipped: true, stage: current.stage };
+            return (await store.handle(principal, { v: 2, id: `auto-resume:${messageId}`, type: 'task.control', session,
+              payload: { taskId, action: 'resume', expectedVersion: current.version,
+                data: { reason: `自动恢复中断任务${reason ? `：${reason}` : ''}` } } }, { workflow: interfaceWorkflow })).data;
+          },
           routeEvent: async (type, payload, session) => {
             let taskId = payload.taskId;
             if (!taskId && type === 'review.result') {

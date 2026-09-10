@@ -281,8 +281,8 @@ export class CoordinatorService {
 // Consume the existing protocol journal as an independent consumer. Acceptance
 // means the conversation is durable, not that the model has completed its turn.
 export class CoordinatorInbox {
-  constructor({ store, principal, sessionIds, service, intake = null, routeEvent = null, services = null, memoryEvents = null, projectId = null, intervalMs = 5000 }) {
-    Object.assign(this, { store, principal, sessionIds, service, intake, routeEvent, services, memoryEvents });
+  constructor({ store, principal, sessionIds, service, intake = null, routeEvent = null, services = null, memoryEvents = null, projectId = null, intervalMs = 5000, autoResume = null }) {
+    Object.assign(this, { store, principal, sessionIds, service, intake, routeEvent, services, memoryEvents, autoResume });
     this.running = null; this.stopped = false; this.lastError = null;
     this.changed = () => { void this.pump(); };
     store.on('change', this.changed);
@@ -328,10 +328,16 @@ export class CoordinatorInbox {
             const summary = type === 'review.result' ? payload : { taskId: payload.taskId, stage: payload.stage, verdict: payload.verdict };
             if (actionable) {
               const target = this.routeEvent ? await this.routeEvent(type, payload, session) : this.service;
+              if (type === 'task.report' && payload.stage === 'interrupted' && this.autoResume) {
+                await this.autoResume({ session, taskId: payload.taskId, messageId: item.message.id, reason: payload.data?.reason, occurredAt: payload.data?.occurredAt });
+              }
               // Leave this event unacknowledged, but allow other conversations to
               // progress. The existing contiguous cursor replays the gap later.
               if (!await available(target)) continue;
-              await target.submit({ id: `event:${item.message.id}`, text: JSON.stringify({ session, type, payload: summary, instruction: '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });
+              await target.submit({ id: `event:${item.message.id}`, text: JSON.stringify({ session, type, payload: summary,
+                instruction: type === 'task.report' && payload.stage === 'interrupted' && this.autoResume
+                  ? '系统已自动提交恢复控制；读取当前任务和引用证据，等待执行端 resumed 回执，不要再次创建任务或重复调用恢复。'
+                  : '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });
             }
             await send('sync.ack', { items: [{ seq: item.seq, outcome: 'applied' }] }, `coordinator-ack:${id}:${session.generation}:${item.seq}`);
           }

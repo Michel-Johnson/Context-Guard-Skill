@@ -585,6 +585,23 @@ test('Coordinator can resume an interrupted task only with the current version a
   } }]);
 });
 
+test('Coordinator inbox automatically resumes an interrupted notification without a user turn', async () => {
+  const session = { id: 'session-1', generation: 1 }, interruption = { v: 2, id: 'interrupt-1', type: 'task.report', session,
+    payload: { taskId: 'task-1', stage: 'interrupted', data: { reason: 'timeout', occurredAt: '2026-09-10T00:00:00Z' } } };
+  let resumed = 0, submitted = 0, acknowledged = 0;
+  const store = { on() {}, off() {}, registeredBinding: async () => ({ worktreeId: 'worktree', generation: 1 }), handle: async (_principal, message) => {
+    if (message.type === 'sync.heartbeat') return { data: { sessions: [{ ...session, latestSeq: 1, ackedSeq: 0 }] } };
+    if (message.type === 'sync.read') return { data: { messages: [{ seq: 1, message: interruption }], nextSeq: 1 } };
+    if (message.type === 'sync.ack') { acknowledged++; return { data: {} }; }
+    throw new Error(`unexpected ${message.type}`);
+  } };
+  const service = { state: async () => ({ status: 'idle' }), submit: async request => { submitted++; assert.match(request.text, /自动提交恢复控制/); } };
+  const inbox = new CoordinatorInbox({ store, principal: {}, sessionIds: [session.id], service, intervalMs: 60000,
+    autoResume: async input => { resumed++; assert.deepEqual(input.session, session); assert.equal(input.taskId, 'task-1'); return { ok: true }; } });
+  await inbox.pump(); await inbox.close();
+  assert.equal(resumed, 1); assert.equal(submitted, 1); assert.equal(acknowledged, 1);
+});
+
 test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
   const sessions = [{ id: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
   const execute = createCoordinatorExecutor({
