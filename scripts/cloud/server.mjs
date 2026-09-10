@@ -531,6 +531,23 @@ export async function startCloudServer({
     }
     return coordinators.get(key);
   };
+  const recoverInterruptedTasks = async project => {
+    const config = configuredMemory?.projects?.[project.id]?.coordinator;
+    if (!config?.enabled) return;
+    const { store, principal } = interfaceProject(project);
+    for (const id of Object.keys(config.bindings || {})) {
+      const binding = await store.registeredBinding(principal, id);
+      if (!binding) continue;
+      const session = { id, generation: binding.generation };
+      for (const task of await store.workflowTasks(principal, session)) {
+        if (task.stage !== 'interrupted' || !task.busy) continue;
+        const messageId = `auto-resume-startup:${project.id}:${id}:${session.generation}:${task.id}:${task.version}`;
+        await store.handle(principal, { v: 2, id: messageId, type: 'task.control', session,
+          payload: { taskId: task.id, action: 'resume', expectedVersion: task.version,
+            data: { reason: `Cloud 启动自动恢复中断任务：${task.interrupted?.reason || '未记录原因'}` } } }, { workflow: interfaceWorkflow });
+      }
+    }
+  };
   const mapFile = id => path.join(mapsDir, `${id}.json`);
   const eventsFile = id => path.join(eventsDir, `${id}.jsonl`);
   const workFile = (id, workId) => path.join(worksDir, id, `${digest(workId)}.json`);
@@ -1686,13 +1703,16 @@ export async function startCloudServer({
   setTimeout(publishMergedSessions, 0).unref?.();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   for (const project of registry.projects) {
-    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) void conversationsFor(project).list().then(async items => {
+    if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) {
+      void recoverInterruptedTasks(project).catch(cause => console.error(`[context-guard] interrupted-task recovery deferred: ${cause.message}`));
+      void conversationsFor(project).list().then(async items => {
       const services = await Promise.all(items.map(item => coordinatorFor(project, item.id)));
       // Start the first inbox pump immediately. This is what discovers durable
       // interrupted tasks after a Cloud restart; the interval remains as the
       // liveness fallback for later events.
       await Promise.all(services.map(service => service.inbox.pump()));
-    }).catch(cause => console.error(`[context-guard] coordinator startup deferred: ${cause.message}`));
+      }).catch(cause => console.error(`[context-guard] coordinator startup deferred: ${cause.message}`));
+    }
   }
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
