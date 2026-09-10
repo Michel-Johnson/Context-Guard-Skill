@@ -38,6 +38,15 @@ test('Coordinator assignment projection marks the matching Main work item withou
   assert.equal(document.root.todos[0].dispatch, undefined);
 });
 
+test('Coordinator assignment projection replaces a stale dispatch receipt', () => {
+  const stale = { status: 'pending', task_id: 'task-1', session_id: 'session-1', at: 'old' };
+  const document = { root: { id: 'T0', todos: [{ id: 'TD1', title: 'Deploy', dispatch: stale }], bugs: [], children: [] } };
+  const current = { status: 'awaiting-merge', task_id: 'task-1', session_id: 'session-1', at: 'new' };
+  const projected = applyCoordinatorAssignments(document, new Map([['T0:todo:TD1', current]]));
+  assert.deepEqual(projected.root.todos[0].dispatch, current);
+  assert.deepEqual(document.root.todos[0].dispatch, stale);
+});
+
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {
   const base = { v: 1, root: { id: 'T0', title: 'Base', purpose: '', children: [] } };
   const local = structuredClone(base); local.root.title = 'Local title';
