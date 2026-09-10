@@ -305,7 +305,7 @@ export class CoordinatorInbox {
       for (const task of await this.store.workflowTasks(this.principal, session)) {
         if (task.stage !== 'interrupted' || !task.busy) continue;
         await this.autoResume({ session, taskId: task.id,
-          messageId: `auto-resume:${id}:${session.generation}:${task.id}:${task.version}`,
+          messageId: `auto-resume:${hash(JSON.stringify([id, session.generation, task.id, task.version]))}`,
           reason: task.interrupted?.reason, occurredAt: task.interrupted?.occurredAt });
       }
     }

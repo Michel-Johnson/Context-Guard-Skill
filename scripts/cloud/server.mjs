@@ -541,7 +541,7 @@ export async function startCloudServer({
       const session = { id, generation: binding.generation };
       for (const task of await store.workflowTasks(principal, session)) {
         if (task.stage !== 'interrupted' || !task.busy) continue;
-        const messageId = `auto-resume-startup:${project.id}:${id}:${session.generation}:${task.id}:${task.version}`;
+        const messageId = `auto-resume-startup:${digest(JSON.stringify([project.id, id, session.generation, task.id, task.version]))}`;
         await store.handle(principal, { v: 2, id: messageId, type: 'task.control', session,
           payload: { taskId: task.id, action: 'resume', expectedVersion: task.version,
             data: { reason: `Cloud 启动自动恢复中断任务：${task.interrupted?.reason || '未记录原因'}` } } }, { workflow: interfaceWorkflow });
