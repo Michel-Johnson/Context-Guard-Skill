@@ -614,7 +614,7 @@ test('Coordinator inbox resumes durable interrupted tasks after a Cloud restart'
       throw new Error(`unexpected ${message.type}`);
     } };
   const service = { state: async () => ({ status: 'idle' }) };
-  const inbox = new CoordinatorInbox({ store, principal: {}, sessionIds: [session.id], service, intervalMs: 60000,
+  const inbox = new CoordinatorInbox({ store, principal: {}, sessionIds: [session.id], service, intake: { consume: async () => true }, intervalMs: 60000,
     autoResume: async input => { resumed.push(input); } });
   await inbox.pump(); await inbox.close();
   assert.deepEqual(resumed, [{ session, taskId: task.id,
