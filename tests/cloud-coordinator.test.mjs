@@ -602,6 +602,25 @@ test('Coordinator inbox automatically resumes an interrupted notification withou
   assert.equal(resumed, 1); assert.equal(submitted, 1); assert.equal(acknowledged, 1);
 });
 
+test('Coordinator inbox resumes durable interrupted tasks after a Cloud restart', async () => {
+  const session = { id: 'session-restarted', generation: 2 };
+  const task = { id: 'task-restarted', stage: 'interrupted', busy: true, version: 'v9',
+    interrupted: { reason: 'process exited', occurredAt: '2026-09-10T00:00:00Z' } };
+  const resumed = [];
+  const store = { on() {}, off() {}, registeredBinding: async () => ({ worktreeId: 'worktree', generation: session.generation }),
+    workflowTasks: async (_principal, current) => { assert.deepEqual(current, session); return [task]; },
+    handle: async (_principal, message) => {
+      if (message.type === 'sync.heartbeat') return { data: { sessions: [{ ...session, latestSeq: 0, ackedSeq: 0 }] } };
+      throw new Error(`unexpected ${message.type}`);
+    } };
+  const service = { state: async () => ({ status: 'idle' }) };
+  const inbox = new CoordinatorInbox({ store, principal: {}, sessionIds: [session.id], service, intervalMs: 60000,
+    autoResume: async input => { resumed.push(input); } });
+  await inbox.pump(); await inbox.close();
+  assert.deepEqual(resumed, [{ session, taskId: task.id,
+    messageId: 'auto-resume:session-restarted:2:task-restarted:v9', reason: 'process exited', occurredAt: '2026-09-10T00:00:00Z' }]);
+});
+
 test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
   const sessions = [{ id: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
   const execute = createCoordinatorExecutor({
