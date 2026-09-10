@@ -18,6 +18,9 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   const mount = await fs.readFile(new URL('../references/map-mount.md', import.meta.url), 'utf8');
   const read = await fs.readFile(new URL('../references/map-read.md', import.meta.url), 'utf8');
   assert.match(prompt, /节点定位由你负责/);
+  assert.match(prompt, /意图必须保真/);
+  assert.match(prompt, /部署、发布、启动服务/);
+  assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
   assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
   assert.match(prompt, /推荐不等于批准或派单/);
   assert.match(mount, /只问缺失的业务信息/);
