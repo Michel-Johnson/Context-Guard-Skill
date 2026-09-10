@@ -451,6 +451,12 @@ def session_id(payload: object, platform: str, ctx: Path, event: str) -> str:
         if isinstance(stored, str) and stored.strip():
             value = stored.strip()
     if not value:
+        for key in ("CODEX_THREAD_ID", "CLAUDE_SESSION_ID", "CURSOR_SESSION_ID"):
+            env_value = os.environ.get(key, "").strip()
+            if env_value:
+                value = env_value
+                break
+    if not value:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         value = f"{platform}-{stamp}-{os.getpid()}"
     if state.get(platform) != value:
