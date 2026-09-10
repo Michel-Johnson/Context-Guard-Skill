@@ -465,8 +465,15 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   function viewPeers(viewId) { return [...peers.values()].filter(peer => !viewId || peer.viewId === viewId); }
   function pendingPeers(viewId) { return viewPeers(viewId).filter(p => p.dirty || !p.res || p.res.destroyed).map(p => p.id); }
+  function evictPeer(peer) {
+    if (!peer) return;
+    peer.res?.end();
+    peers.delete(`${peer.viewId}:${peer.id}`);
+    if (!peers.size) openClaimed = false;
+  }
   const checkpoints = new Map();
-  async function fence(viewId) {
+  const fenceDeadlineMs = Number(process.env.CONTEXT_GUARD_FENCE_MS) > 0 ? Number(process.env.CONTEXT_GUARD_FENCE_MS) : 8000;
+  async function fence(viewId, { stopping = false } = {}) {
     const checkpoint = randomUUID();
     const pending = new Set(viewPeers(viewId));
     checkpoints.set(checkpoint, pending);
@@ -474,15 +481,21 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       broadcast('checkpoint', { checkpoint }, viewId);
       // Allow a background browser to resume and flush through the named proxy.
       // Remain below the client's 10-second request timeout and fail closed.
-      const deadline = Date.now() + 8000;
+      const deadline = Date.now() + (stopping ? Math.min(fenceDeadlineMs, 2000) : fenceDeadlineMs);
       while (pending.size) {
         const live = new Set(viewPeers(viewId));
         for (const peer of pending) if (!live.has(peer) || !peer.res || peer.res.destroyed) pending.delete(peer);
         if (!pending.size) break;
-        if (Date.now() >= deadline) throw new MapError('UI_PENDING', 'A page has not acknowledged the synchronization checkpoint', 409, { peers: [...pending].map(peer => peer.id) });
+        if (Date.now() >= deadline) {
+          // A hung SSE connection is not a live page. Evict it like a closed tab
+          // so Agent reads and CLI stop are not blocked indefinitely.
+          for (const peer of pending) evictPeer(peer);
+          pending.clear();
+          break;
+        }
         await pause(15);
       }
-      if (pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'A page has unsaved edits', 409, { peers: pendingPeers(viewId) });
+      if (!stopping && pendingPeers(viewId).length) throw new MapError('UI_PENDING', 'A page has unsaved edits', 409, { peers: pendingPeers(viewId) });
     } finally {
       checkpoints.delete(checkpoint);
     }
@@ -839,7 +852,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         if (route === '/api/stop' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);
-          for (const viewId of stores.keys()) await fence(viewId);
+          for (const viewId of stores.keys()) await fence(viewId, { stopping: true });
           send(res, 202, { stopping: true }); setImmediate(() => close()); return;
         }
         if (route === '/api/project-refresh' && req.method === 'POST') {

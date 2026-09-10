@@ -211,14 +211,15 @@ test('HTTP integration uses Agent identity and never requests a browser checkpoi
   const server = await startServer({ root: f.root, port: 0 }); t.after(() => server.close());
   const { token } = await request(server.state, '/api/session', { method: 'POST', body: { sessionId: agent.sessionId } });
   const inbox = new AgentInbox(f.root, agent.sessionId, (route, params = {}) => request(server.state, route, { ...params, token }));
-  // A connected but unresponsive page would make /api/state fail with UI_PENDING.
+  // A connected but unresponsive page must not block Agent reads after eviction.
   const abort = new AbortController();
   const stream = await fetch(new URL('/api/events?clientId=unresponsive', server.state.url), { headers: { Authorization: `Bearer ${server.humanToken}` }, signal: abort.signal });
   try {
     await inbox.read({ start: true });
     await server.store.commit({ baseVersion: server.store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { purpose: 'HTTP通知' } }] }, human);
     const batch = await inbox.read(); assert.equal(batch.pending, true);
-    await assert.rejects(request(server.state, '/api/state', { token }), { code: 'UI_PENDING' });
+    const state = await request(server.state, '/api/state', { token });
+    assert.equal(state.version, server.store.version);
     await inbox.acknowledge(batch.receipt);
   } finally { abort.abort(); await stream.body.cancel().catch(() => {}); }
 });
