@@ -4325,7 +4325,8 @@ async function installCoordinatorPanel(sync){
       questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
       onAnswer:(question,answer)=>{
         if(busy||pending||send.disabled)return;
-        void submit({id:crypto.randomUUID(),text:answer,answerTo:question.id});
+        const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
+        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:async id=>{
       try{
         if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');

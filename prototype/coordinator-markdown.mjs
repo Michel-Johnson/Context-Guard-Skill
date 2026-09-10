@@ -25,6 +25,25 @@ function paragraphize(source, limit = 60) {
   return output.join('\n');
 }
 
+// Older Coordinator turns sometimes wrote a confirmation heading followed by
+// a numbered list instead of calling ask_user. Keep those turns actionable by
+// recognizing only an explicit question/confirmation list; ordinary numbered
+// Markdown lists remain unchanged.
+function legacyQuestionList(source) {
+  const text = String(source || '').replace(/\r\n?/g, '\n');
+  const heading = text.match(/(^|\n)([^\n]*(?:问题|确认)[^\n]*(?:如下|分别|需要)[^\n]*：?)[ \t]*\n[ \t]*\n/m);
+  if (!heading) return null;
+  const start = heading.index + heading[0].lastIndexOf('\n') + 1;
+  const list = text.slice(start);
+  const matches = [...list.matchAll(/^\s*\d+[.)、]\s+(.+?)(?=\n\s*\d+[.)、]\s+|\n\s*\n|$)/gms)];
+  if (matches.length < 2) return null;
+  const first = start + matches[0].index;
+  const last = start + matches.at(-1).index + matches.at(-1)[0].length;
+  const before = text.slice(0, first).trim();
+  const after = text.slice(last).trim();
+  return { before, after, items: matches.map((match, index) => ({ id: `legacy-question-${index + 1}`, text: match[1].trim() })) };
+}
+
 // Build a restricted DOM from Markdown tokens. Never insert model-provided HTML,
 // fetch remote images, or attach an unvalidated URL to an active element.
 export function markdownFragment(text, doc = document) {
@@ -90,25 +109,31 @@ function linkMapNodes(root, nodes, onNode, doc) {
   const unique = new Map();
   for (const node of nodes) {
     if (typeof node.id !== 'string' || typeof node.title !== 'string' || !node.title.trim()) continue;
-    unique.set(node.title, unique.has(node.title) ? null : node);
+    const labels = [node.title, ...(Array.isArray(node.aliases) ? node.aliases : []), node.title.replace(/\s*[（(][^）)]*[）)]\s*$/, '').trim()];
+    for (const label of labels) {
+      if (!label) continue;
+      const previous = unique.get(label);
+      if (!unique.has(label)) unique.set(label, { node, label });
+      else if (previous && previous.node.id !== node.id) unique.set(label, null);
+    }
   }
-  const candidates = [...unique.values()].filter(Boolean).sort((a, b) => b.title.length - a.title.length);
+  const candidates = [...unique.values()].filter(Boolean).sort((a, b) => b.label.length - a.label.length);
   const walker = doc.createTreeWalker(root, 4), texts = [];
   while (walker.nextNode()) if (!walker.currentNode.parentElement?.closest('a,code,pre,button')) texts.push(walker.currentNode);
   for (const text of texts) {
     let remaining = text.textContent; const fragment = doc.createDocumentFragment(); let changed = false;
     while (remaining) {
       let match = null, offset = remaining.length;
-      for (const node of candidates) {
-        const at = remaining.indexOf(node.title);
-        if (at >= 0 && at < offset) { match = node; offset = at; }
+      for (const candidate of candidates) {
+        const at = remaining.indexOf(candidate.label);
+        if (at >= 0 && at < offset) { match = candidate; offset = at; }
       }
       if (!match) { fragment.append(doc.createTextNode(remaining)); break; }
       fragment.append(doc.createTextNode(remaining.slice(0, offset)));
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
-      button.textContent = match.title; button.title = '在地图中查看此节点'; button.dataset.nodeId = match.id;
-      button.addEventListener('click', () => onNode(match.id)); fragment.append(button);
-      remaining = remaining.slice(offset + match.title.length); changed = true;
+      button.textContent = match.label; button.title = '在地图中查看此节点'; button.dataset.nodeId = match.node.id;
+      button.addEventListener('click', () => onNode(match.node.id)); fragment.append(button);
+      remaining = remaining.slice(offset + match.label.length); changed = true;
     }
     if (changed) text.replaceWith(fragment);
   }
@@ -121,7 +146,21 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     if (workflow || message.answerTo || !message.text) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
-    if (!message.questions?.length) content.append(markdownFragment(message.text.replace(/^\[实验：模拟人工输入\]\n/, ''), doc));
+    const cleanText = message.text.replace(/^\[实验：模拟人工输入\]\n/, '');
+    const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
+    if (!message.questions?.length && !legacy) content.append(markdownFragment(cleanText, doc));
+    if (legacy?.before) content.append(markdownFragment(legacy.before, doc));
+    for (const question of legacy?.items || []) {
+      const card = doc.createElement('section'); card.className = 'coordinator-question coordinator-legacy-question'; card.dataset.questionId = question.id;
+      const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);
+      const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
+      const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000; input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
+      const send = doc.createElement('button'); send.type = 'button'; send.textContent = '提交回答'; send.disabled = !canAnswer || !draft.text.trim();
+      input.addEventListener('input', () => { draft.text = input.value; send.disabled = !canAnswer || !draft.text.trim(); });
+      send.addEventListener('click', () => onAnswer?.({ ...question, legacy: true }, draft.text.trim()));
+      card.append(input, send); content.append(card);
+    }
+    if (legacy?.after) content.append(markdownFragment(legacy.after, doc));
     for (const question of message.questions || []) {
       const card = doc.createElement('section'); card.className = 'coordinator-question'; card.dataset.questionId = question.id;
       const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);

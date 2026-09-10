@@ -391,15 +391,28 @@ try {
     const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
     const host = document.createElement('div'); host.id = 'node-link-test';
     host.append(conversationFragments([{ role: 'assistant', text: '推荐：**前端交互**；未知节点；重名；`前端交互`；[前端交互](https://example.invalid)' }], document, {
-      nodes: [{ id: 'target', title: '前端交互' }, { id: 'a', title: '重名' }, { id: 'b', title: '重名' }],
+      nodes: [{ id: 'target', title: '前端交互（frontend/）' }, { id: 'a', title: '重名' }, { id: 'b', title: '重名' }],
       onNode: id => { host.dataset.selected = id; },
     }).body);
     document.body.append(host);
   });
   assert.equal(await page.locator('#node-link-test button').count(), 1, 'ambiguous titles, unknown nodes, code and links are not converted');
+  assert.equal(await page.locator('#node-link-test button').textContent(), '前端交互', 'a node title alias remains readable in the link');
   await page.locator('#node-link-test button').evaluate(button => button.click());
   assert.equal(await page.locator('#node-link-test').getAttribute('data-selected'), 'target');
   await page.locator('#node-link-test').evaluate(node => node.remove());
+  await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div'); host.id = 'legacy-question-test';
+    host.append(conversationFragments([{ role: 'assistant', text: '等待你确认的三个澄清问题如下：\n\n1. TD3：空搜索结果的提示文案与行为，建议挂「前端交互」。\n\n2. B41：搜索框清空后的结果恢复行为，建议挂「前端交互」。\n\n3. TD4：测试实验的目标、完成条件与挂载节点。' }], document, {
+      nodes: [{ id: 'frontend', title: '前端交互（frontend/）' }], canAnswer: true, onAnswer: () => {}, onNode: () => {},
+    }).body);
+    document.body.append(host);
+  });
+  assert.equal(await page.locator('#legacy-question-test .coordinator-legacy-question').count(), 3, 'legacy numbered confirmation questions become inline cards');
+  assert.equal(await page.locator('#legacy-question-test textarea').count(), 3, 'each legacy question has an inline answer field');
+  assert.equal(await page.locator('#legacy-question-test button.coordinator-node-link').count(), 2, 'legacy question text links each recommended node alias');
+  await page.locator('#legacy-question-test').evaluate(node => node.remove());
   coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
   coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
   await page.reload(); await synchronized();
