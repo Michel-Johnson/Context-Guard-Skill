@@ -295,7 +295,25 @@ export class CoordinatorInbox {
     this.running = this.consume().catch(cause => { this.lastError = { code: cause.code || 'COORDINATOR_INBOX_FAILED' }; }).finally(() => { this.running = null; });
     return this.running;
   }
+  async resumeInterruptedTasks() {
+    if (!this.autoResume || !this.store.workflowTasks) return;
+    for (const id of typeof this.sessionIds === 'function' ? await this.sessionIds() : this.sessionIds) {
+      if (this.stopped) return;
+      const binding = await this.store.registeredBinding(this.principal, id);
+      if (!binding) continue;
+      const session = { id, generation: binding.generation };
+      for (const task of await this.store.workflowTasks(this.principal, session)) {
+        if (task.stage !== 'interrupted' || !task.busy) continue;
+        await this.autoResume({ session, taskId: task.id,
+          messageId: `auto-resume:${id}:${session.generation}:${task.id}:${task.version}`,
+          reason: task.interrupted?.reason, occurredAt: task.interrupted?.occurredAt });
+      }
+    }
+  }
   async consume() {
+    // Run recovery before intake so a queued Map edit cannot delay resuming a
+    // task that was already interrupted when Cloud restarted.
+    await this.resumeInterruptedTasks();
     // Intake creates independent conversations even while the legacy one is busy.
     if (await this.intake?.consume()) return;
     const available = async service => {
@@ -313,17 +331,6 @@ export class CoordinatorInbox {
         if (!binding) continue;
         const session = { id, generation: binding.generation };
         const send = async (type, payload, messageId = randomUUID()) => (await this.store.handle(this.principal, { v: 2, id: messageId, type, ...(type === 'sync.heartbeat' ? {} : { session }), payload })).data;
-        // A Cloud restart can happen after the interruption notification was
-        // already acknowledged. Re-scan durable task state so an unfinished
-        // interrupted task is resumed even when there is no new queue item.
-        if (this.autoResume && this.store.workflowTasks) {
-          for (const task of await this.store.workflowTasks(this.principal, session)) {
-            if (task.stage !== 'interrupted' || !task.busy) continue;
-            await this.autoResume({ session, taskId: task.id,
-              messageId: `auto-resume:${id}:${session.generation}:${task.id}:${task.version}`,
-              reason: task.interrupted?.reason, occurredAt: task.interrupted?.occurredAt });
-          }
-        }
         const head = await send('sync.heartbeat', { sessions: [{ ...session, ackedSeq: 0 }] });
         let afterSeq = head.sessions[0].ackedSeq;
         // Scan to the captured head, not merely the first page behind a paused
