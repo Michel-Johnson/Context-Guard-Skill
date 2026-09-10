@@ -930,9 +930,16 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-markdown input[type=checkbox] { margin-right: 6px; }
 #coordinator-panel .coordinator-meta { padding-top: 10px; color: #817660; font-size: 12px; }
 #coordinator-panel .coordinator-meta summary { cursor: pointer; }
-#coordinator-panel .coordinator-meta pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; }
+#coordinator-panel .coordinator-meta .coordinator-markdown { padding: 8px 10px; margin-top: 8px; background: #f5efdf; border-radius: 8px; overflow-wrap: anywhere; }
+#coordinator-panel .coordinator-meta .coordinator-markdown p { margin: 0 0 6px; }
+#coordinator-panel .coordinator-meta .coordinator-message { margin: 0; }
+#coordinator-panel .coordinator-meta .coordinator-markdown code { font-size: .9em; }
 #coordinator-panel .coordinator-messages > section { border: 1px solid #dccfaa; background: #faf3dc; border-radius: 12px; padding: 12px; margin: 14px 0; }
 #coordinator-panel .coordinator-messages > section p { white-space: pre-wrap; margin: 0 0 8px; }
+#coordinator-panel .coordinator-messages > section > .coordinator-markdown { margin-bottom: 10px; }
+.coordinator-review-dialog { width: min(460px, calc(100vw - 32px)); border: 2px solid #333; border-radius: 16px; padding: 20px; background: #fffcf4; color: #302d26; box-shadow: 5px 6px 0 #333; }
+.coordinator-review-dialog::backdrop { background: rgb(48 45 38 / 28%); }
+.coordinator-review-dialog textarea { margin-top: 8px; min-height: 100px; }
 #coordinator-panel form { padding-top: 12px; margin-top: 4px; }
 #coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 78px; max-height: 160px; padding: 10px 12px; resize: vertical; font: inherit; }
 #coordinator-panel textarea:focus { outline: 2px solid #bba759; outline-offset: 1px; }

@@ -4284,7 +4284,16 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   form.append(input,send,retry); panel.append(heading,status,messages,typing,form); document.body.append(panel);
-  const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('pre');details.className='coordinator-meta';label.textContent='任务信息';content.textContent=text;details.append(label,content);card.append(details);};
+  const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('div');details.className='coordinator-meta';label.textContent='任务信息';content.className='coordinator-markdown';content.append(conversationFragments([{role:'assistant',text}],document).body);details.append(label,content);card.append(details);};
+  const reviewReason=()=>new Promise(resolve=>{
+    const dialog=document.createElement('dialog'); dialog.className='coordinator-review-dialog';
+    dialog.innerHTML='<form method="dialog"><h3>验收不通过</h3><label>请说明不满意的方面（可选）<textarea name="reason" maxlength="2000" placeholder="补充问题或需要修改的地方…"></textarea></label><p>反馈会保留在当前任务中，Coordinator 将据此继续处理。</p><div><button value="submit" type="submit">提交反馈</button><button value="cancel" type="submit">取消</button></div></form>';
+    const form=dialog.querySelector('form'), textarea=dialog.querySelector('textarea');
+    let settled=false; const finish=value=>{if(settled)return; settled=true; resolve(value);};
+    form.addEventListener('submit',event=>{event.preventDefault(); const action=event.submitter?.value||'submit'; const value=action==='cancel'?null:textarea.value.trim(); dialog.close(action); finish(value);});
+    dialog.addEventListener('close',()=>{finish(dialog.returnValue==='cancel'?null:null); dialog.remove();});
+    document.body.append(dialog); dialog.showModal(); textarea.focus();
+  });
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   let selected='legacy';const drafts=new Map(),questionDrafts=new Map();
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
@@ -4372,7 +4381,8 @@ async function installCoordinatorPanel(sync){
       const card=document.createElement('section'), description=document.createElement('p');
       let briefText=acceptance.brief.text;
       try{const brief=JSON.parse(briefText);if(typeof brief.text==='string')briefText=brief.text;}catch{}
-      description.textContent='待人工验收：'+briefText+'\nCI：'+acceptance.result.verdict;
+      description.className='coordinator-markdown';
+      description.append(conversationFragments([{role:'assistant',text:'待人工验收：'+briefText+'\n\nCI：**'+acceptance.result.verdict+'**'}],document).body);
       card.append(description);
       metadata(card,'任务：'+acceptance.taskId+'\n代码 SHA：'+acceptance.sourceSha);
       for(const [decision,label] of [['approved','验收通过'],['rejected','验收不通过']]){
@@ -4380,7 +4390,7 @@ async function installCoordinatorPanel(sync){
         let request;
         button.addEventListener('click',async()=>{
           if(!request){
-            const reason=decision==='rejected'?window.prompt('请说明不满意的方面，Coordinator 将据此与你核对。'):label;
+            const reason=decision==='rejected'?await reviewReason():label;
             if(!reason?.trim())return;
             request={id:`acceptance:${acceptance.ci.version}:${decision}`,sessionId:acceptance.sessionId,taskId:acceptance.taskId,
               ref:acceptance.ci.ref,version:acceptance.ci.version,decision,reason};
