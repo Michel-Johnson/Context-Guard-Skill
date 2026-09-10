@@ -618,7 +618,7 @@ test('Coordinator inbox resumes durable interrupted tasks after a Cloud restart'
     autoResume: async input => { resumed.push(input); } });
   await inbox.pump(); await inbox.close();
   assert.deepEqual(resumed, [{ session, taskId: task.id,
-    messageId: 'auto-resume:session-restarted:2:task-restarted:v9', reason: 'process exited', occurredAt: '2026-09-10T00:00:00Z' }]);
+    messageId: 'auto-resume:3ffd748bbe5a661f78dd767b01d3b1580688aa3bdc522407ebcac142604520b1', reason: 'process exited', occurredAt: '2026-09-10T00:00:00Z' }]);
 });
 
 test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
