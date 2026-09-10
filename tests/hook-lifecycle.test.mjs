@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
@@ -827,6 +827,114 @@ test('top-level record-todo and record-bad-case use Session Map nodes missing fr
   ], { encoding: 'utf8', windowsHide: true });
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /unknown map node: MISSING/);
+});
+
+test('accept-layer accepted Session Map nodes validate without disk map.json or workbench server', async t => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-accept-layer-'));
+  let workbenchPid = null;
+  t.after(async () => {
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    else {
+      spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+        encoding: 'utf8', timeout: 15_000, windowsHide: true,
+      });
+    }
+    await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
+  });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: project, stdio: 'pipe', windowsHide: true });
+  execFileSync('git', [
+    '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
+    'commit', '--allow-empty', '-m', 'fixture',
+  ], { cwd: project, stdio: 'pipe', windowsHide: true });
+  run(python, [contextScript, 'init', '--root', project]);
+  await saveMainBinding(project, { mode: 'local', branch: 'trunk' });
+  const session = 'accept-layer-session';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await fs.mkdir(path.join(project, 'src/m1'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/m1/index.js'), 'export {};\n');
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', session, '--port', String(port)]);
+  const resolved = await resolveProject(project);
+  const workbenchState = JSON.parse(await fs.readFile(path.join(resolved.sharedDir, 'workbench.json'), 'utf8'));
+  workbenchPid = workbenchState.pid;
+  const binding = await sessionBinding(resolved, session);
+  const sessionMapFile = path.join(
+    resolved.sharedDir,
+    'session-memory',
+    createHash('sha256').update(`${session}\0${binding.worktreeId}`).digest('hex'),
+    'map.json',
+  );
+  const mainMapFile = path.join(resolved.sharedDir, 'main', 'map.json');
+
+  let snapshot = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'read', '--root', project, '--session', session]).stdout);
+  run(process.execPath, [workbenchCli, 'map', 'apply', '--root', project, '--session', session], {
+    input: JSON.stringify({
+      operationId: 'propose-M1-layer',
+      baseVersion: snapshot.version,
+      operations: [{
+        type: 'create',
+        parentId: 'T0',
+        node: {
+          id: 'M1',
+          title: 'First layer module',
+          kind: 'module',
+          purpose: 'Own the first accepted layer',
+          owns: ['src/m1/'],
+          memories: [{
+            text: 'Bootstrap first layer',
+            paths: ['src/m1/index.js'],
+            proposalEvidence: {
+              parentId: 'T0',
+              basis: 'new-module',
+              reason: 'First layer bootstrap module',
+              files: ['src/m1/index.js'],
+            },
+          }],
+        },
+      }],
+    }),
+  });
+
+  snapshot = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'read', '--root', project, '--session', session]).stdout);
+  assert.equal(snapshot.doc.root.children.find(node => node.id === 'M1')?.proposal, 'proposed');
+  const bootstrap = await fetch(new URL('/__context_guard/bootstrap', workbenchState.url)).then(response => response.json());
+  const accept = await fetch(new URL(`/api/commit?view=session:${encodeURIComponent(session)}`, workbenchState.url), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${bootstrap.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operationId: `accept-layer-${randomUUID()}`,
+      baseVersion: snapshot.version,
+      operations: [{ type: 'update', id: 'M1', fields: { proposal: 'accepted' } }],
+    }),
+  });
+  assert.equal(accept.status, 200, await accept.text());
+  const accepted = JSON.parse(await fs.readFile(sessionMapFile, 'utf8'));
+  assert.equal(accepted.root.children.find(node => node.id === 'M1')?.proposal, 'accepted');
+  assert.equal(accepted.bootstrap, 'ready');
+  const diskMap = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  assert.deepEqual(diskMap.root.children, []);
+  assert.equal(diskMap.bootstrap, 'pending');
+  const mainMap = JSON.parse(await fs.readFile(mainMapFile, 'utf8'));
+  assert.deepEqual(mainMap.root?.children || [], []);
+
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop']);
+  workbenchPid = null;
+
+  const prompt = hook('UserPromptSubmit', project, session, { turn_id: 'accept-layer-turn', prompt: '实现 M1 入口' });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M1', '--title', '实现 M1 入口', '--description', 'accept-layer 后写入 Session Map',
+  ]);
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', session, '--port', String(port)]);
+  const recorded = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M1',
+  ]).stdout);
+  assert.equal(recorded.node.todos.length, 1);
+  assert.equal(recorded.node.todos[0].title, '实现 M1 入口');
 });
 
 test('completion receipts require evidence, scope review, all files and fresh content', async t => {

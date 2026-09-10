@@ -891,29 +891,43 @@ def find_map_node(node: object, node_id: str) -> dict[str, object] | None:
     return None
 
 
+def authoritative_map_file(root: Path, session_id: str = "") -> Path:
+    """Resolve the same Session Map file the hook/workbench layer treats as authoritative."""
+    ctx = context_dir(root)
+    map_file = ctx / "map.json"
+    if not session_id:
+        return map_file
+    probe = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=str(root.resolve()),
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+        creationflags=WINDOWS_NO_WINDOW,
+    )
+    if probe.returncode != 0:
+        return map_file
+    shared = Path(probe.stdout.strip()) / "context-guard"
+    bindings = read_json(shared / "workbench-bindings.json", {})
+    sessions = bindings.get("sessions") if isinstance(bindings, dict) else None
+    bound = sessions.get(session_id) if isinstance(sessions, dict) else None
+    if isinstance(bound, dict) and bound.get("worktreeRoot") == str(root.resolve()):
+        scope = hashlib.sha256((session_id + "\0" + str(bound.get("worktreeId", ""))).encode("utf-8")).hexdigest()
+        return shared / "session-memory" / scope / "map.json"
+    return map_file
+
+
+def load_authoritative_map(root: Path, session_id: str = "") -> dict[str, object]:
+    doc = read_json(authoritative_map_file(root, session_id), {})
+    return doc if isinstance(doc, dict) else {}
+
+
 def require_known_map_node(root: Path, node_id: str, session_id: str = "") -> None:
-    """Validate a node against the same map `map read` uses for this Session."""
+    """Validate a node against the authoritative Session Map, not the legacy disk cache."""
     if not node_id:
         return
-    if session_id:
-        try:
-            result = run_node_workbench(
-                ["map", "read", "--root", str(root), "--session", session_id, "--node", node_id]
-            )
-        except RuntimeError as exc:
-            details = None
-            try:
-                details = json.loads(str(exc))
-            except ValueError:
-                details = None
-            error = details.get("error") if isinstance(details, dict) else None
-            if isinstance(error, dict) and error.get("code") == "NOT_FOUND":
-                raise ValueError(f"unknown map node: {node_id}") from exc
-            raise
-        if not isinstance(result.get("node"), dict):
-            raise ValueError(f"unknown map node: {node_id}")
-        return
-    map_doc = read_json(context_dir(root) / "map.json", {})
+    map_doc = load_authoritative_map(root, session_id)
     map_root = map_doc.get("root") if isinstance(map_doc, dict) else None
     if find_map_node(map_root, node_id) is None:
         raise ValueError(f"unknown map node: {node_id}")
