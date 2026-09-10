@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { request, stopServer } from '../scripts/workbench/cli.mjs';
-import { encode } from '../scripts/workbench/io.mjs';
+import { encode } from '../scripts/shared/io.mjs';
 
 const agentSession = 'd5d4cc57-3a92-4511-9cf5-b1dfe0d34c55';
 const fixtureRoots = [];
