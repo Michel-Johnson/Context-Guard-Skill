@@ -311,6 +311,15 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   const noPlan = hook('PreToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' } });
   assert.equal(noPlan.json.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(noPlan.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
+  for (const cmd of ['python3 --version', 'node -v', 'node -e "console.log(\'node-ok\')"']) {
+    const probe = hook('PreToolUse', project, session, { tool_name: 'Bash', tool_input: { command: cmd } });
+    assert.equal(probe.json.hookSpecificOutput?.permissionDecision, undefined, cmd);
+  }
+  const pipedRead = hook('PreToolUse', project, session, {
+    tool_name: 'Bash',
+    tool_input: { command: `context-guard map read --root ${JSON.stringify(project)} --session ${session} --node M1 | python3` },
+  });
+  assert.equal(pipedRead.json.hookSpecificOutput?.permissionDecision, undefined);
   const planInput = JSON.stringify({ approved: true, summary: 'explicit request is approval', node_ids: ['N1'], paths: ['src/'] });
   for (const command of [
     `printf %s ${JSON.stringify(planInput)} | node ${JSON.stringify(contextScript.replace(/context_guard\.py$/, '../bin/context-guard-skill.js'))} plan-start --input -`,
@@ -1029,6 +1038,13 @@ with tempfile.TemporaryDirectory() as directory:
         assert args[args.index('--event-id') + 1].startswith('hook-')
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'touch x'}})
     assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 fix.py'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'python3 --version'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'node -v'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'node -e "console.log(\\'node-ok\\')"'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map read --root /tmp/p --session s --node M1 | python3'}})
+    assert not hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map read --root /tmp/p --session s --node M1 | python3 -c "import json,sys; print(json.load(sys.stdin))"'}})
+    assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'cat evil.py | python3'}})
+    assert hook.mutating_tool({'tool_name':'Bash','tool_input':{'command':'context-guard map apply --input /tmp/r.json --root /tmp/p --session s | python3'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'git status --short'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'sed -n "1,20p" RULE.md && rg -n hook scripts | head -5'}})
     assert not hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'context-guard workbench --diagnose --root .'}})
