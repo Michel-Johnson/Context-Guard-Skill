@@ -26,6 +26,8 @@ export class WorkbenchSync {
     this.id = uniqueId();
     try { this.id = sessionStorage.getItem('cg-sync-client') || this.id; sessionStorage.setItem('cg-sync-client', this.id); } catch {}
     this.status = 'loading'; this.ready = false; this.inflight = null; this.pendingRequest = null;
+    this.recoveryBlocked = false;
+    this.startingRecovery = false;
     this.revision = 0; this.cachedDiff = null;
     const requestedSession = new URLSearchParams(location.search).get('session') || '';
     this.composing = false; this.inputDraft = null; this.activeSession = requestedSession || ALL_SESSIONS; this.viewId = requestedSession ? `session:${requestedSession}` : 'main'; this.sessions = []; this.grants = {}; this.captureKey = null;
@@ -100,6 +102,31 @@ export class WorkbenchSync {
     const legacy = stored('cg-workbench-maps-v16');
     this.recovery = restored; this.legacy = legacy;
     return !!(restored || legacy);
+  }
+  async restoreRecoveryDraft() {
+    const draft = this.recovery;
+    if (!draft || draft.invalidJSON || !draft.doc?.root?.id) return 'none';
+    // A draft is safe to replay only when the server is still at the exact
+    // version from which it was captured. Otherwise keep it out of the live
+    // tree and make the conflict explicit instead of silently overwriting a
+    // newer human/Agent edit on the next flush.
+    if (draft.baseVersion !== this.version) { this.recoveryBlocked = true; return 'conflict'; }
+    this.recoveryBlocked = false;
+    const draftTree = copy(draft.doc.root);
+    this.doc = { ...draft.doc, root: draftTree };
+    this.a.apply(this.doc); this.watchDocument(this.a.getRoot());
+    this.baseTree = draft.baseTree?.id ? copy(draft.baseTree) : copy(this.doc.root);
+    this.pendingRequest = draft.pendingRequest && Array.isArray(draft.pendingRequest.operations)
+      ? copy(draft.pendingRequest) : null;
+    this.inputDraft = draft.inputDraft || null;
+    this.revision++;
+    this.setStatus('draft', '正在恢复草稿');
+    // Flush directly during startup. Calling retry() here can race the freshly
+    // opened EventSource and re-enter start(); flush has the same idempotent
+    // request semantics without that connection-startup cycle.
+    await this.flush();
+    if (['conflict', 'offline', 'error'].includes(this.status)) this.recoveryBlocked = true;
+    return ['conflict', 'offline', 'error'].includes(this.status) ? 'failed' : 'restored';
   }
   setStatus(status, message = '') {
     if (this.serverRecovery && status === 'synced') { status = 'error'; message = this.serverRecovery.message || '服务只读，需要恢复'; }
@@ -193,15 +220,20 @@ export class WorkbenchSync {
       this.initializationRequired = false;
       this.a.apply(state.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.ready = true;
       const hasRecovery = this.loadRecovery();
+      this.startingRecovery = true;
       this.connect(); await this.refreshAccess(); await this.refreshCloudStatus();
       // Task stages/results live in the protocol store rather than the map
       // version. Read them immediately so a fresh page does not show a stale
       // receipt until the first heartbeat.
       await this.refreshTaskStatuses().catch(() => {});
+      const recovery = hasRecovery ? await this.restoreRecoveryDraft().catch(() => 'failed') : 'none';
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
-      this.setStatus('synced', hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : sourceNotice);
+      this.setStatus(recovery === 'conflict' ? 'conflict' : recovery === 'failed' ? 'error' : 'synced',
+        recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice);
+      this.startingRecovery = false;
       return true;
     } catch (e) {
+      this.startingRecovery = false;
       if (e.code === 'UNKNOWN_VIEW' && this.activeSession !== ALL_SESSIONS) {
         if (!this.config?.root?.startsWith('cloud:')) {
           this.activeSession = ALL_SESSIONS;
@@ -292,6 +324,7 @@ export class WorkbenchSync {
   }
   async receive(state) {
     if (this.switchingSession || this.sessionUnavailable) return;
+    if (this.startingRecovery) return;
     // While a Cloud deep link waits for its Session snapshot, this connection is
     // intentionally subscribed to Main only so it can receive project access
     // events. Main state must not make the pending Session look synchronized.
@@ -303,7 +336,7 @@ export class WorkbenchSync {
     if (state.version === this.version) {
       // Coordinator/CI transitions do not bump the map version.
       await this.refreshTaskStatuses().catch(() => {});
-      if (!this.dirty()) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
+      if (!this.dirty() && !this.recoveryBlocked) this.setStatus('synced', state.projection?.status === 'failed' ? '索引失败；Agent须读当前节点' : state.projection?.status === 'pending' ? '索引更新中' : '');
       return;
     }
     if (this.inflight) { this.deferredState = state; return; }
@@ -323,7 +356,12 @@ export class WorkbenchSync {
     clearTimeout(this.timer);
     if (!this.ready || this.serverRecovery || this.composing || ['conflict', 'offline', 'error'].includes(this.status)) return;
     if (this.inflight) { await this.inflight; if (!this.inflight && !['conflict', 'offline', 'error'].includes(this.status) && this.operations().length) return this.flush(); return; }
-    const operations = this.operations(); if (!operations.length) { await this.presence(); return; }
+    const operations = this.operations();
+    // A preserved request is authoritative even when the current tree no
+    // longer differs from baseTree (for example, after a crash between the
+    // server commit and the local acknowledgement). Never drop that request
+    // just because the derived diff is empty.
+    if (!this.pendingRequest && !operations.length) { await this.presence(); return; }
     const sentTree = copy(this.a.getRoot());
     this.pendingRequest ||= { baseVersion: this.version, operationId: uniqueId(), operations };
     const request = this.pendingRequest; this.saveDraft(); this.setStatus('saving');

@@ -287,6 +287,11 @@ try {
   record('Concurrent edit shows conflict and preserves the losing browser draft');
 
   await page.reload();
+  await page.waitForFunction(() => ['synced', 'conflict'].includes(document.querySelector('#cg-sync')?.dataset.status));
+  assert.equal(await page.locator('#cg-sync').getAttribute('data-status'), 'conflict');
+  assert.match(await page.locator('#cg-sync-status').textContent(), /草稿与服务器版本冲突/);
+  await page.evaluate(() => localStorage.removeItem('cg-sync-draft:cloud:context-guard:session:session-one'));
+  await page.reload();
   await synchronized();
   await page.locator('#session-chip').click();
   await page.locator('#session-menu [data-session="session-one"]').click();
