@@ -252,7 +252,7 @@ try {
       { id: staleSession, name: '', platform: 'codex', status: 'active', bindingState: 'stale', branch: 'feature/stale' },
       { id: onlineSession, name: 'cloud-online', platform: 'codex', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z' },
       { id: interruptedSession, name: 'cloud-interrupted', platform: 'claude', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z', execution: { status: 'interrupted', at: '2026-01-02T00:00:00.000Z' } },
-      { id: offlineSession, name: 'cloud-offline', platform: 'codex', status: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z' },
+      { id: offlineSession, name: 'cloud-offline', platform: 'codex', status: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z', connection: { state: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z', reason: 'heartbeat-expired' } },
     ];
     await route.fulfill({ response, json: body });
   });
@@ -272,9 +272,10 @@ try {
   const detailB = await contractPage.locator(`#session-menu [data-session="${sameBranchB}"] .session-option-context`).textContent();
   assert.equal(detailA, '会话 1');
   assert.equal(detailB, '会话 2');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-status.online`).getAttribute('aria-label'), '心跳在线');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-status.online`).getAttribute('aria-label'), 'Cloud 在线 · 接收器空闲');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-option-state`).textContent(), 'Cloud 在线 · 接收器空闲');
   assert.equal(await contractPage.locator(`#session-menu [data-session="${interruptedSession}"] .session-status.interrupted`).getAttribute('aria-label'), '会话中断');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"] .session-status.offline`).getAttribute('aria-label'), '心跳离线');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"] .session-status.offline`).getAttribute('aria-label'), 'Cloud 心跳已过期');
   assert.notEqual(detailA, detailB, 'same-name Sessions remain independently identifiable without changing their primary label');
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), 'cursor 会话 — 会话 1');
   assert.doesNotMatch(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), /shared-worktree|feature\/shared/);

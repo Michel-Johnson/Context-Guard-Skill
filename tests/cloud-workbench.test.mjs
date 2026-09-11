@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
@@ -27,6 +27,17 @@ test('Cloud Session presence is online only while device heartbeats are recent',
   assert.equal(cloudSessionPresence('2026-09-06T07:59:40.000Z', now), 'online');
   assert.equal(cloudSessionPresence('2026-09-06T07:59:29.999Z', now), 'offline');
   assert.equal(cloudSessionPresence('', now), 'offline');
+});
+
+test('Cloud Session connection exposes why a Session is offline', () => {
+  const now = Date.parse('2026-09-06T08:00:00.000Z');
+  assert.deepEqual(cloudSessionConnection('2026-09-06T07:59:40.000Z', now), {
+    state: 'online', lastHeartbeatAt: '2026-09-06T07:59:40.000Z', reason: 'heartbeat',
+  });
+  assert.deepEqual(cloudSessionConnection('2026-09-06T07:59:29.999Z', now), {
+    state: 'offline', lastHeartbeatAt: '2026-09-06T07:59:29.999Z', reason: 'heartbeat-expired',
+  });
+  assert.deepEqual(cloudSessionConnection('', now), { state: 'offline', lastHeartbeatAt: '', reason: 'never-seen' });
 });
 
 test('Coordinator assignment projection marks the matching Main work item without mutating the source', () => {

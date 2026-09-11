@@ -23,6 +23,8 @@ test('four approved Session tasks finish in durable FIFO order across success, f
       taskId, text: taskId, nodeIds: ['node'], mainVersion: 'main', mode: 'session',
     }), { verifyRouting: () => true });
     assert.equal(result.state, taskId === tasks[0] ? 'cloud_queued' : 'queued');
+    if (taskId === tasks[1]) assert.deepEqual((await store.taskStatus(human, session, taskId)).queue,
+      { reason: 'executor-busy', blockedByTaskId: tasks[0] });
   }
   const messages = () => store.transaction(state => Object.values(state.tasks));
   for (const [index, taskId] of tasks.entries()) {

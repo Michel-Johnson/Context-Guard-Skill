@@ -73,6 +73,18 @@ export function cloudSessionPresence(lastHeartbeatAt = '', currentTime = Date.no
   return Number.isFinite(seen) && currentTime - seen <= ttlMs ? 'online' : 'offline';
 }
 
+// Presence is a transport fact, not a claim that the native worker is alive.
+// Keep the reason alongside the state so clients do not have to infer a stale
+// heartbeat from an old lifecycle/session record.
+export function cloudSessionConnection(lastHeartbeatAt = '', currentTime = Date.now(), ttlMs = sessionHeartbeatTtlMs) {
+  const state = cloudSessionPresence(lastHeartbeatAt, currentTime, ttlMs);
+  return {
+    state,
+    lastHeartbeatAt: String(lastHeartbeatAt || ''),
+    reason: state === 'online' ? 'heartbeat' : lastHeartbeatAt ? 'heartbeat-expired' : 'never-seen',
+  };
+}
+
 export async function createWorkbenchPasswordHash(password) {
   const value = String(password || '');
   if (!value || Buffer.byteLength(value) > 1024) throw new MapError('INVALID_PASSWORD', 'Password must contain 1–1024 bytes');
@@ -820,14 +832,18 @@ export async function startCloudServer({
       const lifecycle = events.filter(event => ['session-start', 'user-prompt-submit', 'stop', 'stop-blocked', 'interrupt'].includes(event.event)).at(-1);
       const observed = presence.get(sessionId);
       const lastSeen = observed?.lastHeartbeatAt || snapshot.lastSync?.occurredAt || snapshot.updatedAt || latest?.startedAt || '';
-      const status = cloudSessionPresence(observed?.lastHeartbeatAt);
-      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status, lastSeen, lastHeartbeatAt: observed?.lastHeartbeatAt || '', execution: status === 'online' ? observed?.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' } };
+      const connection = cloudSessionConnection(observed?.lastHeartbeatAt);
+      const execution = connection.state === 'online' ? observed?.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' };
+      return { id: sessionId, name: observed?.name || snapshot.memory?.display?.name || named?.thread_name.trim().slice(0, 200) || '', platform: observed?.platform || snapshot.memory?.display?.platform || events.at(-1)?.platform || 'agent', status: connection.state, connection, lastSeen, lastHeartbeatAt: connection.lastHeartbeatAt, execution };
     });
-    for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) sessions.push({
-      id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: cloudSessionPresence(observed.lastHeartbeatAt),
-      lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
-      execution: cloudSessionPresence(observed.lastHeartbeatAt) === 'online' ? observed.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' },
-    });
+    for (const observed of presence.values()) if (!state.sessions[observed.sessionId]) {
+      const connection = cloudSessionConnection(observed.lastHeartbeatAt);
+      sessions.push({
+        id: observed.sessionId, name: observed.name || '', platform: observed.platform || 'agent', status: connection.state,
+        connection, lastSeen: observed.lastHeartbeatAt, lastHeartbeatAt: observed.lastHeartbeatAt, bindingState: 'connected',
+        execution: connection.state === 'online' ? observed.execution || { status: 'unknown', at: '' } : { status: 'unknown', at: '' },
+      });
+    }
     if (repository) {
       const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-browser', agentId: 'cloud-human', role: 'human' };
       const { store } = interfaceStorage(principal);
@@ -837,7 +853,7 @@ export async function startCloudServer({
         if (existing) {
           existing.name ||= binding.name || '';
           existing.platform = binding.platform || existing.platform;
-        } else sessions.push({ id: head.session.id, name: binding.name || '', platform: binding.platform || 'agent', status: 'offline', lastSeen: '', lastHeartbeatAt: '', bindingState: 'bound' });
+        } else sessions.push({ id: head.session.id, name: binding.name || '', platform: binding.platform || 'agent', status: 'offline', connection: cloudSessionConnection(''), lastSeen: '', lastHeartbeatAt: '', bindingState: 'bound' });
       }
     }
     return sessions.sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
