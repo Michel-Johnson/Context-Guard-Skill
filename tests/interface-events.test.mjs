@@ -193,6 +193,8 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     Object.fromEntries(['name', 'platform', 'status'].map(key => [key, heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only')?.[key]])),
     { name: 'live-task', platform: 'codex', status: 'online' },
   );
+  assert.deepEqual(heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only').connection,
+    { state: 'online', lastHeartbeatAt: heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only').lastHeartbeatAt, reason: 'heartbeat' });
   assert.deepEqual(heartbeatAccess.grants['heartbeat-only'].nodes, ['R', 'private']);
   assert.deepEqual(heartbeatAccess.sessions.find(item => item.id === 'heartbeat-only').execution,
     { status: 'active', at: '2026-09-08T00:00:00Z' });
@@ -330,6 +332,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const restored = (await cloudAccess()).sessions;
   assert.equal(restored.find(item => item.id === 'heartbeat-only').name, 'live-task');
   assert.equal(restored.find(item => item.id === 'heartbeat-only').status, 'offline');
+  assert.equal(restored.find(item => item.id === 'heartbeat-only').connection.reason, 'never-seen');
   assert.equal(restored.find(item => item.id === 's').name, 'session-one');
   local = await startServer({ root, port: 0, messageQueue: async input => delivered.push(input), repositoryLookup: async () => ({ repositoryId: '123', slug: 'example/repo' }) });
   await waitFor(async () => (await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).every(item => item.status === 'online'));

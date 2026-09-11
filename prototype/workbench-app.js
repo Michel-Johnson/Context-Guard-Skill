@@ -71,7 +71,7 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
-    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
+    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskBlocked:"等待前序任务完成", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
     allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
     projectOverview:"项目总览",
     bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
@@ -1288,16 +1288,17 @@ function sessionMetaLabel(meta,sessions=workbenchSync?.sessions||[]){
 function sessionLifecycle(meta){
   if(String(meta?.bindingState||"").toLowerCase()==="unavailable") return {state:"unknown",label:"会话不可用",disabled:true};
   if(String(meta?.bindingState||"").toLowerCase()==="stale") return {state:"unknown",label:"绑定已失效",disabled:true};
-  const status=String(meta?.status||"").toLowerCase();
+  const connection=meta?.connection||{};
+  const status=String(connection.state||meta?.status||"").toLowerCase();
+  if(status==="offline") return {state:"offline",label:connection.reason==="heartbeat-expired"?"Cloud 心跳已过期":"Cloud 心跳离线",disabled:false};
   if(status==="online"){
-    if(!meta?.execution) return {state:"online",label:"心跳在线",disabled:false};
+    if(!meta?.execution) return {state:"online",label:"Cloud 在线 · 接收器空闲",disabled:false};
     const execution=String(meta?.execution?.status||"unknown");
     if(execution==="interrupted") return {state:"interrupted",label:"会话中断",disabled:false};
     if(execution==="failed") return {state:"failed",label:"会话失败",disabled:false};
     if(execution==="unknown") return {state:"unknown",label:"执行状态未知",disabled:false};
-    return {state:"online",label:execution==="active"?"心跳在线 · 执行中":"心跳在线 · 空闲",disabled:false};
+    return {state:"online",label:execution==="active"?"Cloud 在线 · 执行中":"Cloud 在线 · 接收器空闲",disabled:false};
   }
-  if(status==="offline") return {state:"offline",label:"心跳离线",disabled:false};
   if(["active","working","running"].includes(status)) return {state:"active",label:"工作中",disabled:false};
   if(["stopped","completed","done"].includes(status)) return {state:"stopped",label:"已完成",disabled:false};
   return {state:"unknown",label:"状态未知",disabled:false};
@@ -1386,7 +1387,7 @@ function renderSessionMenu(){
     const accessible=[label.primary,label.secondary,current?t("sessionNow"):"",lifecycle.label].filter(Boolean).join("，");
     return `<button type="button" role="option" data-session="${escAttr(id)}" aria-selected="${id===workbenchSync.activeSession}" aria-current="${current}" aria-disabled="${lifecycle.disabled}" aria-label="${escAttr(accessible)}" ${lifecycle.disabled?"disabled":""} title="${escAttr(title)}">
       <span class="session-option-copy"><span class="session-option-name">${esc(label.primary)}</span>${label.secondary?`<span class="session-option-context">${esc(label.secondary)}</span>`:""}</span>
-      <span class="session-status ${lifecycle.state}" aria-label="${lifecycle.label}"></span>
+      <span class="session-option-state ${lifecycle.state}">${esc(lifecycle.label)}</span><span class="session-status ${lifecycle.state}" aria-label="${lifecycle.label}"></span>
     </button>`;
   }).join("");
   menu.querySelectorAll("[data-session]").forEach(button=>{
@@ -2128,7 +2129,8 @@ function bugProgress(bug){
   if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
   if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
   if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
-  const delivery = workbenchSync?.taskState(bug?.dispatch?.task_id) || bug?.dispatch?.status || "";
+  const task = workbenchSync?.taskStates.get(bug?.dispatch?.task_id);
+  const delivery = task?.state || bug?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
   if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
@@ -2136,7 +2138,7 @@ function bugProgress(bug){
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
-  if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskQueued")}`,detail:""};
+  if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${task?.queue?.reason==="executor-busy"?t("taskBlocked"):t("taskQueued")}`,detail:task?.queue?.reason==="executor-busy"?"前序任务仍占用当前 Session 的执行槽":""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
   if(delivery==="uncertain") return {kind:"waiting",label:t("taskUncertain"),detail:""};
@@ -2173,7 +2175,8 @@ function todoProgress(todo){
   if(human) return human;
   const status = String(todo?.status||"pending");
   if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
-  const delivery = workbenchSync?.taskState(todo?.dispatch?.task_id) || todo?.dispatch?.status || "";
+  const task = workbenchSync?.taskStates.get(todo?.dispatch?.task_id);
+  const delivery = task?.state || todo?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
   if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
@@ -2181,7 +2184,7 @@ function todoProgress(todo){
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
   if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
-  if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskQueued")}`,detail:""};
+  if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${task?.queue?.reason==="executor-busy"?t("taskBlocked"):t("taskQueued")}`,detail:task?.queue?.reason==="executor-busy"?"前序任务仍占用当前 Session 的执行槽":""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
   if(delivery==="uncertain") return {kind:"waiting",label:t("taskUncertain"),detail:""};

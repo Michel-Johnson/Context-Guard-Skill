@@ -247,6 +247,9 @@ export class ProtocolStore extends EventEmitter {
         ? Object.values(queue.consumers || {}).map(consumer => consumer.outcomes?.[task.assignmentSeq]).filter(Boolean)
         : [];
       const delivered = outcomes.find(item => item.deliveryState === 'received') || outcomes.find(item => item.deliveryState) || outcomes[0];
+      const blockingTask = task.stage === 'queued'
+        ? Object.values(state.tasks).find(value => value.repositoryId === principal.repositoryId && canonical(value.session) === canonical(task.session) && value.id !== task.id && value.busy)
+        : null;
       const stateName = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'unknown') : task.stage === 'queued' ? 'queued'
         : ['plan-ready', 'plan-rejected'].includes(task.stage) ? 'waiting_review'
           : task.stage === 'executing' ? 'executing'
@@ -255,6 +258,7 @@ export class ProtocolStore extends EventEmitter {
                 : delivered?.deliveryState === 'uncertain' ? 'uncertain'
                   : delivered ? 'local_received' : 'cloud_queued';
       return { taskId: task.id, sessionId: session.id, state: stateName, stage: task.stage, version: task.version,
+        ...(blockingTask ? { queue: { reason: 'executor-busy', blockedByTaskId: blockingTask.id } } : {}),
         ...(task.result ? { result: { outcome: task.result.outcome, summary: task.result.summary, finishedAt: task.result.finishedAt } } : {}) };
     }, { readOnly: true });
   }
