@@ -977,6 +977,98 @@ def curl_read_only(words: list[str]) -> bool:
     return True
 
 
+INTERPRETER_EXECUTABLES = {"python", "python3", "python.exe", "node", "node.exe"}
+READONLY_MAP_ACTIONS = {"status", "read", "changes", "inbox", "watch", "execution", "operation"}
+INSPECTION_PROTOCOL_COMMANDS = {
+    "plan-status", "doctor", "preferences", "set-language", "write-candidates",
+}
+INSPECTION_SYNC_ACTIONS = {"status", "pull"}
+INSPECTION_MEMORY_ACTIONS = {"status", "history"}
+MUTATING_PROTOCOL_COMMANDS = {
+    "plan-start", "plan-finish", "archive-session", "resolve-signal", "split-signal",
+    "record-todo", "record-bad-case", "record-bad-case-fix",
+}
+PYTHON_C_FORBIDDEN = (
+    "open(", "write(", "os.", "subprocess", "shutil", "pathlib", "import os", "exec(", "eval(", "__import__",
+)
+
+
+def protocol_entry_index(words: list[str]) -> int | None:
+    if not words:
+        return None
+    index = 0
+    first = words[0].strip("\"'")
+    if Path(first).name in INTERPRETER_EXECUTABLES:
+        index = 1
+    if index >= len(words):
+        return None
+    entry = Path(words[index].strip("\"'")).name
+    if entry not in {"context-guard", "context-guard-skill", "context_guard.py", "context-guard-skill.js"}:
+        return None
+    return index
+
+
+def inspection_protocol_words(words: list[str]) -> bool:
+    """Read-only Context Guard CLI output safe to pipe into inspection tools."""
+    index = protocol_entry_index(words)
+    if index is None or index + 1 >= len(words):
+        return False
+    command = words[index + 1]
+    if command in MUTATING_PROTOCOL_COMMANDS:
+        return False
+    if command == "map":
+        if index + 2 >= len(words):
+            return False
+        action = words[index + 2]
+        if action == "ci":
+            return index + 3 < len(words) and words[index + 3] == "context"
+        if action == "task":
+            return False
+        return action in READONLY_MAP_ACTIONS
+    if command == "sync":
+        return index + 2 < len(words) and words[index + 2] in INSPECTION_SYNC_ACTIONS
+    if command == "memory":
+        return index + 2 < len(words) and words[index + 2] in INSPECTION_MEMORY_ACTIONS
+    if command == "workbench":
+        return any(flag in words for flag in ("--diagnose", "--binding-status", "--list"))
+    return command in INSPECTION_PROTOCOL_COMMANDS
+
+
+def node_eval_read_only(script: str) -> bool:
+    stripped = script.strip()
+    return bool(re.fullmatch(r"console\.log\((['\"]).*?\1\)\s*;?", stripped))
+
+
+def python_c_read_only(script: str) -> bool:
+    if len(script) > 500 or any(token in script for token in PYTHON_C_FORBIDDEN):
+        return False
+    return True
+
+
+def interpreter_read_only(words: list[str]) -> bool:
+    if not words:
+        return False
+    executable = Path(words[0]).name
+    if executable not in INTERPRETER_EXECUTABLES:
+        return False
+    args = words[1:]
+    if not args:
+        return False
+    if args in (["--version"], ["-V"], ["-v"], ["--version"]):
+        return True
+    if executable.startswith("node") and len(args) >= 2 and args[0] == "-e":
+        return node_eval_read_only(args[1])
+    if len(args) >= 2 and args[0] == "-m" and args[1] == "json.tool":
+        return True
+    if args[0] == "-c" and len(args) >= 2:
+        return python_c_read_only(" ".join(args[1:]))
+    return False
+
+
+def bare_interpreter_pipe_sink(words: list[str]) -> bool:
+    return len(words) == 1 and Path(words[0]).name in INTERPRETER_EXECUTABLES
+
+
 def read_only_words(words: list[str]) -> bool:
     if not words:
         return False
@@ -984,6 +1076,8 @@ def read_only_words(words: list[str]) -> bool:
         return True
     if protocol_command(words, {"workbench"}):
         return "--diagnose" in words or "--binding-status" in words
+    if interpreter_read_only(words):
+        return True
     executable = Path(words[0]).name
     if executable in {"pwd", "ls", "cat", "head", "tail", "grep", "stat", "wc", "which", "type", "dirname", "basename", "realpath", "readlink", "printf", "echo", "true", "false"}:
         return True
@@ -1009,7 +1103,14 @@ def read_only_words(words: list[str]) -> bool:
 
 def read_only_shell(command: str) -> bool:
     segments = shell_segments(command)
-    return segments is not None and all(read_only_words(segment) for segment in segments)
+    if segments is None:
+        return False
+    for index, segment in enumerate(segments):
+        if index > 0 and bare_interpreter_pipe_sink(segment) and inspection_protocol_words(segments[index - 1]):
+            continue
+        if not read_only_words(segment):
+            return False
+    return True
 
 
 def ci_tool_allowed(payload: object, execution: dict):
