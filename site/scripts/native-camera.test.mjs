@@ -4,6 +4,21 @@ import { test } from "node:test";
 import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera } from "../src/native-camera.ts";
 import { workbenchCamera, settledWorkbenchCamera } from "../src/workbench-camera.ts";
 
+test("按钮只在画面外时平移，边缘按钮和大节点都不改变倍率", () => {
+  const initial = workbenchCamera(1024, 608, null);
+  const button = { x: 1190, y: 10, width: 70, height: 40 };
+  assert.deepEqual(workbenchCamera(1024, 608, button, initial, true), initial);
+  const focused = { x: -200, y: -100, scale: 1 };
+  const visible = { x: 400, y: 200, width: 70, height: 40 };
+  assert.equal(workbenchCamera(1024, 608, visible, focused, true), focused);
+  assert.equal(workbenchCamera(1024, 608, { x: 205, y: 105, width: 20, height: 20 }, focused, true), focused);
+  const outside = { x: 30, y: 30, width: 70, height: 40 };
+  const revealed = workbenchCamera(1024, 608, outside, focused, true);
+  assert.equal(revealed.scale, focused.scale);
+  assert.ok(outside.x + revealed.x >= 0 && outside.y + revealed.y >= 0);
+  assert.equal(workbenchCamera(1024, 608, { x: 0, y: 0, width: 1280, height: 760 }, focused, true).scale, focused.scale);
+});
+
 test("工作台可见目标不触发重复缩放，字号和控件尺寸不改变组内倍率", () => {
   const initial = workbenchCamera(1024, 608, null);
   assert.equal(workbenchCamera(1024, 608, { x: 200, y: 200, width: 300, height: 100 }, initial), initial);

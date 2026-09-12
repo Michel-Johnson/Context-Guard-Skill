@@ -15,6 +15,7 @@ type Camera = {
   height: number;
   overview?: boolean;
   requestId?: number;
+  revealOnly?: boolean;
 };
 const overview: Camera = {
   x: 0,
@@ -283,7 +284,7 @@ export function TourStage({
     const node = plane.current;
     if (!node) return;
     const target = exploring ? { x: 0, y: 0, scale: 1 }
-      : workbenchCamera(width, height, camera.overview ? null : camera, cameraTarget.current ?? undefined);
+      : workbenchCamera(width, height, camera.overview ? null : camera, cameraTarget.current ?? undefined, camera.revealOnly);
     cameraTarget.current = target;
     cameraRequest.current = camera.requestId;
     if (!cameraMotion.current || reduced || exploring) {

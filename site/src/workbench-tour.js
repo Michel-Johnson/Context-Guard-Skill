@@ -70,10 +70,10 @@
     if (!el?.isConnected) return;
     el.classList.add("cg-tour-target");
   }
-  function camera(el, overview = false) {
+  function camera(el, overview = false, revealOnly = false) {
     const requestId = ++cameraSequence;
     const publish = (pose) => {
-      const message = { ...pose, requestId };
+      const message = { ...pose, requestId, revealOnly };
       if (preparingCamera) preparedCamera = message;
       else send("camera", message);
       return requestId;
@@ -157,11 +157,12 @@
     if (rect.top < bounds.top + 30 || rect.bottom > bounds.bottom - 30)
       panel.scrollTop += rect.top - bounds.top - 110;
   }
-  async function point(selector, animate, request, overview = false) {
+  async function point(selector, animate, request, focus = false) {
     let el = find(selector);
     revealInInspector(el);
     highlight(el);
-    const cameraRequest = camera(el, overview);
+    // 点击只保证目标可见，不改变倍率；只有输入/阅读才主动取景。
+    const cameraRequest = camera(el, false, !focus);
     if (!animate || reduced) return el;
     cursor.style.opacity = "1";
     const from = { ...cursorPosition };
@@ -185,8 +186,8 @@
     }
     return el;
   }
-  async function tap(selector, animate, request, overview = false, action) {
-    const el = await point(selector, animate, request, overview);
+  async function tap(selector, animate, request, action) {
+    const el = await point(selector, animate, request);
     if (el.disabled || el.getAttribute("aria-disabled") === "true")
       throw new Error((demoLanguage === "en" ? "Workbench control is not ready: " : "产品控件尚不可用：") + el.textContent.trim());
     if (animate && !reduced) {
@@ -200,7 +201,7 @@
     await settle(request);
   }
   async function type(selector, text, animate, request) {
-    const el = await point(selector, animate, request);
+    const el = await point(selector, animate, request, true);
     if (request !== generation) throw cancelled();
     el.focus({ preventScroll: true });
     const content = document.createTextNode("");
@@ -287,8 +288,9 @@
     if (chapter === "first-use") {
       return stage(step < 4 ? "map" : "memory", step < 4 ? step : step - 4, animate, request);
     }
-    const click = (selector, overview = false, action) =>
-      tap(selector, animate, request, overview, action);
+    // 旧剧本的 overview 参数不再让按钮点击缩放；场景总览由显式 camera 控制。
+    const click = (selector, _overview = false, action) =>
+      tap(selector, animate, request, action);
     if (chapter === "explore") {
       if (step === 0) camera(null, true);
       if (step === 1) await click(() => node("工作台"), true);
@@ -296,7 +298,7 @@
       if (step === 3) await click("#nav-crumbs a", true);
       if (step === 1 || step === 2) {
         highlight(document.querySelector("#detail h2"));
-        camera(document.querySelector("#detail h2"));
+        camera(document.querySelector("#detail h2"), false, true);
       } else camera(null, true);
     } else if (chapter === "relations") {
       if (step === 0) camera(null, true);
@@ -314,7 +316,7 @@
     } else if (chapter === "memory") {
       if (step === 0) {
         await click(() => node("工作台"), true);
-        camera(document.querySelector('[data-fold="mem"]'));
+        camera(document.querySelector('[data-fold="mem"]'), false, true);
       }
       if (step === 1) {
         await click('[data-act="add-mem"]');
@@ -338,7 +340,7 @@
         // 叶模块只有选中态时仍在根视图，不一定有可返回的面包屑。
         await click(() => document.querySelector("#nav-crumbs a") || node("Context Guard"), true);
         await click(() => node("工作台"), true);
-        camera(document.querySelector('[data-fold="mem"]'));
+        camera(document.querySelector('[data-fold="mem"]'), false, true);
         highlight(document.querySelector('[data-fold="mem"]'));
       }
     } else if (chapter === "proposals") {
@@ -348,7 +350,7 @@
       }
       if (step === 1) {
         await click(() => node("工作台"));
-        camera(document.querySelector("#detail h2"));
+        camera(document.querySelector("#detail h2"), false, true);
       }
       if (step === 2) {
         await click('[data-act="accept"]');
