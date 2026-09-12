@@ -109,11 +109,9 @@ test("工作台和客户端镜头使用稳定的双倍栅格，避免缩放重�
   assert.doesNotMatch(planeRule, /transition/);
 
   const workbenchSource = readFileSync(new URL("../src/Workbench.tsx", import.meta.url), "utf8");
-  assert.match(workbenchSource, /const deviceScale = window\.devicePixelRatio \|\| 1/);
-  assert.match(workbenchSource, /Math\.round\(x \* deviceScale\) \/ deviceScale/);
-  assert.match(workbenchSource, /Math\.round\(y \* deviceScale\) \/ deviceScale/);
+  assert.match(workbenchSource, /settledWorkbenchCamera\(destination, window\.devicePixelRatio \|\| 1\)/);
   assert.match(workbenchSource, /const CAMERA_RASTER_SCALE = 2/);
-  assert.match(workbenchSource, /node\.style\.zoom = String\(CAMERA_RASTER_SCALE\)/);
+  assert.match(workbenchSource, /zoom: CAMERA_RASTER_SCALE/);
   assert.match(workbenchSource, /pose\.scale \/ CAMERA_RASTER_SCALE/);
   assert.match(workbenchSource, /requestAnimationFrame\(animate\)/);
 
