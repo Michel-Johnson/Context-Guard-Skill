@@ -242,8 +242,11 @@ export function App() {
             <section className="hero" id="home" aria-labelledby="hero-title">
               <div className="hero-copy">
                 <h1 id="hero-title">
-                  {t("让每一次协作，都接得上一次。")}
+                  {t("项目上下文，Agent 接手就能用。")}
                 </h1>
+                <p className="hero-intro">
+                  {t("Context Guard 把项目结构、决定、TODO、Bug 和会话进度整理成节点地图。换工具、换会话，也能从正确的位置继续。")}
+                </p>
                 <div className="hero-actions">
                   <a className="primary" href="#install">
                     {t("安装 Context Guard")} <span>↓</span>

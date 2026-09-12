@@ -206,10 +206,17 @@ code,
   min-width: 0;
 }
 .hero h1 {
-  max-width: 470px;
-  font-size: clamp(42px, 4vw, 56px);
+  max-width: 540px;
+  font-size: clamp(40px, 3.8vw, 54px);
   letter-spacing: -2.8px;
   line-height: 1.12;
+}
+.hero-intro {
+  max-width: 540px;
+  margin: 22px 0 0;
+  color: #c2bdb2;
+  font-size: clamp(16px, 1.35vw, 19px);
+  line-height: 1.68;
 }
 .hero h1 br {
   display: none;
@@ -224,7 +231,7 @@ code,
   align-items: center;
   flex-wrap: wrap;
   gap: 25px;
-  margin-top: 26px;
+  margin-top: 30px;
 }
 .primary {
   display: inline-flex;
@@ -776,6 +783,12 @@ code,
   }
   .hero h1 {
     font-size: 42px;
+  }
+  .hero-intro {
+    max-width: 590px;
+    margin-top: 16px;
+    font-size: 16px;
+    line-height: 1.58;
   }
   .install-section {
     gap: 40px;
