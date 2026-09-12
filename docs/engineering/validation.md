@@ -56,11 +56,13 @@ runner  9fd9a1ffbceb637f59584459b29642cde4758773b32b307382daa082861e5756
 | 依赖与安全工具 | `npm ci --ignore-scripts --no-audit --no-fund` 成功；首次 hooks:status 因本 worktree 尚无扫描器而失败，`security:setup` 校验本地固定版本后 status 成功；未覆盖 Hook 或全局安装 |
 | 协议/模块回归 | `node --test tests/interface-protocol.test.mjs`，7/7 通过 |
 | 反例实验 | 三项按预期复现，实验驱动脚本退出 0；上述被测嵌套用例退出 1 是期望证据 |
-| 总入口 | 执行中；最终结果更新后才交付 |
-| 隔离浏览器 | 首轮在 isolated-hook-bootstrap 的 20 秒期限超时，尚未进入草稿恢复断言；保留失败记录，不记为通过 |
+| 总入口 | 本机 `npm test` 退出 1：39 项安全检查通过，静态/清单检查通过；Node 共享 runner 中有 Python 别名错误、Hook 超时，最终触及 15 分钟上限；未到达末尾 CI smoke。不是完整通过 |
+| 隔离浏览器 | 三次均在 isolated-hook-bootstrap 的 20 秒期限超时，尚未进入草稿恢复断言；包括默认 Node 22.18.0/Python 3.13.7 和另一套 Node 24.19.0/Python 3.12.14 环境。保留失败，根因未定，不记为通过 |
 | 文档/包范围 | 14 个 Markdown 文件、85 个本地链接目标通过解析检查；均不在 packedFiles/installedFiles 中；`git diff --check` 通过。模板内部示例不当链接解析，不验证远端服务运行 |
-| PR / Main | 待远端 Required、合并和合并后核对；准确 SHA/运行链接由 PR 交付记录保存 |
+| PR / Main | 本页冻结提交前的验证事实，不预填远端成功；准确 head、Required 运行链接、合并与合并后核对结果以该变更 PR 的最终交付记录为准 |
 
 本次是 R2 治理变更，不是 R0 修字。未改产品代码、格式、接口、依赖、workflow 或远端保护设置。独立人工审核尚未提供；本地检查属于同一 Agent 自检，不冒充独立 Review。未完成的生产/原生宿主专项与 GATE 待办继续保留。
 
 首轮本地总测试中，Codex SQLite 用例因硬编码 `python3` 解析到 Windows 商店别名而失败。采用系统已有 Python Launcher 的临时副本，仅向该测试子进程 PATH 提供 `python3`，不改源码或全局环境；定向重跑该文件 2/2 通过（Python 3.13.7）。这不替代总入口最终结果。
+
+单独对未绑定 Hook 的隔离诊断返回正确提示，总耗时约 6.5 秒；这没有解释完整浏览器 bootstrap 的失败，不能据此归咎于 Python 或证明绑定后的 Hook 已通过。Windows 完整回归和超时归因登记为 GATE-05。文档适用性已验证，不代表现有产品在这台机器上全部通过；远端全量 CI 仍必须完成，不因本机问题绕过合并门禁。
