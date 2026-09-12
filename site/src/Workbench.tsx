@@ -215,7 +215,7 @@ export function TourStage({
     setManual(false);
     setExploring(false);
     setPlaying(!reduced);
-    if (!playbackRef.current?.resume) setCamera(overview);
+    // 保留离场视角，等待新章节准备好的最终取景，不先退回总览再放大。
     setError("");
   }, [chapter, restartToken]);
   useEffect(() => {
@@ -286,7 +286,7 @@ export function TourStage({
       : workbenchCamera(width, height, camera.overview ? null : camera, cameraTarget.current ?? undefined);
     cameraTarget.current = target;
     cameraRequest.current = camera.requestId;
-    if (!cameraMotion.current || reduced || exploring || (!scenePrepared && !cameraRunning)) {
+    if (!cameraMotion.current || reduced || exploring) {
       window.cancelAnimationFrame(cameraFrame.current);
       cameraFrame.current = 0;
       cameraMotion.current = stillCamera(target);
