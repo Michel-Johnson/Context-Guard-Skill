@@ -11,6 +11,9 @@
   let loadError = "";
   let pageWheelEnabled = true;
   let completedThrough = -1;
+  let cameraSequence = 0;
+  let cameraAcknowledged = 0;
+  let cameraSync = false;
   let cursorPosition = { x: 480, y: 270 };
   let simulatedTimers = [];
   // 只缩短演示空等；输入、镜头过渡与产品自身的状态计时保持原速。
@@ -65,17 +68,20 @@
     el.classList.add("cg-tour-target");
   }
   function camera(el, overview = false) {
+    const requestId = ++cameraSequence;
     if (overview || !el) {
-      send("camera", { overview: true });
-      return;
+      send("camera", { overview: true, requestId });
+      return requestId;
     }
     const rect = el.getBoundingClientRect();
     send("camera", {
+      requestId,
       x: rect.x,
       y: rect.y,
       width: rect.width,
       height: rect.height,
     });
+    return requestId;
   }
   function node(title) {
     const localizedTitle = text(title);
@@ -141,7 +147,7 @@
     let el = find(selector);
     revealInInspector(el);
     highlight(el);
-    camera(el, overview);
+    const cameraRequest = camera(el, overview);
     if (!animate || reduced) return el;
     cursor.style.opacity = "1";
     const from = { ...cursorPosition };
@@ -154,6 +160,15 @@
         from.y + (rect.y + rect.height * 0.5 - from.y) * t,
       );
     });
+    // 支持到位回执的宿主先完成取景，再操作控件；静态宣传图不等待镜头协议。
+    if (cameraSync) {
+      let elapsed = 0;
+      while (cameraAcknowledged < cameraRequest && elapsed < 2400) {
+        await wait(40, request);
+        elapsed += 40;
+      }
+      if (cameraAcknowledged < cameraRequest) throw new Error(demoLanguage === "en" ? "Camera is not ready. Replay this chapter." : "镜头尚未就绪，请重播本章。");
+    }
     return el;
   }
   async function tap(selector, animate, request, overview = false, action) {
@@ -483,10 +498,13 @@
       return;
     const message = event.data;
     if (message.type === "hello") {
+      cameraSync = Boolean(message.cameraSync);
       if (loadError) send("error", { phase: "load", message: loadError });
       else if (initialized) send("loaded", { protocol: 4 });
       return;
     }
+    if (message.type === "camera-settled" && message.scene === activeScene && Number.isSafeInteger(message.requestId))
+      cameraAcknowledged = Math.max(cameraAcknowledged, message.requestId);
     if (message.type === "scene") {
       if (!initialized) return;
       activeScene = message.scene;

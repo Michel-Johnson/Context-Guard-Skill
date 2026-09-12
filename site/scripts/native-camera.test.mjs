@@ -2,6 +2,42 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { advanceCamera, cameraSettled, frameCamera, nativeHeight, nativeRasterScale, rasterizedCamera, stillCamera } from "../src/native-camera.ts";
+import { workbenchCamera, settledWorkbenchCamera } from "../src/workbench-camera.ts";
+
+test("工作台可见目标不触发重复缩放，字号和控件尺寸不改变组内倍率", () => {
+  const initial = workbenchCamera(1024, 608, null);
+  assert.equal(workbenchCamera(1024, 608, { x: 200, y: 200, width: 300, height: 100 }, initial), initial);
+  const edge = { x: 1100, y: 80, width: 170, height: 40 };
+  const focused = workbenchCamera(1024, 608, edge, initial);
+  assert.ok(focused.scale > initial.scale && focused.scale <= initial.scale * 1.25);
+  const next = workbenchCamera(1024, 608, { ...edge, y: 160, height: 80 }, focused);
+  assert.equal(next.scale, focused.scale);
+  assert.deepEqual(workbenchCamera(1024, 608, null, next), initial);
+});
+
+test("工作台运动保留亚像素精度，停稳后才对齐不同 DPR", () => {
+  const target = { x: -40.31, y: -10.72, scale: 1.035 };
+  const state = advanceCamera(stillCamera({ x: 0, y: 0, scale: .8 }), target, 16, 12);
+  assert.notEqual(state.pose.x, Math.round(state.pose.x));
+  for (const ratio of [1, 1.25, 2, 3]) {
+    const aligned = settledWorkbenchCamera(target, ratio);
+    assert.ok(Math.abs(aligned.x - target.x) <= .5 / ratio);
+    assert.ok(Math.abs(aligned.y - target.y) <= .5 / ratio);
+    assert.equal(aligned.scale, target.scale);
+  }
+});
+
+test("工作台横竖窄屏的目标镜头保持有限值和源画布边界", () => {
+  for (const [width, height] of [[280, 220], [600, 370], [1024, 608], [300, 620]]) {
+    for (const focus of [null, { x: 900, y: 50, width: 350, height: 650 }, { x: 1180, y: 600, width: 80, height: 100 }]) {
+      const pose = workbenchCamera(width, height, focus);
+      assert.ok(Object.values(pose).every(Number.isFinite));
+      assert.ok(pose.scale >= Math.min(width / 1280, height / 760));
+      if (1280 * pose.scale >= width) assert.ok(pose.x <= 0 && pose.x >= width - 1280 * pose.scale);
+      if (760 * pose.scale >= height) assert.ok(pose.y <= 0 && pose.y >= height - 760 * pose.scale);
+    }
+  }
+});
 
 test("客户端镜头始终在稳定的双倍栅格上缩小", () => {
   assert.equal(nativeRasterScale, 2);

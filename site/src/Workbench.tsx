@@ -3,6 +3,8 @@ import { Icon } from "./components";
 import { getChapters, type ChapterId, type WorkbenchChapterId } from "./storyboard";
 import { useLanguage } from "./i18n";
 import "./stage.css";
+import { advanceCamera, cameraSettled, stillCamera, type CameraMotion } from "./native-camera";
+import { settledWorkbenchCamera, workbenchCamera } from "./workbench-camera";
 
 const FRAME_WIDTH = 1280;
 const FRAME_HEIGHT = 760;
@@ -12,6 +14,7 @@ type Camera = {
   width: number;
   height: number;
   overview?: boolean;
+  requestId?: number;
 };
 const overview: Camera = {
   x: 0,
@@ -20,19 +23,12 @@ const overview: Camera = {
   height: FRAME_HEIGHT,
   overview: true,
 };
-const CAMERA_DURATION = 850;
 const CAMERA_RASTER_SCALE = 2;
 
 type CameraPose = { x: number; y: number; scale: number };
 
 function paintCameraPose(node: HTMLDivElement, pose: CameraPose) {
-  const ratio = window.devicePixelRatio || 1;
-  const x = Math.round(pose.x * ratio) / ratio;
-  const y = Math.round(pose.y * ratio) / ratio;
-  node.style.zoom = String(CAMERA_RASTER_SCALE);
-  node.style.left = "0px";
-  node.style.top = "0px";
-  node.style.transform = `translate3d(${x / CAMERA_RASTER_SCALE}px,${y / CAMERA_RASTER_SCALE}px,0) scale(${pose.scale / CAMERA_RASTER_SCALE})`;
+  node.style.transform = `translate3d(${pose.x / CAMERA_RASTER_SCALE}px,${pose.y / CAMERA_RASTER_SCALE}px,0) scale(${pose.scale / CAMERA_RASTER_SCALE})`;
 }
 
 export type TourPlayback = {
@@ -75,8 +71,9 @@ export function TourStage({
   const section = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const cameraFrame = useRef(0);
-  const currentPose = useRef<CameraPose | null>(null);
-  const cameraReady = useRef(false);
+  const cameraMotion = useRef<CameraMotion | null>(null);
+  const cameraTarget = useRef<CameraPose | null>(null);
+  const cameraRequest = useRef<number | undefined>(undefined);
   const lastScene = useRef("");
   const bootReady = useRef(false);
   const playbackRef = useRef(playback);
@@ -159,7 +156,7 @@ export function TourStage({
         onPreparedRef.current?.();
       }
       if (message.type === "camera")
-        setCamera(message.overview ? overview : message);
+        setCamera(message.overview ? { ...overview, requestId: message.requestId } : message);
       if (message.type === "step") {
         setStep(message.step);
         setComplete(message.complete);
@@ -197,8 +194,8 @@ export function TourStage({
   }, [complete, playback?.playing, playback?.active, reduced]);
   useEffect(() => {
     if (ready || !visible || loadError) return;
-    send({ type: "hello" });
-    const probe = window.setInterval(() => send({ type: "hello" }), 400);
+    send({ type: "hello", cameraSync: true });
+    const probe = window.setInterval(() => send({ type: "hello", cameraSync: true }), 400);
     const timeout = window.setTimeout(() => setLoadError("工作台载入超时，请重新载入。"), 10000);
     return () => { clearInterval(probe); clearTimeout(timeout); };
   }, [ready, visible, loadAttempt, loadError, send]);
@@ -281,67 +278,51 @@ export function TourStage({
   const minimumHeight = width < 600 ? 220 : playback ? 350 : 370;
   const height = playback ? Math.min(620, Math.max(minimumHeight, width * 0.625))
     : Math.max(minimumHeight, (width * FRAME_HEIGHT) / FRAME_WIDTH);
-  const base = Math.min(width / FRAME_WIDTH, height / FRAME_HEIGHT);
-  let scale = base;
-  let x = (width - FRAME_WIDTH * scale) / 2;
-  let y = (height - FRAME_HEIGHT * scale) / 2;
-  if (!camera.overview && !exploring) {
-    scale = Math.max(
-      base,
-      Math.min(
-        width < 600 ? 1 : 1.12,
-        width / (camera.width + (width < 600 ? 40 : 180)),
-        height / (camera.height + 160),
-      ),
-    );
-    x = Math.min(
-      0,
-      Math.max(
-        width - FRAME_WIDTH * scale,
-        width / 2 - (camera.x + camera.width / 2) * scale,
-      ),
-    );
-    y = Math.min(
-      0,
-      Math.max(
-        height - FRAME_HEIGHT * scale,
-        height / 2 - (camera.y + camera.height / 2) * scale,
-      ),
-    );
-  }
-  // 整个 iframe 在镜头移动时会被合成。把最终位移落在设备像素上，
-  // 避免停稳后仍因半像素采样让文字和边框一起发虚。
-  const deviceScale = window.devicePixelRatio || 1;
-  x = Math.round(x * deviceScale) / deviceScale;
-  y = Math.round(y * deviceScale) / deviceScale;
+  const cameraRunning = (playback?.playing ?? playing) && visible && !manual;
   useLayoutEffect(() => {
     const node = plane.current;
     if (!node) return;
-    const target = exploring ? { x: 0, y: 0, scale: 1 } : { x, y, scale };
-    window.cancelAnimationFrame(cameraFrame.current);
-    if (!cameraReady.current || reduced || exploring) {
-      cameraReady.current = true;
-      currentPose.current = target;
+    const target = exploring ? { x: 0, y: 0, scale: 1 }
+      : workbenchCamera(width, height, camera.overview ? null : camera, cameraTarget.current ?? undefined);
+    cameraTarget.current = target;
+    cameraRequest.current = camera.requestId;
+    if (!cameraMotion.current || reduced || exploring || (!scenePrepared && !cameraRunning)) {
+      window.cancelAnimationFrame(cameraFrame.current);
+      cameraFrame.current = 0;
+      cameraMotion.current = stillCamera(target);
       paintCameraPose(node, target);
+      send({ type: "camera-settled", requestId: cameraRequest.current });
       return;
     }
-    const start = currentPose.current ?? target;
-    const started = performance.now();
+    if (!cameraRunning) {
+      window.cancelAnimationFrame(cameraFrame.current);
+      cameraFrame.current = 0;
+      return;
+    }
+    // 新目标只改终点；正在运行的时钟保留位置和速度，不重新加速。
+    if (cameraFrame.current) return;
+    let previous = performance.now();
     const animate = (now: number) => {
-      const progress = Math.min(1, (now - started) / CAMERA_DURATION);
-      const eased = 1 - Math.pow(1 - progress, 4);
-      const pose = {
-        x: start.x + (target.x - start.x) * eased,
-        y: start.y + (target.y - start.y) * eased,
-        scale: start.scale + (target.scale - start.scale) * eased,
-      };
-      currentPose.current = pose;
-      paintCameraPose(node, pose);
-      if (progress < 1) cameraFrame.current = window.requestAnimationFrame(animate);
+      const destination = cameraTarget.current!;
+      const motion = advanceCamera(cameraMotion.current!, destination, Math.min(now - previous, 64), 12);
+      previous = now;
+      cameraMotion.current = motion;
+      if (cameraSettled(motion, destination)) {
+        cameraMotion.current = stillCamera(destination);
+        paintCameraPose(node, settledWorkbenchCamera(destination, window.devicePixelRatio || 1));
+        cameraFrame.current = 0;
+        send({ type: "camera-settled", requestId: cameraRequest.current });
+      } else {
+        paintCameraPose(node, motion.pose);
+        cameraFrame.current = window.requestAnimationFrame(animate);
+      }
     };
     cameraFrame.current = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(cameraFrame.current);
-  }, [x, y, scale, reduced, exploring]);
+  }, [width, height, camera, reduced, exploring, scenePrepared, cameraRunning, send]);
+  useLayoutEffect(() => () => {
+    window.cancelAnimationFrame(cameraFrame.current);
+    cameraFrame.current = 0;
+  }, []);
   return (
     <div
       className={"tour-shell" + (exploring ? " exploring" : "")}
@@ -358,6 +339,7 @@ export function TourStage({
           style={{
             width: FRAME_WIDTH,
             height: FRAME_HEIGHT,
+            zoom: CAMERA_RASTER_SCALE,
           }}
         >
           <iframe
@@ -368,7 +350,7 @@ export function TourStage({
             sandbox="allow-scripts"
             referrerPolicy="same-origin"
             loading="lazy"
-            onLoad={() => send({ type: "hello" })}
+            onLoad={() => send({ type: "hello", cameraSync: true })}
             onError={() => setLoadError("工作台资源加载失败，请重新载入。")}
           />
         </div>
