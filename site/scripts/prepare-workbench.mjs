@@ -132,6 +132,8 @@ for (const id of Object.keys(catalog)) {
 function buildWorkbench(language) {
   let html = source
   .replace(/<link[^>]*https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g, "")
+  // 本页已内嵌字体，不再运行原型的远程字体加载器。
+  .replace('window.addEventListener("load",function(){ const fonts=document.getElementById("cg-fonts"); fonts.href=fonts.dataset.href; });', "")
   .replace(styleLink, `<style>${styles}</style>`)
   .replace(fixtureScript, `<script>${defaults}</script><script>${fixtures}</script>`)
   .replace(applicationScript, `<script>${application}</script>`)
