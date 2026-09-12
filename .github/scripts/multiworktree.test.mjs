@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolveProject, projectPreferences, saveMainBinding, sessionBinding, bindingStatus } from '../../scripts/workbench/project.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
@@ -17,14 +16,12 @@ import { memoryConfigPath, memoryStatus, synchronizeMemory, prepareMemory, sessi
 import { summarizeHooks } from '../../scripts/workbench/hook-status.mjs';
 import { readJSON } from '../../scripts/shared/io.mjs';
 const repo = fileURLToPath(new URL('../../', import.meta.url));
-const python = process.platform === 'win32' ? 'python' : 'python3';
+import { pythonCommand } from './python-command.mjs';
+const python = pythonCommand();
+import { run as runProcess } from './client-protocol.mjs';
 function run(command, args, cwd = repo, input) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1', CODEX_THREAD_ID: '', CONTEXT_GUARD_DISABLE_WORKBENCH: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', data => stdout += data); child.stderr.on('data', data => stderr += data);
-    child.on('error', reject); child.on('exit', code => resolve({ code, stdout, stderr })); child.stdin.end(input);
-  });
+  return runProcess(command, args, { cwd, input, timeout: 120_000, allowFailure: true,
+    env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_HEADLESS: '1', CODEX_THREAD_ID: '', CONTEXT_GUARD_DISABLE_WORKBENCH: '1' } });
 }
 const git = async (root, ...args) => { const r = await run('git', args, root); assert.equal(r.code, 0, r.stderr); return r.stdout.trim(); };
 const cli = (root, ...args) => run(process.execPath, [path.join(repo, 'scripts/workbench/cli.mjs'), ...args, '--root', root]);

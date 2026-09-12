@@ -28,6 +28,14 @@ function forbidMatch(content, pattern, message) {
 }
 
 export function verifyReleaseHardening(publishContent) {
+  const packageJob = publishContent.slice(publishContent.indexOf("  package:"), publishContent.indexOf("  unix-smoke:"));
+  const releaseJob = publishContent.slice(publishContent.indexOf("  publish:"), publishContent.indexOf("  verify-published:"));
+  for (const job of [packageJob, releaseJob]) {
+    requireMatch(job, /run: node \.github\/scripts\/require-release-ci\.mjs|^\s+node \.github\/scripts\/require-release-ci\.mjs$/m, "CD must gate both packaging and publication on same-commit CI.");
+    requireMatch(job, /actions: read/, "The CI gate requires read-only Actions permission.");
+  }
+  const smoke = fs.readFileSync('.github/scripts/smoke-npm-package.mjs', 'utf8');
+  requireMatch(smoke, /run\(process\.execPath, \[fileURLToPath\(new URL\('\.\/smoke-installed-runtime\.mjs'/, 'Package smoke must run the installed Workbench.');
   requireMatch(publishContent, /^\s*group:\s*npm-publish-stable\s*$/m, "CD releases must share one stable publication lock.");
   requireMatch(publishContent, /^\s*cancel-in-progress:\s*false\s*$/m, "An in-flight publication must never be cancelled.");
   forbidMatch(publishContent, /^\s*queue:\s*/m, "GitHub Actions concurrency does not support a queue key.");

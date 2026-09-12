@@ -39,6 +39,25 @@ test("process runner preserves Unicode, rejects failure, and enforces deadlines"
   await assert.rejects(run(path.join(root, "missing-executable"), [], { cwd: root, env }), /ENOENT/);
 });
 
+test("process deadlines kill owned descendants and allowFailure never hides a timeout", { timeout: 15_000 }, async t => {
+  const root = scratch(t), env = isolatedEnvironment(root);
+  const result = await run(process.execPath, ['-e', 'process.exit(9)'], { env, allowFailure: true });
+  assert.equal(result.code, 9);
+  const program = `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHide:true,stdio:'inherit'}); console.log(child.pid); setInterval(()=>{},1000);`;
+  let failure;
+  await assert.rejects(run(process.execPath, ['-e', program], { cwd: root, env, timeout: 1500, allowFailure: true }), error => {
+    failure = error; return /timed out/.test(error.message);
+  });
+  const pid = Number(failure.stdout.trim());
+  assert.ok(Number.isSafeInteger(pid) && pid > 0, 'descendant must have started');
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') return; throw error; }
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail('owned descendant survived the command deadline');
+});
+
 test("RPC separates request ids, rejects forbidden methods and shuts down on EOF", async (t) => {
   const root = scratch(t), env = isolatedEnvironment(root);
   const server = "require('readline').createInterface({input:process.stdin}).on('line',l=>{const m=JSON.parse(l); if(m.id) console.log(JSON.stringify({id:m.id,result:{method:m.method}}));});";

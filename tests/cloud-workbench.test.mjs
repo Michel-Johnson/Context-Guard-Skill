@@ -315,7 +315,7 @@ test('verified Session publication needs no exposed admin token and the authenti
     projects: { 'context-guard': { token: 'project-memory-token', root: repository, ref: 'refs/heads/main' } },
   };
   const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
-  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
   const projectHeaders = { Authorization: 'Bearer project-memory-token', 'Content-Type': 'application/json' };
   const browserHeaders = { Authorization: 'Bearer cloud-admin', 'Content-Type': 'application/json' };
   const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Published Session map', kind: 'module', state: 'dirty', children: [] } };

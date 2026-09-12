@@ -10,23 +10,29 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
+import { stopServer } from '../scripts/workbench/cli.mjs';
+import { pythonCommand } from '../.github/scripts/python-command.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
 const contextScript = path.join(repository, 'scripts/context_guard.py');
 const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
 const cloudServer = path.join(repository, 'scripts/cloud/server.mjs');
-const python = process.platform === 'win32' ? 'python' : 'python3';
+const python = pythonCommand();
 
 function run(command, args, options = {}) {
+  const started = performance.now();
   const result = spawnSync(command, args, {
     cwd: options.cwd || repository,
     encoding: 'utf8',
     input: options.input,
     env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', CONTEXT_GUARD_DISABLE_WORKBENCH: '1', CONTEXT_GUARD_HEADLESS: '1', ...options.env },
-    timeout: options.timeout || 30_000,
+    // The Workbench HTTP request itself has a 40s budget. The former 30s
+    // parent deadline killed valid plan requests before that budget elapsed.
+    timeout: options.timeout || (args[1] === 'plan-start' ? 180_000 : 30_000),
     windowsHide: true,
   });
+  if (process.env.CONTEXT_GUARD_TEST_TRACE) console.error(`[hook-test] ${path.basename(command)} ${args[1] || args[0]}: ${Math.round(performance.now() - started)} ms`);
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')}\n${result.error?.code || result.signal || result.status}\n${result.stdout}\n${result.stderr}`);
   return result;
 }
@@ -134,11 +140,9 @@ async function confirmBinding(root, session) {
 }
 
 async function dispose(project) {
-  if (await fs.access(path.join(project, '.codex/context/private/workbench.json')).then(() => true, () => false)) {
-    spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
-      encoding: 'utf8', timeout: 15_000, windowsHide: true,
-    });
-  }
+  // Git fixtures store runtime state in their shared Git directory, not only
+  // .codex/context/private. Use the same resolver and drain check as the CLI.
+  await stopServer(project);
   await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
 }
 
@@ -228,7 +232,9 @@ function finishPlan(project, session) {
 }
 
 test('approved plan extension preserves unfinished work and dirty-file baselines', async t => {
-  const project = await fixture(); t.after(() => dispose(project));
+  const project = await fixture();
+  let workbenchPid;
+  t.after(async () => { await dispose(project); if (workbenchPid) await waitForProcessExit(workbenchPid); });
   for (const args of [['init', '-b', 'main'], ['config', 'user.name', 'Fixture'], ['config', 'user.email', 'fixture@example.invalid']]) run('git', args, { cwd: project });
   await fs.writeFile(path.join(project, 'src/scratch.txt'), 'original');
   await fs.writeFile(path.join(project, 'notes.md'), 'notes baseline');
@@ -237,6 +243,8 @@ test('approved plan extension preserves unfinished work and dirty-file baselines
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
   const original = await startPlan(t, project, session);
+  const identity = await resolveProject(project);
+  workbenchPid = JSON.parse(await fs.readFile(path.join(identity.sharedDir, 'workbench.json'), 'utf8')).pid;
   await fs.writeFile(path.join(project, 'src/scratch.txt'), 'unfinished work');
   await fs.writeFile(path.join(project, 'notes.md'), 'new dirty scope');
   await fs.mkdir(path.join(project, 'extra')); await fs.writeFile(path.join(project, 'extra/new.txt'), 'new untracked work');

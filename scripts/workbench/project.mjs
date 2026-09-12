@@ -103,7 +103,9 @@ export async function resolveProject(openedRoot) {
       github: null,
       bindingRequired: false,
       binding: { source: 'folder', main: null },
-      ...(await worktreeMetadata(requestedRoot)),
+      // Once Git has rejected this directory, three more Git processes cannot
+      // provide repository metadata. Keep the same empty folder contract.
+      branch: '', head: '', gitDir: '', mainBranch: '', mainRef: '', mainSha: '',
     };
   }
   const worktreeRoot = await fs.realpath(topLevel);
