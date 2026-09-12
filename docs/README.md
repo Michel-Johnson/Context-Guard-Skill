@@ -7,6 +7,7 @@
 | 要查什么 | 入口 |
 | --- | --- |
 | 开发、PR、交付规则 | [RULE.md](../RULE.md) |
+| 需求到复盘的完整流程、风险与证据 | [开发流程规范](engineering/README.md)、[最小模板](engineering/templates.md) |
 | 已验证范围与未完成验收 | [CI_todo.md](../CI_todo.md)；历史条目不覆盖后续替代说明 |
 | 文件归属与依赖边界 | [仓库布局](repository-layout.md) |
 | Agent 使用入口 | [SKILL.md](../SKILL.md) |

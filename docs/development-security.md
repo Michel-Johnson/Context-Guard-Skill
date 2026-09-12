@@ -20,12 +20,11 @@ the memory contract and `CI_todo.md` for evidence and remaining limits. Further
 migrations require separate approval. Native Hook trust and actual host delivery
 remain separate acceptance items; Map-only sync alone is not the private memory store.
 
-Product branches retain approved `.github/` checks and the explicitly listed
-cross-platform product tests in `scripts/branch_guard.py`. Temporary experiments,
-fixtures, and fake repositories still belong only on the test branch.
-The formal test inventory itself is `tests/test-manifest.json` and is approved as
-product CI metadata; adding an executable test still requires the explicit branch
-guard entry where applicable.
+Product branches retain approved `.github/` checks and the cross-platform product
+tests explicitly listed in `tests/test-manifest.json`. `scripts/branch_guard.py`
+reads that manifest from the index; do not maintain a second test allowlist in
+Python. Temporary experiments, fixtures, and fake repositories still belong only
+on the test branch (local temporary scripts stay in ignored `temp/`).
 Temporary tests and fake repositories remain on `cursor/test-layout-f54e`; do not
 merge them into main. Product fixes belong on product branches. The existing
 `scripts/branch_guard.py` remains part of pre-commit validation.
@@ -69,6 +68,12 @@ version/hash comparison, and runtime output. An explicit request to implement or
 merge already authorizes these normal delivery steps; do not ask again. Native
 Hook trust is still a host security boundary: report it when pending and never
 use a dangerous trust bypass.
+
+Repository-only documentation changes that do not affect distributed content or
+runtime behavior may record installation/runtime acceptance as N/A with evidence,
+under `RULE.md`. This does not waive `npm test`, Required, security, applicable
+protocol closure, or any pre-existing product acceptance. Workflow and governance
+documents still require review of their behavioral impact.
 
 ## When checks run
 

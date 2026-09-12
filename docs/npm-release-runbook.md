@@ -13,11 +13,16 @@ Actions 左侧分别显示 **CI | 代码与功能检查** 和 **CD | npm 发布*
 | Event / 操作 | CI | CD |
 | --- | --- | --- |
 | Local commit only / 仅本地提交 | No / 不运行 | No / 不运行 |
-| Push a branch, including main / 推送分支，包括合入 main | Yes / 运行 | No / 不运行 |
+| Push main, including merges / 推送 main，包括合入 main | Yes / 运行 | No / 不运行 |
+| Push another branch without a PR to main / 推送其他分支且无目标为 main 的 PR | No / 不运行 | No / 不运行 |
 | Open, update, or reopen a PR targeting main / 创建、更新代码或重新打开目标为 main 的 PR | Yes / 运行 | No / 不运行 |
 | Push a version tag such as v0.4.5 / 推送版本标签 | Yes / 运行 | Yes / 运行 |
 
 Tag-triggered CI and CD are separate runs, not a chained CI-to-CD workflow. This naming cleanup preserves the existing triggers and every test. A tag outside the stable `vX.Y.Z` format, a version mismatch, or a commit outside `main` is rejected by CD before publication.
+
+The table reflects `ci.yml`: branch pushes are limited to `main`; updating a PR to `main` triggers its PR run. Other workflows have their own triggers. Historical branch-push examples below do not describe today's ordinary feature-branch trigger.
+
+上表以 `ci.yml` 为准：分支 push 仅匹配 `main`；更新目标为 `main` 的 PR 触发 PR 检查。其他 workflow 单独判断。下文历史分支推送案例不代表当前普通功能分支的触发配置。
 
 标签触发的 CI 和 CD 是独立运行，不是“本次 CI 完成后再启动 CD”。本次命名整理保留原触发规则和全部测试。CD 会在发布前拒绝非稳定 `vX.Y.Z` 标签、版本不一致或不属于 `main` 的提交。
 
