@@ -138,7 +138,7 @@ test("工作台六个章节完成后自动顺序循环，减少动态时不自�
 
   const tourSource = readFileSync(new URL("../src/workbench-tour.js", import.meta.url), "utf8");
   assert.match(tourSource, /if \(document\.querySelector\("#nav-crumbs a"\)\) await click\("#nav-crumbs a", true\)/);
-  assert.match(tourSource, /send\("prepared"\);\s*send\("step", \{ step: first, complete: false \}\)/);
+  assert.match(tourSource, /prepared\(chapter\);\s*send\("step", \{ step: first, complete: false \}\)/);
   assert.doesNotMatch(tourSource, /#bug-panel-list li\.on \[data-claim\]/);
   assert.match(tourSource, /#bug-panel-list li\.on \.bug-status/);
   assert.equal(debugSteps[2], "看处理状态");

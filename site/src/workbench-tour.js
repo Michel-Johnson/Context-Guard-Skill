@@ -14,6 +14,9 @@
   let cameraSequence = 0;
   let cameraAcknowledged = 0;
   let cameraSync = false;
+  let preparingCamera = false;
+  let preparedCamera = null;
+  let preparedChapter = "";
   let cursorPosition = { x: 480, y: 270 };
   let simulatedTimers = [];
   // 只缩短演示空等；输入、镜头过渡与产品自身的状态计时保持原速。
@@ -69,19 +72,30 @@
   }
   function camera(el, overview = false) {
     const requestId = ++cameraSequence;
-    if (overview || !el) {
-      send("camera", { overview: true, requestId });
+    const publish = (pose) => {
+      const message = { ...pose, requestId };
+      if (preparingCamera) preparedCamera = message;
+      else send("camera", message);
       return requestId;
+    };
+    if (overview || !el) {
+      return publish({ overview: true });
     }
     const rect = el.getBoundingClientRect();
-    send("camera", {
-      requestId,
+    return publish({
       x: rect.x,
       y: rect.y,
       width: rect.width,
       height: rect.height,
     });
-    return requestId;
+  }
+  function prepared(chapter) {
+    // 静态前置操作可能反复取景，只向宿主提交可见首帧的最终目标。
+    preparingCamera = false;
+    if (preparedCamera) send("camera", preparedCamera);
+    preparedCamera = null;
+    preparedChapter = chapter;
+    send("prepared");
   }
   function node(title) {
     const localizedTitle = text(title);
@@ -293,7 +307,8 @@
         camera(null, true);
       }
       if (step === 3) {
-        await click('[data-act="enter"]');
+        // 从记忆页接续时已经在模块内，退出关系模式即可，不先退回根图。
+        await click(() => document.querySelector('[data-act="enter"]') || document.getElementById("btn-rel"));
         camera(null, true);
       }
     } else if (chapter === "memory") {
@@ -433,6 +448,13 @@
   }
   async function run(chapter, start, request, options = {}) {
     try {
+      const continueMap = !options.once && start === 0 &&
+        ((preparedChapter === "explore" && chapter === "memory" && viewRootId === data.id) ||
+         (preparedChapter === "memory" && chapter === "relations")) &&
+        !relationMode && !authMode && !lensMode;
+      preparedChapter = "";
+      preparingCamera = true;
+      preparedCamera = null;
       if (options.once) {
         const first = Math.max(0, Math.min(7, start));
         const last = Math.max(first, Math.min(7, Number(options.stopAt) || 0));
@@ -446,7 +468,7 @@
         }
         await settle(request);
         // 前置状态已经可见，父页可开始画面过渡；光标动作等播放消息后再执行。
-        send("prepared");
+        prepared(chapter);
         if (!reduced) await wait(1, request);
         for (let i = first; i <= last; i++) {
           send("step", { step: i, complete: false });
@@ -462,13 +484,21 @@
       completedThrough = -1;
       const count = chapter === "debug" ? 6 : 4;
       let first = Math.max(0, Math.min(start, count - 1));
+      let preserve = continueMap;
       while (request === generation) {
-        reset(chapter);
+        preparingCamera = true;
+        preparedCamera = null;
+        if (!preserve) reset(chapter);
+        else {
+          clearTarget();
+          cursor.style.opacity = "0";
+        }
+        preserve = false;
         await settle(request);
         for (let i = 0; i <= first; i++)
           await stage(chapter, i, false, request);
         // 告知父页新章节的首帧已经建立，避免上一章的结束消息触发连跳。
-        send("prepared");
+        prepared(chapter);
         send("step", { step: first, complete: false });
         // 快照先可见，再开始光标动作。重复播放只在一整段结束后重置。
         await wait(pace.opening, request);
@@ -539,6 +569,7 @@
       if (!event.isTrusted) return;
       ++generation;
       completedThrough = -1;
+      preparedChapter = "";
       setPlaying(false);
       clearTarget();
       cursor.style.opacity = "0";
@@ -553,6 +584,7 @@
         if (!event.isTrusted) return;
         ++generation;
         completedThrough = -1;
+        preparedChapter = "";
         setPlaying(false);
         clearTarget();
         cursor.style.opacity = "0";
