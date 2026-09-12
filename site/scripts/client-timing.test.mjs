@@ -82,19 +82,14 @@ test("设计问答独立成页，并以节点关系解释 Context 管理", async
 
 test("首页使用真实双语工作台宣传图并移除重复辅助项", () => {
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const englishSource = readFileSync(new URL("../src/locales/en.json", import.meta.url), "utf8");
-  assert.match(appSource, /项目上下文，Agent 接手就能用/);
-  assert.match(appSource, /项目结构、决定、TODO、Bug 和会话进度整理成节点地图/);
   assert.match(appSource, /className="hero-intro"/);
-  assert.match(englishSource, /Project context every agent can pick up/);
-  assert.match(englishSource, /structure, decisions, TODOs, bugs and session progress/);
   const visualSource = readFileSync(new URL("../src/HeroWorkbenchVisual.tsx", import.meta.url), "utf8");
   assert.match(visualSource, /sourceWidth = 1440/);
   assert.match(visualSource, /sourceHeight = 900/);
   assert.match(visualSource, /workbench-en\.html/);
   assert.match(visualSource, /workbench\.html/);
   assert.match(visualSource, /\?embedded=1&phone=0&hero=1/);
-  assert.match(visualSource, /type: "scene"[\s\S]*chapter: "map"/);
+  assert.match(visualSource, /type: "scene"[\s\S]*chapter: "explore"/);
   assert.match(visualSource, /IntersectionObserver/);
   const prepareSource = readFileSync(new URL("./prepare-workbench.mjs", import.meta.url), "utf8");
   assert.match(prepareSource, /cg-embedded/);

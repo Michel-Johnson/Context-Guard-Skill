@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { MotionConfig, useReducedMotion } from "motion/react";
+import { MotionConfig } from "motion/react";
 import { Icon } from "./components";
 import { Workbench } from "./Workbench";
 import { DebugDemo } from "./DebugDemo";
@@ -61,7 +61,14 @@ function Mark() {
 
 export function App() {
   const { language, setLanguage, t } = useLanguage();
-  const reducedSystem = useReducedMotion();
+  const [reducedSystem, setReducedSystem] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedSystem(query.matches);
+    query.addEventListener("change", update);
+    update();
+    return () => query.removeEventListener("change", update);
+  }, []);
   const [reducedChoice, setReducedChoice] = useState<boolean | null>(null);
   const reduced = reducedChoice ?? Boolean(reducedSystem);
   const [clientId, setClientId] = useState<ClientId>("cursor");
@@ -112,6 +119,11 @@ export function App() {
         : event.key === "PageUp" || event.key === "ArrowUp" ? -1 : 0;
       if (!offset) return;
       event.preventDefault();
+      const page = document.querySelector<HTMLElement>('.site-page[data-active="true"]');
+      if (page && (offset > 0 ? page.scrollTop + page.clientHeight < page.scrollHeight - 1 : page.scrollTop > 0)) {
+        page.scrollBy({ top: offset * page.clientHeight * .8 });
+        return;
+      }
       movePage(offset);
     }
     window.addEventListener("keydown", onKeyDown);
@@ -154,6 +166,13 @@ export function App() {
   useEffect(() => {
     function onWheel(event: WheelEvent) {
       if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      const page = document.querySelector<HTMLElement>('.site-page[data-active="true"]');
+      if (page && page.scrollHeight > page.clientHeight + 1) {
+        const canScroll = event.deltaY > 0
+          ? page.scrollTop + page.clientHeight < page.scrollHeight - 1
+          : page.scrollTop > 0;
+        if (canScroll) return;
+      }
       if (turnPageFromWheel(event.deltaX, event.deltaY, event.deltaMode, event.ctrlKey)) event.preventDefault();
     }
     function onFrameWheel(event: MessageEvent) {
@@ -180,8 +199,7 @@ export function App() {
     if (!pageIds.includes(page)) return;
     event.preventDefault();
     goToPage(page);
-    if (link.classList.contains("skip-link"))
-      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-page="${page}"]`)?.focus());
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-page="${page}"]`)?.focus({ preventScroll: true }));
   }
 
   const openDemo = useCallback((chapter: ChapterId) => {
@@ -232,6 +250,10 @@ export function App() {
             </a>
           </div>
         </header>
+        <select className="compact-navigation" aria-label={t("主导航")} value={activePage}
+          onChange={(event) => goToPage(event.target.value as PageId)}>
+          {pageIds.map((id) => <option key={id} value={id}>{t(pageLabels[id])}</option>)}
+        </select>
         <main id="top" className="page-deck" key={language}>
           <div
             className="page-track"
@@ -242,10 +264,11 @@ export function App() {
             <section className="hero" id="home" aria-labelledby="hero-title">
               <div className="hero-copy">
                 <h1 id="hero-title">
-                  {t("项目上下文，Agent 接手就能用。")}
+                  <span>{t("AI 编程的")}</span>
+                  <span>{t("项目记忆工具")}</span>
                 </h1>
                 <p className="hero-intro">
-                  {t("Context Guard 把项目结构、决定、TODO、Bug 和会话进度整理成节点地图。换工具、换会话，也能从正确的位置继续。")}
+                  {t("把项目结构、决定、TODO 和 Bug 放进一张节点图。你和 Agent 共享进度，换会话也能接着做。")}
                 </p>
                 <div className="hero-actions">
                   <a className="primary" href="#install">
@@ -256,9 +279,7 @@ export function App() {
                   </a>
                 </div>
               </div>
-              <a className="hero-visual-link" href="#workbench" aria-label={t("查看工作台宣传图")}>
-                <HeroWorkbenchVisual language={language} title={t("工作台宣传图")} />
-              </a>
+              <HeroWorkbenchVisual language={language} title={t("工作台宣传图")} reduced={reduced} />
             </section>
           </Page>
           <Page id="workbench" active={activePage === "workbench"}>
