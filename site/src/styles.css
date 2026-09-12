@@ -1075,7 +1075,7 @@ code,
 }
 @media (prefers-reduced-motion: no-preference) {
   .primary, .hero-playback { transition: background-color 150ms, scale 150ms; }
-  .primary:active, .hero-playback:active { scale: .96; }
+  .site:not(.reduce-motion) .primary:active, .site:not(.reduce-motion) .hero-playback:active { scale: .96; }
 }
 @media (forced-colors: active) {
   button:focus-visible, a:focus-visible, summary:focus-visible { outline-color: Highlight; }

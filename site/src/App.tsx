@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { MotionConfig, useReducedMotion } from "motion/react";
+import { MotionConfig } from "motion/react";
 import { Icon } from "./components";
 import { Workbench } from "./Workbench";
 import { DebugDemo } from "./DebugDemo";
@@ -61,7 +61,14 @@ function Mark() {
 
 export function App() {
   const { language, setLanguage, t } = useLanguage();
-  const reducedSystem = useReducedMotion();
+  const [reducedSystem, setReducedSystem] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedSystem(query.matches);
+    query.addEventListener("change", update);
+    update();
+    return () => query.removeEventListener("change", update);
+  }, []);
   const [reducedChoice, setReducedChoice] = useState<boolean | null>(null);
   const reduced = reducedChoice ?? Boolean(reducedSystem);
   const [clientId, setClientId] = useState<ClientId>("cursor");
