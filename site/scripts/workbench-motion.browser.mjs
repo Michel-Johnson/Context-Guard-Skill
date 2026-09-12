@@ -94,6 +94,22 @@ try {
     view: JSON.stringify(window.chapterState.view) === JSON.stringify(view),
   }));
   assert.ok(Object.values(continuity).every(Boolean), "Memory → relationships must retain the live map and inner viewport: " + JSON.stringify(continuity));
+  // 关系章只有按钮/节点点击：从总览开始，整段操作不应放大再缩小。
+  await page.goto(url.href);
+  await page.getByRole("tab", { name: "Relationships", exact: true }).click();
+  await page.waitForFunction(() => window.tourEvents.some(event =>
+    event.type === "prepared" && event.scene.startsWith("relations:")));
+  const buttonScale = await plane.evaluate(node => new Promise(resolve => {
+    const values = [];
+    const start = performance.now();
+    function sample(now) {
+      values.push(new DOMMatrixReadOnly(getComputedStyle(node).transform).a);
+      if (now - start < 4000) requestAnimationFrame(sample);
+      else resolve({ min: Math.min(...values), max: Math.max(...values) });
+    }
+    requestAnimationFrame(sample);
+  }));
+  assert.ok(buttonScale.max - buttonScale.min < .00001, "Button clicks must keep the overview scale: " + JSON.stringify(buttonScale));
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.locator(".site.reduce-motion").waitFor();
   await page.waitForTimeout(100);
@@ -101,7 +117,7 @@ try {
   await page.waitForTimeout(350);
   assert.equal(await plane.evaluate(node => node.style.transform), reduced, "Reduced motion must remain still");
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ completed, preparation, continuity, paused: true, reduced: true, errors }));
+  console.log(JSON.stringify({ completed, preparation, continuity, buttonScale, paused: true, reduced: true, errors }));
 } finally {
   await browser.close();
 }
