@@ -3,6 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { isolatedEnvironment } from './client-protocol.mjs';
 
+// Keep the installed browser tool cache visible before isolating user homes.
+// Browser profiles and application state still use the disposable test home.
+const browserCache = process.platform === 'win32'
+  ? process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
+  : process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches')
+    : process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH
+  || process.env.npm_config_playwright_browsers_path
+  || process.env.npm_package_config_playwright_browsers_path
+  || path.join(browserCache, 'ms-playwright');
+
 // Fixtures must not inspect personal host history/configuration. Keep tool
 // discovery and npm's invocation metadata, but redirect every host home.
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'context-guard-test-home-'));
