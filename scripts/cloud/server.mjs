@@ -891,11 +891,12 @@ export async function startCloudServer({
     else if (event.scope?.startsWith('session:')) broadcastWorkbench(`project:${project.id}`, project, event.scope).catch(() => {});
   }) || (() => {});
   let automaticPublicationRunning = null;
+  let stopping = false;
   const publishMergedSessions = async ({ afterCurrent = false } = {}) => {
-    if (!configuredMemory) return;
+    if (stopping || !configuredMemory) return;
     if (automaticPublicationRunning) {
       await automaticPublicationRunning;
-      if (!afterCurrent) return;
+      if (stopping || !afterCurrent) return;
     }
     const run = (async () => {
       try {
@@ -1026,7 +1027,8 @@ export async function startCloudServer({
     reply.data.sessions = reply.data.sessions.map(session => ({ ...session, ...(heads[session.id] || {}) }));
     return reply;
   };
-  const server = http.createServer(async (req, res) => {
+  const activeRequests = new Set();
+  const handleRequest = async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const route = url.pathname;
@@ -1696,6 +1698,12 @@ export async function startCloudServer({
     } catch (error) {
       if (!res.headersSent) send(res, error.status || 500, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message, ...(error.details || {}) } }); else res.end();
     }
+  };
+  const server = http.createServer((req, res) => {
+    if (stopping) return send(res, 503, { error: { code: 'SERVER_CLOSING', message: 'Server is shutting down' } });
+    const pending = handleRequest(req, res);
+    activeRequests.add(pending);
+    pending.finally(() => activeRequests.delete(pending)).catch(() => {});
   });
   server.on('connection', socket => {
     sockets.add(socket);
@@ -1721,7 +1729,7 @@ export async function startCloudServer({
     }
   }, 5000); presenceExpiry.unref();
   const publicationTimer = setInterval(publishMergedSessions, 30_000); publicationTimer.unref();
-  setTimeout(publishMergedSessions, 0).unref?.();
+  const initialPublication = setTimeout(publishMergedSessions, 0); initialPublication.unref();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   for (const project of registry.projects) {
     if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) {
@@ -1737,9 +1745,11 @@ export async function startCloudServer({
   }
   let closing;
   const close = () => closing ||= new Promise((resolve, reject) => {
+    stopping = true;
     clearInterval(heartbeat);
     clearInterval(presenceExpiry);
     clearInterval(publicationTimer);
+    clearTimeout(initialPublication);
     const coordinatorShutdown = Promise.all([...coordinators.values()].map(async pending => {
       const service = await pending.catch(() => null);
       if (!service) return;
@@ -1753,7 +1763,9 @@ export async function startCloudServer({
     for (const set of projectClients.values()) for (const res of set) res.end();
     server.close(error => {
       if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
-      else coordinatorShutdown.then(resolve, reject);
+      // Closing sockets does not finish async handlers or their Git children.
+      // Drain owned work before callers remove repositories and data files.
+      else Promise.all([coordinatorShutdown, automaticPublicationRunning, ...activeRequests]).then(resolve, reject);
     });
     server.closeIdleConnections?.();
     const forceClose = setTimeout(() => {

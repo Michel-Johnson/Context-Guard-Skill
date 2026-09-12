@@ -143,7 +143,9 @@ test("workflow guards reject per-tag locks, invalid queue keys, cancellation, or
     ["cancel-in-progress: false", "cancel-in-progress: true"],
     ["- name: CD | 发布前再次确认版本仍可发布\n        run: node .github/scripts/release-checks.mjs guard", "- name: CD | 发布前再次确认版本仍可发布\n        run: node .github/scripts/release-checks.mjs guard-disabled"],
     ["release-checks.mjs verify dist", "release-checks.mjs missing dist"],
-    ["smoke-upgrade-package.mjs", "missing-upgrade.mjs"]
+    ["smoke-upgrade-package.mjs", "missing-upgrade.mjs"],
+    ["require-release-ci.mjs", "missing-ci-gate.mjs"],
+    ["actions: read", "actions: none"]
   ]) {
     const changed = publish.replaceAll("\r\n", "\n").replace(from, to);
     assert.notEqual(changed, publish.replaceAll("\r\n", "\n"), `Mutation did not apply: ${from}`);

@@ -20,7 +20,7 @@ function run(command, args, options = {}) {
     encoding: "utf8",
     stdio: options.capture ? "pipe" : "inherit",
     windowsHide: true,
-    timeout: 300_000
+    timeout: options.timeout || 300_000
   });
   if (result.error || result.status !== 0) {
     throw new Error([
@@ -35,7 +35,9 @@ function run(command, args, options = {}) {
 
 try {
   run(process.execPath, [".github/scripts/security-tool.mjs"]);
-  run(npm.command, [...npm.args, "test"]);
+  // Includes security setup/checks, the 15-minute Node suite and package smoke.
+  // The outer orchestration deadline must not truncate those inner budgets.
+  run(npm.command, [...npm.args, "test"], { timeout: 30 * 60 * 1000 });
   run(process.execPath, [".github/scripts/verify-workflows.mjs"]);
 
   const dist = path.join(temporaryRoot, "dist");
@@ -88,7 +90,7 @@ try {
   const resolvedTemporaryRoot = path.resolve(temporaryRoot);
   const resolvedSystemTemp = path.resolve(os.tmpdir());
   if (passed && resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}${path.sep}`)) {
-    fs.rmSync(resolvedTemporaryRoot, { recursive: true, force: true });
+    fs.rmSync(resolvedTemporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } else {
     console.error(`Preserved failed CD rehearsal artifacts: ${resolvedTemporaryRoot}`);
   }

@@ -25,6 +25,10 @@ jobs:
   package:
     name: CD 1 | 发布校验与打包
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,11 +92,17 @@ jobs:
 
           git fetch --no-tags origin main:refs/remotes/origin/main
           tagged_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          echo "RELEASE_SHA=$tagged_commit" >> "$GITHUB_ENV"
           if ! git merge-base --is-ancestor "$tagged_commit" origin/main; then
             echo "The tagged commit must already belong to main." >&2
             exit 1
           fi
 
+
+      - name: CD | 等待同一提交的 CI 与 Required 成功
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/require-release-ci.mjs
 
       - name: CD | 确认版本未发布且严格高于 npm latest
         run: node .github/scripts/release-checks.mjs guard
@@ -127,6 +137,7 @@ jobs:
           compression-level: 0
 
   unix-smoke:
+    timeout-minutes: 20
     name: CD 2 | 发布包安装验收 - ${{ matrix.name }}
     needs: package
     strategy:
@@ -172,6 +183,7 @@ jobs:
         run: node .github/scripts/smoke-upgrade-package.mjs "$PACKAGE_TARBALL" dist/baseline "${{ runner.temp }}/context-guard-cd-upgrade"
 
   windows-smoke:
+    timeout-minutes: 20
     name: CD 2 | 发布包安装验收 - Windows
     needs: package
     runs-on: windows-latest
@@ -207,6 +219,7 @@ jobs:
         run: node .github/scripts/smoke-upgrade-package.mjs "$env:PACKAGE_TARBALL" dist/baseline "${{ runner.temp }}/context-guard-cd-upgrade"
 
   publish:
+    timeout-minutes: 40
     name: CD 3 | 发布到 npm
     needs:
       - package
@@ -216,6 +229,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -253,6 +267,14 @@ jobs:
             exit 1
           }
 
+      - name: CD | 发布前重新核验同提交 CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          export RELEASE_SHA="$(git rev-parse HEAD)"
+          node .github/scripts/require-release-ci.mjs
+
       - name: CD | 发布前再次确认版本仍可发布
         run: node .github/scripts/release-checks.mjs guard
 
@@ -260,6 +282,7 @@ jobs:
         run: npm publish "$PACKAGE_TARBALL" --access public
 
   verify-published:
+    timeout-minutes: 15
     name: CD 4 | 发布后下载验收
     needs: publish
     runs-on: ubuntu-latest
@@ -335,9 +358,11 @@ jobs:
           project_target="$RUNNER_TEMP/context-guard-registry-project"
           "$cli" init --root "$project_target"
           test -f "$project_target/.codex/context/index.md"
+          node .github/scripts/smoke-installed-runtime.mjs "$CODEX_HOME/skills/context-guard" "$project_target"
 
           unset CODEX_HOME
           default_skill="$HOME/.codex/skills/context-guard/SKILL.md"
           test ! -e "$default_skill"
           npx --yes --prefer-online "$PACKAGE_NAME" install
           test -f "$default_skill"
+          node .github/scripts/smoke-installed-runtime.mjs "$HOME/.codex/skills/context-guard" "$project_target"

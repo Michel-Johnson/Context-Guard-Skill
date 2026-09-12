@@ -1,6 +1,33 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isolatedEnvironment } from './client-protocol.mjs';
+
+// Keep the installed browser tool cache visible before isolating user homes.
+// Browser profiles and application state still use the disposable test home.
+const browserCache = process.platform === 'win32'
+  ? process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
+  : process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Caches')
+    : process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH
+  || process.env.npm_config_playwright_browsers_path
+  || process.env.npm_package_config_playwright_browsers_path
+  || path.join(browserCache, 'ms-playwright');
+
+// Fixtures must not inspect personal host history/configuration. Keep tool
+// discovery and npm's invocation metadata, but redirect every host home.
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'context-guard-test-home-'));
+const homeEnvironment = isolatedEnvironment(sandbox);
+// Fixtures already use unique temporary directories. Nesting TMP beneath a
+// second sandbox pushes Python transaction filenames over Windows MAX_PATH.
+for (const key of ['TMP', 'TEMP', 'TMPDIR']) delete homeEnvironment[key];
+Object.assign(process.env, homeEnvironment);
+// CLAUDE_CONFIG_DIR takes precedence over CLAUDE_HOME; individual installation
+// fixtures select CLAUDE_HOME, while the fallback HOME is already isolated.
+delete process.env.CLAUDE_CONFIG_DIR;
+process.env.CODEX_THREAD_ID = '';
+process.env.GIT_CONFIG_GLOBAL = path.join(sandbox, 'empty-gitconfig');
+process.on('exit', () => fs.rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 // Synthetic repositories use GitHub-looking SSH remotes for identity checks,
 // never for real network access or the developer's personal SSH credentials.
@@ -12,5 +39,5 @@ process.env.GIT_TERMINAL_PROMPT = '0';
 if (!process.env.CONTEXT_GUARD_NAMED_STATE_DIR) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'context-guard-test-registry-'));
   process.env.CONTEXT_GUARD_NAMED_STATE_DIR = directory;
-  process.on('exit', () => fs.rmSync(directory, { recursive: true, force: true }));
+  process.on('exit', () => fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 }

@@ -101,6 +101,7 @@ test('ordinary folders retain one-folder-one-workbench compatibility', async t =
   assert.equal(project.worktreeRoot, await fs.realpath(root));
   assert.match(project.sharedDir, /project-workbench$/);
   assert.equal(project.bindingRequired, false);
+  for (const field of ['branch', 'head', 'gitDir', 'mainBranch', 'mainRef', 'mainSha']) assert.equal(project[field], '');
 });
 
 test('linked worktrees share one Cloud project binding but retain temporary sync state', async t => {

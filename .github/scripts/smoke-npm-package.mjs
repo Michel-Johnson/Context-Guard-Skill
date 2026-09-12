@@ -4,9 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import { forbiddenInstalledPaths, installedFiles } from "./package-contract.mjs";
 import { npmInvocation } from "./npm-command.mjs";
+import { isolatedEnvironment } from "./client-protocol.mjs";
 
 function parseArgs(argv) {
   const options = { tarball: process.env.PACKAGE_TARBALL || "", workspace: "", codexHome: "", withHooks: false };
@@ -26,7 +28,11 @@ function parseArgs(argv) {
 
 function run(command, args, env) {
   const useWindowsCommandShell = process.platform === "win32" && command.toLowerCase().endsWith(".cmd");
-  const result = spawnSync(command, args, {
+  const quote = value => {
+    if (/["%!\r\n]/.test(value)) throw new Error('Unsafe Windows smoke argument');
+    return `"${value}"`;
+  };
+  const result = spawnSync(useWindowsCommandShell ? [command, ...args].map(quote).join(' ') : command, useWindowsCommandShell ? [] : args, {
     env,
     stdio: "inherit",
     windowsHide: true,
@@ -131,6 +137,11 @@ assertFile(skillCli);
 run(cli, ["--help"], testEnv);
 verifyInstalledSkill(skillTarget);
 
+const globalProject = path.join(workspace, 'global-project');
+run(cli, ['init', '--root', globalProject], testEnv);
+run(process.execPath, [fileURLToPath(new URL('./smoke-installed-runtime.mjs', import.meta.url)), skillTarget, globalProject],
+  { ...isolatedEnvironment(path.join(workspace, 'global-runtime-home')), GIT_CEILING_DIRECTORIES: workspace });
+
 // This exact directory was absent before this test created it. Start npx fresh
 // so a broken installer cannot pass by reusing the global install's files.
 if (fs.lstatSync(skillTarget).isSymbolicLink()) {
@@ -153,6 +164,8 @@ verifyInstalledSkill(skillTarget);
 const projectTarget = path.join(workspace, "project");
 run(cli, ["init", "--root", projectTarget], testEnv);
 assertFile(path.join(projectTarget, ".codex", "context", "index.md"));
+run(process.execPath, [fileURLToPath(new URL('./smoke-installed-runtime.mjs', import.meta.url)), skillTarget, projectTarget],
+  { ...isolatedEnvironment(path.join(workspace, 'runtime-home')), GIT_CEILING_DIRECTORIES: workspace });
 
 if (options.withHooks) {
   const hooksTarget = path.join(workspace, "hooks.json");

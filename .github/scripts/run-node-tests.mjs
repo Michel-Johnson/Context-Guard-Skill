@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { readdirSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { run } from "./client-protocol.mjs";
 
 const roots = [".github/scripts", "tests"];
 const standalone = new Set([".github/scripts/security-checks.test.mjs"]);
@@ -24,18 +24,12 @@ if (files.length === 0) {
 
 // Several suites launch Git, Python and local servers. Bound file-level
 // concurrency instead of scaling subprocesses with the host's CPU count.
-const result = spawnSync(process.execPath, ["--test", "--test-concurrency=4", ...files], {
-  stdio: "inherit",
-  timeout: 15 * 60 * 1000,
-  windowsHide: true,
-});
-
-if (result.error) {
-  throw result.error;
-}
-if (result.signal) {
-  throw new Error(`Node tests terminated by ${result.signal}.`);
-}
-if (result.status !== 0) {
-  process.exit(result.status ?? 1);
+const started = Date.now();
+try {
+  await run(process.execPath, ["--test", "--test-concurrency=4", ...files], {
+    inheritOutput: true, timeout: 15 * 60 * 1000,
+  });
+} catch (error) {
+  console.error(`Node test runner failed after ${Math.round((Date.now() - started) / 1000)}s: ${error.message}`);
+  process.exitCode = 1;
 }

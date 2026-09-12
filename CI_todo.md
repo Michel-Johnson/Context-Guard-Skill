@@ -4,7 +4,21 @@
 
 - [ ] GATE-01：清单校验与 Node runner 统一发现/排除逻辑，防止嵌套测试仅被登记却未执行。
 - [ ] GATE-02：完善聚焦与跳过测试检查；当前文本检测不等于完整语义校验。两项验收定义见 [自动化映射](docs/engineering/automation.md)。本次规范交付不表示工具已实现。
-- [ ] GATE-05：定位本机 Windows 全量测试和隔离浏览器 Hook 超时；Python 商店别名单独确认，不能解释全部失败。[验证记录](docs/engineering/validation.md) 保留首轮结果，未修改产品或断言求绿。
+- [ ] GATE-05：Windows 全量测试已修复并通过（见下方证据）；隔离浏览器 Hook 的 20 秒 bootstrap 超时仍需专项验收，不能用 Node/CD 通过替代浏览器结果。[验证记录](docs/engineering/validation.md) 保留原失败。
+
+## CD 发布门禁与安装运行验收
+
+- [x] 同提交 `ci.yml`/`Required` 发布门禁：错误 SHA、其他 workflow/仓库、取消/失败/跳过、旧绿灯、分页、等待及 API 错误均有正式测试；通过 GitHub 只读 API 核验 main 的真实成功运行。
+- [x] 从实际 tarball 经 npm/npx 安装后启动 Workbench，验证健康、页面/资源、授权读取和未授权拒绝；缺失资源/依赖反例、Windows 空格路径、三客户端升级保留测试通过。
+- [ ] 合并后由 GitHub runner 验证新增运行验收的 Ubuntu/macOS/Windows 矩阵；下一次授权版本标签发布时验证 CI 等待、OIDC 发布及安装后回验完整链路。本轮不发布 npm、不部署生产 Cloud。
+- [x] Windows Python 商店别名：正式测试使用有界探测且验证版本的 Python 3 启动器；真实 SQLite 回归和失败/别名/旧版本反例通过。
+- [x] Cloud 关闭等待后台发布及 HTTP 写入完成；暂停后台读取/写入的反例证明旧关闭逻辑会提前返回，修复后重启保留写入结果。测试清理通过官方停止入口处理 Git 共享状态，不再忽略停止失败，再有界重试目录删除。
+- [x] 修复父子超时预算倒置：计划命令由 30 秒改为 180 秒，跨工作树及 Cloud 集成 CLI 有界为 120 秒；保留 Node 总套件 15 分钟上限和所有断言，超时结束本测试进程树。普通非 Git 目录探测由 4 次降为 1 次，保留同样的空元数据契约。
+- [x] Windows 独立 `tests/ci-smoke.mjs` 改用 `npmInvocation`，完整包、三客户端、Hook、语言、Workbench、Session 和 Bug 记录冒烟已通过。
+- [x] 2026-09-12 Windows / Node 22.18.0 / Python 3.13.7：`npm run test:cd` 退出 0，内部完整 `npm test` 通过 39 项安全检查、413 项 Node 测试（0 失败/跳过/取消，约 424 秒）和完整 CI 安装冒烟。重点旧失败用例至少 3 次通过，含串行与并发；新增事务路径、Cloud 集成失败也各有两次定向通过及最终全量通过。只做自检，无独立 Reviewer。
+- [x] 最终 CD 演练：86 个精确包文件、敏感信息扫描、npm/npx 安装与安装后 Workbench、从 npm 0.4.4 升级到同版本本地候选的三客户端配置/数据/第三方 Hook 保留均通过。候选 SHA-256：`bccddd1de7fe97bace44b3f873f6afa2c2e8ee65ea682a1206afae48e4634e80`。280 文件源码快照扫描通过；没有发布 npm 或部署 Cloud。
+- 首次失败仍保留：原 Node 15 分钟超时，以及修复中一次 408/410（隔离层加深引发 Windows 路径过长、Cloud 集成父进程 15 秒期限）；未删断言或跳过失败。临时层级已恢复并补正式回归。最终日志位于本任务工作树忽略目录 `temp/cd-rehearsal-timeout-final.log`，重点复测及反例日志同目录保留。
+- [x] PR #238 浏览器缓存隔离回归：首次 GitHub 浏览器任务因 HOME 隔离改变 Playwright 工具缓存路径而启动失败。隔离层现保留原浏览器缓存及显式配置，个人配置继续隔离；默认/显式/npm/包内浏览器路径回归和本地隔离 Chromium 启动通过，GitHub run `34678409084` 的完整浏览器任务通过。首次失败 run `34678011731` 保留；最终提交的完整 Required 仍由 PR 门禁核验。
 
 ## 当前专项验收
 
