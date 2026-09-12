@@ -977,6 +977,31 @@ def curl_read_only(words: list[str]) -> bool:
     return True
 
 
+INTERPRETER_STDOUT_PROBE = re.compile(r"^console\.(log|info|debug)\([^)]*\)$")
+
+
+def interpreter_read_only(words: list[str]) -> bool:
+    """Allow runtime version and stdout-only probes without treating them as implementation."""
+    if not words:
+        return False
+    executable = Path(words[0]).name
+    arguments = words[1:]
+    if executable in {"python", "python3", "py"}:
+        return len(arguments) == 1 and arguments[0] in {"--version", "-V", "-VV"}
+    if executable != "node":
+        return False
+    if len(arguments) == 1 and arguments[0] in {"-v", "--version"}:
+        return True
+    if len(arguments) >= 2 and arguments[0] in {"-e", "--eval", "-p", "--print"}:
+        code = " ".join(arguments[1:])
+        return bool(INTERPRETER_STDOUT_PROBE.fullmatch(code.strip()))
+    return False
+
+
+def pre_tool_use_block_reason(reason: str) -> str:
+    return f"PreToolUse blocked; command was not executed: {reason}"
+
+
 def read_only_words(words: list[str]) -> bool:
     if not words:
         return False
@@ -1004,6 +1029,8 @@ def read_only_words(words: list[str]) -> bool:
         return any(item == "-z" or (item.startswith("-") and "z" in item[1:]) for item in words[1:])
     if executable == "curl":
         return curl_read_only(words)
+    if interpreter_read_only(words):
+        return True
     return False
 
 
@@ -1535,7 +1562,7 @@ def main() -> int:
         elif any(not in_scope(file, plan["paths"]) for file in paths) or set(owners.values()) - set(plan["node_ids"]):
             reason = "Tool exceeds the approved plan scope; do not silently expand it."
         if reason:
-            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}, ensure_ascii=False))
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": pre_tool_use_block_reason(reason)}}, ensure_ascii=False))
             return 0
         # Unknown scripts may mutate more than declared paths. Never certify their
         # scope from command text; require an explicit review in the archive.
