@@ -1,5 +1,6 @@
 import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
+import { run as runProcess } from '../.github/scripts/client-protocol.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -141,7 +142,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   let local, cloud, heartbeatOnlyDevice, cloudEventController, cloudEventReader;
   t.after(async () => { cloudEventController?.abort(); await cloudEventReader?.cancel().catch(() => {}); await heartbeatOnlyDevice?.close(); await local?.close(); await cloud?.close(); await fs.rm(directory, { recursive: true, force: true, maxRetries: 5 }); });
   const exec = promisify(execFile);
-  const git = async (...args) => (await exec('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+  const git = async (...args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15_000 })).stdout.trim();
   await git('init', '-b', 'main'); await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.invalid');
   await fs.writeFile(path.join(root, 'README.md'), 'fixture'); await git('add', 'README.md'); await git('commit', '-m', 'fixture');
   const sha = await git('rev-parse', 'HEAD');
@@ -263,9 +264,9 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   creationProbe.mock.restore();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: 's3', event: 'session-start', platform: 'codex', thread_name: 'new-session' }) + '\n');
   const cli = path.resolve('scripts/workbench/cli.mjs');
-  const { stdout } = await exec(process.execPath, [cli, 'map', 'status', '--root', root, '--session', 's3'], { env: process.env, timeout: 15000, windowsHide: true });
+  const { stdout } = await runProcess(process.execPath, [cli, 'map', 'status', '--root', root, '--session', 's3'], { env: process.env, timeout: 120_000 });
   assert.equal(JSON.parse(stdout).error, null);
-  const opened = JSON.parse((await exec(process.execPath, [cli, 'workbench', '--root', root, '--session', 's3'], { env: process.env, timeout: 15000, windowsHide: true })).stdout);
+  const opened = JSON.parse((await runProcess(process.execPath, [cli, 'workbench', '--root', root, '--session', 's3'], { env: process.env, timeout: 120_000 })).stdout);
   assert.equal(opened.url, `${cloud.url}/projects/context-guard?session=s3`);
   assert.equal(opened.cloudBinding.status, 'ready');
   assert.deepEqual((await cloudAccess()).sessions.filter(item => ['s', 's2'].includes(item.id)).map(item => [item.name, item.platform]), [

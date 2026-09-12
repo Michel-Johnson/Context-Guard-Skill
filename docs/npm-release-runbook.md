@@ -4,6 +4,14 @@ This package is delivered through npm. GitHub Releases are not used.
 
 本项目只通过 npm 交付，不使用 GitHub Release。
 
+## Timeout and cleanup policy / 超时与清理
+
+Windows test commands use a verified Python 3 interpreter and the npm CLI via Node, not an unverified Store alias or a bare `npm.cmd` spawn. The Node suite retains its 15-minute total deadline and four-file concurrency; timeout fails the run and terminates only its owned subprocess tree. Multiworktree and Cloud integration CLI commands have a 120-second deadline. Hook plan commands allow 180 seconds because their child Workbench HTTP requests alone allow 40 seconds; a 30-second parent previously interrupted valid requests. The CD rehearsal's outer `npm test` budget is 30 minutes, including security checks and package smoke around the Node suite. `CONTEXT_GUARD_TEST_TRACE=1` prints Hook command timings for diagnosis, without dumping the environment.
+
+测试宿主目录和 Git 用户配置隔离，避免读取个人客户端历史或触发个人配置。清理顺序是停止入口、等待后台任务/文件操作完成、再删除本用例的临时目录；Windows 残余文件锁只做有界重试，失败仍报错。Cloud 的 `close()` 等待已开始的自动发布和 HTTP 处理，Hook fixture 通过官方停止入口解析普通目录及 Git 共享目录。普通非 Git 目录只探测一次，不再启动三个注定无效的 Git 元数据子进程。
+
+单次重跑成功不能证明偶发超时已解决；验收需保留首次失败，重复定向用例、比较串行/并发，再运行完整 `npm test` 和实际 tarball 安装/升级。正在运行其他测试时的耗时属于负载证据，不作为独占环境性能基准。以上不改变 CI/CD 触发条件，也不跳过任何断言或 Required 门禁。
+
 ## Finding CI and CD in Actions / 在 Actions 中区分 CI 与 CD
 
 The Actions sidebar lists **CI | 代码与功能检查** (code and behavior checks) and **CD | npm 发布** (npm delivery) separately. Run titles identify the branch, PR, or version tag instead of repeating the commit message. CI never publishes to npm; CD contains its own package acceptance checks before and after publication.
@@ -18,13 +26,15 @@ Actions 左侧分别显示 **CI | 代码与功能检查** 和 **CD | npm 发布*
 | Open, update, or reopen a PR targeting main / 创建、更新代码或重新打开目标为 main 的 PR | Yes / 运行 | No / 不运行 |
 | Push a version tag such as v0.4.5 / 推送版本标签 | Yes / 运行 | Yes / 运行 |
 
-Tag-triggered CI and CD are separate runs, not a chained CI-to-CD workflow. This naming cleanup preserves the existing triggers and every test. A tag outside the stable `vX.Y.Z` format, a version mismatch, or a commit outside `main` is rejected by CD before publication.
+Tag-triggered CI and CD remain separate runs. Before packaging and again before publication, CD queries the official GitHub Actions API for the same commit's newest matching push run of `ci.yml` (main or the release tag), and requires both the run and its unique `Required` job to succeed. Pending or missing CI waits up to 30 minutes; failure, cancellation, skipped checks, API errors and timeout block publication. A tag outside stable `vX.Y.Z`, a version mismatch or a commit outside `main` is rejected.
 
 The table reflects `ci.yml`: branch pushes are limited to `main`; updating a PR to `main` triggers its PR run. Other workflows have their own triggers. Historical branch-push examples below do not describe today's ordinary feature-branch trigger.
 
 上表以 `ci.yml` 为准：分支 push 仅匹配 `main`；更新目标为 `main` 的 PR 触发 PR 检查。其他 workflow 单独判断。下文历史分支推送案例不代表当前普通功能分支的触发配置。
 
-标签触发的 CI 和 CD 是独立运行，不是“本次 CI 完成后再启动 CD”。本次命名整理保留原触发规则和全部测试。CD 会在发布前拒绝非稳定 `vX.Y.Z` 标签、版本不一致或不属于 `main` 的提交。
+标签触发的 CI 和 CD 仍分别显示，但 CD 在打包前和发布前都会查询同一提交对应的 `ci.yml` 最新匹配 push 运行（main 或当前发布标签），要求整个运行及唯一的 `Required` job 均成功。CI 未出现或未结束时最多等待 30 分钟；失败、取消、跳过、API 错误或超时均阻止发布。非稳定标签、版本不一致和不属于 main 的提交也会被拒绝。API 契约见 [GitHub workflow runs](https://docs.github.com/en/rest/actions/workflow-runs) 和 [workflow jobs](https://docs.github.com/en/rest/actions/workflow-jobs)。
+
+安装验收不仅检查文件，还从 npm/npx 安装后的 Skill 加载 Workbench，在隔离项目和临时端口启动，检查健康接口、页面与静态资源内容、授权状态读取和未授权拒绝，结束后关闭服务。这属于包运行验收，不代替真实浏览器交互、AI 客户端对话或生产 Cloud 部署验收；npm 发布不会自动更新生产 Cloud。
 
 - **CI 1**: functionality and package-content checks; **CI 2**: parallel Ubuntu/macOS/Windows functionality and installation checks; **Required**: aggregate the CI results for the merge gate. The name `Required` stays unchanged because main branch protection uses it.
 - **CD 1**: validate release identity and package; **CD 2**: parallel Ubuntu/macOS/Windows package-install acceptance; **CD 3**: publish only after all acceptance jobs pass; **CD 4**: download and verify the published package.

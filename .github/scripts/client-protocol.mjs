@@ -34,21 +34,21 @@ export function isolatedEnvironment(root, source = process.env) {
     npm_config_cache: path.join(root, "npm-cache") };
 }
 
-export function run(command, args, { cwd, env, timeout = 60_000, input = "" } = {}) {
+export function run(command, args, { cwd, env, timeout = 60_000, input = "", allowFailure = false, inheritOutput = false } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, windowsHide: true, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "", stderr = "", failure;
     const stop = (message) => { failure ||= new Error(message); terminateTree(child, env); };
     const timer = setTimeout(() => stop(`Process timed out after ${timeout} ms`), timeout);
-    child.stdout.setEncoding("utf8").on("data", (data) => { stdout += data; if (stdout.length + stderr.length > 8_000_000) stop("Process output limit exceeded"); });
-    child.stderr.setEncoding("utf8").on("data", (data) => { stderr += data; if (stdout.length + stderr.length > 8_000_000) stop("Process output limit exceeded"); });
+    child.stdout.setEncoding("utf8").on("data", (data) => { if (inheritOutput) process.stdout.write(data); stdout += data; if (stdout.length + stderr.length > 8_000_000) stop("Process output limit exceeded"); });
+    child.stderr.setEncoding("utf8").on("data", (data) => { if (inheritOutput) process.stderr.write(data); stderr += data; if (stdout.length + stderr.length > 8_000_000) stop("Process output limit exceeded"); });
     child.on("error", (error) => { failure = error; });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (failure || code !== 0) reject(Object.assign(failure || new Error(`Process exited with ${code}`), { stdout, stderr }));
-      else resolve({ stdout, stderr });
+      if (failure || (code !== 0 && !allowFailure)) reject(Object.assign(failure || new Error(`Process exited with ${code}`), { stdout, stderr, code }));
+      else resolve({ stdout, stderr, code });
     });
   });
 }

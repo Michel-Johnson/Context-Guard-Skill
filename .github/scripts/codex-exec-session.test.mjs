@@ -7,6 +7,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { Access, recordHostAttestedSession } from '../../scripts/workbench/access.mjs';
 import { startServer } from '../../scripts/workbench/server.mjs';
+import { pythonCommand } from './python-command.mjs';
 
 const cli = path.resolve('bin/context-guard-skill.js');
 
@@ -17,13 +18,13 @@ async function seedCodexThread({ codexHome, sessionId, cwd, name = 'exec-thread'
   const rollout = path.join(codexHome, 'rollout.jsonl');
   await fs.mkdir(path.dirname(database), { recursive: true });
   await fs.writeFile(rollout, `${JSON.stringify({ timestamp: '2026-01-01T00:00:00Z', type: 'event_msg', payload: { type: 'task_started' } })}\n`);
-  execFileSync('python3', ['-c', [
+  execFileSync(pythonCommand(), ['-c', [
     'import sqlite3, sys',
     'db = sqlite3.connect(sys.argv[1])',
     "db.execute('CREATE TABLE threads (id TEXT, name TEXT, title TEXT, created_at INTEGER, updated_at INTEGER, rollout_path TEXT, cwd TEXT, thread_source TEXT, archived INTEGER)')",
     "db.execute('INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (sys.argv[2], sys.argv[5], sys.argv[5], 1, 2, sys.argv[3], sys.argv[4], 'user', 0))",
     'db.commit(); db.close()',
-  ].join(';'), database, sessionId, rollout, cwd, name], { encoding: 'utf8', windowsHide: true });
+  ].join(';'), database, sessionId, rollout, cwd, name], { encoding: 'utf8', windowsHide: true, timeout: 10_000 });
   return { database, rollout };
 }
 

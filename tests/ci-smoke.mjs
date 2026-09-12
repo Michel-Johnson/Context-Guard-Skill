@@ -10,11 +10,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { checkInstallBoundaries } from "../.github/scripts/install-boundaries.mjs";
+import { npmInvocation } from "../.github/scripts/npm-command.mjs";
+import { pythonCommand as findPython } from "../.github/scripts/python-command.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "context-guard-ci-"));
-const npmCommand = process.env.npm_execpath ? process.execPath : "npm";
-const npmPrefix = process.env.npm_execpath ? [process.env.npm_execpath] : [];
+const { command: npmCommand, args: npmPrefix } = npmInvocation();
 let workbenchProject = null;
 let passed = false;
 
@@ -24,7 +25,8 @@ function run(command, args, options = {}) {
     env: { ...process.env, CONTEXT_GUARD_NAMED_WORKBENCH: '0', ...options.env },
     input: options.input,
     encoding: "utf8",
-    windowsHide: true
+    windowsHide: true,
+    timeout: options.timeout || 180_000
   });
   if (result.error || result.status !== 0) {
     throw new Error([
@@ -35,14 +37,6 @@ function run(command, args, options = {}) {
     ].filter(Boolean).join("\n"));
   }
   return result;
-}
-
-function findPython() {
-  for (const candidate of process.platform === "win32" ? ["python", "python3"] : ["python3", "python"]) {
-    const result = spawnSync(candidate, ["--version"], { encoding: "utf8", windowsHide: true });
-    if (!result.error && result.status === 0) return candidate;
-  }
-  throw new Error("Python 3 is required for Context Guard CI.");
 }
 
 function readJson(file) {
@@ -473,16 +467,17 @@ try {
   if (workbenchProject) {
     const packageDirectory = path.join(temporaryRoot, "consumer", "node_modules", "@michelj", "context-guard");
     const contextScript = path.join(packageDirectory, "scripts", "context_guard.py");
-    const python = findPython();
-    spawnSync(python, [contextScript, "workbench", "--root", workbenchProject, "--stop"], {
-      encoding: "utf8",
-      windowsHide: true
-    });
+    try { run(findPython(), [contextScript, "workbench", "--root", workbenchProject, "--stop"], { timeout: 60_000 }); }
+    catch {
+      passed = false;
+      process.exitCode = 1;
+      console.error('CI fixture shutdown failed; preserving its directory for diagnosis.');
+    }
   }
   const resolvedTemporaryRoot = path.resolve(temporaryRoot);
   const resolvedSystemTemp = path.resolve(os.tmpdir());
   if (passed && resolvedTemporaryRoot.startsWith(`${resolvedSystemTemp}${path.sep}`)) {
-    fs.rmSync(resolvedTemporaryRoot, { recursive: true, force: true });
+    fs.rmSync(resolvedTemporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } else {
     console.error(`Preserved failed CI artifacts: ${resolvedTemporaryRoot}`);
   }
