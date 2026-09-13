@@ -66,7 +66,7 @@ const I18N = {
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
-    attach:"附", linkRepo:"连接仓库", linkRepoTitle:"选带 SKILL.md 的仓库根，改图可以写回 map.json", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
+    attach:"附", attachments:"附件", linkRepo:"连接仓库", linkRepoTitle:"选带 SKILL.md 的仓库根，改图可以写回 map.json", repoWrote:"已写入 map.json", repoWriteFail:"写回失败，请选带 SKILL.md 的仓库根并允许保存", repoNotRoot:"选的不是仓库根（要有 SKILL.md 的那一层）", add:"添加", cancel:"取消",
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
@@ -168,7 +168,7 @@ const I18N = {
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
-    attach:"File", linkRepo:"Link repo", linkRepoTitle:"Pick the repo root with SKILL.md so edits can write map.json", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
+    attach:"File", attachments:"Attachments", linkRepo:"Link repo", linkRepoTitle:"Pick the repo root with SKILL.md so edits can write map.json", repoWrote:"Wrote map.json", repoWriteFail:"Write failed. Pick the repo root that contains SKILL.md and allow saving.", repoNotRoot:"That folder is not the repo root (need SKILL.md at the top)", add:"Add", cancel:"Cancel",
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
@@ -782,20 +782,18 @@ async function takeAttach(node, kind, key, e){
   return false;
 }
 async function pickLocalFile(){
-  try{
-    if(window.showOpenFilePicker){
-      const [h] = await window.showOpenFilePicker({multiple:false});
-      return await h.getFile();
-    }
-  }catch(e){ return null; }
   return new Promise(resolve=>{
     const inp = document.createElement("input");
     inp.type = "file";
-    inp.onchange = ()=>resolve((inp.files && inp.files[0]) || null);
+    inp.hidden = true;
+    const finish = file=>{ inp.remove(); resolve(file); };
+    inp.onchange = ()=>finish((inp.files && inp.files[0]) || null);
+    inp.oncancel = ()=>finish(null);
+    document.body.append(inp);
     inp.click();
   });
 }
-function attachHtml(kind, key, owner, readonly){
+function attachHtml(kind, key, owner, readonly, showAdd=true){
   const files = fileList(owner);
   const fk = escAttr(kind), fi = escAttr(String(key));
   const chips = files.map((f,i)=>{
@@ -815,6 +813,7 @@ function attachHtml(kind, key, owner, readonly){
     return `<span class="file-chip" title="${p}">${img}<button type="button" class="file-name quiet" data-open-file="${p}" data-file-name="${escAttr(f.name || fileBase(f.path))}">${name}</button>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
+  if(!showAdd) return files.length ? `<div class="files">${chips}</div>` : "";
   const activeJob=pendingWrite?.target && pendingWrite.target.nodeId===selectedId && pendingWrite.target.kind===kind && (kind==="node" || (kind==="bug" ? owner.id===pendingWrite.target.ownerId : owner._attachmentId===pendingWrite.target.ownerId));
   if(!files.length && !isAttaching(kind, key) && !activeJob) return "";
   const add = activeJob
@@ -3655,8 +3654,11 @@ function renderDetail(){
     : (workSt==="success"||workSt==="failed"||workSt==="untested")
       ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
-  const filesHtml = fileList(node).length
-    ? `<div class="files-row">${attachHtml("node", node.id, node)}</div>` : "";
+  const nodeFiles = fileList(node);
+  const filesHtml = `<section class="sec-block" data-fold="files" data-drop-files data-fk="node" data-fi="${escAttr(node.id)}">
+      <button type="button" class="sec-add" data-act="ask-file" data-fk="node" data-fi="${escAttr(node.id)}" title="${escAttr(t("attachTitle"))}">${t("attachments")}${nodeFiles.length?" "+nodeFiles.length:""} ＋</button>
+      ${nodeFiles.length?`<div class="files-row">${attachHtml("node", node.id, node, false, false)}</div>`:""}
+    </section>`;
   const trashBtn = canDelete && !composing && deleteAskId!==node.id
     ? `<button type="button" class="trash" data-act="delete" title="${t("delete")}" aria-label="${t("delete")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></button>`
     : "";
