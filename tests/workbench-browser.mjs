@@ -698,7 +698,7 @@ try {
   await page.locator('#cg-sync-file').setInputFiles(imported); await page.waitForSelector('dialog[open]');
   assert.equal(await page.locator('dialog input[type="checkbox"]').count(), 0); await page.getByRole('button', { name: '取消', exact: true }).click(); recordCheck('migration-preview-and-idempotence');
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
-  // First attachments remain reachable without an always-visible attachment button.
+  // Every editable node exposes a first attachment action; item-level actions remain contextual.
   stage = 'attachment-editing';
   const attachmentFixture = await read();
   attachmentFixture.root.children[0].memories = [{ text: '附件回归记忆', state: 'dirty', files: [] }];
@@ -713,11 +713,13 @@ try {
       await fold.locator(':scope > summary').click();
     }
   }
-  assert.equal(await page.locator('#detail [data-act="ask-file"], #detail .files').count(), 0);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="node"]').count(), 1);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="mem"], #detail .files').count(), 0);
   const transfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.setData('text/plain', 'docs/attachment.txt'); return data; });
   await page.locator('#detail [data-ed="mem"]').dispatchEvent('drop', { dataTransfer: transfer });
   await until(async () => (await read()).root.children[0].memories[0].files.length === 1); await synchronized();
-  assert.equal(await page.locator('#detail [data-act="ask-file"]').count(), 1);
+  assert.equal(await page.locator('#detail [data-act="ask-file"]').count(), 2);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="mem"]').count(), 1);
   assert.deepEqual((await read()).root.children[0].ideas[0].files, []);
   const uploadFixture = path.join(sandbox, 'uploaded-through-node.txt');
   await fs.writeFile(uploadFixture, 'Node-managed attachment');
@@ -726,7 +728,7 @@ try {
     Object.defineProperty(window, 'showOpenFilePicker', { configurable: true, value: undefined });
   });
   const chooserPromise = page.waitForEvent('filechooser');
-  await page.locator('#detail [data-act="ask-file"]').click();
+  await page.locator('#detail [data-act="ask-file"][data-fk="mem"]').click();
   const chooser = await chooserPromise;
   let releaseUploadReceipt;
   const uploadReceiptGate = new Promise(resolve => { releaseUploadReceipt=resolve; });
@@ -749,7 +751,8 @@ try {
   assert.equal(await page.evaluate(()=>pendingWrite===null), true, 'removing the uploaded reference cancels its pending confirmation');
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].memories[0].files.length === 0); await synchronized();
-  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"][data-fk="mem"], #detail .files').count()) === 0);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="node"]').count(), 1);
   await page.locator('.node[data-id="N2"]').click(); await page.locator('.node[data-id="N1"]').click();
   await page.locator('#detail [data-ed="idea"]').evaluate(el => {
     const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', 'docs/attachment.txt');
@@ -760,7 +763,8 @@ try {
   assert.deepEqual((await read()).root.children.find(x => x.id === 'N2').ideas, []);
   await page.locator('#detail [data-act="rm-file"]').click();
   await until(async () => (await read()).root.children[0].ideas[0].files.length === 0); await synchronized();
-  await until(async () => (await page.locator('#detail [data-act="ask-file"], #detail .files').count()) === 0);
+  await until(async () => (await page.locator('#detail [data-act="ask-file"][data-fk="idea"], #detail .files').count()) === 0);
+  assert.equal(await page.locator('#detail [data-act="ask-file"][data-fk="node"]').count(), 1);
   await transfer.dispose(); recordCheck('attachments-only-after-first-file');
   stage = 'delete-reparent';
   const createdChild = (await read()).root.children.find(x => x.id === 'N2')?.children.find(x => x.title === '人类新增子节点');
