@@ -130,6 +130,31 @@ test('IF-025: outbox recovery preserves Session order and isolates a failed Sess
   assert.equal(results.some(r => r.id === 'blocked-second'), false);
 });
 
+test('Confirmed rejection resolves an uncertain write, preserves its receipt and releases the Session lane', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-outbox-rejection-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let reply = 'unknown'; const calls = [];
+  const options = { directory, origin: 'https://example.test', transport: async (_origin, _credential, message, settings) => {
+    if (message.type === 'auth.open') { settings.receiveCredential('test-only'); return {}; }
+    calls.push(message.id);
+    if (message.id === 'first') throw Object.assign(new Error(reply), {
+      code: reply === 'unknown' ? 'UNAVAILABLE' : 'CONFLICT', confirmedRejection: reply === 'rejected',
+    });
+    return { version: message.id };
+  } };
+  const device = new DeviceConnection(options);
+  await device.connect({ v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'device' } });
+  const make = id => ({ v: 2, id, type: 'object.put', session: { id: 's', generation: 1 }, payload: { kind: 'plan', ref: id, baseVersion: '', content: {} } });
+  await assert.rejects(device.send(make('first')), { code: 'UNAVAILABLE' });
+  await assert.rejects(device.send(make('second')), { code: 'UNAVAILABLE' });
+  reply = 'rejected';
+  await assert.rejects(new DeviceConnection(options).send(make('first')), { code: 'CONFLICT' });
+  const restarted = new DeviceConnection(options);
+  await assert.rejects(restarted.send(make('first')), { code: 'CONFLICT' });
+  assert.deepEqual(await restarted.send(make('second')), { version: 'second' });
+  assert.deepEqual(calls, ['first', 'first', 'second'], 'old rejection replays without another server write');
+});
+
 test('IF-035: a fresh write cannot overtake a prior uncertain write in the same Session', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-outbox-fence-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

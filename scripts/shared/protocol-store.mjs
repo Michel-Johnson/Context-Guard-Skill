@@ -15,6 +15,19 @@ const requireIdentity = p => {
   if (!p || ['repositoryId', 'deviceId', 'agentId'].some(k => typeof p[k] !== 'string' || !p[k])) fail('UNAUTHORIZED', 'Authenticated identity required');
 };
 const bindingKey = (p, id) => key([p.repositoryId, id]);
+export function hasCiReceiver(state, principal, session, config = {}) {
+  const executor = state.bindings[bindingKey(principal, session.id)];
+  if (!executor || executor.generation !== session.generation) return false;
+  const creation = Object.values(state.sessionCreations || {}).find(item =>
+    item.repositoryId === principal.repositoryId && item.deviceId === executor.deviceId &&
+    item.result?.sessionId === session.id && item.result.state === 'registered' && item.result.generation === session.generation);
+  return Object.entries(config.ciReceivers || {}).filter(([id, receiver]) => {
+    if (receiver.executorSessionId !== session.id && !(config.sessionTemplates?.includes(receiver.executorSessionId) &&
+        creation?.result.templateSessionId === receiver.executorSessionId)) return false;
+    const ci = state.bindings[bindingKey(principal, id)];
+    return ci && ci.deviceId === executor.deviceId && ci.worktreeId === receiver.worktreeId && ci.worktreeId !== executor.worktreeId;
+  }).length === 1;
+}
 const requireBinding = (state, p, session) => {
   const binding = state.bindings[bindingKey(p, session.id)];
   const delegated = binding && ['coordinator', 'ci'].includes(p.role) && p.bindings?.[session.id] === binding.worktreeId;
@@ -126,6 +139,19 @@ export class ProtocolStore extends EventEmitter {
       if (input.type === 'task.rework' && current?.taskId === input.payload.taskId) { current.plan = null; current.approval = null; }
       emit(input); return { outcome: 'applied' };
     });
+  }
+  async resumeControlApplied(principal, message) {
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the receiving device can inspect delivery receipts');
+    if (message.type !== 'task.control' || message.payload.action !== 'resume') return false;
+    await this.authorizeSession(principal, message.session);
+    return this.transaction(state => {
+      requireBinding(state, principal, message.session);
+      // Reuse the durable downlink journal, including receipts written before
+      // this guard existed. Do not require a second index or a data migration.
+      return queueFor(state, principal, message.session).items.some(({ message: received }) =>
+        received.type === 'task.report' && received.payload.stage === 'resumed' &&
+        received.payload.taskId === message.payload.taskId && received.payload.data.controlId === message.id);
+    }, { readOnly: true });
   }
   async requestSessionCreation(principal, input) {
     requireIdentity(principal);

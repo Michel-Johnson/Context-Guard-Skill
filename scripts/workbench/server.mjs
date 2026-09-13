@@ -257,6 +257,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       apply: async message => {
         if (!access.binding(message.session.id)) protocolFail('FORBIDDEN', 'Session registration was revoked');
         const result = (await protocolStore.receiveNotification(backendPrincipal, message)).data;
+        // A confirmed resumed report is stronger than a lost native acceptance
+        // receipt. Replayed controls must not start another model turn.
+        if (await protocolStore.resumeControlApplied(backendPrincipal, message)) return { ...result, deliveryState: 'stored', reason: 'Resume control was already applied' };
         if (executionNotifications.has(message.type) || message.type === 'review.result' && message.payload.kind === 'plan') {
           const session = (await access.sessionRegistry()).find(item => item.id === message.session.id);
           if (!session) protocolFail('FORBIDDEN', 'Host Session is unavailable');

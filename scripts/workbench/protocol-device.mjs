@@ -255,7 +255,9 @@ export class DeviceConnection {
         await save({ ...current, state: 'done', result });
         return result;
       } catch (error) {
-        if (error.confirmedRejection && !current.uncertain) await save({ ...current, state: 'rejected', error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } });
+        // A same-ID retry returns the server's atomic receipt. A confirmed
+        // rejection resolves earlier transport uncertainty without claiming success.
+        if (error.confirmedRejection) await save({ ...current, state: 'rejected', error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } });
         else if (!current.uncertain) await withFileLock(`${file}.lock`, () => atomicWrite(file, encode({ ...current, uncertain: true })));
         throw error;
       }

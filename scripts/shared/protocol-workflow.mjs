@@ -122,7 +122,9 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     } else if (p.stage === 'interrupted') {
       if (task.interrupted && Date.parse(p.data.occurredAt) <= Date.parse(task.interrupted.occurredAt)) fail('CONFLICT', 'Interruption observation did not advance');
       task.interrupted = structuredClone(p.data);
-      if (task.stage !== 'interrupted') task.previousStage = task.stage;
+      // A second interruption during recovery must retain the business stage,
+      // otherwise a resumed receipt returns to "resuming" forever.
+      if (!['interrupted', 'resuming'].includes(task.stage)) task.previousStage = task.stage;
       task.stage = 'interrupted';
     } else if (p.stage === 'handoff') {
       at('executing');
@@ -135,7 +137,12 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     } else {
       if (!task.control || p.data.controlId !== task.control.id) fail('CONFLICT', 'Control receipt differs');
       if (p.stage === 'cancelled') { at('cancelling'); task.stage = 'cancelled'; }
-      else if (p.stage === 'resumed') { at('resuming'); task.stage = task.previousStage; }
+      else if (p.stage === 'resumed') {
+        // A retried control can arrive in another native turn with a new request
+        // ID. Acknowledge the same applied control without rewinding the task.
+        if (task.control.resumed) return { taskId: task.id, version: task.version, stage: task.stage };
+        at('resuming'); task.stage = task.previousStage; task.control.resumed = true;
+      }
       else {
         at('closing');
         if (!await policy.verifyClose?.(principal, task, p.data)) fail('FORBIDDEN', 'Close receipt is not verified');
@@ -149,6 +156,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   }
   if (message.type === 'ci.request') {
     role('coordinator', 'ci'); at('awaiting-ci');
+    if (policy.verifyCiReceiver && !await policy.verifyCiReceiver(state, principal, session)) fail('UNAVAILABLE', 'Configure one matching independent CI receiver before requesting tests', { reason: 'CI_RECEIVER_REQUIRED' });
     if (p.sourceSha !== task.sourceSha || p.ciTodoRef !== task.handoff.ciTodoRef || canonical(p.unitTestRefs) !== canonical(task.handoff.unitTestRefs)) fail('CONFLICT', 'CI request differs from the handoff');
     const references = Object.fromEntries([p.ciTodoRef, ...p.unitTestRefs].map(ref => [ref, task.references[ref]]));
     if (p.references && canonical(p.references) !== canonical(references)) fail('CONFLICT', 'CI object versions differ from the handoff');

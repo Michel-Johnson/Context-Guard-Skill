@@ -3,9 +3,86 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+import { ProtocolStore, hasCiReceiver } from '../scripts/shared/protocol-store.mjs';
+import { hash } from '../scripts/shared/io.mjs';
+import { canonical } from '../scripts/shared/protocol.mjs';
+import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 import { verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { reduceWorkflow } from '../scripts/shared/protocol-workflow.mjs';
+
+test('CI routing requires one independently bound receiver and keeps missing routes awaiting CI', async () => {
+  const principal = { repositoryId: 'repo', deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator' };
+  const session = { id: 'developer', generation: 1 };
+  const bindingKey = id => hash(canonical(['repo', id]));
+  const state = { bindings: {
+    [bindingKey('developer')]: { generation: 1, deviceId: 'local', worktreeId: 'dev' },
+    [bindingKey('ci')]: { generation: 1, deviceId: 'local', worktreeId: 'ci-tree' },
+  }, tasks: {}, objects: {} };
+  const config = { ciReceivers: { ci: { executorSessionId: 'developer', worktreeId: 'ci-tree' } } };
+  assert.equal(hasCiReceiver(state, principal, session), false);
+  assert.equal(hasCiReceiver(state, principal, session, config), true);
+  assert.equal(hasCiReceiver(state, principal, { ...session, generation: 2 }, config), false);
+  const wrong = structuredClone(config); wrong.ciReceivers.ci.executorSessionId = 'another-developer';
+  assert.equal(hasCiReceiver(state, principal, session, wrong), false);
+  state.bindings[bindingKey('ci')].deviceId = 'other-device';
+  assert.equal(hasCiReceiver(state, principal, session, config), false);
+  state.bindings[bindingKey('ci')].deviceId = 'local';
+  state.bindings[bindingKey('ci')].worktreeId = 'dev';
+  assert.equal(hasCiReceiver(state, principal, session, { ciReceivers: { ci: { executorSessionId: 'developer', worktreeId: 'dev' } } }), false);
+  state.bindings[bindingKey('ci')].worktreeId = 'ci-tree';
+  state.sessionCreations = { creation: { repositoryId: 'repo', deviceId: 'local', result: {
+    sessionId: 'developer', generation: 1, state: 'registered', templateSessionId: 'template',
+  } } };
+  const inherited = { sessionTemplates: ['template'], ciReceivers: { ci: { executorSessionId: 'template', worktreeId: 'ci-tree' } } };
+  assert.equal(hasCiReceiver(state, principal, session, inherited), true);
+  assert.equal(hasCiReceiver(state, principal, session, { ...inherited, sessionTemplates: [] }), false);
+  const task = { id: 'task', repositoryId: 'repo', session, stage: 'awaiting-ci', version: 'v1' };
+  state.tasks[scopedObjectKey(principal, session, 'task:task')] = task;
+  const emitted = [];
+  await assert.rejects(reduceWorkflow(state, principal, { v: 2, id: 'request', type: 'ci.request', session,
+    payload: { taskId: 'task' } }, message => emitted.push(message), { verifyCiReceiver: () => false }),
+  error => error.code === 'UNAVAILABLE' && error.details.reason === 'CI_RECEIVER_REQUIRED');
+  assert.equal(task.stage, 'awaiting-ci');
+  assert.equal(task.version, 'v1');
+  assert.deepEqual(emitted, []);
+});
+
+for (const initialStage of ['assigned', 'executing']) test(`Repeated interruption during resume preserves ${initialStage}`, async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-resume-stage-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let store = new ProtocolStore(directory), count = 0;
+  const session = { id: 'resume-session', generation: 1 };
+  const device = { repositoryId: 'repo', deviceId: 'local', agentId: 'device', role: 'device' };
+  const human = { ...device, agentId: 'human', role: 'human' };
+  const coordinator = { ...device, agentId: 'coordinator', role: 'coordinator', bindings: { [session.id]: 'wt' } };
+  const send = (principal, type, payload) => store.handle(principal, { v: 2, id: `resume-test-${++count}`, type, session, payload });
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'wt', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  await store.submitApprovedTask(human, { operationId: 'resume-task', session }, async () => ({
+    taskId: 'resume-task', text: 'read', nodeIds: ['node'], mainVersion: 'main', mode: 'session',
+  }), { verifyRouting: () => true });
+  const current = () => store.transaction(state => Object.values(state.tasks)[0], { readOnly: true });
+  if (initialStage === 'executing') await send(device, 'task.report', { taskId: 'resume-task', stage: 'started', data: { deliveryId: (await current()).assignmentNotification.id } });
+  let oldControlId;
+  for (let i = 0; i < 2; i++) {
+    await send(device, 'task.report', { taskId: 'resume-task', stage: 'interrupted', data: { reason: 'timeout', occurredAt: new Date(1700000000000 + i * 1000).toISOString() } });
+    assert.equal((await current()).previousStage, initialStage);
+    await send(coordinator, 'task.control', { taskId: 'resume-task', action: 'resume', expectedVersion: (await current()).version, data: { reason: 'continue' } });
+    if (i === 0) oldControlId = (await current()).control.id;
+    store = new ProtocolStore(directory);
+  }
+  await assert.rejects(send(device, 'task.report', { taskId: 'resume-task', stage: 'resumed', data: { controlId: oldControlId } }), { code: 'CONFLICT' });
+  assert.equal((await current()).stage, 'resuming');
+  await send(device, 'task.report', { taskId: 'resume-task', stage: 'resumed', data: { controlId: (await current()).control.id } });
+  assert.equal((await current()).stage, initialStage);
+  const resumed = await current();
+  store = new ProtocolStore(directory);
+  const replay = await send(device, 'task.report', { taskId: 'resume-task', stage: 'resumed', data: { controlId: resumed.control.id } });
+  assert.equal(replay.data.version, resumed.version, 'same applied control does not change the business state');
+  assert.equal((await current()).stage, initialStage);
+  await assert.rejects(send(device, 'task.report', { taskId: 'resume-task', stage: 'resumed', data: { controlId: oldControlId } }), { code: 'CONFLICT' });
+});
 
 test('four approved Session tasks finish in durable FIFO order across success, failure and cancellation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-session-fifo-'));

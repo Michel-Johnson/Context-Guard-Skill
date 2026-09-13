@@ -10,7 +10,7 @@ import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPubli
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
-import { ProtocolStore } from '../shared/protocol-store.mjs';
+import { ProtocolStore, hasCiReceiver } from '../shared/protocol-store.mjs';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-review.mjs';
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
@@ -388,6 +388,13 @@ export async function startCloudServer({
     return message.payload.nodeIds.every(id => readable.includes(id));
   };
   const interfaceWorkflow = {
+    verifyCiReceiver: (state, principal, session) => {
+      // An authenticated CI identity is itself the receiver; session authority
+      // has already been checked by ProtocolStore before reaching the reducer.
+      if (principal.role === 'ci') return true;
+      const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === principal.repositoryId);
+      return hasCiReceiver(state, principal, session, configuredMemory?.projects?.[repository?.projectId]?.coordinator);
+    },
     verifyRouting: verifyInterfaceRouting,
     verifyCompletion: async (identity, task, receipts) => {
       const repository = interfaceConfig?.repositories?.find(item => item.repositoryId === identity.repositoryId);
