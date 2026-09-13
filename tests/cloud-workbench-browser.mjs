@@ -585,26 +585,28 @@ try {
   const attachmentPage = await context.newPage();
   await attachmentPage.goto(`${service.url}/projects/context-guard?session=attachment-session`);
   await attachmentPage.locator('.node[data-id="T0"]').click();
-  if(await attachmentPage.locator('details[data-fold="mem"]').getAttribute('open') === null) await attachmentPage.locator('details[data-fold="mem"] > summary').click();
-  const dropTarget = attachmentPage.locator('[data-drop-files][data-fk="mem"]').first();
-  await dropTarget.waitFor();
-  const transfer = await attachmentPage.evaluateHandle(() => {
-    const data = new DataTransfer(); data.items.add(new File(['%PDF-1.4\nSynthetic browser fixture\n%%EOF'], 'browser-fixture.pdf', { type: 'application/pdf' })); return data;
+  const attachmentButton = attachmentPage.getByRole('button', { name: '附件 ＋', exact: true });
+  await attachmentButton.waitFor();
+  const chooser = attachmentPage.waitForEvent('filechooser');
+  await attachmentButton.click();
+  await (await chooser).setFiles({
+    name: 'browser-fixture.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nSynthetic browser fixture\n%%EOF'),
   });
-  await dropTarget.dispatchEvent('drop', { dataTransfer: transfer });
   const quarkLink = attachmentPage.getByRole('link', { name: 'browser-fixture.pdf', exact: true });
   await quarkLink.waitFor();
   assert.equal(await quarkLink.getAttribute('href'), 'https://pan.quark.cn/s/browserfixture');
   assert.match(await attachmentPage.locator('.file-chip').first().textContent(), /Ab12/);
+  assert.equal(await attachmentPage.getByRole('button', { name: '附件 1 ＋', exact: true }).count(), 1);
   await attachmentPage.reload();
   await attachmentPage.locator('.node[data-id="T0"]').click();
-  if(await attachmentPage.locator('details[data-fold="mem"]').getAttribute('open') === null) await attachmentPage.locator('details[data-fold="mem"] > summary').click();
   await quarkLink.waitFor();
   await attachmentPage.screenshot({ path: path.join(output, 'quark-desktop.png'), fullPage: true });
   await attachmentPage.setViewportSize({ width: 390, height: 844 });
   await attachmentPage.screenshot({ path: path.join(output, 'quark-mobile.png'), fullPage: true });
   await attachmentPage.close();
-  record('Cloud attachment drop persists a protected Quark link and survives refresh');
+  record('Visible Cloud attachment picker uploads a PDF, persists a protected Quark link and survives refresh');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
