@@ -670,7 +670,7 @@ async function saveBlobToOwner(node, kind, key, blob, fileName){
     let target;
     try { target=api.attachmentTarget(current,kind,key,workbenchSync.config.root); }
     catch(e){ workbenchSync.setStatus(workbenchSync.status,e.message); return false; }
-    const job={id:crypto.randomUUID(),target,blob,name,cancelled:false};
+    const job={id:crypto.randomUUID(),target,blob,name,cancelled:false,viewId:workbenchSync.viewId};
     pendingWrite=job; attaching={kind,key,nodeId:node.id,ownerId:target.ownerId}; attachDraft="";
     renderAll();
     return resumeAttachment(job);
@@ -694,10 +694,18 @@ async function resumeAttachment(job){
   job.running=true; job.error=""; job.controller=new AbortController();
   try{
     const api=attachmentApi();
-    const valid=()=>!job.cancelled && pendingWrite===job && workbenchSync?.config?.root===job.target.root && api.attachmentOwner(data,job.target);
+    const valid=()=>!job.cancelled && pendingWrite===job && workbenchSync?.config?.root===job.target.root && workbenchSync.viewId===job.viewId && api.attachmentOwner(data,job.target);
     job.isValid=()=>!!valid();
     if(!valid()) throw new Error("附件目标或项目已改变，请取消后重新添加");
-    if(!job.saved){ job.stage="文件保存中"; renderAll(); job.saved=await api.uploadAttachment(workbenchSync.config,job); }
+    if(!job.saved){
+      job.stage="文件保存中"; renderAll();
+      if(String(workbenchSync.config.root).startsWith("cloud:")) await workbenchSync.flush();
+      job.saved=await api.uploadAttachment(workbenchSync.config,job);
+    }
+    if(job.saved.serverManaged){
+      if(valid()){ pendingWrite=null; attaching=null; attachDraft=""; renderAll(); }
+      return true;
+    }
     const owner=valid();
     if(!owner) throw new Error("文件已保存，但原条目已不存在；未挂到其他条目");
     if(!fileList(owner).some(file=>file.path===job.saved.path)) owner.files.push({path:job.saved.path,name:job.name});
@@ -793,6 +801,13 @@ function attachHtml(kind, key, owner, readonly){
   const chips = files.map((f,i)=>{
     const p = escAttr(f.path);
     const name = esc(f.name || fileBase(f.path));
+    if(f.provider==="quark"){
+      const ready=f.status==="ready" && /^https:\/\/pan\.quark\.cn\/s\/[a-zA-Z0-9]+$/.test(f.path);
+      const label=ready?`<a class="file-name quiet" href="${p}" target="_blank" rel="noopener noreferrer">${name}</a><span>提取码：${esc(f.passcode||"")}</span>`
+        : `<span class="file-name">${name}</span><span role="status">${esc(f.error || "转存中")}</span>${!readonly&&f.retryable?`<button type="button" data-quark-retry="${escAttr(f.attachmentId)}">重试</button>`:""}`;
+      const remove=readonly?"":`<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
+      return `<span class="file-chip">${label}${remove}</span>`;
+    }
     const img = isImagePath(f.path)
       ? `<img class="file-thumb" data-repo-src="${p}" alt="${name}" title="${p}">`
       : "";
@@ -814,6 +829,14 @@ function attachHtml(kind, key, owner, readonly){
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
+  el.querySelectorAll('[data-quark-retry]').forEach(button=>{
+    button.onclick=async()=>{
+      button.disabled=true;
+      try { await workbenchSync.call(`/api/attachments/${encodeURIComponent(button.dataset.quarkRetry)}/retry`,{}); }
+      catch(error){ workbenchSync.setStatus(workbenchSync.status,error.message); }
+      finally { button.disabled=false; }
+    };
+  });
   el.querySelectorAll('[data-open-file]').forEach(b=>{
     b.onclick=async()=>{
       const blob=await readRepoFile(b.dataset.openFile);

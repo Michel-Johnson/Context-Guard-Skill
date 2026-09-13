@@ -18,6 +18,8 @@ import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
+import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
+import { createQuarkProvider } from './quark-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -322,6 +324,7 @@ export async function startCloudServer({
   memoryConfig,
   protocolConfig,
   coordinatorModelFactory = config => new CoordinatorModel(config),
+  attachmentProvider,
   faultInjector = async () => {},
 } = {}) {
   const registryFile = path.join(dataDir, 'projects.json');
@@ -793,6 +796,40 @@ export async function startCloudServer({
         : await workbenchSnapshot(scope, project);
     return { version: snapshot.version, doc: snapshot.document, viewId, source: snapshot.source || null, projection: { status: 'ready', sourceVersion: snapshot.version }, recovery: false, error: null };
   };
+  const quark = attachmentProvider || (process.env.CONTEXT_GUARD_QUARK_CLI ? await createQuarkProvider({
+    cliPath: process.env.CONTEXT_GUARD_QUARK_CLI, sha256: process.env.CONTEXT_GUARD_QUARK_SHA256,
+    backend: process.env.CONTEXT_GUARD_QUARK_BACKEND || 'skill',
+    cookieFile: process.env.CONTEXT_GUARD_QUARK_COOKIE_FILE,
+    workDir: path.join(dataDir, 'quark-cli'),
+  }) : null);
+  const attachments = quark && new CloudAttachments({ directory: path.join(dataDir, 'attachments'), provider: quark,
+    publish: async (job, file, options) => {
+      const project = projectById(job.projectId);
+      if (!project || !configuredMemory?.projects?.[project.id]) throw new MapError('NOT_FOUND', 'Attachment project is unavailable', 404);
+      const scope = `project:${project.id}`;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const state = await scopedWorkbenchState(scope, project, job.viewId);
+        if (job.viewId !== 'main') {
+          const snapshot = (await readMemoryProject(configuredMemory, project.id)).sessions[job.viewId.slice(8)];
+          if ((snapshot?.generation || 1) !== job.generation) throw new MapError('ATTACHMENT_OWNER_GONE', 'Attachment belongs to an earlier Session generation', 409);
+        }
+        const input = options?.create && job.creationRequest || { operationId: randomUUID(), baseVersion: state.version,
+          operations: attachmentPatch(state.doc, job, file, options) };
+        // Persist the exact request before creating a card. After a lost result,
+        // replay its receipt rather than recreating a subsequently removed card.
+        if (options?.create && !job.creationRequest) { job.creationRequest = input; await attachments.save(job); }
+        try {
+          if (job.viewId === 'main') await commitMainMemoryMap(configuredMemory, project.id, input);
+          else await commitSessionMap(configuredMemory, project.id, job.viewId.slice(8), input);
+          await faultInjector('attachment-map-committed', job);
+          await broadcastWorkbench(scope, project, job.viewId); return;
+        } catch (error) {
+          if (error.code !== 'VERSION_CONFLICT' || attempt === 3) throw error;
+          if (options?.create) { delete job.creationRequest; await attachments.save(job); }
+        }
+      }
+    },
+  });
   const coordinatorAssignmentProjection = async (project, document) => {
     const config = configuredMemory?.projects?.[project?.id]?.coordinator;
     if (!project || !config?.enabled || !document?.root) return document;
@@ -1280,6 +1317,22 @@ export async function startCloudServer({
         const action = workbench[3];
         if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
         requireWorkbench(req, url);
+        if (action === '/api/attachments' || action.startsWith('/api/attachments/')) {
+          if (!project || !configuredMemory?.projects?.[project.id]) throw new MapError('PROJECT_REQUIRED', 'Select a configured project', 409);
+          if (!attachments) throw new MapError('QUARK_NOT_CONFIGURED', '服务器尚未配置夸克网盘，请管理员完成授权', 503);
+          if (req.headers.origin && req.headers.origin !== (allowedOrigin || `http://${req.headers.host}`)) throw new MapError('ORIGIN_REJECTED', 'Cross-origin attachment request rejected', 403);
+          if (action === '/api/attachments' && req.method === 'POST') {
+            const input = await requestBody(req), parsed = attachmentInput(input);
+            const state = await scopedWorkbenchState(scope, project, viewId);
+            attachmentPatch(state.doc, { id: 'validate', target: parsed.target }, {}, { create: true });
+            const generation = viewId === 'main' ? null : (await readMemoryProject(configuredMemory, project.id)).sessions[viewId.slice(8)]?.generation || 1;
+            return send(res, 202, await attachments.stage(project.id, viewId, input, generation));
+          }
+          const match = action.match(/^\/api\/attachments\/([a-f0-9]{64})(\/retry)?$/);
+          if (match && !match[2] && req.method === 'GET') return send(res, 200, attachments.public(await attachments.get(project.id, viewId, match[1])));
+          if (match?.[2] && req.method === 'POST') return send(res, 202, await attachments.retry(project.id, viewId, match[1]));
+          throw new MapError('NOT_FOUND', 'Attachment route not found', 404);
+        }
         if (action === '/api/coordinator/sessions' && project && req.method === 'POST') {
           const config = configuredMemory?.projects?.[project.id]?.coordinator;
           const input = await requestBody(req);
@@ -1738,6 +1791,7 @@ export async function startCloudServer({
   const publicationTimer = setInterval(publishMergedSessions, 30_000); publicationTimer.unref();
   const initialPublication = setTimeout(publishMergedSessions, 0); initialPublication.unref();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
+  await attachments?.start();
   for (const project of registry.projects) {
     if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) {
       void recoverInterruptedTasks(project).catch(cause => console.error(`[context-guard] interrupted-task recovery deferred: ${cause.message}`));
@@ -1772,7 +1826,7 @@ export async function startCloudServer({
       if (error && error.code !== 'ERR_SERVER_NOT_RUNNING') reject(error);
       // Closing sockets does not finish async handlers or their Git children.
       // Drain owned work before callers remove repositories and data files.
-      else Promise.all([coordinatorShutdown, automaticPublicationRunning, ...activeRequests]).then(resolve, reject);
+      else Promise.all([coordinatorShutdown, automaticPublicationRunning, ...activeRequests]).then(() => attachments?.close()).then(resolve, reject);
     });
     server.closeIdleConnections?.();
     const forceClose = setTimeout(() => {

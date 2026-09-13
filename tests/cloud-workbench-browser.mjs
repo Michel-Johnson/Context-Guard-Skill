@@ -77,6 +77,10 @@ try {
     browserPasswordHash: await createWorkbenchPasswordHash('browser-password'),
     privateAccess: true,
     memoryConfig,
+    attachmentProvider: {
+      upload: async () => 'browser-fixture-file',
+      share: async () => ({ url: 'https://pan.quark.cn/s/browserfixture', passcode: 'Ab12' }),
+    },
   });
   const baselineSession = await request(`${service.url}/v1/projects/context-guard/sessions/baseline-session`, {
     method: 'POST',
@@ -569,6 +573,38 @@ try {
   assert.equal(acceptanceRequests[0].decision, 'rejected');
   assert.equal(acceptanceRequests[0].reason, '需要补充部署路径和回滚验证。');
   record('Coordinator acceptance rejection opens an inline feedback form');
+
+  const attachmentMap = structuredClone(sessionMap);
+  attachmentMap.root.memories = [{ text: 'Attachment fixture', state: 'dirty', files: [] }];
+  const currentMain = await request(`${service.url}/v1/projects/context-guard/main`, { headers: headers('project-memory-token') });
+  const attachmentSeed = await request(`${service.url}/v1/projects/context-guard/sessions/attachment-session`, {
+    method: 'POST', headers: headers('project-memory-token'), body: JSON.stringify({ operationId: 'attachment-browser-seed',
+      baseVersion: null, baseMainVersion: currentMain.body.snapshot.version, sourceCommit: featureSha, memory: { map: attachmentMap, records: {} } }),
+  });
+  assert.equal(attachmentSeed.response.status, 200, JSON.stringify(attachmentSeed.body));
+  const attachmentPage = await context.newPage();
+  await attachmentPage.goto(`${service.url}/projects/context-guard?session=attachment-session`);
+  await attachmentPage.locator('.node[data-id="T0"]').click();
+  if(await attachmentPage.locator('details[data-fold="mem"]').getAttribute('open') === null) await attachmentPage.locator('details[data-fold="mem"] > summary').click();
+  const dropTarget = attachmentPage.locator('[data-drop-files][data-fk="mem"]').first();
+  await dropTarget.waitFor();
+  const transfer = await attachmentPage.evaluateHandle(() => {
+    const data = new DataTransfer(); data.items.add(new File(['%PDF-1.4\nSynthetic browser fixture\n%%EOF'], 'browser-fixture.pdf', { type: 'application/pdf' })); return data;
+  });
+  await dropTarget.dispatchEvent('drop', { dataTransfer: transfer });
+  const quarkLink = attachmentPage.getByRole('link', { name: 'browser-fixture.pdf', exact: true });
+  await quarkLink.waitFor();
+  assert.equal(await quarkLink.getAttribute('href'), 'https://pan.quark.cn/s/browserfixture');
+  assert.match(await attachmentPage.locator('.file-chip').first().textContent(), /Ab12/);
+  await attachmentPage.reload();
+  await attachmentPage.locator('.node[data-id="T0"]').click();
+  if(await attachmentPage.locator('details[data-fold="mem"]').getAttribute('open') === null) await attachmentPage.locator('details[data-fold="mem"] > summary').click();
+  await quarkLink.waitFor();
+  await attachmentPage.screenshot({ path: path.join(output, 'quark-desktop.png'), fullPage: true });
+  await attachmentPage.setViewportSize({ width: 390, height: 844 });
+  await attachmentPage.screenshot({ path: path.join(output, 'quark-mobile.png'), fullPage: true });
+  await attachmentPage.close();
+  record('Cloud attachment drop persists a protected Quark link and survives refresh');
 
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);

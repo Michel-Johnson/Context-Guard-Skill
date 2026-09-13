@@ -31,17 +31,21 @@ export async function uploadAttachment(config, job) {
   for (let offset = 0; offset < bytes.length; offset += 32768) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   }
+  const cloud = String(config.root || '').startsWith('cloud:');
   const timer = setTimeout(() => job.controller.abort(), 15000);
   try {
-    const response = await fetch('/api/attachments', {
+    const endpoint = cloud ? `${config.apiBase}/api/attachments?view=${encodeURIComponent(job.viewId || 'main')}` : '/api/attachments';
+    const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uploadId: job.id, nodeId: job.target.nodeId, name: job.name, base64: btoa(binary) }),
+      headers: { ...(config.token ? { Authorization: `Bearer ${config.token}` } : {}), 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(cloud ? { uploadId: job.id, target: { nodeId: job.target.nodeId, kind: job.target.kind, ownerId: job.target.ownerId }, name: job.name, base64: btoa(binary) }
+        : { uploadId: job.id, nodeId: job.target.nodeId, name: job.name, base64: btoa(binary) }),
       signal: job.controller.signal,
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error?.message || '附件保存失败');
-    return result;
+    return cloud ? { ...result.file, serverManaged: true } : result;
   } finally {
     clearTimeout(timer);
   }
