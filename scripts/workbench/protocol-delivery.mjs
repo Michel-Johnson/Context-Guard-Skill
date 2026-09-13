@@ -3,6 +3,7 @@ import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.
 import { canonical, fail, validateMessage } from '../shared/protocol.mjs';
 
 export const executionNotifications = new Set(['task.assign', 'task.rework', 'task.control', 'ci.request']);
+const reviewedRetry = 'reviewed 任务不使用 map task start/finish。回复未知时保留原 operationId；收到明确 CONFLICT 后先核对状态，条件已恢复时用新的 operationId 提交 Plan，旧编号会重放旧拒绝。不得因报错跳过审核或报告完成。';
 export async function executionPrompt(message, readObject) {
   validateMessage(message);
   const p = message.payload;
@@ -23,14 +24,15 @@ export async function executionPrompt(message, readObject) {
     }
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
       `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main：${p.mainVersion}`, brief.content.text,
-      '使用 map task plan --input <JSON> 提交 {operationId,content:{paths,steps}}。审核前只读，不启动开发 Plan。',
+      '使用 map task plan --input <JSON文件路径> 或 --input -（stdin）提交 {operationId,content:{paths,steps}}；不要把 JSON 正文当文件名。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
+      reviewedRetry,
       `交付编号：${message.id}；同一编号不得重复执行。`].join('\n');
   }
   if (message.type === 'review.result' && p.kind === 'plan') {
     const receipt = await readObject(p.receiptId, p.receiptId);
     if (receipt.kind !== 'reviewReceipt' || receipt.content?.ref !== p.ref || receipt.content?.version !== p.version || receipt.content?.decision !== p.decision) fail('CONFLICT', 'Plan review receipt differs');
     return `Context Guard：Plan ${p.ref}@${p.version} 审核${p.decision === 'approved' ? '通过，可继续执行' : '未通过，请修改 Plan'}。\n${p.reason}\n回执：${p.receiptId}\n` +
-      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON> 交付 CI TODO、测试证据和经验。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
+      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON文件路径> 或 --input -（stdin）交付 CI TODO、测试证据和经验。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n${p.reason ? `返工原因：${p.reason}\n` : ''}代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
   if (message.type === 'task.control' && p.action === 'resume') return [
@@ -40,6 +42,7 @@ export async function executionPrompt(message, readObject) {
     JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
       payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
     '回报后按已批准 Plan 继续；若 Plan 未批准或范围仍不清楚，保持只读并通过 ask_user 请求确认。',
+    reviewedRetry,
   ].join('\n');
   if (message.type === 'task.control' && p.action === 'complete') return [
     `Context Guard：任务 ${p.taskId} 已通过服务端合并与归档校验。保留证据，结束该任务。`,

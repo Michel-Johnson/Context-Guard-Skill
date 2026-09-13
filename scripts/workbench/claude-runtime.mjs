@@ -19,6 +19,28 @@ function verifyRecovery(active, deliveryId) {
   if (alive(active.workerPid) || alive(active.childPid)) fail('RUNTIME_BUSY', 'The previous native process has not exited');
 }
 
+export async function claudeEnvironment(config, credentials, parent = process.env, platform = process.platform) {
+  // Keep native shell/profile discovery without inheriting unrelated credentials.
+  const keep = new Set(['PATH', 'SYSTEMROOT', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HOME', 'CONTEXT_GUARD_NAMED_STATE_DIR',
+    ...(platform === 'win32' ? ['COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'PROGRAMFILES', 'PROGRAMFILES(X86)', 'CLAUDE_CODE_GIT_BASH_PATH'] : [])]);
+  const env = Object.fromEntries(Object.entries(parent).filter(([key, value]) => keep.has(key.toUpperCase()) && typeof value === 'string'));
+  if (platform === 'win32' && !Object.keys(env).some(key => key.toUpperCase() === 'CLAUDE_CODE_GIT_BASH_PATH')) {
+    const searchPath = Object.entries(env).find(([key]) => key.toUpperCase() === 'PATH')?.[1] || '';
+    for (const directory of searchPath.split(';').filter(Boolean)) {
+      // A WSL bash shim is not Git Bash. Resolve beside a real Git installation.
+      const base = directory.replace(/^"|"$/g, '');
+      const gitPath = path.win32.join(base, 'git.exe');
+      const bashPath = path.win32.resolve(base, '..', 'bin', 'bash.exe');
+      if (await fs.stat(gitPath).then(s => s.isFile(), () => false) && await fs.stat(bashPath).then(s => s.isFile(), () => false)) {
+        env.CLAUDE_CODE_GIT_BASH_PATH = bashPath;
+        break;
+      }
+    }
+  }
+  return { ...env, ...credentials, CLAUDE_CONFIG_DIR: config.configDir, CLAUDE_HOME: config.configDir, CONTEXT_GUARD_HEADLESS: '1',
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1', PYTHONDONTWRITEBYTECODE: '1' };
+}
+
 export function claudeArguments(config, { sessionId, resume }) {
   if (!uuid.test(sessionId)) fail('INVALID_SESSION', 'Claude requires a real Session UUID');
   return [...(config.args || []), '-p', resume ? '--resume' : '--session-id', sessionId,
@@ -239,10 +261,7 @@ async function runWorker(file, jobFile) {
   try {
     const credentials = await readJSON(config.environmentFile);
     if (Object.keys(credentials).some(key => !providerKeys.has(key)) || Object.values(credentials).some(value => typeof value !== 'string')) fail('INVALID_ENVIRONMENT', 'Only provider settings are accepted in the private environment file');
-    const keep = ['PATH', 'SYSTEMROOT', 'SystemRoot', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HOME', 'CONTEXT_GUARD_NAMED_STATE_DIR'];
-    const env = { ...Object.fromEntries(keep.filter(key => process.env[key]).map(key => [key, process.env[key]])), ...credentials,
-      CLAUDE_CONFIG_DIR: config.configDir, CLAUDE_HOME: config.configDir, CONTEXT_GUARD_HEADLESS: '1',
-      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1', PYTHONDONTWRITEBYTECODE: '1' };
+    const env = await claudeEnvironment(config, credentials);
     child = spawn(config.command, claudeArguments(config, { sessionId: session.sessionId, resume: job.resume }), {
       cwd: config.root, env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });

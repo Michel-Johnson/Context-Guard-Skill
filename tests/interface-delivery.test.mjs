@@ -7,6 +7,38 @@ import { ProtocolDelivery, executionPrompt } from '../scripts/workbench/protocol
 import { spawnSync } from 'node:child_process';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 import { queueCodexMessage } from '../scripts/workbench/server.mjs';
+import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+
+test('Applied resume receipts suppress replayed native delivery across restart without suppressing new controls', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-resume-delivery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let store = new ProtocolStore(directory);
+  const device = { repositoryId: 'repo', deviceId: 'device', agentId: 'backend', role: 'device' };
+  const session = { id: 'developer', generation: 1 };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'tree', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const control = { v: 2, id: 'resume-1', type: 'task.control', session,
+    payload: { taskId: 'task', action: 'resume', expectedVersion: 'v1', data: { reason: 'continue' } } };
+  let calls = 0;
+  const deliver = async message => {
+    await store.receiveNotification(device, message);
+    if (!await store.resumeControlApplied(device, message)) await new ProtocolDelivery(path.join(directory, 'native'), {
+      claude: async () => { calls++; },
+    }).deliver({ id: message.id, sessionId: session.id, platform: 'claude', root: directory, message: 'Resume task' });
+  };
+  assert.equal(await store.resumeControlApplied(device, control), false, 'no receipt must not discard work');
+  await store.receiveNotification(device, { v: 2, id: 'resumed', type: 'task.report', session,
+    payload: { taskId: 'task', stage: 'resumed', data: { controlId: control.id } } });
+  store = new ProtocolStore(directory);
+  await deliver(control);
+  assert.equal(calls, 0, 'even a missing native delivery intent must not re-invoke an applied control');
+  await deliver({ ...control, id: 'resume-2' });
+  assert.equal(calls, 1, 'a new authorized control is not suppressed');
+  assert.equal(await store.resumeControlApplied(device, { ...control, payload: { ...control.payload, taskId: 'another-task' } }), false);
+  await assert.rejects(store.resumeControlApplied(device, { ...control, session: { ...session, generation: 2 } }), { code: 'STALE_SESSION' });
+  await assert.rejects(store.resumeControlApplied({ ...device, role: 'executor' }, control), { code: 'FORBIDDEN' });
+});
 
 test('Verified closure prompt preserves the server control receipt and does not repeat development', async () => {
   const message = { v: 2, id: 'verified-control', type: 'task.control', session: { id: 'developer', generation: 3 },
@@ -31,6 +63,9 @@ test('Resume control prompt preserves the control receipt and requires a resumed
   assert.deepEqual(report.session, message.session);
   assert.match(prompt, /不是新任务/);
   assert.match(prompt, /Plan 未批准/);
+  assert.match(prompt, /回复未知时保留原 operationId/);
+  assert.match(prompt, /用新的 operationId 提交 Plan/);
+  assert.match(prompt, /reviewed 任务不使用 map task start\/finish/);
   assert.equal(await executionPrompt(message), prompt, 'replay retains the resume report identity');
 });
 
@@ -99,6 +134,9 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   const prompt = await executionPrompt(assignment, read);
   for (const value of ['N1, N2', 'main-v1', 'approved requirement', 'delivery']) assert.ok(prompt.includes(value));
   assert.match(prompt, /先读代码并提交 Plan/);
+  assert.match(prompt, /--input <JSON文件路径>/);
+  assert.match(prompt, /--input -（stdin）/);
+  assert.ok(!prompt.includes('--input <JSON>'));
   const direct = await executionPrompt({ ...assignment, payload: { ...assignment.payload, mode: 'session' } }, read);
   for (const value of ['approved requirement', 'map task start delivery', 'map task finish delivery', '--summary']) assert.ok(direct.includes(value));
   for (const value of ['main-v1', '"stage"', '"session"', '--session s']) assert.equal(direct.includes(value), false);

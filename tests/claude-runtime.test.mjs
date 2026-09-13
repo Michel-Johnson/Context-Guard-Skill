@@ -6,10 +6,36 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { ClaudeRuntime, claudeArguments } from '../scripts/workbench/claude-runtime.mjs';
+import { ClaudeRuntime, claudeArguments, claudeEnvironment } from '../scripts/workbench/claude-runtime.mjs';
 import { ProtocolDelivery } from '../scripts/workbench/protocol-delivery.mjs';
 import { pause, readJSON, hash } from '../scripts/shared/io.mjs';
 import { canonical } from '../scripts/shared/protocol.mjs';
+
+test('Claude native environment preserves Windows shell discovery without unrelated secrets', async () => {
+  const env = await claudeEnvironment({ configDir: '/private/profile' }, { ANTHROPIC_API_KEY: 'scoped' }, {
+    Path: '', SystemRoot: 'C:\\Windows', ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+    USERPROFILE: 'C:\\Users\\example', TEMP: 'C:\\Temp', PATHEXT: '.EXE;.CMD',
+    CLAUDE_CODE_GIT_BASH_PATH: 'D:\\Git\\bin\\bash.exe', OPENAI_API_KEY: 'unrelated', ANTHROPIC_API_KEY: 'parent-secret',
+  }, 'win32');
+  assert.equal(env.ComSpec, 'C:\\Windows\\System32\\cmd.exe');
+  assert.equal(env.USERPROFILE, 'C:\\Users\\example');
+  assert.equal(env.CLAUDE_CODE_GIT_BASH_PATH, 'D:\\Git\\bin\\bash.exe');
+  assert.equal(env.ANTHROPIC_API_KEY, 'scoped');
+  assert.equal(env.OPENAI_API_KEY, undefined);
+  assert.equal(env.CLAUDE_CONFIG_DIR, '/private/profile');
+});
+
+test('Claude Windows environment discovers Git Bash beside Git, not WSL', { skip: process.platform !== 'win32' }, async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-git bash-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.mkdir(path.join(directory, 'cmd')); await fs.mkdir(path.join(directory, 'bin'));
+  await fs.writeFile(path.join(directory, 'cmd', 'git.exe'), 'fixture');
+  await fs.writeFile(path.join(directory, 'bin', 'bash.exe'), 'fixture');
+  const env = await claudeEnvironment({ configDir: directory }, {}, { Path: path.join(directory, 'cmd') }, 'win32');
+  assert.equal(env.CLAUDE_CODE_GIT_BASH_PATH, path.join(directory, 'bin', 'bash.exe'));
+  const missing = await claudeEnvironment({ configDir: directory }, {}, { PATH: path.join(directory, 'missing') }, 'win32');
+  assert.equal(missing.CLAUDE_CODE_GIT_BASH_PATH, undefined);
+});
 
 test('Native creation isolates the worktree and profile, pins Main and preserves retry identity', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-native-create-'));

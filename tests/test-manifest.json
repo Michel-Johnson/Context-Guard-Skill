@@ -60,6 +60,9 @@
     }
   ],
   "productFiles": [
+    "tests/attachments.test.mjs",
+    "tests/cloud-attachments.test.mjs",
+    "tests/quark-provider.test.mjs",
     "tests/claude-runtime.test.mjs",
     "tests/cloud-coordinator.test.mjs",
     "tests/interface-auth.test.mjs",
