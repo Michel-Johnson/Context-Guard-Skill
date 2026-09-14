@@ -1925,12 +1925,11 @@ export async function startCloudServer({
   for (const project of registry.projects) {
     if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) {
       void recoverInterruptedTasks(project).catch(cause => console.error(`[context-guard] interrupted-task recovery deferred: ${cause.message}`));
-      void conversationsFor(project).list().then(async items => {
-      const services = await Promise.all(items.map(item => coordinatorFor(project, item.id)));
-      // Start the first inbox pump immediately. This is what discovers durable
-      // interrupted tasks after a Cloud restart; the interval remains as the
-      // liveness fallback for later events.
-      await Promise.all(services.map(service => service.inbox.pump()));
+      void coordinatorFor(project, 'legacy').then(async service => {
+        // The legacy inbox is the single project event router. It discovers all
+        // conversation targets lazily, so pumping every Main/Session service here
+        // only duplicates the same recovery work as the conversation count grows.
+        await service.inbox.pump();
       }).catch(cause => console.error(`[context-guard] coordinator startup deferred: ${cause.message}`));
     }
   }

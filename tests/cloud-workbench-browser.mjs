@@ -613,6 +613,8 @@ try {
   assert.equal(attachmentSeed.response.status, 200, JSON.stringify(attachmentSeed.body));
   const attachmentPage = await context.newPage();
   await attachmentPage.goto(`${service.url}/projects/context-guard?session=attachment-session`);
+  await attachmentPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced'
+    && document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Session map'));
   await attachmentPage.locator('.node[data-id="T0"]').click();
   const attachmentButton = attachmentPage.getByRole('button', { name: '附件 ＋', exact: true });
   await attachmentButton.waitFor();

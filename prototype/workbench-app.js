@@ -1415,7 +1415,10 @@ function renderSessionMenu(){
   menu.querySelectorAll("[data-session]").forEach(button=>{
     button.onclick = async ()=>{
       try {
-        if(await workbenchSync?.selectSession(button.dataset.session)) closeSessionMenu();
+        if(await workbenchSync?.selectSession(button.dataset.session)) {
+          window.dispatchEvent(new Event('workbench-session-changed'));
+          closeSessionMenu();
+        }
       } catch(error) {
         workbenchSync?.setStatus('error', '无法打开该 Session 地图：'+error.message);
       }
@@ -4342,6 +4345,7 @@ async function installCoordinatorPanel(sync){
     try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
     catch(error){status.textContent='无法打开事项对话：'+error.message;}
   });
+  window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
   const render=state=>{
     const renderedConversation=selected;
     status.textContent=state.error?'处理暂停：'+state.error.code:'';
