@@ -3,6 +3,38 @@
   "status": "draft",
   "interfaces": [
     {
+      "type": "main.structure.patch",
+      "purpose": "由显式授权的开发者客户端直接维护 Main 节点结构",
+      "payload": {
+        "baseVersion": "main-v1",
+        "changes": [
+          {
+            "op": "create",
+            "kind": "node",
+            "id": "content",
+            "fields": {
+              "parentId": "T0",
+              "title": "内容",
+              "purpose": "维护文章与素材",
+              "kind": "module",
+              "state": "untested",
+              "owns": [
+                "source/"
+              ]
+            }
+          }
+        ]
+      },
+      "result": {
+        "committed": true,
+        "version": "main-v2"
+      },
+      "rule": "仅服务器配置 developerMainWriteClientIds 中显式列出的项目客户端可用；只允许节点创建、更新、改名和移动，禁止删除、权限、任务、Bug、记忆和文档元数据修改。必须携带已读取的 Main 版本与稳定请求 ID，结果以 developer 身份写入审计记录。",
+      "parents": [
+        "N460"
+      ]
+    },
+    {
       "type": "object.put",
       "purpose": "保存Plan或测试资料",
       "payload": {

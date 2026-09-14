@@ -252,7 +252,9 @@ export function applyOperations(document, operations, actor, grants = []) {
   assertOperations(operations);
   const doc = copy(document), resultIds = [];
   const human = actor.kind === 'human';
-  const allowed = node => human || grants.includes(node.id) || (node.proposal === 'proposed' && node.proposedBy === actor.sessionId);
+  const developer = actor.kind === 'developer';
+  const directStructure = human || developer;
+  const allowed = node => directStructure || grants.includes(node.id) || (node.proposal === 'proposed' && node.proposedBy === actor.sessionId);
   for (const op of operations) {
     if (op.type === 'initialize') {
       if (doc.root !== null || typeof op.project !== 'string' || !op.project.trim()) throw new MapError('INVALID_INITIALIZATION', 'Only an empty legacy pending map can be initialized');
@@ -272,7 +274,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       checkFields(op.node, ['id', ...editableFields]);
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
-      if (!human) {
+      if (!directStructure) {
         if (op.node.access?.length) throw new MapError('FORBIDDEN', 'Agent cannot set node access', 403);
         validateAgentProposalNode(op.node, op.parentId);
         const title = String(op.node.title).trim().toLocaleLowerCase();
@@ -284,7 +286,7 @@ export function applyOperations(document, operations, actor, grants = []) {
         }
       }
       const node = { title: '', kind: 'work', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], ...copy(op.node), origin: actor.kind, proposedBy: actor.sessionId };
-      if (!human) { node.proposal = 'proposed'; node.isNew = true; }
+      if (!directStructure) { node.proposal = 'proposed'; node.isNew = true; }
       else { node.proposal ||= 'accepted'; node.isNew = node.proposal === 'proposed'; }
       const children = parent.children ||= [];
       if (op.order !== undefined && (!Number.isSafeInteger(op.order) || op.order < 0 || op.order > children.length)) throw new MapError('INVALID_ORDER', 'Sibling position is outside the list');

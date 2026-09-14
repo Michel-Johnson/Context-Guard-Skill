@@ -119,6 +119,8 @@ ${HELP_EXIT_NOTE}`;
     return `Usage: context-guard map <action> --root <project> --session <id> [options]
 
 Actions:
+  main read           Read the authoritative Main Map without binding a Session
+  main apply          Apply an authorized structural patch to Main from --input
   status              Print map version and recovery state
   read                Read the map or one --node
   changes             Read changes after --cursor
@@ -145,6 +147,10 @@ Options:
   --receipt <id>      Inbox receipt
   --wait-ms <n>       Watch timeout
   --start             Start a new inbox page
+
+Developer Main apply input:
+  {"operationId":"stable-id","baseVersion":"observed-version","changes":[...]}
+Only explicitly allowlisted project clients can create, rename, update or move nodes. Delete, access and record edits are rejected.
 ${HELP_EXIT_NOTE}`;
   }
   if (command === 'memory') {
@@ -672,6 +678,27 @@ async function main(args) {
     const running = await startServer({ root, port: Number(opt.port ?? 8877), host: opt.host || '127.0.0.1' });
     process.on('SIGTERM', () => running.close()); process.on('SIGINT', () => running.close());
     console.log(JSON.stringify({ url: running.state.url, protocol: 2 })); return;
+  }
+  if (command === 'map' && opt._[0] === 'main') {
+    const project = await ensureProjectBinding(await resolveProject(root));
+    if (opt._[1] === 'read') {
+      const result = await memoryRequest(project, 'main');
+      return { version: result.snapshot?.version || null, doc: result.snapshot?.memory?.map || null };
+    }
+    if (opt._[1] === 'apply') {
+      const config = await readJSON(memoryConfigPath(project), null);
+      if (!config?.url) throw new MapError('MEMORY_NOT_CONFIGURED', 'Connect this project to Cloud before developer Main writes', 503);
+      const input = await inputJSON(opt.input);
+      if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 128 ||
+          typeof input.baseVersion !== 'string' || !Array.isArray(input.changes) || !input.changes.length) {
+        throw new MapError('INVALID_ARGUMENT', 'Provide operationId, observed baseVersion and structural changes');
+      }
+      const device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
+      return device.send(validateMessage({ v: 2, id: input.operationId, type: 'main.structure.patch', payload: {
+        baseVersion: input.baseVersion, changes: input.changes,
+      } }));
+    }
+    throw new MapError('INVALID_ARGUMENT', 'Use map main read|apply --input <request.json>');
   }
   if (command === 'workbench' && opt.stop) {
     return stopServer(root);

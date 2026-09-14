@@ -51,6 +51,30 @@ const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 const sessionActivityTtlMs = 2 * 60 * 1000;
 const sessionHeartbeatTtlMs = 30 * 1000;
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+const developerStructureFields = new Set(['parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']);
+
+function validateDeveloperStructureChanges(changes) {
+  if (!Array.isArray(changes) || changes.some(change => change.kind !== 'node' || !['create', 'update'].includes(change.op) ||
+      Object.keys(change.fields || {}).some(field => !developerStructureFields.has(field)))) {
+    protocolFail('FORBIDDEN', 'Developer Main writes are limited to node create, update, rename and move');
+  }
+}
+
+function developerStructureOperations(changes) {
+  validateDeveloperStructureChanges(changes);
+  return changes.flatMap(change => {
+    const { parentId, order, ...fields } = change.fields || {};
+    if (change.op === 'create') {
+      if (!parentId) protocolFail('INVALID_ARGUMENT', 'Developer node creation requires parentId');
+      return [{ type: 'create', parentId, ...(order !== undefined ? { order } : {}), node: { ...fields, id: change.id } }];
+    }
+    if (order !== undefined && !parentId) protocolFail('INVALID_ARGUMENT', 'Developer node ordering requires parentId');
+    return [
+      ...(parentId ? [{ type: 'move', id: change.id, parentId, ...(order !== undefined ? { order } : {}) }] : []),
+      ...(Object.keys(fields).length ? [{ type: 'update', id: change.id, fields }] : []),
+    ];
+  });
+}
 
 function cloudWorkItemBrief(node, item, kind) {
   const label = kind === 'bug' ? 'Bug' : 'TODO';
@@ -1200,6 +1224,10 @@ export async function startCloudServer({
               opened.data.projectId = repository.projectId;
               opened.data.capabilities.push('device-memory');
             }
+            const openedPrincipal = await interfaceAuth.authenticate(opened.credential);
+            if (repository?.developerMainWriteClientIds?.includes(openedPrincipal.clientId)) {
+              opened.data.capabilities.push('developer-main-structure');
+            }
             return send(res, 200, { id, ok: true, data: opened.data }, { 'X-Context-Guard-Credential': opened.credential });
           }
           const credential = bearer(req);
@@ -1217,6 +1245,29 @@ export async function startCloudServer({
               receivers: configuredMemory?.projects?.[repository?.projectId]?.coordinator?.ciReceivers, store: interfaceStorage(principal).store });
           }
           if (input.type === 'sync.heartbeat') return send(res, 200, await receiveHeartbeat(principal, input));
+          if (input.type === 'main.structure.patch') {
+            const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+            const allowedClients = repository?.developerMainWriteClientIds;
+            if (!Array.isArray(allowedClients) || !allowedClients.includes(principal.clientId)) {
+              protocolFail('FORBIDDEN', 'This project client is not authorized for developer Main writes');
+            }
+            if (!repository?.projectId || !configuredMemory?.projects?.[repository.projectId]) {
+              protocolFail('NOT_FOUND', 'Private project memory is not configured');
+            }
+            const actor = { kind: 'developer', sessionId: '', clientId: principal.clientId, agentId: principal.agentId };
+            const operations = developerStructureOperations(input.payload.changes);
+            try {
+              const data = await commitMainMemoryMap(configuredMemory, repository.projectId, {
+                operationId: `developer-main:${digest(JSON.stringify([principal.repositoryId, principal.clientId, input.id]))}`,
+                baseVersion: input.payload.baseVersion,
+                operations,
+              }, actor);
+              return send(res, 200, { id, ok: true, data });
+            } catch (error) {
+              if (error instanceof MapError) protocolFail(error.code === 'ID_REUSED' ? 'ID_REUSED' : ({ 400: 'INVALID_ARGUMENT', 403: 'FORBIDDEN', 404: 'NOT_FOUND', 409: 'CONFLICT' })[error.status] || 'UNAVAILABLE', error.message, error.details);
+              throw error;
+            }
+          }
           const { store, blobs, snapshots } = interfaceStorage(principal);
           if (input.type === 'workbench.patch') {
             await store.authorizeSession(principal, input.session);

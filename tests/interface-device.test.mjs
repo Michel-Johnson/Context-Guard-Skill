@@ -4,11 +4,55 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
 import { DeviceConnection } from '../scripts/workbench/protocol-device.mjs';
 import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
 import { createHash } from 'node:crypto';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
+
+const execFileAsync = promisify(execFile);
+
+test('developer Main CLI reads and applies an allowlisted structural change without a Session binding', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-developer-main-cli-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const project = path.join(directory, 'project'); await fs.mkdir(project);
+  await execFileAsync('git', ['init', '-b', 'main'], { cwd: project, windowsHide: true });
+  await execFileAsync('git', ['remote', 'add', 'origin', 'https://github.com/example/repo.git'], { cwd: project, windowsHide: true });
+  const shared = path.join(project, '.git', 'context-guard'), interfaceDir = path.join(shared, 'interface-v2');
+  const memoryDir = path.join(directory, 'memory'), projectId = 'context-guard';
+  const memoryProjectDir = path.join(memoryDir, createHash('sha256').update(projectId).digest('hex'));
+  await fs.mkdir(memoryProjectDir, { recursive: true });
+  await fs.writeFile(path.join(memoryProjectDir, 'memory.json'), JSON.stringify({ revision: 1, preferences: null,
+    main: { version: 'main-v1', memory: { map: { v: 1, project: 'Blog', bootstrap: 'ready', flows: [], root: {
+      id: 'T0', title: 'Blog', kind: 'module', state: 'dirty', children: [],
+    } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const cloud = await startCloudServer({ dataDir: path.join(directory, 'cloud'), port: 0, browserToken: 'test-browser',
+    browserPasswordHash: await createWorkbenchPasswordHash('test-only'), memoryConfig: {
+      dataDir: memoryDir, adminToken: 'memory-admin', projects: { [projectId]: { token: 'project-token' } },
+    }, protocolConfig: { repositories: [{ slug: 'example/repo', repositoryId: '123', projectId,
+      developerMainWriteClientIds: ['developer-client'] }] } });
+  t.after(() => cloud.close());
+  await fs.mkdir(interfaceDir, { recursive: true });
+  await fs.writeFile(path.join(interfaceDir, 'device-identity.json'), JSON.stringify({ clientId: 'developer-client' }));
+  const device = new DeviceConnection({ directory: interfaceDir, origin: cloud.url, allowLoopback: true });
+  await device.connect({ v: 2, id: 'connect', type: 'auth.open', payload: {
+    repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'ignored-by-device-identity',
+  } }, { repositoryId: '123' });
+  await fs.writeFile(path.join(shared, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId }));
+  const cli = new URL('../scripts/workbench/cli.mjs', import.meta.url);
+  const read = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
+  assert.equal(read.version, 'main-v1'); assert.equal(read.doc.root.title, 'Blog');
+  const requestFile = path.join(directory, 'request.json');
+  await fs.writeFile(requestFile, JSON.stringify({ operationId: 'cli-create-content', baseVersion: read.version, changes: [{
+    op: 'create', kind: 'node', id: 'content', fields: { parentId: 'T0', title: '内容', purpose: '内容', kind: 'module', state: 'untested', owns: ['source/'] },
+  }] }));
+  const applied = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'apply', '--root', project, '--input', requestFile], { windowsHide: true })).stdout);
+  assert.equal(applied.committed, true);
+  const after = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
+  assert.equal(after.doc.root.children[0].title, '内容');
+});
 
 test('Creation failures survive local restart and are acknowledged through the device heartbeat', async t => {
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'cg-creation-feedback-'));

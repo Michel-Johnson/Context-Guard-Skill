@@ -1,6 +1,6 @@
 export const WORKBENCH_PROTOCOL = 2;
 export const WORKBENCH_RUNTIME_SCHEMA = 4;
-export const WORKBENCH_BUILD = 'project-workbench-v19';
+export const WORKBENCH_BUILD = 'project-workbench-v20';
 export const WORKBENCH_CAPABILITIES = Object.freeze([
   'git-common-dir-project',
   'named-origin-verification',
@@ -22,6 +22,7 @@ export const WORKBENCH_CAPABILITIES = Object.freeze([
   'agent-result-before-review',
   'production-data-isolation',
   'claude-reviewed-runtime',
+  'developer-main-structure',
 ]);
 
 export function runtimeIdentity() {

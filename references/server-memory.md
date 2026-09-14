@@ -98,15 +98,19 @@ source ancestry, and requires the Session to be reconciled to the current
 main-memory version. Authenticated human workbench edits may update the Main Map
 directly. Each edit uses the displayed Main version as an optimistic concurrency
 base and is persisted atomically with its timestamp, event and idempotency receipt.
-Project-scoped Agent credentials still cannot write Main directly;
-Main/preferences restoration requires administrator authorization.
+Ordinary project-scoped Agent credentials still cannot write Main directly.
+An explicitly allowlisted developer client may use the separate Main-structure
+protocol to create, rename, update or move nodes with a `developer` audit actor;
+it cannot delete nodes or change access, work items, memories, relations,
+preferences or document metadata. Main/preferences restoration still requires
+administrator authorization.
 Main advancement, unmerged source or concurrent publication fails without changing
 the baseline. Workbench refreshes the baseline every 30 seconds and shows stale or
 unavailable status instead of overwriting the last good snapshot. Repositories
 without a configured authoritative ref cannot publish.
 
 The project page reports publication as waiting for Git merge, ready, conflicting,
-unavailable, or published. Agent development changes belong in a Session Map;
+unavailable, or published. Ordinary Agent development changes belong in a Session Map;
 authenticated human edits such as TODOs and project annotations may be saved
 directly to the authoritative Main view.
 

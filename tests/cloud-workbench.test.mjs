@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createHash } from 'node:crypto';
 import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
@@ -291,6 +292,68 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(editedRead.body.snapshot.memory.map.root.purpose, 'edited in cloud workbench');
   const cloudMap = await request(service.url, '/api/projects/context-guard/map');
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
+});
+
+test('allowlisted developer clients can patch Main structure without human identity', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-developer-main-'));
+  const memoryDir = path.join(dataDir, 'memory'), projectId = 'context-guard';
+  const memoryConfig = {
+    dataDir: memoryDir,
+    adminToken: 'memory-admin',
+    projects: { [projectId]: { token: 'project-memory-token' } },
+  };
+  const memoryProjectDir = path.join(memoryDir, createHash('sha256').update(projectId).digest('hex'));
+  await fs.mkdir(memoryProjectDir, { recursive: true });
+  const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: {
+    id: 'T0', title: 'Blog', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [],
+  } };
+  await fs.writeFile(path.join(memoryProjectDir, 'memory.json'), JSON.stringify({
+    revision: 1,
+    main: { version: 'main-v1', memory: { map, records: {} } },
+    preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {},
+  }));
+  const protocolConfig = { repositories: [{
+    slug: 'example/repo', repositoryId: '123', projectId,
+    developerMainWriteClientIds: ['developer-client'],
+  }] };
+  const service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin',
+    browserPasswordHash: await createWorkbenchPasswordHash('test-only'), memoryConfig, protocolConfig });
+  t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const open = async clientId => {
+    const response = await fetch(service.url + '/api/v2/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ v: 2, id: `open-${clientId}`, type: 'auth.open', payload: {
+        repository: 'https://github.com/example/repo', password: 'test-only', clientId,
+      } }) });
+    return { response, body: await response.json(), credential: response.headers.get('x-context-guard-credential') };
+  };
+  const developer = await open('developer-client');
+  assert.equal(developer.response.status, 200);
+  assert.ok(developer.body.data.capabilities.includes('developer-main-structure'));
+  const send = (credential, message) => request(service.url, '/api/v2/messages', { method: 'POST', headers: {
+    Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json',
+  }, body: JSON.stringify(message) });
+  const patch = { v: 2, id: 'developer-create-1', type: 'main.structure.patch', payload: { baseVersion: 'main-v1', changes: [{
+    op: 'create', kind: 'node', id: 'content', fields: { parentId: 'T0', title: '内容', purpose: '维护文章', kind: 'module', state: 'untested', owns: ['source/'] },
+  }] } };
+  const created = await send(developer.credential, patch);
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.data.committed, true);
+  assert.deepEqual(created.body.data.nodeIds, ['content']);
+  assert.deepEqual((await send(developer.credential, patch)).body, created.body, 'same request id returns the durable receipt');
+  const memory = await request(service.url, `/v1/projects/${projectId}/main`, { headers: { Authorization: 'Bearer project-memory-token' } });
+  assert.equal(memory.body.snapshot.memory.map.root.children[0].title, '内容');
+  const history = JSON.parse(await fs.readFile(path.join(memoryProjectDir, 'memory.json'), 'utf8')).history;
+  assert.equal(history.at(-1).actor.kind, 'developer');
+  assert.equal(history.at(-1).actor.clientId, 'developer-client');
+
+  const stranger = await open('stranger-client');
+  assert.equal(stranger.body.data.capabilities.includes('developer-main-structure'), false);
+  const denied = await send(stranger.credential, { ...patch, id: 'stranger-create', payload: { ...patch.payload, baseVersion: created.body.data.version } });
+  assert.equal(denied.response.status, 403); assert.equal(denied.body.error.code, 'FORBIDDEN');
+  const deletion = await send(developer.credential, { v: 2, id: 'developer-delete', type: 'main.structure.patch', payload: {
+    baseVersion: created.body.data.version, changes: [{ op: 'delete', kind: 'node', id: 'content' }],
+  } });
+  assert.equal(deletion.response.status, 403); assert.equal(deletion.body.error.code, 'FORBIDDEN');
 });
 
 test('verified Session publication needs no exposed admin token and the authenticated Main workbench persists human edits', async t => {

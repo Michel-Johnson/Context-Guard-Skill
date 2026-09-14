@@ -41,6 +41,24 @@ test('IF-038: positional node edits remain ordered through the existing synchron
   assert.deepEqual(documentOperations(after, after), []);
 });
 
+test('developer actor directly maintains node structure without gaining human-only powers', () => {
+  const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', kind: 'module', state: 'dirty', children: [
+    { id: 'A', title: 'Long title (src/)', kind: 'module', state: 'untested', children: [] },
+  ] } };
+  const developer = { kind: 'developer', sessionId: '', clientId: 'client-1' };
+  const created = applyOperations(doc, [{ type: 'create', parentId: 'R', node: {
+    id: 'B', title: '内容', purpose: '维护内容', kind: 'module', state: 'untested', owns: ['source/'],
+  } }], developer).doc;
+  assert.equal(created.root.children[1].proposal, 'accepted');
+  assert.equal(created.root.children[1].origin, 'developer');
+  const updated = applyOperations(created, [{ type: 'update', id: 'A', fields: { title: '前端' } },
+    { type: 'move', id: 'A', parentId: 'B' }], developer).doc;
+  assert.equal(updated.root.children[0].title, '内容');
+  assert.equal(updated.root.children[0].children[0].title, '前端');
+  assert.throws(() => applyOperations(updated, [{ type: 'delete', id: 'A' }], developer), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(updated, [{ type: 'update', id: 'A', fields: { access: [] } }], developer), { code: 'FORBIDDEN' });
+});
+
 test('IF-047: relation receipts retain old and new endpoint grants after deletion or retargeting', () => {
   const doc = { flows: [{ id: 'relation', from: 'A', to: 'B' }] };
   assert.deepEqual(operationGrants(doc, [
