@@ -834,22 +834,16 @@ try {
     });
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
-    const heroStart = await preview.locator('.map-transition-hero').evaluate(el => {
-      const viewport = document.getElementById('viewport').getBoundingClientRect();
-      const first = el.getAnimations()[0]?.effect?.getKeyframes?.()[0];
-      return {
-        x:viewport.left+parseFloat(el.style.left), y:viewport.top+parseFloat(el.style.top),
-        width:parseFloat(el.style.width), height:parseFloat(el.style.height), firstTransform:first?.transform
-      };
+    await preview.waitForTimeout(120);
+    const departingFrame = await preview.evaluate(() => {
+      const anchor = document.querySelector('.node[data-id="M1"]');
+      const sibling = document.querySelector('.node[data-id="M2"]');
+      return {anchorWidth:anchor.getBoundingClientRect().width, siblingOpacity:Number(getComputedStyle(sibling).opacity)};
     });
-    assert.ok(Math.abs(heroStart.x-moduleBeforeDrill.x)<1 && Math.abs(heroStart.y-moduleBeforeDrill.y)<1, `hero must start on the clicked module ${JSON.stringify({moduleBeforeDrill,heroStart})}`);
-    assert.ok(Math.abs(heroStart.width-moduleBeforeDrill.width)<1 && Math.abs(heroStart.height-moduleBeforeDrill.height)<1);
-    assert.equal(heroStart.firstTransform, 'translate(0px, 0px) scale(1, 1)');
-    assert.equal(await preview.locator('.map-transition-snapshot #links').count(), 0, 'old canvas links must not be cloned into the transition');
+    assert.ok(departingFrame.anchorWidth > moduleBeforeDrill.width * 1.05, `first phase should enlarge only the selected module ${JSON.stringify(departingFrame)}`);
+    assert.ok(departingFrame.siblingOpacity < .8, `first phase should fade siblings ${JSON.stringify(departingFrame)}`);
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
-    const moduleWidthAfterDrill = await preview.locator('#nodes .node.root').evaluate(el => el.getBoundingClientRect().width);
-    assert.ok(moduleWidthAfterDrill > moduleBeforeDrill.width * 1.05, `drilled module should visibly enlarge: ${moduleBeforeDrill.width} -> ${moduleWidthAfterDrill}`);
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
