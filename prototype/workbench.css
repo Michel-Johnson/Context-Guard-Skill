@@ -253,21 +253,16 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
-#world.map-transition-zoom{transition:transform 460ms cubic-bezier(.22,.82,.24,1)}
-.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;transition:opacity 300ms ease}
+#world.map-transition-zoom{transition:transform 620ms cubic-bezier(.22,.82,.24,1)}
+.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
 .map-transition-snapshot .node{position:absolute;pointer-events:none}
 body.map-transition-revealing.map-transition-live .map-transition-snapshot{opacity:0}
 body.map-transition-revealing #world .node:not(.map-transition-anchor){
-  opacity:0;transform:translateY(10px) scale(.97);
-  transition:opacity 300ms ease,transform 380ms cubic-bezier(.22,.82,.24,1);
-  transition-delay:calc(min(var(--map-reveal-order, 0), 10) * 22ms)}
-body.map-transition-revealing #world #links path{opacity:0;transition:opacity 300ms ease;transition-delay:calc(min(var(--map-reveal-order, 0), 12) * 18ms)}
-body.map-transition-revealing.map-transition-live #world .node:not(.map-transition-anchor){opacity:.28;transform:none}
-body.map-transition-revealing.map-transition-live #world #links path{opacity:.22}
-body.map-transition-revealing #world.map-transition-zoom .node:not(.map-transition-anchor){
-  opacity:1;transform:none;transition:opacity 460ms cubic-bezier(.22,.82,.24,1)}
-body.map-transition-revealing #world.map-transition-zoom #links path{
-  opacity:1;transition:opacity 460ms cubic-bezier(.22,.82,.24,1)}
+  opacity:0;transform:none;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
+body.map-transition-revealing #world #links path{
+  opacity:0;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
+body.map-transition-revealing.map-transition-live #world .node:not(.map-transition-anchor){opacity:1}
+body.map-transition-revealing.map-transition-live #world #links path{opacity:1}
 body.map-transitioning #viewport{cursor:wait}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}

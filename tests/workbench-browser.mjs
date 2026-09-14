@@ -835,9 +835,16 @@ try {
     });
     await preview.evaluate(() => {
       window.__CG_TOUR_FULL_MAP__ = true;
-      window.__mapRevealEnd = false;
+      window.__mapMotionStart = false;
       window.__mapMotionEnd = false;
-      window.addEventListener('cg:map-reveal-end', () => { window.__mapRevealEnd = true; }, {once:true});
+      window.addEventListener('cg:map-transition-start', () => {
+        const anchor = document.querySelector('.node[data-id="M1"]');
+        const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+        window.__mapMotionStart = {
+          anchor:anchor.getBoundingClientRect().toJSON(),
+          childOpacity:Number(getComputedStyle(child).opacity)
+        };
+      }, {once:true});
       window.addEventListener('cg:map-transition-end', () => {
         window.__mapMotionEnd = {
           transform:document.getElementById('world').style.transform,
@@ -848,36 +855,33 @@ try {
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
     await preview.waitForTimeout(120);
-    const revealFrame = await preview.evaluate(() => {
+    const movingFrame = await preview.evaluate(() => {
       const anchor = document.querySelector('.node[data-id="M1"]');
       const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
       const rect = anchor.getBoundingClientRect();
       return {
         anchor:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
         childOpacity:child ? Number(getComputedStyle(child).opacity) : 0,
-        revealing:document.body.classList.contains('map-transition-revealing'),
-        zooming:document.getElementById('world').classList.contains('map-transition-zoom')
+        zooming:document.getElementById('world').classList.contains('map-transition-zoom'),
+        start:window.__mapMotionStart
       };
     });
-    assert.equal(revealFrame.revealing, true, `first phase should reveal children ${JSON.stringify(revealFrame)}`);
-    assert.equal(revealFrame.zooming, false, `first phase must not zoom ${JSON.stringify(revealFrame)}`);
-    assert.ok(revealFrame.childOpacity > 0 && revealFrame.childOpacity < .8, `children should be partially visible before zoom ${JSON.stringify(revealFrame)}`);
-    assert.ok(Math.abs(revealFrame.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(revealFrame.anchor.y-moduleBeforeDrill.y)<.25 &&
-      Math.abs(revealFrame.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(revealFrame.anchor.height-moduleBeforeDrill.height)<1,
-      `selected module should remain in the same first-phase frame ${JSON.stringify({moduleBeforeDrill,revealFrame})}`);
-    await preview.waitForFunction(() => window.__mapRevealEnd === true);
-    assert.equal(await preview.evaluate(() => document.getElementById('world').classList.contains('map-transition-zoom')), true, 'zoom should start only after child reveal');
-    const zoomStartOpacity = await preview.evaluate(() => {
-      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
-      return Number(getComputedStyle(child).opacity);
-    });
+    assert.equal(movingFrame.zooming, true, `map and mask should share one animation ${JSON.stringify(movingFrame)}`);
+    assert.equal(movingFrame.start.childOpacity, 0, `children should exist behind a fully opaque mask at animation start ${JSON.stringify(movingFrame)}`);
+    assert.ok(movingFrame.childOpacity > 0 && movingFrame.childOpacity < 1, `child mask should fade while the map moves ${JSON.stringify(movingFrame)}`);
+    assert.ok(Math.abs(movingFrame.start.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(movingFrame.start.anchor.y-moduleBeforeDrill.y)<.25 &&
+      Math.abs(movingFrame.start.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(movingFrame.start.anchor.height-moduleBeforeDrill.height)<1,
+      `single animation must start from the clicked module frame ${JSON.stringify({moduleBeforeDrill,movingFrame})}`);
     await preview.waitForTimeout(160);
-    const zoomFrameOpacity = await preview.evaluate(() => {
+    const laterMovingFrame = await preview.evaluate(() => {
       const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
-      return Number(getComputedStyle(child).opacity);
+      const anchor = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return {childOpacity:Number(getComputedStyle(child).opacity), anchorWidth:anchor.width};
     });
-    assert.ok(zoomFrameOpacity > zoomStartOpacity+.05 && zoomFrameOpacity < 1,
-      `child mask should fade while the map is moving ${JSON.stringify({zoomStartOpacity,zoomFrameOpacity})}`);
+    assert.ok(laterMovingFrame.childOpacity > movingFrame.childOpacity+.05 && laterMovingFrame.childOpacity < 1,
+      `mask opacity should progress continuously on the same timeline ${JSON.stringify({movingFrame,laterMovingFrame})}`);
+    assert.ok(Math.abs(laterMovingFrame.anchorWidth-movingFrame.anchor.width)>.5,
+      `camera movement should progress during the same opacity transition ${JSON.stringify({movingFrame,laterMovingFrame})}`);
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     assert.equal(await preview.locator('#nodes .node[data-id]').count(), 13, 'drilled demo should render the complete Workbench subtree');

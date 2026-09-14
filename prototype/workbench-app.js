@@ -3952,8 +3952,7 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
-const MAP_REVEAL_MS = 620;
-const MAP_ZOOM_MS = 460;
+const MAP_MOTION_MS = 620;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
 let mapTransitionTimer = null;
@@ -4042,26 +4041,20 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   view = alignedView(nextAnchor, anchorRect);
   applyView();
   correctAlignedView(nextAnchor, anchorRect);
-  nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-  linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
   const finalView = fittedView();
+  worldEl.classList.add("map-transition-zoom");
   void worldEl.offsetWidth;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.add("map-transition-live")));
-  mapTransitionTimer = setTimeout(()=>{
-    mapTransitionSnapshot?.remove();
-    mapTransitionSnapshot = null;
-    worldEl.classList.add("map-transition-zoom");
-    window.dispatchEvent(new CustomEvent("cg:map-reveal-end", {detail:{viewRootId}}));
-    void worldEl.offsetWidth;
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      view = finalView;
-      applyView();
-    }));
-    mapTransitionTimer = setTimeout(finishMapTransition, MAP_ZOOM_MS+80);
-  }, MAP_REVEAL_MS);
+  window.dispatchEvent(new CustomEvent("cg:map-transition-start", {detail:{viewRootId}}));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    document.body.classList.add("map-transition-live");
+    view = finalView;
+    applyView();
+  }));
+  mapTransitionTimer = setTimeout(finishMapTransition, MAP_MOTION_MS+80);
 }
 function realignRevealingMap(){
-  if(!mapTransitioning || !document.body.classList.contains("map-transition-revealing") || !mapTransitionAnchorRect) return;
+  if(!mapTransitioning || worldEl.classList.contains("map-transition-zoom") ||
+    !document.body.classList.contains("map-transition-revealing") || !mapTransitionAnchorRect) return;
   const anchor = mapNode(mapTransitionAnchorId);
   if(!anchor) return;
   view = alignedView(anchor, mapTransitionAnchorRect);
