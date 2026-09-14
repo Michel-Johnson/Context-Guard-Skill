@@ -465,6 +465,22 @@ test('Structured node tools expose stable buttons without leaking tool-only map 
   assert.doesNotMatch(assistant.text, /N1|N2/);
 });
 
+test('Completed tool turns expose one final answer with the structured action', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-concise-actions-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async () => [{ id: 'N1', title: '阅读' }] });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => ++calls === 1 ? {
+    stop: 'tool_use', content: [{ type: 'text', text: '我先找到了节点。' },
+      { type: 'tool_use', id: 'show', name: 'show_nodes', input: { message: '推荐节点', nodeIds: ['N1'] } }],
+  } : { stop: 'end_turn', content: [{ type: 'text', text: '推荐阅读节点。' }] } } });
+  await service.submit({ id: 'turn', text: '推荐一个节点' }); await service.close();
+  const assistant = (await service.state()).messages.filter(message => message.role === 'assistant');
+  assert.equal(assistant.length, 1);
+  assert.equal(assistant[0].text, '推荐阅读节点。');
+  assert.deepEqual(assistant[0].actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
+});
+
 test('Coordinator Map actions compile only non-destructive structural changes', () => {
   const operations = coordinatorStructureOperations([
     { op: 'create', parentId: 'T0', title: '内容', purpose: '文章内容', owns: ['source/'] },
