@@ -2637,6 +2637,7 @@ function renderBugPanel(){
 }
 
 function enterView(id, opts){
+  if(mapTransitioning || id===viewRootId) return;
   closeAddPick();
   deleteAskId = null;
   if(bugPathMode){
@@ -2645,11 +2646,24 @@ function enterView(id, opts){
     bugPathReturn = null;
     document.body.classList.remove("bug-path-mode");
   }
+  const previousRootId = viewRootId;
+  const previousPath = findPath(previousRootId) || [];
+  const nextPath = findPath(id) || [];
+  const direction = opts?.direction || (nextPath.length > previousPath.length ? "down" : "up");
+  const anchorId = direction==="down" ? id : previousRootId;
+  const anchor = mapNode(anchorId);
+  const anchorRect = anchor?.getBoundingClientRect();
+  const snapshot = prefersReducedMapMotion() ? null : createMapSnapshot();
   viewRootId = id; selectedId = id;
   const n = getNode(id);
   if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
   renderAll();
-  fitView();
+  if(!snapshot || !anchorRect){
+    fitView();
+    armDrillReturn();
+    return;
+  }
+  animateViewChange({snapshot, anchorId, anchorRect, direction});
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
@@ -3298,7 +3312,7 @@ function renderMap(){
   linksEl.innerHTML = paths;
 }
 function onNodeClick(e, n){
-  if(!n) return;
+  if(!n || mapTransitioning) return;
   e.stopPropagation();
   if(window.__CG_SERVER?.root==="cloud:overview" && n.cloudProjectId){
     location.href="/projects/"+encodeURIComponent(n.cloudProjectId); return;
@@ -3934,6 +3948,93 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
+const MAP_TRANSITION_MS = 520;
+const MAP_RETURN_RATIO = .72;
+let mapTransitioning = false;
+let mapTransitionTimer = null;
+let wheelReturnTimer = null;
+let drillReturnAt = null;
+let mapResizePending = false;
+function prefersReducedMapMotion(){
+  try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+  catch(e){ return false; }
+}
+function mapNode(id){
+  return [...nodesEl.querySelectorAll(".node[data-id]")].find(el=>el.dataset.id===id) || null;
+}
+function createMapSnapshot(){
+  const snapshot = worldEl.cloneNode(true);
+  snapshot.removeAttribute("id");
+  snapshot.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  snapshot.querySelectorAll("[data-id]").forEach(el=>el.removeAttribute("data-id"));
+  snapshot.querySelectorAll(".add-child,.add-pick").forEach(el=>el.remove());
+  snapshot.className = "map-transition-snapshot";
+  snapshot.setAttribute("aria-hidden", "true");
+  snapshot.style.transform = worldEl.style.transform;
+  document.getElementById("viewport").appendChild(snapshot);
+  return snapshot;
+}
+function alignedView(el, screenRect){
+  const vpRect = vp.getBoundingClientRect();
+  const width = Math.max(el.offsetWidth, 1);
+  const k = Math.min(2.2, Math.max(.2, screenRect.width / width));
+  const cx = screenRect.left - vpRect.left + screenRect.width/2;
+  const cy = screenRect.top - vpRect.top + screenRect.height/2;
+  return {
+    k,
+    x:cx-(el.offsetLeft+el.offsetWidth/2)*k,
+    y:cy-(el.offsetTop+el.offsetHeight/2)*k
+  };
+}
+function finishMapTransition(snapshot){
+  clearTimeout(mapTransitionTimer);
+  snapshot?.remove();
+  document.body.classList.remove("map-transitioning", "map-transition-live", "map-transition-down", "map-transition-up");
+  worldEl.classList.remove("map-transition-active");
+  nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
+  mapTransitioning = false;
+  if(mapResizePending){
+    mapResizePending = false;
+    fitView();
+  }
+  armDrillReturn();
+  window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
+}
+function animateViewChange({snapshot, anchorId, anchorRect, direction}){
+  const anchor = mapNode(anchorId);
+  if(!anchor){ snapshot.remove(); fitView(); armDrillReturn(); return; }
+  const finalView = fittedView();
+  view = alignedView(anchor, anchorRect);
+  applyView();
+  anchor.classList.add("map-transition-anchor");
+  nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+  linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+  mapTransitioning = true;
+  document.body.classList.add("map-transitioning", `map-transition-${direction}`);
+  worldEl.classList.add("map-transition-active");
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    document.body.classList.add("map-transition-live");
+    view = finalView;
+    applyView();
+  }));
+  mapTransitionTimer = setTimeout(()=>finishMapTransition(snapshot), MAP_TRANSITION_MS+100);
+}
+function armDrillReturn(){
+  clearTimeout(wheelReturnTimer);
+  const path = findPath(viewRootId) || [];
+  drillReturnAt = path.length>1 ? Math.max(.2, view.k*MAP_RETURN_RATIO) : null;
+}
+function returnToParent(){
+  if(mapTransitioning) return;
+  const path = findPath(viewRootId) || [];
+  if(path.length<2) return;
+  enterView(path[path.length-2].id, {direction:"up", unpack:false});
+}
+function scheduleZoomReturn(){
+  if(drillReturnAt===null || view.k>drillReturnAt || mapTransitioning) return;
+  clearTimeout(wheelReturnTimer);
+  wheelReturnTimer = setTimeout(returnToParent, 140);
+}
 function hideEdgeSlivers(){
   const vp = document.getElementById("viewport");
   const header = document.querySelector("header.top");
@@ -4170,7 +4271,7 @@ function syncChrome(){
   document.documentElement.style.setProperty("--chrome-top", px+"px");
   hideEdgeSlivers();
 }
-function fitView(){
+function fittedView(){
   const bugs = document.body.classList.contains("bugs-open");
   const phone = isPhoneLayout();
   const right = phone ? 0 : (bugs ? bugPanelWidthPx() : drawerWidthPx());
@@ -4178,10 +4279,17 @@ function fitView(){
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - bottom - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
-  view.k = Math.max(k, .35);
-  view.x = 36 + Math.max(0, (availW - extents.w*view.k)/2);
-  view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
+  const fittedK = Math.max(k, .35);
+  return {
+    k:fittedK,
+    x:36 + Math.max(0, (availW - extents.w*fittedK)/2),
+    y:24 + Math.max(0, (availH - extents.h*fittedK)/2)
+  };
+}
+function fitView(){
+  view = fittedView();
   applyView();
+  armDrillReturn();
 }
 function onChromeResize(){
   syncPhoneClass();
@@ -4197,6 +4305,7 @@ function onChromeResize(){
   }
   syncSplitChrome();
   syncChrome();
+  if(mapTransitioning){ mapResizePending = true; return; }
   fitView();
 }
 onChromeResize._phone = isPhoneLayout();
@@ -4212,7 +4321,7 @@ let panning=false, sx=0, sy=0;
 const pointers = new Map();
 let pinch = null;
 function panIgnore(el){
-  return !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
+  return mapTransitioning || !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
 }
 function endPointer(e){
   pointers.delete(e.pointerId);
@@ -4220,6 +4329,7 @@ function endPointer(e){
   if(pointers.size === 0){
     panning = false;
     vp.classList.remove("grabbing");
+    scheduleZoomReturn();
   }else if(pointers.size === 1){
     const p = [...pointers.values()][0];
     panning = true;
@@ -4257,7 +4367,8 @@ vp.addEventListener("pointermove", e=>{
     const pts = [...pointers.values()];
     const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
     if(pinch.d>8 && view.k>0){
-      const nk = Math.min(2.2, Math.max(.35, pinch.k * (d / pinch.d)));
+      const minK = viewRootId===data.id ? .35 : .2;
+      const nk = Math.min(2.2, Math.max(minK, pinch.k * (d / pinch.d)));
       const rect = vp.getBoundingClientRect();
       const cx = (pts[0].x+pts[1].x)/2 - rect.left;
       const cy = (pts[0].y+pts[1].y)/2 - rect.top;
@@ -4276,14 +4387,18 @@ vp.addEventListener("pointercancel", endPointer);
 window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
+  if(mapTransitioning) return;
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
-  const nk = Math.min(2.2, Math.max(.35, view.k*factor));
+  const minK = viewRootId===data.id ? .35 : .2;
+  const nk = Math.min(2.2, Math.max(minK, view.k*factor));
   const rect = vp.getBoundingClientRect();
   const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
   view.x = cx - (cx-view.x)*(nk/view.k);
   view.y = cy - (cy-view.y)*(nk/view.k);
   view.k = nk;
   applyView();
+  if(e.deltaY<0 && drillReturnAt!==null && view.k>drillReturnAt+.08) clearTimeout(wheelReturnTimer);
+  if(e.deltaY>0) scheduleZoomReturn();
 },{passive:false});
 
 function syncLinkRepoBtn(){

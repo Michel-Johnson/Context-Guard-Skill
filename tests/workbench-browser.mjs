@@ -829,7 +829,9 @@ try {
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
     await preview.locator('.node[data-id="M1"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
@@ -841,7 +843,25 @@ try {
     assert.ok(nested.at(-1).text.includes('工作台'));
     assert.equal(nested.at(-1).switch, false);
     await preview.locator('.nav-crumbs a').first().click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transition-up')), true, 'breadcrumb return should use the reverse animation');
     await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.locator('.node[data-id="M1"]').click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.evaluate(() => {
+      const viewport = document.getElementById('viewport');
+      const rect = viewport.getBoundingClientRect();
+      for(let i=0;i<16;i++) viewport.dispatchEvent(new WheelEvent('wheel', {
+        bubbles:true, cancelable:true, deltaY:120, clientX:rect.left+rect.width/2, clientY:rect.top+rect.height/2
+      }));
+    });
+    await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && !document.body.classList.contains('map-transitioning'));
+    recordCheck('map-drill-motion-and-zoom-return');
+    await preview.emulateMedia({ reducedMotion: 'reduce' });
+    await preview.locator('.node[data-id="M1"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), false, 'reduced motion should navigate without animation');
+    await preview.locator('.nav-crumbs a').first().click();
+    await preview.emulateMedia({ reducedMotion: 'no-preference' });
     recordCheck('context-card-merged');
     assert.equal(await preview.locator('#workbench-tools').getAttribute('open'), null);
     assert.equal(await preview.locator('#btn-auth').isVisible(), false);
@@ -1015,6 +1035,7 @@ try {
     if (await preview.locator('.nav-crumbs a').count()) {
       await preview.locator('.nav-crumbs a').first().click();
       await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+      await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     }
     assert.equal(await preview.locator('#detail button.trash').count(), 0, 'map root has no trash');
     assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'root inspector omits redundant add-node guidance');
