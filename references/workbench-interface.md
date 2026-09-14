@@ -101,6 +101,26 @@ is not safe to proceed by reading a stale card. A read describes that moment, no
 lock held throughout the model's reasoning. Always pass its `version` when submitting
 the next change.
 
+## Developer Main structure writes
+
+A Cloud operator may explicitly allowlist a trusted project client ID in the
+repository's private `developerMainWriteClientIds` configuration. That client may
+then maintain only the authoritative Main node structure without impersonating a
+human or binding a lifecycle Session:
+
+```sh
+context-guard map main read --root "/path/to/project"
+context-guard map main apply --root "/path/to/project" --input request.json
+```
+
+The request contains `operationId`, the `baseVersion` returned by `main read`, and
+v2 node `changes`. It may create nodes or update their title, purpose, kind, state,
+owns, parent and order. Delete, access, proposal state, tasks, Bugs, memories,
+relations and document metadata are rejected. Every accepted change keeps the
+usual optimistic version check and idempotent receipt, and history records the
+`developer` actor plus its allowlisted client ID. The allowlist is absent by
+default, project-scoped, and stored outside source control.
+
 ## Submit operations
 
 Write a request file, then run:

@@ -72,6 +72,7 @@ export const payloadRules = {
   'sync.ack': object({ items: array((v, p) => { object({ seq: integer(1), outcome: choice('applied', 'rejected', 'cancelled'), reason: optional(text), deliveryState: optional(choice('stored', 'received', 'uncertain')) })(v, p); check(v.outcome === 'applied' || !!v.reason, p); }, 1) }),
   'sync.event': object({ latestSeq: integer() }),
   'workbench.patch': object({ baseVersion: version, changes: array(change, 1) }),
+  'main.structure.patch': object({ baseVersion: version, changes: array(change, 1) }),
   'workbench.read': v => {
     object({ scope: choice('main', 'session'), nodeIds: optional(ids), version: optional(version), cursor: string(4096, true), limit: integer(1, 100), recovery: optional(choice(true, false)) })(v);
     check(!v.recovery || v.scope === 'session' && !v.nodeIds, 'recovery scope');
@@ -92,7 +93,7 @@ export const payloadRules = {
   'session.bind': object({ sessionId: id, worktreeId: id, agentId: id, expectedBindingVersion: emptyVersion }),
   'task.control': v => { object({ taskId: id, action: choice(...Object.keys(controls)), expectedVersion: version, data: jsonObject })(v); controls[v.action](v.data); },
 };
-const projectTypes = new Set(['auth.open', 'auth.close', 'sync.heartbeat', 'session.bind']);
+const projectTypes = new Set(['auth.open', 'auth.close', 'sync.heartbeat', 'session.bind', 'main.structure.patch']);
 export function validateMessage(input) {
   let bytes;
   try { bytes = Buffer.byteLength(JSON.stringify(input)); } catch { fail('INVALID_ARGUMENT', 'Message must be JSON'); }
