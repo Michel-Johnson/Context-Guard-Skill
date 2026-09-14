@@ -19,6 +19,30 @@ function questionsAt(state, index) {
     });
 }
 
+function publicMessages(state) {
+  const raw = state.messages.map((message, index) => {
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    const text = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
+    const questions = questionsAt(state, index);
+    return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
+      ...(message.answerTo ? { answerTo: message.answerTo } : {}),
+      ...(questions.length ? { questions } : {}),
+      ...(message.actions?.length ? { actions: message.actions } : {}),
+      tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
+  }).filter(message => message.text || message.tools.length);
+  const visible = []; let carriedActions = [];
+  for (let index = 0; index < raw.length; index++) {
+    const message = raw[index];
+    const fold = message.role === 'assistant' && message.tools.length && !message.questions?.length && raw[index + 1]?.role === 'assistant';
+    if (fold) { carriedActions.push(...(message.actions || [])); continue; }
+    if (message.role === 'assistant' && carriedActions.length) {
+      message.actions = [...carriedActions, ...(message.actions || [])]; carriedActions = [];
+    } else if (message.role === 'user') carriedActions = [];
+    visible.push(message);
+  }
+  return visible;
+}
+
 // Conversation identity belongs to a Map item, not to its execution Session.
 // Legacy files stay in place; only newly opened item conversations use subfolders.
 export class CoordinatorConversations {
@@ -147,18 +171,9 @@ export class CoordinatorService {
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
         .map(([id, receipt]) => ({ id, ...receipt.result, ...(receipt.result.kind === 'mount-proposal' ? { pending: !mounts.byProposal[id] } : {}) })),
       promptVersion: state.promptVersion || hash(this.system), simulated: this.simulated,
-      messages: state.messages.map((message, index) => {
-        const blocks = Array.isArray(message.content) ? message.content : [];
-        const text = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
-        // Only successful ask_user calls become visible questions. Other tool
-        // inputs/results remain private diagnostics, not chat or authorization.
-        const questions = questionsAt(state, index);
-        return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
-          ...(message.answerTo ? { answerTo: message.answerTo } : {}),
-          ...(questions.length ? { questions } : {}),
-          ...(message.actions?.length ? { actions: message.actions } : {}),
-          tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
-      }).filter(message => message.text || message.tools.length),
+      // Tool-call narration is temporary. Once the same turn has a final
+      // answer, expose one concise assistant message and carry its actions.
+      messages: publicMessages(state),
     };
   }
   async reviewMount(input, commit) {
