@@ -3955,7 +3955,7 @@ let view = {x:36, y:24, k:1};
 const MAP_MOTION_MS = 620;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
-let mapTransitionTimer = null;
+let mapTransitionFrame = null;
 let mapTransitionSnapshot = null;
 let mapTransitionAnchorRect = null;
 let mapTransitionAnchorId = null;
@@ -4011,13 +4011,16 @@ function createMapTransitionSnapshot(anchorId){
   return snapshot;
 }
 function finishMapTransition(){
-  clearTimeout(mapTransitionTimer);
+  if(mapTransitionFrame!==null) cancelAnimationFrame(mapTransitionFrame);
+  mapTransitionFrame = null;
   mapTransitionSnapshot?.remove();
   mapTransitionSnapshot = null;
   mapTransitionAnchorRect = null;
   mapTransitionAnchorId = null;
   document.body.classList.remove("map-transitioning", "map-transition-revealing", "map-transition-live", "map-transition-down", "map-transition-up");
   worldEl.classList.remove("map-transition-zoom");
+  worldEl.style.removeProperty("--map-node-opacity");
+  worldEl.style.removeProperty("--map-link-opacity");
   nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
   mapTransitioning = false;
   if(mapResizePending){
@@ -4026,6 +4029,13 @@ function finishMapTransition(){
   }
   armDrillReturn();
   window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
+}
+function mapMotionEase(t){
+  return 1-Math.pow(1-t, 3);
+}
+function mapMaskProgress(t, start, end){
+  const p = Math.max(0, Math.min(1, (t-start)/(end-start)));
+  return p*p*(3-2*p);
 }
 function animateViewChange({id, opts, anchorId, anchor, direction}){
   const anchorRect = anchor.getBoundingClientRect();
@@ -4041,16 +4051,34 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   view = alignedView(nextAnchor, anchorRect);
   applyView();
   correctAlignedView(nextAnchor, anchorRect);
+  const startView = {...view};
   const finalView = fittedView();
   worldEl.classList.add("map-transition-zoom");
+  worldEl.style.setProperty("--map-node-opacity", "0");
+  worldEl.style.setProperty("--map-link-opacity", "0");
   void worldEl.offsetWidth;
   window.dispatchEvent(new CustomEvent("cg:map-transition-start", {detail:{viewRootId}}));
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    document.body.classList.add("map-transition-live");
+  document.body.classList.add("map-transition-live");
+  let startedAt = null;
+  const frame = now=>{
+    if(startedAt===null) startedAt = now;
+    const raw = Math.min(1, Math.max(0, (now-startedAt)/MAP_MOTION_MS));
+    const camera = mapMotionEase(raw);
+    view = {
+      x:startView.x+(finalView.x-startView.x)*camera,
+      y:startView.y+(finalView.y-startView.y)*camera,
+      k:startView.k+(finalView.k-startView.k)*camera
+    };
+    worldEl.style.setProperty("--map-node-opacity", String(mapMaskProgress(raw, .04, .8)));
+    worldEl.style.setProperty("--map-link-opacity", String(mapMaskProgress(raw, .22, .9)));
+    if(mapTransitionSnapshot) mapTransitionSnapshot.style.opacity = String(1-mapMaskProgress(raw, 0, .62));
+    applyView();
+    if(raw<1){ mapTransitionFrame = requestAnimationFrame(frame); return; }
     view = finalView;
     applyView();
-  }));
-  mapTransitionTimer = setTimeout(finishMapTransition, MAP_MOTION_MS+80);
+    finishMapTransition();
+  };
+  mapTransitionFrame = requestAnimationFrame(frame);
 }
 function realignRevealingMap(){
   if(!mapTransitioning || worldEl.classList.contains("map-transition-zoom") ||

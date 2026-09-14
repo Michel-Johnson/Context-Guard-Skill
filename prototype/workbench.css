@@ -253,16 +253,13 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
-#world.map-transition-zoom{transition:transform 620ms cubic-bezier(.22,.82,.24,1)}
-.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
+#world.map-transition-zoom{will-change:transform}
+.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;will-change:opacity}
 .map-transition-snapshot .node{position:absolute;pointer-events:none}
-body.map-transition-revealing.map-transition-live .map-transition-snapshot{opacity:0}
 body.map-transition-revealing #world .node:not(.map-transition-anchor){
-  opacity:0;transform:none;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
+  opacity:var(--map-node-opacity,0);transform:none;transition:none}
 body.map-transition-revealing #world #links path{
-  opacity:0;transition:opacity 500ms cubic-bezier(.22,.82,.24,1) 120ms}
-body.map-transition-revealing.map-transition-live #world .node:not(.map-transition-anchor){opacity:1}
-body.map-transition-revealing.map-transition-live #world #links path{opacity:1}
+  opacity:var(--map-link-opacity,0);transition:none}
 body.map-transitioning #viewport{cursor:wait}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
