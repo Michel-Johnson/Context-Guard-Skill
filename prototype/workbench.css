@@ -253,18 +253,21 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
-#world.map-transition-active{transition:transform 460ms cubic-bezier(.22,.82,.24,1)}
-body.map-transition-departing #world.map-transition-active{transition-duration:280ms}
-body.map-transition-departing #world .node:not(.map-transition-anchor){
-  opacity:0;transform:scale(.96);transition:opacity 220ms ease,transform 260ms ease}
-body.map-transition-departing #world #links path{opacity:0;transition:opacity 210ms ease}
-body.map-transition-incoming #world .node:not(.map-transition-anchor){
+#world.map-transition-zoom{transition:transform 460ms cubic-bezier(.22,.82,.24,1)}
+.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;transition:opacity 300ms ease}
+.map-transition-snapshot .node{position:absolute;pointer-events:none}
+body.map-transition-revealing.map-transition-live .map-transition-snapshot{opacity:0}
+body.map-transition-revealing #world .node:not(.map-transition-anchor){
   opacity:0;transform:translateY(10px) scale(.97);
   transition:opacity 300ms ease,transform 380ms cubic-bezier(.22,.82,.24,1);
   transition-delay:calc(min(var(--map-reveal-order, 0), 10) * 22ms)}
-body.map-transition-incoming #world #links path{opacity:0;transition:opacity 300ms ease;transition-delay:calc(min(var(--map-reveal-order, 0), 12) * 18ms)}
-body.map-transition-incoming.map-transition-live #world .node:not(.map-transition-anchor){opacity:1;transform:none}
-body.map-transition-incoming.map-transition-live #world #links path{opacity:1}
+body.map-transition-revealing #world #links path{opacity:0;transition:opacity 300ms ease;transition-delay:calc(min(var(--map-reveal-order, 0), 12) * 18ms)}
+body.map-transition-revealing.map-transition-live #world .node:not(.map-transition-anchor){opacity:.28;transform:none}
+body.map-transition-revealing.map-transition-live #world #links path{opacity:.22}
+body.map-transition-revealing #world.map-transition-zoom .node:not(.map-transition-anchor){
+  opacity:1;transform:none;transition:opacity 460ms cubic-bezier(.22,.82,.24,1)}
+body.map-transition-revealing #world.map-transition-zoom #links path{
+  opacity:1;transition:opacity 460ms cubic-bezier(.22,.82,.24,1)}
 body.map-transitioning #viewport{cursor:wait}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
@@ -301,7 +304,7 @@ body.rel-mode .node .add-child,body.rel-mode .node .add-pick{display:none}
   background:var(--paper);border:2px solid var(--line-ink);border-radius:16px;
   padding:5px 13px 5px 11px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
   box-shadow:var(--shadow-sm);transition:opacity .2s, transform .12s}
-.node:hover{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--line-ink)}
+.node:hover{transform:none;box-shadow:1px 1px 0 var(--line-ink)}
 .node.selected{background:var(--yellow)}
 .node.dimmed{opacity:.18}
 
@@ -314,7 +317,7 @@ body.rel-mode .node .add-child,body.rel-mode .node .add-pick{display:none}
   width:252px;max-width:252px;
   border:2px solid var(--line-ink);background:var(--module-soft);border-radius:8px;
   padding:14px 16px 13px;box-shadow:var(--shadow);word-break:keep-all}
-.node.module:hover{transform:translate(1px,1px);box-shadow:2px 2px 0 var(--line-ink)}
+.node.module:hover{transform:none;box-shadow:2px 2px 0 var(--line-ink)}
 .node.module .m-head{display:flex;align-items:flex-start;gap:8px;font-weight:800;font-size:18px;line-height:1.3;color:var(--ink)}
 .node.module .m-head .dot,.node.module .m-head .lock,.node.module .m-head .part-tag,.node.module .m-head .auth-mark,.node.module .m-head .focus-mark{flex:0 0 auto;margin-top:4px}
 .node.module .m-head span{flex:1;min-width:0;white-space:normal;overflow:visible;word-break:keep-all;overflow-wrap:break-word}
@@ -655,7 +658,7 @@ button.trash:hover .lid,button.trash:focus .lid{transform:rotate(-28deg) transla
 @media (prefers-reduced-motion: reduce){
   button.trash .lid{transition:none}
   button.trash:hover .lid,button.trash:focus .lid{transform:none}
-  #world.map-transition-active,
+  #world.map-transition-zoom,
   body.map-transitioning #world .node,body.map-transitioning #world #links path{transition:none!important}
 }
 /* 荧光笔划在字上。线上是画廊 11 圆头笔。 */

@@ -2939,6 +2939,7 @@ function renderMap(){
     const div = document.createElement("div");
     div.dataset.id = n.id;
     div.className = "node" + (isViewRoot?" root":"") +
+      (mapTransitioning && n.id===mapTransitionAnchorId?" map-transition-anchor":"") +
       (n.kind==="module"?" module":"") +
       (n.kind==="work" && n.kind!=="module"?" work":"") +
       (isProposed(n)?" proposed":"") +
@@ -3949,11 +3950,14 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
-const MAP_DEPART_MS = 280;
-const MAP_ARRIVE_MS = 460;
+const MAP_REVEAL_MS = 620;
+const MAP_ZOOM_MS = 460;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
 let mapTransitionTimer = null;
+let mapTransitionSnapshot = null;
+let mapTransitionAnchorRect = null;
+let mapTransitionAnchorId = null;
 let wheelReturnTimer = null;
 let drillReturnAt = null;
 let mapResizePending = false;
@@ -3976,19 +3980,43 @@ function alignedView(el, screenRect){
     y:cy-(el.offsetTop+el.offsetHeight/2)*k
   };
 }
-function focusViewFor(anchor, direction){
+function correctAlignedView(el, screenRect){
+  const actual = el.getBoundingClientRect();
+  const targetCx = screenRect.left+screenRect.width/2;
+  const targetCy = screenRect.top+screenRect.height/2;
+  view.x += targetCx-(actual.left+actual.width/2);
+  view.y += targetCy-(actual.top+actual.height/2);
+  applyView();
+}
+function createMapTransitionSnapshot(anchorId){
   const vpRect = vp.getBoundingClientRect();
-  const rect = anchor.getBoundingClientRect();
-  const scale = direction==="down" ? 1.24 : .88;
-  const k = Math.min(2.2, Math.max(.2, view.k*scale));
-  const worldX = (rect.left-vpRect.left-view.x+rect.width/2)/view.k;
-  const worldY = (rect.top-vpRect.top-view.y+rect.height/2)/view.k;
-  return {k, x:vp.clientWidth*.42-worldX*k, y:vp.clientHeight*.5-worldY*k};
+  const snapshot = document.createElement("div");
+  snapshot.className = "map-transition-snapshot";
+  snapshot.setAttribute("aria-hidden", "true");
+  nodesEl.querySelectorAll(".node[data-id]").forEach(el=>{
+    if(el.dataset.id===anchorId || el.classList.contains("edge-sliver")) return;
+    const rect = el.getBoundingClientRect();
+    const clone = el.cloneNode(true);
+    clone.removeAttribute("data-id");
+    clone.querySelectorAll("[id]").forEach(child=>child.removeAttribute("id"));
+    Object.assign(clone.style, {
+      left:`${rect.left-vpRect.left}px`, top:`${rect.top-vpRect.top}px`,
+      width:`${rect.width}px`, height:`${rect.height}px`,
+      transform:"none", visibility:"visible", margin:"0"
+    });
+    snapshot.appendChild(clone);
+  });
+  vp.appendChild(snapshot);
+  return snapshot;
 }
 function finishMapTransition(){
   clearTimeout(mapTransitionTimer);
-  document.body.classList.remove("map-transitioning", "map-transition-departing", "map-transition-incoming", "map-transition-live", "map-transition-down", "map-transition-up");
-  worldEl.classList.remove("map-transition-active");
+  mapTransitionSnapshot?.remove();
+  mapTransitionSnapshot = null;
+  mapTransitionAnchorRect = null;
+  mapTransitionAnchorId = null;
+  document.body.classList.remove("map-transitioning", "map-transition-revealing", "map-transition-live", "map-transition-down", "map-transition-up");
+  worldEl.classList.remove("map-transition-zoom");
   nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
   mapTransitioning = false;
   if(mapResizePending){
@@ -3999,38 +4027,44 @@ function finishMapTransition(){
   window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
 }
 function animateViewChange({id, opts, anchorId, anchor, direction}){
-  const stagedView = focusViewFor(anchor, direction);
-  anchor.classList.add("map-transition-anchor");
+  const anchorRect = anchor.getBoundingClientRect();
+  mapTransitionAnchorRect = anchorRect;
+  mapTransitionAnchorId = anchorId;
   mapTransitioning = true;
-  document.body.classList.add("map-transitioning", "map-transition-departing", `map-transition-${direction}`);
-  worldEl.classList.add("map-transition-active");
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    view = stagedView;
-    applyView();
-  }));
+  mapTransitionSnapshot = createMapTransitionSnapshot(anchorId);
+  document.body.classList.add("map-transitioning", "map-transition-revealing", `map-transition-${direction}`);
+  commitViewRoot(id, opts);
+  const nextAnchor = mapNode(anchorId);
+  if(!nextAnchor){ finishMapTransition(); fitView(); return; }
+  nextAnchor.classList.add("map-transition-anchor");
+  view = alignedView(nextAnchor, anchorRect);
+  applyView();
+  correctAlignedView(nextAnchor, anchorRect);
+  nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+  linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+  const finalView = fittedView();
+  void worldEl.offsetWidth;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.add("map-transition-live")));
   mapTransitionTimer = setTimeout(()=>{
-    const anchorRect = anchor.getBoundingClientRect();
-    worldEl.classList.remove("map-transition-active");
-    commitViewRoot(id, opts);
-    const nextAnchor = mapNode(anchorId);
-    if(!nextAnchor){ finishMapTransition(); fitView(); return; }
-    view = alignedView(nextAnchor, anchorRect);
-    applyView();
+    mapTransitionSnapshot?.remove();
+    mapTransitionSnapshot = null;
+    worldEl.classList.add("map-transition-zoom");
+    window.dispatchEvent(new CustomEvent("cg:map-reveal-end", {detail:{viewRootId}}));
     void worldEl.offsetWidth;
-    nextAnchor.classList.add("map-transition-anchor");
-    nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-    linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-    const finalView = fittedView();
-    document.body.classList.remove("map-transition-departing");
-    document.body.classList.add("map-transition-incoming");
-    worldEl.classList.add("map-transition-active");
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      document.body.classList.add("map-transition-live");
       view = finalView;
       applyView();
     }));
-    mapTransitionTimer = setTimeout(finishMapTransition, MAP_ARRIVE_MS+100);
-  }, MAP_DEPART_MS);
+    mapTransitionTimer = setTimeout(finishMapTransition, MAP_ZOOM_MS+80);
+  }, MAP_REVEAL_MS);
+}
+function realignRevealingMap(){
+  if(!mapTransitioning || !document.body.classList.contains("map-transition-revealing") || !mapTransitionAnchorRect) return;
+  const anchor = mapNode(mapTransitionAnchorId);
+  if(!anchor) return;
+  view = alignedView(anchor, mapTransitionAnchorRect);
+  applyView();
+  correctAlignedView(anchor, mapTransitionAnchorRect);
 }
 function armDrillReturn(){
   clearTimeout(wheelReturnTimer);
@@ -4300,6 +4334,10 @@ function fittedView(){
   };
 }
 function fitView(){
+  if(mapTransitioning && document.body.classList.contains("map-transition-revealing")){
+    realignRevealingMap();
+    return;
+  }
   view = fittedView();
   applyView();
   armDrillReturn();
@@ -4736,7 +4774,12 @@ async function boot(){
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
-  new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
+  new ResizeObserver(()=>{
+    syncChrome();
+    if(typeof fitView!=="function") return;
+    if(mapTransitioning) realignRevealingMap();
+    else fitView();
+  }).observe(headerEl);
 }
 finishDrawerChrome();
 boot();

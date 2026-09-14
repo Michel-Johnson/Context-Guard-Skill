@@ -828,22 +828,67 @@ try {
     assert.equal(await preview.locator('#repo-menu.open').count(), 1);
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
+    await preview.locator('.node[data-id="M1"]').hover();
     const moduleBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => {
       const rect = el.getBoundingClientRect();
       return {x:rect.x, y:rect.y, width:rect.width, height:rect.height};
     });
+    await preview.evaluate(() => {
+      window.__mapRevealEnd = false;
+      window.__mapMotionEnd = false;
+      window.addEventListener('cg:map-reveal-end', () => { window.__mapRevealEnd = true; }, {once:true});
+      window.addEventListener('cg:map-transition-end', () => {
+        window.__mapMotionEnd = {
+          transform:document.getElementById('world').style.transform,
+          root:document.querySelector('.node.root').getBoundingClientRect().toJSON()
+        };
+      }, {once:true});
+    });
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
     await preview.waitForTimeout(120);
-    const departingFrame = await preview.evaluate(() => {
+    const revealFrame = await preview.evaluate(() => {
       const anchor = document.querySelector('.node[data-id="M1"]');
-      const sibling = document.querySelector('.node[data-id="M2"]');
-      return {anchorWidth:anchor.getBoundingClientRect().width, siblingOpacity:Number(getComputedStyle(sibling).opacity)};
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      const rect = anchor.getBoundingClientRect();
+      return {
+        anchor:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+        childOpacity:child ? Number(getComputedStyle(child).opacity) : 0,
+        revealing:document.body.classList.contains('map-transition-revealing'),
+        zooming:document.getElementById('world').classList.contains('map-transition-zoom')
+      };
     });
-    assert.ok(departingFrame.anchorWidth > moduleBeforeDrill.width * 1.05, `first phase should enlarge only the selected module ${JSON.stringify(departingFrame)}`);
-    assert.ok(departingFrame.siblingOpacity < .8, `first phase should fade siblings ${JSON.stringify(departingFrame)}`);
+    assert.equal(revealFrame.revealing, true, `first phase should reveal children ${JSON.stringify(revealFrame)}`);
+    assert.equal(revealFrame.zooming, false, `first phase must not zoom ${JSON.stringify(revealFrame)}`);
+    assert.ok(revealFrame.childOpacity > 0 && revealFrame.childOpacity < .8, `children should be partially visible before zoom ${JSON.stringify(revealFrame)}`);
+    assert.ok(Math.abs(revealFrame.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(revealFrame.anchor.y-moduleBeforeDrill.y)<.25 &&
+      Math.abs(revealFrame.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(revealFrame.anchor.height-moduleBeforeDrill.height)<1,
+      `selected module should remain in the same first-phase frame ${JSON.stringify({moduleBeforeDrill,revealFrame})}`);
+    await preview.waitForFunction(() => window.__mapRevealEnd === true);
+    assert.equal(await preview.evaluate(() => document.getElementById('world').classList.contains('map-transition-zoom')), true, 'zoom should start only after child reveal');
+    const zoomStartOpacity = await preview.evaluate(() => {
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      return Number(getComputedStyle(child).opacity);
+    });
+    await preview.waitForTimeout(160);
+    const zoomFrameOpacity = await preview.evaluate(() => {
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      return Number(getComputedStyle(child).opacity);
+    });
+    assert.ok(zoomFrameOpacity > zoomStartOpacity+.05 && zoomFrameOpacity < 1,
+      `child mask should fade while the map is moving ${JSON.stringify({zoomStartOpacity,zoomFrameOpacity})}`);
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.waitForTimeout(100);
+    const stableFrame = await preview.evaluate(() => ({
+      atEnd:window.__mapMotionEnd,
+      transform:document.getElementById('world').style.transform,
+      root:document.querySelector('.node.root').getBoundingClientRect().toJSON()
+    }));
+    assert.equal(stableFrame.transform, stableFrame.atEnd.transform, `animation cleanup must not change final transform ${JSON.stringify(stableFrame)}`);
+    assert.ok(Math.abs(stableFrame.root.x-stableFrame.atEnd.root.x)<.25 && Math.abs(stableFrame.root.y-stableFrame.atEnd.root.y)<.25 &&
+      Math.abs(stableFrame.root.width-stableFrame.atEnd.root.width)<.25 && Math.abs(stableFrame.root.height-stableFrame.atEnd.root.height)<.25,
+      `animation end and stable frame must match ${JSON.stringify(stableFrame)}`);
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
@@ -1028,6 +1073,7 @@ try {
     const childId = await child.getAttribute('data-id');
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
     await child.click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
     assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
     assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'child inspector omits redundant add-node guidance');
