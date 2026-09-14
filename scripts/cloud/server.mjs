@@ -17,6 +17,7 @@ import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } 
 import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
+import { buildCoordinatorContext } from './coordinator-context.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
 import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
 import { createQuarkProvider } from './quark-provider.mjs';
@@ -73,6 +74,32 @@ function developerStructureOperations(changes) {
       ...(parentId ? [{ type: 'move', id: change.id, parentId, ...(order !== undefined ? { order } : {}) }] : []),
       ...(Object.keys(fields).length ? [{ type: 'update', id: change.id, fields }] : []),
     ];
+  });
+}
+
+export function coordinatorStructureOperations(actions, operationId) {
+  if (!Array.isArray(actions) || !actions.length || actions.length > 30) protocolFail('INVALID_ARGUMENT', 'Provide 1–30 Map actions');
+  return actions.map((action, index) => {
+    if (!action || typeof action !== 'object' || Array.isArray(action)) protocolFail('INVALID_ARGUMENT', 'Map action must be an object');
+    const allowed = action.op === 'create' ? ['op', 'id', 'parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']
+      : action.op === 'update' ? ['op', 'id', 'title', 'purpose', 'kind', 'state', 'owns']
+      : action.op === 'move' ? ['op', 'id', 'parentId', 'order'] : [];
+    if (!allowed.length || Object.keys(action).some(key => !allowed.includes(key))) protocolFail('FORBIDDEN', 'Coordinator Map actions are limited to node create, update and move');
+    const id = action.id || `NCC${digest(`${operationId}:${index}`).slice(0, 20)}`;
+    if (action.op === 'create') {
+      if (typeof action.parentId !== 'string' || !action.parentId || typeof action.title !== 'string' || !action.title.trim()) protocolFail('INVALID_ARGUMENT', 'Create needs parentId and title');
+      return { type: 'create', parentId: action.parentId, ...(action.order === undefined ? {} : { order: action.order }), node: {
+        id, title: action.title, purpose: action.purpose || '', kind: action.kind || 'module', state: action.state || 'untested', owns: action.owns || [],
+      } };
+    }
+    if (typeof action.id !== 'string' || !action.id) protocolFail('INVALID_ARGUMENT', 'Update and move need a node id');
+    if (action.op === 'move') {
+      if (typeof action.parentId !== 'string' || !action.parentId) protocolFail('INVALID_ARGUMENT', 'Move needs parentId');
+      return { type: 'move', id, parentId: action.parentId, ...(action.order === undefined ? {} : { order: action.order }) };
+    }
+    const fields = Object.fromEntries(Object.entries(action).filter(([key]) => ['title', 'purpose', 'kind', 'state', 'owns'].includes(key)));
+    if (!Object.keys(fields).length) protocolFail('INVALID_ARGUMENT', 'Update needs at least one structural field');
+    return { type: 'update', id, fields };
   });
 }
 
@@ -460,7 +487,7 @@ export async function startCloudServer({
     if (!config?.enabled) protocolFail('FORBIDDEN', 'Coordinator is not enabled');
     const snapshot = await readMemoryProject(configuredMemory, project.id);
     const node = entries(snapshot.main.memory.map.root).get(nodeId)?.node;
-    const item = node?.[kind === 'todo' ? 'todos' : kind === 'bug' ? 'bugs' : '']?.find(item => item.id === itemId);
+    const item = node?.[kind === 'todo' ? 'todos' : kind === 'bug' ? 'bugs' : kind === 'idea' ? 'ideas' : '']?.find(item => item.id === itemId);
     if (!item || config.nodeIds && !config.nodeIds.includes(nodeId)) protocolFail('FORBIDDEN', 'Map item is not available');
     return conversationsFor(project).ensure({ nodeId, kind, item });
   };
@@ -516,6 +543,16 @@ export async function startCloudServer({
             }
             return { sessions };
           },
+          listConversations: async () => ({ conversations: await conversations.list() }),
+          resolveNodes: async ids => {
+            const memory = await readMemoryProject(configuredMemory, project.id), root = memory.main?.memory?.map?.root;
+            const index = root ? entries(root) : new Map();
+            return ids.map(id => {
+              const entry = index.get(id), node = entry?.node;
+              if (!node || Array.isArray(config.nodeIds) && !config.nodeIds.includes(id)) protocolFail('NOT_FOUND', 'Referenced Main node is unavailable');
+              return { id, title: node.title, purpose: node.purpose || '' };
+            });
+          },
           readMap: async id => {
             const memory = await readMemoryProject(configuredMemory, project.id);
             const snapshot = memory.main;
@@ -529,6 +566,35 @@ export async function startCloudServer({
             if (!references.has(name)) protocolFail('FORBIDDEN', 'Reference is not available to the Coordinator');
             const text = await fs.readFile(path.join(root, 'references', name), 'utf8');
             return { name, version: digest(text), text };
+          },
+          editMap: async (input, operationId) => {
+            if (config.mapWrite !== true) protocolFail('FORBIDDEN', 'Coordinator Map writing is not enabled for this project');
+            const operations = coordinatorStructureOperations(input.actions, operationId);
+            const result = await commitMainMemoryMap(configuredMemory, project.id, { operationId: `coordinator-map:${operationId}`,
+              baseVersion: input.mainVersion, operations }, { kind: 'coordinator', sessionId: '', agentId: principal.agentId });
+            const latest = await readMemoryProject(configuredMemory, project.id), index = entries(latest.main.memory.map.root);
+            return { kind: 'map-action', message: 'Map 已更新', version: result.version,
+              nodes: [...new Set(result.nodeIds)].map(id => index.get(id)?.node).filter(Boolean).map(node => ({ id: node.id, title: node.title, purpose: node.purpose || '' })) };
+          },
+          mountConversation: async (input, operationId) => {
+            if (config.mapWrite !== true) protocolFail('FORBIDDEN', 'Coordinator item mounting is not enabled for this project');
+            const memory = await readMemoryProject(configuredMemory, project.id), snapshot = memory.main;
+            if (snapshot.version !== input.mainVersion) protocolFail('VERSION_CONFLICT', 'Main changed; read the target node again');
+            const node = entries(snapshot.memory.map.root).get(input.nodeId)?.node;
+            if (!node || Array.isArray(config.nodeIds) && !config.nodeIds.includes(input.nodeId)) protocolFail('NOT_FOUND', 'Mount target is unavailable');
+            const key = input.kind === 'todo' ? 'todos' : input.kind === 'bug' ? 'bugs' : 'ideas';
+            const short = digest(operationId).slice(0, 16);
+            const item = input.kind === 'todo' ? { id: `TD-${short}`, title: input.title, desc: input.description, status: 'pending', sessions: [] }
+              : input.kind === 'bug' ? { id: `B${parseInt(short.slice(0, 10), 16)}`, title: input.title, desc: input.description, status: 'open', sessions: [] }
+              : { id: `I-${short}`, text: input.title, desc: input.description, state: 'dirty' };
+            const list = [...(node[key] || []), item];
+            const result = await commitMainMemoryMap(configuredMemory, project.id, { operationId: `coordinator-mount:${operationId}`,
+              baseVersion: input.mainVersion, operations: [{ type: 'update', id: input.nodeId, fields: { [key]: list } }] },
+              { kind: 'coordinator', sessionId: '', agentId: principal.agentId });
+            const id = await conversations.ensure({ nodeId: input.nodeId, kind: input.kind, item });
+            await conversations.continueIn(conversationId, id);
+            return { kind: 'conversation-mounted', message: '已挂载到 Map', conversationId: id,
+              node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version };
           },
           readTask: async (id, taskId) => { await assertTask(id, taskId); return store.taskRecord(principal, await sessionFor(id), taskId); },
           exchange: async (sessionId, id, type, payload) => {
@@ -546,7 +612,9 @@ export async function startCloudServer({
           `\n本对话仅负责这一 Map 事项：${JSON.stringify(conversation)}。先读取该节点的最新原文；不要处理其他事项。`);
         const directory = conversationId === 'legacy' ? conversations.directory : path.join(conversations.directory, 'items', conversationId);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
-          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute, simulated: config.simulated === true });
+          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute,
+          context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
+            { conversation, nodeIds: config.nodeIds || null }), simulated: config.simulated === true });
         const intake = conversationId === 'legacy' ? mapIntakeFor(project, { submit: async (request, options) => {
           const item = JSON.parse(request.text), id = await itemConversation(project, item);
           return (await coordinatorFor(project, id)).submit(request, options);

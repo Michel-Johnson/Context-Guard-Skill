@@ -139,7 +139,7 @@ function linkMapNodes(root, nodes, onNode, doc) {
   }
 }
 
-export function conversationFragments(messages, doc = document, { nodes = [], onNode, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
+export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
@@ -172,11 +172,17 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
         const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
         const choices = doc.createElement('div'); choices.className = 'coordinator-choices';
         const optionButtons = [];
-        for (const option of question.options || []) {
-          const button = doc.createElement('button'); button.type = 'button'; button.textContent = option; button.disabled = !canAnswer;
-          button.setAttribute('aria-pressed', String(draft.option === option)); optionButtons.push(button);
+        const choiceItems = [
+          ...(question.nodes || []).map(node => ({ label: node.title, nodeId: node.id })),
+          ...(question.options || []).map(label => ({ label })),
+        ];
+        for (const option of choiceItems) {
+          const button = doc.createElement('button'); button.type = 'button'; button.textContent = option.label; button.disabled = !canAnswer;
+          if (option.nodeId) { button.classList.add('coordinator-node-link'); button.dataset.nodeId = option.nodeId; }
+          button.setAttribute('aria-pressed', String(draft.option === option.label)); optionButtons.push(button);
           button.addEventListener('click', () => {
-            draft.option = draft.option === option ? '' : option;
+            if (option.nodeId) onNode?.(option.nodeId);
+            draft.option = draft.option === option.label ? '' : option.label;
             for (const item of optionButtons) item.setAttribute('aria-pressed', String(item.textContent === draft.option));
             update();
           }); choices.append(button);
@@ -191,7 +197,20 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       }
       card.append(activity); content.append(card);
     }
-    if (message.role === 'assistant') linkMapNodes(content, nodes, onNode, doc);
+    for (const action of message.actions || []) {
+      const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
+      if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
+      for (const node of (action.nodes || (action.node ? [action.node] : []))) {
+        const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
+        button.textContent = node.title; button.dataset.nodeId = node.id; button.addEventListener('click', () => onNode?.(node.id)); actions.append(button);
+      }
+      if (action.kind === 'conversation-mounted' && action.conversationId) {
+        const button = doc.createElement('button'); button.type = 'button'; button.textContent = '继续这个事项';
+        button.addEventListener('click', () => onConversation?.(action.conversationId)); actions.append(button);
+      }
+      content.append(actions);
+    }
+    if (message.role === 'assistant' && !message.actions?.length) linkMapNodes(content, nodes, onNode, doc);
     row.append(content); body.append(row);
   }
   return { body };

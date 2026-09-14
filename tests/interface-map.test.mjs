@@ -59,6 +59,17 @@ test('developer actor directly maintains node structure without gaining human-on
   assert.throws(() => applyOperations(updated, [{ type: 'update', id: 'A', fields: { access: [] } }], developer), { code: 'FORBIDDEN' });
 });
 
+test('coordinator actor can apply server-restricted structure and still cannot delete or change access', () => {
+  const doc = { v: 1, project: 'test', root: { id: 'T0', title: 'root', kind: 'module', state: 'dirty', children: [] } };
+  const actor = { kind: 'coordinator', sessionId: '', agentId: 'coordinator:project' };
+  const created = applyOperations(doc, [{ type: 'create', parentId: 'T0', node: {
+    id: 'C1', title: 'Content', kind: 'module', state: 'untested', purpose: 'Content', owns: ['content/'],
+  } }], actor).doc;
+  assert.equal(created.root.children.at(-1).origin, 'coordinator');
+  assert.throws(() => applyOperations(created, [{ type: 'delete', id: 'C1' }], actor), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(created, [{ type: 'update', id: 'C1', fields: { access: [] } }], actor), { code: 'FORBIDDEN' });
+});
+
 test('IF-047: relation receipts retain old and new endpoint grants after deletion or retargeting', () => {
   const doc = { flows: [{ id: 'relation', from: 'A', to: 'B' }] };
   assert.deepEqual(operationGrants(doc, [

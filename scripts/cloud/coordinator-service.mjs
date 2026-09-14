@@ -11,9 +11,12 @@ function questionsAt(state, index) {
   if (message.role !== 'assistant' || !Array.isArray(message.content) || !Array.isArray(replies)) return [];
   return message.content.filter(block => block.type === 'tool_use' && block.name === 'ask_user' && typeof block.input?.question === 'string' &&
     replies.some(reply => reply.type === 'tool_result' && reply.tool_use_id === block.id && !reply.is_error))
-    .map(block => { const id = 'question-' + hash(`${index}:${block.id}`); return {
-      id, text: block.input.question, options: block.input.options || [], answer: state.answers?.[id] || null,
-    }; });
+    .map(block => {
+      const id = 'question-' + hash(`${index}:${block.id}`);
+      const reply = replies.find(item => item.type === 'tool_result' && item.tool_use_id === block.id && !item.is_error);
+      let result = {}; try { result = JSON.parse(reply?.content || '{}'); } catch {}
+      return { id, text: block.input.question, options: block.input.options || [], nodes: result.nodes || [], answer: state.answers?.[id] || null };
+    });
 }
 
 // Conversation identity belongs to a Map item, not to its execution Session.
@@ -33,7 +36,7 @@ export class CoordinatorConversations {
     const id = `item-${hash(JSON.stringify([nodeId, kind, workItemIdentity(item)]))}`;
     await withFileLock(this.file + '.lock', async () => {
       const state = await this.state();
-      state.items[id] = { id, nodeId, kind, itemId: item.id, title: (item.title || item.desc || item.id).slice(0, 200) };
+      state.items[id] = { id, nodeId, kind, itemId: item.id, title: (item.title || item.text || item.desc || item.id).slice(0, 200) };
       await atomicWrite(this.file, encode(state));
     });
     return id;
@@ -47,6 +50,17 @@ export class CoordinatorConversations {
       state.tasks[key] = id;
       await atomicWrite(this.file, encode(state));
     });
+  }
+  conversationFile(id) { return id === 'legacy' ? path.join(this.directory, 'conversation.json') : path.join(this.directory, 'items', id, 'conversation.json'); }
+  async continueIn(sourceId, targetId) {
+    if (sourceId === targetId || await readJSON(this.conversationFile(targetId), null)) return;
+    const source = await readJSON(this.conversationFile(sourceId), null);
+    if (!source) return;
+    const messages = source.pending?.stop ? source.messages.slice(0, -1) : source.messages;
+    await atomicWrite(this.conversationFile(targetId), encode({
+      messages, answers: source.answers || {}, requests: {}, toolReceipts: {}, status: 'waiting-for-user',
+      activeTurnId: null, activeInput: null, pending: null, steps: 0, continuedFrom: sourceId,
+    }));
   }
 }
 
@@ -115,10 +129,10 @@ export class CoordinatorMapIntake {
 // One independent conversation. HTTP handlers acknowledge a durable turn;
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
-  constructor({ directory, model, system, tools, execute, maxSteps = 12, simulated = false, namespace = '' }) {
+  constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, simulated = false, namespace = '' }) {
     this.file = path.join(directory, 'conversation.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
-    this.model = model; this.system = system; this.tools = tools; this.execute = execute;
+    this.model = model; this.system = system; this.tools = tools; this.execute = execute; this.context = context;
     this.maxSteps = maxSteps; this.simulated = simulated; this.running = null;
     this.namespace = namespace;
   }
@@ -126,6 +140,8 @@ export class CoordinatorService {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
     const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
+      streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
+      timing: state.activeTiming || null,
       canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
       retryInput: state.status === 'error' ? state.activeInput || null : null,
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
@@ -140,6 +156,7 @@ export class CoordinatorService {
         return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
           ...(message.answerTo ? { answerTo: message.answerTo } : {}),
           ...(questions.length ? { questions } : {}),
+          ...(message.actions?.length ? { actions: message.actions } : {}),
           tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
       }).filter(message => message.text || message.tools.length),
     };
@@ -203,6 +220,9 @@ export class CoordinatorService {
   async submit({ id = randomUUID(), text, retry = false, answerTo }, { source = 'human' } = {}) {
     if (this.stopping) throw error('UNAVAILABLE', 'Coordinator is shutting down');
     if (typeof id !== 'string' || !id || id.length > 128 || typeof text !== 'string' || !text.trim() || text.length > 8000) throw error('INVALID_INPUT', 'Provide a bounded message and stable request ID');
+    const receivedAt = Date.now(), contextStartedAt = Date.now();
+    const nextContext = this.context ? await this.context() : null;
+    const contextCompletedAt = Date.now();
     await withFileLock(this.file + '.submit.lock', async () => {
       const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
       const fingerprint = hash(answerTo === undefined ? text : JSON.stringify({ text, answerTo }));
@@ -241,6 +261,8 @@ export class CoordinatorService {
         state.requests[id] = fingerprint;
         state.messages.push({ role: 'user', content: (source === 'workflow' ? '[服务器工作流事件，不是新的用户授权]\n' : this.simulated ? '[实验：模拟人工输入]\n' : '') + (question ? `针对问题：${question.text}\n\n我的回答：` : '') + text, ...(question ? { answerTo } : {}) });
         state.activeInput = { id, text, ...(question ? { answerTo } : {}) };
+        state.activeContext = nextContext;
+        state.activeTiming = { receivedAt: new Date(receivedAt).toISOString(), contextMs: contextCompletedAt - contextStartedAt };
         state.activeTurnId = id; state.steps = 0;
       }
       state.status = 'running'; state.error = null;
@@ -262,10 +284,17 @@ export class CoordinatorService {
       try {
         while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
           state.steps++;
+          state.activeTiming ||= {};
+          state.activeTiming.modelStartedAt ||= new Date().toISOString();
           await save(state);
+          const runtimeSystem = this.system + (state.activeContext?.text || '');
           state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
-            system: this.system, tools: this.tools, save, execute: this.execute });
+            system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
+            onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
+              state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); } });
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
+          state.streaming = null;
+          state.activeTiming.completedAt = new Date().toISOString();
           await save(state);
         }
         if (!this.stopping && state.activeTurnId) throw error('STEP_LIMIT', 'Coordinator stopped at its bounded tool-call limit');

@@ -911,6 +911,8 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-question { margin: 12px 0; padding: 14px; background: #faf3dc; border-radius: 12px; border: 1px solid #dccfaa; }
 #coordinator-panel .coordinator-question textarea { margin-top: 12px; min-height: 64px; }
 #coordinator-panel .coordinator-choices button[aria-pressed=true] { background: #ffe87e; border-color: #766126; }
+#coordinator-panel .coordinator-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#coordinator-panel .coordinator-actions p { flex-basis: 100%; margin: 0; color: #746e5e; font-size: 13px; }
 #coordinator-panel .coordinator-answer { white-space: pre-wrap; background: #fff0a9; padding: 10px; border-radius: 8px; }
 #coordinator-panel .coordinator-typing,#coordinator-panel .coordinator-question-status { color: #817660; font-size: 13px; }
 #coordinator-panel .user .coordinator-markdown { background: #fff0a9; border-radius: 16px 16px 4px 16px; padding: 10px 14px; }

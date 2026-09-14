@@ -8,7 +8,9 @@ const fail = (message) => { throw Object.assign(new Error(message), { code: 'INV
 
 export const coordinatorTools = [
   definition('list_sessions', 'List only the Sessions explicitly assigned to this Coordinator. Registration is not proof of liveness.', {}),
+  definition('list_conversations', 'List saved Coordinator conversations so an existing topic can be continued instead of recreated.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
+  definition('show_nodes', 'Show exact Main node buttons in the conversation. Use stable node IDs from the provided directory.', { message: string, nodeIds: strings }),
   definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
   definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { sessionId: string, ref: string, version: string }),
@@ -20,7 +22,16 @@ export const coordinatorTools = [
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
   definition('resume_task', 'Resume an interrupted, incomplete task with its original Session, Plan and evidence; the system may invoke this automatically and never creates a new task.', { ...task, reason: string }),
   definition('complete_task', 'After human acceptance, request closure with a merged GitHub PR and published Session memory version. The server independently verifies both; this tool does not merge code.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
-  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true } }, ['question']),
+  definition('edit_map', 'Create, rename, update or move Main nodes through the configured Coordinator identity. This never deletes nodes or edits records.', {
+    mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
+      op: { enum: ['create', 'update', 'move'] }, id: string, parentId: string, order: { type: 'integer', minimum: 0 },
+      title: string, purpose: string, kind: { enum: ['module', 'work'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
+    }, required: ['op'], additionalProperties: false } },
+  }),
+  definition('mount_conversation', 'Attach the current intent to a Main TODO, Bug or Idea and return its durable conversation.', {
+    mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
+  }),
+  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. nodeIds render exact node choices. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds: strings }, ['question']),
 ];
 
 function validateInput(tool, input) {
@@ -29,7 +40,9 @@ function validateInput(tool, input) {
   if (Object.keys(input).some(key => !Object.hasOwn(properties, key)) || required.some(key => !Object.hasOwn(input, key))) fail('Tool fields differ from its schema');
   for (const [key, value] of Object.entries(input)) {
     const rule = properties[key];
-    if (rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > 8000) || rule.enum && !rule.enum.includes(value) || rule.type === 'array' && (!Array.isArray(value) || !value.length || value.length > 100 || value.some(item => typeof item !== 'string' || !item.trim()))) fail('Invalid tool field');
+    if (rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > 8000) || rule.enum && !rule.enum.includes(value) ||
+        rule.type === 'array' && (!Array.isArray(value) || value.length < (rule.minItems || 1) || value.length > (rule.maxItems || 100) ||
+          rule.items?.type === 'string' && value.some(item => typeof item !== 'string' || !item.trim()))) fail('Invalid tool field');
   }
 }
 
@@ -43,12 +56,17 @@ export function createCoordinatorExecutor(ctx) {
       name: input.name.replace(/^references\//, '').replace(/\.md$/, '') + '.md' };
     validateInput(tool, input);
     if (name === 'list_sessions') return ctx.listSessions();
+    if (name === 'list_conversations') return ctx.listConversations();
     if (name === 'read_map') return ctx.readMap(input.nodeId);
+    if (name === 'show_nodes') return { kind: 'node-references', message: input.message, nodes: await ctx.resolveNodes(input.nodeIds) };
     if (name === 'read_reference') return ctx.readReference(input.name);
     if (name === 'ask_user') {
       if (input.options && (input.options.length < 2 || input.options.length > 6 || new Set(input.options).size !== input.options.length || input.options.some(option => option.length > 120))) fail('Provide 2–6 unique short options');
-      return { question: input.question, ...(input.options ? { options: input.options } : {}), approval: 'not-granted' };
+      return { question: input.question, ...(input.options ? { options: input.options } : {}),
+        ...(input.nodeIds ? { nodes: await ctx.resolveNodes(input.nodeIds) } : {}), approval: 'not-granted' };
     }
+    if (name === 'edit_map') return ctx.editMap(input, operationId);
+    if (name === 'mount_conversation') return ctx.mountConversation(input, operationId);
     if (name === 'propose_mount') {
       const parent = await ctx.readMap(input.parentId);
       if (parent.version !== input.mainVersion) fail('Main changed; read the parent again');
