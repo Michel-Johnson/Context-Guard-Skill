@@ -2652,18 +2652,19 @@ function enterView(id, opts){
   const direction = opts?.direction || (nextPath.length > previousPath.length ? "down" : "up");
   const anchorId = direction==="down" ? id : previousRootId;
   const anchor = mapNode(anchorId);
-  const anchorRect = anchor?.getBoundingClientRect();
-  const snapshot = prefersReducedMapMotion() ? null : createMapSnapshot();
+  if(prefersReducedMapMotion() || !anchor){
+    commitViewRoot(id, opts);
+    fitView();
+    return;
+  }
+  animateViewChange({id, opts, anchorId, anchor, direction});
+}
+
+function commitViewRoot(id, opts){
   viewRootId = id; selectedId = id;
   const n = getNode(id);
   if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
   renderAll();
-  if(!snapshot || !anchorRect){
-    fitView();
-    armDrillReturn();
-    return;
-  }
-  animateViewChange({snapshot, anchorId, anchorRect, direction});
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
@@ -3948,7 +3949,8 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
-const MAP_TRANSITION_MS = 520;
+const MAP_DEPART_MS = 280;
+const MAP_ARRIVE_MS = 460;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
 let mapTransitionTimer = null;
@@ -3962,18 +3964,6 @@ function prefersReducedMapMotion(){
 function mapNode(id){
   return [...nodesEl.querySelectorAll(".node[data-id]")].find(el=>el.dataset.id===id) || null;
 }
-function createMapSnapshot(){
-  const snapshot = worldEl.cloneNode(true);
-  snapshot.removeAttribute("id");
-  snapshot.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
-  snapshot.querySelectorAll("[data-id]").forEach(el=>el.removeAttribute("data-id"));
-  snapshot.querySelectorAll(".add-child,.add-pick").forEach(el=>el.remove());
-  snapshot.className = "map-transition-snapshot";
-  snapshot.setAttribute("aria-hidden", "true");
-  snapshot.style.transform = worldEl.style.transform;
-  document.getElementById("viewport").appendChild(snapshot);
-  return snapshot;
-}
 function alignedView(el, screenRect){
   const vpRect = vp.getBoundingClientRect();
   const width = Math.max(el.offsetWidth, 1);
@@ -3986,10 +3976,18 @@ function alignedView(el, screenRect){
     y:cy-(el.offsetTop+el.offsetHeight/2)*k
   };
 }
-function finishMapTransition(snapshot){
+function focusViewFor(anchor, direction){
+  const vpRect = vp.getBoundingClientRect();
+  const rect = anchor.getBoundingClientRect();
+  const scale = direction==="down" ? 1.24 : .88;
+  const k = Math.min(2.2, Math.max(.2, view.k*scale));
+  const worldX = (rect.left-vpRect.left-view.x+rect.width/2)/view.k;
+  const worldY = (rect.top-vpRect.top-view.y+rect.height/2)/view.k;
+  return {k, x:vp.clientWidth*.42-worldX*k, y:vp.clientHeight*.5-worldY*k};
+}
+function finishMapTransition(){
   clearTimeout(mapTransitionTimer);
-  snapshot?.remove();
-  document.body.classList.remove("map-transitioning", "map-transition-live", "map-transition-down", "map-transition-up");
+  document.body.classList.remove("map-transitioning", "map-transition-departing", "map-transition-incoming", "map-transition-live", "map-transition-down", "map-transition-up");
   worldEl.classList.remove("map-transition-active");
   nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
   mapTransitioning = false;
@@ -4000,24 +3998,39 @@ function finishMapTransition(snapshot){
   armDrillReturn();
   window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
 }
-function animateViewChange({snapshot, anchorId, anchorRect, direction}){
-  const anchor = mapNode(anchorId);
-  if(!anchor){ snapshot.remove(); fitView(); armDrillReturn(); return; }
-  const finalView = fittedView();
-  view = alignedView(anchor, anchorRect);
-  applyView();
+function animateViewChange({id, opts, anchorId, anchor, direction}){
+  const stagedView = focusViewFor(anchor, direction);
   anchor.classList.add("map-transition-anchor");
-  nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-  linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
   mapTransitioning = true;
-  document.body.classList.add("map-transitioning", `map-transition-${direction}`);
+  document.body.classList.add("map-transitioning", "map-transition-departing", `map-transition-${direction}`);
   worldEl.classList.add("map-transition-active");
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    document.body.classList.add("map-transition-live");
-    view = finalView;
+    view = stagedView;
     applyView();
   }));
-  mapTransitionTimer = setTimeout(()=>finishMapTransition(snapshot), MAP_TRANSITION_MS+100);
+  mapTransitionTimer = setTimeout(()=>{
+    const anchorRect = anchor.getBoundingClientRect();
+    worldEl.classList.remove("map-transition-active");
+    commitViewRoot(id, opts);
+    const nextAnchor = mapNode(anchorId);
+    if(!nextAnchor){ finishMapTransition(); fitView(); return; }
+    view = alignedView(nextAnchor, anchorRect);
+    applyView();
+    void worldEl.offsetWidth;
+    nextAnchor.classList.add("map-transition-anchor");
+    nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+    linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+    const finalView = fittedView();
+    document.body.classList.remove("map-transition-departing");
+    document.body.classList.add("map-transition-incoming");
+    worldEl.classList.add("map-transition-active");
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      document.body.classList.add("map-transition-live");
+      view = finalView;
+      applyView();
+    }));
+    mapTransitionTimer = setTimeout(finishMapTransition, MAP_ARRIVE_MS+100);
+  }, MAP_DEPART_MS);
 }
 function armDrillReturn(){
   clearTimeout(wheelReturnTimer);
