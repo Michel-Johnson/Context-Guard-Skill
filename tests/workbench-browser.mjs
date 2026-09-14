@@ -831,7 +831,7 @@ try {
     await preview.locator('.node[data-id="M1"]').hover();
     const moduleBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => {
       const rect = el.getBoundingClientRect();
-      return {x:rect.x, y:rect.y, width:rect.width, height:rect.height};
+      return {x:rect.x, y:rect.y, width:rect.width, height:rect.height, background:getComputedStyle(el).backgroundColor};
     });
     const rootBeforeDrill = await preview.locator('.node[data-id="T0"]').evaluate(el => el.getBoundingClientRect().toJSON());
     await preview.evaluate(() => {
@@ -856,6 +856,27 @@ try {
     });
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
+    const clickFrame = await preview.evaluate(() => {
+      const snapshot = document.querySelector('.map-transition-snapshot');
+      const snapshotNode = snapshot?.querySelector('[data-map-snapshot-id="T0"]');
+      const snapshotLink = snapshot?.querySelector('path.link');
+      const nodeStyle = snapshotNode ? getComputedStyle(snapshotNode) : null;
+      const linkStyle = snapshotLink ? getComputedStyle(snapshotLink) : null;
+      return {
+        duplicateWorldIds:document.querySelectorAll('#world').length,
+        liveAnchorOpacity:Number(getComputedStyle(document.querySelector('#world .map-transition-anchor')).opacity),
+        snapshotNodeOpacity:nodeStyle ? Number(nodeStyle.opacity) : null,
+        snapshotNodeVisibility:nodeStyle?.visibility || null,
+        snapshotLinkFill:linkStyle?.fill || null,
+        snapshotLinkStroke:linkStyle?.stroke || null
+      };
+    });
+    assert.equal(clickFrame.duplicateWorldIds, 1, `snapshot must not duplicate #world ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.liveAnchorOpacity, 0, `the new root must stay behind the old scene at click ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotNodeOpacity, 1, `old nodes must remain fully visible at click ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotNodeVisibility, 'visible', `old nodes must remain visible at click ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotLinkFill, 'none', `snapshot links must not become filled shapes ${JSON.stringify(clickFrame)}`);
+    assert.notEqual(clickFrame.snapshotLinkStroke, 'none', `snapshot links must retain their stroke ${JSON.stringify(clickFrame)}`);
     await preview.waitForTimeout(120);
     const movingFrame = await preview.evaluate(() => {
       const anchor = document.querySelector('.node[data-id="M1"]');
@@ -895,6 +916,8 @@ try {
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     assert.equal(await preview.locator('#nodes .node[data-id]').count(), 13, 'drilled demo should render the complete Workbench subtree');
+    assert.equal(await preview.locator('.node[data-id="M1"]').evaluate(el => getComputedStyle(el).backgroundColor), moduleBeforeDrill.background,
+      'the clicked module must keep its original color after becoming the drilled root');
     await preview.waitForTimeout(100);
     const stableFrame = await preview.evaluate(() => ({
       atEnd:window.__mapMotionEnd,

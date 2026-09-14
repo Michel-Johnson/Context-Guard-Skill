@@ -2935,19 +2935,21 @@ function renderMap(){
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
+    const isDrilledRoot = isViewRoot && n.id!==data.id;
     const noauth = !isProposed(n) && !isAuth(n) &&
       !(n.kind==="module" && moduleAuthState(n)!=="none");
     const relDim = !!(relationMode && relSet && !relSet.has(n.id));
     const div = document.createElement("div");
     div.dataset.id = n.id;
     div.className = "node" + (isViewRoot?" root":"") +
+      (isDrilledRoot?" drilled-root":"") +
       (mapTransitioning && n.id===mapTransitionAnchorId?" map-transition-anchor":"") +
       (n.kind==="module"?" module":"") +
       (n.kind==="work" && n.kind!=="module"?" work":"") +
       (isProposed(n)?" proposed":"") +
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
-      (n.id===selectedId && !isCancelled(n)?" selected":"") +
+      (n.id===selectedId && !isDrilledRoot && !isCancelled(n)?" selected":"") +
       (addPickId===n.id?" picking":"") +
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
@@ -3994,10 +3996,29 @@ function createMapTransitionSnapshot(anchorId){
   snapshot.className = "map-transition-snapshot";
   snapshot.setAttribute("aria-hidden", "true");
   const clone = worldEl.cloneNode(true);
+  clone.removeAttribute("id");
   clone.classList.remove("map-transition-zoom");
   clone.classList.add("map-transition-snapshot-world");
   const clonedLinks = clone.querySelector("#links");
   if(clonedLinks) Object.assign(clonedLinks.style, {position:"absolute", left:"0", top:"0", overflow:"visible", pointerEvents:"none"});
+  const sourcePaths = worldEl.querySelectorAll("#links path");
+  const clonedPaths = clone.querySelectorAll("#links path");
+  sourcePaths.forEach((sourcePath,index)=>{
+    const targetPath = clonedPaths[index];
+    if(!targetPath) return;
+    const style = getComputedStyle(sourcePath);
+    Object.assign(targetPath.style, {
+      fill:style.fill,
+      stroke:style.stroke,
+      strokeWidth:style.strokeWidth,
+      strokeDasharray:style.strokeDasharray,
+      strokeLinecap:style.strokeLinecap,
+      strokeLinejoin:style.strokeLinejoin,
+      opacity:style.opacity,
+      visibility:style.visibility,
+      transition:"none"
+    });
+  });
   clone.querySelectorAll(".node[data-id]").forEach(el=>{
     el.dataset.mapSnapshotId = el.dataset.id;
     el.removeAttribute("data-id");
@@ -4065,7 +4086,6 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   view = alignedView(nextAnchor, anchorRect);
   applyView();
   correctAlignedView(nextAnchor, anchorRect);
-  positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
   const startView = {...view};
   const finalView = fittedView();
   worldEl.classList.add("map-transition-zoom");
@@ -4088,7 +4108,7 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
     worldEl.style.setProperty("--map-link-opacity", String(mapMaskProgress(raw, .22, .9)));
     if(mapTransitionSnapshot) mapTransitionSnapshot.style.opacity = String(1-mapMaskProgress(raw, 0, .62));
     applyView();
-    positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
+    if(raw>0) positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
     if(raw<1){ mapTransitionFrame = requestAnimationFrame(frame); return; }
     view = finalView;
     applyView();
