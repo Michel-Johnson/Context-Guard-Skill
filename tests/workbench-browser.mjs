@@ -828,10 +828,13 @@ try {
     assert.equal(await preview.locator('#repo-menu.open').count(), 1);
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
+    const moduleWidthBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => el.getBoundingClientRect().width);
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    const moduleWidthAfterDrill = await preview.locator('#nodes .node.root').evaluate(el => el.getBoundingClientRect().width);
+    assert.ok(moduleWidthAfterDrill > moduleWidthBeforeDrill * 1.05, `drilled module should visibly enlarge: ${moduleWidthBeforeDrill} -> ${moduleWidthAfterDrill}`);
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')

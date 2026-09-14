@@ -2657,7 +2657,10 @@ function enterView(id, opts){
     fitView();
     return;
   }
-  animateViewChange({id, opts, anchorId, anchor, direction});
+  const anchorRect = anchor.getBoundingClientRect();
+  const snapshot = createMapSnapshot(anchorId);
+  commitViewRoot(id, opts);
+  animateViewChange({snapshot, anchorId, anchorRect, direction});
 }
 
 function commitViewRoot(id, opts){
@@ -3949,7 +3952,6 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
-const MAP_DEPART_MS = 280;
 const MAP_ARRIVE_MS = 460;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
@@ -3964,6 +3966,19 @@ function prefersReducedMapMotion(){
 function mapNode(id){
   return [...nodesEl.querySelectorAll(".node[data-id]")].find(el=>el.dataset.id===id) || null;
 }
+function createMapSnapshot(anchorId){
+  const snapshot = worldEl.cloneNode(true);
+  snapshot.removeAttribute("id");
+  snapshot.querySelector(`.node[data-id="${CSS.escape(anchorId)}"]`)?.remove();
+  snapshot.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  snapshot.querySelectorAll("[data-id]").forEach(el=>el.removeAttribute("data-id"));
+  snapshot.querySelectorAll(".add-child,.add-pick").forEach(el=>el.remove());
+  snapshot.className = "map-transition-snapshot";
+  snapshot.setAttribute("aria-hidden", "true");
+  snapshot.style.transform = worldEl.style.transform;
+  vp.appendChild(snapshot);
+  return snapshot;
+}
 function alignedView(el, screenRect){
   const vpRect = vp.getBoundingClientRect();
   const width = Math.max(el.offsetWidth, 1);
@@ -3976,18 +3991,10 @@ function alignedView(el, screenRect){
     y:cy-(el.offsetTop+el.offsetHeight/2)*k
   };
 }
-function focusViewFor(anchor, direction){
-  const vpRect = vp.getBoundingClientRect();
-  const rect = anchor.getBoundingClientRect();
-  const scale = direction==="down" ? 1.24 : .88;
-  const k = Math.min(2.2, Math.max(.2, view.k*scale));
-  const worldX = (rect.left-vpRect.left-view.x+rect.width/2)/view.k;
-  const worldY = (rect.top-vpRect.top-view.y+rect.height/2)/view.k;
-  return {k, x:vp.clientWidth*.42-worldX*k, y:vp.clientHeight*.5-worldY*k};
-}
-function finishMapTransition(){
+function finishMapTransition(snapshot){
   clearTimeout(mapTransitionTimer);
-  document.body.classList.remove("map-transitioning", "map-transition-departing", "map-transition-incoming", "map-transition-live", "map-transition-down", "map-transition-up");
+  snapshot?.remove();
+  document.body.classList.remove("map-transitioning", "map-transition-incoming", "map-transition-live", "map-transition-down", "map-transition-up");
   worldEl.classList.remove("map-transition-active");
   nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
   mapTransitioning = false;
@@ -3998,39 +4005,30 @@ function finishMapTransition(){
   armDrillReturn();
   window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
 }
-function animateViewChange({id, opts, anchorId, anchor, direction}){
-  const stagedView = focusViewFor(anchor, direction);
+function animateViewChange({snapshot, anchorId, anchorRect, direction}){
+  const anchor = mapNode(anchorId);
+  if(!anchor){ snapshot.remove(); fitView(); return; }
+  const sourceK = view.k;
+  const finalView = fittedView();
+  if(direction==="down" && finalView.k < sourceK*1.12){
+    finalView.k = Math.min(2.2, sourceK*1.12);
+    finalView.x = 36;
+    finalView.y = 24 + Math.max(0, (vp.clientHeight-extents.h*finalView.k-36)/2);
+  }
+  view = alignedView(anchor, anchorRect);
+  applyView();
   anchor.classList.add("map-transition-anchor");
+  nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
+  linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
   mapTransitioning = true;
-  document.body.classList.add("map-transitioning", "map-transition-departing", `map-transition-${direction}`);
+  document.body.classList.add("map-transitioning", "map-transition-incoming", `map-transition-${direction}`);
   worldEl.classList.add("map-transition-active");
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    view = stagedView;
+    document.body.classList.add("map-transition-live");
+    view = finalView;
     applyView();
   }));
-  mapTransitionTimer = setTimeout(()=>{
-    const anchorRect = anchor.getBoundingClientRect();
-    worldEl.classList.remove("map-transition-active");
-    commitViewRoot(id, opts);
-    const nextAnchor = mapNode(anchorId);
-    if(!nextAnchor){ finishMapTransition(); fitView(); return; }
-    view = alignedView(nextAnchor, anchorRect);
-    applyView();
-    void worldEl.offsetWidth;
-    nextAnchor.classList.add("map-transition-anchor");
-    nodesEl.querySelectorAll(".node").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-    linksEl.querySelectorAll("path").forEach((el,index)=>el.style.setProperty("--map-reveal-order", index));
-    const finalView = fittedView();
-    document.body.classList.remove("map-transition-departing");
-    document.body.classList.add("map-transition-incoming");
-    worldEl.classList.add("map-transition-active");
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      document.body.classList.add("map-transition-live");
-      view = finalView;
-      applyView();
-    }));
-    mapTransitionTimer = setTimeout(finishMapTransition, MAP_ARRIVE_MS+100);
-  }, MAP_DEPART_MS);
+  mapTransitionTimer = setTimeout(()=>finishMapTransition(snapshot), MAP_ARRIVE_MS+100);
 }
 function armDrillReturn(){
   clearTimeout(wheelReturnTimer);
