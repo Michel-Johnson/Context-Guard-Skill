@@ -4326,13 +4326,16 @@ async function installCoordinatorPanel(sync){
     card.append(wrap); textarea.focus();
   });
   let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
-  let selected='legacy';const drafts=new Map(),questionDrafts=new Map();
+  const scopeConversation=()=>sync.viewId.startsWith('session:')?'session:'+sync.viewId.slice('session:'.length):'main';
+  const isScopeConversation=id=>id==='main'||id.startsWith('session:');
+  let selected=scopeConversation();const drafts=new Map(),questionDrafts=new Map();
+  panel.dataset.conversation=selected;
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
-  const selectConversation=id=>{
+  const selectConversation=(id,load=true)=>{
     drafts.set(selected,{text:input.value,pending});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
     lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
-    panel.open=true;void refresh();
+    panel.open=true;if(load)void refresh();
   };
   window.addEventListener('coordinator-open-item',async event=>{
     panel.open=true;status.textContent='';
@@ -4451,6 +4454,8 @@ async function installCoordinatorPanel(sync){
   const refresh=async()=>{
     clearTimeout(timer);
     if(stopped||refreshing) return;
+    const desired=scopeConversation();
+    if(isScopeConversation(selected)&&selected!==desired)selectConversation(desired,false);
     refreshing=true;
     const id=selected;let delay=3000;
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}

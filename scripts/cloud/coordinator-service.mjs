@@ -47,14 +47,31 @@ function publicMessages(state) {
 // Legacy files stay in place; only newly opened item conversations use subfolders.
 export class CoordinatorConversations {
   constructor(directory) { this.directory = directory; this.file = path.join(directory, 'conversations.json'); }
-  async state() { return readJSON(this.file, { items: {}, tasks: {} }); }
-  async list() { return [{ id: 'legacy', title: '历史总对话' }, ...Object.values((await this.state()).items)]; }
+  async state() { return readJSON(this.file, { items: {}, sessions: {}, tasks: {} }); }
+  async list() {
+    const state = await this.state();
+    return [{ id: 'main', title: 'Main 对话' }, { id: 'legacy', title: '历史总对话' },
+      ...Object.values(state.sessions || {}), ...Object.values(state.items || {})];
+  }
   async get(id) {
     if (id === 'legacy') return { id, title: '历史总对话' };
-    if (!/^item-[a-f0-9]{64}$/.test(id)) throw error('NOT_FOUND', 'Unknown conversation');
-    const item = (await this.state()).items[id];
-    if (!item) throw error('NOT_FOUND', 'Unknown conversation');
-    return item;
+    if (id === 'main') return { id, scope: 'main', title: 'Main 对话' };
+    const state = await this.state();
+    if (/^session:[a-zA-Z0-9_-]{1,128}$/.test(id) && state.sessions?.[id]) return state.sessions[id];
+    if (/^item-[a-f0-9]{64}$/.test(id) && state.items?.[id]) return state.items[id];
+    throw error('NOT_FOUND', 'Unknown conversation');
+  }
+  async ensureSession(sessionId, title = '') {
+    if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw error('NOT_FOUND', 'Unknown Session conversation');
+    const id = `session:${sessionId}`;
+    if ((await this.state()).sessions?.[id]) return id;
+    await withFileLock(this.file + '.lock', async () => {
+      const state = await this.state(); state.sessions ||= {};
+      if (state.sessions[id]) return;
+      state.sessions[id] = { id, scope: 'session', sessionId, title: String(title || 'Session 对话').slice(0, 200) };
+      await atomicWrite(this.file, encode(state));
+    });
+    return id;
   }
   async ensure({ nodeId, kind, item }) {
     const id = `item-${hash(JSON.stringify([nodeId, kind, workItemIdentity(item)]))}`;
@@ -75,7 +92,13 @@ export class CoordinatorConversations {
       await atomicWrite(this.file, encode(state));
     });
   }
-  conversationFile(id) { return id === 'legacy' ? path.join(this.directory, 'conversation.json') : path.join(this.directory, 'items', id, 'conversation.json'); }
+  conversationDirectory(id) {
+    if (id === 'legacy') return this.directory;
+    if (id === 'main') return path.join(this.directory, 'main');
+    if (id.startsWith('session:')) return path.join(this.directory, 'sessions', hash(id));
+    return path.join(this.directory, 'items', id);
+  }
+  conversationFile(id) { return path.join(this.conversationDirectory(id), 'conversation.json'); }
   async continueIn(sourceId, targetId) {
     if (sourceId === targetId || await readJSON(this.conversationFile(targetId), null)) return;
     const source = await readJSON(this.conversationFile(sourceId), null);

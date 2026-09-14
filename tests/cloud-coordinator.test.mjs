@@ -69,10 +69,15 @@ test('Prompt upgrades apply at new turns and recover a pre-model rejection witho
   assert.equal(calls.length, 3);
 });
 
-test('Item conversations preserve identity, task ownership and legacy history across restart', async t => {
+test('Main, Session and item conversations preserve independent identities across restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversations-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const registry = new CoordinatorConversations(directory);
+  const scoped = await registry.ensureSession('session-one', 'First Session');
+  assert.equal(scoped, 'session:session-one');
+  assert.equal((await registry.get(scoped)).sessionId, 'session-one');
+  assert.notEqual(registry.conversationFile('main'), registry.conversationFile('legacy'));
+  assert.notEqual(registry.conversationFile(scoped), registry.conversationFile('main'));
   const a = await registry.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', title: 'First' } });
   const b = await registry.ensure({ nodeId: 'T0', kind: 'bug', item: { id: '1', title: 'Second' } });
   assert.notEqual(a, b);
@@ -82,7 +87,7 @@ test('Item conversations preserve identity, task ownership and legacy history ac
   const restored = new CoordinatorConversations(directory);
   assert.equal(await restored.owner('session', 'task'), a);
   assert.equal(await restored.owner('other-session', 'task'), 'legacy');
-  assert.equal((await restored.list())[0].id, 'legacy');
+  assert.deepEqual((await restored.list()).slice(0, 3).map(item => item.id), ['main', 'legacy', scoped]);
   await assert.rejects(restored.get('../conversation'), { code: 'NOT_FOUND' });
   const recreated = await restored.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', instanceId: 'new-instance', title: 'Recreated' } });
   assert.notEqual(recreated, a, 'recreated display IDs must not reuse the old conversation');
@@ -131,7 +136,7 @@ test('Cloud item conversations have separate messages and survive restart withou
   server = await startCloudServer(options);
   const a = (await call('/conversations', { nodeId: 'T0', kind: 'todo', itemId: 'TD1' })).id;
   const b = (await call('/conversations', { nodeId: 'T0', kind: 'bug', itemId: 'B1' })).id;
-  await call('', { id: 'legacy', text: 'Old project discussion' });
+  await call('?conversation=legacy', { id: 'legacy', text: 'Old project discussion' });
   await call('?conversation=' + a, { id: 'same-id', text: 'Only first item' });
   await call('?conversation=' + b, { id: 'same-id', text: 'Only second item' });
   await server.close(); server = await startCloudServer(options);
@@ -140,8 +145,9 @@ test('Cloud item conversations have separate messages and survive restart withou
   assert.doesNotMatch(JSON.stringify(first.messages), /Only second item|Old project discussion/);
   assert.match(JSON.stringify(second.messages), /Only second item/);
   assert.doesNotMatch(JSON.stringify(second.messages), /Only first item|Old project discussion/);
-  assert.match(JSON.stringify((await call('')).messages), /Old project discussion/);
-  assert.equal(first.conversations.length, 3);
+  assert.doesNotMatch(JSON.stringify((await call('?conversation=main')).messages), /Old project discussion/);
+  assert.match(JSON.stringify((await call('?conversation=legacy')).messages), /Old project discussion/);
+  assert.equal(first.conversations.length, 4);
   assert.deepEqual(first.nodeReferences, [{ id: 'T0', title: 'Lab' }]);
 });
 
@@ -819,6 +825,21 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
   t.after(() => server.close());
   const endpoint = `${server.url}/api/workbench/projects/${projectId}/api/coordinator`;
   const headers = { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' };
+  const scopedEndpoint = endpoint + '?conversation=' + encodeURIComponent('session:session');
+  const scopedBefore = await (await fetch(scopedEndpoint, { headers })).json();
+  assert.equal(scopedBefore.conversationId, 'session:session');
+  assert.deepEqual(scopedBefore.messages, []);
+  assert.equal((await fetch(endpoint + '?conversation=' + encodeURIComponent('session:missing'), { headers })).status, 404);
+  const scopedSubmit = await fetch(scopedEndpoint, { method: 'POST', headers, body: JSON.stringify({ id: 'session-discussion', text: 'Session only' }) });
+  assert.equal(scopedSubmit.status, 202, await scopedSubmit.text());
+  let scopedAfter;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    scopedAfter = await (await fetch(scopedEndpoint, { headers })).json();
+    if (scopedAfter.messages.some(message => message.text === 'Workflow event received')) break;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.match(JSON.stringify(scopedAfter.messages), /Session only/);
+  assert.doesNotMatch(JSON.stringify((await (await fetch(endpoint, { headers })).json()).messages), /Session only/);
   const input = { id: 'approve-proposal', proposalId: 'proposal', decision: 'approved', reason: 'verified' };
   const send = (body, auth = headers) => fetch(endpoint + '/approval', { method: 'POST', headers: auth, body: JSON.stringify(body) });
   assert.equal((await send(input, { 'Content-Type': 'application/json' })).status, 401);

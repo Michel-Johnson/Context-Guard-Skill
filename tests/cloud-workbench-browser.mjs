@@ -334,6 +334,7 @@ try {
     await route.fulfill({ response, json: body });
   });
   const submissions = [];
+  const coordinatorReads = [];
   const markdownImageRequests = [];
   page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
@@ -372,12 +373,15 @@ try {
       coordinatorState = { ...coordinatorState, status: 'error', error: { code: 'MODEL_TIMEOUT' }, retryInput: submissions[0] };
       return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
     }
+    coordinatorReads.push(new URL(route.request().url()).searchParams.get('conversation'));
     await route.fulfill({ json: coordinatorState });
   });
   await page.reload(); await synchronized();
   const coordinator = page.locator('#coordinator-panel');
   await coordinator.locator(':scope > summary').click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation === 'main');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
+  assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
   assert.equal(await coordinator.locator('img,script,iframe').count(), 0, 'Markdown cannot inject HTML or fetch remote images');
   assert.equal(await coordinator.locator('.coordinator-markdown strong').textContent(), '范围一致');
   assert.equal(await coordinator.locator('.coordinator-markdown ol > li > ul > li').textContent(), '保留目录边界');

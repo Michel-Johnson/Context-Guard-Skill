@@ -504,7 +504,15 @@ export async function startCloudServer({
   const coordinatorFor = async (project, conversationId = 'legacy') => {
     const config = configuredMemory?.projects?.[project.id]?.coordinator;
     if (!config?.enabled) throw new MapError('COORDINATOR_DISABLED', 'Coordinator is not enabled for this project', 404);
-    const conversations = conversationsFor(project), conversation = await conversations.get(conversationId);
+    const conversations = conversationsFor(project);
+    if (conversationId.startsWith('session:')) {
+      const sessionId = conversationId.slice('session:'.length);
+      const { store, principal } = interfaceProject(project);
+      const binding = await store.registeredBinding(principal, sessionId);
+      if (!binding) protocolFail('NOT_FOUND', 'Session conversation is unavailable');
+      await conversations.ensureSession(sessionId, binding.name || 'Session 对话');
+    }
+    const conversation = await conversations.get(conversationId);
     const key = `${project.id}:${conversationId}`;
     if (!coordinators.has(key)) {
       const creating = (async () => {
@@ -608,9 +616,10 @@ export async function startCloudServer({
             return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
           },
         });
-        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (conversationId === 'legacy' ? '' :
+        const itemScoped = conversationId.startsWith('item-');
+        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (!itemScoped ? '' :
           `\n本对话仅负责这一 Map 事项：${JSON.stringify(conversation)}。先读取该节点的最新原文；不要处理其他事项。`);
-        const directory = conversationId === 'legacy' ? conversations.directory : path.join(conversations.directory, 'items', conversationId);
+        const directory = conversations.conversationDirectory(conversationId);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute,
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
@@ -1431,6 +1440,8 @@ export async function startCloudServer({
         const project = workbench[2] ? projectById(decodeURIComponent(workbench[2])) : null;
         if (workbench[2] && !project) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const viewId = String(url.searchParams.get('view') || 'main');
+        // Keep the HTTP fallback for older clients. The current workbench sends
+        // an explicit Main or Session conversation scope.
         const conversationId = url.searchParams.get('conversation') || 'legacy';
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
