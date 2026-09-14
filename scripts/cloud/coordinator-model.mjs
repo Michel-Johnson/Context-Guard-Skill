@@ -31,17 +31,21 @@ export function settleRejectedTools(state) {
 // to the server's existing protocol, never to model-supplied role fields.
 export class CoordinatorModel {
   #token;
-  constructor({ baseUrl, model, token, timeoutMs = 90000, maxTokens = 4096, fetch: fetchImpl = fetch }) {
+  constructor({ baseUrl, model, token, timeoutMs = 90000, maxTokens = 4096, thinking = null, fetch: fetchImpl = fetch }) {
     const url = new URL(baseUrl);
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw problem('INVALID_PROVIDER', 'Coordinator requires a configured HTTPS provider');
     if (!model || !token) throw problem('INVALID_PROVIDER', 'Coordinator model and credential are required');
+    if (thinking !== null && (!thinking || !['enabled', 'disabled'].includes(thinking.type) || Object.keys(thinking).some(key => key !== 'type'))) {
+      throw problem('INVALID_PROVIDER', 'Coordinator thinking mode must be enabled or disabled');
+    }
     this.endpoint = new URL(url.href.replace(/\/$/, '') + '/v1/messages');
     this.model = model; this.#token = token; this.timeoutMs = timeoutMs;
-    this.maxTokens = maxTokens; this.fetch = fetchImpl;
+    this.maxTokens = maxTokens; this.thinking = thinking ? { type: thinking.type } : null; this.fetch = fetchImpl;
   }
 
   async next({ system, messages, tools = [] }) {
-    const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })), ...(tools.length ? { tools } : {}) });
+    const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })),
+      ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > 512 * 1024) throw problem('CONTEXT_TOO_LARGE', 'Coordinator context needs explicit compaction');
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), this.timeoutMs);

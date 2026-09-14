@@ -425,12 +425,15 @@ test('Coordinator advertises reference names and accepts existing extensionless 
 });
 test('Coordinator transport pins the provider/model and never retries or echoes provider secrets', async () => {
   let calls = 0;
-  const model = new CoordinatorModel({ ...config, fetch: async (url, options) => {
+  const model = new CoordinatorModel({ ...config, maxTokens: 1024, thinking: { type: 'disabled' }, fetch: async (url, options) => {
     calls++;
     assert.equal(String(url), 'https://provider.example/api/anthropic/v1/messages');
     assert.equal(options.redirect, 'error');
     assert.equal(options.headers.Authorization, `Bearer ${config.token}`);
-    assert.equal(JSON.parse(options.body).model, config.model);
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, config.model);
+    assert.equal(body.max_tokens, 1024);
+    assert.deepEqual(body.thinking, { type: 'disabled' });
     return Response.json(text);
   } });
   assert.equal((await model.next({ system: 'role', messages: [{ role: 'user', content: 'hello' }] })).stop, 'end_turn');
@@ -439,6 +442,8 @@ test('Coordinator transport pins the provider/model and never retries or echoes 
   model.fetch = async () => { calls++; return new Response(config.token, { status: 401 }); };
   await assert.rejects(model.next({ system: 'role', messages: [] }), error => error.code === 'MODEL_HTTP_401' && !error.message.includes(config.token));
   assert.equal(calls, 2);
+  assert.throws(() => new CoordinatorModel({ ...config, thinking: { type: 'fast' } }), { code: 'INVALID_PROVIDER' });
+  assert.throws(() => new CoordinatorModel({ ...config, thinking: { type: 'disabled', budget_tokens: 1 } }), { code: 'INVALID_PROVIDER' });
 });
 
 test('Coordinator rejects model substitution, partial output, duplicate calls, and oversized responses', async () => {
