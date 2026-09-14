@@ -834,6 +834,7 @@ try {
       return {x:rect.x, y:rect.y, width:rect.width, height:rect.height};
     });
     await preview.evaluate(() => {
+      window.__CG_TOUR_FULL_MAP__ = true;
       window.__mapRevealEnd = false;
       window.__mapMotionEnd = false;
       window.addEventListener('cg:map-reveal-end', () => { window.__mapRevealEnd = true; }, {once:true});
@@ -879,6 +880,7 @@ try {
       `child mask should fade while the map is moving ${JSON.stringify({zoomStartOpacity,zoomFrameOpacity})}`);
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    assert.equal(await preview.locator('#nodes .node[data-id]').count(), 13, 'drilled demo should render the complete Workbench subtree');
     await preview.waitForTimeout(100);
     const stableFrame = await preview.evaluate(() => ({
       atEnd:window.__mapMotionEnd,

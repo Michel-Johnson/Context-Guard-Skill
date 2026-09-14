@@ -1929,6 +1929,8 @@ function visibleChildren(n){
   }
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
+  /* 官网/本地动画演示在进入模块后展开完整内置子树，避免用残缺层级评估镜头动效。 */
+  if(window.__CG_TOUR_FULL_MAP__ && !isCatalogView()) return kids;
   if(isCatalogView()) return [];
   /* 模块不展开。开工节点后面还可再接开工节点或一个模块（最多两岔）则默认展开。 */
   if(n.kind==="module") return [];

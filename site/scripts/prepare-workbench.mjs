@@ -82,6 +82,7 @@ const isolation = (language) => `<meta http-equiv="Content-Security-Policy" cont
 <script>
 // 页面运行在无同源权限的 iframe 中。只提供产品格式的内置示例，不读取实际项目。
 window.__CG_TOUR_LANG__ = ${JSON.stringify(language)};
+window.__CG_TOUR_FULL_MAP__ = true;
 if (new URLSearchParams(location.search).has("embedded")) document.documentElement.classList.add("cg-embedded");
 window.__CG_TOUR_EN__ = ${JSON.stringify(language === "en" ? english : {}).replace(/</g, "\\u003c")};
 window.__CG_TOUR_TEXT__ = (text) => window.__CG_TOUR_EN__[text] || text;
