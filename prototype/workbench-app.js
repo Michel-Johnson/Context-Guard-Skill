@@ -3598,7 +3598,7 @@ function renderDetail(){
     : "";
   const ideaHtml = node.ideas.length
     ? `<ul class="mem-list">`+node.ideas.map((m,i)=>
-        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${linkifyText(m.text||"")}</span>${attachHtml("idea", i, m)}</div></li>`
+        `<li class="${m.state==='dirty'?'dirty-item':''}"><i class="dot ${escAttr(m.state)}"></i><div class="mem-body" data-drop-files data-fk="idea" data-fi="${i}"><span class="txt ed" data-ed="idea" data-i="${i}">${linkifyText(m.text||"")}</span>${attachHtml("idea", i, m)}${m.id&&workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(m.id)}" data-coordinator-node="${escAttr(node.id)}" data-coordinator-kind="idea">对话</button>`:""}</div></li>`
       ).join("")+`</ul>`
     : "";
   const todoHtml = nodeTodos.length
@@ -4344,13 +4344,16 @@ async function installCoordinatorPanel(sync){
     status.textContent=state.error?'处理暂停：'+state.error.code:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     typing.hidden=state.status!=='running'||answering;
-    const contentKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
+    const visibleMessages=[...(state.messages||[])];
+    if(state.streamingText) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
+    const contentKey=JSON.stringify([visibleMessages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     if(contentKey!==lastContent){
     const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
-    const transcript=conversationFragments(state.messages||[],document,{nodes:state.nodeReferences||[],
+    const transcript=conversationFragments(visibleMessages,document,{nodes:state.nodeReferences||[],
       canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
       questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
+      onConversation:selectConversation,
       onAnswer:(question,answer)=>{
         if(busy||pending||send.disabled)return;
         const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
@@ -4449,10 +4452,10 @@ async function installCoordinatorPanel(sync){
     clearTimeout(timer);
     if(stopped||refreshing) return;
     refreshing=true;
-    const id=selected;
-    try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');if(id===selected)render(state);}
+    const id=selected;let delay=3000;
+    try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
     catch(error){typing.hidden=true;status.textContent='读取失败：'+error.message;}
-    finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?3000:0);}
+    finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
   const submit=async request=>{
     if(busy) return;

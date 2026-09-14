@@ -2,7 +2,7 @@
 
 意图清楚后打开本文，学会怎么调用。第一次挂载或忘记时通读。用户说挂错了时再打开。
 
-你写入自己的 Session Map，不是 Main。挂载结果与摘要交给用户审核。命令细节以 [workbench-interface.md](workbench-interface.md) 为准。
+普通开发 Agent 写入自己的 Session Map，不是 Main。Cloud Coordinator 若项目配置显式启用 `mapWrite`，可以通过受限服务端工具直接创建、改名或移动 Main 节点，并以 `coordinator` 身份审计；它不能删除节点或借此修改权限、记忆、任务和 Bug。命令细节以 [workbench-interface.md](workbench-interface.md) 为准。
 
 ## 挂到哪
 
@@ -28,7 +28,7 @@ context-guard record-bad-case --root "<project>" --session "<session-id>" \
 
 ## 新节点
 
-需要新职责时用 `map apply` 提交 create，带上 `owns` 与 `proposalEvidence`。使用刚才 `map read` 的 `baseVersion` 和稳定 `operationId`。不要直接改 `map.json`。冲突则重读再提交同一 `operationId`。字段与错误码见 [workbench-interface.md](workbench-interface.md)。
+普通开发 Agent 需要新职责时用 `map apply` 提交 create，带上 `owns` 与 `proposalEvidence`。Coordinator 使用注入目录中的稳定父节点 ID 与当前 Main 版本调用 `edit_map`；页面收到提交事件后负责渲染节点和动效。两者都不能直接改 `map.json`，冲突后先重读权威 Main，再按原操作身份核对回执。
 
 ## 挂错了
 

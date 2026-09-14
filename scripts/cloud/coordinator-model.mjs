@@ -6,6 +6,70 @@ const failedTool = code => ({ isError: true, result: { error: { code,
   message: '工具未成功。先读取当前权威状态并核对原始 ID/版本；不得猜测 ID、扩大权限或重复未知写入。' } } });
 const toolReply = (call, receipt) => ({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(receipt.result), ...(receipt.isError ? { is_error: true } : {}) });
 
+async function readBoundedJson(response) {
+  const reader = response.body.getReader();
+  const chunks = []; let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 4 * 1024 * 1024) { await reader.cancel(); throw problem('MODEL_RESPONSE_TOO_LARGE', 'Coordinator response exceeds 4 MiB'); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
+}
+
+async function readEventStream(response, onText) {
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let buffer = '', size = 0, model = '', stopReason = '', usage = {}, visibleText = '';
+  const blocks = [];
+  const event = async source => {
+    const data = source.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+    if (!data || data === '[DONE]') return;
+    let value; try { value = JSON.parse(data); } catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid event data'); }
+    if (value.type === 'error') throw problem('MODEL_UNAVAILABLE', 'Coordinator provider returned a stream error');
+    if (value.type === 'message_start') { model = value.message?.model || ''; usage = value.message?.usage || {}; }
+    if (value.type === 'content_block_start') {
+      const block = value.content_block || {};
+      blocks[value.index] = block.type === 'tool_use' ? { type: 'tool_use', id: block.id, name: block.name, input: block.input || {}, _json: '' }
+        : block.type === 'text' ? { type: 'text', text: block.text || '' } : { ...block };
+      if (block.type === 'text' && block.text) { visibleText += block.text; await onText?.(visibleText); }
+    }
+    if (value.type === 'content_block_delta') {
+      const block = blocks[value.index], delta = value.delta || {};
+      if (block?.type === 'text' && delta.type === 'text_delta') { block.text += delta.text || ''; visibleText += delta.text || ''; await onText?.(visibleText); }
+      if (block?.type === 'tool_use' && delta.type === 'input_json_delta') block._json += delta.partial_json || '';
+    }
+    if (value.type === 'content_block_stop') {
+      const block = blocks[value.index];
+      if (block?.type === 'tool_use' && block._json) {
+        try { block.input = JSON.parse(block._json); } catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid tool input'); }
+      }
+      if (block) delete block._json;
+    }
+    if (value.type === 'message_delta') { stopReason = value.delta?.stop_reason || stopReason; usage = { ...usage, ...(value.usage || {}) }; }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 4 * 1024 * 1024) { await reader.cancel(); throw problem('MODEL_RESPONSE_TOO_LARGE', 'Coordinator response exceeds 4 MiB'); }
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const raw = buffer.slice(0, boundary), match = buffer.slice(boundary).match(/^\r?\n\r?\n/);
+        buffer = buffer.slice(boundary + match[0].length); await event(raw);
+      }
+    }
+    buffer += decoder.decode(); if (buffer.trim()) await event(buffer);
+  } finally { reader.releaseLock(); }
+  return { model, stop_reason: stopReason, content: blocks.filter(Boolean), usage };
+}
+
 // A human can correct a definitively rejected call. Successful preceding tools
 // retain their receipts; unexecuted following tools are not silently invoked.
 export function settleRejectedTools(state) {
@@ -31,7 +95,7 @@ export function settleRejectedTools(state) {
 // to the server's existing protocol, never to model-supplied role fields.
 export class CoordinatorModel {
   #token;
-  constructor({ baseUrl, model, token, timeoutMs = 90000, maxTokens = 4096, thinking = null, fetch: fetchImpl = fetch }) {
+  constructor({ baseUrl, model, token, timeoutMs = 90000, maxTokens = 1024, thinking = null, fetch: fetchImpl = fetch }) {
     const url = new URL(baseUrl);
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw problem('INVALID_PROVIDER', 'Coordinator requires a configured HTTPS provider');
     if (!model || !token) throw problem('INVALID_PROVIDER', 'Coordinator model and credential are required');
@@ -43,9 +107,9 @@ export class CoordinatorModel {
     this.maxTokens = maxTokens; this.thinking = thinking ? { type: thinking.type } : null; this.fetch = fetchImpl;
   }
 
-  async next({ system, messages, tools = [] }) {
+  async next({ system, messages, tools = [], onText = null }) {
     const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })),
-      ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
+      stream: true, ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > 512 * 1024) throw problem('CONTEXT_TOO_LARGE', 'Coordinator context needs explicit compaction');
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), this.timeoutMs);
@@ -60,20 +124,8 @@ export class CoordinatorModel {
         // Provider error bodies may echo credentials or private prompt data.
         throw problem(`MODEL_HTTP_${response.status}`, `Coordinator provider returned HTTP ${response.status}`);
       }
-      const reader = response.body.getReader();
-      const chunks = []; let size = 0;
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.length;
-          if (size > 4 * 1024 * 1024) { await reader.cancel(); throw problem('MODEL_RESPONSE_TOO_LARGE', 'Coordinator response exceeds 4 MiB'); }
-          chunks.push(value);
-        }
-      } finally { reader.releaseLock(); }
-      let result;
-      try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-      catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
+      const result = (response.headers.get('content-type') || '').includes('text/event-stream')
+        ? await readEventStream(response, onText) : await readBoundedJson(response);
       if (result.model !== this.model || !Array.isArray(result.content) || !['end_turn', 'tool_use'].includes(result.stop_reason)) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned a different model or an incomplete turn');
       }
@@ -93,13 +145,12 @@ export class CoordinatorModel {
 
 // Persist every assistant response and tool receipt through the caller. Stable
 // operation IDs let protocol-backed tools replay a lost response idempotently.
-export async function coordinatorStep({ turnId, state, model, system, tools, save, execute }) {
-  const promptVersion = hash(system);
+export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, onText = null }) {
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
   if (!state.pending) {
-    const next = await model.next({ system, messages: state.messages, tools });
+    const next = await model.next({ system, messages: state.messages, tools, onText });
     state.messages.push({ role: 'assistant', content: next.content });
     state.pending = next;
     await save(state);
@@ -111,6 +162,7 @@ export async function coordinatorStep({ turnId, state, model, system, tools, sav
     return state;
   }
   const responses = []; let failed = false;
+  const visible = [];
   for (const call of next.content.filter(block => block.type === 'tool_use')) {
     if (!tools.some(tool => tool.name === call.name)) throw problem('TOOL_FORBIDDEN', 'Coordinator requested an unavailable tool');
     const operationId = `coordinator:${hash(`${turnId}:${call.id}`)}`;
@@ -130,8 +182,10 @@ export async function coordinatorStep({ turnId, state, model, system, tools, sav
       await save(state);
     }
     if (receipt.isError) failed = true;
+    if (!receipt.isError && ['node-references', 'conversation-mounted', 'map-action'].includes(receipt.result?.kind)) visible.push(receipt.result);
     responses.push(toolReply(call, receipt));
   }
+  if (visible.length) state.messages.at(-1).actions = visible;
   state.messages.push({ role: 'user', content: responses });
   state.pending = null;
   state.status = !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';

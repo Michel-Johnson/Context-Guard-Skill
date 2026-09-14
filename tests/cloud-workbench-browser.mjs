@@ -422,6 +422,23 @@ try {
   assert.equal(await page.locator('#legacy-question-test textarea').count(), 3, 'each legacy question has an inline answer field');
   assert.equal(await page.locator('#legacy-question-test button.coordinator-node-link').count(), 2, 'legacy question text links each recommended node alias');
   await page.locator('#legacy-question-test').evaluate(node => node.remove());
+  await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div'); host.id = 'structured-node-test';
+    host.append(conversationFragments([{ role: 'assistant', text: '建议放在这里。', actions: [
+      { kind: 'node-references', message: '候选节点', nodes: [{ id: 'reader', title: '阅读' }] },
+      { kind: 'conversation-mounted', conversationId: 'item-next', node: { id: 'reader', title: '阅读' } },
+    ] }, { role: 'assistant', text: '选择节点', questions: [{ id: 'node-choice', text: '挂到哪里？', nodes: [{ id: 'reader', title: '阅读' }] }] }], document, {
+      canAnswer: true, onNode: id => { host.dataset.selected = id; }, onConversation: id => { host.dataset.conversation = id; }, onAnswer: () => {},
+    }).body);
+    document.body.append(host);
+  });
+  assert.equal(await page.locator('#structured-node-test button.coordinator-node-link').count(), 3);
+  await page.locator('#structured-node-test .coordinator-actions button.coordinator-node-link').first().evaluate(button => button.click());
+  assert.equal(await page.locator('#structured-node-test').getAttribute('data-selected'), 'reader');
+  await page.locator('#structured-node-test').getByRole('button', { name: '继续这个事项' }).evaluate(button => button.click());
+  assert.equal(await page.locator('#structured-node-test').getAttribute('data-conversation'), 'item-next');
+  await page.locator('#structured-node-test').evaluate(node => node.remove());
   coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
   coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
   await page.reload(); await synchronized();
@@ -435,6 +452,14 @@ try {
   assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   record('coordinator-node-navigation-without-approval');
+  coordinatorState.status='running';coordinatorState.streamingText='正在形成可见答案';
+  await page.reload();await synchronized();await coordinator.locator(':scope > summary').click();
+  await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:'最终答案'});
+  await coordinator.getByText('最终答案',{exact:true}).waitFor();
+  assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'stream preview is replaced by the durable final message');
+  record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
   await coordinator.getByLabel('发送给 Coordinator').fill('保留我的自由对话草稿');

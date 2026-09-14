@@ -253,7 +253,8 @@ export function applyOperations(document, operations, actor, grants = []) {
   const doc = copy(document), resultIds = [];
   const human = actor.kind === 'human';
   const developer = actor.kind === 'developer';
-  const directStructure = human || developer;
+  const coordinator = actor.kind === 'coordinator';
+  const directStructure = human || developer || coordinator;
   const allowed = node => directStructure || grants.includes(node.id) || (node.proposal === 'proposed' && node.proposedBy === actor.sessionId);
   for (const op of operations) {
     if (op.type === 'initialize') {

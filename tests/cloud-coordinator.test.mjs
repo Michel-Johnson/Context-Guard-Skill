@@ -2,13 +2,14 @@ import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
+import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { startCloudServer, authorizeCiReceiver } from '../scripts/cloud/server.mjs';
+import { startCloudServer, authorizeCiReceiver, coordinatorStructureOperations } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
@@ -411,6 +412,136 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
 
 const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };
 const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test-model', token: 'synthetic-private-value' };
+test('Coordinator context carries the full static directory and only the mounted ancestry memories', () => {
+  const snapshot = { version: 'main-v2', memory: { map: { root: { id: 'T0', title: 'Root', purpose: 'Whole project', memories: [{ text: 'root memory' }], children: [
+    { id: 'N1', title: 'Reader', purpose: 'Public reading', memories: [{ text: 'reader memory' }], children: [
+      { id: 'N2', title: 'Article', purpose: 'Article page', memories: [{ text: 'article memory' }], children: [] },
+    ] },
+    { id: 'N3', title: 'Admin', purpose: 'Private admin', memories: [{ text: 'private unrelated memory' }], children: [] },
+  ] } } } };
+  const context = buildCoordinatorContext(snapshot, { conversation: { id: 'item-x', nodeId: 'N2', kind: 'todo', title: 'Improve article' } });
+  const payload = JSON.parse(context.text.slice(context.text.indexOf('{')));
+  assert.equal(context.version, 'main-v2');
+  assert.deepEqual(payload.staticDirectory.map(node => node.id), ['T0', 'N1', 'N2', 'N3']);
+  assert.deepEqual(payload.mountedChain.map(node => node.id), ['T0', 'N1', 'N2']);
+  assert.doesNotMatch(JSON.stringify(payload.mountedChain), /private unrelated memory/);
+  const scoped = buildCoordinatorContext(snapshot, { nodeIds: ['N2'], conversation: { id: 'item-x', nodeId: 'N2' } });
+  assert.deepEqual(JSON.parse(scoped.text.slice(scoped.text.indexOf('{'))).staticDirectory.map(node => node.id), ['T0', 'N1', 'N2']);
+});
+
+test('Coordinator streams text deltas while retaining one complete assistant message', async () => {
+  const events = [
+    { type: 'message_start', message: { model: config.model, usage: { input_tokens: 3 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '先说' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '结论' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 2 } },
+    { type: 'message_stop' },
+  ].map(value => `event: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`).join('');
+  const deltas = [];
+  const model = new CoordinatorModel({ ...config, fetch: async () => new Response(events, { headers: { 'Content-Type': 'text/event-stream' } }) });
+  const result = await model.next({ system: 'role', messages: [], onText: text => deltas.push(text) });
+  assert.deepEqual(deltas, ['先说', '先说结论']);
+  assert.deepEqual(result.content, [{ type: 'text', text: '先说结论' }]);
+  assert.equal(result.stop, 'end_turn');
+});
+
+test('Structured node tools expose stable buttons without leaking tool-only map data', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-node-actions-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async ids => ids.map(id => ({ id, title: id === 'N1' ? '阅读' : '管理' })) });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => ++calls === 1 ? {
+    stop: 'tool_use', content: [
+      { type: 'tool_use', id: 'show', name: 'show_nodes', input: { message: '建议放这里', nodeIds: ['N1'] } },
+      { type: 'tool_use', id: 'ask', name: 'ask_user', input: { question: '选择节点', nodeIds: ['N1', 'N2'] } },
+    ],
+  } : { stop: 'end_turn', content: [] } } });
+  await service.submit({ id: 'turn', text: '定位节点' }); await service.close();
+  const state = await service.state(), assistant = state.messages.find(message => message.role === 'assistant');
+  assert.deepEqual(assistant.actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
+  assert.deepEqual(assistant.questions[0].nodes, [{ id: 'N1', title: '阅读' }, { id: 'N2', title: '管理' }]);
+  assert.doesNotMatch(assistant.text, /N1|N2/);
+});
+
+test('Coordinator Map actions compile only non-destructive structural changes', () => {
+  const operations = coordinatorStructureOperations([
+    { op: 'create', parentId: 'T0', title: '内容', purpose: '文章内容', owns: ['source/'] },
+    { op: 'update', id: 'N1', title: '阅读' },
+    { op: 'move', id: 'N1', parentId: 'T0', order: 0 },
+  ], 'turn:tool');
+  assert.equal(operations[0].type, 'create');
+  assert.match(operations[0].node.id, /^NCC[a-f0-9]{20}$/);
+  assert.deepEqual(operations[1], { type: 'update', id: 'N1', fields: { title: '阅读' } });
+  assert.deepEqual(operations[2], { type: 'move', id: 'N1', parentId: 'T0', order: 0 });
+  assert.throws(() => coordinatorStructureOperations([{ op: 'delete', id: 'N1' }], 'turn:delete'), { code: 'FORBIDDEN' });
+  assert.throws(() => coordinatorStructureOperations([{ op: 'update', id: 'N1', todos: [] }], 'turn:records'), { code: 'FORBIDDEN' });
+});
+
+test('Cloud Coordinator edits Main and mounts a durable item through configured tools', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-map-tools-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: { enabled: true, mapWrite: true, providerFile, bindings: {} } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
+    id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
+  } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  let phase = 'edit', step = 0, latestVersion = 'v1';
+  server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
+    coordinatorModelFactory: () => ({ next: async () => {
+      step++;
+      if (step % 2 === 0) return { stop: 'end_turn', content: [{ type: 'text', text: '完成' }] };
+      return phase === 'edit' ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'edit', name: 'edit_map', input: {
+        mainVersion: latestVersion, actions: [{ op: 'create', parentId: 'T0', title: '阅读', purpose: '读者体验', owns: ['frontend/'] }],
+      } }] } : { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {
+        mainVersion: latestVersion, nodeId: 'T0', kind: 'todo', title: '提升阅读体验', description: '页面更快且更清楚',
+      } }] };
+    } }),
+  });
+  const call = async (method, body) => {
+    const response = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator`, {
+      method, headers: { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    assert.ok(response.ok, await response.clone().text()); return response.json();
+  };
+  const submit = async body => {
+    for (let i = 0; i < 100; i++) {
+      const response = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator`, {
+        method: 'POST', headers: { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (response.ok) return response.json();
+      const result = await response.json();
+      if (result.error?.code !== 'COORDINATOR_BUSY') assert.fail(JSON.stringify(result));
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error('Coordinator remained busy');
+  };
+  const wait = async () => { for (let i = 0; i < 100; i++) { const state = await call('GET'); if (state.status === 'waiting-for-user') return state; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Coordinator did not finish'); };
+  await submit({ id: 'edit-turn', text: '新增阅读节点' });
+  let state = await wait(), memory = await readMemoryView(memoryConfig, projectId);
+  assert.equal(memory.main.memory.map.root.children[0].title, '阅读');
+  assert.equal(memory.main.memory.map.root.children[0].origin, 'coordinator');
+  assert.equal(state.messages.find(message => message.actions)?.actions[0].kind, 'map-action');
+  latestVersion = memory.main.version; phase = 'mount';
+  await submit({ id: 'mount-turn', text: '挂载这个需求' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
+  assert.equal(memory.main.memory.map.root.todos[0].title, '提升阅读体验');
+  const mounted = state.messages.findLast(message => message.actions)?.actions[0];
+  assert.equal(mounted.kind, 'conversation-mounted');
+  assert.match(mounted.conversationId, /^item-/);
+  const continuedResponse = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator?conversation=${mounted.conversationId}`, {
+    headers: { Authorization: 'Bearer test-browser' },
+  });
+  assert.ok(continuedResponse.ok);
+  assert.match(JSON.stringify((await continuedResponse.json()).messages), /挂载这个需求/);
+});
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
   const names = [];
   const execute = createCoordinatorExecutor({ readReference: async name => { names.push(name); return { name }; } });

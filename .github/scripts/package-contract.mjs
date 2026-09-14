@@ -79,6 +79,7 @@ export const installedFiles = [
 export const packedFiles = [...installedFiles, ...[
   "scripts/cloud/attachments.mjs",
   "scripts/cloud/quark-provider.mjs",
+  "scripts/cloud/coordinator-context.mjs",
   "scripts/cloud/coordinator-tools.mjs",
   "scripts/cloud/coordinator-service.mjs",
   "scripts/cloud/coordinator-model.mjs",
