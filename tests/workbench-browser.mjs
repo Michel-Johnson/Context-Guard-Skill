@@ -862,6 +862,7 @@ try {
       return {
         anchor:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
         childOpacity:child ? Number(getComputedStyle(child).opacity) : 0,
+        linkOpacity:Number(getComputedStyle(document.querySelector('#links path')).opacity),
         zooming:document.getElementById('world').classList.contains('map-transition-zoom'),
         start:window.__mapMotionStart
       };
@@ -869,6 +870,8 @@ try {
     assert.equal(movingFrame.zooming, true, `map and mask should share one animation ${JSON.stringify(movingFrame)}`);
     assert.equal(movingFrame.start.childOpacity, 0, `children should exist behind a fully opaque mask at animation start ${JSON.stringify(movingFrame)}`);
     assert.ok(movingFrame.childOpacity > 0 && movingFrame.childOpacity < 1, `child mask should fade while the map moves ${JSON.stringify(movingFrame)}`);
+    assert.ok(movingFrame.linkOpacity < movingFrame.childOpacity*.5,
+      `links must stay behind the node mask instead of appearing as bare branches ${JSON.stringify(movingFrame)}`);
     assert.ok(Math.abs(movingFrame.start.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(movingFrame.start.anchor.y-moduleBeforeDrill.y)<.25 &&
       Math.abs(movingFrame.start.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(movingFrame.start.anchor.height-moduleBeforeDrill.height)<1,
       `single animation must start from the clicked module frame ${JSON.stringify({moduleBeforeDrill,movingFrame})}`);

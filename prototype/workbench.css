@@ -260,7 +260,7 @@ body.map-transition-revealing.map-transition-live .map-transition-snapshot{opaci
 body.map-transition-revealing #world .node:not(.map-transition-anchor){
   opacity:0;transform:none;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
 body.map-transition-revealing #world #links path{
-  opacity:0;transition:opacity 620ms cubic-bezier(.22,.82,.24,1)}
+  opacity:0;transition:opacity 500ms cubic-bezier(.22,.82,.24,1) 120ms}
 body.map-transition-revealing.map-transition-live #world .node:not(.map-transition-anchor){opacity:1}
 body.map-transition-revealing.map-transition-live #world #links path{opacity:1}
 body.map-transitioning #viewport{cursor:wait}
