@@ -828,13 +828,28 @@ try {
     assert.equal(await preview.locator('#repo-menu.open').count(), 1);
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
-    const moduleWidthBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => el.getBoundingClientRect().width);
+    const moduleBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      return {x:rect.x, y:rect.y, width:rect.width, height:rect.height};
+    });
     await preview.locator('.node[data-id="M1"]').click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
+    const heroStart = await preview.locator('.map-transition-hero').evaluate(el => {
+      const viewport = document.getElementById('viewport').getBoundingClientRect();
+      const first = el.getAnimations()[0]?.effect?.getKeyframes?.()[0];
+      return {
+        x:viewport.left+parseFloat(el.style.left), y:viewport.top+parseFloat(el.style.top),
+        width:parseFloat(el.style.width), height:parseFloat(el.style.height), firstTransform:first?.transform
+      };
+    });
+    assert.ok(Math.abs(heroStart.x-moduleBeforeDrill.x)<1 && Math.abs(heroStart.y-moduleBeforeDrill.y)<1, `hero must start on the clicked module ${JSON.stringify({moduleBeforeDrill,heroStart})}`);
+    assert.ok(Math.abs(heroStart.width-moduleBeforeDrill.width)<1 && Math.abs(heroStart.height-moduleBeforeDrill.height)<1);
+    assert.equal(heroStart.firstTransform, 'translate(0px, 0px) scale(1, 1)');
+    assert.equal(await preview.locator('.map-transition-snapshot #links').count(), 0, 'old canvas links must not be cloned into the transition');
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
     await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     const moduleWidthAfterDrill = await preview.locator('#nodes .node.root').evaluate(el => el.getBoundingClientRect().width);
-    assert.ok(moduleWidthAfterDrill > moduleWidthBeforeDrill * 1.05, `drilled module should visibly enlarge: ${moduleWidthBeforeDrill} -> ${moduleWidthAfterDrill}`);
+    assert.ok(moduleWidthAfterDrill > moduleBeforeDrill.width * 1.05, `drilled module should visibly enlarge: ${moduleBeforeDrill.width} -> ${moduleWidthAfterDrill}`);
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
