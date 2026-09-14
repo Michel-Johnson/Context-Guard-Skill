@@ -3990,25 +3990,39 @@ function correctAlignedView(el, screenRect){
   applyView();
 }
 function createMapTransitionSnapshot(anchorId){
-  const vpRect = vp.getBoundingClientRect();
   const snapshot = document.createElement("div");
   snapshot.className = "map-transition-snapshot";
   snapshot.setAttribute("aria-hidden", "true");
-  nodesEl.querySelectorAll(".node[data-id]").forEach(el=>{
-    if(el.dataset.id===anchorId || el.classList.contains("edge-sliver")) return;
-    const rect = el.getBoundingClientRect();
-    const clone = el.cloneNode(true);
-    clone.removeAttribute("data-id");
-    clone.querySelectorAll("[id]").forEach(child=>child.removeAttribute("id"));
-    Object.assign(clone.style, {
-      left:`${rect.left-vpRect.left}px`, top:`${rect.top-vpRect.top}px`,
-      width:`${rect.width}px`, height:`${rect.height}px`,
-      transform:"none", visibility:"visible", margin:"0"
-    });
-    snapshot.appendChild(clone);
+  const clone = worldEl.cloneNode(true);
+  clone.classList.remove("map-transition-zoom");
+  clone.classList.add("map-transition-snapshot-world");
+  const clonedLinks = clone.querySelector("#links");
+  if(clonedLinks) Object.assign(clonedLinks.style, {position:"absolute", left:"0", top:"0", overflow:"visible", pointerEvents:"none"});
+  clone.querySelectorAll(".node[data-id]").forEach(el=>{
+    el.dataset.mapSnapshotId = el.dataset.id;
+    el.removeAttribute("data-id");
   });
+  clone.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  const anchor = mapNode(anchorId);
+  snapshot._anchorGeometry = anchor ? {
+    x:anchor.offsetLeft, y:anchor.offsetTop,
+    width:anchor.offsetWidth, height:anchor.offsetHeight
+  } : null;
+  snapshot._world = clone;
+  snapshot.appendChild(clone);
   vp.appendChild(snapshot);
   return snapshot;
+}
+function positionMapTransitionSnapshot(screenRect){
+  const snapshot = mapTransitionSnapshot;
+  const geometry = snapshot?._anchorGeometry;
+  const clone = snapshot?._world;
+  if(!geometry || !clone) return;
+  const vpRect = vp.getBoundingClientRect();
+  const k = Math.min(2.2, Math.max(.2, screenRect.width/Math.max(geometry.width,1)));
+  const cx = screenRect.left-vpRect.left+screenRect.width/2;
+  const cy = screenRect.top-vpRect.top+screenRect.height/2;
+  clone.style.transform = `translate(${cx-(geometry.x+geometry.width/2)*k}px,${cy-(geometry.y+geometry.height/2)*k}px) scale(${k})`;
 }
 function finishMapTransition(){
   if(mapTransitionFrame!==null) cancelAnimationFrame(mapTransitionFrame);
@@ -4051,6 +4065,7 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   view = alignedView(nextAnchor, anchorRect);
   applyView();
   correctAlignedView(nextAnchor, anchorRect);
+  positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
   const startView = {...view};
   const finalView = fittedView();
   worldEl.classList.add("map-transition-zoom");
@@ -4073,6 +4088,7 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
     worldEl.style.setProperty("--map-link-opacity", String(mapMaskProgress(raw, .22, .9)));
     if(mapTransitionSnapshot) mapTransitionSnapshot.style.opacity = String(1-mapMaskProgress(raw, 0, .62));
     applyView();
+    positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
     if(raw<1){ mapTransitionFrame = requestAnimationFrame(frame); return; }
     view = finalView;
     applyView();

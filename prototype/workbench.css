@@ -255,7 +255,8 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
 #world.map-transition-zoom{will-change:transform}
 .map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;will-change:opacity}
-.map-transition-snapshot .node{position:absolute;pointer-events:none}
+.map-transition-snapshot-world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.map-transition-snapshot .node{pointer-events:none}
 body.map-transition-revealing #world .node:not(.map-transition-anchor){
   opacity:var(--map-node-opacity,0);transform:none;transition:none}
 body.map-transition-revealing #world #links path{

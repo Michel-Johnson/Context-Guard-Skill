@@ -833,6 +833,7 @@ try {
       const rect = el.getBoundingClientRect();
       return {x:rect.x, y:rect.y, width:rect.width, height:rect.height};
     });
+    const rootBeforeDrill = await preview.locator('.node[data-id="T0"]').evaluate(el => el.getBoundingClientRect().toJSON());
     await preview.evaluate(() => {
       window.__CG_TOUR_FULL_MAP__ = true;
       window.__mapMotionStart = false;
@@ -842,7 +843,8 @@ try {
         const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
         window.__mapMotionStart = {
           anchor:anchor.getBoundingClientRect().toJSON(),
-          childOpacity:Number(getComputedStyle(child).opacity)
+          childOpacity:Number(getComputedStyle(child).opacity),
+          snapshotRoot:document.querySelector('[data-map-snapshot-id="T0"]').getBoundingClientRect().toJSON()
         };
       }, {once:true});
       window.addEventListener('cg:map-transition-end', () => {
@@ -875,6 +877,11 @@ try {
     assert.ok(Math.abs(movingFrame.start.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(movingFrame.start.anchor.y-moduleBeforeDrill.y)<.25 &&
       Math.abs(movingFrame.start.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(movingFrame.start.anchor.height-moduleBeforeDrill.height)<1,
       `single animation must start from the clicked module frame ${JSON.stringify({moduleBeforeDrill,movingFrame})}`);
+    assert.ok(Math.abs(movingFrame.start.snapshotRoot.x-rootBeforeDrill.x)<.25 && Math.abs(movingFrame.start.snapshotRoot.y-rootBeforeDrill.y)<.25 &&
+      Math.abs(movingFrame.start.snapshotRoot.width-rootBeforeDrill.width)<1 && Math.abs(movingFrame.start.snapshotRoot.height-rootBeforeDrill.height)<1,
+      `click must start from an unchanged old scene ${JSON.stringify({rootBeforeDrill,movingFrame})}`);
+    assert.ok(movingFrame.anchor.x < movingFrame.start.anchor.x-5,
+      `selected module should move left continuously as children enter from the right ${JSON.stringify(movingFrame)}`);
     await preview.waitForTimeout(160);
     const laterMovingFrame = await preview.evaluate(() => {
       const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
