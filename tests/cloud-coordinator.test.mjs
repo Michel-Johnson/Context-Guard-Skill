@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations } from '../scripts/cloud/coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -620,6 +620,19 @@ test('Coordinator deadline aborts the request and exposes a stable timeout error
   await assert.rejects(model.next({ system: '', messages: [] }), { code: 'MODEL_TIMEOUT' });
 });
 
+test('Coordinator deadline escapes a response stream that stalls after partial text', async () => {
+  const encoder = new TextEncoder();
+  const model = new CoordinatorModel({ ...config, timeoutMs: 20, fetch: async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"type":"message_start","message":{"model":"deepseek-v4-flash"}}\n\n'));
+      controller.enqueue(encoder.encode('data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"卡"}}\n\n'));
+    },
+  }), { headers: { 'content-type': 'text/event-stream' } }) });
+  const started = Date.now();
+  await assert.rejects(model.next({ system: '', messages: [] }), { code: 'MODEL_TIMEOUT' });
+  assert.ok(Date.now() - started < 500, 'the reader deadline must not wait for the stalled socket');
+});
+
 test('Coordinator restarts from a saved tool intent with the same operation identity', async () => {
   const tools = [{ name: 'read_map', input_schema: { type: 'object' } }];
   let disk = { messages: [{ role: 'user', content: 'Read Main' }] }, requests = 0, effects = 0;
@@ -693,7 +706,7 @@ test('Human feedback can correct a legacy rejected call but cannot discard an un
   }
 });
 
-test('Coordinator persists a human conversation and only retries a failed turn explicitly', async t => {
+test('Coordinator offers explicit retry after automatic model retries are exhausted', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let calls = 0;
@@ -701,12 +714,12 @@ test('Coordinator persists a human conversation and only retries a failed turn e
     execute: async () => { throw new Error('No tools allowed'); },
     model: { next: async () => { calls++; if (calls === 1) throw Object.assign(new Error('provider timeout'), { code: 'MODEL_TIMEOUT' }); return { stop: 'end_turn', content: [{ type: 'text', text: '请确认需求。' }] }; } },
   };
-  const service = new CoordinatorService(options);
+  const service = new CoordinatorService({ ...options, maxModelRetries: 0 });
   const input = { id: 'human-1', text: '查看地图' };
   await service.submit(input); await service.close();
   assert.equal((await service.state()).error.code, 'MODEL_TIMEOUT');
   assert.deepEqual((await service.state()).acceptedRequestIds, [input.id]);
-  const restarted = new CoordinatorService(options);
+  const restarted = new CoordinatorService({ ...options, maxModelRetries: 0 });
   assert.deepEqual((await restarted.state()).acceptedRequestIds, [input.id], 'acceptance survives a lost response and restart');
   await restarted.submit(input); await restarted.close();
   assert.equal(calls, 1);
@@ -717,6 +730,40 @@ test('Coordinator persists a human conversation and only retries a failed turn e
   assert.match(state.messages[0].text, /模拟人工输入/);
   assert.equal(state.messages.at(-1).text, '请确认需求。');
   await assert.rejects(restarted.submit({ ...input, text: '另一个请求' }), { code: 'ID_REUSED' });
+});
+
+test('Coordinator automatically retries a transient model timeout before any tool effect', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-auto-retry-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, retryDelayMs: 0,
+    model: { next: async () => {
+      calls++;
+      if (calls === 1) throw Object.assign(new Error('stalled stream'), { code: 'MODEL_TIMEOUT' });
+      return { stop: 'end_turn', content: [{ type: 'text', text: '已继续' }] };
+    } },
+  });
+  await service.submit({ id: 'auto-retry', text: '继续任务' }); await service.close();
+  const state = await service.state();
+  assert.equal(calls, 2);
+  assert.equal(state.status, 'waiting-for-user');
+  assert.equal(state.messages.at(-1).text, '已继续');
+});
+
+test('Coordinator automatically resumes a durable transient model failure after restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-restart-retry-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'conversation.json');
+  const failed = { messages: [{ role: 'user', content: '继续任务' }], requests: { durable: 'fingerprint' }, toolReceipts: {},
+    status: 'error', error: { code: 'MODEL_TIMEOUT' }, activeTurnId: 'durable', activeInput: { id: 'durable', text: '继续任务' }, steps: 1 };
+  await fs.writeFile(file, JSON.stringify(failed));
+  assert.equal(coordinatorCanAutoResume(failed), true);
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, retryDelayMs: 0,
+    model: { next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: '已从断点继续' }] }) } });
+  service.kick(); await service.close();
+  const state = await service.state();
+  assert.equal(state.status, 'waiting-for-user');
+  assert.equal(state.messages.at(-1).text, '已从断点继续');
 });
 
 test('Coordinator exposes only a bounded recent receipt list, not request content', async t => {
