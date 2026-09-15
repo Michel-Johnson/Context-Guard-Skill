@@ -9,10 +9,112 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { startCloudServer, authorizeCiReceiver, coordinatorStructureOperations, coordinatorTaskOwnerRequired } from '../scripts/cloud/server.mjs';
+import { startCloudServer, createWorkbenchPasswordHash, authorizeCiReceiver, coordinatorStructureOperations, coordinatorTaskOwnerRequired } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
+
+test('Project requirements survive restart, reserve capacity atomically and dispatch only the approved fresh Session', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-project-task-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let store = new ProtocolStore(directory);
+  const human = { repositoryId: 'repo', deviceId: 'browser', agentId: 'human', role: 'human' };
+  const coordinator = { ...human, role: 'coordinator', agentId: 'scheduler', bindings: {} };
+  const input = { taskId: 'TD1', text: 'Publish blog', acceptance: 'URL works', nodeIds: ['N1'], mainVersion: 'main-1' };
+  const first = await store.prepareProjectTask(coordinator, input, 'prepare-1', 'chat-1');
+  assert.deepEqual(await store.prepareProjectTask(coordinator, input, 'prepare-1', 'chat-1'), first);
+  await assert.rejects(store.prepareProjectTask(coordinator, { ...input, text: 'different' }, 'prepare-2', 'chat-1'), { code: 'CONFLICT' });
+  const review = { id: 'human-review', decision: 'approved', reason: 'Confirmed' };
+  await store.reviewProjectTask(human, input.taskId, first.brief, review);
+  await store.reviewProjectTask(human, input.taskId, first.brief, review);
+  const second = await store.prepareProjectTask(coordinator, { ...input, taskId: 'TD2' }, 'prepare-2', 'chat-2');
+  await store.reviewProjectTask(human, 'TD2', second.brief, { ...review, id: 'human-review-2' });
+  await Promise.all(['TD1', 'TD2'].map(taskId => store.updateProjectTask(coordinator, taskId, { stage: 'creating' }, { reserveLimit: 1 })));
+  store = new ProtocolStore(directory);
+  const records = await store.projectTasks(human);
+  assert.equal(records.filter(task => task.stage === 'creating').length, 1);
+  assert.equal(records.filter(task => task.stage === 'queued').length, 1);
+  await store.updateProjectTask(coordinator, 'TD1', { stage: 'starting', sessionId: 'fresh' });
+  // Use the same canonical key as the production store.
+  const { canonical } = await import('../scripts/shared/protocol.mjs');
+  const key = createHash('sha256').update(canonical(['repo', 'fresh'])).digest('hex');
+  await store.transaction(state => { state.bindings[key] = { sessionId: 'fresh', generation: 1, worktreeId: 'fresh-tree', deviceId: 'local', agentId: 'executor' }; });
+  coordinator.bindings.fresh = 'fresh-tree';
+  const request = { operationId: 'dispatch-1', projectTaskId: 'TD1', session: { id: 'fresh', generation: 1 } };
+  const resolve = async () => ({ ...input, text: JSON.stringify({ v: 1, ...input }) });
+  await assert.rejects(store.submitApprovedTask(coordinator, { ...request, projectTaskId: 'TD2' }, resolve, { verifyRouting: async () => true }), { code: 'FORBIDDEN' });
+  await assert.rejects(store.submitApprovedTask(coordinator, request, async () => ({ ...await resolve(), nodeIds: ['other'] }), { verifyRouting: async () => true }), { code: 'CONFLICT' });
+  const dispatched = await store.submitApprovedTask(coordinator, request, resolve, { verifyRouting: async () => true });
+  assert.equal(dispatched.sessionId, 'fresh');
+  assert.deepEqual(await store.submitApprovedTask(coordinator, request, resolve, { verifyRouting: async () => true }), dispatched);
+  assert.equal((await store.workflowTasks(human, request.session)).length, 1);
+  const create = { operationId: 'create-fresh', templateSessionId: 'fresh', name: 'New task' };
+  await assert.rejects(store.requestSessionCreation(coordinator, create), { code: 'FORBIDDEN' });
+  coordinator.creationTemplates = ['fresh'];
+  const creation = await store.requestSessionCreation(coordinator, create);
+  assert.deepEqual(await new ProtocolStore(directory).requestSessionCreation(coordinator, create), creation);
+  assert.notEqual(creation.sessionId, 'fresh');
+});
+
+test('Cloud project approval creates a fresh Session and dispatches once after a stopped native startup heartbeat', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-fresh-http-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    'context-guard': { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'], maxConcurrentTasks: 1,
+    } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update('context-guard').digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'main-1', memory: { records: {}, map: {
+    v: 1, bootstrap: 'ready', root: { id: 'T0', title: 'Blog', kind: 'module', state: 'dirty', owns: [], children: [] },
+  } } }, sessions: {}, receipts: {}, history: [], events: [], eventCursors: {}, closedSessions: {} }));
+  let modelCalls = 0;
+  server = await startCloudServer({ dataDir: directory, port: 0, memoryConfig, browserToken: 'synthetic-browser',
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId: 'context-guard', slug: 'example/repo' }] },
+    coordinatorModelFactory: () => ({ next: async () => ++modelCalls === 1 ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task',
+      input: { taskId: 'TD-fresh', text: 'Publish blog', acceptance: 'URL works', nodeIds: ['T0'], mainVersion: 'main-1' } }] }
+      : { stop: 'end_turn', content: [{ type: 'text', text: '已准备需求。' }] } }),
+  });
+  const headers = { Authorization: 'Bearer synthetic-browser', 'Content-Type': 'application/json' };
+  const endpoint = `${server.url}/api/workbench/projects/context-guard/api/coordinator`;
+  const post = async (url, value, authorization = headers) => {
+    const response = await fetch(url, { method: 'POST', headers: authorization, body: JSON.stringify(value) });
+    const result = await response.json(); assert.equal(response.status < 300, true, JSON.stringify(result)); return result;
+  };
+  const login = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', clientId: 'device', password: 'synthetic-password' },
+  }) });
+  assert.equal(login.status, 200);
+  const deviceHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${login.headers.get('x-context-guard-credential')}` };
+  const message = value => post(`${server.url}/api/v2/messages`, { v: 2, ...value }, deviceHeaders);
+  await message({ id: 'bind-template', type: 'session.bind', payload: { sessionId: 'template', worktreeId: 'template-tree', agentId: 'template-agent', expectedBindingVersion: '' } });
+  await message({ id: 'heartbeat-template', type: 'sync.heartbeat', payload: { sessions: [{ id: 'template', generation: 1, ackedSeq: 0, execution: { status: 'stopped', at: new Date().toISOString() } }] } });
+  await post(endpoint, { id: 'request', text: 'Publish blog' });
+  const poll = async predicate => {
+    for (let i = 0; i < 160; i++) { const state = await (await fetch(endpoint, { headers })).json(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
+    assert.fail('Coordinator state did not advance');
+  };
+  const ready = await poll(state => state.approvals?.some(item => item.projectTask));
+  const proposal = ready.approvals.find(item => item.projectTask);
+  assert.equal(proposal.sessionId, undefined);
+  const approve = { id: 'approve', proposalId: proposal.id, decision: 'approved', reason: 'Confirmed' };
+  await post(endpoint + '/approval', approve);
+  const creating = await poll(state => state.sessionCreations?.length === 1);
+  const creation = creating.sessionCreations[0];
+  assert.notEqual(creation.sessionId, 'template');
+  await message({ id: 'bind-fresh', type: 'session.bind', payload: { sessionId: creation.sessionId, worktreeId: 'fresh-tree', agentId: creation.sessionId, expectedBindingVersion: '' } });
+  await message({ id: 'heartbeat-fresh', type: 'sync.heartbeat', payload: { creationResults: [], sessions: [{ id: creation.sessionId, generation: 1, ackedSeq: 0, execution: { status: 'stopped', at: new Date().toISOString() } }] } });
+  const dispatched = await poll(state => state.projectTasks?.some(task => task.stage === 'dispatched'));
+  assert.equal(dispatched.projectTasks[0].sessionId, creation.sessionId);
+  await post(endpoint + '/approval', approve);
+  const queue = await message({ id: 'read-queue', type: 'sync.read', session: { id: creation.sessionId, generation: 1 }, payload: { afterSeq: 0, limit: 100 } });
+  assert.equal(queue.data.messages.filter(item => item.message.type === 'task.assign').length, 1);
+});
 
 test('Coordinator routing prompt assigns node discovery to the agent while preserving human approval', async () => {
   const prompt = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');

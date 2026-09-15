@@ -155,7 +155,7 @@ export class ProtocolStore extends EventEmitter {
   }
   async requestSessionCreation(principal, input) {
     requireIdentity(principal);
-    if (principal.role !== 'human') fail('FORBIDDEN', 'Only the human can request a new native Session');
+    if (principal.role !== 'human' && !(principal.role === 'coordinator' && principal.creationTemplates?.includes(input?.templateSessionId))) fail('FORBIDDEN', 'Session creation requires an authorized project template');
     if (!input || Object.keys(input).some(k => !['operationId', 'templateSessionId', 'name'].includes(k)) ||
         ['operationId', 'templateSessionId', 'name'].some(k => typeof input[k] !== 'string' || !input[k].trim() || input[k].length > (k === 'name' ? 200 : 128))) fail('INVALID_ARGUMENT', 'Provide a stable request, configured template Session and name');
     const result = await this.transaction(state => {
@@ -171,11 +171,67 @@ export class ProtocolStore extends EventEmitter {
       const result = { id, operationId: input.operationId, sessionId: randomUUID(), templateSessionId: input.templateSessionId,
         name: input.name.trim(), state: 'pending', createdAt: new Date().toISOString() };
       state.sessionCreations[id] = { repositoryId: principal.repositoryId, deviceId: template.deviceId,
-        templateWorktreeId: template.worktreeId, fingerprint, result };
+        templateWorktreeId: template.worktreeId, fingerprint, result, requestedBy: { role: principal.role, agentId: principal.agentId } };
       return result;
     });
     this.emit('change');
     return result;
+  }
+  async prepareProjectTask(principal, input, operationId, conversationId) {
+    requireIdentity(principal);
+    if (principal.role !== 'coordinator') fail('FORBIDDEN', 'Coordinator identity required');
+    return this.transaction(state => {
+      state.projectTasks ||= {};
+      const id = key([principal.repositoryId, input.taskId]);
+      const fingerprint = hash(canonical(input));
+      const previous = state.projectTasks[id];
+      if (previous) {
+        if (previous.conversationId !== conversationId) fail('CONFLICT', 'Project task belongs to another conversation');
+        if (previous.fingerprint === fingerprint) return previous;
+        if (previous.stage !== 'brief-rejected' || previous.operationId === operationId) fail('CONFLICT', 'Project task already has different requirements');
+      }
+      return state.projectTasks[id] = { ...structuredClone(input), repositoryId: principal.repositoryId,
+        conversationId, fingerprint, operationId, stage: 'brief', createdAt: new Date().toISOString(),
+        brief: { ref: `project-brief:${input.taskId}`, version: randomUUID() } };
+    });
+  }
+  async projectTasks(principal) {
+    requireIdentity(principal);
+    if (!['human', 'coordinator'].includes(principal.role)) fail('FORBIDDEN', 'Project task access required');
+    return this.transaction(state => Object.values(state.projectTasks || {}).filter(item => item.repositoryId === principal.repositoryId), { readOnly: true });
+  }
+  async reviewProjectTask(principal, taskId, brief, input) {
+    requireIdentity(principal);
+    if (principal.role !== 'human' || !['approved', 'rejected'].includes(input.decision) || typeof input.id !== 'string' || !input.id) fail('FORBIDDEN', 'A human decision and stable receipt are required');
+    return this.transaction(state => {
+      const task = state.projectTasks?.[key([principal.repositoryId, taskId])];
+      if (!task || canonical(task.brief) !== canonical(brief)) fail('CONFLICT', 'Project requirements changed');
+      const review = { id: input.id, decision: input.decision, reason: input.reason || '' };
+      if (task.review) {
+        if (canonical(task.review) !== canonical(review)) fail('CONFLICT', 'Requirements already reviewed');
+        return task;
+      }
+      task.review = review; task.reviewIssuer = structuredClone(principal); task.stage = input.decision === 'approved' ? 'queued' : 'brief-rejected';
+      return task;
+    });
+  }
+  async updateProjectTask(principal, taskId, changes, { reserveLimit } = {}) {
+    requireIdentity(principal);
+    if (principal.role !== 'coordinator') fail('FORBIDDEN', 'Coordinator scheduler required');
+    return this.transaction(state => {
+      const task = state.projectTasks?.[key([principal.repositoryId, taskId])];
+      if (!task) fail('NOT_FOUND', 'Project task missing');
+      const transitions = { queued: ['creating'], creating: ['starting', 'failed'], starting: ['dispatched', 'queued', 'failed'], dispatched: ['completed'] };
+      if (changes.stage && changes.stage !== task.stage && !transitions[task.stage]?.includes(changes.stage)) return task;
+      if (reserveLimit !== undefined) {
+        if (task.stage !== 'queued') return task;
+        const active = Object.values(state.projectTasks).filter(item => item.repositoryId === principal.repositoryId && ['creating', 'starting'].includes(item.stage)).length
+          + Object.values(state.tasks).filter(item => item.repositoryId === principal.repositoryId && item.busy).length;
+        if (active >= reserveLimit) return task;
+      }
+      Object.assign(task, structuredClone(changes), { updatedAt: new Date().toISOString() });
+      return task;
+    });
   }
   async pendingSessionCreations(principal) {
     requireIdentity(principal);
@@ -223,11 +279,13 @@ export class ProtocolStore extends EventEmitter {
   }
   async submitApprovedTask(principal, request, resolveTask, workflow = {}) {
     requireIdentity(principal);
-    if (principal.role !== 'human') fail('FORBIDDEN', 'Only a human can approve a Cloud work item');
+    if (!['human', 'coordinator'].includes(principal.role)) fail('FORBIDDEN', 'Human approval or approved project requirements required');
     if (!request || typeof request.operationId !== 'string' || !request.operationId.trim() || request.operationId.length > 128) fail('INVALID_ARGUMENT', 'A stable operationId is required');
     if (!request.session || typeof request.session.id !== 'string' || !Number.isSafeInteger(request.session.generation)) fail('INVALID_ARGUMENT', 'A bound Session is required');
     return this.transaction(async state => {
       const binding = requireBinding(state, principal, request.session);
+      const projectTask = request.projectTaskId && state.projectTasks?.[key([principal.repositoryId, request.projectTaskId])];
+      if (principal.role === 'coordinator' && (!projectTask || projectTask.review?.decision !== 'approved' || projectTask.sessionId !== request.session.id)) fail('FORBIDDEN', 'Project approval does not authorize this execution Session');
       state.taskDispatches ||= {};
       const dispatchKey = key([...principalKey(principal), 'task-dispatch', request.operationId]);
       const fingerprint = hash(canonical(request));
@@ -237,6 +295,7 @@ export class ProtocolStore extends EventEmitter {
         return prior.result;
       }
       const resolved = await resolveTask();
+      if (projectTask && (resolved.taskId !== projectTask.taskId || canonical(resolved.nodeIds) !== canonical(projectTask.nodeIds) || resolved.mainVersion !== projectTask.mainVersion || resolved.mode && resolved.mode !== 'reviewed' || resolved.text !== JSON.stringify({ v: 1, taskId: projectTask.taskId, text: projectTask.text, acceptance: projectTask.acceptance, nodeIds: projectTask.nodeIds, mainVersion: projectTask.mainVersion }))) fail('CONFLICT', 'Dispatch differs from approved project requirements');
       const taskId = resolved.taskId;
       const coordinator = { ...principal, deviceId: 'cloud-service', agentId: 'cloud-coordinator', role: 'coordinator', bindings: { [request.session.id]: binding.worktreeId } };
       const prefix = `dispatch:${hash(canonical([principal.repositoryId, request.operationId])).slice(0, 32)}`;
@@ -251,7 +310,7 @@ export class ProtocolStore extends EventEmitter {
       };
       const brief = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief`, type: 'brief.submit', session: request.session, payload: { taskId, text: resolved.text } }, emitted, workflow);
       await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:brief-review`, type: 'review.request', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, taskId } }, emitted, workflow);
-      await reduceWorkflow(state, principal, { v: 2, id: `${prefix}:approved`, type: 'review.result', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: '用户在 Cloud 工作台确认分配' } }, emitted, workflow);
+      await reduceWorkflow(state, projectTask?.reviewIssuer || principal, { v: 2, id: `${prefix}:approved`, type: 'review.result', session: request.session, payload: { kind: 'brief', ref: brief.ref, version: brief.version, decision: 'approved', reason: projectTask?.review.reason || '用户在 Cloud 工作台确认分配' } }, emitted, workflow);
       const assigned = await reduceWorkflow(state, coordinator, { v: 2, id: `${prefix}:assign`, type: 'task.assign', session: request.session, payload: { taskId, briefRef: brief.ref, briefVersion: brief.version, sessionId: request.session.id, nodeIds: resolved.nodeIds, mainVersion: resolved.mainVersion, ...(resolved.mode ? { mode: resolved.mode } : {}) } }, emitted, workflow);
       const result = { deliveryId: request.operationId, taskId, sessionId: request.session.id, state: assigned.stage === 'queued' ? 'queued' : 'cloud_queued', taskVersion: assigned.version };
       state.taskDispatches[dispatchKey] = { fingerprint, result };

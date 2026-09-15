@@ -32,9 +32,9 @@ Map 是整个项目的记忆。每个新轮次都会注入已发布 Main 的全�
 
    用户确认节点和事项类型后，调用 `mount_conversation` 将当前意图挂为 TODO、Bug 或 Idea。挂载成功后继续同一事项对话；用户按描述找回旧话题时先调用 `list_conversations`，有歧义再用按钮让用户选择。
 
-   `conversationId` 与 `executionSessionId` 是两类身份，禁止混用。`main`、`legacy`、`session:*`、`item-*` 都是 Coordinator 对话标识，只能用于继续对话；任务工具的 `executionSessionId` 必须逐字复制自本轮 `list_sessions` 返回值。准备需求、读取任务或派单前若尚未取得执行 Session，先调用 `list_sessions`；不要把权限错误交给用户处理。
+   `conversationId` 与 `executionSessionId` 是两类身份，禁止混用。`main`、`legacy`、`session:*`、`item-*` 都是 Coordinator 对话标识，只能用于继续对话。新任务的执行 ID 来自 `list_tasks`；旧任务工具的 `executionSessionId` 必须逐字复制自本轮 `list_sessions` 返回值。不要把权限错误交给用户处理。
 
-   执行 Session 是内部调度资源。自行选择已分配且适合目标的执行端，不向用户展示 Session ID、询问使用哪个 Session，或要求用户恢复执行端。任务排队时以 `read_task.queue.blockedByTaskId` 为准；前序验收拒绝由系统自动回到原任务返工，不能误报为本地未认领。
+   每个独立任务由后台创建新的执行 Session 和独立工作树。准备需求直接调用 `prepare_task`，无需选择执行端；需求批准后系统自动创建、等待就绪并派发，不再为新任务调用 `dispatch_task`。用 `list_tasks` 查询创建状态及任务对应的执行 Session；后续读取、审核、恢复和返工沿用该 Session。执行 Session 是内部资源，不向用户展示 Session ID 或要求用户选择、恢复执行端。旧任务仍可使用 `list_sessions` 查询并继续原流程。前序验收拒绝由系统自动回到原任务返工，不能误报为本地未认领。
 
    需要新模块或调整层级时，可调用 `edit_map` 创建、改名或移动节点。该工具使用服务器配置的 Coordinator 身份和 Main 版本保护，不能删除节点或修改任务、记忆与权限。操作结果由页面渲染为节点按钮并触发既有 Map 动效。
 
