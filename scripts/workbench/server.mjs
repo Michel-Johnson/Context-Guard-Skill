@@ -224,7 +224,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         for (const request of requests) {
           try {
             if (!access.binding(request.templateSessionId)) protocolFail('FORBIDDEN', 'The template is no longer bound to this backend');
-            await claudeRuntime.provision(request, { baseRef: project.mainRef });
+            const created = await claudeRuntime.provision(request, { baseRef: project.mainRef, start: false });
+            await registerSession({ sessionId: request.sessionId, worktreeRoot: created.root }, { connection: device });
           } catch (error) {
             device.lastError = error.code || 'SESSION_CREATION_FAILED';
             await device.recordCreationFailure(request.id, error.code);
@@ -502,6 +503,55 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     peer.res?.end();
     peers.delete(`${peer.viewId}:${peer.id}`);
     if (!peers.size) openClaimed = false;
+  }
+  async function registerSession(input, { connection } = {}) {
+    const prepared = await preparedSessionBinding(input);
+    if (prepared.previous && !prepared.sameWorktree) {
+      const view = `session:${prepared.sessionId}`;
+      await fence(view);
+      for (const [credential, actor] of agentTokens) if (actor.sessionId === prepared.sessionId) agentTokens.delete(credential);
+      if (syncCoordinators.has(view)) { await syncCoordinators.get(view).close(); syncCoordinators.delete(view); }
+      if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
+      for (const peer of viewPeers(view)) peer.res?.end();
+    }
+    if (!(await access.sessionExists(prepared.sessionId, prepared.sessionProject.worktreeRoot))) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
+    const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: prepared.sessionId, role: 'executor' };
+    const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, prepared.sessionId);
+    const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: prepared.sessionId, agentId: prepared.sessionId,
+      worktreeId: prepared.binding.worktreeId, expectedBindingVersion: previousProtocolBinding?.version || '' } };
+    const unchanged = previousProtocolBinding?.worktreeId === prepared.binding.worktreeId && previousProtocolBinding?.agentId === prepared.sessionId;
+    const protocolBinding = unchanged ? { session: { id: prepared.sessionId, generation: previousProtocolBinding.generation }, bindingVersion: previousProtocolBinding.version } : (await protocolStore.handle(identity, bindMessage, {
+      allowMigration: true, verifyBinding: (_p, payload) => payload.sessionId === prepared.sessionId && payload.worktreeId === prepared.binding.worktreeId,
+    })).data;
+    if (connection === undefined) connection = await projectDevice();
+    let cloudBinding = { status: 'disconnected' };
+    if (connection && await connection.connected()) {
+      try {
+        if (unchanged) await connection.ensureBinding(previousProtocolBinding);
+        else await connection.bind(bindMessage, protocolBinding);
+        cloudBinding = { status: 'ready' };
+      }
+      catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
+    }
+    const lazyCloudMap = connection && await connection.supports('private-map-heads');
+    const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
+    const actor = await access.register(prepared.sessionId, prepared.binding);
+    if (sessionFiles) {
+      const sessionDocument = await readJSON(sessionFiles.file, null);
+      await access.promoteLegacyFullGrant(prepared.sessionId, sessionDocument);
+    }
+    if (sessionFiles && !stores.has(`session:${prepared.sessionId}`)) {
+      await createStore(`session:${prepared.sessionId}`, prepared.sessionProject.worktreeRoot, {
+        file: sessionFiles.file,
+        runtime: path.join(sessionFiles.dir, 'sync'),
+        eventsFile: path.join(sessionFiles.dir, 'changes.jsonl'),
+        projectionRoot: sessionFiles.dir,
+        sessionId: prepared.sessionId,
+        syncDirectory: sessionFiles.dir,
+      });
+    }
+    const credential = token(); agentTokens.set(credential, actor);
+    return { token: credential, actor, protocolBinding, cloudBinding };
   }
   const checkpoints = new Map();
   const fenceDeadlineMs = Number(process.env.CONTEXT_GUARD_FENCE_MS) > 0 ? Number(process.env.CONTEXT_GUARD_FENCE_MS) : 8000;
@@ -832,55 +882,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const input = await body(req);
           const prepared = await preparedSessionBinding(input);
           if (route === '/api/session-prepare') return send(res, 200, { prepared: true, binding: prepared.binding, previous: prepared.previous || null });
-          if (prepared.previous && !prepared.sameWorktree) {
-            const view = `session:${prepared.sessionId}`;
-            await fence(view);
-            for (const [credential, actor] of agentTokens) if (actor.sessionId === prepared.sessionId) agentTokens.delete(credential);
-            if (syncCoordinators.has(view)) { await syncCoordinators.get(view).close(); syncCoordinators.delete(view); }
-            if (stores.has(view)) { await stores.get(view).close(); stores.delete(view); }
-            for (const peer of viewPeers(view)) peer.res?.end();
-          }
-          if (!(await access.sessionExists(prepared.sessionId, prepared.sessionProject.worktreeRoot))) throw new MapError('UNKNOWN_SESSION', 'Session must exist in the local host before registration', 403);
-          const identity = { repositoryId: project.projectId, deviceId: project.projectId, agentId: prepared.sessionId, role: 'executor' };
-          const previousProtocolBinding = await protocolStore.registeredBinding(backendPrincipal, prepared.sessionId);
-          const bindMessage = { v: 2, id: randomUUID(), type: 'session.bind', payload: { sessionId: prepared.sessionId, agentId: prepared.sessionId,
-            worktreeId: prepared.binding.worktreeId, expectedBindingVersion: previousProtocolBinding?.version || '' } };
-          const unchanged = previousProtocolBinding?.worktreeId === prepared.binding.worktreeId && previousProtocolBinding?.agentId === prepared.sessionId;
-          const protocolBinding = unchanged ? { session: { id: prepared.sessionId, generation: previousProtocolBinding.generation }, bindingVersion: previousProtocolBinding.version } : (await protocolStore.handle(identity, bindMessage, {
-            allowMigration: true, verifyBinding: (_p, payload) => payload.sessionId === prepared.sessionId && payload.worktreeId === prepared.binding.worktreeId,
-          })).data;
-          const connection = await projectDevice();
-          let cloudBinding = { status: 'disconnected' };
-          if (connection && await connection.connected()) {
-            try {
-              if (unchanged) await connection.ensureBinding(previousProtocolBinding);
-              else await connection.bind(bindMessage, protocolBinding);
-              cloudBinding = { status: 'ready' };
-            }
-            catch (error) { cloudBinding = { status: 'pending', code: error.code || 'UNAVAILABLE' }; }
-          }
-          // Device registration does not depend on downloading the Map. The
-          // first Map read opens its store; heartbeat and task routing can start
-          // immediately, including after publication removed a Session snapshot.
-          const lazyCloudMap = connection && await connection.supports('private-map-heads');
-          const sessionFiles = project.kind === 'git' && !lazyCloudMap && !stores.has(`session:${prepared.sessionId}`) ? await ensureSessionMap(prepared.sessionProject, prepared.sessionId) : null;
-          const actor = await access.register(prepared.sessionId, prepared.binding);
-          if (sessionFiles) {
-            const sessionDocument = await readJSON(sessionFiles.file, null);
-            await access.promoteLegacyFullGrant(prepared.sessionId, sessionDocument);
-          }
-          if (sessionFiles && !stores.has(`session:${prepared.sessionId}`)) {
-            await createStore(`session:${prepared.sessionId}`, prepared.sessionProject.worktreeRoot, {
-              file: sessionFiles.file,
-              runtime: path.join(sessionFiles.dir, 'sync'),
-              eventsFile: path.join(sessionFiles.dir, 'changes.jsonl'),
-              projectionRoot: sessionFiles.dir,
-              sessionId: prepared.sessionId,
-              syncDirectory: sessionFiles.dir,
-            });
-          }
-          const credential = token(); agentTokens.set(credential, actor);
-          return send(res, 200, { token: credential, actor, protocolBinding, cloudBinding });
+          return send(res, 200, await registerSession(input));
         }
         if (route === '/api/stop' && req.method === 'POST') {
           if (req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires local CLI credential', 401);

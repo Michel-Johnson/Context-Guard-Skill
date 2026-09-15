@@ -980,21 +980,28 @@ test('Coordinator exposes only a bounded recent receipt list, not request conten
 
 test('Coordinator task tools cannot mistake conversation IDs for execution Sessions', async () => {
   const prepare = coordinatorTools.find(tool => tool.name === 'prepare_task');
+  const readObject = coordinatorTools.find(tool => tool.name === 'read_object');
   const sessions = coordinatorTools.find(tool => tool.name === 'list_sessions');
   const conversations = coordinatorTools.find(tool => tool.name === 'list_conversations');
   assert.ok(prepare.input_schema.properties.executionSessionId);
+  assert.ok(readObject.input_schema.properties.executionSessionId);
+  assert.equal(readObject.input_schema.properties.sessionId, undefined);
   assert.equal(prepare.input_schema.properties.sessionId, undefined);
   assert.match(prepare.input_schema.properties.executionSessionId.description, /Never use/);
   assert.match(sessions.description, /executionSessionId/);
   assert.match(conversations.description, /conversationId is never an executionSessionId/);
 
   let readSession = '';
-  const execute = createCoordinatorExecutor({ readTask: async sessionId => { readSession = sessionId; return { id: 'task-1' }; } });
+  const exchanges = [];
+  const execute = createCoordinatorExecutor({ readTask: async sessionId => { readSession = sessionId; return { id: 'task-1' }; },
+    exchange: async (sessionId, id, type, payload) => { exchanges.push({ sessionId, id, type, payload }); return { ref: payload.ref, version: payload.version }; } });
   await assert.rejects(execute('read_task', { executionSessionId: 'item-aabb', taskId: 'task-1' }, { operationId: 'bad-item' }), /must be copied from list_sessions/);
   await assert.rejects(execute('read_task', { executionSessionId: 'session:actual', taskId: 'task-1' }, { operationId: 'bad-conversation' }), /must be copied from list_sessions/);
   await assert.rejects(execute('read_task', { sessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'legacy-field' }), /fields differ/);
   await execute('read_task', { executionSessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'valid' });
   assert.equal(readSession, 'actual-session');
+  await execute('read_object', { executionSessionId: 'actual-session', ref: 'plan:task-1', version: 'plan-v1' }, { operationId: 'read-plan' });
+  assert.deepEqual(exchanges, [{ sessionId: 'actual-session', id: 'read-plan', type: 'object.read', payload: { ref: 'plan:task-1', version: 'plan-v1' } }]);
 });
 
 test('Coordinator conversation ownership is routing metadata, not task authorization', async () => {

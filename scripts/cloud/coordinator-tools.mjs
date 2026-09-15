@@ -17,7 +17,7 @@ export const coordinatorTools = [
   definition('show_nodes', 'Show 1–3 exact Main node buttons only when they are direct recommendations or requested actions.', { message: string, nodeIds }),
   definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
-  definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { sessionId: string, ref: string, version: string }),
+  definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { executionSessionId, ref: string, version: string }),
   definition('propose_mount', 'Propose a Main node; this does not write Main or approve it. Wait for a human.', { mainVersion: string, parentId: string, title: string, purpose: string, owns: strings }),
   definition('prepare_task', 'Prepare project requirements for human approval. The scheduler creates a fresh execution Session after approval.', { executionSessionId, taskId: string, text: string, acceptance: string, nodeIds: strings, mainVersion: string }, ['taskId', 'text', 'acceptance', 'nodeIds', 'mainVersion']),
   definition('dispatch_task', 'Dispatch a human-approved brief in reviewed mode. Routing is copied from the approved brief.', { ...task, briefRef: string, briefVersion: string }),

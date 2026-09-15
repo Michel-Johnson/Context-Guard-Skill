@@ -101,7 +101,7 @@ export class ClaudeRuntime {
       at: job?.updatedAt || state.updatedAt || '', deliveryId: job?.id || null,
       error: job?.error || null };
   }
-  async provision(request, { baseRef }) {
+  async provision(request, { baseRef, start = true }) {
     if (!request || !uuid.test(request.sessionId || '') || !uuid.test(request.templateSessionId || '') ||
         request.sessionId === request.templateSessionId || typeof request.id !== 'string' || !/^[a-f0-9]{64}$/.test(request.id) ||
         typeof request.name !== 'string' || !request.name.trim() || request.name.length > 200) fail('INVALID_CREATION', 'Use the bounded Cloud creation request');
@@ -151,6 +151,7 @@ export class ClaudeRuntime {
           permissionMode: 'bypassPermissions', isolated: true });
       }
       await attestCreatedSession(root, request.sessionId);
+      if (!start) return { sessionId: request.sessionId, root, state: 'prepared' };
       const prior = await readJSON(this.jobFile(request.sessionId, `create:${request.id}`), null);
       if (prior && ['failed', 'interrupted'].includes(prior.state)) fail('NATIVE_START_FAILED', 'The saved native startup did not complete; preserve its evidence');
       const delivery = await this.deliver({ id: `create:${request.id}`, sessionId: request.sessionId, root, platform: 'claude',
