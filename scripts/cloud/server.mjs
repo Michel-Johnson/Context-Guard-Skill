@@ -51,6 +51,7 @@ const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})
 const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 const sessionActivityTtlMs = 2 * 60 * 1000;
 const sessionHeartbeatTtlMs = 30 * 1000;
+export const coordinatorTaskOwnerRequired = type => type === 'brief.submit';
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 const developerStructureFields = new Set(['parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']);
 
@@ -531,7 +532,7 @@ export async function startCloudServer({
           return Object.keys(bindings);
         };
         const principal = { repositoryId: repository.repositoryId, deviceId: 'cloud-coordinator', agentId: conversationId === 'legacy' ? `coordinator:${project.id}` : `coordinator:${conversationId}`, role: 'coordinator', bindings, nodeIds: config.nodeIds || null };
-        const assertTask = async (sessionId, taskId) => {
+        const assertTaskOwner = async (sessionId, taskId) => {
           if (await conversations.owner(sessionId, taskId) !== conversationId) protocolFail('FORBIDDEN', 'Task belongs to another conversation');
         };
         const sessionFor = async id => {
@@ -604,15 +605,19 @@ export async function startCloudServer({
             return { kind: 'conversation-mounted', message: '已挂载到 Map', conversationId: id,
               node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version };
           },
-          readTask: async (id, taskId) => { await assertTask(id, taskId); return store.taskRecord(principal, await sessionFor(id), taskId); },
+          // Conversation ownership is a UI routing hint, not an authorization
+          // boundary. Every Coordinator conversation uses the same project
+          // identity and may operate on tasks in explicitly assigned Sessions.
+          readTask: async (id, taskId) => store.taskRecord(principal, await sessionFor(id), taskId),
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
             if (type === 'brief.submit') {
               const existing = (await store.workflowTasks(principal, message.session)).find(task => task.id === payload.taskId);
-              if (existing) await assertTask(sessionId, payload.taskId);
+              // Do not let a second conversation redefine an existing brief.
+              // Later lifecycle operations remain available project-wide.
+              if (existing && coordinatorTaskOwnerRequired(type)) await assertTaskOwner(sessionId, payload.taskId);
               await conversations.bind(conversationId, sessionId, payload.taskId);
             }
-            if (payload.taskId) await assertTask(sessionId, payload.taskId);
             return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
           },
         });
