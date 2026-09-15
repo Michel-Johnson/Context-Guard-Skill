@@ -737,6 +737,40 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(directMapWrite.json.hookSpecificOutput.permissionDecision, 'deny');
 });
 
+test('record-todo upgrades a signal previously resolved as task', async t => {
+  const project = await fixture();
+  t.after(() => dispose(project));
+  const session = 'codex-task-todo-session';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await installMap(project);
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(await freePort())]);
+  await fs.writeFile(path.join(project, '.codex/context/sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
+
+  const prompted = hook('UserPromptSubmit', project, session, {
+    turn_id: 'idea-turn',
+    prompt: '在 N1 上记 idea：支持导出 markdown，然后变成可执行 todo',
+    platform: 'codex',
+  });
+  const signalId = prompted.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
+
+  run(python, [contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'N1', '--title', '支持导出 markdown', '--description', 'GET /export.md']);
+
+  const map = JSON.parse(await fs.readFile(path.join(project, '.codex/context/map.json'), 'utf8'));
+  assert.equal(map.root.children[0].todos.length, 1);
+  assert.equal(map.root.children[0].todos[0].title, '支持导出 markdown');
+  assert.equal(map.root.children[0].todos[0].source_signal, signalId);
+
+  const runtime = JSON.parse(await fs.readFile(
+    path.join(project, '.codex/context/private/hook-runtime', `${createHash('sha256').update(session).digest('hex')}.json`),
+    'utf8',
+  ));
+  assert.equal(runtime.signals.find(item => item.id === signalId).kind, 'todo');
+});
+
 test('top-level record-todo and record-bad-case use Session Map nodes missing from disk map.json', async t => {
   const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-session-map-'));
   let workbenchPid = null;
