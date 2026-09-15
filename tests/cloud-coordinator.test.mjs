@@ -34,15 +34,18 @@ test('Project requirements survive restart, reserve capacity atomically and disp
   const records = await store.projectTasks(human);
   assert.equal(records.filter(task => task.stage === 'creating').length, 1);
   assert.equal(records.filter(task => task.stage === 'queued').length, 1);
-  await store.updateProjectTask(coordinator, 'TD1', { stage: 'starting', sessionId: 'fresh' });
+  const selected = records.find(task => task.stage === 'creating');
+  const queued = records.find(task => task.stage === 'queued');
+  await store.updateProjectTask(coordinator, selected.taskId, { stage: 'starting', sessionId: 'fresh' });
   // Use the same canonical key as the production store.
   const { canonical } = await import('../scripts/shared/protocol.mjs');
   const key = createHash('sha256').update(canonical(['repo', 'fresh'])).digest('hex');
   await store.transaction(state => { state.bindings[key] = { sessionId: 'fresh', generation: 1, worktreeId: 'fresh-tree', deviceId: 'local', agentId: 'executor' }; });
   coordinator.bindings.fresh = 'fresh-tree';
-  const request = { operationId: 'dispatch-1', projectTaskId: 'TD1', session: { id: 'fresh', generation: 1 } };
-  const resolve = async () => ({ ...input, text: JSON.stringify({ v: 1, ...input }) });
-  await assert.rejects(store.submitApprovedTask(coordinator, { ...request, projectTaskId: 'TD2' }, resolve, { verifyRouting: async () => true }), { code: 'FORBIDDEN' });
+  const selectedInput = { ...input, taskId: selected.taskId };
+  const request = { operationId: 'dispatch-1', projectTaskId: selected.taskId, session: { id: 'fresh', generation: 1 } };
+  const resolve = async () => ({ ...selectedInput, text: JSON.stringify({ v: 1, ...selectedInput }) });
+  await assert.rejects(store.submitApprovedTask(coordinator, { ...request, projectTaskId: queued.taskId }, resolve, { verifyRouting: async () => true }), { code: 'FORBIDDEN' });
   await assert.rejects(store.submitApprovedTask(coordinator, request, async () => ({ ...await resolve(), nodeIds: ['other'] }), { verifyRouting: async () => true }), { code: 'CONFLICT' });
   const dispatched = await store.submitApprovedTask(coordinator, request, resolve, { verifyRouting: async () => true });
   assert.equal(dispatched.sessionId, 'fresh');
