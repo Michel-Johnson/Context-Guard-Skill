@@ -338,10 +338,12 @@ try {
   });
   const submissions = [];
   const coordinatorReads = [];
+  let coordinatorReadFailure = false;
   const markdownImageRequests = [];
   page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     sessionTemplates: [{ id: 'developer-template', name: 'Claude Developer' }], sessionCreations: [],
+    conversations: [{id:'main',scope:'main',title:'Main 对话'},{id:'session:history-one',scope:'session',title:'历史开发 Session'}],
     approvals: [{ id: 'proposal-1', pending: true, brief: { ref: 'brief-1', version: 'v1' }, text: '模拟需求确认', acceptance: '明确验收标准', sessionId: 'assigned-session', nodeIds: ['T0'], mainVersion: 'main-v1' }] };
   coordinatorState.messages.push(
     { role: 'user', text: '[实验：模拟人工输入]\n请审核这个计划', tools: [] },
@@ -390,6 +392,7 @@ try {
       return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
     }
     coordinatorReads.push(new URL(route.request().url()).searchParams.get('conversation'));
+    if(coordinatorReadFailure){coordinatorReadFailure=false;return route.abort();}
     await route.fulfill({ json: coordinatorState });
   });
   await page.reload(); await synchronized();
@@ -405,6 +408,29 @@ try {
   assert.equal(await coordinator.evaluate(el => getComputedStyle(el).position), 'static', 'Coordinator is not a floating overlay');
   assert.equal(await page.locator('#detail').evaluate(el => el.classList.contains('coordinator-open')), true);
   await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation === 'main');
+  const createSessionAction=coordinator.getByRole('button',{name:'新建 Session',exact:true});
+  assert.equal(await createSessionAction.textContent(),'＋','new Session uses a symbol-only control');
+  assert.equal(await createSessionAction.evaluate(el=>el.parentElement?.classList.contains('coordinator-toolbar')),true,'new Session lives in the Coordinator toolbar');
+  const historyAction=coordinator.getByRole('button',{name:'历史 Session',exact:true});
+  assert.equal(await historyAction.textContent(),'◷','history uses a symbol-only control');
+  assert.equal(await historyAction.evaluate(el=>el.parentElement?.classList.contains('coordinator-toolbar')),true,'history lives in the Coordinator toolbar');
+  await coordinator.getByLabel('发送给 Coordinator').fill('Main 草稿');await historyAction.click();
+  await coordinator.getByRole('button',{name:'历史开发 Session',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel')?.dataset.conversation==='session:history-one');
+  assert.ok(coordinatorReads.includes('session:history-one'),'history opens the selected Session conversation');
+  await coordinator.getByLabel('发送给 Coordinator').fill('历史草稿');await historyAction.click();
+  await coordinator.getByRole('button',{name:'当前 · Main 对话',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel')?.dataset.conversation==='main');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'Main 草稿','switching history preserves each conversation draft');
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
+  coordinatorReadFailure=true;
+  await page.locator('#btn-coordinator').click();await page.locator('#btn-coordinator').click();
+  const readRetry=coordinator.getByRole('button',{name:'重试读取',exact:true});
+  await readRetry.waitFor();
+  assert.equal(await readRetry.textContent(),'↻','read retry uses the shared symbol-only control');
+  assert.equal(await readRetry.evaluate(el=>el.parentElement?.classList.contains('coordinator-toolbar')),true,'read retry lives in the Coordinator toolbar');
+  await readRetry.click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel > [role=status]')?.textContent==='');
   const coordinatorLayout = await coordinator.evaluate(el => {
     const drawer = el.parentElement.getBoundingClientRect();
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
@@ -556,6 +582,8 @@ try {
   assert.equal(await coordinator.getByRole('button',{name:'提交回答',exact:true}).count(),0,'questions have no separate submit-answer button');
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
   await coordinator.getByRole('button',{name:'重试原请求',exact:true}).waitFor();
+  assert.equal(await coordinator.getByRole('button',{name:'重试原请求',exact:true}).textContent(),'↻','retry uses a symbol-only control');
+  assert.equal(await coordinator.getByRole('button',{name:'重试原请求',exact:true}).evaluate(el=>el.parentElement===document.querySelector('#coordinator-panel .coordinator-toolbar')),true,'retry lives in the Coordinator toolbar');
   assert.equal(submissions.length,1);
   assert.equal(submissions[0].text,'网站构建产物\n\n保留我的补充');
   assert.equal(submissions[0].answerTo,'choice');
@@ -599,7 +627,8 @@ try {
   assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'模拟需求\n补充一行');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
-  assert.match(await coordinator.getByRole('status').textContent(), /尚未确认提交/);
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('尚未确认提交'));
+  assert.match(await coordinator.locator(':scope > [role=status]').first().textContent(), /尚未确认提交/);
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
@@ -627,7 +656,7 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await page.waitForFunction(() => {
     const panel = document.querySelector('#coordinator-panel');
-    const retry = [...panel.querySelectorAll('button')].find(button => button.textContent === '重试原请求');
+    const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
       !panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
