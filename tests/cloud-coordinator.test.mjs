@@ -21,6 +21,8 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /节点定位由你负责/);
   assert.match(prompt, /意图必须保真/);
   assert.match(prompt, /回复语言要足够精简/);
+  assert.match(prompt, /最多 3 句、120 个汉字/);
+  assert.match(prompt, /默认 1 个、最多 3 个/);
   assert.match(prompt, /不要复述用户原话、重复已知上下文/);
   assert.match(prompt, /部署、发布、启动服务/);
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
@@ -475,6 +477,7 @@ test('Structured node tools expose stable buttons without leaking tool-only map 
   assert.deepEqual(assistant.actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
   assert.deepEqual(assistant.questions[0].nodes, [{ id: 'N1', title: '阅读' }, { id: 'N2', title: '管理' }]);
   assert.doesNotMatch(assistant.text, /N1|N2/);
+  await assert.rejects(execute('show_nodes', { message: '太多节点', nodeIds: ['N1', 'N2', 'N3', 'N4'] }, { operationId: 'too-many' }), { code: 'INVALID_ARGUMENT' });
 });
 
 test('Completed tool turns expose one final answer with the structured action', async t => {

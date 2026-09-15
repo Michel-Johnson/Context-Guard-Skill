@@ -102,43 +102,6 @@ export function markdownFragment(text, doc = document) {
   return root;
 }
 
-// Only exact, unique titles from the server's Main navigation become buttons.
-// Unknown/ambiguous text stays text; code and external links are never rewritten.
-function linkMapNodes(root, nodes, onNode, doc) {
-  if (!onNode) return;
-  const unique = new Map();
-  for (const node of nodes) {
-    if (typeof node.id !== 'string' || typeof node.title !== 'string' || !node.title.trim()) continue;
-    const labels = [node.title, ...(Array.isArray(node.aliases) ? node.aliases : []), node.title.replace(/\s*[（(][^）)]*[）)]\s*$/, '').trim()];
-    for (const label of labels) {
-      if (!label) continue;
-      const previous = unique.get(label);
-      if (!unique.has(label)) unique.set(label, { node, label });
-      else if (previous && previous.node.id !== node.id) unique.set(label, null);
-    }
-  }
-  const candidates = [...unique.values()].filter(Boolean).sort((a, b) => b.label.length - a.label.length);
-  const walker = doc.createTreeWalker(root, 4), texts = [];
-  while (walker.nextNode()) if (!walker.currentNode.parentElement?.closest('a,code,pre,button')) texts.push(walker.currentNode);
-  for (const text of texts) {
-    let remaining = text.textContent; const fragment = doc.createDocumentFragment(); let changed = false;
-    while (remaining) {
-      let match = null, offset = remaining.length;
-      for (const candidate of candidates) {
-        const at = remaining.indexOf(candidate.label);
-        if (at >= 0 && at < offset) { match = candidate; offset = at; }
-      }
-      if (!match) { fragment.append(doc.createTextNode(remaining)); break; }
-      fragment.append(doc.createTextNode(remaining.slice(0, offset)));
-      const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
-      button.textContent = match.label; button.title = '在地图中查看此节点'; button.dataset.nodeId = match.node.id;
-      button.addEventListener('click', () => onNode(match.node.id)); fragment.append(button);
-      remaining = remaining.slice(offset + match.label.length); changed = true;
-    }
-    if (changed) text.replaceWith(fragment);
-  }
-}
-
 export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
   const answerComposer = (question, draft, answerValue) => {
@@ -185,7 +148,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
         const choices = doc.createElement('div'); choices.className = 'coordinator-choices';
         const optionButtons = [];
         const choiceItems = [
-          ...(question.nodes || []).map(node => ({ label: node.title, nodeId: node.id })),
+          ...(question.nodes || []).slice(0, 3).map(node => ({ label: node.title, nodeId: node.id })),
           ...(question.options || []).map(label => ({ label })),
         ];
         const answerValue = () => [draft.option, draft.text.trim()].filter(Boolean).join('\n\n');
@@ -208,7 +171,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     for (const action of message.actions || []) {
       const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
       if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
-      for (const node of (action.nodes || (action.node ? [action.node] : []))) {
+      for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {
         const button = doc.createElement('button'); button.type = 'button'; button.className = 'coordinator-node-link';
         button.textContent = node.title; button.dataset.nodeId = node.id; button.addEventListener('click', () => onNode?.(node.id)); actions.append(button);
       }
@@ -218,7 +181,6 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       }
       content.append(actions);
     }
-    if (message.role === 'assistant' && !message.actions?.length) linkMapNodes(content, nodes, onNode, doc);
     row.append(content); body.append(row);
   }
   return { body };
