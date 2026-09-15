@@ -1,5 +1,6 @@
 # CI TODO
 
+- [ ] Coordinator 已移除展示层 120 字硬截断，历史回复、流式文本、问题卡与动作说明恢复完整原文；精简仅作为生成目标，不再破坏句子或 Markdown。待补语义压缩方案，不得重新引入字符裁切。
 - [ ] Coordinator 自动将 `acceptance-rejected` 原任务推进到返工、`read_task` 返回权威阻塞任务且不再询问用户执行 Session；本轮按用户要求直接开发，未新增或运行测试。
 - [ ] 恢复控制重复投递：保存 Cloud 已确认的 resumed 回执，重启后抑制同控制再次唤起模型；新控制正常交付，任务/代次隔离。实现已随 `638acd3d` 部署，正式 delivery/workflow 及合并后的全量 438 项通过；真实断线恢复专项仍未执行，不能据此宣称全部通过。
 - [x] 旧测试基线 Windows Python 启动失败：复用 main 已有 `python-command.mjs` 与测试，不再写死 python3；Python 探测与真实 Codex SQLite 注册共 4 项通过。原全量失败日志保留，本项通过不代表全量通过。
