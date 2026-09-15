@@ -64,11 +64,17 @@ test('Native creation isolates the worktree and profile, pins Main and preserves
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: first.root, encoding: 'utf8', windowsHide: true }).trim(), sha);
   assert.equal(state.initialized, false);
   assert.equal(state.config.allowSessionCreation, false);
+  assert.equal(state.config.permissionMode, 'bypassPermissions');
+  assert.equal(state.config.isolated, true);
   assert.equal(state.config.environmentFile, config.environmentFile);
   assert.equal(state.config.systemPromptFile, path.join(state.config.configDir, 'skills', 'context-guard', 'Developer.md'));
   const settings = await readJSON(path.join(state.config.configDir, 'settings.json'));
   assert.equal(settings.permissions.allow[0], `Read(${first.root}/**)`);
   assert.equal(settings.hooks.SessionStart[0].command, `${state.config.configDir}/skills/context-guard/hook.py`);
+  const sessionEvents = (await fs.readFile(path.join(first.root, '.codex/context/sessions.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(sessionEvents.map(event => [event.event, event.platform, event.session_id, event.source]), [
+    ['session-start', 'claude', request.sessionId, 'claude-runtime-provision'],
+  ]);
   await assert.rejects(fs.stat(path.join(state.config.configDir, 'old-transcript.json')), { code: 'ENOENT' });
   const jobBefore = await fs.readFile(state.active, 'utf8');
   const restarted = new ClaudeRuntime(runtime.directory); restarted.wake = async () => {};

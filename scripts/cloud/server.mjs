@@ -742,6 +742,13 @@ export async function startCloudServer({
         if (!presence || cloudSessionPresence(presence.lastHeartbeatAt) === 'offline' || presence.execution?.status !== 'stopped') continue;
         const binding = await store.registeredBinding(human, task.sessionId);
         if (!binding || binding.generation !== creation.generation || binding.worktreeId !== creation.worktreeId) continue;
+        const memory = await readMemoryProject(configuredMemory, project.id);
+        if (task.mainVersion !== memory.main?.version) {
+          const document = memory.main?.memory?.map;
+          const readable = document?.root ? filterNodeAccess(document, [...entries(document.root).keys()], binding.agentId, 'read') : [];
+          if (!memory.main?.version || !task.nodeIds.every(id => readable.includes(id))) protocolFail('FORBIDDEN', 'Approved task nodes are no longer readable on Main');
+          task = await store.updateProjectTask(principal, task.taskId, { mainVersion: memory.main.version, error: null });
+        }
         principal.bindings[task.sessionId] = binding.worktreeId;
         await conversationsFor(project).bind(task.conversationId, task.sessionId, task.taskId);
         const result = await store.submitApprovedTask(principal, { operationId: `fresh-task:${digest(task.taskId)}`, projectTaskId: task.taskId,
