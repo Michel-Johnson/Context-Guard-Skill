@@ -321,6 +321,7 @@ try {
   record('Verified publication updates durable Main without exposing an admin token');
 
   assert.equal(await page.locator('#coordinator-panel').count(), 0, 'ordinary projects do not gain a Coordinator');
+  assert.equal(await page.locator('#btn-coordinator').isVisible(), false, 'ordinary projects do not expose the Coordinator launcher');
   await page.addInitScript(() => {
     let config;
     Object.defineProperty(window, '__CG_SERVER', {
@@ -388,7 +389,11 @@ try {
   });
   await page.reload(); await synchronized();
   const coordinator = page.locator('#coordinator-panel');
-  await coordinator.locator(':scope > summary').click();
+  assert.equal(await page.locator('#btn-coordinator').isVisible(), true, 'Coordinator entry lives in the top bar');
+  assert.equal(await page.locator('#btn-coordinator').evaluate(el => el.closest('header.top') !== null), true);
+  assert.equal(await page.locator('#cloud-sync-status').isVisible(), false, 'synced state does not render a checkmark button');
+  await page.locator('#btn-coordinator').click();
+  assert.equal(await page.locator('#btn-coordinator').getAttribute('aria-expanded'), 'true');
   await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation === 'main');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
@@ -485,7 +490,7 @@ try {
   coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
   coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
   await page.reload(); await synchronized();
-  await coordinator.locator(':scope > summary').click();
+  await page.locator('#btn-coordinator').click();
   await coordinator.locator('textarea').fill('跳转时保留草稿');
   await coordinator.getByRole('button', { name: '定位节点', exact: true }).click();
   assert.equal(await coordinator.getAttribute('open'), '', 'node navigation keeps the conversation open');
@@ -496,7 +501,7 @@ try {
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   record('coordinator-node-navigation-without-approval');
   coordinatorState.status='running';coordinatorState.streamingText='正在形成可见答案';
-  await page.reload();await synchronized();await coordinator.locator(':scope > summary').click();
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
@@ -523,7 +528,7 @@ try {
   assert.equal(approvals.length+mountReviews.length,0,'choice answers are never approvals');
   coordinatorState.status='running';coordinatorState.activeTurnId=submissions[0].id;
   coordinatorState.messages.at(-1).questions[0].answer={text:submissions[0].text,requestId:submissions[0].id};
-  await page.reload();await synchronized();await coordinator.locator(':scope > summary').click();
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-question-status').waitFor({state:'visible'});
   assert.match(await coordinator.locator('.coordinator-answer').textContent(),/网站构建产物[\s\S]*保留我的补充/);
   assert.equal(await coordinator.locator('.coordinator-typing').isVisible(),false,'answer activity stays with the question');
@@ -535,7 +540,7 @@ try {
   await coordinator.locator('.coordinator-typing').waitFor({state:'hidden'});
   // Reload clears the deliberately uncertain local request; this mock has not persisted it.
   submissions.length=0;coordinatorState.messages.pop();
-  await page.reload();await synchronized();await coordinator.locator(':scope > summary').click();
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
@@ -562,7 +567,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
   await page.reload(); await synchronized();
-  await coordinator.locator(':scope > summary').click();
+  await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
   await coordinator.locator('textarea').fill('未提交的纠正意见');
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
@@ -589,7 +594,7 @@ try {
   });
 
   for (const kind of ['todo', 'bug']) {
-    await coordinator.locator(':scope > summary').click();
+    await page.locator('#btn-coordinator').click();
     await page.locator(`[data-act="add-${kind}"]`).click();
     const dialog = page.locator('dialog.bug-assign-dialog');
     assert.equal(await dialog.locator('[name="session"]').count(), 0, 'intake must not require an existing Session');
@@ -607,7 +612,7 @@ try {
   }
   assert.notEqual(itemConversations[0].id,itemConversations[1].id);
   const openItem=async item=>{
-    if(await coordinator.getAttribute('open')!==null) await coordinator.locator(':scope > summary').click();
+    if(await coordinator.getAttribute('open')!==null) await page.locator('#btn-coordinator').click();
     await page.locator(`[data-coordinator-item="${item.itemId}"][data-coordinator-kind="${item.kind}"]`).click();
     await page.waitForFunction(id=>document.querySelector('#coordinator-panel')?.dataset.conversation===id,item.id);
   };
@@ -636,7 +641,7 @@ try {
     brief: { text: '这是一个超过六十个字符的验收说明，用于确认任务信息会自动按句子分段并以 Markdown 结构显示。' },
     result: { verdict: 'passed' }, ci: { ref: 'ci-review-ui', version: 'ci-version-review-ui' },
   }] };
-  await page.reload(); await synchronized(); await coordinator.locator(':scope > summary').click();
+  await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '验收不通过', exact: true }).click();
   const reviewForm = coordinator.locator('.coordinator-review-inline');
   await reviewForm.waitFor();

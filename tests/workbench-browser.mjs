@@ -50,7 +50,7 @@ async function servePrototype() {
       if (!file.startsWith(baseDir + path.sep)) { res.writeHead(403); res.end(); return; }
       let data = await fs.readFile(file);
       if (rel === 'workbench.html' && url.searchParams.get('production') !== '1') {
-        data = Buffer.from(data.toString().replace('<script src="./workbench-app.js?v=bug-claim"></script>', '<script src="/demo/workbench-fixtures.js"></script><script src="./workbench-app.js?v=bug-claim"></script>'));
+        data = Buffer.from(data.toString().replace('<script src="./workbench-app.js?v=work-tools-v2"></script>', '<script src="/demo/workbench-fixtures.js"></script><script src="./workbench-app.js?v=work-tools-v2"></script>'));
       }
       res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
       res.end(data);
@@ -76,6 +76,11 @@ async function chromeHeights(target) {
 async function openSyncSettings() {
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') !== 'true') await page.locator('#btn-settings').click();
   if (await page.locator('#cg-sync').getAttribute('open') === null) await page.locator('#cg-sync summary').click();
+}
+async function clickWorkbenchTool(target, selector) {
+  const tools = target.locator('#workbench-tools');
+  if (await tools.getAttribute('open') === null) await target.locator('#workbench-tools > summary').click();
+  await target.locator(selector).click();
 }
 async function cli(action, input, extra = [], expectedError) {
   // Exercise the installed/public command routing, not a direct store call.
@@ -365,7 +370,7 @@ try {
   await createDialog.locator('[data-scope]').waitFor();
   assert.match(await createDialog.locator('[data-scope]').textContent(), /2 个新节点/);
   await createDialog.getByRole('button', { name: '确认授权并发送' }).click();
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   const bugRow = page.locator('#bug-panel-list li').filter({ hasText: '处理状态测试' });
   await bugRow.waitFor();
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('待处理 · 发送中'));
@@ -390,12 +395,12 @@ try {
   const cleanBug = await read(); cleanBug.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(cleanBug));
   await page.waitForFunction(() => data.children[0].bugs.length === 0 && document.querySelector('#bug-count')?.textContent === '0');
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   const failedDelivery = await read();
   failedDelivery.root.children[0].bugs.push({ id: 'B99', title: '发送失败测试', status: 'open', sessions: [] });
   await fs.writeFile(mapPath, encode(failedDelivery));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '1');
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   const failedRow = page.locator('#bug-panel-list li').filter({ hasText: '发送失败测试' });
   await failedRow.click();
   await failedRow.locator('[data-claim]').click();
@@ -413,7 +418,7 @@ try {
   failedState.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(failedState));
   await page.waitForFunction(() => document.querySelector('#bug-count')?.textContent === '0');
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   recordCheck('bug-message-delivery-gates-handling-status');
   await page.locator('#session-chip').click();
   await page.locator(`#session-menu [data-session="${session}"]`).click();
@@ -453,6 +458,16 @@ try {
   await todoRow.locator('.todo-check').click();
   await until(async () => (await read()).root.children[0].todos.some(todo => todo.title === '开发新的需求入口' && todo.status === 'done'));
   assert.match(await todoRow.textContent(), /已完成/);
+  await clickWorkbenchTool(page, '#btn-todos');
+  assert.equal(await page.locator('#work-panel-title').textContent(), 'TODO 处理状态');
+  assert.equal(await page.locator('#todo-count').textContent(), '0', 'completed TODOs remain readable but are not counted as unresolved');
+  const todoToolRow = page.locator('#bug-panel-list li[data-todo]').filter({ hasText: '开发新的需求入口' });
+  await todoToolRow.click();
+  await page.waitForSelector('body.bug-path-mode');
+  assert.match(await page.locator('#detail h2').textContent(), /开发新的需求入口/);
+  assert.match(await page.locator('#detail h2').textContent(), /已完成/);
+  await page.locator('#btn-bug-exit').click();
+  await clickWorkbenchTool(page, '#btn-todos');
   recordCheck('todo-session-assignment-and-completion');
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), `${JSON.stringify({ at: new Date(Date.now() + 1500).toISOString(), event: 'stop', platform: 'codex', session_id: session, thread_name: 'basic-browser' })}\n`);
   await page.waitForFunction(() => document.querySelector('#session-status')?.classList.contains('stopped'));
@@ -507,7 +522,7 @@ try {
   assert.notEqual(widthAfter, widthBefore);
   await page.locator('#drawer-split').dblclick();
   recordCheck('drawer-split-drag');
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   assert.equal(await page.evaluate(() => document.body.classList.contains('bugs-open')), true);
   const bugSplit = await page.locator('#drawer-split').boundingBox();
   assert.ok(bugSplit && bugSplit.width >= 16, 'bug panel split is on screen');
@@ -519,7 +534,7 @@ try {
   const bugAfter = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bug-panel-width').trim());
   assert.notEqual(bugAfter, bugBefore);
   await page.locator('#drawer-split').dblclick();
-  await page.locator('#btn-bugs').click();
+  await clickWorkbenchTool(page, '#btn-bugs');
   recordCheck('bug-panel-split-drag');
   await page.locator('.node[data-id="N1"]').click();
   const linkedTarget = new URL(page.url()); linkedTarget.searchParams.set('linked-text-test', '1');
@@ -1020,6 +1035,9 @@ try {
     await preview.locator('#workbench-tools > summary').click();
     assert.equal(await preview.locator('#btn-auth').isVisible(), true);
     assert.equal(await preview.locator('#btn-rel').isVisible(), true);
+    assert.equal(await preview.locator('#btn-bugs').isVisible(), true);
+    assert.equal(await preview.locator('#btn-todos').isVisible(), true);
+    assert.equal(await preview.locator('#btn-bugs').evaluate(el => el.parentElement?.classList.contains('workbench-tools-menu')), true);
     const toolsViewport = preview.viewportSize();
     await preview.setViewportSize({ width: 790, height: 900 });
     const toolsBounds = await preview.locator('.workbench-tools-menu').boundingBox();
@@ -1114,7 +1132,7 @@ try {
     assert.deepEqual(flowLabs.awayFromApex, [], `labels should stay on the arc, not hug a node: ${flowLabs.awayFromApex.join(',')}`);
     await preview.locator('#btn-rel').click();
     recordCheck('relation-flow-labels');
-    await preview.locator('#btn-bugs').click();
+    await clickWorkbenchTool(preview, '#btn-bugs');
     const panelDots = await preview.evaluate(() => [...document.querySelectorAll('#bug-panel-list li[data-bug]')].map(li => {
       const badge = li.querySelector('.bug-status');
       const dot = li.querySelector('.bug-dot');
@@ -1161,7 +1179,7 @@ try {
     assert.match(waitingClaim.badge, /待处理|Waiting/);
     await preview.locator('#btn-bug-exit').click();
     if (await preview.evaluate(() => document.body.classList.contains('bugs-open'))) {
-      await preview.locator('#btn-bugs').click();
+      await clickWorkbenchTool(preview, '#btn-bugs');
     }
     recordCheck('bug-path-flow-no-bead');
     const child = preview.locator('#nodes .node.module').nth(1);
@@ -1174,6 +1192,7 @@ try {
     assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'child inspector omits redundant add-node guidance');
     assert.equal(await preview.locator('#detail button.trash').count(), 1);
     assert.equal(await preview.locator('#detail button.trash .lid').count(), 1);
+    if (await preview.locator('#workbench-tools').getAttribute('open') === null) await preview.locator('#workbench-tools > summary').click();
     await dirToggle.click();
     assert.equal(await preview.evaluate(() => document.body.classList.contains('layout-tb')), true);
     assert.equal(await dirToggle.evaluate(el => el.classList.contains('is-tb')), true);

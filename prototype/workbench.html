@@ -57,7 +57,7 @@
   if(phoneForce!==null) document.documentElement.classList.add("phone-preview");
 })();
 </script>
-<link rel="stylesheet" href="./workbench.css?v=bug-claim">
+<link rel="stylesheet" href="./workbench.css?v=work-tools-v2">
 </head>
 <body>
 <div class="theme-preview-banner" id="theme-preview-banner">预览模块卡样式 · 还没写进默认工作台</div>
@@ -82,8 +82,11 @@
     </div>
     <span id="rel-hint" data-i18n="relHint">点击模块看关系，不会进入</span>
     <button class="auth-btn" id="btn-auth" data-i18n-title="authMode" title="授权模式" aria-label="授权模式">🔑</button>
+    <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
+    <button class="tray-btn" id="btn-todos">TODO (<span id="todo-count">0</span>)</button>
       </div>
     </details>
+    <button type="button" class="tray-btn" id="btn-coordinator" aria-expanded="false" hidden>Coordinator</button>
     <div class="session-switch" id="session-switch">
       <button type="button" class="session-chip" id="session-chip" aria-label="切换 Agent 会话" aria-haspopup="listbox" aria-expanded="false" aria-controls="session-menu">
         <b id="session-name">暂无 Agent 会话</b>
@@ -93,7 +96,6 @@
     </div>
     <span id="cloud-sync-status" class="cloud-sync-status" role="status" aria-label="云端同步状态" hidden></span>
     <span id="repo-status" class="repo-status" hidden></span>
-    <button class="tray-btn" id="btn-bugs">🐞 Bug (<span id="bug-count">0</span>)</button>
   </div>
   <div class="settings-wrap" id="settings-wrap">
     <button type="button" class="tray-btn" id="btn-settings" aria-expanded="false" aria-haspopup="true" data-i18n-title="settings" title="设置" aria-label="设置">
@@ -196,7 +198,7 @@
 </div>
 
 <aside class="bug-panel" id="bug-panel">
-  <h3 data-i18n="openBugs">未修的 Bug</h3>
+  <h3 id="work-panel-title" data-i18n="openBugs">Bug 处理状态</h3>
   <ul id="bug-panel-list"></ul>
 </aside>
 
@@ -204,6 +206,6 @@
 <aside class="drawer" id="detail"></aside>
 
 <script src="./workbench-data.js?v=bug-claim"></script>
-<script src="./workbench-app.js?v=bug-claim"></script>
+<script src="./workbench-app.js?v=work-tools-v2"></script>
 </body>
 </html>
