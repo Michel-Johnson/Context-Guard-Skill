@@ -30,6 +30,9 @@ const I18N = {
     cancelled:"已取消",
     settings:"设置",
     toolsLabel:"工具",
+    betaLabel:"实验功能",
+    betaMotion:"地图钻取动效",
+    betaMotionTitle:"Beta：启用 0.5 秒地图层级钻取动效",
     themeLabel:"主题",
     langLabel:"语言",
     themeNow:"现在这版",
@@ -132,6 +135,9 @@ const I18N = {
     cancelled:"Cancelled",
     settings:"Settings",
     toolsLabel:"Tools",
+    betaLabel:"Experimental",
+    betaMotion:"Map drill motion",
+    betaMotionTitle:"Beta: enable the 0.5-second map drill motion",
     themeLabel:"Theme",
     langLabel:"Language",
     themeNow:"Current",
@@ -211,8 +217,10 @@ const I18N = {
 };
 const LANG_KEY = "cg-workbench-ui-lang";
 const THEME_KEY = "cg-workbench-node-theme";
+const MAP_MOTION_BETA_KEY = "cg-workbench-beta-map-motion";
 const THEME_IDS = ["1","44","48","4"];
 let uiLang = "zh";
+let mapMotionBetaEnabled = false;
 function currentNodeTheme(){
   const n = window.__CG_NODE_THEME;
   return THEME_IDS.includes(n) ? n : "1";
@@ -237,6 +245,23 @@ function applyNodeTheme(id, persist){
     if(typeof fitView==="function") fitView();
   }
 }
+function readStoredMapMotionBeta(){
+  try{ return localStorage.getItem(MAP_MOTION_BETA_KEY)==="1"; }
+  catch(e){ return false; }
+}
+function syncMapMotionBetaButton(){
+  const button = document.getElementById("btn-beta-motion");
+  if(!button) return;
+  button.classList.toggle("on", mapMotionBetaEnabled);
+  button.setAttribute("aria-pressed", mapMotionBetaEnabled ? "true" : "false");
+}
+function setMapMotionBeta(enabled, persist){
+  mapMotionBetaEnabled = Boolean(enabled);
+  if(persist!==false){
+    try{ localStorage.setItem(MAP_MOTION_BETA_KEY, mapMotionBetaEnabled ? "1" : "0"); }catch(e){}
+  }
+  syncMapMotionBetaButton();
+}
 function t(key){
   const pack = I18N[uiLang] || I18N.zh;
   return pack[key] || I18N.zh[key] || key;
@@ -254,6 +279,7 @@ function applyStaticI18n(){
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
   syncThemePicks();
+  syncMapMotionBetaButton();
   const titleEl = document.getElementById("repo-title");
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
@@ -2648,18 +2674,57 @@ function enterView(id, opts){
     bugPathReturn = null;
     document.body.classList.remove("bug-path-mode");
   }
+  if(!mapMotionBetaEnabled){
+    commitViewRoot(id, opts);
+    fitView();
+    opts?._mapMotionComplete?.();
+    return;
+  }
   const previousRootId = viewRootId;
   const previousPath = findPath(previousRootId) || [];
   const nextPath = findPath(id) || [];
   const direction = opts?.direction || (nextPath.length > previousPath.length ? "down" : "up");
+  const isAncestor = direction==="up" && nextPath.length < previousPath.length &&
+    nextPath.every((node,index)=>previousPath[index]?.id===node.id);
+  if(isAncestor && previousPath.length-nextPath.length>1 && !opts?._mapMotionChain){
+    const steps = previousPath
+      .slice(nextPath.length-1, previousPath.length-1)
+      .reverse()
+      .map(node=>node.id);
+    runMapViewChain(steps, opts);
+    return;
+  }
   const anchorId = direction==="down" ? id : previousRootId;
   const anchor = mapNode(anchorId);
   if(prefersReducedMapMotion() || !anchor){
     commitViewRoot(id, opts);
     fitView();
+    opts?._mapMotionComplete?.();
     return;
   }
   animateViewChange({id, opts, anchorId, anchor, direction});
+}
+
+function runMapViewChain(stepIds, opts){
+  const count = stepIds.length;
+  let index = 0;
+  const advance = startedAt=>{
+    const stepId = stepIds[index++];
+    if(!stepId) return;
+    const segmentIndex = index-1;
+    const segmentStart = mapChainEaseTime(segmentIndex/count);
+    const segmentEnd = mapChainEaseTime(index/count);
+    enterView(stepId, {
+      ...opts,
+      direction:"up",
+      _mapMotionChain:true,
+      _mapMotionDuration:MAP_MOTION_MS*(segmentEnd-segmentStart),
+      _mapMotionStartedAt:startedAt,
+      _mapMotionSegment:{index:segmentIndex,count,start:segmentStart,end:segmentEnd},
+      _mapMotionComplete:index<stepIds.length ? advance : opts?._mapMotionComplete
+    });
+  };
+  advance();
 }
 
 function commitViewRoot(id, opts){
@@ -2786,6 +2851,9 @@ document.getElementById("theme-picks").onclick = e=>{
   const b = e.target.closest("[data-theme]");
   if(!b) return;
   applyNodeTheme(b.dataset.theme, true);
+};
+document.getElementById("btn-beta-motion").onclick = ()=>{
+  setMapMotionBeta(!mapMotionBetaEnabled, true);
 };
 function setLayoutDir(dir){
   layoutDir = dir==="tb" ? "tb" : "lr";
@@ -3954,7 +4022,7 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
-const MAP_MOTION_MS = 620;
+const MAP_MOTION_MS = 500;
 const MAP_RETURN_RATIO = .72;
 let mapTransitioning = false;
 let mapTransitionFrame = null;
@@ -3991,7 +4059,7 @@ function correctAlignedView(el, screenRect){
   view.y += targetCy-(actual.top+actual.height/2);
   applyView();
 }
-function createMapTransitionSnapshot(anchorId){
+function createMapTransitionSnapshot(anchorId, preserveAnchor){
   const snapshot = document.createElement("div");
   snapshot.className = "map-transition-snapshot";
   snapshot.setAttribute("aria-hidden", "true");
@@ -4020,6 +4088,7 @@ function createMapTransitionSnapshot(anchorId){
     });
   });
   clone.querySelectorAll(".node[data-id]").forEach(el=>{
+    if(preserveAnchor && el.dataset.id===anchorId) el.classList.add("map-transition-snapshot-anchor");
     el.dataset.mapSnapshotId = el.dataset.id;
     el.removeAttribute("data-id");
   });
@@ -4068,6 +4137,22 @@ function finishMapTransition(){
 function mapMotionEase(t){
   return 1-Math.pow(1-t, 3);
 }
+function mapChainEase(t){
+  return t*t*(3-2*t);
+}
+function mapChainEaseTime(progress){
+  let low = 0, high = 1;
+  for(let index=0; index<20; index++){
+    const middle = (low+high)/2;
+    if(mapChainEase(middle)<progress) low = middle;
+    else high = middle;
+  }
+  return (low+high)/2;
+}
+function mapChainProgress(raw, segment){
+  const time = segment.start+(segment.end-segment.start)*raw;
+  return Math.max(0, Math.min(1, segment.count*mapChainEase(time)-segment.index));
+}
 function mapMaskProgress(t, start, end){
   const p = Math.max(0, Math.min(1, (t-start)/(end-start)));
   return p*p*(3-2*p);
@@ -4077,11 +4162,11 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   mapTransitionAnchorRect = anchorRect;
   mapTransitionAnchorId = anchorId;
   mapTransitioning = true;
-  mapTransitionSnapshot = createMapTransitionSnapshot(anchorId);
+  mapTransitionSnapshot = createMapTransitionSnapshot(anchorId, true);
   document.body.classList.add("map-transitioning", "map-transition-revealing", `map-transition-${direction}`);
   commitViewRoot(id, opts);
   const nextAnchor = mapNode(anchorId);
-  if(!nextAnchor){ finishMapTransition(); fitView(); return; }
+  if(!nextAnchor){ finishMapTransition(); fitView(); opts?._mapMotionComplete?.(); return; }
   nextAnchor.classList.add("map-transition-anchor");
   view = alignedView(nextAnchor, anchorRect);
   applyView();
@@ -4094,11 +4179,12 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
   void worldEl.offsetWidth;
   window.dispatchEvent(new CustomEvent("cg:map-transition-start", {detail:{viewRootId}}));
   document.body.classList.add("map-transition-live");
-  let startedAt = null;
+  const duration = opts?._mapMotionDuration || MAP_MOTION_MS;
+  let startedAt = opts?._mapMotionStartedAt ?? null;
   const frame = now=>{
     if(startedAt===null) startedAt = now;
-    const raw = Math.min(1, Math.max(0, (now-startedAt)/MAP_MOTION_MS));
-    const camera = mapMotionEase(raw);
+    const raw = Math.min(1, Math.max(0, (now-startedAt)/duration));
+    const camera = opts?._mapMotionSegment ? mapChainProgress(raw, opts._mapMotionSegment) : mapMotionEase(raw);
     view = {
       x:startView.x+(finalView.x-startView.x)*camera,
       y:startView.y+(finalView.y-startView.y)*camera,
@@ -4113,6 +4199,7 @@ function animateViewChange({id, opts, anchorId, anchor, direction}){
     view = finalView;
     applyView();
     finishMapTransition();
+    opts?._mapMotionComplete?.(now);
   };
   mapTransitionFrame = requestAnimationFrame(frame);
 }
@@ -4772,6 +4859,7 @@ async function installCoordinatorPanel(sync){
 async function boot(){
   const stored = readStoredUiLang();
   if(stored) uiLang = stored;
+  mapMotionBetaEnabled = readStoredMapMotionBeta();
   applyStaticI18n();
   let WorkbenchSync;
   try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); attachmentModule=await import("./attachments.mjs"); }
