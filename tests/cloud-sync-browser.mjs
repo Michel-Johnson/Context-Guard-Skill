@@ -92,7 +92,8 @@ try {
   for (const page of [localPage, cloudPage]) page.setDefaultTimeout(12000);
   await localPage.goto(`${local.state.url}?session=${sessionId}`);
   await localPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
-  await localPage.waitForSelector('#cloud-sync-status.synced:not([hidden])');
+  await localPage.waitForSelector('#cloud-sync-status.synced', { state: 'attached' });
+  assert.equal(await localPage.locator('#cloud-sync-status').isVisible(), false, 'synced Cloud status does not render a checkmark button');
   await cloudPage.goto(`${cloud.url}/auth?token=cloud-admin&next=${encodeURIComponent('/projects/context-guard')}`);
   await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
   await cloudPage.locator('.node[data-id="T0"]').click();
@@ -108,16 +109,28 @@ try {
 
   await localPage.locator('.node[data-id="T0"]').click();
   await localPage.locator('#detail [data-ed="title"]').fill('本地写入 Cloud');
+  await localPage.evaluate(() => {
+    window.__cloudSyncCycle = { started: false, done: false };
+    const indicator = document.querySelector('#cloud-sync-status');
+    const observer = new MutationObserver(() => {
+      if (!indicator.classList.contains('synced')) window.__cloudSyncCycle.started = true;
+      if (window.__cloudSyncCycle.started && indicator.classList.contains('synced')) {
+        window.__cloudSyncCycle.done = true;
+        observer.disconnect();
+      }
+    });
+    observer.observe(indicator, { attributes: true, attributeFilter: ['class'] });
+  });
   await localPage.locator('#detail [data-ed="title"]').blur();
-  await localPage.waitForSelector('#cloud-sync-status.synced:not([hidden])');
-  await cloudPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('本地写入 Cloud'));
+  await localPage.waitForFunction(() => window.__cloudSyncCycle?.done, undefined, { timeout: 25000 });
+  await cloudPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('本地写入 Cloud'), undefined, { timeout: 25000 });
 
   await cloudPage.locator('.node[data-id="T0"]').click();
   await cloudPage.locator('#detail [data-ed="purpose"]').fill('Cloud 写回本地');
   await cloudPage.locator('#detail [data-ed="purpose"]').blur();
   await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
-  await localPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Cloud 写回本地'));
-  await localPage.waitForSelector('#cloud-sync-status.synced:not([hidden])');
+  await localPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Cloud 写回本地'), undefined, { timeout: 25000 });
+  await localPage.waitForSelector('#cloud-sync-status.synced', { state: 'attached' });
 
   await Promise.all([localPage.reload(), cloudPage.reload()]);
   await localPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);

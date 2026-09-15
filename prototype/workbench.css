@@ -55,7 +55,7 @@ header.top h1{margin:0;font-size:16px}
 .workbench-tools>summary::after{content:"▾"}
 .workbench-tools[open]>summary::after{content:"▴"}
 .workbench-tools>summary:focus-visible{outline:2px solid var(--module);outline-offset:3px}
-.workbench-tools-menu{position:absolute;top:calc(100% + 10px);left:0;z-index:70;display:flex;align-items:center;gap:12px;padding:12px;max-width:calc(100vw - 32px);width:max-content;flex-wrap:wrap;background:var(--paper);border:2px solid var(--line-ink);border-radius:12px;box-shadow:var(--shadow)}
+.workbench-tools-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:70;display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px;max-width:calc(100vw - 32px);width:max-content;box-sizing:border-box;flex-wrap:wrap;background:var(--paper);border:2px solid var(--line-ink);border-radius:12px;box-shadow:var(--shadow)}
 .workbench-tools:not([open])>.workbench-tools-menu{display:none}
 .nav-crumbs a,.nav-crumbs .here,.nav-crumbs .sep,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{flex:0 0 auto;white-space:nowrap}
 .nav-crumbs a,.nav-crumbs .here,.nav-crumbs .bug-exit,.nav-crumbs .bug-tag{
@@ -84,8 +84,14 @@ header.top h1{margin:0;font-size:16px}
 .cloud-sync-status[hidden]{display:none}
 .cloud-sync-status::before{font-size:16px;font-weight:900;line-height:1}
 .cloud-sync-status.syncing::before{content:"";width:13px;height:13px;border:2px solid var(--module-soft);border-top-color:var(--module);border-radius:50%;animation:session-spin .8s linear infinite}
-.cloud-sync-status.synced::before{content:"✓";color:var(--green)}
+.cloud-sync-status.synced{display:none}
 .cloud-sync-status.conflict::before,.cloud-sync-status.error::before{content:"!";color:var(--red)}
+@media(max-width:900px){
+  header.top{flex-wrap:wrap}
+  header.top .brand{flex:1 1 100%}
+  .top-tools{margin-left:0}
+  .workbench-tools-menu{left:0;right:auto}
+}
 .session-menu{position:fixed;z-index:70;width:max-content;min-width:210px;max-width:min(360px,calc(100vw - 16px));padding:5px;background:var(--paper);border:2px solid var(--line-ink);border-radius:10px;box-shadow:var(--shadow)}
 .session-menu[hidden]{display:none}
 .session-menu button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:340px;padding:8px 10px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--ink);text-align:left;white-space:nowrap}
@@ -559,7 +565,8 @@ body.auth-mode .node .add-child,body.auth-mode .node .add-pick{display:none}
 .tray .empty{color:var(--muted);font-size:12.5px;padding:6px 0}
 
 /* ---------- 未修 Bug 面板 ---------- */
-#btn-bugs.on{background:var(--yellow);font-weight:800}
+#btn-bugs.on,#btn-todos.on,#btn-coordinator[aria-expanded="true"]{background:var(--yellow);font-weight:800}
+#btn-coordinator[hidden]{display:none}
 .bug-panel{position:fixed;right:0;top:var(--chrome-top);bottom:0;z-index:22;width:var(--bug-panel-width);
   background:var(--paper);border-left:2px solid var(--line-ink);overflow:auto;
   padding:10px 0 20px;display:none;cursor:default}
@@ -921,6 +928,7 @@ html.cg-phone .drawer h2{font-size:18px}
   box-sizing: border-box; box-shadow: 5px 6px 0 #333;
   color: #302d26; font: 15px/1.65 system-ui, -apple-system, "PingFang SC", sans-serif;
 }
+#coordinator-panel:not([open]) { display: none; }
 #coordinator-panel > summary { cursor: pointer; font-weight: 650; font-size: 17px; }
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
 #coordinator-panel > [role=status]:empty { display: none; }
