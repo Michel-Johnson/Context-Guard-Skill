@@ -13,6 +13,7 @@ import { applyOperations, MapError, validate, restoreSessionWorkItemOperations }
 import { translateChanges, operationGrants } from '../shared/protocol-map.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
 import { memoryReadViews } from './memory-read-view.mjs';
+import { ensureFilesystemProjection, projectMemoryFile, writeProjectMemory } from './memory-filesystem.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
 const validSessionId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\u0000-\u001f\u007f]/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
@@ -22,7 +23,6 @@ function validateOptions({ dataDir, adminToken }) {
 }
 
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
-const memoryFile = (dataDir, projectId) => path.join(dataDir, hash(projectId), 'memory.json');
 const memoryHubs = new WeakMap();
 const headCaches = new WeakMap();
 
@@ -30,7 +30,7 @@ export async function memoryHeads(configuration, projectId) {
   let cache = headCaches.get(configuration);
   if (!cache) { cache = new Map(); headCaches.set(configuration, cache); }
   const stamp = async () => {
-    try { const stat = await fs.stat(memoryFile(configuration.dataDir, projectId), { bigint: true }); return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`; }
+    try { const stat = await fs.stat(projectMemoryFile(configuration.dataDir, projectId), { bigint: true }); return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`; }
     catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
   };
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -136,14 +136,19 @@ export async function readMemoryProject({ dataDir, adminToken, projects = {} }, 
   if (!projects[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   // Prime the small view before a full historical/mutable read, so concurrent
   // workbench requests do not parse the same large document alongside a write.
-  await memoryReadViews.read(memoryFile(dataDir, projectId), initialMemoryState());
-  return readJSON(memoryFile(dataDir, projectId), initialMemoryState());
+  const file = projectMemoryFile(dataDir, projectId);
+  await memoryReadViews.read(file, initialMemoryState());
+  const state = await readJSON(file, initialMemoryState());
+  await ensureFilesystemProjection(dataDir, projectId, state);
+  return state;
 }
 
 export async function readMemoryView({ dataDir, adminToken, projects = {} }, projectId) {
   validateOptions({ dataDir, adminToken });
   if (!projects[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
-  return memoryReadViews.read(memoryFile(dataDir, projectId), initialMemoryState());
+  const state = await memoryReadViews.read(projectMemoryFile(dataDir, projectId), initialMemoryState());
+  await ensureFilesystemProjection(dataDir, projectId, state);
+  return state;
 }
 
 const gitCommand = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
@@ -193,7 +198,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   const project = configuration.projects?.[projectId];
   if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
-  const file = memoryFile(configuration.dataDir, projectId);
+  const file = projectMemoryFile(configuration.dataDir, projectId);
   const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
     state.closedSessions ||= {};
@@ -231,7 +236,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     const result = { committed: true, projectId, snapshot, revision: state.revision, history, closedSession: state.closedSessions[input.sessionId] };
     state.receipts[key] = { fingerprint, result };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.published', operationId: input.operationId, baseVersion: previousVersion, version: snapshot.version, actor, at: publishedAt });
-    await memoryReadViews.write(file, state);
+    await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };
   });
   if (committed.event) memoryHub(configuration).emit('event', committed.event);
@@ -242,7 +247,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
   validateOptions(configuration);
   if (!configuration.projects?.[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
-  const file = memoryFile(configuration.dataDir, projectId);
+  const file = projectMemoryFile(configuration.dataDir, projectId);
   const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
     const receiptKey = hash(`main-workbench:${input.operationId}`);
@@ -271,7 +276,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     state.receipts[receiptKey] = { fingerprint, result };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
     result.cursor = event.cursor;
-    await memoryReadViews.write(file, state);
+    await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };
   });
   if (committed.event) memoryHub(configuration).emit('event', committed.event);
@@ -280,7 +285,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
 
 export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }, policy = null) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
-  const file = memoryFile(configuration.dataDir, projectId);
+  const file = projectMemoryFile(configuration.dataDir, projectId);
   const committed = await withFileLock(file + '.lock', async () => {
     const state = await readMemoryProject(configuration, projectId);
     await policy?.authorize?.();
@@ -314,7 +319,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     state.receipts[receiptKey] = { fingerprint, result, ...(policy ? { requiredGrants: operationGrants(current.memory.map, operations, grants) } : {}) };
     const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations, actor, at: updatedAt });
     result.cursor = event.cursor;
-    await memoryReadViews.write(file, state);
+    await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };
   });
   if (committed.event) memoryHub(configuration).emit('event', committed.event);
@@ -348,7 +353,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
       const credential = req.headers.authorization?.replace(/^Bearer /, '') || '';
       const admin = equal(credential, adminToken);
       if (!project || (!admin && (!project.token || !equal(credential, project.token)) && !await authorizeDevice?.({ credential, projectId, sessionId, scope, method: req.method }))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
-      const file = memoryFile(dataDir, projectId);
+      const file = projectMemoryFile(dataDir, projectId);
       if (req.method === 'GET') {
         const state = scope === 'history' ? await readMemoryProject(configuration, projectId) : await readMemoryView(configuration, projectId);
         if (rawSession && sessionAction === 'changes') {
@@ -494,7 +499,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
           at: snapshot.updatedAt || new Date().toISOString(),
         }) : null;
         // Snapshot and receipt share one durable replace: a retry after a crash cannot duplicate the write.
-        await memoryReadViews.write(file, state);
+        await writeProjectMemory(memoryReadViews, dataDir, projectId, state);
         return { result, event };
       });
       if (committed.event) hub.emit('event', committed.event);

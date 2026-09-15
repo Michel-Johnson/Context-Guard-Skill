@@ -77,6 +77,9 @@ export const installedFiles = [
 ];
 
 export const packedFiles = [...installedFiles, ...[
+  "scripts/shared/filesystem-v2.mjs",
+  "scripts/cloud/migrate-memory-filesystem.mjs",
+  "scripts/cloud/memory-filesystem.mjs",
   "scripts/cloud/attachments.mjs",
   "scripts/cloud/quark-provider.mjs",
   "scripts/cloud/coordinator-context.mjs",
