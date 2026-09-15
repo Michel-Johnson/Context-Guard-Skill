@@ -10,7 +10,7 @@ import http from 'node:http';
 import { attachBugWithRecovery, diagnoseWorkbench, ensureServer, stopServer, updateBugWithRecovery } from '../scripts/workbench/cli.mjs';
 import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
-import { memoryRequest } from '../scripts/workbench/memory.mjs';
+import { definitiveMemoryRejection, memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
@@ -21,6 +21,13 @@ import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/r
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+test('only definitive memory rejections may release a retry identity', () => {
+  assert.equal(definitiveMemoryRejection({ status: 409, code: 'SESSION_BASELINE_CONFLICT' }), true);
+  assert.equal(definitiveMemoryRejection({ status: 400, code: 'INVALID_ARGUMENT' }), true);
+  assert.equal(definitiveMemoryRejection({ status: 503, code: 'MEMORY_UNAVAILABLE' }), false);
+  assert.equal(definitiveMemoryRejection(new Error('network')), false);
+});
 
 test('human cleanup removes attached and unassigned Bugs without changing other memory', () => {
   const doc = { v: 1, root: { id: 'R', title: 'root', bugs: [{ id: 'B1', title: 'test' }], todos: [{ id: 'TD1', title: 'keep task' }], memories: [{ text: 'keep memory' }], children: [] }, unassigned_bugs: [{ id: 'B2', title: 'unassigned test' }] };
