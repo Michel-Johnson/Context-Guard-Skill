@@ -4837,7 +4837,7 @@ async function installCoordinatorPanel(sync){
       const description=document.createElement('p');
       description.textContent='待确认需求：'+approval.text+'\n验收条件：'+approval.acceptance;
       card.append(description);
-      metadata(card,'会话：'+approval.sessionId+'\n节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
+      metadata(card,'节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
       for(const [decision,label] of [['approved','确认需求'],['rejected','拒绝需求']]){
         const button=document.createElement('button'); button.type='button'; button.textContent=label;
         const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label};
@@ -4850,6 +4850,15 @@ async function installCoordinatorPanel(sync){
         card.append(button);
       }
       messages.append(card);
+    }
+    for(const task of state.projectTasks||[]){
+      if(['brief','brief-rejected','completed','dispatched'].includes(task.stage))continue;
+      const note=document.createElement('p');
+      const labels={queued:'等待执行额度',creating:'正在准备执行环境',starting:'正在等待执行环境就绪',failed:'执行环境创建失败'};
+      const errors={WAITING_DEVICE:'等待设备上线',WAITING_SESSION_READY:'执行环境尚未就绪，后台继续检查'};
+      note.textContent=errors[task.error]||labels[task.stage]||'正在准备任务';
+      if(task.error&&!errors[task.error])note.textContent+='：'+task.error;
+      messages.append(note);
     }
     for(const acceptance of state.acceptances||[]){
       const card=document.createElement('section'), description=document.createElement('p');

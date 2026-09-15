@@ -553,6 +553,13 @@ export async function startCloudServer({
             return { sessions };
           },
           listConversations: async () => ({ conversations: (await conversations.list()).map(({ id, ...item }) => ({ conversationId: id, ...item })) }),
+          listTasks: async () => ({ tasks: (await store.projectTasks(principal)).filter(task => task.conversationId === conversationId)
+            .map(({ taskId, stage, sessionId, error }) => ({ taskId, stage, executionSessionId: sessionId || null, error })) }),
+          prepareProjectTask: async (input, operationId) => {
+            if (JSON.stringify(input).length > 2000) protocolFail('INVALID_ARGUMENT', 'Keep requirements within 2000 characters');
+            const task = await store.prepareProjectTask(principal, input, operationId, conversationId);
+            return { ...task, projectTask: true, requiresHumanApproval: true };
+          },
           resolveNodes: async ids => {
             const memory = await readMemoryProject(configuredMemory, project.id), root = memory.main?.memory?.map?.root;
             const index = root ? entries(root) : new Map();
@@ -680,6 +687,75 @@ export async function startCloudServer({
       creating.catch(() => { if (coordinators.get(key) === creating) coordinators.delete(key); });
     }
     return coordinators.get(key);
+  };
+  const scheduling = new Set();
+  const scheduleProjectTasks = async project => {
+    if (stopping || scheduling.has(project.id)) return;
+    scheduling.add(project.id);
+    try {
+      const config = configuredMemory?.projects?.[project.id]?.coordinator;
+      if (!config?.enabled) return;
+      const { store, principal: human } = interfaceProject(project);
+      const principal = { ...human, role: 'coordinator', deviceId: 'cloud-scheduler', agentId: `scheduler:${project.id}`,
+        bindings: { ...config.bindings }, creationTemplates: config.sessionTemplates || [] };
+      const limit = Number.isSafeInteger(config.maxConcurrentTasks) && config.maxConcurrentTasks > 0 ? config.maxConcurrentTasks : 2;
+      for (let task of await store.projectTasks(principal)) {
+        if (stopping) break;
+        try {
+        if (task.stage === 'dispatched') {
+          const binding = await store.registeredBinding(human, task.sessionId);
+          const current = binding && await store.taskRecord(human, { id: task.sessionId, generation: binding.generation }, task.taskId);
+          if (current && !current.busy && ['accepted', 'closed', 'finished', 'cancelled'].includes(current.stage)) await store.updateProjectTask(principal, task.taskId, { stage: 'completed' });
+          continue;
+        }
+        if (task.stage === 'queued') {
+          const templates = principal.creationTemplates.filter(id => Object.hasOwn(config.bindings || {}, id) && !config.ciReceivers?.[id]);
+          const templateSessionId = templates.find(id => {
+            const presence = interfacePresence.get(presenceKey(principal.repositoryId, id));
+            return presence && cloudSessionPresence(presence.lastHeartbeatAt) !== 'offline';
+          });
+          if (!templateSessionId) { await store.updateProjectTask(principal, task.taskId, { error: 'WAITING_DEVICE' }); continue; }
+          task = await store.updateProjectTask(principal, task.taskId, { stage: 'creating', templateSessionId, error: null }, { reserveLimit: limit });
+          if (task.stage === 'queued') continue;
+        }
+        if (task.stage === 'creating') {
+          const creation = await store.requestSessionCreation(principal, { operationId: `task:${digest(task.taskId)}:${task.attempt || 0}`,
+            templateSessionId: task.templateSessionId, name: `任务 ${task.taskId}` });
+          task = await store.updateProjectTask(principal, task.taskId, { stage: 'starting', creationId: creation.id, sessionId: creation.sessionId });
+        }
+        if (task.stage !== 'starting') continue;
+        const creation = (await store.sessionCreations(human)).find(item => item.id === task.creationId);
+        if (creation?.state === 'failed') {
+          const attempt = (task.attempt || 0) + 1;
+          await store.updateProjectTask(principal, task.taskId, { stage: attempt < 3 ? 'queued' : 'failed', attempt, error: creation.error || 'CREATION_FAILED' });
+          continue;
+        }
+        if (creation?.state !== 'registered') {
+          if (Date.now() - Date.parse(task.updatedAt) > 120000 && !task.error) await store.updateProjectTask(principal, task.taskId, { error: 'WAITING_SESSION_READY' });
+          continue;
+        }
+        const presence = interfacePresence.get(presenceKey(principal.repositoryId, task.sessionId));
+        if (!presence || cloudSessionPresence(presence.lastHeartbeatAt) === 'offline' || presence.execution?.status !== 'stopped') continue;
+        const binding = await store.registeredBinding(human, task.sessionId);
+        if (!binding || binding.generation !== creation.generation || binding.worktreeId !== creation.worktreeId) continue;
+        principal.bindings[task.sessionId] = binding.worktreeId;
+        await conversationsFor(project).bind(task.conversationId, task.sessionId, task.taskId);
+        const result = await store.submitApprovedTask(principal, { operationId: `fresh-task:${digest(task.taskId)}`, projectTaskId: task.taskId,
+          session: { id: task.sessionId, generation: binding.generation } }, async () => ({ taskId: task.taskId,
+          text: JSON.stringify({ v: 1, taskId: task.taskId, text: task.text, acceptance: task.acceptance, nodeIds: task.nodeIds, mainVersion: task.mainVersion }),
+          nodeIds: task.nodeIds, mainVersion: task.mainVersion }), interfaceWorkflow);
+        await store.updateProjectTask(principal, task.taskId, { stage: 'dispatched', dispatch: result, error: null });
+        } catch (cause) {
+          await store.updateProjectTask(principal, task.taskId, { error: cause.code || 'SCHEDULING_FAILED',
+            ...(['FORBIDDEN', 'INVALID_ARGUMENT', 'CONFLICT'].includes(cause.code) ? { stage: 'failed' } : {}) });
+        }
+      }
+    } finally { scheduling.delete(project.id); }
+  };
+  const kickTaskScheduler = project => {
+    const pending = scheduleProjectTasks(project).catch(cause => console.error(`[context-guard] task scheduling deferred: ${cause.code || cause.message}`));
+    activeRequests.add(pending);
+    void pending.finally(() => activeRequests.delete(pending));
   };
   const recoverInterruptedTasks = async project => {
     const config = configuredMemory?.projects?.[project.id]?.coordinator;
@@ -959,6 +1035,12 @@ export async function startCloudServer({
     const registry = await conversationsFor(project).state();
     const { store, principal } = interfaceProject(project);
     const assignments = new Map();
+    for (const task of await store.projectTasks(principal)) {
+      const owner = registry.items?.[task.conversationId];
+      if (!owner || ['brief', 'brief-rejected', 'dispatched', 'completed'].includes(task.stage)) continue;
+      assignments.set(`${owner.nodeId}:${owner.kind}:${owner.itemId}`, { status: task.stage === 'failed' ? 'failed' : 'queued',
+        task_id: task.taskId, at: task.updatedAt || task.createdAt, reason: task.error || task.stage });
+    }
     for (const [rawKey, conversationId] of Object.entries(registry.tasks || {})) {
       let pair;
       try { pair = JSON.parse(rawKey); } catch { continue; }
@@ -1522,6 +1604,7 @@ export async function startCloudServer({
             state.eventError = coordinator.inbox.lastError;
             const { store, principal } = interfaceProject(project);
             state.sessionCreations = (await store.sessionCreations(principal)).slice(-100);
+            state.projectTasks = (await store.projectTasks(principal)).filter(item => item.conversationId === conversationId);
             state.sessionTemplates = [];
             for (const id of configuredMemory.projects[project.id].coordinator.sessionTemplates || []) {
               if (!Object.hasOwn(coordinator.bindings, id)) continue;
@@ -1543,6 +1626,11 @@ export async function startCloudServer({
             }
             for (const approval of state.approvals) {
               if (!approval.brief) continue;
+              if (approval.projectTask) {
+                const task = (await store.projectTasks(principal)).find(item => item.taskId === approval.taskId);
+                approval.pending = task?.stage === 'brief' && task.brief.version === approval.brief.version;
+                continue;
+              }
               const binding = await store.registeredBinding(principal, approval.sessionId);
               const task = binding && await store.taskRecord(principal, { id: approval.sessionId, generation: binding.generation }, approval.taskId);
               approval.pending = !!task && task.stage === 'brief' && task.brief.ref === approval.brief.ref && task.brief.version === approval.brief.version;
@@ -1568,6 +1656,11 @@ export async function startCloudServer({
           const proposal = (await coordinator.state()).approvals.find(value => value.id === input.proposalId && value.brief);
           if (!proposal) protocolFail('NOT_FOUND', 'Requirement approval is not available');
           const { store, principal } = interfaceProject(project);
+          if (proposal.projectTask) {
+            const result = await store.reviewProjectTask(principal, proposal.taskId, proposal.brief, input);
+            kickTaskScheduler(project);
+            return send(res, 200, result);
+          }
           const binding = await store.registeredBinding(principal, proposal.sessionId);
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           const message = validateMessage({ v: 2, id: input.id, type: 'review.result',
@@ -1948,6 +2041,9 @@ export async function startCloudServer({
     }
   }, 5000); presenceExpiry.unref();
   const publicationTimer = setInterval(publishMergedSessions, 30_000); publicationTimer.unref();
+  const taskScheduler = setInterval(() => {
+    for (const project of registry.projects) kickTaskScheduler(project);
+  }, 5000); taskScheduler.unref();
   const initialPublication = setTimeout(publishMergedSessions, 0); initialPublication.unref();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   await attachments?.start();
@@ -1969,6 +2065,7 @@ export async function startCloudServer({
     clearInterval(heartbeat);
     clearInterval(presenceExpiry);
     clearInterval(publicationTimer);
+    clearInterval(taskScheduler);
     clearTimeout(initialPublication);
     const coordinatorShutdown = Promise.all([...coordinators.values()].map(async pending => {
       const service = await pending.catch(() => null);
