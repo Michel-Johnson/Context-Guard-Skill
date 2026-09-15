@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { startCloudServer, authorizeCiReceiver, coordinatorStructureOperations } from '../scripts/cloud/server.mjs';
+import { startCloudServer, authorizeCiReceiver, coordinatorStructureOperations, coordinatorTaskOwnerRequired } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
@@ -749,6 +749,31 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   await assert.rejects(execute('read_task', { sessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'legacy-field' }), /fields differ/);
   await execute('read_task', { executionSessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'valid' });
   assert.equal(readSession, 'actual-session');
+});
+
+test('Coordinator conversation ownership is routing metadata, not task authorization', async () => {
+  assert.equal(coordinatorTaskOwnerRequired('brief.submit'), true);
+  assert.equal(coordinatorTaskOwnerRequired('object.read'), false);
+  assert.equal(coordinatorTaskOwnerRequired('task.control'), false);
+  const calls = [], current = { version: 'v1', stage: 'interrupted' };
+  const execute = createCoordinatorExecutor({
+    readTask: async (sessionId, taskId) => {
+      calls.push(['read', sessionId, taskId]);
+      return current;
+    },
+    exchange: async (sessionId, _id, type, payload) => {
+      calls.push([type, sessionId, payload.taskId]);
+      return { ok: true };
+    },
+  });
+  const identity = { executionSessionId: 'assigned-session', taskId: 'TD1' };
+  await execute('read_task', identity, { operationId: 'read-from-main' });
+  await execute('resume_task', { ...identity, reason: '继续未完成任务' }, { operationId: 'resume-from-main' });
+  assert.deepEqual(calls, [
+    ['read', 'assigned-session', 'TD1'],
+    ['read', 'assigned-session', 'TD1'],
+    ['task.control', 'assigned-session', 'TD1'],
+  ]);
 });
 
 test('Coordinator tools pin approved routing and refuse stale Plan approval or human impersonation', async () => {
