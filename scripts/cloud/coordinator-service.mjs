@@ -50,19 +50,32 @@ function publicMessages(state) {
 // Legacy files stay in place; only newly opened item conversations use subfolders.
 export class CoordinatorConversations {
   constructor(directory) { this.directory = directory; this.file = path.join(directory, 'conversations.json'); }
-  async state() { return readJSON(this.file, { items: {}, sessions: {}, tasks: {} }); }
+  async state() { return readJSON(this.file, { items: {}, sessions: {}, chats: {}, tasks: {} }); }
   async list() {
     const state = await this.state();
     return [{ id: 'main', title: 'Main 对话' }, { id: 'legacy', title: '历史总对话' },
-      ...Object.values(state.sessions || {}), ...Object.values(state.items || {})];
+      ...Object.values(state.chats || {}), ...Object.values(state.sessions || {}), ...Object.values(state.items || {})];
   }
   async get(id) {
     if (id === 'legacy') return { id, title: '历史总对话' };
     if (id === 'main') return { id, scope: 'main', title: 'Main 对话' };
     const state = await this.state();
+    if (/^chat-[a-f0-9]{64}$/.test(id) && state.chats?.[id]) return state.chats[id];
     if (/^session:[a-zA-Z0-9_-]{1,128}$/.test(id) && state.sessions?.[id]) return state.sessions[id];
     if (/^item-[a-f0-9]{64}$/.test(id) && state.items?.[id]) return state.items[id];
     throw error('NOT_FOUND', 'Unknown conversation');
+  }
+  async createChat(operationId) {
+    if (typeof operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw error('INVALID_ARGUMENT', 'Provide a stable conversation request ID');
+    const id = `chat-${hash(operationId)}`;
+    await withFileLock(this.file + '.lock', async () => {
+      const state = await this.state(); state.chats ||= {};
+      if (state.chats[id]) return;
+      const index = Object.keys(state.chats).length + 1;
+      state.chats[id] = { id, scope: 'chat', title: `Coordinator Session ${index}`, createdAt: new Date().toISOString() };
+      await atomicWrite(this.file, encode(state));
+    });
+    return id;
   }
   async ensureSession(sessionId, title = '') {
     if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw error('NOT_FOUND', 'Unknown Session conversation');
@@ -98,6 +111,7 @@ export class CoordinatorConversations {
   conversationDirectory(id) {
     if (id === 'legacy') return this.directory;
     if (id === 'main') return path.join(this.directory, 'main');
+    if (id.startsWith('chat-')) return path.join(this.directory, 'chats', id);
     if (id.startsWith('session:')) return path.join(this.directory, 'sessions', hash(id));
     return path.join(this.directory, 'items', id);
   }

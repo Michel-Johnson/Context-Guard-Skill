@@ -4680,22 +4680,13 @@ async function installCoordinatorPanel(sync){
   const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
   retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
   const historyToggle=document.createElement('button');historyToggle.type='button';historyToggle.className='coordinator-toolbar-action';historyToggle.textContent='◷';historyToggle.setAttribute('aria-label','历史 Session');historyToggle.title='历史 Session';historyToggle.setAttribute('aria-expanded','false');historyToggle.setAttribute('aria-controls','coordinator-history');
-  const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.className='coordinator-toolbar-action';creationToggle.textContent='＋';creationToggle.setAttribute('aria-label','新建 Session');creationToggle.title='新建 Session';creationToggle.setAttribute('aria-expanded','false');
+  const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.className='coordinator-toolbar-action';creationToggle.textContent='＋';creationToggle.setAttribute('aria-label','新建 Coordinator Session');creationToggle.title='新建 Coordinator Session';
   toolbar.append(heading,historyToggle,retry,creationToggle);form.append(inputShell);
   const history=document.createElement('section');history.id='coordinator-history';history.className='coordinator-history';history.hidden=true;
   const historyTitle=document.createElement('h3');historyTitle.textContent='历史 Session';
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
-  const creation=document.createElement('section');creation.className='coordinator-session-create';creation.hidden=true;
-  const creationForm=document.createElement('form'),creationName=document.createElement('input'),creationTemplate=document.createElement('select');
-  creationName.required=true;creationName.maxLength=200;creationName.placeholder='Session 名称';creationName.setAttribute('aria-label','新 Session 名称');
-  creationTemplate.required=true;creationTemplate.setAttribute('aria-label','执行环境模板');
-  const creationButton=document.createElement('button');creationButton.type='submit';creationButton.textContent='创建 Session';
-  const creationClose=document.createElement('button');creationClose.type='button';creationClose.textContent='取消';
-  const creationStatus=document.createElement('p');creationStatus.setAttribute('role','status');
-  const creationList=document.createElement('ul');
-  creationForm.append(creationName,creationTemplate,creationButton,creationClose);creation.append(creationForm,creationStatus,creationList);
-  panel.append(toolbar,history,status,messages,typing,form,creation);document.body.append(panel);
+  panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
     panel.open=open;panel.toggleAttribute('open',open);
@@ -4713,50 +4704,8 @@ async function installCoordinatorPanel(sync){
     launcher.hidden=false;
     launcher.onclick=()=>{const open=!panel.open;setPanelOpen(open);if(open)void refresh();};
   }
-  const creationKey='cg-session-create:'+location.pathname;
-  let creationPending=null,creatingSession=false,templateKey='';
-  try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
-  const setCreationOpen=open=>{creation.hidden=!open;creationToggle.setAttribute('aria-expanded',String(open));if(open)creationName.focus();};
   const setHistoryOpen=open=>{history.hidden=!open;historyToggle.setAttribute('aria-expanded',String(open));};
-  historyToggle.addEventListener('click',()=>{const open=history.hidden;if(open)setCreationOpen(false);setHistoryOpen(open);});
-  creationToggle.addEventListener('click',()=>{const open=creation.hidden;if(open)setHistoryOpen(false);setCreationOpen(open);});
-  creationClose.addEventListener('click',()=>setCreationOpen(false));
-  const renderCreation=state=>{
-    const templates=state.sessionTemplates||[],records=state.sessionCreations||[];
-    const key=JSON.stringify(templates);
-    if(key!==templateKey){
-      const selected=creationTemplate.value;creationTemplate.replaceChildren();
-      for(const item of templates){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;creationTemplate.append(option);}
-      if(templates.some(item=>item.id===selected))creationTemplate.value=selected;templateKey=key;
-    }
-    if(creationPending&&records.some(item=>item.operationId===creationPending.operationId)){
-      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
-      creationStatus.textContent='创建请求已保存，正在等待本机启动与绑定。';
-    }
-    creationList.replaceChildren();
-    for(const item of records.slice(-5)){const row=document.createElement('li');row.textContent=item.name+' · '+({pending:'等待本机创建',registered:'已创建',failed:'创建失败'}[item.state]||item.state)+(item.error?' · '+item.error:'');creationList.append(row);}
-    creationToggle.disabled=!templates.length&&!creationPending;
-    creationButton.textContent=creationPending?'重试创建':'创建 Session';
-    creationButton.disabled=creatingSession||(!templates.length&&!creationPending);
-    creationName.disabled=creationTemplate.disabled=creatingSession||!!creationPending;
-    if(creationPending){creationName.value=creationPending.name;creationTemplate.value=creationPending.templateSessionId;}
-  };
-  creationForm.addEventListener('submit',async event=>{
-    event.preventDefault();if(creatingSession)return;
-    if(!creationPending){
-      if(!creationName.value.trim()||!creationTemplate.value)return;
-      creationPending={operationId:crypto.randomUUID(),name:creationName.value.trim(),templateSessionId:creationTemplate.value};
-      try{sessionStorage.setItem(creationKey,JSON.stringify(creationPending));}catch{creationPending=null;creationStatus.textContent='无法保存重试标识，尚未提交。';return;}
-    }
-    creatingSession=true;renderCreation({sessionTemplates:[...creationTemplate.options].map(option=>({id:option.value,name:option.textContent})),sessionCreations:[]});
-    creationStatus.textContent='正在提交创建请求…';
-    try{
-      await sync.call('/api/coordinator/sessions',creationPending,'POST','main');
-      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
-      creationStatus.textContent='创建请求已保存，正在等待本机启动与绑定。';creationName.value='';
-    }catch(error){creationStatus.textContent='尚未确认创建：'+error.message;}
-    finally{creatingSession=false;await refresh();}
-  });
+  historyToggle.addEventListener('click',()=>setHistoryOpen(history.hidden));
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('div');details.className='coordinator-meta';label.textContent='任务信息';content.className='coordinator-markdown';content.append(conversationFragments([{role:'assistant',text}],document).body);details.append(label,content);card.append(details);};
   const reviewReason=card=>new Promise(resolve=>{
     const existing=card.querySelector('.coordinator-review-inline');
@@ -4791,7 +4740,7 @@ async function installCoordinatorPanel(sync){
   const renderHistory=state=>{
     const conversations=state.conversations||[],scopeId=scopeConversation();
     const current=conversations.find(item=>item.id===scopeId)||{id:scopeId,title:scopeId==='main'?'Main 对话':'当前 Session'};
-    const sessions=conversations.filter(item=>item.id!==scopeId&&(item.scope==='session'||item.id?.startsWith('session:')));
+    const sessions=conversations.filter(item=>item.id!==scopeId&&(item.scope==='chat'||item.scope==='session'||item.id?.startsWith('session:')));
     historyList.replaceChildren();
     for(const item of [current,...sessions]){
       const button=document.createElement('button');button.type='button';button.dataset.conversation=item.id;
@@ -4800,6 +4749,17 @@ async function installCoordinatorPanel(sync){
     }
     if(!sessions.length){const empty=document.createElement('p');empty.textContent='暂无其他历史 Session';historyList.append(empty);}
   };
+  let creatingConversation=false,newConversationRequest=null;
+  creationToggle.addEventListener('click',async()=>{
+    if(creatingConversation)return;
+    creatingConversation=true;creationToggle.disabled=true;setHistoryOpen(false);status.textContent='正在新建 Coordinator Session…';
+    newConversationRequest||={id:crypto.randomUUID()};
+    try{
+      const result=await sync.call('/api/coordinator/conversations/new',newConversationRequest,'POST','main');
+      newConversationRequest=null;status.textContent='';selectConversation(result.id);
+    }catch(error){status.textContent='新建 Coordinator Session 尚未确认：'+error.message+'；再次点击 ＋ 重试。';}
+    finally{creatingConversation=false;creationToggle.disabled=false;}
+  });
   historyList.addEventListener('click',event=>{
     const button=event.target.closest('button[data-conversation]');if(!button)return;
     const id=button.dataset.conversation;setHistoryOpen(false);selectConversation(id,true,id!==scopeConversation());
@@ -4819,7 +4779,6 @@ async function installCoordinatorPanel(sync){
     // A lost HTTP response is not a lost turn. Reconcile the original request
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
-    renderCreation(state);
     renderHistory(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);

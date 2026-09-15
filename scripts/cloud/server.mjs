@@ -1487,6 +1487,13 @@ export async function startCloudServer({
           await coordinatorFor(project, id);
           return send(res, 200, { id });
         }
+        if (action === '/api/coordinator/conversations/new' && project && req.method === 'POST') {
+          const input = await requestBody(req);
+          if (!input || Object.keys(input).some(key => key !== 'id')) protocolFail('INVALID_ARGUMENT', 'Provide a stable conversation request');
+          const conversations = conversationsFor(project), id = await conversations.createChat(input.id);
+          await coordinatorFor(project, id);
+          return send(res, 201, { id });
+        }
         if (action === '/api/coordinator' && project) {
           const coordinator = await coordinatorFor(project, conversationId);
           if (req.method === 'GET') {
