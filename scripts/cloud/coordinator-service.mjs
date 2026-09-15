@@ -187,6 +187,7 @@ export class CoordinatorService {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
     const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
+      acceptedRequestIds: Object.keys(state.requests || {}).slice(-100),
       streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
       timing: state.activeTiming || null,
       canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
