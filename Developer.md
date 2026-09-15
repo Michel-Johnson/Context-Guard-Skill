@@ -12,6 +12,7 @@ Map 是整个项目的记忆。第一次使用时，先读 [读取 Map](referenc
 
 1. 接收已确认任务  
    打开 [Agent 交接](references/agent-handoff.md)，核对待办说明、节点、Main 版本、验收条件。不得改字。按授权读代码和已发布 Main。
+   `mainVersion` 是记忆版本，不是 Git SHA；所有命令使用宿主给出的当前 worktree。若 Bug 在当前源码已修复，记录这一事实并提交缺失回归测试的 Plan，不重复搜索无关模块或重新引入缺陷。
 
 2. 提交 Plan  
    Plan 必须满足 [计划审核](references/plan-review.md) 的四项。先交 Plan，等 Coordinator 审核这一版。未通过不得改源码。

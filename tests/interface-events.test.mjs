@@ -249,8 +249,14 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   // resolveProject exposes mainRef, not the CLI inventory's nested main.ref.
   const creationStore = new ProtocolStore(path.join(directory, 'cloud', 'interface-v2', hash('123')));
   const creationHuman = { repositoryId: '123', deviceId: 'browser', agentId: 'human', role: 'human' };
-  const creationCalls = [];
+  const creationCalls = []; let createdSessionId = '';
+  const originalStatus = ClaudeRuntime.prototype.status;
+  const creationStatusProbe = t.mock.method(ClaudeRuntime.prototype, 'status', async function (sessionId) {
+    if (sessionId === createdSessionId) return { configured: true, status: 'stopped', at: new Date().toISOString(), role: 'executor', name: 'Creation probe' };
+    return originalStatus.call(this, sessionId);
+  });
   const creationProbe = t.mock.method(ClaudeRuntime.prototype, 'provision', async (input, options) => {
+    createdSessionId = input.sessionId;
     creationCalls.push({ input, options });
     const childRoot = path.join(directory, `created-${input.sessionId}`);
     await git('worktree', 'add', '-b', `fixture/${input.sessionId}`, childRoot, sha);
@@ -265,7 +271,11 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     .find(item => item.id === creation.id)?.state === 'registered');
   assert.ok(creationCalls.length > 0);
   assert.ok(creationCalls.every(call => call.input.id === creation.id && call.options.baseRef === 'refs/remotes/origin/main' && call.options.start === false));
-  assert.equal((await cloudAccess()).sessions.some(item => item.id === creation.sessionId), true);
+  await waitFor(async () => {
+    const session = (await cloudAccess()).sessions.find(item => item.id === creation.sessionId);
+    return session?.status === 'online' && session.execution?.status === 'stopped';
+  });
+  creationStatusProbe.mock.restore();
   creationProbe.mock.restore();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: 's3', event: 'session-start', platform: 'codex', thread_name: 'new-session' }) + '\n');
   const cli = path.resolve('scripts/workbench/cli.mjs');

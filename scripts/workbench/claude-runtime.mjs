@@ -83,7 +83,8 @@ export class ClaudeRuntime {
     await withFileLock(file + '.lock', async () => {
       const state = await readJSON(file, {});
       if (state.active) fail('RUNTIME_BUSY', 'Stop the native turn before changing its configuration');
-      await atomicWrite(file, encode({ ...state, initialized: state.initialized || config.resumeExisting === true, config: { ...config, rootAlias: config.root, root: await fs.realpath(config.root) }, sessionId }));
+      await atomicWrite(file, encode({ ...state, initialized: state.initialized || config.resumeExisting === true,
+        config: { ...config, rootAlias: config.root, root: await fs.realpath(config.root) }, sessionId, updatedAt: new Date().toISOString() }));
     });
     return { configured: true, sessionId, role: config.role };
   }
@@ -224,7 +225,15 @@ export class ClaudeRuntime {
         const active = await readJSON(state.active, null);
         if (input.recoverDeliveryId) {
           verifyRecovery(active, input.recoverDeliveryId);
-        } else if (!active || !['finished', 'failed'].includes(active.state)) fail('RUNTIME_BUSY', 'Claude turn is active or interrupted; retain the Cloud delivery for retry');
+        } else if (!active || !['finished', 'failed'].includes(active.state)) {
+          // CI Sessions are reusable workers. An interrupted prior check has no
+          // remaining authority and must not permanently block the next exact
+          // SHA assignment; keep its immutable job file as evidence and let the
+          // new Cloud delivery become active.
+          if (!(state.config.role === 'ci' && active?.state === 'interrupted' && input.execution)) {
+            fail('RUNTIME_BUSY', 'Claude turn is active or interrupted; retain the Cloud delivery for retry');
+          }
+        }
       } else if (input.recoverDeliveryId) {
         fail('RECOVERY_NOT_AVAILABLE', 'There is no active interrupted delivery to recover');
       }

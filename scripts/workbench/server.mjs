@@ -234,7 +234,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       },
       sessions: async () => {
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
-        for (const head of await protocolStore.queueHeads(backendPrincipal)) {
+        const heads = await protocolStore.queueHeads(backendPrincipal), queued = new Set(heads.map(head => head.session.id));
+        // A freshly provisioned Session has no queued task yet: Cloud waits for
+        // its stopped heartbeat before dispatching. Include every registered
+        // binding so direct registration cannot deadlock on an empty queue.
+        for (const identity of identities.values()) {
+          if (queued.has(identity.id) || !access.binding(identity.id)) continue;
+          const binding = await protocolStore.registeredBinding(backendPrincipal, identity.id).catch(() => null);
+          if (binding) heads.push({ session: { id: identity.id, generation: binding.generation } });
+        }
+        for (const head of heads) {
           if (!access.binding(head.session.id)) continue;
           try {
             if (await device.bindingReady(await protocolStore.registeredBinding(backendPrincipal, head.session.id))) {
@@ -270,7 +279,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (!['codex', 'claude'].includes(session.platform)) return result;
           const target = await storeFor(project.kind === 'git' ? `session:${session.id}` : 'main');
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
-          const prompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
+          const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
+          const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
           const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime });
           try {
             if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
@@ -286,6 +296,12 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             return { ...result, deliveryState: 'received' };
           } catch (error) {
             if (error?.details?.deliveryState === 'uncertain') return { ...result, deliveryState: 'uncertain', reason: 'Native host acceptance could not be confirmed' };
+            if (error?.details?.deliveryState === 'failed') {
+              // The notification is already durable in the local protocol
+              // journal. A busy/interrupted native model must not head-of-line
+              // block later Plan, handoff or CI messages for the whole project.
+              return { ...result, deliveryState: 'stored', reason: 'Native host is unavailable; continue protocol synchronization' };
+            }
             throw error;
           }
         }
