@@ -547,11 +547,11 @@ export async function startCloudServer({
             const sessions = [];
             for (const id of await refreshBindings()) {
               const binding = await store.registeredBinding(principal, id);
-              if (binding && binding.worktreeId === bindings[id]) sessions.push({ id, generation: binding.generation, worktreeId: binding.worktreeId, name: binding.name || '', platform: binding.platform || '' });
+              if (binding && binding.worktreeId === bindings[id]) sessions.push({ executionSessionId: id, generation: binding.generation, worktreeId: binding.worktreeId, name: binding.name || '', platform: binding.platform || '' });
             }
             return { sessions };
           },
-          listConversations: async () => ({ conversations: await conversations.list() }),
+          listConversations: async () => ({ conversations: (await conversations.list()).map(({ id, ...item }) => ({ conversationId: id, ...item })) }),
           resolveNodes: async ids => {
             const memory = await readMemoryProject(configuredMemory, project.id), root = memory.main?.memory?.map?.root;
             const index = root ? entries(root) : new Map();
@@ -651,7 +651,11 @@ export async function startCloudServer({
             return coordinatorFor(project, await conversations.owner(session.id, taskId));
           },
           intake, memoryEvents: memoryHub(configuredMemory), projectId: project.id });
-        service.kick();
+        // Recover only a durable unfinished turn. Kicking every newly-created
+        // idle conversation creates a transient in-memory `running` state, so
+        // its first user submission can incorrectly fail with COORDINATOR_BUSY.
+        const restored = await service.state();
+        if (restored.activeTurnId && restored.status !== 'error') service.kick();
         return service;
       })();
       coordinators.set(key, creating);

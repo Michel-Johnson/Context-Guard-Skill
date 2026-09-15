@@ -2,13 +2,15 @@ const string = { type: 'string', minLength: 1 };
 const strings = { type: 'array', items: string, minItems: 1 };
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
-const task = { sessionId: string, taskId: string };
+const executionSessionId = { type: 'string', minLength: 1,
+  description: 'Exact executionSessionId returned by list_sessions. Never use main, legacy, session:* or item-* Coordinator conversation IDs.' };
+const task = { executionSessionId, taskId: string };
 export const coordinatorReferences = ['map-read.md', 'map-mount.md', 'user-reply.md', 'agent-handoff.md', 'plan-review.md', 'test-check.md'];
 const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT' }); };
 
 export const coordinatorTools = [
-  definition('list_sessions', 'List only the Sessions explicitly assigned to this Coordinator. Registration is not proof of liveness.', {}),
-  definition('list_conversations', 'List saved Coordinator conversations so an existing topic can be continued instead of recreated.', {}),
+  definition('list_sessions', 'List execution Sessions assigned to this Coordinator. Use only sessions[].executionSessionId in task tools. Registration is not proof of liveness.', {}),
+  definition('list_conversations', 'List saved Coordinator conversations for topic continuity. conversationId is never an executionSessionId and cannot be used in task tools.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
   definition('show_nodes', 'Show exact Main node buttons in the conversation. Use stable node IDs from the provided directory.', { message: string, nodeIds: strings }),
   definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
@@ -44,6 +46,10 @@ function validateInput(tool, input) {
         rule.type === 'array' && (!Array.isArray(value) || value.length < (rule.minItems || 1) || value.length > (rule.maxItems || 100) ||
           rule.items?.type === 'string' && value.some(item => typeof item !== 'string' || !item.trim()))) fail('Invalid tool field');
   }
+  if (Object.hasOwn(input, 'executionSessionId') && (!/^[a-zA-Z0-9_-]{1,128}$/.test(input.executionSessionId) ||
+      input.executionSessionId === 'main' || input.executionSessionId === 'legacy' || input.executionSessionId.startsWith('item-'))) {
+    fail('executionSessionId must be copied from list_sessions, never from list_conversations');
+  }
 }
 
 // ctx is constructed by the authenticated Cloud project, never from model input.
@@ -73,19 +79,19 @@ export function createCoordinatorExecutor(ctx) {
       if (input.owns.some(value => value.startsWith('/') || value.includes('..') || value.includes('\\'))) fail('Node ownership must use repository-relative paths');
       return { kind: 'mount-proposal', proposalId: operationId, ...input, requiresHumanApproval: true };
     }
-    const exchange = (type, payload, suffix = '') => ctx.exchange(input.sessionId, operationId + suffix, type, payload);
+    const exchange = (type, payload, suffix = '') => ctx.exchange(input.executionSessionId, operationId + suffix, type, payload);
     if (name === 'read_object') return exchange('object.read', { ref: input.ref, version: input.version });
-    if (name === 'read_task') return ctx.readTask(input.sessionId, input.taskId);
+    if (name === 'read_task') return ctx.readTask(input.executionSessionId, input.taskId);
     if (name === 'prepare_task') {
       for (const id of input.nodeIds) if ((await ctx.readMap(id)).version !== input.mainVersion) fail('Main changed; re-confirm task routing');
       const text = JSON.stringify({ v: 1, taskId: input.taskId, text: input.text, acceptance: input.acceptance, nodeIds: input.nodeIds, mainVersion: input.mainVersion });
       if (text.length > 2000) fail('Keep the task brief within 2000 characters');
       const brief = await exchange('brief.submit', { taskId: input.taskId, text }, ':brief');
       const requested = await exchange('review.request', { kind: 'brief', taskId: input.taskId, ref: brief.ref, version: brief.version }, ':review');
-      return { ...requested, sessionId: input.sessionId, taskId: input.taskId, text: input.text, acceptance: input.acceptance,
+      return { ...requested, sessionId: input.executionSessionId, taskId: input.taskId, text: input.text, acceptance: input.acceptance,
         nodeIds: input.nodeIds, mainVersion: input.mainVersion, brief, requiresHumanApproval: true };
     }
-    const current = await ctx.readTask(input.sessionId, input.taskId);
+    const current = await ctx.readTask(input.executionSessionId, input.taskId);
     if (name === 'resume_task') return exchange('task.control', { taskId: input.taskId, action: 'resume', expectedVersion: current.version,
       data: { reason: input.reason } });
     if (name === 'complete_task') return exchange('task.control', { taskId: input.taskId, action: 'complete', expectedVersion: current.version,
@@ -95,7 +101,7 @@ export function createCoordinatorExecutor(ctx) {
       const brief = await exchange('object.read', { ref: current.brief.ref, version: current.brief.version }, ':brief');
       let content; try { content = JSON.parse(brief.content.text); } catch { fail('Expected a structured approved brief'); }
       if (content.v !== 1 || content.taskId !== input.taskId) fail('Brief identity differs');
-      return exchange('task.assign', { taskId: input.taskId, sessionId: input.sessionId, briefRef: current.brief.ref,
+      return exchange('task.assign', { taskId: input.taskId, sessionId: input.executionSessionId, briefRef: current.brief.ref,
         briefVersion: current.brief.version, nodeIds: content.nodeIds, mainVersion: content.mainVersion, mode: 'reviewed' });
     }
     if (name === 'review_plan') {
