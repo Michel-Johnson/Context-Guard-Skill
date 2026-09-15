@@ -5,6 +5,36 @@ import { coordinatorStep, correctableToolError, settleRejectedTools } from './co
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 const workItemIdentity = item => item.instanceId || item.createdAt || item.id;
+const expandedReplyRequest = text => {
+  const value = String(text || '');
+  if (/(?:不需要|不用|无需|别).{0,6}(?:详细|完整|展开|逐项|全部)/.test(value)) return false;
+  return /(?:详细(?:说明|介绍|分析|回答)?|逐项(?:说明|列出|分析)?|展开(?:说明|讲讲|分析)?|(?:完整|全部).{0,12}(?:计划|清单|步骤|方案|说明|分析))/.test(value);
+};
+
+// Model instructions shape the answer; this public contract bounds what the
+// human sees even when a provider ignores them. Raw history remains intact so
+// compaction cannot alter tool reasoning or resume semantics.
+export function compactCoordinatorReply(text, instruction = '', { maxChars = 120, maxSentences = 3 } = {}) {
+  const value = String(text || '').trim();
+  if (!value || expandedReplyRequest(instruction)) return value;
+  const chars = Array.from(value); let sentences = 0, cut = chars.length;
+  for (let index = 0; index < chars.length; index++) {
+    if ('。！？!?'.includes(chars[index])) sentences++;
+    if (sentences >= maxSentences || index + 1 >= maxChars) { cut = index + 1; break; }
+  }
+  if (cut >= chars.length) return value;
+  const clipped = chars.slice(0, cut).join('').trimEnd();
+  if (/[。！？!?…]$/.test(clipped)) return clipped;
+  return Array.from(clipped).slice(0, Math.max(0, maxChars - 1)).join('').trimEnd() + '…';
+}
+
+function instructionBefore(state, index = state.messages.length) {
+  for (let cursor = index - 1; cursor >= 0; cursor--) {
+    const message = state.messages[cursor];
+    if (message.role === 'user' && typeof message.content === 'string') return message.content;
+  }
+  return '';
+}
 export const coordinatorCanAutoResume = (state, maxRetries = 2) => !!state?.activeTurnId &&
   state.status === 'error' && ['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE'].includes(state.error?.code) &&
   (state.modelRetries || 0) < maxRetries;
@@ -25,12 +55,16 @@ function questionsAt(state, index) {
 function publicMessages(state) {
   const raw = state.messages.map((message, index) => {
     const blocks = Array.isArray(message.content) ? message.content : [];
-    const text = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
-    const questions = questionsAt(state, index);
+    const sourceText = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
+    const instruction = instructionBefore(state, index);
+    const questions = questionsAt(state, index).map(question => ({ ...question, text: compactCoordinatorReply(question.text, instruction) }));
+    const actions = (message.actions || []).map(action => ({ ...action,
+      ...(typeof action.message === 'string' ? { message: compactCoordinatorReply(action.message, instruction) } : {}) }));
+    const text = message.role === 'assistant' ? compactCoordinatorReply(sourceText, instruction) : sourceText;
     return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
       ...(message.answerTo ? { answerTo: message.answerTo } : {}),
       ...(questions.length ? { questions } : {}),
-      ...(message.actions?.length ? { actions: message.actions } : {}),
+      ...(actions.length ? { actions } : {}),
       tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
   }).filter(message => message.text || message.tools.length);
   const visible = []; let carriedActions = [];
@@ -205,7 +239,7 @@ export class CoordinatorService {
     const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
       acceptedRequestIds: Object.keys(state.requests || {}).slice(-100),
-      streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
+      streamingText: compactCoordinatorReply(state.streaming?.text || '', state.activeInput?.text || instructionBefore(state)), contextVersion: state.activeContext?.version || null,
       timing: state.activeTiming || null,
       canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
       retryInput: state.status === 'error' ? state.activeInput || null : null,

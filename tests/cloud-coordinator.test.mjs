@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from '../scripts/cloud/coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, compactCoordinatorReply, coordinatorCanAutoResume } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -37,6 +37,82 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(mount, /不要求用户找出正确节点/);
   assert.match(read, /不自动等于最终执行节点/);
   assert.doesNotMatch(prompt + mount, /没有对应节点就问用户|问清正确节点后改挂/);
+});
+
+test('Coordinator public reply contract bounds direct, multi-turn, tool and streaming calls', async t => {
+  const long = '这是结论。'.repeat(40);
+  assert.ok(Array.from(compactCoordinatorReply(long, '简短一点')).length <= 120);
+  assert.equal((compactCoordinatorReply(long, '简短一点').match(/[。！？!?]/g) || []).length, 3);
+  assert.equal(Array.from(compactCoordinatorReply('字'.repeat(200), '简短一点')).length, 120);
+  assert.equal(compactCoordinatorReply(long, '请详细说明'), long, 'an explicit detail request may expand');
+  assert.notEqual(compactCoordinatorReply(long, '不需要详细说明'), long, 'a negated detail request stays concise');
+
+  for (const scenario of [
+    { name: 'direct', first: { stop: 'end_turn', content: [{ type: 'text', text: long }] } },
+    { name: 'after-tool', first: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'read', name: 'read_map', input: {} }] },
+      second: { stop: 'end_turn', content: [{ type: 'text', text: long }] } },
+  ]) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), `cg-reply-${scenario.name}-`));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let calls = 0;
+    const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'read_map' }], execute: async () => ({ ok: true }),
+      model: { next: async () => ++calls === 1 ? scenario.first : scenario.second } });
+    await service.submit({ id: scenario.name, text: '简短一点' }); await service.close();
+    const state = await service.state(), answer = state.messages.findLast(message => message.role === 'assistant');
+    assert.ok(Array.from(answer.text).length <= 120, `${scenario.name} answer is bounded`);
+    assert.equal(answer.text, compactCoordinatorReply(long, '简短一点'));
+    assert.equal(state.status, 'waiting-for-user');
+  }
+
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-reply-stream-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.writeFile(path.join(directory, 'conversation.json'), JSON.stringify({ messages: [{ role: 'user', content: '简短一点' }],
+    activeInput: { text: '简短一点' }, streaming: { text: long }, status: 'running', requests: {}, toolReceipts: {} }));
+  const streaming = await new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, model: {} }).state();
+  assert.ok(Array.from(streaming.streamingText).length <= 120);
+  assert.equal(streaming.streamingText, compactCoordinatorReply(long, '简短一点'));
+
+  const questionDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-reply-question-'));
+  t.after(() => fs.rm(questionDirectory, { recursive: true, force: true }));
+  let questionCalls = 0;
+  const question = new CoordinatorService({ directory: questionDirectory, system: 'Coordinator', tools: [{ name: 'ask_user' }],
+    execute: async () => ({ question: long }), model: { next: async () => ++questionCalls === 1 ? { stop: 'tool_use', content: [
+      { type: 'tool_use', id: 'question', name: 'ask_user', input: { question: long } },
+    ] } : { stop: 'end_turn', content: [] } } });
+  await question.submit({ id: 'question', text: '简短提问' }); await question.close();
+  const questionState = await question.state();
+  assert.ok(Array.from(questionState.messages.at(-1).questions[0].text).length <= 120);
+});
+
+test('Live Coordinator provider completes direct and tool-call turns under the public reply contract', {
+  skip: !process.env.CONTEXT_GUARD_COORDINATOR_PROVIDER_FILE,
+}, async t => {
+  const provider = JSON.parse(await fs.readFile(process.env.CONTEXT_GUARD_COORDINATOR_PROVIDER_FILE, 'utf8'));
+  const model = new CoordinatorModel(provider);
+  const tools = [{ name: 'probe', description: 'Return a fixed connectivity probe result.', input_schema: {
+    type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false,
+  } }];
+  const system = '你是 Coordinator 调用测试器。默认只回复一句。用户要求调用 probe 时必须先调用该工具，收到结果后再简短回答。';
+
+  const directDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-live-direct-'));
+  t.after(() => fs.rm(directDirectory, { recursive: true, force: true }));
+  const direct = new CoordinatorService({ directory: directDirectory, system, tools, execute: async () => ({ ok: true }), model });
+  await direct.submit({ id: 'live-direct', text: '一句话回复：连接正常' }); await direct.close();
+  let state = await direct.state();
+  assert.equal(state.status, 'waiting-for-user');
+  assert.ok(state.messages.findLast(message => message.role === 'assistant')?.text);
+  assert.ok(Array.from(state.messages.at(-1).text).length <= 120);
+
+  const toolDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-live-tool-'));
+  t.after(() => fs.rm(toolDirectory, { recursive: true, force: true }));
+  let executions = 0;
+  const tool = new CoordinatorService({ directory: toolDirectory, system, tools, model,
+    execute: async (name, input) => { assert.equal(name, 'probe'); assert.equal(typeof input.value, 'string'); executions++; return { ok: true }; } });
+  await tool.submit({ id: 'live-tool', text: '调用 probe 检查连接，然后一句话告诉我结果' }); await tool.close();
+  state = await tool.state();
+  assert.equal(state.status, 'waiting-for-user');
+  assert.equal(executions, 1);
+  assert.ok(Array.from(state.messages.findLast(message => message.role === 'assistant').text).length <= 120);
 });
 
 test('Prompt upgrades apply at new turns and recover a pre-model rejection without replaying history', async t => {
