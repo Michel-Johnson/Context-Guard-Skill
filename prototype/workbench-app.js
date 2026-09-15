@@ -4762,15 +4762,15 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
   const scopeConversation=()=>sync.viewId.startsWith('session:')?'session:'+sync.viewId.slice('session:'.length):'main';
   const isScopeConversation=id=>id==='main'||id.startsWith('session:');
   let selected=scopeConversation();const drafts=new Map(),questionDrafts=new Map();
   panel.dataset.conversation=selected;
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
   const selectConversation=(id,load=true)=>{
-    drafts.set(selected,{text:input.value,pending});selected=id;panel.dataset.conversation=id;
-    input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
+    drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
+    input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
     lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
     setPanelOpen(true);if(load)void refresh();
   };
@@ -4780,10 +4780,17 @@ async function installCoordinatorPanel(sync){
     catch(error){status.textContent='无法打开事项对话：'+error.message;}
   });
   window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
+  const confirmSubmitted=(id,request)=>{
+    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
+    else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
+  };
   const render=state=>{
     const renderedConversation=selected;
+    // A lost HTTP response is not a lost turn. Reconcile the original request
+    // against the server's durable receipt; model retries remain explicit.
+    if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderCreation(state);
-    status.textContent=state.error?'处理暂停：'+state.error.code:'';
+    status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     typing.hidden=state.status!=='running'||answering;
     const visibleMessages=[...(state.messages||[])];
@@ -4887,7 +4894,7 @@ async function installCoordinatorPanel(sync){
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
-    send.disabled=busy||state.status==='running'||state.status==='error'&&!canCorrect;
+    send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
     retry.hidden=!pending; retry.disabled=busy||state.status==='running';
   };
   const refresh=async()=>{
@@ -4904,18 +4911,21 @@ async function installCoordinatorPanel(sync){
   const submit=async request=>{
     if(busy) return;
     const id=selected;
-    busy=true; pending=request; send.disabled=true; retry.disabled=true; status.textContent='';
+    busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     typing.hidden=!!answeringCard;
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
       await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
-      if(id===selected){pending=null;if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
-      else{const draft=drafts.get(id);if(draft){draft.pending=null;if(draft.text.trim()===request.text)draft.text='';}}
-    }catch(error){if(id===selected){typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+error.message;retry.hidden=false;}}
+      confirmSubmitted(id,request);
+    }catch(error){
+      const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
+      if(id===selected){pendingError=message;typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;retry.hidden=false;}
+      else{const draft=drafts.get(id);if(draft)draft.error=message;}
+    }
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
-    if(!pending||id!==selected) await refresh();
+    await refresh();
   };
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});

@@ -376,6 +376,11 @@ try {
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON());
+      if (submissions.at(-1).text === '已持久化但响应丢失') {
+        coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false,
+          acceptedRequestIds: [submissions.at(-1).id] };
+        return route.abort(); // The server accepted the turn, but the acknowledgement was lost.
+      }
       if (submissions.length === 1) return route.abort(); // Delivery is uncertain: preserve the ID.
       if (submissions.at(-1).text === '更正审批 ID，先核对当前 Plan') {
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false };
@@ -616,6 +621,18 @@ try {
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
+
+  const beforeLostReply = submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('已持久化但响应丢失');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(() => {
+    const panel = document.querySelector('#coordinator-panel');
+    const retry = [...panel.querySelectorAll('button')].find(button => button.textContent === '重试原请求');
+    return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
+      !panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
+  });
+  assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
+  record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
 
   const itemConversations=[];
   await page.route(/\/api\/coordinator\/conversations(?:\?|$)/,async route=>{

@@ -705,7 +705,9 @@ test('Coordinator persists a human conversation and only retries a failed turn e
   const input = { id: 'human-1', text: '查看地图' };
   await service.submit(input); await service.close();
   assert.equal((await service.state()).error.code, 'MODEL_TIMEOUT');
+  assert.deepEqual((await service.state()).acceptedRequestIds, [input.id]);
   const restarted = new CoordinatorService(options);
+  assert.deepEqual((await restarted.state()).acceptedRequestIds, [input.id], 'acceptance survives a lost response and restart');
   await restarted.submit(input); await restarted.close();
   assert.equal(calls, 1);
   await restarted.submit({ ...input, retry: true }); await restarted.close();
@@ -715,6 +717,19 @@ test('Coordinator persists a human conversation and only retries a failed turn e
   assert.match(state.messages[0].text, /模拟人工输入/);
   assert.equal(state.messages.at(-1).text, '请确认需求。');
   await assert.rejects(restarted.submit({ ...input, text: '另一个请求' }), { code: 'ID_REUSED' });
+});
+
+test('Coordinator exposes only a bounded recent receipt list, not request content', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-receipts-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const requests = Object.fromEntries(Array.from({ length: 105 }, (_, index) => [`request-${index}`, 'private-fingerprint']));
+  await fs.writeFile(path.join(directory, 'conversation.json'), JSON.stringify({ messages: [], status: 'idle', requests }));
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], model: {}, execute: async () => {} });
+  const state = await service.state();
+  assert.equal(state.acceptedRequestIds.length, 100);
+  assert.equal(state.acceptedRequestIds[0], 'request-5');
+  assert.equal(state.acceptedRequestIds.at(-1), 'request-104');
+  assert.doesNotMatch(JSON.stringify(state), /private-fingerprint/);
 });
 
 test('Coordinator task tools cannot mistake conversation IDs for execution Sessions', async () => {
