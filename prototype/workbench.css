@@ -921,18 +921,21 @@ html.cg-phone .drawer h2{font-size:18px}
 .task-review-actions button{min-width:30px;min-height:30px;padding:2px 6px;line-height:1;color:#36765a}
 .task-review-actions button[data-task-review="rejected"]{color:#b54b4b}
 .task-review-actions button:disabled{opacity:.4;cursor:default}
+#detail.coordinator-open{overflow:hidden;display:flex;flex-direction:column}
+#detail.coordinator-open > :not(#coordinator-panel){display:none!important}
 #coordinator-panel {
-  position: fixed; bottom: 16px; right: 16px; z-index: 10020;
-  width: min(560px, calc(100vw - 32px)); padding: 16px 20px;
-  background: #fffcf4; border: 2px solid #333; border-radius: 20px;
-  box-sizing: border-box; box-shadow: 5px 6px 0 #333;
+  position: static; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0;
+  background: transparent; border: 0; border-radius: 0;
+  box-sizing: border-box; box-shadow: none;
   color: #302d26; font: 15px/1.65 system-ui, -apple-system, "PingFang SC", sans-serif;
 }
+#coordinator-panel[open]{display:flex;flex:1;flex-direction:column}
 #coordinator-panel:not([open]) { display: none; }
-#coordinator-panel > summary { cursor: pointer; font-weight: 650; font-size: 17px; }
+#coordinator-panel > .coordinator-heading{align-self:flex-start;margin:0 0 12px;padding:0;border:0;background:transparent;box-shadow:none;font-size:18px;font-weight:700;cursor:pointer}
+#coordinator-panel > .coordinator-heading:hover,#coordinator-panel > .coordinator-heading:focus{background:transparent;box-shadow:none;transform:none;text-decoration:underline}
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
 #coordinator-panel > [role=status]:empty { display: none; }
-#coordinator-panel .coordinator-messages { max-height: min(55vh, 580px); overflow: auto; overflow-wrap: anywhere; overscroll-behavior: contain; padding: 0 6px 8px 0; scrollbar-gutter: stable; }
+#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 6px 8px 0;scrollbar-gutter:stable; }
 #coordinator-panel .coordinator-message { margin: 0 0 22px; }
 #coordinator-panel .coordinator-message.user { max-width: 86%; margin-left: auto; }
 #coordinator-panel .coordinator-question { margin: 12px 0; padding: 14px; background: #faf3dc; border-radius: 12px; border: 1px solid #dccfaa; }
@@ -999,4 +1002,4 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-node-link { display: inline; margin: 0; padding: 2px 7px; color: #27624b; background: #fff2ad; font-weight: 650; vertical-align: baseline; }
 #coordinator-panel .coordinator-node-link:hover { background: #ffe87e; }
 #coordinator-panel .coordinator-node-link:focus-visible { outline: 2px solid #27624b; outline-offset: 2px; }
-@media(max-width: 520px){#coordinator-panel{right: 8px;bottom: 8px;width: calc(100vw - 16px);padding: 12px;}#coordinator-panel .coordinator-messages{max-height: 48vh;}#coordinator-panel .coordinator-session-create form{grid-template-columns:1fr;}}
+@media(max-width: 520px){#coordinator-panel .coordinator-session-create form{grid-template-columns:1fr;}}
