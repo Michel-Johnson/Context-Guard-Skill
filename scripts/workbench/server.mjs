@@ -272,6 +272,12 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           const prompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
           const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime });
           try {
+            if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
+              const native = await claudeRuntime.status(session.id);
+              if (native.status !== 'interrupted' || !native.deliveryId) protocolFail('RECOVERY_NOT_AVAILABLE', 'Claude has no matching interrupted turn');
+              await claudeRuntime.recover(session.id, { operationId: `cloud-${hash(message.id)}`, deliveryId: native.deliveryId, message: prompt }, session.worktreeRoot || root);
+              return { ...result, deliveryState: 'received' };
+            }
             const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
             if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
             await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
