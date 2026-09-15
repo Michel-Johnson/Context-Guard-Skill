@@ -110,7 +110,9 @@ try {
   browser = await chromium.launch({ headless: true });
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   page = await context.newPage();
-  page.setDefaultTimeout(10000);
+  // Cloud publication and cross-view reconciliation run on a 30-second cycle.
+  // Keep assertions strict while allowing one complete authoritative refresh.
+  page.setDefaultTimeout(35000);
   await page.goto(`${service.url}/projects/context-guard`);
   assert.equal(new URL(page.url()).pathname, '/login');
   await page.locator('input[name="password"]').fill('browser-password');
@@ -291,7 +293,7 @@ try {
   record('Concurrent edit shows conflict and preserves the losing browser draft');
 
   await page.reload();
-  await page.waitForFunction(() => ['synced', 'conflict'].includes(document.querySelector('#cg-sync')?.dataset.status));
+  await page.waitForFunction(() => ['synced', 'conflict'].includes(document.querySelector('#cg-sync')?.dataset.status), undefined, { timeout: 35000 });
   assert.equal(await page.locator('#cg-sync').getAttribute('data-status'), 'conflict');
   assert.match(await page.locator('#cg-sync-status').textContent(), /草稿与服务器版本冲突/);
   await page.evaluate(() => localStorage.removeItem('cg-sync-draft:cloud:context-guard:session:session-one'));
@@ -303,7 +305,7 @@ try {
   await synchronized();
   await git(repository, 'merge', '--ff-only', 'feature');
   await page.reload();
-  await page.waitForFunction(() => !new URL(location.href).searchParams.has('session'));
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('session'), undefined, { timeout: 35000 });
   await synchronized();
   assert.match(await page.locator('.node[data-id="T0"]').textContent(), /Session map edited in browser/);
   assert.doesNotMatch(await page.content(), /memory-admin|cloud-admin|project-memory-token/);
@@ -338,6 +340,7 @@ try {
   const markdownImageRequests = [];
   page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
+    sessionTemplates: [{ id: 'developer-template', name: 'Claude Developer' }], sessionCreations: [],
     approvals: [{ id: 'proposal-1', pending: true, brief: { ref: 'brief-1', version: 'v1' }, text: '模拟需求确认', acceptance: '明确验收标准', sessionId: 'assigned-session', nodeIds: ['T0'], mainVersion: 'main-v1' }] };
   coordinatorState.messages.push(
     { role: 'user', text: '[实验：模拟人工输入]\n请审核这个计划', tools: [] },
@@ -361,6 +364,13 @@ try {
     if (approvals.length === 1) return route.abort();
     coordinatorState.approvals[0].pending = false;
     return route.fulfill({ json: { receiptId: 'human-receipt' } });
+  });
+  const sessionCreationRequests = [];
+  await page.route(/\/api\/coordinator\/sessions(?:\?|$)/, async route => {
+    const request = route.request().postDataJSON();sessionCreationRequests.push(request);
+    if(sessionCreationRequests.length===1)return route.abort();
+    coordinatorState.sessionCreations.push({ ...request, state: 'pending' });
+    return route.fulfill({ status: 202, json: { ...request, state: 'pending' } });
   });
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
@@ -393,12 +403,26 @@ try {
   assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '请审核这个计划');
   assert.equal(await coordinator.locator('.coordinator-speaker').count(), 0);
   assert.equal(await coordinator.getByRole('status').count(), 0, 'normal status is not displayed');
-  assert.equal(await coordinator.locator('form').evaluate(node => getComputedStyle(node).borderTopWidth), '0px');
+  assert.equal(await coordinator.locator('form.coordinator-compose').evaluate(node => getComputedStyle(node).borderTopWidth), '0px');
   assert.equal(await coordinator.locator('.coordinator-debug').count(), 0);
   assert.equal(await coordinator.getByText('请说明预期行为，并提供', { exact: false }).isVisible(), true, 'questions stay visible while tool diagnostics are collapsed');
   assert.equal(await coordinator.locator('.coordinator-messages').innerText().then(text=>text.includes('diagnostic-only')), false);
   assert.equal(await coordinator.getByText(/运行记录/).count(), 0);
   record('coordinator-safe-markdown-chat-without-diagnostics-controls');
+  await coordinator.getByRole('button',{name:'新建 Session',exact:true}).click();
+  await coordinator.getByLabel('新 Session 名称').fill('博客内容开发');
+  await coordinator.getByLabel('执行环境模板').selectOption('developer-template');
+  await coordinator.getByRole('button',{name:'创建 Session',exact:true}).click();
+  await coordinator.getByText(/尚未确认创建/).waitFor();
+  await coordinator.getByRole('button',{name:'重试创建',exact:true}).click();
+  await coordinator.getByText(/等待本机创建/).waitFor();
+  assert.equal(sessionCreationRequests.length,2);
+  assert.equal(sessionCreationRequests[0].operationId,sessionCreationRequests[1].operationId,'uncertain creation retries preserve the operation ID');
+  assert.equal(sessionCreationRequests[1].name,'博客内容开发');
+  assert.equal(sessionCreationRequests[1].templateSessionId,'developer-template');
+  await coordinator.getByRole('button',{name:'取消',exact:true}).click();
+  assert.equal(await coordinator.locator('.coordinator-session-create').isVisible(),false);
+  record('Coordinator exposes a durable new Session button and retry flow');
   const navigationVersion = await syncVersion();
   await page.evaluate(async () => {
     const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
@@ -575,7 +599,7 @@ try {
   assert.equal(await coordinator.locator('textarea').inputValue(),'Bug 独立草稿');
   record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
 
-  assert.equal(await coordinator.locator('.coordinator-session-create').count(),0);
+  assert.equal(await coordinator.getByRole('button',{name:'新建 Session',exact:true}).count(),1);
   assert.equal(await coordinator.getByLabel('Coordinator 事项对话').count(),0);
   assert.equal(await coordinator.getByText(/运行记录/).count(),0);
   record('Coordinator hides removed controls while per-item conversation entry remains usable');

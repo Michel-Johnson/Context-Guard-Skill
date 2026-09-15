@@ -4308,13 +4308,67 @@ async function installCoordinatorPanel(sync){
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
   const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.textContent='正在回复…';typing.hidden=true;
-  const form=document.createElement('form');
+  const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
-  form.append(input,send,retry); panel.append(heading,status,messages,typing,form); document.body.append(panel);
+  const composeActions=document.createElement('div');composeActions.className='coordinator-compose-actions';
+  const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.textContent='新建 Session';creationToggle.setAttribute('aria-expanded','false');
+  composeActions.append(send,retry,creationToggle);form.append(input,composeActions);
+  const creation=document.createElement('section');creation.className='coordinator-session-create';creation.hidden=true;
+  const creationForm=document.createElement('form'),creationName=document.createElement('input'),creationTemplate=document.createElement('select');
+  creationName.required=true;creationName.maxLength=200;creationName.placeholder='Session 名称';creationName.setAttribute('aria-label','新 Session 名称');
+  creationTemplate.required=true;creationTemplate.setAttribute('aria-label','执行环境模板');
+  const creationButton=document.createElement('button');creationButton.type='submit';creationButton.textContent='创建 Session';
+  const creationClose=document.createElement('button');creationClose.type='button';creationClose.textContent='取消';
+  const creationStatus=document.createElement('p');creationStatus.setAttribute('role','status');
+  const creationList=document.createElement('ul');
+  creationForm.append(creationName,creationTemplate,creationButton,creationClose);creation.append(creationForm,creationStatus,creationList);
+  panel.append(heading,status,messages,typing,form,creation);document.body.append(panel);
+  const creationKey='cg-session-create:'+location.pathname;
+  let creationPending=null,creatingSession=false,templateKey='';
+  try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
+  const setCreationOpen=open=>{creation.hidden=!open;creationToggle.setAttribute('aria-expanded',String(open));if(open)creationName.focus();};
+  creationToggle.addEventListener('click',()=>setCreationOpen(creation.hidden));
+  creationClose.addEventListener('click',()=>setCreationOpen(false));
+  const renderCreation=state=>{
+    const templates=state.sessionTemplates||[],records=state.sessionCreations||[];
+    const key=JSON.stringify(templates);
+    if(key!==templateKey){
+      const selected=creationTemplate.value;creationTemplate.replaceChildren();
+      for(const item of templates){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;creationTemplate.append(option);}
+      if(templates.some(item=>item.id===selected))creationTemplate.value=selected;templateKey=key;
+    }
+    if(creationPending&&records.some(item=>item.operationId===creationPending.operationId)){
+      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
+      creationStatus.textContent='创建请求已保存，正在等待本机启动与绑定。';
+    }
+    creationList.replaceChildren();
+    for(const item of records.slice(-5)){const row=document.createElement('li');row.textContent=item.name+' · '+({pending:'等待本机创建',registered:'已创建',failed:'创建失败'}[item.state]||item.state)+(item.error?' · '+item.error:'');creationList.append(row);}
+    creationToggle.disabled=!templates.length&&!creationPending;
+    creationButton.textContent=creationPending?'重试创建':'创建 Session';
+    creationButton.disabled=creatingSession||(!templates.length&&!creationPending);
+    creationName.disabled=creationTemplate.disabled=creatingSession||!!creationPending;
+    if(creationPending){creationName.value=creationPending.name;creationTemplate.value=creationPending.templateSessionId;}
+  };
+  creationForm.addEventListener('submit',async event=>{
+    event.preventDefault();if(creatingSession)return;
+    if(!creationPending){
+      if(!creationName.value.trim()||!creationTemplate.value)return;
+      creationPending={operationId:crypto.randomUUID(),name:creationName.value.trim(),templateSessionId:creationTemplate.value};
+      try{sessionStorage.setItem(creationKey,JSON.stringify(creationPending));}catch{creationPending=null;creationStatus.textContent='无法保存重试标识，尚未提交。';return;}
+    }
+    creatingSession=true;renderCreation({sessionTemplates:[...creationTemplate.options].map(option=>({id:option.value,name:option.textContent})),sessionCreations:[]});
+    creationStatus.textContent='正在提交创建请求…';
+    try{
+      await sync.call('/api/coordinator/sessions',creationPending,'POST','main');
+      creationPending=null;try{sessionStorage.removeItem(creationKey);}catch{}
+      creationStatus.textContent='创建请求已保存，正在等待本机启动与绑定。';creationName.value='';
+    }catch(error){creationStatus.textContent='尚未确认创建：'+error.message;}
+    finally{creatingSession=false;await refresh();}
+  });
   const metadata=(card,text)=>{const details=document.createElement('details'),label=document.createElement('summary'),content=document.createElement('div');details.className='coordinator-meta';label.textContent='任务信息';content.className='coordinator-markdown';content.append(conversationFragments([{role:'assistant',text}],document).body);details.append(label,content);card.append(details);};
   const reviewReason=card=>new Promise(resolve=>{
     const existing=card.querySelector('.coordinator-review-inline');
@@ -4348,6 +4402,7 @@ async function installCoordinatorPanel(sync){
   window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
   const render=state=>{
     const renderedConversation=selected;
+    renderCreation(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     typing.hidden=state.status!=='running'||answering;
