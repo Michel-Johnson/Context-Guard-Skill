@@ -21,6 +21,8 @@ test('readJSON streams UTF-8 files above the direct-read threshold', async (t) =
   await fs.writeFile(file, JSON.stringify({ text: '中文内容', values: [1, 2, 3] }));
 
   assert.deepEqual(await readJSON(file, undefined, { maxReadFileBytes: 1 }), { text: '中文内容', values: [1, 2, 3] });
+  await fs.writeFile(file, '{"incomplete":');
+  await assert.rejects(readJSON(file, undefined, { maxReadFileBytes: 1 }), /Unexpected end of JSON input/);
 });
 
 test('Cloud Session activity expires without a recent Session event', () => {

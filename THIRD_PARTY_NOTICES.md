@@ -1,5 +1,13 @@
 # Third-party notices
 
+## JSONParse
+
+- Upstream: https://github.com/creationix/jsonparse
+- Pinned version: npm `jsonparse@1.3.1`; integrity is recorded in package-lock.json.
+- License: MIT.
+- Used to parse production-scale Cloud memory JSON incrementally without creating
+  a JavaScript string for the complete file.
+
 ## Marked
 
 - Upstream: https://github.com/markedjs/marked

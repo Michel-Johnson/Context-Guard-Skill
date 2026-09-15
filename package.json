@@ -61,5 +61,8 @@
   "devDependencies": {
     "marked": "15.0.12",
     "playwright": "1.62.1"
+  },
+  "dependencies": {
+    "jsonparse": "1.3.1"
   }
 }
