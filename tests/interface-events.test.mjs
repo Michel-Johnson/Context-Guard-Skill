@@ -19,12 +19,16 @@ import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator } from '../scripts/workbench/sync-coordinator.mjs';
 import { interruptedTaskReport, startServer } from '../scripts/workbench/server.mjs';
 import { ClaudeRuntime } from '../scripts/workbench/claude-runtime.mjs';
-import { resolveProject } from '../scripts/workbench/project.mjs';
+import { nonInteractiveGitEnvironment, resolveProject } from '../scripts/workbench/project.mjs';
 import { request, connectCloudProject } from '../scripts/workbench/cli.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from '../scripts/cloud/task-review.mjs';
 import { applyOperations } from '../scripts/shared/map-model.mjs';
+
+test('Git discovery and refresh disable credential prompts', () => {
+  assert.deepEqual(nonInteractiveGitEnvironment({ PATH: '/fixture' }), { PATH: '/fixture', GIT_TERMINAL_PROMPT: '0' });
+});
 
 test('native Claude interruption produces one stable task report', () => {
   const session = { id: 'session-1', generation: 2 };
