@@ -931,11 +931,13 @@ html.cg-phone .drawer h2{font-size:18px}
 }
 #coordinator-panel[open]{display:flex;flex:1;flex-direction:column}
 #coordinator-panel:not([open]) { display: none; }
-#coordinator-panel > .coordinator-toolbar{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+#coordinator-panel > .coordinator-toolbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
 #coordinator-panel .coordinator-heading{margin:0 auto 0 0;padding:0;border:0;background:transparent;box-shadow:none;font-size:18px;font-weight:700;cursor:pointer}
 #coordinator-panel .coordinator-heading:hover,#coordinator-panel .coordinator-heading:focus{background:transparent;box-shadow:none;transform:none;text-decoration:underline}
-#coordinator-panel .coordinator-toolbar-action{display:grid;place-items:center;width:34px;height:34px;margin:0;padding:0;border:2px solid #333;border-radius:10px;background:#fffcf4;box-shadow:2px 2px 0 #333;font-size:21px;font-weight:700;line-height:1}
-#coordinator-panel .coordinator-toolbar-action:hover,#coordinator-panel .coordinator-toolbar-action:focus-visible{background:#fff2ad;transform:none}
+#coordinator-panel .coordinator-toolbar-action{display:grid;place-items:center;width:28px;height:28px;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;background:transparent;box-shadow:none;color:var(--muted);font-size:16px;font-weight:700;line-height:1}
+#coordinator-panel .coordinator-toolbar-action:hover{background:var(--module-soft);color:var(--ink);transform:none}
+#coordinator-panel .coordinator-toolbar-action:focus-visible{outline:2px solid var(--module);outline-offset:2px;background:var(--paper);color:var(--ink);transform:none}
+#coordinator-panel .coordinator-toolbar-action:active{background:var(--focus-soft);transform:scale(.96)}
 #coordinator-panel .coordinator-history{margin:-4px 0 12px;padding:10px;border:1px solid #dccfaa;border-radius:12px;background:#faf3dc}
 #coordinator-panel .coordinator-history h3{margin:0 0 8px;font-size:13px;color:#746e5e}
 #coordinator-panel .coordinator-history-list{display:grid;gap:6px}

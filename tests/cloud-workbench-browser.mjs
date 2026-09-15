@@ -414,6 +414,11 @@ try {
   const historyAction=coordinator.getByRole('button',{name:'历史 Session',exact:true});
   assert.equal(await historyAction.textContent(),'◷','history uses a symbol-only control');
   assert.equal(await historyAction.evaluate(el=>el.parentElement?.classList.contains('coordinator-toolbar')),true,'history lives in the Coordinator toolbar');
+  const toolbarAppearance=await coordinator.locator('.coordinator-toolbar').evaluate(toolbar=>{
+    const action=toolbar.querySelector('.coordinator-toolbar-action'),style=getComputedStyle(action),toolbarStyle=getComputedStyle(toolbar);
+    return{width:style.width,height:style.height,fontSize:style.fontSize,borderWidth:style.borderTopWidth,borderRadius:style.borderRadius,background:style.backgroundColor,color:style.color,boxShadow:style.boxShadow,gap:toolbarStyle.gap};
+  });
+  assert.deepEqual(toolbarAppearance,{width:'28px',height:'28px',fontSize:'16px',borderWidth:'1px',borderRadius:'8px',background:'rgba(0, 0, 0, 0)',color:'rgb(116, 108, 96)',boxShadow:'none',gap:'12px'},'Coordinator icon actions use the compact neutral button system');
   await coordinator.getByLabel('发送给 Coordinator').fill('Main 草稿');await historyAction.click();
   await coordinator.getByRole('button',{name:'历史开发 Session',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#coordinator-panel')?.dataset.conversation==='session:history-one');
