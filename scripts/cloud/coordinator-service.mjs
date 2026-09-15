@@ -5,6 +5,9 @@ import { coordinatorStep, correctableToolError, settleRejectedTools } from './co
 
 const error = (code, message) => Object.assign(new Error(message), { code, status: 409 });
 const workItemIdentity = item => item.instanceId || item.createdAt || item.id;
+export const coordinatorCanAutoResume = (state, maxRetries = 2) => !!state?.activeTurnId &&
+  state.status === 'error' && ['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE'].includes(state.error?.code) &&
+  (state.modelRetries || 0) < maxRetries;
 
 function questionsAt(state, index) {
   const message = state.messages[index], replies = state.messages[index + 1]?.content;
@@ -176,11 +179,11 @@ export class CoordinatorMapIntake {
 // One independent conversation. HTTP handlers acknowledge a durable turn;
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
-  constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, simulated = false, namespace = '' }) {
+  constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, maxModelRetries = 2, retryDelayMs = 250, simulated = false, namespace = '' }) {
     this.file = path.join(directory, 'conversation.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
     this.model = model; this.system = system; this.tools = tools; this.execute = execute; this.context = context;
-    this.maxSteps = maxSteps; this.simulated = simulated; this.running = null;
+    this.maxSteps = maxSteps; this.maxModelRetries = maxModelRetries; this.retryDelayMs = retryDelayMs; this.simulated = simulated; this.running = null;
     this.namespace = namespace;
   }
   async state() {
@@ -302,7 +305,7 @@ export class CoordinatorService {
         state.activeInput = { id, text, ...(question ? { answerTo } : {}) };
         state.activeContext = nextContext;
         state.activeTiming = { receivedAt: new Date(receivedAt).toISOString(), contextMs: contextCompletedAt - contextStartedAt };
-        state.activeTurnId = id; state.steps = 0;
+        state.activeTurnId = id; state.steps = 0; state.modelRetries = 0;
       }
       state.status = 'running'; state.error = null;
       await atomicWrite(this.file, encode(state));
@@ -318,7 +321,12 @@ export class CoordinatorService {
   async run() {
     return withFileLock(this.file + '.run.lock', async () => {
       let state = await readJSON(this.file, null);
-      if (!state?.activeTurnId || state.status === 'error') return;
+      if (!state?.activeTurnId) return;
+      if (state.status === 'error') {
+        if (!coordinatorCanAutoResume(state, this.maxModelRetries)) return;
+        state.status = 'running'; state.error = null;
+        await atomicWrite(this.file, encode(state));
+      }
       const save = async value => atomicWrite(this.file, encode(value));
       try {
         while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
@@ -327,10 +335,23 @@ export class CoordinatorService {
           state.activeTiming.modelStartedAt ||= new Date().toISOString();
           await save(state);
           const runtimeSystem = this.system + (state.activeContext?.text || '');
-          state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
-            system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
-            onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
-              state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); } });
+          try {
+            state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
+              system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
+              onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
+                state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); } });
+            state.modelRetries = 0;
+          } catch (cause) {
+            if (['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE'].includes(cause.code) && (state.modelRetries || 0) < this.maxModelRetries && !state.pending) {
+              state.modelRetries = (state.modelRetries || 0) + 1;
+              state.steps--; state.streaming = null;
+              state.activeTiming.modelRetryAt = new Date().toISOString();
+              await save(state);
+              if (this.retryDelayMs) await new Promise(resolve => setTimeout(resolve, this.retryDelayMs));
+              continue;
+            }
+            throw cause;
+          }
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
           state.streaming = null;
           state.activeTiming.completedAt = new Date().toISOString();

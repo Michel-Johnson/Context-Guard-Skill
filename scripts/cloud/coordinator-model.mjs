@@ -6,23 +6,36 @@ const failedTool = code => ({ isError: true, result: { error: { code,
   message: '工具未成功。先读取当前权威状态并核对原始 ID/版本；不得猜测 ID、扩大权限或重复未知写入。' } } });
 const toolReply = (call, receipt) => ({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(receipt.result), ...(receipt.isError ? { is_error: true } : {}) });
 
-async function readBoundedJson(response) {
+const timeoutProblem = () => problem('MODEL_TIMEOUT', 'Coordinator model timed out');
+async function readChunk(reader, deadlineAt, abort) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) { abort.abort(); throw timeoutProblem(); }
+  let timer;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => { timer = setTimeout(() => { abort.abort(); reject(timeoutProblem()); }, remaining); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+async function readBoundedJson(response, deadlineAt, abort) {
   const reader = response.body.getReader();
   const chunks = []; let size = 0;
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk(reader, deadlineAt, abort);
       if (done) break;
       size += value.length;
       if (size > 4 * 1024 * 1024) { await reader.cancel(); throw problem('MODEL_RESPONSE_TOO_LARGE', 'Coordinator response exceeds 4 MiB'); }
       chunks.push(value);
     }
-  } finally { reader.releaseLock(); }
+  } finally { try { reader.releaseLock(); } catch {} }
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
 }
 
-async function readEventStream(response, onText) {
+async function readEventStream(response, onText, deadlineAt, abort) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let buffer = '', size = 0, model = '', stopReason = '', usage = {}, visibleText = '';
   const blocks = [];
@@ -54,7 +67,7 @@ async function readEventStream(response, onText) {
   };
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk(reader, deadlineAt, abort);
       if (done) break;
       size += value.length;
       if (size > 4 * 1024 * 1024) { await reader.cancel(); throw problem('MODEL_RESPONSE_TOO_LARGE', 'Coordinator response exceeds 4 MiB'); }
@@ -66,7 +79,7 @@ async function readEventStream(response, onText) {
       }
     }
     buffer += decoder.decode(); if (buffer.trim()) await event(buffer);
-  } finally { reader.releaseLock(); }
+  } finally { try { reader.releaseLock(); } catch {} }
   return { model, stop_reason: stopReason, content: blocks.filter(Boolean), usage };
 }
 
@@ -112,6 +125,7 @@ export class CoordinatorModel {
       stream: true, ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > 512 * 1024) throw problem('CONTEXT_TOO_LARGE', 'Coordinator context needs explicit compaction');
     const abort = new AbortController();
+    const deadlineAt = Date.now() + this.timeoutMs;
     const timer = setTimeout(() => abort.abort(), this.timeoutMs);
     try {
       const response = await this.fetch(this.endpoint, {
@@ -125,7 +139,7 @@ export class CoordinatorModel {
         throw problem(`MODEL_HTTP_${response.status}`, `Coordinator provider returned HTTP ${response.status}`);
       }
       const result = (response.headers.get('content-type') || '').includes('text/event-stream')
-        ? await readEventStream(response, onText) : await readBoundedJson(response);
+        ? await readEventStream(response, onText, deadlineAt, abort) : await readBoundedJson(response, deadlineAt, abort);
       if (result.model !== this.model || !Array.isArray(result.content) || !['end_turn', 'tool_use'].includes(result.stop_reason)) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned a different model or an incomplete turn');
       }
