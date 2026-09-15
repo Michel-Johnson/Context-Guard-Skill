@@ -497,10 +497,8 @@ try {
     }).body);
     document.body.append(host);
   });
-  assert.equal(await page.locator('#node-link-test button').count(), 1, 'ambiguous titles, unknown nodes, code and links are not converted');
-  assert.equal(await page.locator('#node-link-test button').textContent(), '前端交互', 'a node title alias remains readable in the link');
-  await page.locator('#node-link-test button').evaluate(button => button.click());
-  assert.equal(await page.locator('#node-link-test').getAttribute('data-selected'), 'target');
+  assert.equal(await page.locator('#node-link-test button').count(), 0, 'plain response text never becomes Map buttons');
+  assert.match(await page.locator('#node-link-test').textContent(), /前端交互/, 'node names remain readable text');
   await page.locator('#node-link-test').evaluate(node => node.remove());
   await page.evaluate(async () => {
     const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
@@ -512,20 +510,21 @@ try {
   });
   assert.equal(await page.locator('#legacy-question-test .coordinator-legacy-question').count(), 3, 'legacy numbered confirmation questions become inline cards');
   assert.equal(await page.locator('#legacy-question-test textarea').count(), 3, 'each legacy question has an inline answer field');
-  assert.equal(await page.locator('#legacy-question-test button.coordinator-node-link').count(), 2, 'legacy question text links each recommended node alias');
+  assert.equal(await page.locator('#legacy-question-test button.coordinator-node-link').count(), 0, 'legacy question text does not create implicit node buttons');
   await page.locator('#legacy-question-test').evaluate(node => node.remove());
   await page.evaluate(async () => {
     const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
     const host = document.createElement('div'); host.id = 'structured-node-test';
     host.append(conversationFragments([{ role: 'assistant', text: '建议放在这里。', actions: [
-      { kind: 'node-references', message: '候选节点', nodes: [{ id: 'reader', title: '阅读' }] },
+      { kind: 'node-references', message: '候选节点', nodes: [{ id: 'reader', title: '阅读' }, { id: 'admin', title: '管理' }, { id: 'content', title: '内容' }, { id: 'test', title: '工程' }] },
       { kind: 'conversation-mounted', conversationId: 'item-next', node: { id: 'reader', title: '阅读' } },
     ] }, { role: 'assistant', text: '选择节点', questions: [{ id: 'node-choice', text: '挂到哪里？', nodes: [{ id: 'reader', title: '阅读' }] }] }], document, {
       canAnswer: true, onNode: id => { host.dataset.selected = id; }, onConversation: id => { host.dataset.conversation = id; }, onAnswer: () => {},
     }).body);
     document.body.append(host);
   });
-  assert.equal(await page.locator('#structured-node-test button.coordinator-node-link').count(), 3);
+  assert.equal(await page.locator('#structured-node-test .coordinator-actions').first().locator('button.coordinator-node-link').count(), 3, 'even historical structured actions render at most three node buttons');
+  assert.equal(await page.locator('#structured-node-test button.coordinator-node-link').count(), 5);
   await page.locator('#structured-node-test .coordinator-actions button.coordinator-node-link').first().evaluate(button => button.click());
   assert.equal(await page.locator('#structured-node-test').getAttribute('data-selected'), 'reader');
   await page.locator('#structured-node-test').getByRole('button', { name: '继续这个事项' }).evaluate(button => button.click());
@@ -547,7 +546,7 @@ try {
   assert.equal(await page.locator('#question-keyboard-test .coordinator-answer-compose > button').textContent(), '发送');
   await page.locator('#question-keyboard-test').evaluate(node => node.remove());
   coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
-  coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
+  coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点。', actions: [{ kind: 'node-references', message: '推荐', nodes: [{ id: 'T0', title: '定位节点' }] }] });
   await page.reload(); await synchronized();
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('textarea').fill('跳转时保留草稿');

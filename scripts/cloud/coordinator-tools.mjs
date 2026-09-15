@@ -1,5 +1,6 @@
 const string = { type: 'string', minLength: 1 };
 const strings = { type: 'array', items: string, minItems: 1 };
+const nodeIds = { type: 'array', items: string, minItems: 1, maxItems: 3 };
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
 const executionSessionId = { type: 'string', minLength: 1,
@@ -12,7 +13,7 @@ export const coordinatorTools = [
   definition('list_sessions', 'List execution Sessions assigned to this Coordinator. Use only sessions[].executionSessionId in task tools. Registration is not proof of liveness.', {}),
   definition('list_conversations', 'List saved Coordinator conversations for topic continuity. conversationId is never an executionSessionId and cannot be used in task tools.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
-  definition('show_nodes', 'Show exact Main node buttons in the conversation. Use stable node IDs from the provided directory.', { message: string, nodeIds: strings }),
+  definition('show_nodes', 'Show 1–3 exact Main node buttons only when they are direct recommendations or requested actions.', { message: string, nodeIds }),
   definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
   definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { sessionId: string, ref: string, version: string }),
@@ -33,7 +34,7 @@ export const coordinatorTools = [
   definition('mount_conversation', 'Attach the current intent to a Main TODO, Bug or Idea and return its durable conversation.', {
     mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
   }),
-  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. nodeIds render exact node choices. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds: strings }, ['question']),
+  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. nodeIds render at most 3 exact node choices. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
 ];
 
 function validateInput(tool, input) {
