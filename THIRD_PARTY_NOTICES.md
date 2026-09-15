@@ -1,5 +1,16 @@
 # Third-party notices
 
+## JSONParse
+
+- Upstream: https://github.com/creationix/jsonparse
+- Vendored version: `jsonparse@1.3.1` in `scripts/shared/vendor/jsonparse.cjs`.
+- Changes: legacy `Buffer()` constructors use the Node 18+ `Buffer.alloc/from`
+  equivalents; parser behavior is unchanged.
+- MIT license and upstream copyright notices:
+  [licenses/JSONParse-MIT.txt](licenses/JSONParse-MIT.txt).
+- Used to parse production-scale Cloud memory JSON incrementally without creating
+  a JavaScript string for the complete file.
+
 ## Marked
 
 - Upstream: https://github.com/markedjs/marked

@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import JSONParser from './vendor/jsonparse.cjs';
 export const hash = text => createHash('sha256').update(text).digest('hex');
 export const encode = value => JSON.stringify(value, null, 2) + '\n';
 export const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -52,8 +54,42 @@ export async function withFileLock(file, action, { reclaimGuard = false } = {}) 
   try { return await action(); }
   finally { await handle.close(); await fs.unlink(file); }
 }
-export async function readJSON(file, fallback) {
-  try { return JSON.parse(await fs.readFile(file, 'utf8')); }
+async function parseJSONFile(file, maxReadFileBytes) {
+  const info = await fs.stat(file);
+  if (info.size <= maxReadFileBytes) return JSON.parse(await fs.readFile(file, 'utf8'));
+  return new Promise((resolve, reject) => {
+    const parser = new JSONParser();
+    const stream = createReadStream(file);
+    let complete = false;
+    let value;
+    let settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    parser.onValue = function onValue(parsed) {
+      if (this.stack.length === 0) {
+        complete = true;
+        value = parsed;
+      }
+    };
+    stream.on('data', chunk => {
+      if (settled) return;
+      try { parser.write(chunk); }
+      catch (error) { fail(error); stream.destroy(); }
+    });
+    stream.on('error', fail);
+    stream.on('end', () => {
+      if (settled) return;
+      if (!complete) return fail(new SyntaxError('Unexpected end of JSON input'));
+      settled = true;
+      resolve(value);
+    });
+  });
+}
+export async function readJSON(file, fallback, { maxReadFileBytes = 128 * 1024 * 1024 } = {}) {
+  try { return await parseJSONFile(file, maxReadFileBytes); }
   catch (e) { if (e.code === 'ENOENT' && fallback !== undefined) return fallback; throw e; }
 }
 export async function atomicWrite(file, content, { deadlineMs = 350, beforeReplace = async () => {} } = {}) {
