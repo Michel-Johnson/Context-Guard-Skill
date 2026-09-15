@@ -20,7 +20,7 @@ Map 是整个项目的记忆。第一次使用时，先读 [读取 Map](referenc
    只改授权范围。补本模块测试。需要记到 Map 时打开 [挂载 Map](references/map-mount.md)。`plan-start`、归档、`plan-finish` 见 [workbench-interface.md](references/workbench-interface.md)。
 
 4. 回传证据  
-   回传本模块单测和 `CI_todo` 引用。测试失败时在原任务上返工，不要当新任务。
+   回传本模块单测和 `CI_todo` 引用。Cloud reviewed 任务必须依次完成：归档、提交代码、`map task handoff`，确认 handoff 成功后再 `plan-finish`；不得提前关闭 Plan。测试失败时在原任务上返工，不要当新任务。
 
 ## 禁止
 

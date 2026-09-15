@@ -8,12 +8,14 @@ import { MapError } from '../shared/map-model.mjs';
 
 const execFileAsync = promisify(execFile);
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
+export const nonInteractiveGitEnvironment = (parent = process.env) => ({ ...parent, GIT_TERMINAL_PROMPT: '0' });
 export const optionalGitMiss = error => Number.isInteger(error?.code) && error.code !== 0 && !error.killed && error.signal == null;
 
 async function git(root, args, { optional = false } = {}) {
   try {
     const { stdout } = await execFileAsync('git', args, {
       cwd: root,
+      env: nonInteractiveGitEnvironment(),
       encoding: 'utf8',
       windowsHide: true,
       timeout: 10000,
@@ -287,7 +289,7 @@ export async function sessionBinding(project, sessionId, { workbenchUrl = null }
 
 export const bindingPath = root => path.join(root, '.codex/context/private/project-binding.json');
 async function commonDir(root) {
-  const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd: root, windowsHide: true, timeout: 5000 });
+  const { stdout } = await execFileAsync('git', ['rev-parse', '--git-common-dir'], { cwd: root, env: nonInteractiveGitEnvironment(), windowsHide: true, timeout: 5000 });
   return fs.realpath(path.resolve(root, stdout.trim()));
 }
 export async function resolveProjectRoot(root) {

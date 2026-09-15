@@ -9,6 +9,7 @@ import { Access } from './access.mjs';
 export const sessionMemoryDir = (project, sessionId) => path.join(project.sharedDir, 'session-memory', hash(`${sessionId}\0${project.worktreeId}`));
 export const memoryConfigPath = project => path.join(project.sharedDir, 'memory-client.json');
 const sessionRecordName = sessionId => String(sessionId || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 120) || 'session';
+export const definitiveMemoryRejection = error => Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
 export async function memoryRequest(project, scope, input, configuration) {
   const config = configuration || await readJSON(memoryConfigPath(project), null);
   if (!config) throw new MapError('MEMORY_NOT_CONFIGURED', 'Private memory server is not configured', 503);
@@ -144,7 +145,12 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
     // Retry an uncertain operation byte-for-byte before constructing a newer upload.
     const pending = await readJSON(queue, null);
     if (pending) {
-      const replayed = await memoryRequest(project, scope, pending);
+      let replayed;
+      try { replayed = await memoryRequest(project, scope, pending); }
+      catch (error) {
+        if (definitiveMemoryRejection(error)) await fs.unlink(queue).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
+        throw error;
+      }
       await atomicWrite(receiptFile, encode(replayed));
       await fs.unlink(queue);
     }
@@ -203,7 +209,12 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
       && encode(current.session.memory) === encode(input.memory);
     if (unchanged) return { committed: true, synchronized: true, changed: false, projectId: current.session.projectId || null, snapshot: current.session };
     await atomicWrite(queue, encode(input));
-    const result = await memoryRequest(project, scope, input);
+    let result;
+    try { result = await memoryRequest(project, scope, input); }
+    catch (error) {
+      if (definitiveMemoryRejection(error)) await fs.unlink(queue).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
+      throw error;
+    }
     await atomicWrite(receiptFile, encode(result));
     await fs.unlink(queue);
     return result;

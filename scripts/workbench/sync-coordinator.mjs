@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { applyOperations, diffTrees, MapError, same, validate } from '../shared/map-model.mjs';
 import { atomicWrite, encode, hash, readJSON } from '../shared/io.mjs';
-import { memoryConfigPath, memoryRequest } from './memory.mjs';
+import { definitiveMemoryRejection, memoryConfigPath, memoryRequest } from './memory.mjs';
 
 const equalDocument = (a, b) => !!a && !!b && hash(encode(a)) === hash(encode(b));
 
@@ -346,6 +346,11 @@ export class MemorySyncCoordinator extends EventEmitter {
       if (error.code === 'VERSION_CONFLICT') {
         const remote = (await this.request(this.project, `sessions/${encodeURIComponent(this.sessionId)}`)).snapshot;
         await this.reconcileRemote(remote, this.status.cursor || 0);
+        return;
+      }
+      if (definitiveMemoryRejection(error)) {
+        await fs.unlink(this.outboxFile).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
+        await this.persist({ status: 'error', pending: 0, error: error.code || 'MEMORY_REJECTED' });
         return;
       }
       await this.persist({ status: error.code === 'UNAUTHORIZED' ? 'error' : 'offline', pending: 1, error: error.code || error.message });

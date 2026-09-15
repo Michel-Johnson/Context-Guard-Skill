@@ -472,7 +472,10 @@ These are Agent judgments: the Hook checks that they exist, not their truth.
 No-files plans still append the summary/evidence to the authorized plan nodes.
 Unclassified changed files cannot yield a successful plan archive receipt.
 
-Run `plan-finish --root ... --session ...`. It checks the successful archive,
+For ordinary local work, run `plan-finish --root ... --session ...` after the
+archive. For a Cloud reviewed task, keep the archived Plan active while you
+commit the exact files and run `map task handoff`; run `plan-finish` only after
+the handoff receipt succeeds. The finish command checks the successful archive,
 file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sync
 when configured. Failure leaves the plan unfinished. Changes after archive
 require a new verified archive. `plan-status` returns the active plan, last
