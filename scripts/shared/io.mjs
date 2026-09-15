@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import JSONParser from 'jsonparse';
+import JSONParser from './vendor/jsonparse.cjs';
 export const hash = text => createHash('sha256').update(text).digest('hex');
 export const encode = value => JSON.stringify(value, null, 2) + '\n';
 export const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
