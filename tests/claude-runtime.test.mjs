@@ -58,6 +58,9 @@ test('Native creation isolates the worktree and profile, pins Main and preserves
   await runtime.configure(templateSessionId, config);
   runtime.wake = async () => {}; // This test verifies preparation, not a real model invocation.
   const request = { id: hash('creation'), sessionId: randomUUID(), templateSessionId, name: 'New developer' };
+  const prepared = await runtime.provision(request, { baseRef: 'refs/heads/main', start: false });
+  assert.equal(prepared.state, 'prepared');
+  assert.equal((await readJSON(runtime.sessionFile(request.sessionId))).active, undefined);
   const first = await runtime.provision(request, { baseRef: 'refs/heads/main' });
   const state = await readJSON(runtime.sessionFile(request.sessionId));
   assert.notEqual(first.root, directory);

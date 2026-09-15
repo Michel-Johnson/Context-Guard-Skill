@@ -248,13 +248,20 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
   const creationCalls = [];
   const creationProbe = t.mock.method(ClaudeRuntime.prototype, 'provision', async (input, options) => {
     creationCalls.push({ input, options });
-    throw Object.assign(new Error('Preparation probe; no model launched'), { code: 'CREATION_PROBE' });
+    const childRoot = path.join(directory, `created-${input.sessionId}`);
+    await git('worktree', 'add', '-b', `fixture/${input.sessionId}`, childRoot, sha);
+    await fs.mkdir(path.join(childRoot, '.codex/context'), { recursive: true });
+    await fs.writeFile(path.join(childRoot, '.codex/context/sessions.jsonl'), `${JSON.stringify({
+      at: new Date().toISOString(), event: 'session-start', platform: 'claude', session_id: input.sessionId,
+    })}\n`);
+    return { sessionId: input.sessionId, root: childRoot, state: 'prepared' };
   });
   const creation = await creationStore.requestSessionCreation(creationHuman, { operationId: 'backend-main-ref', templateSessionId: 's', name: 'Creation probe' });
   await waitFor(async () => (await creationStore.sessionCreations(creationHuman))
-    .find(item => item.id === creation.id)?.state === 'failed');
+    .find(item => item.id === creation.id)?.state === 'registered');
   assert.ok(creationCalls.length > 0);
-  assert.ok(creationCalls.every(call => call.input.id === creation.id && call.options.baseRef === 'refs/remotes/origin/main'));
+  assert.ok(creationCalls.every(call => call.input.id === creation.id && call.options.baseRef === 'refs/remotes/origin/main' && call.options.start === false));
+  assert.equal((await cloudAccess()).sessions.some(item => item.id === creation.sessionId), true);
   creationProbe.mock.restore();
   await fs.appendFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ session_id: 's3', event: 'session-start', platform: 'codex', thread_name: 'new-session' }) + '\n');
   const cli = path.resolve('scripts/workbench/cli.mjs');
