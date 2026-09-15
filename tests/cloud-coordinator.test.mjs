@@ -26,6 +26,8 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
   assert.match(prompt, /每个问题都必须调用一次 `ask_user`/);
   assert.match(prompt, /完整节点标题/);
+  assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
+  assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
   assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
   assert.match(prompt, /推荐不等于批准或派单/);
   assert.match(mount, /只问缺失的业务信息/);
@@ -715,6 +717,25 @@ test('Coordinator persists a human conversation and only retries a failed turn e
   await assert.rejects(restarted.submit({ ...input, text: '另一个请求' }), { code: 'ID_REUSED' });
 });
 
+test('Coordinator task tools cannot mistake conversation IDs for execution Sessions', async () => {
+  const prepare = coordinatorTools.find(tool => tool.name === 'prepare_task');
+  const sessions = coordinatorTools.find(tool => tool.name === 'list_sessions');
+  const conversations = coordinatorTools.find(tool => tool.name === 'list_conversations');
+  assert.ok(prepare.input_schema.properties.executionSessionId);
+  assert.equal(prepare.input_schema.properties.sessionId, undefined);
+  assert.match(prepare.input_schema.properties.executionSessionId.description, /Never use/);
+  assert.match(sessions.description, /executionSessionId/);
+  assert.match(conversations.description, /conversationId is never an executionSessionId/);
+
+  let readSession = '';
+  const execute = createCoordinatorExecutor({ readTask: async sessionId => { readSession = sessionId; return { id: 'task-1' }; } });
+  await assert.rejects(execute('read_task', { executionSessionId: 'item-aabb', taskId: 'task-1' }, { operationId: 'bad-item' }), /must be copied from list_sessions/);
+  await assert.rejects(execute('read_task', { executionSessionId: 'session:actual', taskId: 'task-1' }, { operationId: 'bad-conversation' }), /must be copied from list_sessions/);
+  await assert.rejects(execute('read_task', { sessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'legacy-field' }), /fields differ/);
+  await execute('read_task', { executionSessionId: 'actual-session', taskId: 'task-1' }, { operationId: 'valid' });
+  assert.equal(readSession, 'actual-session');
+});
+
 test('Coordinator tools pin approved routing and refuse stale Plan approval or human impersonation', async () => {
   const calls = [], current = { brief: { ref: 'brief', version: 'b1' }, plan: { ref: 'plan', version: 'p2' } };
   const execute = createCoordinatorExecutor({
@@ -725,7 +746,7 @@ test('Coordinator tools pin approved routing and refuse stale Plan approval or h
       return type === 'object.read' ? { content: { text: JSON.stringify({ v: 1, taskId: 'task-1', nodeIds: ['M1'], mainVersion: 'main-v1' }) } } : { ok: true };
     },
   });
-  const identity = { sessionId: 'session-1', taskId: 'task-1' };
+  const identity = { executionSessionId: 'session-1', taskId: 'task-1' };
   await execute('dispatch_task', { ...identity, briefRef: 'brief', briefVersion: 'b1' }, { operationId: 'op-1' });
   assert.deepEqual(calls.at(-1).payload.nodeIds, ['M1']);
   assert.equal(calls.at(-1).payload.mode, 'reviewed');
@@ -743,7 +764,7 @@ test('Coordinator can resume an interrupted task only with the current version a
     readTask: async () => current,
     exchange: async (sessionId, id, type, payload) => { calls.push({ sessionId, id, type, payload }); return { ok: true }; },
   });
-  const result = await execute('resume_task', { sessionId: 'session-1', taskId: 'task-1', reason: '用户明确要求继续' }, { operationId: 'resume-op' });
+  const result = await execute('resume_task', { executionSessionId: 'session-1', taskId: 'task-1', reason: '用户明确要求继续' }, { operationId: 'resume-op' });
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(calls, [{ sessionId: 'session-1', id: 'resume-op', type: 'task.control', payload: {
     taskId: 'task-1', action: 'resume', expectedVersion: 'v7', data: { reason: '用户明确要求继续' },
@@ -787,7 +808,7 @@ test('Coordinator inbox resumes durable interrupted tasks after a Cloud restart'
 });
 
 test('Coordinator discovers only server-assigned Sessions and can read the Main root without guessing IDs', async () => {
-  const sessions = [{ id: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
+  const sessions = [{ executionSessionId: 'assigned-session', generation: 3, worktreeId: 'assigned-worktree' }];
   const execute = createCoordinatorExecutor({
     listSessions: async () => ({ sessions }),
     readMap: async nodeId => { assert.equal(nodeId, undefined); return { node: { id: 'root' }, version: 'v1' }; },
