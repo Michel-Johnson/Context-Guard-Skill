@@ -41,7 +41,9 @@ function isMeaningful(value) {
 }
 
 function relative(from, to) {
-  return path.posix.relative(path.posix.dirname(from), to) || path.posix.basename(to);
+  const target = path.posix.relative(path.posix.dirname(from), to) || path.posix.basename(to);
+  return target.split('/').map((part) => ['.', '..'].includes(part) ? part : encodeURIComponent(part)
+    .replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)).join('/');
 }
 
 function groupBy(items, keyOf) {
@@ -58,7 +60,7 @@ function groupBy(items, keyOf) {
 export function validateGeneratedLinks(files) {
   for (const [name, content] of files) {
     for (const match of content.matchAll(/\]\(([^)]+)\)/g)) {
-      const target = path.posix.normalize(path.posix.join(path.posix.dirname(name), match[1]));
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(name), decodeURIComponent(match[1])));
       assert(files.has(target), `${name}: missing linked file ${match[1]}`);
     }
   }

@@ -13,7 +13,7 @@ import { applyOperations, MapError, validate, restoreSessionWorkItemOperations }
 import { translateChanges, operationGrants } from '../shared/protocol-map.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
 import { memoryReadViews } from './memory-read-view.mjs';
-import { ensureFilesystemProjection, projectMemoryFile, writeProjectMemory } from './memory-filesystem.mjs';
+import { ensureFilesystemProjection, projectMemoryFile, projectMemoryLockFile, writeProjectMemory } from './memory-filesystem.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
 const validSessionId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\u0000-\u001f\u007f]/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
@@ -198,8 +198,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
   const project = configuration.projects?.[projectId];
   if (!project) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
-  const file = projectMemoryFile(configuration.dataDir, projectId);
-  const committed = await withFileLock(file + '.lock', async () => {
+  const committed = await withFileLock(projectMemoryLockFile(configuration.dataDir, projectId), async () => {
     const state = await readMemoryProject(configuration, projectId);
     state.closedSessions ||= {};
     const key = hash(`publish:${input.operationId}`), fingerprint = hash(encode(input));
@@ -247,8 +246,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
   validateOptions(configuration);
   if (!configuration.projects?.[projectId]) throw new MapError('NOT_FOUND', 'Memory project is not configured', 404);
   if (typeof input?.operationId !== 'string' || !input.operationId || input.operationId.length > 200) throw new MapError('INVALID_OPERATION', 'Stable operationId required');
-  const file = projectMemoryFile(configuration.dataDir, projectId);
-  const committed = await withFileLock(file + '.lock', async () => {
+  const committed = await withFileLock(projectMemoryLockFile(configuration.dataDir, projectId), async () => {
     const state = await readMemoryProject(configuration, projectId);
     const receiptKey = hash(`main-workbench:${input.operationId}`);
     const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
@@ -285,8 +283,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
 
 export async function commitSessionMap(configuration, projectId, sessionId, input, actor = { kind: 'human', sessionId: 'cloud-workbench' }, policy = null) {
   if (!validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
-  const file = projectMemoryFile(configuration.dataDir, projectId);
-  const committed = await withFileLock(file + '.lock', async () => {
+  const committed = await withFileLock(projectMemoryLockFile(configuration.dataDir, projectId), async () => {
     const state = await readMemoryProject(configuration, projectId);
     await policy?.authorize?.();
     state.closedSessions ||= {};
@@ -353,7 +350,6 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
       const credential = req.headers.authorization?.replace(/^Bearer /, '') || '';
       const admin = equal(credential, adminToken);
       if (!project || (!admin && (!project.token || !equal(credential, project.token)) && !await authorizeDevice?.({ credential, projectId, sessionId, scope, method: req.method }))) throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
-      const file = projectMemoryFile(dataDir, projectId);
       if (req.method === 'GET') {
         const state = scope === 'history' ? await readMemoryProject(configuration, projectId) : await readMemoryView(configuration, projectId);
         if (rawSession && sessionAction === 'changes') {
@@ -413,7 +409,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         const result = await publishSessionMemory(configuration, projectId, input, { kind: admin ? 'admin' : 'agent', sessionId: input.sessionId || '' });
         return send(200, result);
       }
-      const committed = await withFileLock(file + '.lock', async () => {
+      const committed = await withFileLock(projectMemoryLockFile(dataDir, projectId), async () => {
         const state = await readMemoryProject(configuration, projectId), key = hash(scope + ':' + input.operationId), fingerprint = hash(encode(input));
         state.closedSessions ||= {};
         if (scope === 'restore' && ['main', 'preferences'].includes(input.scope) && !admin) throw new MapError('FORBIDDEN', 'Main and preference restoration require publisher/admin authorization', 403);

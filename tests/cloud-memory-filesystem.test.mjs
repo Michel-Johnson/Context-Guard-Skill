@@ -9,8 +9,10 @@ import {
   legacyProjectMemoryFile,
   migrateProjectMemoryToFilesystemV2,
   projectMemoryFile,
+  projectMemoryLockFile,
   writeProjectMemory,
 } from '../scripts/cloud/memory-filesystem.mjs';
+import { withFileLock } from '../scripts/shared/io.mjs';
 import { readMemoryProject } from '../scripts/cloud/memory.mjs';
 import { memoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 
@@ -114,4 +116,31 @@ test('refuses to activate the same project twice', async (t) => {
   const value = await fixture(t);
   await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
   await assert.rejects(() => migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId), /already active/);
+});
+
+test('activation shares the legacy write lock and migrates the latest committed state', async (t) => {
+  const value = await fixture(t);
+  let migration;
+  await withFileLock(projectMemoryLockFile(value.dataDir, value.projectId), async () => {
+    migration = migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const next = state();
+    next.revision = 8;
+    await fs.writeFile(value.legacy, JSON.stringify(next));
+    await assert.rejects(fs.access(path.join(filesystemProjectDirectory(value.dataDir, value.projectId), 'FORMAT')));
+  });
+
+  const result = await migration;
+  assert.equal(result.revision, 8);
+  assert.equal(JSON.parse(await fs.readFile(result.activeFile, 'utf8')).revision, 8);
+});
+
+test('rejects Windows separator traversal before activating filesystem v2', async (t) => {
+  const value = await fixture(t);
+  const malicious = state();
+  malicious.main.memory.map.root.todos = [{ id: '..\\..\\escaped', title: 'escape', status: 'pending' }];
+  await fs.writeFile(value.legacy, JSON.stringify(malicious));
+
+  await assert.rejects(() => migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId), /Unsafe memory record path/);
+  await assert.rejects(fs.access(path.join(filesystemProjectDirectory(value.dataDir, value.projectId), 'FORMAT')));
 });

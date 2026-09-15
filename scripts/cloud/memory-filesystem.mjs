@@ -20,6 +20,10 @@ export function filesystemProjectDirectory(dataDir, projectId) {
   return path.join(projectMemoryDirectory(dataDir, projectId), 'filesystem-v2');
 }
 
+export function projectMemoryLockFile(dataDir, projectId) {
+  return path.join(projectMemoryDirectory(dataDir, projectId), 'memory.lock');
+}
+
 export function projectMemoryFile(dataDir, projectId) {
   const directory = filesystemProjectDirectory(dataDir, projectId);
   return fsSync.existsSync(path.join(directory, 'FORMAT'))
@@ -28,11 +32,19 @@ export function projectMemoryFile(dataDir, projectId) {
 }
 
 function safeRecordPath(root, name) {
-  const normalized = path.posix.normalize(String(name || ''));
+  const value = String(name || '');
+  if (value.includes('\\')) throw new Error(`Unsafe memory record path: ${name}`);
+  const normalized = path.posix.normalize(value);
   if (!normalized || normalized.startsWith('../') || normalized.includes('/../') || path.posix.isAbsolute(normalized)) {
     throw new Error(`Unsafe memory record path: ${name}`);
   }
-  return path.join(root, ...normalized.split('/'));
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, ...normalized.split('/'));
+  const relative = path.relative(resolvedRoot, target);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Unsafe memory record path: ${name}`);
+  }
+  return target;
 }
 
 async function writeFiles(root, files) {
@@ -132,26 +144,27 @@ export async function writeProjectMemory(memoryReadViews, dataDir, projectId, st
 export async function migrateProjectMemoryToFilesystemV2(dataDir, projectId) {
   const directory = filesystemProjectDirectory(dataDir, projectId);
   const marker = path.join(directory, 'FORMAT');
-  if (fsSync.existsSync(marker)) throw new Error('Filesystem v2 is already active for this project');
-
   const legacy = legacyProjectMemoryFile(dataDir, projectId);
-  const state = await readJSON(legacy);
-  const backupDir = path.join(projectMemoryDirectory(dataDir, projectId), 'backups');
-  await fs.mkdir(backupDir, { recursive: true });
-  const backup = path.join(backupDir, `memory-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  await fs.copyFile(legacy, backup, fsSync.constants.COPYFILE_EXCL);
-  await fs.mkdir(directory, { recursive: true });
-  await atomicWrite(path.join(directory, 'runtime-state.json'), encode(state));
-  await writeFilesystemProjection(dataDir, projectId, state);
-  await atomicWrite(marker, `${FORMAT}\n`);
-  return {
-    format: FORMAT,
-    projectId,
-    activeFile: path.join(directory, 'runtime-state.json'),
-    content: path.join(directory, 'content'),
-    backup,
-    revision: state.revision || 0,
-    mainVersion: state.main?.version || null,
-    sessions: Object.keys(state.sessions || {}).length,
-  };
+  return withFileLock(projectMemoryLockFile(dataDir, projectId), async () => {
+    if (fsSync.existsSync(marker)) throw new Error('Filesystem v2 is already active for this project');
+    const state = await readJSON(legacy);
+    const backupDir = path.join(projectMemoryDirectory(dataDir, projectId), 'backups');
+    await fs.mkdir(backupDir, { recursive: true });
+    const backup = path.join(backupDir, `memory-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    await fs.copyFile(legacy, backup, fsSync.constants.COPYFILE_EXCL);
+    await fs.mkdir(directory, { recursive: true });
+    await atomicWrite(path.join(directory, 'runtime-state.json'), encode(state));
+    await writeFilesystemProjection(dataDir, projectId, state);
+    await atomicWrite(marker, `${FORMAT}\n`);
+    return {
+      format: FORMAT,
+      projectId,
+      activeFile: path.join(directory, 'runtime-state.json'),
+      content: path.join(directory, 'content'),
+      backup,
+      revision: state.revision || 0,
+      mainVersion: state.main?.version || null,
+      sessions: Object.keys(state.sessions || {}).length,
+    };
+  });
 }

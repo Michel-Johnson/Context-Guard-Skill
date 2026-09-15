@@ -92,3 +92,12 @@ test('adds stable ids when sibling directory names collide', () => {
   assert(files.has('nodes/前端-module/提交按钮-node--N1/index.md'));
   assert(files.has('nodes/前端-module/提交按钮-node--N3/index.md'));
 });
+
+test('encodes parentheses in generated Markdown links', () => {
+  const input = snapshot();
+  input.memory.map.root.children[0].title = '提交 API (v2)';
+  const { files } = buildFilesystemV2(input);
+  const root = files.get('nodes/前端-module/index.md');
+
+  assert.match(root, /%28v2%29-node\/index\.md/);
+});
