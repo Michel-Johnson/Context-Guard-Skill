@@ -4625,10 +4625,11 @@ async function installCoordinatorPanel(sync){
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
+  const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
   const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
   const composeActions=document.createElement('div');composeActions.className='coordinator-compose-actions';
   const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.textContent='新建 Session';creationToggle.setAttribute('aria-expanded','false');
-  composeActions.append(send,retry,creationToggle);form.append(input,composeActions);
+  composeActions.append(retry,creationToggle);form.append(inputShell,composeActions);
   const creation=document.createElement('section');creation.className='coordinator-session-create';creation.hidden=true;
   const creationForm=document.createElement('form'),creationName=document.createElement('input'),creationTemplate=document.createElement('select');
   creationName.required=true;creationName.maxLength=200;creationName.placeholder='Session 名称';creationName.setAttribute('aria-label','新 Session 名称');
@@ -4850,7 +4851,7 @@ async function installCoordinatorPanel(sync){
     if(!pending||id!==selected) await refresh();
   };
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
-  input.addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing&&!send.disabled){event.preventDefault();form.requestSubmit();}});
+  input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);});
   panel.addEventListener('toggle',()=>{if(panel.open) void refresh();else clearTimeout(timer);});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});

@@ -928,7 +928,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-message { margin: 0 0 22px; }
 #coordinator-panel .coordinator-message.user { max-width: 86%; margin-left: auto; }
 #coordinator-panel .coordinator-question { margin: 12px 0; padding: 14px; background: #faf3dc; border-radius: 12px; border: 1px solid #dccfaa; }
-#coordinator-panel .coordinator-question textarea { margin-top: 12px; min-height: 64px; }
+#coordinator-panel .coordinator-answer-compose { position: relative; margin-top: 12px; }
+#coordinator-panel .coordinator-answer-compose textarea { min-height: 64px; padding: 10px 74px 44px 12px; }
+#coordinator-panel .coordinator-answer-compose button,#coordinator-panel .coordinator-input-shell > button { position: absolute; right: 10px; bottom: 10px; margin: 0; background: #ffe87e; font-weight: 600; }
 #coordinator-panel .coordinator-choices button[aria-pressed=true] { background: #ffe87e; border-color: #766126; }
 #coordinator-panel .coordinator-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 #coordinator-panel .coordinator-actions p { flex-basis: 100%; margin: 0; color: #746e5e; font-size: 13px; }
@@ -974,6 +976,8 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel form { padding-top: 12px; margin-top: 4px; }
 #coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 78px; max-height: 160px; padding: 10px 12px; resize: vertical; font: inherit; }
 #coordinator-panel textarea:focus { outline: 2px solid #bba759; outline-offset: 1px; }
+#coordinator-panel .coordinator-input-shell { position: relative; }
+#coordinator-panel .coordinator-input-shell textarea { padding: 10px 74px 44px 12px; }
 #coordinator-panel .coordinator-compose-actions { display: flex; flex-wrap: wrap; align-items: center; }
 #coordinator-panel .coordinator-session-create { margin-top: 12px; padding: 12px; border: 1px solid #dccfaa; border-radius: 12px; background: #faf3dc; }
 #coordinator-panel .coordinator-session-create form { padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.8fr); gap: 8px; }
