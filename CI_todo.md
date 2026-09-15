@@ -267,6 +267,7 @@
 
 ## 架构与测试治理
 
+- [x] Coordinator 默认回复由服务端出口强制限制为 3 句、120 字；历史消息、流式预览、开放问题、直答与工具调用后回答共用同一契约，显式要求详细时放宽。正式测试覆盖模拟调用全链，另提供使用服务器私有 provider 文件的真实 DeepSeek 直答与工具调用烟测（`tests/cloud-coordinator.test.mjs`）。
 - [x] 明确开发请求不重复索要计划确认；Context Guard 控制命令可经 Node/Python 正式入口和字面量 stdin 安全通道自举；PR 合入 main 后强制从合并版本更新本机 Skill，并通过安装入口执行真实功能验收（`tests/hook-lifecycle.test.mjs`）
 - [x] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层，并同时覆盖本地 CSP、Cloud 静态路由和官网演示构建（`prototype/workbench.css`、`prototype/workbench-fixtures.js`、`prototype/workbench-app.js`）
 - [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
