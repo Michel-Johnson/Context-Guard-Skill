@@ -14,6 +14,15 @@ import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
 
+test('readJSON streams UTF-8 files above the direct-read threshold', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-large-json-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'state.json');
+  await fs.writeFile(file, JSON.stringify({ text: '中文内容', values: [1, 2, 3] }));
+
+  assert.deepEqual(await readJSON(file, undefined, { maxReadFileBytes: 1 }), { text: '中文内容', values: [1, 2, 3] });
+});
+
 test('Cloud Session activity expires without a recent Session event', () => {
   const now = Date.parse('2026-09-06T08:00:00.000Z');
   assert.equal(cloudSessionActivity({ lifecycleEvent: 'user-prompt-submit', lastSeen: '2026-09-06T07:59:00.000Z' }, now), 'active');

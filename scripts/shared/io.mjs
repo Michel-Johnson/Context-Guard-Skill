@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
@@ -52,8 +53,19 @@ export async function withFileLock(file, action, { reclaimGuard = false } = {}) 
   try { return await action(); }
   finally { await handle.close(); await fs.unlink(file); }
 }
-export async function readJSON(file, fallback) {
-  try { return JSON.parse(await fs.readFile(file, 'utf8')); }
+async function readUTF8(file, maxReadFileBytes) {
+  const info = await fs.stat(file);
+  if (info.size <= maxReadFileBytes) return fs.readFile(file, 'utf8');
+  return new Promise((resolve, reject) => {
+    let value = '';
+    const stream = createReadStream(file, { encoding: 'utf8' });
+    stream.on('data', chunk => { value += chunk; });
+    stream.on('error', reject);
+    stream.on('end', () => resolve(value));
+  });
+}
+export async function readJSON(file, fallback, { maxReadFileBytes = 128 * 1024 * 1024 } = {}) {
+  try { return JSON.parse(await readUTF8(file, maxReadFileBytes)); }
   catch (e) { if (e.code === 'ENOENT' && fallback !== undefined) return fallback; throw e; }
 }
 export async function atomicWrite(file, content, { deadlineMs = 350, beforeReplace = async () => {} } = {}) {
