@@ -2369,7 +2369,11 @@ function exitBugPath(restore){
   fitView();
 }
 function openBugPanel(open, kind=activeWorkPanelKind){
-  if(open) document.getElementById("tray").classList.remove("open");
+  if(open){
+    document.getElementById("tray").classList.remove("open");
+    const coordinator=document.getElementById('coordinator-panel');
+    if(coordinator?.open)coordinator.setOpen(false);
+  }
   activeWorkPanelKind = kind;
   document.body.classList.toggle("bugs-open", !!open);
   document.getElementById("bug-panel").classList.toggle("open", !!open);
@@ -2468,7 +2472,7 @@ function promptTodoAssignment(node,todo=null){ return promptWorkAssignment(node,
 async function saveCoordinatorIntake(node,item,kind){
   renderAll();
   const panel=document.getElementById('coordinator-panel');
-  if(panel) panel.open=true;
+  if(panel) panel.setOpen(true);
   try{
     await workbenchSync.flush();
     window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:node.id,itemId:item.id,kind}}));
@@ -3426,6 +3430,8 @@ function renderMap(){
 }
 function onNodeClick(e, n){
   if(!n || mapTransitioning) return;
+  const coordinator=document.getElementById('coordinator-panel');
+  if(coordinator?.open)coordinator.setOpen(false);
   e.stopPropagation();
   if(window.__CG_SERVER?.root==="cloud:overview" && n.cloudProjectId){
     location.href="/projects/"+encodeURIComponent(n.cloudProjectId); return;
@@ -3646,6 +3652,8 @@ function renderDetail(){
   liveSelected();
   let path = pathOf(getNode(selectedId)) || findPath(selectedId);
   const el = document.getElementById("detail");
+  const coordinatorPanel = document.getElementById("coordinator-panel");
+  if(coordinatorPanel?.open && coordinatorPanel.parentElement===el) return;
   if(!path || !path.length){
     selectedId = liveViewRoot().id;
     path = findPath(selectedId) || [data];
@@ -4655,9 +4663,10 @@ async function installCoordinatorPanel(sync){
   let conversationFragments;
   try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
   catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
-  const panel=document.createElement('details');
+  const panel=document.createElement('section');
   panel.id='coordinator-panel';
-  const heading=document.createElement('summary'); heading.textContent='Coordinator';
+  panel.open=false;
+  const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
   const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.textContent='正在回复…';typing.hidden=true;
@@ -4681,9 +4690,22 @@ async function installCoordinatorPanel(sync){
   const creationList=document.createElement('ul');
   creationForm.append(creationName,creationTemplate,creationButton,creationClose);creation.append(creationForm,creationStatus,creationList);
   panel.append(heading,status,messages,typing,form,creation);document.body.append(panel);
+  const inspector=document.getElementById('detail');
+  const setPanelOpen=open=>{
+    panel.open=open;panel.toggleAttribute('open',open);
+    if(open){
+      openBugPanel(false);document.getElementById('tray').classList.remove('open');
+      inspector.append(panel);inspector.classList.add('coordinator-open');
+    }else{
+      clearTimeout(timer);inspector.classList.remove('coordinator-open');document.body.append(panel);renderDetail();
+    }
+    if(launcher)launcher.setAttribute('aria-expanded',String(open));
+  };
+  panel.setOpen=setPanelOpen;
+  heading.addEventListener('click',()=>setPanelOpen(false));
   if(launcher){
     launcher.hidden=false;
-    launcher.onclick=()=>{panel.open=!panel.open;launcher.setAttribute('aria-expanded',String(panel.open));};
+    launcher.onclick=()=>{const open=!panel.open;setPanelOpen(open);if(open)void refresh();};
   }
   const creationKey='cg-session-create:'+location.pathname;
   let creationPending=null,creatingSession=false,templateKey='';
@@ -4750,10 +4772,10 @@ async function installCoordinatorPanel(sync){
     drafts.set(selected,{text:input.value,pending});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;
     lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
-    panel.open=true;if(load)void refresh();
+    setPanelOpen(true);if(load)void refresh();
   };
   window.addEventListener('coordinator-open-item',async event=>{
-    panel.open=true;status.textContent='';
+    setPanelOpen(true);status.textContent='';
     try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
     catch(error){status.textContent='无法打开事项对话：'+error.message;}
   });
@@ -4898,7 +4920,6 @@ async function installCoordinatorPanel(sync){
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);});
-  panel.addEventListener('toggle',()=>{if(launcher)launcher.setAttribute('aria-expanded',String(panel.open));if(panel.open) void refresh();else clearTimeout(timer);});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});
   window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
 }
