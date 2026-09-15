@@ -71,14 +71,18 @@ test('Prompt upgrades apply at new turns and recover a pre-model rejection witho
   assert.equal(calls.length, 3);
 });
 
-test('Main, Session and item conversations preserve independent identities across restart', async t => {
+test('Main, Coordinator Session, execution Session and item conversations preserve independent identities across restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversations-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const registry = new CoordinatorConversations(directory);
+  const chat = await registry.createChat('new-chat-request');
+  assert.equal(await registry.createChat('new-chat-request'), chat, 'conversation creation is idempotent');
+  assert.equal((await registry.get(chat)).scope, 'chat');
   const scoped = await registry.ensureSession('session-one', 'First Session');
   assert.equal(scoped, 'session:session-one');
   assert.equal((await registry.get(scoped)).sessionId, 'session-one');
   assert.notEqual(registry.conversationFile('main'), registry.conversationFile('legacy'));
+  assert.notEqual(registry.conversationFile(chat), registry.conversationFile('main'));
   assert.notEqual(registry.conversationFile(scoped), registry.conversationFile('main'));
   const a = await registry.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', title: 'First' } });
   const b = await registry.ensure({ nodeId: 'T0', kind: 'bug', item: { id: '1', title: 'Second' } });
@@ -89,7 +93,7 @@ test('Main, Session and item conversations preserve independent identities acros
   const restored = new CoordinatorConversations(directory);
   assert.equal(await restored.owner('session', 'task'), a);
   assert.equal(await restored.owner('other-session', 'task'), 'legacy');
-  assert.deepEqual((await restored.list()).slice(0, 3).map(item => item.id), ['main', 'legacy', scoped]);
+  assert.deepEqual((await restored.list()).slice(0, 4).map(item => item.id), ['main', 'legacy', chat, scoped]);
   await assert.rejects(restored.get('../conversation'), { code: 'NOT_FOUND' });
   const recreated = await restored.ensure({ nodeId: 'T0', kind: 'todo', item: { id: '1', instanceId: 'new-instance', title: 'Recreated' } });
   assert.notEqual(recreated, a, 'recreated display IDs must not reuse the old conversation');

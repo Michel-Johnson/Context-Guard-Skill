@@ -368,12 +368,12 @@ try {
     coordinatorState.approvals[0].pending = false;
     return route.fulfill({ json: { receiptId: 'human-receipt' } });
   });
-  const sessionCreationRequests = [];
-  await page.route(/\/api\/coordinator\/sessions(?:\?|$)/, async route => {
-    const request = route.request().postDataJSON();sessionCreationRequests.push(request);
-    if(sessionCreationRequests.length===1)return route.abort();
-    coordinatorState.sessionCreations.push({ ...request, state: 'pending' });
-    return route.fulfill({ status: 202, json: { ...request, state: 'pending' } });
+  const conversationCreationRequests = [];
+  await page.route(/\/api\/coordinator\/conversations\/new(?:\?|$)/, async route => {
+    const request = route.request().postDataJSON();conversationCreationRequests.push(request);
+    if(conversationCreationRequests.length===1)return route.abort();
+    coordinatorState.conversations.push({id:'chat-created',scope:'chat',title:'Coordinator Session 1'});
+    return route.fulfill({ status: 201, json: { id: 'chat-created' } });
   });
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
@@ -391,9 +391,9 @@ try {
       coordinatorState = { ...coordinatorState, status: 'error', error: { code: 'MODEL_TIMEOUT' }, retryInput: submissions[0] };
       return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
     }
-    coordinatorReads.push(new URL(route.request().url()).searchParams.get('conversation'));
+    const readConversation=new URL(route.request().url()).searchParams.get('conversation');coordinatorReads.push(readConversation);
     if(coordinatorReadFailure){coordinatorReadFailure=false;return route.abort();}
-    await route.fulfill({ json: coordinatorState });
+    await route.fulfill({ json: readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:coordinatorState });
   });
   await page.reload(); await synchronized();
   const coordinator = page.locator('#coordinator-panel');
@@ -408,7 +408,7 @@ try {
   assert.equal(await coordinator.evaluate(el => getComputedStyle(el).position), 'static', 'Coordinator is not a floating overlay');
   assert.equal(await page.locator('#detail').evaluate(el => el.classList.contains('coordinator-open')), true);
   await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation === 'main');
-  const createSessionAction=coordinator.getByRole('button',{name:'新建 Session',exact:true});
+  const createSessionAction=coordinator.getByRole('button',{name:'新建 Coordinator Session',exact:true});
   assert.equal(await createSessionAction.textContent(),'＋','new Session uses a symbol-only control');
   assert.equal(await createSessionAction.evaluate(el=>el.parentElement?.classList.contains('coordinator-toolbar')),true,'new Session lives in the Coordinator toolbar');
   const historyAction=coordinator.getByRole('button',{name:'历史 Session',exact:true});
@@ -477,20 +477,16 @@ try {
   await page.locator('#btn-bugs').click();
   await page.locator('#btn-coordinator').click();
   record('Coordinator shares the node inspector and restores its previous detail view');
-  await coordinator.getByRole('button',{name:'新建 Session',exact:true}).click();
-  await coordinator.getByLabel('新 Session 名称').fill('博客内容开发');
-  await coordinator.getByLabel('执行环境模板').selectOption('developer-template');
-  await coordinator.getByRole('button',{name:'创建 Session',exact:true}).click();
-  await coordinator.getByText(/尚未确认创建/).waitFor();
-  await coordinator.getByRole('button',{name:'重试创建',exact:true}).click();
-  await coordinator.getByText(/等待本机创建/).waitFor();
-  assert.equal(sessionCreationRequests.length,2);
-  assert.equal(sessionCreationRequests[0].operationId,sessionCreationRequests[1].operationId,'uncertain creation retries preserve the operation ID');
-  assert.equal(sessionCreationRequests[1].name,'博客内容开发');
-  assert.equal(sessionCreationRequests[1].templateSessionId,'developer-template');
-  await coordinator.getByRole('button',{name:'取消',exact:true}).click();
-  assert.equal(await coordinator.locator('.coordinator-session-create').isVisible(),false);
-  record('Coordinator exposes a durable new Session button and retry flow');
+  await createSessionAction.click();
+  await coordinator.getByText(/新建 Coordinator Session 尚未确认/).waitFor();
+  await createSessionAction.click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel')?.dataset.conversation==='chat-created');
+  assert.equal(conversationCreationRequests.length,2);
+  assert.equal(conversationCreationRequests[0].id,conversationCreationRequests[1].id,'uncertain creation retries preserve the operation ID');
+  assert.equal(await coordinator.locator('.coordinator-session-create').count(),0,'Coordinator Session creation never opens an execution environment form');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'');
+  assert.equal(await coordinator.locator('.coordinator-messages').textContent(),'');
+  record('Coordinator creates a durable blank chat Session without creating an execution Session');
   const navigationVersion = await syncVersion();
   await page.evaluate(async () => {
     const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
@@ -703,7 +699,7 @@ try {
   assert.equal(await coordinator.locator('textarea').inputValue(),'Bug 独立草稿');
   record('Coordinator intake saves TODO and Bug without selecting or dispatching a Session');
 
-  assert.equal(await coordinator.getByRole('button',{name:'新建 Session',exact:true}).count(),1);
+  assert.equal(await coordinator.getByRole('button',{name:'新建 Coordinator Session',exact:true}).count(),1);
   assert.equal(await coordinator.getByLabel('Coordinator 事项对话').count(),0);
   assert.equal(await coordinator.getByText(/运行记录/).count(),0);
   record('Coordinator hides removed controls while per-item conversation entry remains usable');
