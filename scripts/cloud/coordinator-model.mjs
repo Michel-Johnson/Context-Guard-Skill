@@ -2,8 +2,8 @@ import { hash } from '../shared/io.mjs';
 
 const problem = (code, message) => Object.assign(new Error(message), { code });
 export const correctableToolError = code => ['INVALID_ARGUMENT', 'INVALID_INPUT', 'NOT_FOUND', 'FORBIDDEN', 'CONFLICT', 'VERSION_CONFLICT'].includes(code);
-const failedTool = code => ({ isError: true, result: { error: { code,
-  message: '工具未成功。先读取当前权威状态并核对原始 ID/版本；不得猜测 ID、扩大权限或重复未知写入。' } } });
+const failedTool = (code, toolHint) => ({ isError: true, result: { error: { code,
+  message: toolHint || '工具未成功。先读取当前权威状态并核对原始 ID/版本；不得猜测 ID、扩大权限或重复未知写入。' } } });
 const toolReply = (call, receipt) => ({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(receipt.result), ...(receipt.isError ? { is_error: true } : {}) });
 
 const timeoutProblem = () => problem('MODEL_TIMEOUT', 'Coordinator model timed out');
@@ -175,7 +175,7 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
     await save(state);
     return state;
   }
-  const responses = []; let failed = false;
+  const responses = []; let failed = false, transferred = false;
   const visible = [];
   for (const call of next.content.filter(block => block.type === 'tool_use')) {
     if (!tools.some(tool => tool.name === call.name)) throw problem('TOOL_FORBIDDEN', 'Coordinator requested an unavailable tool');
@@ -184,12 +184,12 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
     let receipt = state.toolReceipts[operationId];
     if (receipt && receipt.fingerprint !== fingerprint) throw problem('TOOL_ID_REUSED', 'Coordinator reused a tool identifier with different input');
     if (!receipt) {
-      if (failed) receipt = { fingerprint, ...failedTool('NOT_EXECUTED') };
+      if (failed || transferred) receipt = { fingerprint, ...failedTool('NOT_EXECUTED') };
       else {
         try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
         catch (error) {
           if (!correctableToolError(error.code)) throw error;
-          receipt = { fingerprint, ...failedTool(error.code) };
+          receipt = { fingerprint, ...failedTool(error.code, error.toolHint) };
         }
       }
       state.toolReceipts[operationId] = receipt;
@@ -197,12 +197,13 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
     }
     if (receipt.isError) failed = true;
     if (!receipt.isError && ['node-references', 'conversation-mounted', 'map-action'].includes(receipt.result?.kind)) visible.push(receipt.result);
+    if (!receipt.isError && receipt.result?.kind === 'conversation-mounted') transferred = true;
     responses.push(toolReply(call, receipt));
   }
   if (visible.length) state.messages.at(-1).actions = visible;
   state.messages.push({ role: 'user', content: responses });
   state.pending = null;
-  state.status = !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';
+  state.status = transferred || !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';
   await save(state);
   return state;
 }

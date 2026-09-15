@@ -292,6 +292,7 @@ export class CoordinatorService {
         state.promptVersion = version;
       };
       if (state.requests[id] && state.requests[id] !== fingerprint) throw error('ID_REUSED', 'Conversation request ID differs');
+      if (this.running && state.requests[id] === fingerprint && !retry) return;
       if (this.running) throw error('COORDINATOR_BUSY', 'Coordinator is processing the previous turn');
       if (state.activeTurnId && state.activeTurnId !== id) {
         if (source !== 'human' || state.status !== 'error' || !settleRejectedTools(state)) throw error('COORDINATOR_BUSY', 'Preserve the original turn until its outcome is known');

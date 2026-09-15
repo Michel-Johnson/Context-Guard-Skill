@@ -142,6 +142,24 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.doesNotMatch(prompt + mount, /没有对应节点就问用户|问清正确节点后改挂/);
 });
 
+test('Mount handoff ends the source turn and stale requirements expose a static correction hint', async () => {
+  const mount = { type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {} };
+  let later = 0;
+  const mounted = await coordinatorStep({ turnId: 'mount-turn', state: { messages: [], toolReceipts: {} },
+    model: { next: async () => ({ stop: 'tool_use', content: [mount, { type: 'tool_use', id: 'later', name: 'prepare_task', input: {} }] }) },
+    system: 'test', tools: coordinatorTools, save: async () => {}, execute: async name => {
+      if(name === 'mount_conversation') return { kind: 'conversation-mounted', conversationId: 'item-test' };
+      later++; return {};
+    } });
+  assert.equal(mounted.status, 'waiting-for-user'); assert.equal(later, 0);
+  const execute = createCoordinatorExecutor({ readMap: async () => ({ version: 'new-main' }) });
+  const result = await coordinatorStep({ turnId: 'stale-turn', state: { messages: [], toolReceipts: {} },
+    model: { next: async () => ({ stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task',
+      input: { taskId: 'TD-test', text: 'task', acceptance: 'works', nodeIds: ['N1'], mainVersion: 'old-main' } }] }) },
+    system: 'test', tools: coordinatorTools, save: async () => {}, execute });
+  assert.match(result.messages.at(-1).content[0].content, /Main changed/);
+});
+
 test('Coordinator public replies preserve complete direct, tool, question and streaming content', async t => {
   const long = '这是结论。'.repeat(40);
 

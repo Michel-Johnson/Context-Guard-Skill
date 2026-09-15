@@ -184,6 +184,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const protocolMap = new ProtocolMap(path.join(project.sharedDir, 'interface-v2', 'map-intents'));
   const backendPrincipal = { repositoryId: project.projectId, deviceId: project.projectId, agentId: project.projectId, role: 'device' };
   let device;
+  let deviceHeartbeatTimer = null, deviceHeartbeatRunning = null, deviceHeartbeatStopping = false;
   const ciConnections = new Map();
   const ciRetries = new Map();
   const ciChannel = (sessionId, connection) => {
@@ -212,6 +213,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const config = await readJSON(memoryConfigPath(project), null);
     if (!config?.url) return null;
     if (!device || device.origin !== config.url) {
+      clearInterval(deviceHeartbeatTimer); deviceHeartbeatTimer = null;
+      await deviceHeartbeatRunning;
       await device?.close();
       device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
     }
@@ -293,6 +296,26 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
       },
     });
+    if (await device.connected() && !deviceHeartbeatTimer) {
+      const beat = () => {
+        if (deviceHeartbeatRunning || deviceHeartbeatStopping) return;
+        deviceHeartbeatRunning = (async () => {
+          const request = await device.runtime.prepare();
+          const response = await fetch(new URL('/api/v2/heartbeat', request.origin), {
+            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ credential: request.credential, message: request.message }]),
+          });
+          if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) protocolFail('UNAVAILABLE', 'Device heartbeat endpoint unavailable');
+          const replies = await response.json(), reply = Array.isArray(replies) && replies.find(item => item?.id === request.message.id);
+          if (!reply || typeof reply.ok !== 'boolean') protocolFail('UNAVAILABLE', 'Device heartbeat receipt is invalid');
+          device.runtime.accept(reply);
+          device.lastError = null;
+        })().catch(error => { device.lastError = error.code || 'UNAVAILABLE'; })
+          .finally(() => { deviceHeartbeatRunning = null; });
+      };
+      deviceHeartbeatTimer = setInterval(beat, 5000); deviceHeartbeatTimer.unref(); beat();
+    }
     await ensureDeviceService();
     return device;
   };
@@ -598,7 +621,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (!direct || req.headers.origin || req.headers.authorization !== `Bearer ${adminToken}`) throw new MapError('UNAUTHORIZED', 'Requires device service credential', 401);
           const connected = await projectDevice();
           if (!connected?.runtime?.prepare) throw new MapError('UNAVAILABLE', 'Cloud connection unavailable', 503);
-          if (req.method === 'GET') return send(res, 200, await connected.runtime.prepare());
+          if (req.method === 'GET') return send(res, 200, { ...await connected.runtime.prepare(), lastError: connected.lastError || null });
           if (req.method === 'POST') { connected.runtime.accept(await body(req)); return send(res, 200, { accepted: true }); }
           throw new MapError('INVALID_ARGUMENT', 'Use GET or POST', 400);
         }
@@ -1082,7 +1105,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         await refreshing?.catch(() => {});
         stopAccessWatch();
         stopCloudWatch();
-        await device?.close();
+        clearInterval(deviceHeartbeatTimer); deviceHeartbeatTimer = null;
+        deviceHeartbeatStopping = true;
+        await deviceHeartbeatRunning; await device?.close();
         // Stop accepting reconnects before draining events or slow projections.
         const disconnected = new Promise((resolve, reject) => {
           server.close(error => error ? reject(error) : resolve());

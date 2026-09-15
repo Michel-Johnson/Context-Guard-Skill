@@ -225,9 +225,10 @@ export class ProtocolStore extends EventEmitter {
       if (changes.stage && changes.stage !== task.stage && !transitions[task.stage]?.includes(changes.stage)) return task;
       if (reserveLimit !== undefined) {
         if (task.stage !== 'queued') return task;
-        const active = Object.values(state.projectTasks).filter(item => item.repositoryId === principal.repositoryId && ['creating', 'starting'].includes(item.stage)).length
-          + Object.values(state.tasks).filter(item => item.repositoryId === principal.repositoryId && item.busy).length;
-        if (active >= reserveLimit) return task;
+        const active = Object.values(state.projectTasks).filter(item => item.repositoryId === principal.repositoryId && ['creating', 'starting', 'dispatched'].includes(item.stage)).length;
+        if (active >= reserveLimit) {
+          task.error = 'WAITING_CAPACITY'; task.updatedAt = new Date().toISOString(); return task;
+        }
       }
       Object.assign(task, structuredClone(changes), { updatedAt: new Date().toISOString() });
       return task;
