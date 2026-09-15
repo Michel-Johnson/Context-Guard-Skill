@@ -6,10 +6,19 @@ import { validateMessage, payloadRules, canonical, errorReply } from '../scripts
 const catalog = JSON.parse(await fs.readFile(new URL('../docs/interface-contract-v2.json', import.meta.url), 'utf8'));
 const noSession = ['auth.open', 'auth.close', 'sync.heartbeat', 'session.bind', 'main.structure.patch'];
 const message = item => ({ v: 2, id: 'request-1', type: item.type, ...(!noSession.includes(item.type) ? { session: { id: 'session-1', generation: 1 } } : {}), payload: structuredClone(item.payload) });
+const sourceFiles = async directory => {
+  const files = [];
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const target = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
+    if (entry.isDirectory()) files.push(...await sourceFiles(target));
+    else if (entry.isFile()) files.push(target);
+  }
+  return files;
+};
 test('shared contracts have no dependency on either service and install excludes demos', async () => {
-  for (const file of await fs.readdir(new URL('../scripts/shared/', import.meta.url))) {
-    const source = await fs.readFile(new URL('../scripts/shared/' + file, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /(?:from\s*|import\s*\()['"][^'"]*(?:workbench|cloud|prototype)\//, file);
+  for (const file of await sourceFiles(new URL('../scripts/shared/', import.meta.url))) {
+    const source = await fs.readFile(file, 'utf8');
+    assert.doesNotMatch(source, /(?:from\s*|import\s*\()['"][^'"]*(?:workbench|cloud|prototype)\//, file.pathname);
   }
   for (const file of ['server.mjs', 'memory.mjs', 'memory-read-view.mjs', 'protocol-auth.mjs', 'task-review.mjs']) {
     const source = await fs.readFile(new URL('../scripts/cloud/' + file, import.meta.url), 'utf8');
