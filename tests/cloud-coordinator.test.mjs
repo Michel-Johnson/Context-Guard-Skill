@@ -108,9 +108,13 @@ test('Cloud project approval creates a fresh Session and dispatches once after a
   const creation = creating.sessionCreations[0];
   assert.notEqual(creation.sessionId, 'template');
   await message({ id: 'bind-fresh', type: 'session.bind', payload: { sessionId: creation.sessionId, worktreeId: 'fresh-tree', agentId: creation.sessionId, expectedBindingVersion: '' } });
+  const advancedMain = JSON.parse(await fs.readFile(memoryFile, 'utf8'));
+  advancedMain.main.version = 'main-2';
+  await fs.writeFile(memoryFile, JSON.stringify(advancedMain));
   await message({ id: 'heartbeat-fresh', type: 'sync.heartbeat', payload: { creationResults: [], sessions: [{ id: creation.sessionId, generation: 1, ackedSeq: 0, execution: { status: 'stopped', at: new Date().toISOString() } }] } });
   const dispatched = await poll(state => state.projectTasks?.some(task => task.stage === 'dispatched'));
   assert.equal(dispatched.projectTasks[0].sessionId, creation.sessionId);
+  assert.equal(dispatched.projectTasks[0].mainVersion, 'main-2');
   await post(endpoint + '/approval', approve);
   const queue = await message({ id: 'read-queue', type: 'sync.read', session: { id: creation.sessionId, generation: 1 }, payload: { afterSeq: 0, limit: 100 } });
   assert.equal(queue.data.messages.filter(item => item.message.type === 'task.assign').length, 1);

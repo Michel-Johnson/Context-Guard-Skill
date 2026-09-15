@@ -13,6 +13,18 @@ const git = async (root, ...args) => (await exec('git', args, { cwd: root, windo
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const alive = pid => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
+async function attestCreatedSession(root, sessionId) {
+  const file = path.join(root, '.codex/context/sessions.jsonl');
+  await withFileLock(file + '.lock', async () => {
+    const text = await fs.readFile(file, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
+    if (text.split('\n').some(line => {
+      try { return JSON.parse(line).session_id === sessionId; } catch { return false; }
+    })) return;
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.appendFile(file, `${JSON.stringify({ at: new Date().toISOString(), event: 'session-start', platform: 'claude', session_id: sessionId,
+      source: 'claude-runtime-provision', worktree_root: root })}\n`);
+  });
+}
 const providerKeys = new Set(['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_ATTRIBUTION_HEADER']);
 function verifyRecovery(active, deliveryId) {
   if (!deliveryId || active?.id !== deliveryId || active.state !== 'interrupted') fail('RECOVERY_NOT_AVAILABLE', 'Recovery does not match the active interrupted delivery');
@@ -135,8 +147,10 @@ export class ClaudeRuntime {
         await atomicWrite(path.join(target, 'settings.json'), encode(relocate(settings)));
         await this.configure(request.sessionId, { ...template.config, root, configDir: target,
           systemPromptFile: template.config.systemPromptFile ? relocate(template.config.systemPromptFile) : undefined,
-          name: request.name.trim(), resumeExisting: false, allowSessionCreation: false });
+          name: request.name.trim(), resumeExisting: false, allowSessionCreation: false,
+          permissionMode: 'bypassPermissions', isolated: true });
       }
+      await attestCreatedSession(root, request.sessionId);
       const prior = await readJSON(this.jobFile(request.sessionId, `create:${request.id}`), null);
       if (prior && ['failed', 'interrupted'].includes(prior.state)) fail('NATIVE_START_FAILED', 'The saved native startup did not complete; preserve its evidence');
       const delivery = await this.deliver({ id: `create:${request.id}`, sessionId: request.sessionId, root, platform: 'claude',
