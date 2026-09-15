@@ -4666,6 +4666,7 @@ async function installCoordinatorPanel(sync){
   const panel=document.createElement('section');
   panel.id='coordinator-panel';
   panel.open=false;
+  const toolbar=document.createElement('div');toolbar.className='coordinator-toolbar';
   const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
@@ -4676,10 +4677,15 @@ async function installCoordinatorPanel(sync){
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
-  const retry=document.createElement('button'); retry.type='button'; retry.textContent='重试原请求'; retry.hidden=true;
-  const composeActions=document.createElement('div');composeActions.className='coordinator-compose-actions';
-  const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.textContent='新建 Session';creationToggle.setAttribute('aria-expanded','false');
-  composeActions.append(retry,creationToggle);form.append(inputShell,composeActions);
+  const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
+  retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
+  const historyToggle=document.createElement('button');historyToggle.type='button';historyToggle.className='coordinator-toolbar-action';historyToggle.textContent='◷';historyToggle.setAttribute('aria-label','历史 Session');historyToggle.title='历史 Session';historyToggle.setAttribute('aria-expanded','false');historyToggle.setAttribute('aria-controls','coordinator-history');
+  const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.className='coordinator-toolbar-action';creationToggle.textContent='＋';creationToggle.setAttribute('aria-label','新建 Session');creationToggle.title='新建 Session';creationToggle.setAttribute('aria-expanded','false');
+  toolbar.append(heading,historyToggle,retry,creationToggle);form.append(inputShell);
+  const history=document.createElement('section');history.id='coordinator-history';history.className='coordinator-history';history.hidden=true;
+  const historyTitle=document.createElement('h3');historyTitle.textContent='历史 Session';
+  const historyList=document.createElement('div');historyList.className='coordinator-history-list';
+  history.append(historyTitle,historyList);
   const creation=document.createElement('section');creation.className='coordinator-session-create';creation.hidden=true;
   const creationForm=document.createElement('form'),creationName=document.createElement('input'),creationTemplate=document.createElement('select');
   creationName.required=true;creationName.maxLength=200;creationName.placeholder='Session 名称';creationName.setAttribute('aria-label','新 Session 名称');
@@ -4689,7 +4695,7 @@ async function installCoordinatorPanel(sync){
   const creationStatus=document.createElement('p');creationStatus.setAttribute('role','status');
   const creationList=document.createElement('ul');
   creationForm.append(creationName,creationTemplate,creationButton,creationClose);creation.append(creationForm,creationStatus,creationList);
-  panel.append(heading,status,messages,typing,form,creation);document.body.append(panel);
+  panel.append(toolbar,history,status,messages,typing,form,creation);document.body.append(panel);
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
     panel.open=open;panel.toggleAttribute('open',open);
@@ -4697,7 +4703,7 @@ async function installCoordinatorPanel(sync){
       openBugPanel(false);document.getElementById('tray').classList.remove('open');
       inspector.append(panel);inspector.classList.add('coordinator-open');
     }else{
-      clearTimeout(timer);inspector.classList.remove('coordinator-open');document.body.append(panel);renderDetail();
+      clearTimeout(timer);history.hidden=true;historyToggle.setAttribute('aria-expanded','false');inspector.classList.remove('coordinator-open');document.body.append(panel);renderDetail();
     }
     if(launcher)launcher.setAttribute('aria-expanded',String(open));
   };
@@ -4711,7 +4717,9 @@ async function installCoordinatorPanel(sync){
   let creationPending=null,creatingSession=false,templateKey='';
   try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
   const setCreationOpen=open=>{creation.hidden=!open;creationToggle.setAttribute('aria-expanded',String(open));if(open)creationName.focus();};
-  creationToggle.addEventListener('click',()=>setCreationOpen(creation.hidden));
+  const setHistoryOpen=open=>{history.hidden=!open;historyToggle.setAttribute('aria-expanded',String(open));};
+  historyToggle.addEventListener('click',()=>{const open=history.hidden;if(open)setCreationOpen(false);setHistoryOpen(open);});
+  creationToggle.addEventListener('click',()=>{const open=creation.hidden;if(open)setHistoryOpen(false);setCreationOpen(open);});
   creationClose.addEventListener('click',()=>setCreationOpen(false));
   const renderCreation=state=>{
     const templates=state.sessionTemplates||[],records=state.sessionCreations||[];
@@ -4763,17 +4771,39 @@ async function installCoordinatorPanel(sync){
     card.append(wrap); textarea.focus();
   });
   let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
+  const setRetryMode=mode=>{
+    retry.hidden=!mode;
+    const label=mode==='read'?'重试读取':'重试原请求';
+    retry.setAttribute('aria-label',label);retry.title=label;
+  };
   const scopeConversation=()=>sync.viewId.startsWith('session:')?'session:'+sync.viewId.slice('session:'.length):'main';
   const isScopeConversation=id=>id==='main'||id.startsWith('session:');
-  let selected=scopeConversation();const drafts=new Map(),questionDrafts=new Map();
+  let selected=scopeConversation(),browsingHistory=false;const drafts=new Map(),questionDrafts=new Map();
   panel.dataset.conversation=selected;
   const conversationUrl=(endpoint,id=selected)=>endpoint+'?conversation='+encodeURIComponent(id);
-  const selectConversation=(id,load=true)=>{
+  const selectConversation=(id,load=true,historyMode=false)=>{
+    browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
     lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
     setPanelOpen(true);if(load)void refresh();
   };
+  const renderHistory=state=>{
+    const conversations=state.conversations||[],scopeId=scopeConversation();
+    const current=conversations.find(item=>item.id===scopeId)||{id:scopeId,title:scopeId==='main'?'Main 对话':'当前 Session'};
+    const sessions=conversations.filter(item=>item.id!==scopeId&&(item.scope==='session'||item.id?.startsWith('session:')));
+    historyList.replaceChildren();
+    for(const item of [current,...sessions]){
+      const button=document.createElement('button');button.type='button';button.dataset.conversation=item.id;
+      button.textContent=item.id===scopeId?'当前 · '+item.title:item.title;
+      button.setAttribute('aria-current',String(item.id===selected));historyList.append(button);
+    }
+    if(!sessions.length){const empty=document.createElement('p');empty.textContent='暂无其他历史 Session';historyList.append(empty);}
+  };
+  historyList.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-conversation]');if(!button)return;
+    const id=button.dataset.conversation;setHistoryOpen(false);selectConversation(id,true,id!==scopeConversation());
+  });
   window.addEventListener('coordinator-open-item',async event=>{
     setPanelOpen(true);status.textContent='';
     try{const result=await sync.call('/api/coordinator/conversations',event.detail,'POST','main');selectConversation(result.id);}
@@ -4781,7 +4811,7 @@ async function installCoordinatorPanel(sync){
   });
   window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
   const confirmSubmitted=(id,request)=>{
-    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';retry.hidden=true;}
+    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
     else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
   };
   const render=state=>{
@@ -4790,6 +4820,7 @@ async function installCoordinatorPanel(sync){
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderCreation(state);
+    renderHistory(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     typing.hidden=state.status!=='running'||answering;
@@ -4895,17 +4926,17 @@ async function installCoordinatorPanel(sync){
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
     send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
-    retry.hidden=!pending; retry.disabled=busy||state.status==='running';
+    setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
   };
   const refresh=async()=>{
     clearTimeout(timer);
     if(stopped||refreshing) return;
     const desired=scopeConversation();
-    if(isScopeConversation(selected)&&selected!==desired)selectConversation(desired,false);
+    if(!browsingHistory&&isScopeConversation(selected)&&selected!==desired)selectConversation(desired,false);
     refreshing=true;
     const id=selected;let delay=3000;
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
-    catch(error){typing.hidden=true;status.textContent='读取失败：'+error.message;}
+    catch(error){typing.hidden=true;status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
   const submit=async request=>{
@@ -4921,7 +4952,7 @@ async function installCoordinatorPanel(sync){
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;retry.hidden=false;}
+      if(id===selected){pendingError=message;typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
@@ -4929,7 +4960,7 @@ async function installCoordinatorPanel(sync){
   };
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
-  retry.addEventListener('click',()=>{if(pending) void submit(pending);});
+  retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});
   window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
 }
