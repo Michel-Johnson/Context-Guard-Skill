@@ -418,8 +418,8 @@ export class CoordinatorService {
 // Consume the existing protocol journal as an independent consumer. Acceptance
 // means the conversation is durable, not that the model has completed its turn.
 export class CoordinatorInbox {
-  constructor({ store, principal, sessionIds, service, intake = null, routeEvent = null, services = null, memoryEvents = null, projectId = null, intervalMs = 5000, autoResume = null }) {
-    Object.assign(this, { store, principal, sessionIds, service, intake, routeEvent, services, memoryEvents, autoResume });
+  constructor({ store, principal, sessionIds, service, intake = null, routeEvent = null, services = null, memoryEvents = null, projectId = null, intervalMs = 5000, autoResume = null, autoRework = null }) {
+    Object.assign(this, { store, principal, sessionIds, service, intake, routeEvent, services, memoryEvents, autoResume, autoRework });
     this.running = null; this.stopped = false; this.lastError = null;
     this.changed = () => { void this.pump(); };
     store.on('change', this.changed);
@@ -432,25 +432,27 @@ export class CoordinatorInbox {
     this.running = this.consume().catch(cause => { this.lastError = { code: cause.code || 'COORDINATOR_INBOX_FAILED' }; }).finally(() => { this.running = null; });
     return this.running;
   }
-  async resumeInterruptedTasks() {
-    if (!this.autoResume || !this.store.workflowTasks) return;
+  async recoverActionableTasks() {
+    if ((!this.autoResume && !this.autoRework) || !this.store.workflowTasks) return;
     for (const id of typeof this.sessionIds === 'function' ? await this.sessionIds() : this.sessionIds) {
       if (this.stopped) return;
       const binding = await this.store.registeredBinding(this.principal, id);
       if (!binding) continue;
       const session = { id, generation: binding.generation };
       for (const task of await this.store.workflowTasks(this.principal, session)) {
-        if (task.stage !== 'interrupted' || !task.busy) continue;
-        await this.autoResume({ session, taskId: task.id,
+        if (!task.busy) continue;
+        if (task.stage === 'interrupted' && this.autoResume) await this.autoResume({ session, taskId: task.id,
           messageId: `auto-resume:${hash(JSON.stringify([id, session.generation, task.id, task.version]))}`,
           reason: task.interrupted?.reason, occurredAt: task.interrupted?.occurredAt });
+        if (task.stage === 'acceptance-rejected' && this.autoRework) await this.autoRework({ session, taskId: task.id,
+          messageId: `auto-rework:${hash(JSON.stringify([id, session.generation, task.id, task.version]))}` });
       }
     }
   }
   async consume() {
     // Run recovery before intake so a queued Map edit cannot delay resuming a
     // task that was already interrupted when Cloud restarted.
-    await this.resumeInterruptedTasks();
+    await this.recoverActionableTasks();
     // Intake creates independent conversations even while the legacy one is busy.
     if (await this.intake?.consume()) return;
     const available = async service => {
