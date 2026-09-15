@@ -65,7 +65,7 @@ const I18N = {
     workCopy2:"下面的笔记是预置演示稿。真做时先商量第一层怎么切，定了再往下拆；卡名必须一眼能看懂。演示里第一页仍是定稿后的 4–8 张主干。这不是这次点击实时读仓得到的。",
     trayTitle:"已取消的提议",
     trayHint:"已隐藏，后续 Agent 不会读到。可重新加入 Context Map，或永久删除。",
-    openBugs:"Bug 处理状态",
+    openBugs:"Bug 处理状态", openTodos:"TODO 处理状态",
     boot_ready:"已建图", boot_proposed:"待确认", boot_analyzing:"分析中", boot_pending:"首次使用",
     sessionNow:"当前会话", sessionPending:"待确认", sessionFirst:"首次使用", sessionEmpty:"空白项目",
     reanalyze:"重新选第一层切法",
@@ -73,7 +73,7 @@ const I18N = {
     filePathPh:"仓库相对路径，文件需已在仓库中",
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
-    noOpenBugs:"没有未修的 Bug。", unnamedBug:"未命名 Bug",
+    noOpenBugs:"没有 Bug。", unnamedBug:"未命名 Bug", noOpenTodos:"没有 TODO。", unnamedTodo:"未命名 TODO",
     leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskBlocked:"等待前序任务完成", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
     allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
     projectOverview:"项目总览",
@@ -170,7 +170,7 @@ const I18N = {
     workCopy2:"The notes below are a prepared demo. Real first-use decides L1 with you, then goes deeper; titles must be instantly readable. This demo still shows the agreed 4–8 trunk cards. This is not a live read of the repo.",
     trayTitle:"Cancelled proposals",
     trayHint:"Hidden. Later agents will not read these. Restore them to the map, or delete permanently.",
-    openBugs:"Bug status",
+    openBugs:"Bug status", openTodos:"TODO status",
     boot_ready:"Mapped", boot_proposed:"Pending", boot_analyzing:"Analyzing", boot_pending:"First use",
     sessionNow:"Current session", sessionPending:"Pending", sessionFirst:"First use", sessionEmpty:"Empty project",
     reanalyze:"Pick a new first-layer cut",
@@ -178,7 +178,7 @@ const I18N = {
     filePathPh:"Repo-relative path; the file must already be in the repo",
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
-    noOpenBugs:"No open bugs.", unnamedBug:"Untitled bug",
+    noOpenBugs:"No bugs.", unnamedBug:"Untitled bug", noOpenTodos:"No TODOs.", unnamedTodo:"Untitled TODO",
     leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskInterrupted:"Interrupted", taskWaitingReview:"Waiting for Plan review",
     allSessions:"Main workbench · All sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
     projectOverview:"Projects",
@@ -376,6 +376,7 @@ let deleteAskId = null;
 let bugPathMode = false;
 let bugFocus = null;
 let bugPathReturn = null;
+let activeWorkPanelKind = "bug";
 let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
@@ -2256,17 +2257,17 @@ function todoProgressHtml(todo){
   const state = todoProgress(todo);
   return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
 }
-function openBugList(){
+function openWorkItemList(kind="bug"){
   const out=[];
   walkAll(data,(n,ps)=>{
     if(isCancelled(n)) return;
-    (n.bugs||[]).forEach(b=>{
-      if(!b || b.status==="dormant") return;
-      out.push({bug:b, node:n, path:[...ps, n]});
+    (n[kind==="todo"?"todos":"bugs"]||[]).forEach(item=>{
+      if(!item || item.draft || (kind==="bug" && item.status==="dormant")) return;
+      out.push({item, node:n, path:[...ps, n], kind});
     });
   });
-  ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(b=>{
-    if(b && b.status!=="dormant") out.push({bug:b, node:data, path:[data], unassigned:true});
+  if(kind==="bug") ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).forEach(item=>{
+    if(item && item.status!=="dormant") out.push({item, node:data, path:[data], kind, unassigned:true});
   });
   return out;
 }
@@ -2278,14 +2279,15 @@ function revealPath(path){
     if((parent._inbox||[]).some(c=>c.id===child.id)) unpackInbox(parent);
   }
 }
-function focusedBug(){
+function focusedWorkItem(){
   if(!bugFocus) return null;
   const n = getNode(bugFocus.nodeId);
   if(!n) return null;
-  const b = (n.bugs||[]).find(x=>x.id===bugFocus.bugId);
-  if(b) return {node:n, bug:b, unassigned:false};
-  const loose = ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===bugFocus.bugId);
-  return loose ? {node:n, bug:loose, unassigned:true} : null;
+  const kind=bugFocus.kind||"bug", itemId=bugFocus.itemId||bugFocus.bugId;
+  const item = (n[kind==="todo"?"todos":"bugs"]||[]).find(x=>x.id===itemId);
+  if(item) return {node:n, item, kind, unassigned:false};
+  const loose = kind==="bug" ? ((workbenchSync&&workbenchSync.doc&&workbenchSync.doc.unassigned_bugs)||[]).find(x=>x.id===itemId) : null;
+  return loose ? {node:n, item:loose, kind, unassigned:true} : null;
 }
 function clearRelationQuery(){
   const url=new URL(location.href);
@@ -2329,7 +2331,7 @@ function applyRelationDeepLink(){
   document.body.classList.add("rel-mode");
   return true;
 }
-function enterBugPath(nodeId, bugId){
+function enterBugPath(nodeId, itemId, kind="bug"){
   clearRelationMode();
   let path = findPath(nodeId);
   if(!path || !path.length){
@@ -2342,11 +2344,11 @@ function enterBugPath(nodeId, bugId){
     bugPathReturn = {viewRootId, selectedId};
   }
   bugPathMode = true;
-  bugFocus = {nodeId, bugId};
+  bugFocus = {nodeId, itemId, bugId:itemId, kind};
   selectedId = nodeId;
   viewRootId = data.id;
   document.body.classList.add("bug-path-mode");
-  openBugPanel(true);
+  openBugPanel(true, kind);
   renderAll();
   fitView();
 }
@@ -2366,11 +2368,13 @@ function exitBugPath(restore){
   renderAll();
   fitView();
 }
-function openBugPanel(open){
+function openBugPanel(open, kind=activeWorkPanelKind){
   if(open) document.getElementById("tray").classList.remove("open");
+  activeWorkPanelKind = kind;
   document.body.classList.toggle("bugs-open", !!open);
   document.getElementById("bug-panel").classList.toggle("open", !!open);
-  document.getElementById("btn-bugs").classList.toggle("on", !!open);
+  document.getElementById("btn-bugs").classList.toggle("on", !!open && kind==="bug");
+  document.getElementById("btn-todos").classList.toggle("on", !!open && kind==="todo");
 }
 
 function sessionOptionsHtml(selected, requireChoice){
@@ -2625,28 +2629,59 @@ async function toggleBugSession(node, bug){
   }
   await dispatchBugToSession(node,bug,sid,plan);
 }
+async function toggleTodoSession(node, todo){
+  if(!node || !todo) return;
+  let sid = currentSessionId();
+  const list = todoSessionsOf(todo);
+  const i = sid ? list.indexOf(sid) : -1;
+  if(i>=0){
+    list.splice(i,1);
+    if(todo.dispatch?.session_id===sid) delete todo.dispatch;
+    todo.status = list.length ? "processing" : "pending";
+    renderAll();
+    return;
+  }
+  let plan;
+  if(sid){
+    try{ plan = await workbenchSync.accessPlan(sid,node.id); }
+    catch(error){ workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message); return; }
+  }
+  if(!sid || plan?.missing?.length){
+    const assignment = await promptTodoAssignment(node,todo);
+    if(!assignment) return;
+    sid = assignment.sessionId; plan = assignment.plan;
+  }
+  await dispatchTodoToSession(node,todo,sid,plan);
+}
 function renderBugPanel(){
-  const list = openBugList();
+  const kind = activeWorkPanelKind;
+  const bugList = openWorkItemList("bug"), todoList = openWorkItemList("todo");
+  const list = kind==="todo" ? todoList : bugList;
   const countEl = document.getElementById("bug-count");
-  if(countEl) countEl.textContent = list.filter(({bug})=>!["resolved","wontfix"].includes(bugProgress(bug).kind)).length;
+  if(countEl) countEl.textContent = bugList.filter(({item})=>!["resolved","wontfix"].includes(bugProgress(item).kind)).length;
+  const todoCountEl = document.getElementById("todo-count");
+  if(todoCountEl) todoCountEl.textContent = todoList.filter(({item})=>todoProgress(item).kind!=="resolved").length;
+  const titleEl = document.getElementById("work-panel-title");
+  if(titleEl) titleEl.textContent = t(kind==="todo"?"openTodos":"openBugs");
   const ul = document.getElementById("bug-panel-list");
   if(!ul) return;
   if(!list.length){
-    ul.innerHTML = `<li class="empty">${t("noOpenBugs")}</li>`;
+    ul.innerHTML = `<li class="empty">${t(kind==="todo"?"noOpenTodos":"noOpenBugs")}</li>`;
     return;
   }
   const sid = currentSessionId();
   ul.innerHTML = list.map(item=>{
-    const title = item.bug.title || t("unnamedBug");
-    const on = bugFocus && bugFocus.nodeId===item.node.id && bugFocus.bugId===item.bug.id;
-    const sessions = bugSessionsOf(item.bug);
+    const title = item.item.title || t(kind==="todo"?"unnamedTodo":"unnamedBug");
+    const on = bugFocus && bugFocus.nodeId===item.node.id && (bugFocus.itemId||bugFocus.bugId)===item.item.id && (bugFocus.kind||"bug")===kind;
+    const sessions = bugSessionsOf(item.item);
     const mine = sessions.indexOf(sid)>=0;
-    const sending = bugDispatching.has(item.bug.id);
-    const state = bugProgress(item.bug);
+    const sending = (kind==="todo"?todoDispatching:bugDispatching).has(item.item.id);
+    const progress = kind==="todo"?todoProgress:bugProgress;
+    const state = progress(item.item);
     const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
     const claim = bugClaimControlHtml({selected:on, unassigned:item.unassigned, mine, sending});
-    return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-bug="${escAttr(item.bug.id)}">
-      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${bugProgressHtml(item.bug)}</span>
+    return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-${kind}="${escAttr(item.item.id)}">
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${kind==="todo"?todoProgressHtml(item.item):bugProgressHtml(item.item)}</span>
       <span class="bug-row">${dot}${claim}</span>
     </li>`;
   }).join("");
@@ -2654,12 +2689,12 @@ function renderBugPanel(){
     const item = list[index];
     li.onclick = e=>{
       if(e.target.closest("[data-claim]")) return;
-      enterBugPath(item.node.id, item.bug.id);
+      enterBugPath(item.node.id, item.item.id, kind);
     };
     const claim = li.querySelector("[data-claim]");
     if(claim) claim.onclick = async e=>{
       e.preventDefault(); e.stopPropagation();
-      await toggleBugSession(item.node, item.bug);
+      await (kind==="todo"?toggleTodoSession:toggleBugSession)(item.node, item.item);
     };
   });
 }
@@ -2758,8 +2793,8 @@ function bindContextSwitch(el){
 function renderNav(){
   const el = document.getElementById("nav-crumbs");
   if(bugPathMode && bugFocus){
-    const hit = focusedBug();
-    const tag = hit && hit.bug ? `<span class="here">${esc(hit.bug.title || "Bug")}</span>` : "";
+    const hit = focusedWorkItem();
+    const tag = hit && hit.item ? `<span class="here">${esc(hit.item.title || (hit.kind==="todo"?"TODO":"Bug"))}</span>` : "";
     el.innerHTML = `<button type="button" class="bug-exit" id="btn-bug-exit">${t("exitChain")}</button>` + tag;
     const ex = document.getElementById("btn-bug-exit");
     if(ex) ex.onclick = ()=>exitBugPath(true);
@@ -2894,13 +2929,17 @@ document.getElementById("btn-rel").onclick = ()=>{
   renderAll();
   fitView();
 };
-document.getElementById("btn-bugs").onclick = ()=>{
-  const open = !document.body.classList.contains("bugs-open");
+function toggleWorkPanel(kind){
+  document.getElementById("workbench-tools")?.removeAttribute("open");
+  const open = !document.body.classList.contains("bugs-open") || activeWorkPanelKind!==kind;
   if(!open && bugPathMode){ exitBugPath(true); openBugPanel(false); return; }
-  openBugPanel(open);
+  if(bugPathMode && bugFocus && (bugFocus.kind||"bug")!==kind) exitBugPath(true);
+  openBugPanel(open, kind);
   renderBugPanel();
   fitView();
-};
+}
+document.getElementById("btn-bugs").onclick = ()=>toggleWorkPanel("bug");
+document.getElementById("btn-todos").onclick = ()=>toggleWorkPanel("todo");
 function renderTray(){
   const list = cancelledList();
   const ul = document.getElementById("tray-list");
@@ -3242,8 +3281,8 @@ function renderMap(){
     });
   });
   if(bugPathMode){
-    const hit = focusedBug();
-    const sessions = hit ? bugSessionsOf(hit.bug) : [];
+    const hit = focusedWorkItem();
+    const sessions = hit ? bugSessionsOf(hit.item) : [];
     if(sessions.length && pathSegs.length){
       if(currentsEl){
         currentsEl.style.width = (maxX+140)+"px";
@@ -3619,23 +3658,24 @@ function renderDetail(){
   const composing = composingId===node.id;
 
   if(bugPathMode && bugFocus){
-    const hit = focusedBug();
-    const bug = hit && hit.bug;
+    const hit = focusedWorkItem();
+    const bug = hit && hit.item;
+    const kind = hit?.kind || "bug";
     const sid = currentSessionId();
     const sessions = bugSessionsOf(bug);
     const mine = bug && sessions.indexOf(sid)>=0;
-    const sending = bug && bugDispatching.has(bug.id);
+    const sending = bug && (kind==="todo"?todoDispatching:bugDispatching).has(bug.id);
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
-      <h2>${esc(bug && bug.title ? bug.title : "Bug")}${bugProgressHtml(bug)}</h2>
+      <h2>${esc(bug && bug.title ? bug.title : (kind==="todo"?"TODO":"Bug"))}${kind==="todo"?todoProgressHtml(bug):bugProgressHtml(bug)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
         ${bugClaimControlHtml({selected:true, unassigned:hit && hit.unassigned, mine, sending, inspector:true})}
       </div>
-      ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(hit.node.id,"bug",bug)+taskSummaryHtml(bug) : ""}`;
+      ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(hit.node.id,kind,bug)+taskSummaryHtml(bug) : ""}`;
     const claim = el.querySelector('[data-act="claim"]');
-    if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await toggleBugSession(hit && hit.node, bug); };
+    if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await (kind==="todo"?toggleTodoSession:toggleBugSession)(hit && hit.node, bug); };
     el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
     return;
   }
@@ -4610,7 +4650,8 @@ function renderAll(){
   persist();
 }
 async function installCoordinatorPanel(sync){
-  if(!sync.config?.interfaceCapabilities?.coordinator) return;
+  const launcher=document.getElementById('btn-coordinator');
+  if(!sync.config?.interfaceCapabilities?.coordinator){if(launcher)launcher.hidden=true;return;}
   let conversationFragments;
   try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
   catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
@@ -4640,6 +4681,10 @@ async function installCoordinatorPanel(sync){
   const creationList=document.createElement('ul');
   creationForm.append(creationName,creationTemplate,creationButton,creationClose);creation.append(creationForm,creationStatus,creationList);
   panel.append(heading,status,messages,typing,form,creation);document.body.append(panel);
+  if(launcher){
+    launcher.hidden=false;
+    launcher.onclick=()=>{panel.open=!panel.open;launcher.setAttribute('aria-expanded',String(panel.open));};
+  }
   const creationKey='cg-session-create:'+location.pathname;
   let creationPending=null,creatingSession=false,templateKey='';
   try{creationPending=JSON.parse(sessionStorage.getItem(creationKey)||'null');}catch{}
@@ -4853,7 +4898,7 @@ async function installCoordinatorPanel(sync){
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);});
-  panel.addEventListener('toggle',()=>{if(panel.open) void refresh();else clearTimeout(timer);});
+  panel.addEventListener('toggle',()=>{if(launcher)launcher.setAttribute('aria-expanded',String(panel.open));if(panel.open) void refresh();else clearTimeout(timer);});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);});
   window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
 }
