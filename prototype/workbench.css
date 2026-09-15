@@ -253,6 +253,16 @@ body.layout-tb .node .add-child{right:auto;left:50%;top:auto;bottom:-11px;transf
 .node.edge-sliver{visibility:hidden;pointer-events:none}
 #viewport.grabbing{cursor:move}
 #world{position:absolute;left:0;top:0;transform-origin:0 0}
+#world.map-transition-zoom{will-change:transform}
+.map-transition-snapshot{position:absolute;inset:0;z-index:5;pointer-events:none;opacity:1;will-change:opacity}
+.map-transition-snapshot-world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.map-transition-snapshot .node{pointer-events:none}
+.map-transition-snapshot .map-transition-snapshot-anchor{visibility:hidden}
+body.map-transition-revealing #world .node:not(.map-transition-anchor){
+  opacity:var(--map-node-opacity,0);transform:none;transition:none}
+body.map-transition-revealing #world #links path{
+  opacity:var(--map-link-opacity,0);transition:none}
+body.map-transitioning #viewport{cursor:wait}
 #links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
 #links path.link{fill:none;stroke:#5c564c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:opacity .2s}
 #links path.link.dimmed{opacity:.18}
@@ -288,7 +298,7 @@ body.rel-mode .node .add-child,body.rel-mode .node .add-pick{display:none}
   background:var(--paper);border:2px solid var(--line-ink);border-radius:16px;
   padding:5px 13px 5px 11px;font-size:12.5px;line-height:1.45;cursor:pointer;user-select:none;
   box-shadow:var(--shadow-sm);transition:opacity .2s, transform .12s}
-.node:hover{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--line-ink)}
+.node:hover{transform:none;box-shadow:1px 1px 0 var(--line-ink)}
 .node.selected{background:var(--yellow)}
 .node.dimmed{opacity:.18}
 
@@ -301,7 +311,7 @@ body.rel-mode .node .add-child,body.rel-mode .node .add-pick{display:none}
   width:252px;max-width:252px;
   border:2px solid var(--line-ink);background:var(--module-soft);border-radius:8px;
   padding:14px 16px 13px;box-shadow:var(--shadow);word-break:keep-all}
-.node.module:hover{transform:translate(1px,1px);box-shadow:2px 2px 0 var(--line-ink)}
+.node.module:hover{transform:none;box-shadow:2px 2px 0 var(--line-ink)}
 .node.module .m-head{display:flex;align-items:flex-start;gap:8px;font-weight:800;font-size:18px;line-height:1.3;color:var(--ink)}
 .node.module .m-head .dot,.node.module .m-head .lock,.node.module .m-head .part-tag,.node.module .m-head .auth-mark,.node.module .m-head .focus-mark{flex:0 0 auto;margin-top:4px}
 .node.module .m-head span{flex:1;min-width:0;white-space:normal;overflow:visible;word-break:keep-all;overflow-wrap:break-word}
@@ -436,6 +446,9 @@ html[data-node-theme="4"] .node.noauth,
 html[data-node-theme="4"] .node.noauth.module{
   background:#ddd; border-color:#ccc; box-shadow:none;
 }
+html[data-node-theme="44"] .node.root.module.drilled-root:not(.noauth){background:#fff}
+html[data-node-theme="48"] .node.root.module.drilled-root:not(.noauth){background:#e7eef8}
+html[data-node-theme="4"] .node.root.module.drilled-root:not(.noauth){background:#eeeae2}
 html[data-node-theme="4"] .dot.module:not(.untested):not(.success):not(.failed){background:#4a7ab5}
 html[data-node-theme="4"] #links path.link,
 html[data-node-theme="4"] #links path.link.stem{stroke:#bbb}
@@ -464,6 +477,10 @@ html.theme-preview.phone-preview .phone-preview-banner{bottom:52px}
 .settings-menu .set-tools .tray-btn{width:100%;box-sizing:border-box}
 .settings-menu .set-tools .rel-toggle button{width:100%}
 #btn-tray.on{background:var(--yellow);font-weight:800}
+#btn-beta-motion{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;box-sizing:border-box}
+#btn-beta-motion.on{background:var(--yellow);font-weight:800}
+.beta-badge{display:inline-flex;align-items:center;min-height:18px;padding:0 6px;border:1.5px solid var(--line-ink);border-radius:999px;background:var(--module-soft);font-size:9px;font-weight:900;letter-spacing:.08em;line-height:1}
+#btn-beta-motion.on .beta-badge{background:var(--paper)}
 .theme-picks{display:flex;flex-direction:column;gap:4px}
 .theme-pick{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   border:2px solid transparent;background:transparent;box-shadow:none;border-radius:8px;
@@ -642,6 +659,8 @@ button.trash:hover .lid,button.trash:focus .lid{transform:rotate(-28deg) transla
 @media (prefers-reduced-motion: reduce){
   button.trash .lid{transition:none}
   button.trash:hover .lid,button.trash:focus .lid{transform:none}
+  #world.map-transition-zoom,
+  body.map-transitioning #world .node,body.map-transitioning #world #links path{transition:none!important}
 }
 /* 荧光笔划在字上。线上是画廊 11 圆头笔。 */
 .state-chip,
@@ -869,7 +888,7 @@ html.cg-phone .tray{
 }
 html.cg-phone .node.module{width:min(252px,86vw);max-width:min(252px,86vw)}
 html.cg-phone .node .add-child{width:22px;height:22px;line-height:18px;font-size:13px;right:-11px;opacity:0;pointer-events:none}
-html.cg-phone .node.selected .add-child,html.cg-phone .node.picking .add-child{opacity:1;pointer-events:auto}
+html.cg-phone .node.selected .add-child,html.cg-phone .node.drilled-root .add-child,html.cg-phone .node.picking .add-child{opacity:1;pointer-events:auto}
 html.cg-phone .node .add-child:after{content:"";position:absolute;inset:-12px}
 html.cg-phone .node .add-pick button{min-height:var(--chrome-btn-h)}
 html.cg-phone body.layout-tb .node .add-child{bottom:-11px}

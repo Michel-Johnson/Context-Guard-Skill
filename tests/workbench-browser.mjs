@@ -824,12 +824,139 @@ try {
     assert.equal(context.h1, false, 'repo name is not a second title');
     assert.equal(context.hits, 1, `root should show one context card ${JSON.stringify(context)}`);
     assert.equal(context.switch, true);
+    await preview.locator('.node[data-id="M1"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), false,
+      'beta motion must be disabled by default');
+    await preview.locator('.nav-crumbs a').first().click();
+    await preview.locator('#btn-settings').click();
+    const betaMotion = preview.locator('#btn-beta-motion');
+    assert.equal(await betaMotion.isVisible(), true, 'settings must expose the beta motion control');
+    assert.equal(await betaMotion.getAttribute('aria-pressed'), 'false');
+    await betaMotion.click();
+    assert.equal(await betaMotion.getAttribute('aria-pressed'), 'true');
+    assert.equal(await preview.evaluate(() => localStorage.getItem('cg-workbench-beta-map-motion')), '1');
+    await preview.reload();
+    await preview.waitForSelector('.node.root');
+    assert.equal(await preview.locator('#btn-beta-motion').getAttribute('aria-pressed'), 'true',
+      'beta motion choice must survive a reload');
+    recordCheck('map-motion-beta-opt-in');
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 1);
     await preview.locator('#context-card').click();
     assert.equal(await preview.locator('#repo-menu.open').count(), 0);
+    await preview.locator('.node[data-id="M1"]').hover();
+    const moduleBeforeDrill = await preview.locator('.node[data-id="M1"]').evaluate(el => {
+      const rect = el.getBoundingClientRect();
+      return {x:rect.x, y:rect.y, width:rect.width, height:rect.height, background:getComputedStyle(el).backgroundColor};
+    });
+    const rootBeforeDrill = await preview.locator('.node[data-id="T0"]').evaluate(el => el.getBoundingClientRect().toJSON());
+    await preview.evaluate(() => {
+      window.__CG_TOUR_FULL_MAP__ = true;
+      window.__mapMotionStart = false;
+      window.__mapMotionEnd = false;
+      window.addEventListener('cg:map-transition-start', () => {
+        const anchor = document.querySelector('.node[data-id="M1"]');
+        const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+        window.__mapMotionStart = {
+          anchor:anchor.getBoundingClientRect().toJSON(),
+          childOpacity:Number(getComputedStyle(child).opacity),
+          snapshotRoot:document.querySelector('[data-map-snapshot-id="T0"]').getBoundingClientRect().toJSON()
+        };
+      }, {once:true});
+      window.addEventListener('cg:map-transition-end', () => {
+        window.__mapMotionEnd = {
+          transform:document.getElementById('world').style.transform,
+          root:document.querySelector('.node.root').getBoundingClientRect().toJSON()
+        };
+      }, {once:true});
+    });
     await preview.locator('.node[data-id="M1"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true, 'drill-in should animate instead of flashing');
+    const clickFrame = await preview.evaluate(() => {
+      const snapshot = document.querySelector('.map-transition-snapshot');
+      const snapshotNode = snapshot?.querySelector('[data-map-snapshot-id="T0"]');
+      const snapshotAnchor = snapshot?.querySelector('[data-map-snapshot-id="M1"]');
+      const snapshotLink = snapshot?.querySelector('path.link');
+      const nodeStyle = snapshotNode ? getComputedStyle(snapshotNode) : null;
+      const anchorStyle = snapshotAnchor ? getComputedStyle(snapshotAnchor) : null;
+      const linkStyle = snapshotLink ? getComputedStyle(snapshotLink) : null;
+      return {
+        duplicateWorldIds:document.querySelectorAll('#world').length,
+        liveAnchorOpacity:Number(getComputedStyle(document.querySelector('#world .map-transition-anchor')).opacity),
+        snapshotAnchorVisibility:anchorStyle?.visibility || null,
+        snapshotNodeOpacity:nodeStyle ? Number(nodeStyle.opacity) : null,
+        snapshotNodeVisibility:nodeStyle?.visibility || null,
+        snapshotLinkFill:linkStyle?.fill || null,
+        snapshotLinkStroke:linkStyle?.stroke || null
+      };
+    });
+    assert.equal(clickFrame.duplicateWorldIds, 1, `snapshot must not duplicate #world ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.liveAnchorOpacity, 1, `the clicked module must remain fully opaque ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotAnchorVisibility, 'hidden', `the old snapshot must not double-paint the clicked module ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotNodeOpacity, 1, `old nodes must remain fully visible at click ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotNodeVisibility, 'visible', `old nodes must remain visible at click ${JSON.stringify(clickFrame)}`);
+    assert.equal(clickFrame.snapshotLinkFill, 'none', `snapshot links must not become filled shapes ${JSON.stringify(clickFrame)}`);
+    assert.notEqual(clickFrame.snapshotLinkStroke, 'none', `snapshot links must retain their stroke ${JSON.stringify(clickFrame)}`);
+    await preview.waitForFunction(() => {
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      const opacity = child ? Number(getComputedStyle(child).opacity) : 0;
+      return opacity >= .1 && opacity <= .8;
+    });
+    const movingFrame = await preview.evaluate(() => {
+      const anchor = document.querySelector('.node[data-id="M1"]');
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      const rect = anchor.getBoundingClientRect();
+      return {
+        anchor:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+        childOpacity:child ? Number(getComputedStyle(child).opacity) : 0,
+        linkOpacity:Number(getComputedStyle(document.querySelector('#links path')).opacity),
+        zooming:document.getElementById('world').classList.contains('map-transition-zoom'),
+        start:window.__mapMotionStart
+      };
+    });
+    assert.equal(movingFrame.zooming, true, `map and mask should share one animation ${JSON.stringify(movingFrame)}`);
+    assert.equal(movingFrame.start.childOpacity, 0, `children should exist behind a fully opaque mask at animation start ${JSON.stringify(movingFrame)}`);
+    assert.ok(movingFrame.childOpacity > 0 && movingFrame.childOpacity < 1, `child mask should fade while the map moves ${JSON.stringify(movingFrame)}`);
+    assert.ok(movingFrame.linkOpacity < movingFrame.childOpacity*.5,
+      `links must stay behind the node mask instead of appearing as bare branches ${JSON.stringify(movingFrame)}`);
+    assert.ok(Math.abs(movingFrame.start.anchor.x-moduleBeforeDrill.x)<.25 && Math.abs(movingFrame.start.anchor.y-moduleBeforeDrill.y)<.25 &&
+      Math.abs(movingFrame.start.anchor.width-moduleBeforeDrill.width)<1 && Math.abs(movingFrame.start.anchor.height-moduleBeforeDrill.height)<1,
+      `single animation must start from the clicked module frame ${JSON.stringify({moduleBeforeDrill,movingFrame})}`);
+    assert.ok(Math.abs(movingFrame.start.snapshotRoot.x-rootBeforeDrill.x)<.25 && Math.abs(movingFrame.start.snapshotRoot.y-rootBeforeDrill.y)<.25 &&
+      Math.abs(movingFrame.start.snapshotRoot.width-rootBeforeDrill.width)<1 && Math.abs(movingFrame.start.snapshotRoot.height-rootBeforeDrill.height)<1,
+      `click must start from an unchanged old scene ${JSON.stringify({rootBeforeDrill,movingFrame})}`);
+    assert.ok(movingFrame.anchor.x < movingFrame.start.anchor.x-5,
+      `selected module should move left continuously as children enter from the right ${JSON.stringify(movingFrame)}`);
+    await preview.waitForFunction(previous => {
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      const anchor = document.querySelector('.node[data-id="M1"]')?.getBoundingClientRect();
+      const opacity = child ? Number(getComputedStyle(child).opacity) : 0;
+      return opacity > previous.childOpacity+.05 && opacity < 1 && anchor && Math.abs(anchor.width-previous.anchorWidth)>.5;
+    }, {childOpacity:movingFrame.childOpacity, anchorWidth:movingFrame.anchor.width});
+    const laterMovingFrame = await preview.evaluate(() => {
+      const child = [...document.querySelectorAll('.node[data-id]')].find(el => el.dataset.id !== 'M1');
+      const anchor = document.querySelector('.node[data-id="M1"]').getBoundingClientRect();
+      return {childOpacity:Number(getComputedStyle(child).opacity), anchorWidth:anchor.width};
+    });
+    assert.ok(laterMovingFrame.childOpacity > movingFrame.childOpacity+.05 && laterMovingFrame.childOpacity < 1,
+      `mask opacity should progress continuously on the same timeline ${JSON.stringify({movingFrame,laterMovingFrame})}`);
+    assert.ok(Math.abs(laterMovingFrame.anchorWidth-movingFrame.anchor.width)>.5,
+      `camera movement should progress during the same opacity transition ${JSON.stringify({movingFrame,laterMovingFrame})}`);
     await preview.waitForFunction(() => document.querySelector('.nav-crumbs a'));
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    assert.equal(await preview.locator('#nodes .node[data-id]').count(), 13, 'drilled demo should render the complete Workbench subtree');
+    assert.equal(await preview.locator('.node[data-id="M1"]').evaluate(el => getComputedStyle(el).backgroundColor), moduleBeforeDrill.background,
+      'the clicked module must keep its original color after becoming the drilled root');
+    await preview.waitForTimeout(100);
+    const stableFrame = await preview.evaluate(() => ({
+      atEnd:window.__mapMotionEnd,
+      transform:document.getElementById('world').style.transform,
+      root:document.querySelector('.node.root').getBoundingClientRect().toJSON()
+    }));
+    assert.equal(stableFrame.transform, stableFrame.atEnd.transform, `animation cleanup must not change final transform ${JSON.stringify(stableFrame)}`);
+    assert.ok(Math.abs(stableFrame.root.x-stableFrame.atEnd.root.x)<.25 && Math.abs(stableFrame.root.y-stableFrame.atEnd.root.y)<.25 &&
+      Math.abs(stableFrame.root.width-stableFrame.atEnd.root.width)<.25 && Math.abs(stableFrame.root.height-stableFrame.atEnd.root.height)<.25,
+      `animation end and stable frame must match ${JSON.stringify(stableFrame)}`);
     const nested = await preview.evaluate(() =>
       [...document.querySelectorAll('.nav-crumbs a, .nav-crumbs .here')].map(el => ({
         tag: el.tagName, text: el.textContent.replace(/\s+/g, ' ').trim(), switch: el.classList.contains('switch')
@@ -841,7 +968,52 @@ try {
     assert.ok(nested.at(-1).text.includes('工作台'));
     assert.equal(nested.at(-1).switch, false);
     await preview.locator('.nav-crumbs a').first().click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transition-up')), true, 'breadcrumb return should use the reverse animation');
     await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.locator('.node[data-id="M1"]').click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.evaluate(() => {
+      const viewport = document.getElementById('viewport');
+      const rect = viewport.getBoundingClientRect();
+      for(let i=0;i<16;i++) viewport.dispatchEvent(new WheelEvent('wheel', {
+        bubbles:true, cancelable:true, deltaY:120, clientX:rect.left+rect.width/2, clientY:rect.top+rect.height/2
+      }));
+    });
+    await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && !document.body.classList.contains('map-transitioning'));
+    await preview.locator('.node[data-id="M3"]').click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.locator('.node[data-id="N434"]').click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    await preview.evaluate(() => {
+      window.__crossLevelStarts = [];
+      window.__crossLevelEnds = [];
+      window.addEventListener('cg:map-transition-start', () => {
+        window.__crossLevelStarts.push(document.querySelector('.node.root')?.dataset.id || null);
+      });
+      window.addEventListener('cg:map-transition-end', event => {
+        window.__crossLevelEnds.push(event.detail.viewRootId);
+      });
+    });
+    await preview.locator('.nav-crumbs a[data-id="T0"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), true,
+      'cross-level breadcrumb return must animate instead of jumping');
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
+    const crossLevelTransitions = await preview.evaluate(() => ({
+      starts:window.__crossLevelStarts,
+      ends:window.__crossLevelEnds
+    }));
+    assert.deepEqual(crossLevelTransitions.starts, ['M3','T0'],
+      `cross-level return must chain adjacent roots ${JSON.stringify(crossLevelTransitions)}`);
+    assert.deepEqual(crossLevelTransitions.ends, ['M3','T0'],
+      `cross-level return must finish every adjacent segment ${JSON.stringify(crossLevelTransitions)}`);
+    assert.equal(await preview.locator('.nav-crumbs a').count(), 0, 'cross-level return should finish at the requested root');
+    recordCheck('map-drill-motion-and-zoom-return');
+    await preview.emulateMedia({ reducedMotion: 'reduce' });
+    await preview.locator('.node[data-id="M1"]').click();
+    assert.equal(await preview.evaluate(() => document.body.classList.contains('map-transitioning')), false, 'reduced motion should navigate without animation');
+    await preview.locator('.nav-crumbs a').first().click();
+    await preview.emulateMedia({ reducedMotion: 'no-preference' });
     recordCheck('context-card-merged');
     assert.equal(await preview.locator('#workbench-tools').getAttribute('open'), null);
     assert.equal(await preview.locator('#btn-auth').isVisible(), false);
@@ -996,6 +1168,7 @@ try {
     const childId = await child.getAttribute('data-id');
     const childTitle = (await child.locator('.m-head span').innerText()).trim();
     await child.click();
+    await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     await until(async () => (await preview.locator('#detail [data-ed="title"]').textContent())?.trim() === childTitle);
     assert.equal(await preview.locator('#detail [data-act="module"], #detail [data-act="child"]').count(), 0);
     assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'child inspector omits redundant add-node guidance');
@@ -1015,6 +1188,7 @@ try {
     if (await preview.locator('.nav-crumbs a').count()) {
       await preview.locator('.nav-crumbs a').first().click();
       await preview.waitForFunction(() => !document.querySelector('.nav-crumbs a') && document.querySelector('.nav-crumbs .here.switch'));
+      await preview.waitForFunction(() => !document.body.classList.contains('map-transitioning'));
     }
     assert.equal(await preview.locator('#detail button.trash').count(), 0, 'map root has no trash');
     assert.equal(await preview.locator('#detail .add-hint').count(), 0, 'root inspector omits redundant add-node guidance');

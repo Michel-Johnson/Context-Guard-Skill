@@ -30,6 +30,9 @@ const I18N = {
     cancelled:"已取消",
     settings:"设置",
     toolsLabel:"工具",
+    betaLabel:"实验功能",
+    betaMotion:"地图钻取动效",
+    betaMotionTitle:"Beta：启用 0.5 秒地图层级钻取动效",
     themeLabel:"主题",
     langLabel:"语言",
     themeNow:"现在这版",
@@ -132,6 +135,9 @@ const I18N = {
     cancelled:"Cancelled",
     settings:"Settings",
     toolsLabel:"Tools",
+    betaLabel:"Experimental",
+    betaMotion:"Map drill motion",
+    betaMotionTitle:"Beta: enable the 0.5-second map drill motion",
     themeLabel:"Theme",
     langLabel:"Language",
     themeNow:"Current",
@@ -211,8 +217,10 @@ const I18N = {
 };
 const LANG_KEY = "cg-workbench-ui-lang";
 const THEME_KEY = "cg-workbench-node-theme";
+const MAP_MOTION_BETA_KEY = "cg-workbench-beta-map-motion";
 const THEME_IDS = ["1","44","48","4"];
 let uiLang = "zh";
+let mapMotionBetaEnabled = false;
 function currentNodeTheme(){
   const n = window.__CG_NODE_THEME;
   return THEME_IDS.includes(n) ? n : "1";
@@ -237,6 +245,23 @@ function applyNodeTheme(id, persist){
     if(typeof fitView==="function") fitView();
   }
 }
+function readStoredMapMotionBeta(){
+  try{ return localStorage.getItem(MAP_MOTION_BETA_KEY)==="1"; }
+  catch(e){ return false; }
+}
+function syncMapMotionBetaButton(){
+  const button = document.getElementById("btn-beta-motion");
+  if(!button) return;
+  button.classList.toggle("on", mapMotionBetaEnabled);
+  button.setAttribute("aria-pressed", mapMotionBetaEnabled ? "true" : "false");
+}
+function setMapMotionBeta(enabled, persist){
+  mapMotionBetaEnabled = Boolean(enabled);
+  if(persist!==false){
+    try{ localStorage.setItem(MAP_MOTION_BETA_KEY, mapMotionBetaEnabled ? "1" : "0"); }catch(e){}
+  }
+  syncMapMotionBetaButton();
+}
 function t(key){
   const pack = I18N[uiLang] || I18N.zh;
   return pack[key] || I18N.zh[key] || key;
@@ -254,6 +279,7 @@ function applyStaticI18n(){
     b.classList.toggle("on", b.dataset.lang===uiLang);
   });
   syncThemePicks();
+  syncMapMotionBetaButton();
   const titleEl = document.getElementById("repo-title");
   if(titleEl && catalog[repoId]){
     titleEl.innerHTML = catalog[repoId].name+" "+t("archMap")+' <span class="caret">▾</span>';
@@ -1929,6 +1955,8 @@ function visibleChildren(n){
   }
   const kids = (n.children||[]).filter(c=>!isCancelled(c));
   if(n.id===viewRootId) return kids;
+  /* 官网/本地动画演示在进入模块后展开完整内置子树，避免用残缺层级评估镜头动效。 */
+  if(window.__CG_TOUR_FULL_MAP__ && !isCatalogView()) return kids;
   if(isCatalogView()) return [];
   /* 模块不展开。开工节点后面还可再接开工节点或一个模块（最多两岔）则默认展开。 */
   if(n.kind==="module") return [];
@@ -2637,6 +2665,7 @@ function renderBugPanel(){
 }
 
 function enterView(id, opts){
+  if(mapTransitioning || id===viewRootId) return;
   closeAddPick();
   deleteAskId = null;
   if(bugPathMode){
@@ -2645,11 +2674,64 @@ function enterView(id, opts){
     bugPathReturn = null;
     document.body.classList.remove("bug-path-mode");
   }
+  if(!mapMotionBetaEnabled){
+    commitViewRoot(id, opts);
+    fitView();
+    opts?._mapMotionComplete?.();
+    return;
+  }
+  const previousRootId = viewRootId;
+  const previousPath = findPath(previousRootId) || [];
+  const nextPath = findPath(id) || [];
+  const direction = opts?.direction || (nextPath.length > previousPath.length ? "down" : "up");
+  const isAncestor = direction==="up" && nextPath.length < previousPath.length &&
+    nextPath.every((node,index)=>previousPath[index]?.id===node.id);
+  if(isAncestor && previousPath.length-nextPath.length>1 && !opts?._mapMotionChain){
+    const steps = previousPath
+      .slice(nextPath.length-1, previousPath.length-1)
+      .reverse()
+      .map(node=>node.id);
+    runMapViewChain(steps, opts);
+    return;
+  }
+  const anchorId = direction==="down" ? id : previousRootId;
+  const anchor = mapNode(anchorId);
+  if(prefersReducedMapMotion() || !anchor){
+    commitViewRoot(id, opts);
+    fitView();
+    opts?._mapMotionComplete?.();
+    return;
+  }
+  animateViewChange({id, opts, anchorId, anchor, direction});
+}
+
+function runMapViewChain(stepIds, opts){
+  const count = stepIds.length;
+  let index = 0;
+  const advance = startedAt=>{
+    const stepId = stepIds[index++];
+    if(!stepId) return;
+    const segmentIndex = index-1;
+    const segmentStart = mapChainEaseTime(segmentIndex/count);
+    const segmentEnd = mapChainEaseTime(index/count);
+    enterView(stepId, {
+      ...opts,
+      direction:"up",
+      _mapMotionChain:true,
+      _mapMotionDuration:MAP_MOTION_MS*(segmentEnd-segmentStart),
+      _mapMotionStartedAt:startedAt,
+      _mapMotionSegment:{index:segmentIndex,count,start:segmentStart,end:segmentEnd},
+      _mapMotionComplete:index<stepIds.length ? advance : opts?._mapMotionComplete
+    });
+  };
+  advance();
+}
+
+function commitViewRoot(id, opts){
   viewRootId = id; selectedId = id;
   const n = getNode(id);
   if((!opts || opts.unpack!==false) && n && id!==data.id) unpackInbox(n);
   renderAll();
-  fitView();
 }
 
 /* ================= 顶部导航 / 提示条 ================= */
@@ -2769,6 +2851,9 @@ document.getElementById("theme-picks").onclick = e=>{
   const b = e.target.closest("[data-theme]");
   if(!b) return;
   applyNodeTheme(b.dataset.theme, true);
+};
+document.getElementById("btn-beta-motion").onclick = ()=>{
+  setMapMotionBeta(!mapMotionBetaEnabled, true);
 };
 function setLayoutDir(dir){
   layoutDir = dir==="tb" ? "tb" : "lr";
@@ -2918,18 +3003,21 @@ function renderMap(){
   const els = new Map();
   function mountEl(n, ghost){
     const isViewRoot = !ghost && n.id===viewRootId;
+    const isDrilledRoot = isViewRoot && n.id!==data.id;
     const noauth = !isProposed(n) && !isAuth(n) &&
       !(n.kind==="module" && moduleAuthState(n)!=="none");
     const relDim = !!(relationMode && relSet && !relSet.has(n.id));
     const div = document.createElement("div");
     div.dataset.id = n.id;
     div.className = "node" + (isViewRoot?" root":"") +
+      (isDrilledRoot?" drilled-root":"") +
+      (mapTransitioning && n.id===mapTransitionAnchorId?" map-transition-anchor":"") +
       (n.kind==="module"?" module":"") +
       (n.kind==="work" && n.kind!=="module"?" work":"") +
       (isProposed(n)?" proposed":"") +
       (noauth?" noauth":"") +
       (ghost?" ghost":"") +
-      (n.id===selectedId && !isCancelled(n)?" selected":"") +
+      (n.id===selectedId && !isDrilledRoot && !isCancelled(n)?" selected":"") +
       (addPickId===n.id?" picking":"") +
       (bugPathMode && bugFocus && n.id===bugFocus.nodeId?" bug-target":"") +
       (relationMode ? (relDim?" rel-dim":" rel-hot") : (bugPathMode || onFocusPath(n.id)?"":" dimmed"));
@@ -3298,7 +3386,7 @@ function renderMap(){
   linksEl.innerHTML = paths;
 }
 function onNodeClick(e, n){
-  if(!n) return;
+  if(!n || mapTransitioning) return;
   e.stopPropagation();
   if(window.__CG_SERVER?.root==="cloud:overview" && n.cloudProjectId){
     location.href="/projects/"+encodeURIComponent(n.cloudProjectId); return;
@@ -3934,6 +4022,212 @@ async function reviewWorkItem(nodeId,kind,itemId,decision){
 
 /* ================= 平移 / 缩放 / 自适应视口 ================= */
 let view = {x:36, y:24, k:1};
+const MAP_MOTION_MS = 500;
+const MAP_RETURN_RATIO = .72;
+let mapTransitioning = false;
+let mapTransitionFrame = null;
+let mapTransitionSnapshot = null;
+let mapTransitionAnchorRect = null;
+let mapTransitionAnchorId = null;
+let wheelReturnTimer = null;
+let drillReturnAt = null;
+let mapResizePending = false;
+function prefersReducedMapMotion(){
+  try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+  catch(e){ return false; }
+}
+function mapNode(id){
+  return [...nodesEl.querySelectorAll(".node[data-id]")].find(el=>el.dataset.id===id) || null;
+}
+function alignedView(el, screenRect){
+  const vpRect = vp.getBoundingClientRect();
+  const width = Math.max(el.offsetWidth, 1);
+  const k = Math.min(2.2, Math.max(.2, screenRect.width / width));
+  const cx = screenRect.left - vpRect.left + screenRect.width/2;
+  const cy = screenRect.top - vpRect.top + screenRect.height/2;
+  return {
+    k,
+    x:cx-(el.offsetLeft+el.offsetWidth/2)*k,
+    y:cy-(el.offsetTop+el.offsetHeight/2)*k
+  };
+}
+function correctAlignedView(el, screenRect){
+  const actual = el.getBoundingClientRect();
+  const targetCx = screenRect.left+screenRect.width/2;
+  const targetCy = screenRect.top+screenRect.height/2;
+  view.x += targetCx-(actual.left+actual.width/2);
+  view.y += targetCy-(actual.top+actual.height/2);
+  applyView();
+}
+function createMapTransitionSnapshot(anchorId, preserveAnchor){
+  const snapshot = document.createElement("div");
+  snapshot.className = "map-transition-snapshot";
+  snapshot.setAttribute("aria-hidden", "true");
+  const clone = worldEl.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.classList.remove("map-transition-zoom");
+  clone.classList.add("map-transition-snapshot-world");
+  const clonedLinks = clone.querySelector("#links");
+  if(clonedLinks) Object.assign(clonedLinks.style, {position:"absolute", left:"0", top:"0", overflow:"visible", pointerEvents:"none"});
+  const sourcePaths = worldEl.querySelectorAll("#links path");
+  const clonedPaths = clone.querySelectorAll("#links path");
+  sourcePaths.forEach((sourcePath,index)=>{
+    const targetPath = clonedPaths[index];
+    if(!targetPath) return;
+    const style = getComputedStyle(sourcePath);
+    Object.assign(targetPath.style, {
+      fill:style.fill,
+      stroke:style.stroke,
+      strokeWidth:style.strokeWidth,
+      strokeDasharray:style.strokeDasharray,
+      strokeLinecap:style.strokeLinecap,
+      strokeLinejoin:style.strokeLinejoin,
+      opacity:style.opacity,
+      visibility:style.visibility,
+      transition:"none"
+    });
+  });
+  clone.querySelectorAll(".node[data-id]").forEach(el=>{
+    if(preserveAnchor && el.dataset.id===anchorId) el.classList.add("map-transition-snapshot-anchor");
+    el.dataset.mapSnapshotId = el.dataset.id;
+    el.removeAttribute("data-id");
+  });
+  clone.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+  const anchor = mapNode(anchorId);
+  snapshot._anchorGeometry = anchor ? {
+    x:anchor.offsetLeft, y:anchor.offsetTop,
+    width:anchor.offsetWidth, height:anchor.offsetHeight
+  } : null;
+  snapshot._world = clone;
+  snapshot.appendChild(clone);
+  vp.appendChild(snapshot);
+  return snapshot;
+}
+function positionMapTransitionSnapshot(screenRect){
+  const snapshot = mapTransitionSnapshot;
+  const geometry = snapshot?._anchorGeometry;
+  const clone = snapshot?._world;
+  if(!geometry || !clone) return;
+  const vpRect = vp.getBoundingClientRect();
+  const k = Math.min(2.2, Math.max(.2, screenRect.width/Math.max(geometry.width,1)));
+  const cx = screenRect.left-vpRect.left+screenRect.width/2;
+  const cy = screenRect.top-vpRect.top+screenRect.height/2;
+  clone.style.transform = `translate(${cx-(geometry.x+geometry.width/2)*k}px,${cy-(geometry.y+geometry.height/2)*k}px) scale(${k})`;
+}
+function finishMapTransition(){
+  if(mapTransitionFrame!==null) cancelAnimationFrame(mapTransitionFrame);
+  mapTransitionFrame = null;
+  mapTransitionSnapshot?.remove();
+  mapTransitionSnapshot = null;
+  mapTransitionAnchorRect = null;
+  mapTransitionAnchorId = null;
+  document.body.classList.remove("map-transitioning", "map-transition-revealing", "map-transition-live", "map-transition-down", "map-transition-up");
+  worldEl.classList.remove("map-transition-zoom");
+  worldEl.style.removeProperty("--map-node-opacity");
+  worldEl.style.removeProperty("--map-link-opacity");
+  nodesEl.querySelectorAll(".map-transition-anchor").forEach(el=>el.classList.remove("map-transition-anchor"));
+  mapTransitioning = false;
+  if(mapResizePending){
+    mapResizePending = false;
+    fitView();
+  }
+  armDrillReturn();
+  window.dispatchEvent(new CustomEvent("cg:map-transition-end", {detail:{viewRootId}}));
+}
+function mapMotionEase(t){
+  return 1-Math.pow(1-t, 3);
+}
+function mapChainEase(t){
+  return t*t*(3-2*t);
+}
+function mapChainEaseTime(progress){
+  let low = 0, high = 1;
+  for(let index=0; index<20; index++){
+    const middle = (low+high)/2;
+    if(mapChainEase(middle)<progress) low = middle;
+    else high = middle;
+  }
+  return (low+high)/2;
+}
+function mapChainProgress(raw, segment){
+  const time = segment.start+(segment.end-segment.start)*raw;
+  return Math.max(0, Math.min(1, segment.count*mapChainEase(time)-segment.index));
+}
+function mapMaskProgress(t, start, end){
+  const p = Math.max(0, Math.min(1, (t-start)/(end-start)));
+  return p*p*(3-2*p);
+}
+function animateViewChange({id, opts, anchorId, anchor, direction}){
+  const anchorRect = anchor.getBoundingClientRect();
+  mapTransitionAnchorRect = anchorRect;
+  mapTransitionAnchorId = anchorId;
+  mapTransitioning = true;
+  mapTransitionSnapshot = createMapTransitionSnapshot(anchorId, true);
+  document.body.classList.add("map-transitioning", "map-transition-revealing", `map-transition-${direction}`);
+  commitViewRoot(id, opts);
+  const nextAnchor = mapNode(anchorId);
+  if(!nextAnchor){ finishMapTransition(); fitView(); opts?._mapMotionComplete?.(); return; }
+  nextAnchor.classList.add("map-transition-anchor");
+  view = alignedView(nextAnchor, anchorRect);
+  applyView();
+  correctAlignedView(nextAnchor, anchorRect);
+  const startView = {...view};
+  const finalView = fittedView();
+  worldEl.classList.add("map-transition-zoom");
+  worldEl.style.setProperty("--map-node-opacity", "0");
+  worldEl.style.setProperty("--map-link-opacity", "0");
+  void worldEl.offsetWidth;
+  window.dispatchEvent(new CustomEvent("cg:map-transition-start", {detail:{viewRootId}}));
+  document.body.classList.add("map-transition-live");
+  const duration = opts?._mapMotionDuration || MAP_MOTION_MS;
+  let startedAt = opts?._mapMotionStartedAt ?? null;
+  const frame = now=>{
+    if(startedAt===null) startedAt = now;
+    const raw = Math.min(1, Math.max(0, (now-startedAt)/duration));
+    const camera = opts?._mapMotionSegment ? mapChainProgress(raw, opts._mapMotionSegment) : mapMotionEase(raw);
+    view = {
+      x:startView.x+(finalView.x-startView.x)*camera,
+      y:startView.y+(finalView.y-startView.y)*camera,
+      k:startView.k+(finalView.k-startView.k)*camera
+    };
+    worldEl.style.setProperty("--map-node-opacity", String(mapMaskProgress(raw, .04, .8)));
+    worldEl.style.setProperty("--map-link-opacity", String(mapMaskProgress(raw, .22, .9)));
+    if(mapTransitionSnapshot) mapTransitionSnapshot.style.opacity = String(1-mapMaskProgress(raw, 0, .62));
+    applyView();
+    if(raw>0) positionMapTransitionSnapshot(nextAnchor.getBoundingClientRect());
+    if(raw<1){ mapTransitionFrame = requestAnimationFrame(frame); return; }
+    view = finalView;
+    applyView();
+    finishMapTransition();
+    opts?._mapMotionComplete?.(now);
+  };
+  mapTransitionFrame = requestAnimationFrame(frame);
+}
+function realignRevealingMap(){
+  if(!mapTransitioning || worldEl.classList.contains("map-transition-zoom") ||
+    !document.body.classList.contains("map-transition-revealing") || !mapTransitionAnchorRect) return;
+  const anchor = mapNode(mapTransitionAnchorId);
+  if(!anchor) return;
+  view = alignedView(anchor, mapTransitionAnchorRect);
+  applyView();
+  correctAlignedView(anchor, mapTransitionAnchorRect);
+}
+function armDrillReturn(){
+  clearTimeout(wheelReturnTimer);
+  const path = findPath(viewRootId) || [];
+  drillReturnAt = path.length>1 ? Math.max(.2, view.k*MAP_RETURN_RATIO) : null;
+}
+function returnToParent(){
+  if(mapTransitioning) return;
+  const path = findPath(viewRootId) || [];
+  if(path.length<2) return;
+  enterView(path[path.length-2].id, {direction:"up", unpack:false});
+}
+function scheduleZoomReturn(){
+  if(drillReturnAt===null || view.k>drillReturnAt || mapTransitioning) return;
+  clearTimeout(wheelReturnTimer);
+  wheelReturnTimer = setTimeout(returnToParent, 140);
+}
 function hideEdgeSlivers(){
   const vp = document.getElementById("viewport");
   const header = document.querySelector("header.top");
@@ -4170,7 +4464,7 @@ function syncChrome(){
   document.documentElement.style.setProperty("--chrome-top", px+"px");
   hideEdgeSlivers();
 }
-function fitView(){
+function fittedView(){
   const bugs = document.body.classList.contains("bugs-open");
   const phone = isPhoneLayout();
   const right = phone ? 0 : (bugs ? bugPanelWidthPx() : drawerWidthPx());
@@ -4178,10 +4472,21 @@ function fitView(){
   const availW = window.innerWidth - right - 72;
   const availH = window.innerHeight - chromeTop() - bottom - 36;
   const k = Math.min(availW/Math.max(extents.w,1), availH/Math.max(extents.h,1), 1.35);
-  view.k = Math.max(k, .35);
-  view.x = 36 + Math.max(0, (availW - extents.w*view.k)/2);
-  view.y = 24 + Math.max(0, (availH - extents.h*view.k)/2);
+  const fittedK = Math.max(k, .35);
+  return {
+    k:fittedK,
+    x:36 + Math.max(0, (availW - extents.w*fittedK)/2),
+    y:24 + Math.max(0, (availH - extents.h*fittedK)/2)
+  };
+}
+function fitView(){
+  if(mapTransitioning && document.body.classList.contains("map-transition-revealing")){
+    realignRevealingMap();
+    return;
+  }
+  view = fittedView();
   applyView();
+  armDrillReturn();
 }
 function onChromeResize(){
   syncPhoneClass();
@@ -4197,6 +4502,7 @@ function onChromeResize(){
   }
   syncSplitChrome();
   syncChrome();
+  if(mapTransitioning){ mapResizePending = true; return; }
   fitView();
 }
 onChromeResize._phone = isPhoneLayout();
@@ -4212,7 +4518,7 @@ let panning=false, sx=0, sy=0;
 const pointers = new Map();
 let pinch = null;
 function panIgnore(el){
-  return !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
+  return mapTransitioning || !!(el && (el.closest("#drawer-split") || el.closest(".node") || el.closest(".lens-bar") || el.closest(".shelf-card") || el.closest(".shelf-label")));
 }
 function endPointer(e){
   pointers.delete(e.pointerId);
@@ -4220,6 +4526,7 @@ function endPointer(e){
   if(pointers.size === 0){
     panning = false;
     vp.classList.remove("grabbing");
+    scheduleZoomReturn();
   }else if(pointers.size === 1){
     const p = [...pointers.values()][0];
     panning = true;
@@ -4257,7 +4564,8 @@ vp.addEventListener("pointermove", e=>{
     const pts = [...pointers.values()];
     const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
     if(pinch.d>8 && view.k>0){
-      const nk = Math.min(2.2, Math.max(.35, pinch.k * (d / pinch.d)));
+      const minK = viewRootId===data.id ? .35 : .2;
+      const nk = Math.min(2.2, Math.max(minK, pinch.k * (d / pinch.d)));
       const rect = vp.getBoundingClientRect();
       const cx = (pts[0].x+pts[1].x)/2 - rect.left;
       const cy = (pts[0].y+pts[1].y)/2 - rect.top;
@@ -4276,14 +4584,18 @@ vp.addEventListener("pointercancel", endPointer);
 window.addEventListener("mouseup", ()=>{ if(pointers.size===0){ panning=false; vp.classList.remove("grabbing"); } });
 vp.addEventListener("wheel", e=>{
   e.preventDefault();
+  if(mapTransitioning) return;
   const factor = e.deltaY<0 ? 1.08 : 1/1.08;
-  const nk = Math.min(2.2, Math.max(.35, view.k*factor));
+  const minK = viewRootId===data.id ? .35 : .2;
+  const nk = Math.min(2.2, Math.max(minK, view.k*factor));
   const rect = vp.getBoundingClientRect();
   const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
   view.x = cx - (cx-view.x)*(nk/view.k);
   view.y = cy - (cy-view.y)*(nk/view.k);
   view.k = nk;
   applyView();
+  if(e.deltaY<0 && drillReturnAt!==null && view.k>drillReturnAt+.08) clearTimeout(wheelReturnTimer);
+  if(e.deltaY>0) scheduleZoomReturn();
 },{passive:false});
 
 function syncLinkRepoBtn(){
@@ -4547,6 +4859,7 @@ async function installCoordinatorPanel(sync){
 async function boot(){
   const stored = readStoredUiLang();
   if(stored) uiLang = stored;
+  mapMotionBetaEnabled = readStoredMapMotionBeta();
   applyStaticI18n();
   let WorkbenchSync;
   try { ({WorkbenchSync}=await import("./workbench-sync.mjs")); attachmentModule=await import("./attachments.mjs"); }
@@ -4608,7 +4921,12 @@ async function boot(){
 }
 const headerEl = document.querySelector("header.top");
 if(window.ResizeObserver && headerEl){
-  new ResizeObserver(()=>{ syncChrome(); if(typeof fitView==="function") fitView(); }).observe(headerEl);
+  new ResizeObserver(()=>{
+    syncChrome();
+    if(typeof fitView!=="function") return;
+    if(mapTransitioning) realignRevealingMap();
+    else fitView();
+  }).observe(headerEl);
 }
 finishDrawerChrome();
 boot();
