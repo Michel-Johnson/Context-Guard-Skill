@@ -141,6 +141,21 @@ function linkMapNodes(root, nodes, onNode, doc) {
 
 export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
+  const answerComposer = (question, draft, answerValue) => {
+    const compose = doc.createElement('div'); compose.className = 'coordinator-answer-compose';
+    const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000;
+    input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
+    const send = doc.createElement('button'); send.type = 'button'; send.textContent = '发送'; send.setAttribute('aria-label', '发送“' + question.text + '”');
+    const update = () => { send.disabled = !canAnswer || !answerValue(); };
+    const commit = () => { const answer = answerValue(); if (canAnswer && answer) onAnswer?.(question, answer); };
+    input.addEventListener('input', () => { draft.text = input.value; update(); });
+    input.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      event.preventDefault(); if (!send.disabled) commit();
+    });
+    send.addEventListener('click', commit); update(); compose.append(input, send);
+    return { compose, update, commit };
+  };
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
     if (workflow || message.answerTo || !message.text) continue;
@@ -154,11 +169,8 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       const card = doc.createElement('section'); card.className = 'coordinator-question coordinator-legacy-question'; card.dataset.questionId = question.id;
       const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);
       const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
-      const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000; input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
-      const send = doc.createElement('button'); send.type = 'button'; send.textContent = '提交回答'; send.disabled = !canAnswer || !draft.text.trim();
-      input.addEventListener('input', () => { draft.text = input.value; send.disabled = !canAnswer || !draft.text.trim(); });
-      send.addEventListener('click', () => onAnswer?.({ ...question, legacy: true }, draft.text.trim()));
-      card.append(input, send); content.append(card);
+      const answerQuestion = { ...question, legacy: true };
+      card.append(answerComposer(answerQuestion, draft, () => draft.text.trim()).compose); content.append(card);
     }
     if (legacy?.after) content.append(markdownFragment(legacy.after, doc));
     for (const question of message.questions || []) {
@@ -176,24 +188,20 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
           ...(question.nodes || []).map(node => ({ label: node.title, nodeId: node.id })),
           ...(question.options || []).map(label => ({ label })),
         ];
+        const answerValue = () => [draft.option, draft.text.trim()].filter(Boolean).join('\n\n');
+        const composer = answerComposer(question, draft, answerValue);
         for (const option of choiceItems) {
           const button = doc.createElement('button'); button.type = 'button'; button.textContent = option.label; button.disabled = !canAnswer;
           if (option.nodeId) { button.classList.add('coordinator-node-link'); button.dataset.nodeId = option.nodeId; }
           button.setAttribute('aria-pressed', String(draft.option === option.label)); optionButtons.push(button);
           button.addEventListener('click', () => {
-            if (option.nodeId) onNode?.(option.nodeId);
-            draft.option = draft.option === option.label ? '' : option.label;
+            if (draft.option === option.label) { composer.commit(); return; }
+            draft.option = option.label;
             for (const item of optionButtons) item.setAttribute('aria-pressed', String(item.textContent === draft.option));
-            update();
+            composer.update();
           }); choices.append(button);
         }
-        const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000;
-        input.placeholder = '在此回答，或补充说明…'; input.setAttribute('aria-label', '回答：' + question.text); input.value = draft.text;
-        const send = doc.createElement('button'); send.type = 'button'; send.textContent = '提交回答';
-        const update = () => { send.disabled = !canAnswer || !(draft.option || draft.text.trim()); };
-        input.addEventListener('input', () => { draft.text = input.value; update(); });
-        send.addEventListener('click', () => onAnswer?.(question, [draft.option, draft.text.trim()].filter(Boolean).join('\n\n')));
-        update(); card.append(choices, input, send);
+        card.append(choices, composer.compose);
       }
       card.append(activity); content.append(card);
     }

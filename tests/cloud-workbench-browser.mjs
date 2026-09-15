@@ -467,6 +467,21 @@ try {
   await page.locator('#structured-node-test').getByRole('button', { name: '继续这个事项' }).evaluate(button => button.click());
   assert.equal(await page.locator('#structured-node-test').getAttribute('data-conversation'), 'item-next');
   await page.locator('#structured-node-test').evaluate(node => node.remove());
+  await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div'); host.id = 'question-keyboard-test';
+    host.append(conversationFragments([{ role: 'assistant', text: '补充细节', questions: [{ id: 'keyboard-question', text: '请补充细节' }] }], document, {
+      canAnswer: true, onAnswer: (_question, answer) => { host.dataset.answer = answer; },
+    }).body);
+    document.body.append(host);
+  });
+  const keyboardAnswer = page.locator('#question-keyboard-test textarea');
+  await keyboardAnswer.fill('第一行'); await keyboardAnswer.press('Shift+Enter'); await keyboardAnswer.type('第二行');
+  assert.equal(await keyboardAnswer.inputValue(), '第一行\n第二行', 'Shift+Enter keeps a newline in an inline answer');
+  await keyboardAnswer.press('Enter');
+  assert.equal(await page.locator('#question-keyboard-test').getAttribute('data-answer'), '第一行\n第二行', 'Enter sends an inline answer');
+  assert.equal(await page.locator('#question-keyboard-test .coordinator-answer-compose > button').textContent(), '发送');
+  await page.locator('#question-keyboard-test').evaluate(node => node.remove());
   coordinatorState.nodeReferences = [{ id: 'T0', title: '定位节点' }];
   coordinatorState.messages.push({ role: 'assistant', text: '推荐挂载节点：定位节点。' });
   await page.reload(); await synchronized();
@@ -490,11 +505,14 @@ try {
   record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'发送','the main send control stays inside the input border');
   await coordinator.getByLabel('发送给 Coordinator').fill('保留我的自由对话草稿');
   await coordinator.getByLabel('回答：要上传什么？').fill('保留我的补充');
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
-  assert.equal(submissions.length,0,'selecting an option does not submit until the user presses submit answer');
-  await coordinator.getByRole('button',{name:'提交回答',exact:true}).click();
+  assert.equal(submissions.length,0,'the first option click only selects it');
+  assert.equal(await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).getAttribute('aria-pressed'),'true');
+  assert.equal(await coordinator.getByRole('button',{name:'提交回答',exact:true}).count(),0,'questions have no separate submit-answer button');
+  await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
   await coordinator.getByRole('button',{name:'重试原请求',exact:true}).waitFor();
   assert.equal(submissions.length,1);
   assert.equal(submissions[0].text,'网站构建产物\n\n保留我的补充');
@@ -533,8 +551,11 @@ try {
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).waitFor({ state: 'detached' });
   assert.equal(approvals[0].id, approvals[1].id);
   assert.equal(submissions.length, 0, 'human confirmation is a script request, not a model prompt');
-  await coordinator.locator('textarea').fill('模拟需求');
-  await coordinator.getByRole('button', { name: '发送', exact: true }).click();
+  await coordinator.getByLabel('发送给 Coordinator').fill('模拟需求');
+  await coordinator.getByLabel('发送给 Coordinator').press('Shift+Enter');
+  await coordinator.getByLabel('发送给 Coordinator').type('补充一行');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'模拟需求\n补充一行');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
   assert.match(await coordinator.getByRole('status').textContent(), /尚未确认提交/);
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
