@@ -608,7 +608,13 @@ export async function startCloudServer({
           // Conversation ownership is a UI routing hint, not an authorization
           // boundary. Every Coordinator conversation uses the same project
           // identity and may operate on tasks in explicitly assigned Sessions.
-          readTask: async (id, taskId) => store.taskRecord(principal, await sessionFor(id), taskId),
+          readTask: async (id, taskId) => {
+            const session = await sessionFor(id);
+            const [task, delivery] = await Promise.all([
+              store.taskRecord(principal, session, taskId), store.taskStatus(principal, session, taskId),
+            ]);
+            return { ...task, deliveryState: delivery.state, ...(delivery.queue ? { queue: delivery.queue } : {}) };
+          },
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
             if (type === 'brief.submit') {
@@ -645,6 +651,13 @@ export async function startCloudServer({
             return (await store.handle(principal, { v: 2, id: `auto-resume:${messageId}`, type: 'task.control', session,
               payload: { taskId, action: 'resume', expectedVersion: current.version,
                 data: { reason: `自动恢复中断任务${reason ? `：${reason}` : ''}` } } }, { workflow: interfaceWorkflow })).data;
+          },
+          autoRework: async ({ session, taskId, messageId }) => {
+            const current = await store.taskRecord(principal, session, taskId);
+            if (current.stage !== 'acceptance-rejected' || !current.busy) return { skipped: true, stage: current.stage };
+            return (await store.handle(principal, { v: 2, id: messageId, type: 'task.rework', session,
+              payload: { taskId, sourceSha: current.sourceSha, ciResultRef: current.ci.ref,
+                failedTestIds: [], reason: current.acceptanceReview.reason } }, { workflow: interfaceWorkflow })).data;
           },
           routeEvent: async (type, payload, session) => {
             let taskId = payload.taskId;

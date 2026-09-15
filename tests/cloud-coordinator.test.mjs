@@ -1064,12 +1064,15 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
   assert.equal((await accept({ ...review, version: 'stale' })).status, 409);
   const rejection = await accept(review); assert.equal(rejection.status, 200);
   assert.deepEqual(await (await accept(review)).json(), await rejection.json());
-  const rejected = await store.taskRecord(coordinator, session, 'task');
-  assert.equal(rejected.stage, 'acceptance-rejected');
+  let rejected = await store.taskRecord(coordinator, session, 'task');
+  for (let attempt = 0; rejected.stage !== 'rework' && attempt < 100; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    rejected = await store.taskRecord(coordinator, session, 'task');
+  }
+  assert.equal(rejected.stage, 'rework');
   assert.match(rejected.acceptanceReview.reason, /模拟人工验收/);
-  await assert.rejects(protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: 'invented feedback' }), { code: 'CONFLICT' });
-  await protocol(coordinator, 'task.rework', { taskId: 'task', sourceSha, ciResultRef: rejected.ci.ref, failedTestIds: [], reason: rejected.acceptanceReview.reason });
-  assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'rework');
+  assert.equal(rejected.rework.reason, rejected.acceptanceReview.reason);
+  assert.deepEqual(rejected.rework.failedTestIds, []);
 });
 
 test('Coordinator consumes existing workflow notifications and lost acknowledgements do not repeat model turns', async t => {

@@ -1,5 +1,6 @@
 # CI TODO
 
+- [ ] Coordinator 自动将 `acceptance-rejected` 原任务推进到返工、`read_task` 返回权威阻塞任务且不再询问用户执行 Session；本轮按用户要求直接开发，未新增或运行测试。
 - [ ] 恢复控制重复投递：保存 Cloud 已确认的 resumed 回执，重启后抑制同控制再次唤起模型；新控制正常交付，任务/代次隔离。实现已随 `638acd3d` 部署，正式 delivery/workflow 及合并后的全量 438 项通过；真实断线恢复专项仍未执行，不能据此宣称全部通过。
 - [x] 旧测试基线 Windows Python 启动失败：复用 main 已有 `python-command.mjs` 与测试，不再写死 python3；Python 探测与真实 Codex SQLite 注册共 4 项通过。原全量失败日志保留，本项通过不代表全量通过。
 - [x] 旧联调基线 IF-046 父进程提前超时：复用 main a4e7c627 的有界 CLI 调用与进程树清理，保持全部业务断言；interface-events 6 项通过，其中真实跨 Session 用例约88秒。原全量393项391通过2失败保留，修复后的全量结果仍待核验。
