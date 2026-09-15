@@ -23,7 +23,7 @@ export async function executionPrompt(message, readObject) {
         '失败或取消时加 --outcome failed/cancelled。重试使用同一编号；完成不代表发布 Main。'].join('\n');
     }
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
-      `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main：${p.mainVersion}`, brief.content.text,
+      `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main 记忆版本（不是 Git SHA）：${p.mainVersion}`, brief.content.text,
       '使用 map task plan --input <JSON文件路径> 或 --input -（stdin）提交 {operationId,content:{paths,steps}}；不要把 JSON 正文当文件名。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
       reviewedRetry,
       `交付编号：${message.id}；同一编号不得重复执行。`].join('\n');

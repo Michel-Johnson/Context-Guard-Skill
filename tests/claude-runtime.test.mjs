@@ -60,7 +60,10 @@ test('Native creation isolates the worktree and profile, pins Main and preserves
   const request = { id: hash('creation'), sessionId: randomUUID(), templateSessionId, name: 'New developer' };
   const prepared = await runtime.provision(request, { baseRef: 'refs/heads/main', start: false });
   assert.equal(prepared.state, 'prepared');
-  assert.equal((await readJSON(runtime.sessionFile(request.sessionId))).active, undefined);
+  const preparedState = await readJSON(runtime.sessionFile(request.sessionId));
+  assert.equal(preparedState.active, undefined);
+  assert.ok(Date.parse(preparedState.updatedAt));
+  assert.equal((await runtime.status(request.sessionId)).status, 'stopped');
   const first = await runtime.provision(request, { baseRef: 'refs/heads/main' });
   const state = await readJSON(runtime.sessionFile(request.sessionId));
   assert.notEqual(first.root, directory);
@@ -255,4 +258,11 @@ test('Claude CI checks out the exact handoff SHA and rejects results after sourc
   await fs.writeFile(jobFile, JSON.stringify({ ...await readJSON(jobFile), state: 'interrupted' }));
   await fs.writeFile(runtime.sessionFile(sessionId), JSON.stringify({ ...await readJSON(runtime.sessionFile(sessionId)), active: jobFile }));
   await assert.rejects(runtime.ciContext(sessionId), { code: 'CI_NOT_ACTIVE' }, 'an interrupted CI worker no longer has test authority');
+  runtime.wake = async () => {};
+  await runtime.deliver({ id: 'next-ci-task', sessionId, root, platform: 'claude', message: 'test next exact SHA',
+    execution: { session: { id: executorSessionId, generation: 1 }, taskId: 'next-task', sourceSha } });
+  const next = await readJSON(runtime.jobFile(sessionId, 'next-ci-task'));
+  assert.equal(next.state, 'starting');
+  assert.equal((await readJSON(runtime.sessionFile(sessionId))).active, runtime.jobFile(sessionId, 'next-ci-task'));
+  assert.equal((await readJSON(jobFile)).state, 'interrupted', 'preserve the prior interruption evidence');
 });
