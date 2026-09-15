@@ -593,6 +593,7 @@ export async function startCloudServer({
               nodes: [...new Set(result.nodeIds)].map(id => index.get(id)?.node).filter(Boolean).map(node => ({ id: node.id, title: node.title, purpose: node.purpose || '' })) };
           },
           mountConversation: async (input, operationId) => {
+            if (conversationId.startsWith('item-')) protocolFail('INVALID_ARGUMENT', 'This item is already mounted; prepare its project requirements');
             if (config.mapWrite !== true) protocolFail('FORBIDDEN', 'Coordinator item mounting is not enabled for this project');
             const memory = await readMemoryProject(configuredMemory, project.id), snapshot = memory.main;
             if (snapshot.version !== input.mainVersion) protocolFail('VERSION_CONFLICT', 'Main changed; read the target node again');
@@ -609,6 +610,9 @@ export async function startCloudServer({
               { kind: 'coordinator', sessionId: '', agentId: principal.agentId });
             const id = await conversations.ensure({ nodeId: input.nodeId, kind: input.kind, item });
             await conversations.continueIn(conversationId, id);
+            const target = await coordinatorFor(project, id);
+            await target.submit({ id: `mount-continue:${digest(operationId)}`, text:
+              '此事项已成功挂载。沿用上面的用户需求，读取该节点的最新 Main 版本；业务目标明确时直接调用 prepare_task 准备项目级需求。不要再次挂载、读取旧任务或选择执行 Session。需求批准后后台自动创建新执行环境。' }, { source: 'workflow' });
             return { kind: 'conversation-mounted', message: '已挂载到 Map', conversationId: id,
               node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version };
           },

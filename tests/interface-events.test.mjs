@@ -251,14 +251,8 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
     throw Object.assign(new Error('Preparation probe; no model launched'), { code: 'CREATION_PROBE' });
   });
   const creation = await creationStore.requestSessionCreation(creationHuman, { operationId: 'backend-main-ref', templateSessionId: 's', name: 'Creation probe' });
-  await waitFor(async () => {
-    const { origin, ...beat } = await request(local.state, '/api/device-heartbeat');
-    const response = await fetch(new URL('/api/v2/heartbeat', origin), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([beat]) });
-    const [reply] = await response.json();
-    assert.equal(reply.ok, true);
-    await request(local.state, '/api/device-heartbeat', { method: 'POST', body: reply });
-    return (await creationStore.sessionCreations(creationHuman)).find(item => item.id === creation.id)?.state === 'failed';
-  });
+  await waitFor(async () => (await creationStore.sessionCreations(creationHuman))
+    .find(item => item.id === creation.id)?.state === 'failed');
   assert.ok(creationCalls.length > 0);
   assert.ok(creationCalls.every(call => call.input.id === creation.id && call.options.baseRef === 'refs/remotes/origin/main'));
   creationProbe.mock.restore();

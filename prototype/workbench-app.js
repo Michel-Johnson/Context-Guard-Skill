@@ -4855,7 +4855,7 @@ async function installCoordinatorPanel(sync){
       if(['brief','brief-rejected','completed','dispatched'].includes(task.stage))continue;
       const note=document.createElement('p');
       const labels={queued:'等待执行额度',creating:'正在准备执行环境',starting:'正在等待执行环境就绪',failed:'执行环境创建失败'};
-      const errors={WAITING_DEVICE:'等待设备上线',WAITING_SESSION_READY:'执行环境尚未就绪，后台继续检查'};
+      const errors={WAITING_DEVICE:'等待本地设备恢复连接',WAITING_CAPACITY:'等待新任务执行额度',WAITING_SESSION_READY:'执行环境尚未就绪，后台继续检查'};
       note.textContent=errors[task.error]||labels[task.stage]||'正在准备任务';
       if(task.error&&!errors[task.error])note.textContent+='：'+task.error;
       messages.append(note);

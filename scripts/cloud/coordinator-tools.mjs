@@ -7,7 +7,7 @@ const executionSessionId = { type: 'string', minLength: 1,
   description: 'Exact executionSessionId returned by list_sessions. Never use main, legacy, session:* or item-* Coordinator conversation IDs.' };
 const task = { executionSessionId, taskId: string };
 export const coordinatorReferences = ['map-read.md', 'map-mount.md', 'user-reply.md', 'agent-handoff.md', 'plan-review.md', 'test-check.md'];
-const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT' }); };
+const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT', toolHint: message }); };
 
 export const coordinatorTools = [
   definition('list_tasks', 'List project requirements, creation status and their execution Session when ready. New tasks receive fresh Sessions automatically.', {}),

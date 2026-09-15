@@ -8,6 +8,7 @@ import { MapError } from '../shared/map-model.mjs';
 
 const execFileAsync = promisify(execFile);
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
+export const optionalGitMiss = error => Number.isInteger(error?.code) && error.code !== 0 && !error.killed && error.signal == null;
 
 async function git(root, args, { optional = false } = {}) {
   try {
@@ -20,7 +21,7 @@ async function git(root, args, { optional = false } = {}) {
     });
     return stdout.trim();
   } catch (error) {
-    if (optional) return '';
+    if (optional && optionalGitMiss(error)) return '';
     throw error;
   }
 }
