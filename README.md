@@ -207,7 +207,7 @@ Run `context-guard workbench --root /path/to/project` to see the map. The top ba
 
 Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes to the Agent at reasoning boundaries; run Cloud Sync `prepare` only at the first mutation of a plan; and check conflicts before requiring `sync finish`. New user requirements are classified semantically into Map TODOs. `TODO.md` stays human-owned. Hook events carry stable IDs and occurrence/recording timestamps.
 
-## Main Files
+## Local compatibility cache
 
 ```text
 .codex/context/
@@ -223,6 +223,13 @@ Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the
 |-- user-messages.md
 `-- private/                     # gitignored
 ```
+
+These files remain for the local compatibility protocol; they are not the new
+Cloud Agent read surface. Authoritative server memory uses the node/module
+Markdown filesystem documented in [Memory Filesystem v2](references/memory-filesystem-v2/README.md),
+including complete examples and per-Agent editing responsibilities.
+`bugs-index.json`, `tasks-index.json`, `jump-index.json`, and `owns-index.json`
+under `legacy-records/` are migration, compatibility, and rollback data only.
 
 See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 

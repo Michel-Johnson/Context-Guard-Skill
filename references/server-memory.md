@@ -4,12 +4,32 @@ Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
-**Status: private service/client implementation, automated acceptance, and one
-production migration have been verified.** Further installations and migrations
+**Status: private service/client implementation, automated acceptance, and the
+production filesystem v2 migration have been verified.** The node/module and
+work-item document contract is [Memory Filesystem v2](memory-filesystem-v2/README.md).
+Runtime compatibility still retains legacy records; default API/context exclusion
+of those records remains an explicit acceptance item in `CI_todo.md` and must not
+be inferred from the documentation alone. Further installations and migrations
 still require explicit approval. When
 `CONTEXT_GUARD_MEMORY_CONFIG` is configured, the normal Cloud process mounts this
 API at the same HTTPS origin. Without that explicit configuration, no private
 memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`.
+
+## Filesystem v2 read boundary
+
+Cloud Main and each Session have separate filesystem v2 projections. An Agent
+starts from the target node/module `index.md`, follows only the relevant linked
+Bug, Todo, Idea, test, or Session document, and does not scan the whole tree.
+Node indexes contain Related, Sub, Bug, Todo, and Idea directly; there is no
+current JSON work-item index.
+
+`runtime-state.json` is the transactional compatibility state.
+`legacy-records/` is retained for migration and rollback. Neither is a normal
+Agent read surface, and files such as `bugs-index.json`, `tasks-index.json`,
+`jump-index.json`, and `owns-index.json` must not be used for new interface
+analysis. Until the runtime exclusion item in `CI_todo.md` is complete, callers
+must enforce this boundary explicitly rather than assuming legacy records are
+absent from an API response.
 
 ## Runtime interface
 

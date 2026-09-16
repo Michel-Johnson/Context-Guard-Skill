@@ -21,12 +21,21 @@ or replace human approval. For a locally managed Claude CLI receiver, read
 [references/claude-runtime.md](references/claude-runtime.md) when configuring or
 diagnosing native delivery; ordinary Map reads do not require a receiver.
 
-Four stores only:
+The local compatibility cache still has four stores:
 
 1. **Sessions** — lifecycle hooks append `.codex/context/sessions.jsonl` and create `sessions/{id}.md`
 2. **Bugs** — thin card in `.codex/context/bugs/{id}.md` plus how-to in `fixes/{id}.md`; stub on the map node
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
+
+For server-backed memory, the Agent-facing storage contract is
+[Memory Filesystem v2](references/memory-filesystem-v2/README.md). Read a
+node/module `index.md` and then only the linked Bug, Todo, Idea, test, or Session
+documents needed for the task. `runtime-state.json` and `legacy-records/`
+exist for transactions, migration, and rollback; they are not normal Agent
+navigation or interface-analysis inputs. In particular, do not use
+`bugs-index.json`, `tasks-index.json`, `jump-index.json`, or `owns-index.json`
+as the current Cloud index.
 
 ### Memory authority and publication
 
@@ -46,7 +55,12 @@ authorize a source commit, push or deployment.
 
 Before acting on the map, run `context-guard map read --root <project> --session <actual-session-id> --node <id>`. This checks pending browser edits and returns authoritative node data and its version. Find human actions with `map changes --cursor <last-cursor>`. A missing cursor means read current state, not "no changes".
 
-Use `.codex/context/FIND.md` for bugs/tasks/ownership, but verify `projection-status.json.sourceVersion` before reading generated cards. `python3 scripts/map_owns.py cards --root <project>` now requests versioned Node projections; manual card annotations are retained. If projection fails, read the current node through the CLI.
+For a local compatibility cache, use `.codex/context/FIND.md` for
+bugs/tasks/ownership and verify `projection-status.json.sourceVersion` before
+reading generated cards. For server-backed memory, use the filesystem v2
+node/module index instead. `python3 scripts/map_owns.py cards --root <project>`
+requests versioned Node projections; manual card annotations are retained. If a
+projection fails, read the current node through the CLI.
 
 ### Workbench and supported writes
 

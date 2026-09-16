@@ -191,7 +191,7 @@ context-guard doctor --platform codex --root /path/to/project
 
 Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在会话开始、用户输入和压缩恢复时把真实 Map、授权、待办/坏例和其他 Session 的变更送给 Agent；在计划首次修改前只做一次云端 `prepare`，完成后检查冲突并要求 `sync finish`。用户的新要求由 Agent 按语义写入 Map TODO；`TODO.md` 只允许用户维护。所有 Hook 事件都有事件编号和发生/记录时间。
 
-## 主要文件
+## 本地兼容缓存
 
 ```text
 .codex/context/
@@ -207,6 +207,8 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在会话�
 |-- user-messages.md
 `-- private/                     # gitignored
 ```
+
+这些文件保留给本地兼容协议，不是 Cloud Agent 的新版阅读入口。服务器权威记忆使用 node/module Markdown 文件系统；格式、完整示例和各 Agent 编辑职责见 [Memory Filesystem v2](references/memory-filesystem-v2/README.md)。`legacy-records/` 中的 `bugs-index.json`、`tasks-index.json`、`jump-index.json` 和 `owns-index.json` 仅用于迁移、兼容和回滚。
 
 见 [`SKILL.md`](SKILL.md)（一页）和 `.codex/context/FIND.md`。
 

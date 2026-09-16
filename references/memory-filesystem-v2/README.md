@@ -1,0 +1,45 @@
+# Memory Filesystem v2
+
+这是 Cloud Main 与 Session 记忆的新文件结构规范。Agent 分析项目记忆时以本目录描述的 Markdown 为准，不得把 `legacy-records/*.json` 当作当前索引。
+
+## 目录
+
+```text
+filesystem-v2/
+|-- FORMAT
+|-- runtime-state.json                 # 事务兼容状态，不是 Agent 阅读入口
+`-- content/
+    |-- storage.json
+    |-- main/
+    |   |-- map.json                   # 代码导航表
+    |   |-- nodes/
+    |   |   `-- <name>-module|node/
+    |   |       |-- index.md
+    |   |       |-- bugs/<id>.md
+    |   |       |-- todos/<id>.md
+    |   |       `-- ideas/<id>.md
+    |   |-- manifest.json
+    |   `-- migration-report.json
+    `-- sessions/<session-hash>/        # 与 Main 同构，彼此隔离
+```
+
+节点的 Bug、Todo、Idea 索引直接生成在该节点的 `index.md` 中，不再创建 `bugs-index.json`、`tasks-index.json` 或 Idea JSON 索引。
+
+## 文档
+
+- [Node / Module index](Node_Module_Index.md) · [English](Node_Module_Index.en.md)
+- [Bug](Bug.md) · [English](Bug.en.md)
+- [Todo](Todo.md) · [English](Todo.en.md)
+- [Idea](Idea.md) · [English](Idea.en.md)
+- Bug 模式：[Coordinator](Bug_Coordinater.md) · [Developer](Bug_Developer.md) · [Tester](Bug_Tester.md)
+- Todo 模式：[Coordinator](Todo_Coordinater.md) · [Developer](Todo_Developer.md) · [Tester](Todo_Tester.md)
+
+## 自动生成
+
+代码负责生成目录名、文档 ID、整体状态、`CurrentAttempt`、A1/A2 轮次编号、Related/Sub、节点 `index.md` 中的 Bug/Todo/Idea 条目、测试链接、Session 链接、`map.json`、`manifest.json` 和迁移报告。
+
+节点索引中的摘要直接复制对应 Bug 现象、Todo 需求或 Idea 正文的首段，不由 Agent 重写。
+
+## 兼容边界
+
+`legacy-records/` 和 `runtime-state.json` 仅用于迁移、事务兼容与回滚。普通 Agent 上下文、接口分析和项目导航不得读取它们。需要核对历史迁移时必须显式说明兼容目的。
