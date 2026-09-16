@@ -75,7 +75,7 @@ const I18N = {
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有 Bug。", unnamedBug:"未命名 Bug", noOpenTodos:"没有 TODO。", unnamedTodo:"未命名 TODO",
     leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskBlocked:"等待前序任务完成", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
-    allSessions:"主工作台 · 全部 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
+    allSessions:"主工作台 · 工作中 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
     projectOverview:"项目总览",
     bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
     scopeRequired:"该 Session 尚未获得当前节点权限。确认后将授权当前节点、所有上级和直接关联节点，共 {n} 个新节点。",
@@ -180,7 +180,7 @@ const I18N = {
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No bugs.", unnamedBug:"Untitled bug", noOpenTodos:"No TODOs.", unnamedTodo:"Untitled TODO",
     leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskInterrupted:"Interrupted", taskWaitingReview:"Waiting for Plan review",
-    allSessions:"Main workbench · All sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
+    allSessions:"Main workbench · Working sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
     projectOverview:"Projects",
     bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
     scopeRequired:"This session cannot access the current node. Confirm to authorize the node, its ancestors, and direct relations ({n} new nodes).",
@@ -1278,6 +1278,20 @@ function normalizeSessions(items){
   }
   return [...byId.values()].filter(meta=>!isUnavailableSession(meta));
 }
+function isWorkingSession(meta){
+  const binding=String(meta?.bindingState||"").toLowerCase();
+  if(["unavailable","stale","closed","published","expired","deleted","invalid"].includes(binding)) return false;
+  const connection=meta?.connection||{};
+  const status=String(connection.state||meta?.status||"").toLowerCase();
+  const execution=String(meta?.execution?.status||"").toLowerCase();
+  if(status==="online") return execution==="active";
+  return ["active","working","running"].includes(status);
+}
+function visibleSessionChoices(){
+  const sessions=normalizeSessions(workbenchSync?.sessions||[]);
+  const selected=String(workbenchSync?.activeSession||"__all__");
+  return sessions.filter(meta=>isWorkingSession(meta)||(selected!=="__all__"&&sessionIdOf(meta)===selected));
+}
 function browserCurrentSessionId(){
   const id=String(new URLSearchParams(location.search).get("session")||"").trim();
   return id && id!=="__all__" ? id : null;
@@ -1355,7 +1369,7 @@ function sessionLifecycle(meta){
 function syncSessionSelect(){
   const select=document.getElementById("cg-sync-session");
   if(!select || !workbenchSync) return;
-  const sessions=normalizeSessions(workbenchSync.sessions);
+  const sessions=visibleSessionChoices();
   const all=document.createElement("option"); all.value="__all__"; all.textContent=t("allSessions");
   const options=sessions.map(meta=>{
     const option=document.createElement("option");
@@ -1423,7 +1437,7 @@ function closeSessionMenu(){
 function renderSessionMenu(){
   const menu = document.getElementById("session-menu");
   if(!menu) return;
-  const sessions = normalizeSessions(workbenchSync?.sessions||[]);
+  const sessions = visibleSessionChoices();
   const main=workbenchSync?.project?.main;
   const mainHint=main?.branch?`${t("globalSessionView")} · ${main.branch}${main.sha?` @ ${main.sha.slice(0,8)}`:""}`:t("globalSessionView");
   const all = `<button type="button" role="option" data-session="__all__" aria-selected="${workbenchSync?.isAllSessions?.()===true}" title="${escAttr(mainHint)}">

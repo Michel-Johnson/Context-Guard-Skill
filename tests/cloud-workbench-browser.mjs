@@ -158,7 +158,7 @@ try {
   assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
   await page.locator('#session-chip').click();
   assert.equal(await page.locator('#session-menu .session-option-name').filter({ hasText: '当前会话' }).count(), 0, 'Cloud overview/project pages have no actual current Session');
-  assert.equal(await page.locator('#session-menu [data-session="session-one"] .session-option-name').textContent(), 'codex-修复同步连接');
+  assert.equal(await page.locator('#session-menu [data-session="session-one"]').count(), 0, 'idle historical Sessions stay out of the main working list');
   assert.doesNotMatch(await page.locator('#session-menu').textContent(), /session-one/);
   assert.doesNotMatch((await page.locator('#cg-sync-session option').allTextContents()).join(' '), /session-one/);
   await page.locator('#session-chip').click();
@@ -172,10 +172,10 @@ try {
   assert.match(await pendingPage.locator('#cg-sync-status').textContent(), /正在同步到 Cloud/);
   assert.equal(await pendingPage.locator('#cloud-sync-status').getAttribute('aria-label'), '云端同步中');
   assert.equal(await pendingPage.locator(`#cg-sync-session option[value="${lateSessionId}"]`).count(), 1);
-  assert.equal(await pendingPage.locator('#cg-sync-session option[value="session-one"]').count(), 1, 'Cloud deep links retain other registered Sessions');
+  assert.equal(await pendingPage.locator('#cg-sync-session option[value="session-one"]').count(), 0, 'a deep link does not expose other idle Sessions');
   assert.equal(await pendingPage.locator('#cg-sync-session option[value="__all__"]').count(), 1, 'Cloud deep links retain the Main entry');
   await pendingPage.locator('#session-chip').click();
-  assert.equal(await pendingPage.locator('#session-menu [data-session="session-one"]').count(), 1);
+  assert.equal(await pendingPage.locator('#session-menu [data-session="session-one"]').count(), 0);
   assert.equal(await pendingPage.locator('#session-menu [data-session="__all__"]').count(), 1);
   await pendingPage.locator('#session-chip').click();
   const lateMap = structuredClone(sessionMap);
@@ -214,8 +214,7 @@ try {
   await relationPage.goto(`${service.url}/projects/context-guard?relation=T0#cloud-relation-contract`);
   await relationPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced' && document.body.classList.contains('rel-mode'));
   assert.equal(await relationPage.locator('#btn-rel').getAttribute('aria-pressed'), 'true');
-  await relationPage.locator('#session-chip').click();
-  await relationPage.locator('#session-menu [data-session="session-one"]').click();
+  await relationPage.goto(`${service.url}/projects/context-guard?session=session-one#cloud-relation-contract`);
   await relationPage.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one' && !document.body.classList.contains('rel-mode'));
   const switchedRelationUrl = new URL(relationPage.url());
   assert.equal(switchedRelationUrl.searchParams.get('session'), 'session-one');
@@ -227,8 +226,7 @@ try {
   await relationPage.close();
   record('Relation mode requires an explicit action or deep link and resets on Session switch');
 
-  await page.locator('#session-chip').click();
-  await page.locator('#session-menu [data-session="session-one"]').click();
+  await page.goto(`${service.url}/projects/context-guard?session=session-one`);
   await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one');
   await synchronized();
   assert.equal(new URL(page.url()).searchParams.get('session'), 'session-one');
