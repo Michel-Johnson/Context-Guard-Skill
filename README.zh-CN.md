@@ -208,7 +208,7 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在会话�
 `-- private/                     # gitignored
 ```
 
-这些文件保留给本地兼容协议，不是 Cloud Agent 的新版阅读入口。服务器权威记忆使用 node/module Markdown 文件系统；格式、完整示例和各 Agent 编辑职责见 [Memory Filesystem v2](references/memory-filesystem-v2/README.md)。`legacy-records/` 中的 `bugs-index.json`、`tasks-index.json`、`jump-index.json` 和 `owns-index.json` 仅用于迁移、兼容和回滚。
+这些文件保留给本地兼容协议。Cloud Agent 阅读面的已评审目标是 node/module Markdown 文件系统；格式、完整示例和各 Agent 编辑职责见 [Memory Filesystem v2](references/memory-filesystem-v2/README.md)。在 Cloud API 或 Hook 真正暴露这些投影前，旧记录仍是兼容传输，客户端不得假装能直接读取服务器私有文件。
 
 见 [`SKILL.md`](SKILL.md)（一页）和 `.codex/context/FIND.md`。
 

@@ -28,14 +28,15 @@ The local compatibility cache still has four stores:
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
 
-For server-backed memory, the Agent-facing storage contract is
-[Memory Filesystem v2](references/memory-filesystem-v2/README.md). Read a
-node/module `index.md` and then only the linked Bug, Todo, Idea, test, or Session
-documents needed for the task. `runtime-state.json` and `legacy-records/`
-exist for transactions, migration, and rollback; they are not normal Agent
-navigation or interface-analysis inputs. In particular, do not use
-`bugs-index.json`, `tasks-index.json`, `jump-index.json`, or `owns-index.json`
-as the current Cloud index.
+[Memory Filesystem v2](references/memory-filesystem-v2/README.md) defines the
+reviewed server-backed storage and Agent-read contract. Use its node/module
+`index.md` navigation only after the active Cloud API or Hook explicitly supplies
+that projection. Until that capability is present, continue using the supported
+snapshot interface and treat `legacy-records/` as compatibility transport; do
+not invent a private server path or claim the Markdown is readable. Once exposed,
+read only the linked Bug, Todo, Idea, test, or Session documents needed for the
+task and stop using `bugs-index.json`, `tasks-index.json`, `jump-index.json`, or
+`owns-index.json` as the current Cloud index.
 
 ### Memory authority and publication
 
@@ -55,10 +56,11 @@ authorize a source commit, push or deployment.
 
 Before acting on the map, run `context-guard map read --root <project> --session <actual-session-id> --node <id>`. This checks pending browser edits and returns authoritative node data and its version. Find human actions with `map changes --cursor <last-cursor>`. A missing cursor means read current state, not "no changes".
 
-For a local compatibility cache, use `.codex/context/FIND.md` for
-bugs/tasks/ownership and verify `projection-status.json.sourceVersion` before
-reading generated cards. For server-backed memory, use the filesystem v2
-node/module index instead. `python3 scripts/map_owns.py cards --root <project>`
+For a local compatibility cache, or a Cloud client that has not been given the
+filesystem v2 projection, use `.codex/context/FIND.md` for bugs/tasks/ownership
+and verify `projection-status.json.sourceVersion` before reading generated cards.
+Use the filesystem v2 node/module index only when the active interface exposes
+it. `python3 scripts/map_owns.py cards --root <project>`
 requests versioned Node projections; manual card annotations are retained. If a
 projection fails, read the current node through the CLI.
 

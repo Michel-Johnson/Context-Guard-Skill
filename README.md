@@ -224,12 +224,12 @@ Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the
 `-- private/                     # gitignored
 ```
 
-These files remain for the local compatibility protocol; they are not the new
-Cloud Agent read surface. Authoritative server memory uses the node/module
-Markdown filesystem documented in [Memory Filesystem v2](references/memory-filesystem-v2/README.md),
-including complete examples and per-Agent editing responsibilities.
-`bugs-index.json`, `tasks-index.json`, `jump-index.json`, and `owns-index.json`
-under `legacy-records/` are migration, compatibility, and rollback data only.
+These files remain for the local compatibility protocol. The reviewed target
+for the Cloud Agent read surface is the node/module Markdown filesystem in
+[Memory Filesystem v2](references/memory-filesystem-v2/README.md), including
+complete examples and per-Agent editing responsibilities. Until the Cloud API
+or Hook exposes those projections, legacy records remain compatibility transport
+and clients must not pretend that private server files are directly readable.
 
 See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
 

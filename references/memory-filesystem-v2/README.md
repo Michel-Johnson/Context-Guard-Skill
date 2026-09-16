@@ -1,6 +1,6 @@
 # Memory Filesystem v2
 
-这是 Cloud Main 与 Session 记忆的新文件结构规范。Agent 分析项目记忆时以本目录描述的 Markdown 为准，不得把 `legacy-records/*.json` 当作当前索引。
+这是 Cloud Main 与 Session 记忆的已评审目标文件结构。当前服务器已经生成该投影，但 Cloud API 与 Hook 尚未把服务器私有 Markdown 作为 Agent 阅读面；只有活动接口明确提供投影后，Agent 才按本目录导航。在此之前，旧记录仍是兼容传输，不得声称已经能够读取私有 `content/` 路径。
 
 ## 目录
 
@@ -34,9 +34,11 @@ filesystem-v2/
 - Bug 模式：[Coordinator](Bug_Coordinater.md) · [Developer](Bug_Developer.md) · [Tester](Bug_Tester.md)
 - Todo 模式：[Coordinator](Todo_Coordinater.md) · [Developer](Todo_Developer.md) · [Tester](Todo_Tester.md)
 
-## 自动生成
+## 代码生成职责
 
-代码负责生成目录名、文档 ID、整体状态、`CurrentAttempt`、A1/A2 轮次编号、Related/Sub、节点 `index.md` 中的 Bug/Todo/Idea 条目、测试链接、Session 链接、`map.json`、`manifest.json` 和迁移报告。
+目标实现由代码生成目录名、文档 ID、整体状态、`CurrentAttempt`、A1/A2 轮次编号、Related/Sub、节点 `index.md` 中的 Bug/Todo/Idea 条目、测试链接、Session 链接、`map.json`、`manifest.json` 和迁移报告。
+
+当前运行时只会重建 A1 投影，多轮 Attempt 的持久化与生成尚未实现。实现完成前，这些格式用于评审和后续开发，不得把手工写入投影目录的 A2/A3 内容视为可持久保存的数据。
 
 节点索引中的摘要直接复制对应 Bug 现象、Todo 需求或 Idea 正文的首段，不由 Agent 重写。
 

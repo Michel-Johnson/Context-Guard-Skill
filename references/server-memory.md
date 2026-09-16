@@ -17,9 +17,12 @@ memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`
 
 ## Filesystem v2 read boundary
 
-Cloud Main and each Session have separate filesystem v2 projections. An Agent
-starts from the target node/module `index.md`, follows only the relevant linked
-Bug, Todo, Idea, test, or Session document, and does not scan the whole tree.
+Cloud Main and each Session have separate filesystem v2 projections. After an
+API or Hook explicitly exposes a projection, an Agent starts from the target
+node/module `index.md`, follows only the relevant linked Bug, Todo, Idea, test,
+or Session document, and does not scan the whole tree. The current snapshot API
+does not provide private filesystem paths, so projection presence on disk is not
+evidence that an Agent can read it.
 Node indexes contain Related, Sub, Bug, Todo, and Idea directly; there is no
 current JSON work-item index.
 
