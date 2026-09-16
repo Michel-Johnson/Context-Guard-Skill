@@ -4,6 +4,7 @@
 
 - [ ] 每个独立 Coordinator 任务采用项目级需求审批，后台按并发额度创建独立 Claude Session/worktree，就绪后派发；同任务恢复和返工沿用原执行环境。生产真实创建、设备离线恢复与完整 Plan/CI/验收链路待核验。
 - 本轮项目任务持久化/原子额度/审批绑定/幂等及真实 Cloud HTTP 创建派发集成通过（合成设备心跳）；本机全量出现 Codex SQLite 发现、未绑定 Hook 用例失败，尚不能声明全量通过或生产交付。
+- 新执行 Session 完成独立 worktree 注册后直接进入耐久派发队列，不再复用旧 Session 的 `stopped` 空闲门槛；定向回归覆盖无新 Session 心跳仍只产生一次 `task.assign`。生产部署与真实 TD1 恢复待核验。
 
 - [ ] Coordinator 已移除展示层 120 字硬截断，历史回复、流式文本、问题卡与动作说明恢复完整原文；精简仅作为生成目标，不再破坏句子或 Markdown。待补语义压缩方案，不得重新引入字符裁切。
 - [ ] Coordinator 自动将 `acceptance-rejected` 原任务推进到返工、`read_task` 返回权威阻塞任务且不再询问用户执行 Session；本轮按用户要求直接开发，未新增或运行测试。
