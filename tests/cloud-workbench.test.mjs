@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
+import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, coordinatorAssignmentKey, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
@@ -68,6 +68,16 @@ test('Coordinator assignment projection replaces a stale dispatch receipt', () =
   const projected = applyCoordinatorAssignments(document, new Map([['T0:todo:TD1', current]]));
   assert.deepEqual(projected.root.todos[0].dispatch, current);
   assert.deepEqual(document.root.todos[0].dispatch, stale);
+});
+
+test('Coordinator assignment projection falls back to one exact Map item when a task started in ordinary chat', () => {
+  const document = { root: { id: 'T0', todos: [{ id: 'TD1' }], bugs: [], children: [
+    { id: 'N1', todos: [], bugs: [{ id: 'B1' }], children: [] },
+  ] } };
+  assert.equal(coordinatorAssignmentKey(document, undefined, 'TD1'), 'T0:todo:TD1');
+  assert.equal(coordinatorAssignmentKey(document, { nodeId: 'N1', kind: 'bug', itemId: 'B1' }, 'other'), 'N1:bug:B1');
+  document.root.children.push({ id: 'N2', todos: [{ id: 'TD1' }], bugs: [], children: [] });
+  assert.equal(coordinatorAssignmentKey(document, undefined, 'TD1'), '');
 });
 
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {
