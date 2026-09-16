@@ -140,6 +140,8 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
   assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
+  assert.match(prompt, /用户问“你能否创建 Session”或同义问题时，明确回答“可以”/);
+  assert.match(prompt, /不得回答“不能”“我只能等待系统创建”/);
   assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
   assert.match(prompt, /推荐不等于批准或派单/);
   assert.match(mount, /只问缺失的业务信息/);
@@ -991,6 +993,8 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   assert.equal(readObject.input_schema.properties.sessionId, undefined);
   assert.equal(prepare.input_schema.properties.sessionId, undefined);
   assert.match(prepare.input_schema.properties.executionSessionId.description, /Never use/);
+  assert.match(prepare.description, /Coordinator can initiate/);
+  assert.match(prepare.description, /must not claim it cannot create Sessions/);
   assert.match(sessions.description, /executionSessionId/);
   assert.match(conversations.description, /conversationId is never an executionSessionId/);
 
