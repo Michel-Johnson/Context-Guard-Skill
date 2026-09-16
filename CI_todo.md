@@ -1,5 +1,7 @@
 # CI TODO
 
+- [ ] Filesystem v2 Agent 读取与格式闭环：Cloud API、Hook 上下文和 Coordinator 默认只暴露 node/module Markdown 与关联 Bug/Todo/Idea 文档；不得继续传播或推荐 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json`。当前 `runtime-state.json` 仍保留并合并 `memory.records`，生成器也只会重建 A1、Todo A1 缺少归因状态、Todo/Idea 索引摘要仍截断为 20 个 Unicode 字符，并把 Bug 的 `deferred`/`wontfix` 错投影为 `Open`。文档完成不代表运行时隔离或多轮格式已实现；验收需覆盖 Main、Session、新建 Session、接口分析 Agent、多轮持久化、状态生成、完整首段复制及延期/不修复状态保真。
+
 - [x] Coordinator 节点挂载拒绝按钮不再依赖浏览器原生 `prompt`，点击即提交稳定拒绝并通知模型重新提案；PR #287（`f4f3c79`）Required 全绿并部署，Cloud 浏览器回归覆盖真实拒绝请求。生产原审核卡已不再处于待审核状态，无法对同一提案重复拒绝。
 
 - [ ] 真实 Cloud 联调已复现挂载后的接续丢失与旧 Main 版本错误循环；已修复自动接续、原轮次停止和受限静态纠错提示。真实新建本地 Session、Plan/CI/验收/合并归档仍在推进，不能以单元回归替代原生闭环。

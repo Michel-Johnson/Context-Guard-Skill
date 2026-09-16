@@ -15,6 +15,7 @@
 | 数据对象与示例 | [数据契约](interface-data-contracts.md)、[JSON 示例](interface-json-examples.md) |
 | Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md) |
 | 私有 Main / Session 记忆及发布 | [服务器记忆](../references/server-memory.md) |
+| Cloud node/module、Bug、Todo、Idea 文件格式 | [Memory Filesystem v2](../references/memory-filesystem-v2/README.md) |
 | Map-only 兼容同步 | [Cloud Sync](../references/cloud-sync-interface.md)；不是新 Session 的默认连接方式 |
 | 部署、发布、安全、测试 | [Cloud 部署](../references/cloud-deployment.md)、[npm 发布](npm-release-runbook.md)、[安全](development-security.md)、[测试治理](test-governance.md) |
 
