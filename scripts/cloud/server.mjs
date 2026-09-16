@@ -44,6 +44,19 @@ export function applyCoordinatorAssignments(document, assignments) {
   });
   return { ...document, root: projectItems(document.root) };
 }
+export function coordinatorAssignmentKey(document, owner, taskId) {
+  if (owner?.nodeId && ['todo', 'bug'].includes(owner.kind) && owner.itemId) return `${owner.nodeId}:${owner.kind}:${owner.itemId}`;
+  if (!document?.root || typeof taskId !== 'string' || !taskId) return '';
+  const matches = [];
+  const visit = node => {
+    for (const kind of ['todo', 'bug']) for (const item of node[`${kind}s`] || []) {
+      if (item?.id === taskId) matches.push(`${node.id}:${kind}:${item.id}`);
+    }
+    for (const child of node.children || []) visit(child);
+  };
+  visit(document.root);
+  return matches.length === 1 ? matches[0] : '';
+}
 const versionOf = document => digest(JSON.stringify(document));
 const newToken = () => randomBytes(32).toString('base64url');
 const scrypt = promisify(cryptoScrypt);
@@ -1046,8 +1059,9 @@ export async function startCloudServer({
     const assignments = new Map();
     for (const task of await store.projectTasks(principal)) {
       const owner = registry.items?.[task.conversationId];
-      if (!owner || ['brief', 'brief-rejected', 'dispatched', 'completed'].includes(task.stage)) continue;
-      assignments.set(`${owner.nodeId}:${owner.kind}:${owner.itemId}`, { status: task.stage === 'failed' ? 'failed' : 'queued',
+      const assignmentKey = coordinatorAssignmentKey(document, owner, task.taskId);
+      if (!assignmentKey || ['brief', 'brief-rejected', 'dispatched', 'completed'].includes(task.stage)) continue;
+      assignments.set(assignmentKey, { status: task.stage === 'failed' ? 'failed' : 'queued',
         task_id: task.taskId, at: task.updatedAt || task.createdAt, reason: task.error || task.stage });
     }
     for (const [rawKey, conversationId] of Object.entries(registry.tasks || {})) {
@@ -1055,14 +1069,15 @@ export async function startCloudServer({
       try { pair = JSON.parse(rawKey); } catch { continue; }
       const [sessionId, taskId] = pair || [];
       const owner = registry.items?.[conversationId];
-      if (!owner || !sessionId || !taskId) continue;
+      const assignmentKey = coordinatorAssignmentKey(document, owner, taskId);
+      if (!assignmentKey || !sessionId || !taskId) continue;
       const binding = await store.registeredBinding(principal, sessionId).catch(() => null);
       if (!binding) continue;
       const task = await store.taskRecord(principal, { id: sessionId, generation: binding.generation }, taskId).catch(() => null);
       if (!task) continue;
       const status = task.stage === 'finished' ? (task.result?.outcome === 'success' ? 'completed' : task.result?.outcome || 'failed')
         : task.stage === 'queued' ? 'queued' : task.stage;
-      assignments.set(`${owner.nodeId}:${owner.kind}:${owner.itemId}`, { status, task_id: task.id, session_id: sessionId, at: task.updatedAt || task.startedAt || '' });
+      assignments.set(assignmentKey, { status, task_id: task.id, session_id: sessionId, at: task.updatedAt || task.startedAt || '' });
     }
     if (!assignments.size) return document;
     return applyCoordinatorAssignments(document, assignments);
