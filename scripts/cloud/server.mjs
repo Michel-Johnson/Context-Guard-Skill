@@ -738,8 +738,6 @@ export async function startCloudServer({
           if (Date.now() - Date.parse(task.updatedAt) > 120000 && !task.error) await store.updateProjectTask(principal, task.taskId, { error: 'WAITING_SESSION_READY' });
           continue;
         }
-        const presence = interfacePresence.get(presenceKey(principal.repositoryId, task.sessionId));
-        if (!presence || cloudSessionPresence(presence.lastHeartbeatAt) === 'offline' || presence.execution?.status !== 'stopped') continue;
         const binding = await store.registeredBinding(human, task.sessionId);
         if (!binding || binding.generation !== creation.generation || binding.worktreeId !== creation.worktreeId) continue;
         const memory = await readMemoryProject(configuredMemory, project.id);

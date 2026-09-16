@@ -59,7 +59,7 @@ test('Project requirements survive restart, reserve capacity atomically and disp
   assert.notEqual(creation.sessionId, 'fresh');
 });
 
-test('Cloud project approval creates a fresh Session and dispatches once after a stopped native startup heartbeat', async t => {
+test('Cloud project approval dispatches once as soon as the fresh Session is registered', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-fresh-http-'));
   let server;
   t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
@@ -114,7 +114,6 @@ test('Cloud project approval creates a fresh Session and dispatches once after a
   const advancedMain = JSON.parse(await fs.readFile(memoryFile, 'utf8'));
   advancedMain.main.version = 'main-2';
   await fs.writeFile(memoryFile, JSON.stringify(advancedMain));
-  await message({ id: 'heartbeat-fresh', type: 'sync.heartbeat', payload: { creationResults: [], sessions: [{ id: creation.sessionId, generation: 1, ackedSeq: 0, execution: { status: 'stopped', at: new Date().toISOString() } }] } });
   const dispatched = await poll(state => state.projectTasks?.some(task => task.stage === 'dispatched'));
   assert.equal(dispatched.projectTasks[0].sessionId, creation.sessionId);
   assert.equal(dispatched.projectTasks[0].mainVersion, 'main-2');
