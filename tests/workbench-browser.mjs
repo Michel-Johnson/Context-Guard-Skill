@@ -197,11 +197,11 @@ try {
   if (await page.locator('#btn-settings').getAttribute('aria-expanded') === 'true') await page.locator('#btn-settings').click();
   assert.equal(await page.locator('.session-chip').isVisible(), true);
   assert.equal(await page.locator('#cg-sync-session').inputValue(), '__all__');
-  assert.equal(await page.locator('#session-name').textContent(), '主工作台 · 全部 Session');
+  assert.equal(await page.locator('#session-name').textContent(), '主工作台 · 工作中 Session');
   assert.equal(await page.locator('#session-status').evaluate(el => el.classList.contains('empty')), true);
   assert.equal(await page.locator('.node[data-id="N1"]').evaluate(el => el.classList.contains('noauth')), false);
   assert.equal(await page.locator('#auth-count').count(), 0);
-  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '主工作台 · 全部 Session');
+  assert.equal(await page.locator('#cg-sync-session option:checked').textContent(), '主工作台 · 工作中 Session');
   assert.equal(await page.locator('body').evaluate(el => el.classList.contains('rel-mode')), false);
   assert.equal(await page.locator('#btn-rel').getAttribute('aria-pressed'), 'false');
   await page.locator('#session-chip').click();
@@ -236,6 +236,7 @@ try {
   const publishedSession = 'browser-contract-published';
   const staleSession = 'browser-contract-stale';
   const onlineSession = 'browser-contract-online';
+  const workingSession = 'browser-contract-working';
   const interruptedSession = 'browser-contract-interrupted';
   const offlineSession = 'browser-contract-offline';
   const contractPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
@@ -256,6 +257,7 @@ try {
       { id: publishedSession, name: '', platform: 'codex', status: 'published', bindingState: 'bound' },
       { id: staleSession, name: '', platform: 'codex', status: 'active', bindingState: 'stale', branch: 'feature/stale' },
       { id: onlineSession, name: 'cloud-online', platform: 'codex', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z' },
+      { id: workingSession, name: 'cloud-working', platform: 'claude', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z', execution: { status: 'active', at: '2026-01-02T00:00:00.000Z' } },
       { id: interruptedSession, name: 'cloud-interrupted', platform: 'claude', status: 'online', lastHeartbeatAt: '2026-01-02T00:00:00.000Z', execution: { status: 'interrupted', at: '2026-01-02T00:00:00.000Z' } },
       { id: offlineSession, name: 'cloud-offline', platform: 'codex', status: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z', connection: { state: 'offline', lastHeartbeatAt: '2026-01-01T00:00:00.000Z', reason: 'heartbeat-expired' } },
     ];
@@ -277,10 +279,10 @@ try {
   const detailB = await contractPage.locator(`#session-menu [data-session="${sameBranchB}"] .session-option-context`).textContent();
   assert.equal(detailA, '会话 1');
   assert.equal(detailB, '会话 2');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-status.online`).getAttribute('aria-label'), 'Cloud 在线 · 接收器空闲');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"] .session-option-state`).textContent(), 'Cloud 在线 · 接收器空闲');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${interruptedSession}"] .session-status.interrupted`).getAttribute('aria-label'), '会话中断');
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"] .session-status.offline`).getAttribute('aria-label'), 'Cloud 心跳已过期');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${workingSession}"] .session-status.online`).getAttribute('aria-label'), 'Cloud 在线 · 执行中');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${onlineSession}"]`).count(), 0, 'idle receivers stay out of the working list');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${interruptedSession}"]`).count(), 0, 'interrupted Sessions stay out of the working list');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${offlineSession}"]`).count(), 0, 'offline Sessions stay out of the working list');
   assert.notEqual(detailA, detailB, 'same-name Sessions remain independently identifiable without changing their primary label');
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), 'cursor 会话 — 会话 1');
   assert.doesNotMatch(await contractPage.locator(`#cg-sync-session option[value="${sameBranchA}"]`).textContent(), /shared-worktree|feature\/shared/);
@@ -290,12 +292,15 @@ try {
   for (const id of [session, sameBranchA, sameBranchB, closedSession, publishedSession, staleSession]) assert.doesNotMatch(visibleSessionText, new RegExp(id));
   assert.equal(await contractPage.locator(`#session-menu [data-session="${closedSession}"]`).count(), 0);
   assert.equal(await contractPage.locator(`#session-menu [data-session="${publishedSession}"]`).count(), 0);
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${staleSession}"]`).isDisabled(), true);
-  assert.equal(await contractPage.locator(`#session-menu [data-session="${staleSession}"]`).getAttribute('title'), '绑定已失效 · feature/stale');
+  assert.equal(await contractPage.locator(`#session-menu [data-session="${staleSession}"]`).count(), 0);
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${session}"]`).count(), 1);
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${closedSession}"]`).count(), 0);
   assert.equal(await contractPage.locator(`#cg-sync-session option[value="${publishedSession}"]`).count(), 0);
-  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${staleSession}"]`).getAttribute('disabled'), '');
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${workingSession}"]`).count(), 1);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${onlineSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${interruptedSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${offlineSession}"]`).count(), 0);
+  assert.equal(await contractPage.locator(`#cg-sync-session option[value="${staleSession}"]`).count(), 0);
   await contractPage.close();
 
   const invalidPinnedPage = await browser.newPage({ viewport: { width: 900, height: 700 } });
