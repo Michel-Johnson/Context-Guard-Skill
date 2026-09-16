@@ -4836,7 +4836,7 @@ async function installCoordinatorPanel(sync){
         const button=document.createElement('button');button.type='button';button.textContent=label;
         let request;
         button.addEventListener('click',async()=>{
-          if(!request){const reason=decision==='approved'?'确认所示节点及路径':window.prompt('请说明节点挂载需要调整的地方');if(!reason?.trim())return;
+          if(!request){const reason=decision==='approved'?'确认所示节点及路径':'拒绝所示节点，请重新提案';
             request={id:crypto.randomUUID(),proposalIds:proposals.map(p=>p.id),decision,reason};}
           for(const other of card.querySelectorAll('button'))other.disabled=true;
           status.textContent='';

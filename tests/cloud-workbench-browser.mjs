@@ -613,6 +613,13 @@ try {
   assert.deepEqual(mountReviews[0].proposalIds, ['frontend', 'build']);
   assert.deepEqual(mountReviews[1], mountReviews[0], 'the batch retry preserves its original request');
   assert.equal(submissions.length, 0, 'node confirmation uses the script endpoint, not a model request');
+  coordinatorState.approvals.push({ id: 'reader', kind: 'mount-proposal', pending: true,
+    mainVersion: 'main-v2', title: 'reader', purpose: '读者体验', owns: ['reader/'] });
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await coordinator.getByRole('button', { name: '拒绝这些节点', exact: true }).click();
+  await coordinator.getByRole('button', { name: '拒绝这些节点', exact: true }).waitFor({ state: 'detached' });
+  assert.equal(mountReviews[2].decision, 'rejected');
+  assert.equal(mountReviews[2].reason, '拒绝所示节点，请重新提案');
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('确认尚未成功'));
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
