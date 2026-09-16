@@ -38,9 +38,9 @@ filesystem-v2/
 
 目标实现由代码生成目录名、文档 ID、整体状态、`CurrentAttempt`、A1/A2 轮次编号、Related/Sub、节点 `index.md` 中的 Bug/Todo/Idea 条目、测试链接、Session 链接、`map.json`、`manifest.json` 和迁移报告。
 
-当前运行时只会重建 A1 投影，多轮 Attempt 的持久化与生成尚未实现。实现完成前，这些格式用于评审和后续开发，不得把手工写入投影目录的 A2/A3 内容视为可持久保存的数据。
+当前运行时只会重建 A1 投影，多轮 Attempt 的持久化与生成尚未实现；Todo A1 也尚未生成 `Confirmed/Refuted` 状态。实现完成前，这些格式用于评审和后续开发，不得把当前迁移投影视为完全符合模板，也不得把手工写入投影目录的 A2/A3 内容视为可持久保存的数据。
 
-节点索引中的摘要直接复制对应 Bug 现象、Todo 需求或 Idea 正文的首段，不由 Agent 重写。
+目标实现完整复制对应 Bug 现象、Todo 需求或 Idea 正文的首段，不由 Agent 重写。当前迁移投影仍把 Todo/Idea 摘要截断为 20 个 Unicode 字符；在生成器改造完成前，Agent 必须打开链接文档确认全文，不能把索引摘录当成完整需求。
 
 ## 兼容边界
 
