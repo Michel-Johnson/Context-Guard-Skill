@@ -24,7 +24,7 @@
 ### [<Bug ID> <Title>](bugs/<id>.md)
 <Copied bug phenomenon>
 
-Status: <Open|InProgress|Pending|Resolved>
+Status: <Open|InProgress|Pending|Resolved|Deferred|WontFix>
 
 ## Todo
 

@@ -6,6 +6,10 @@
 - `InProgress`: the Developer and Tester workflow is not complete.
 - `Pending`: tests are complete and human acceptance is pending.
 - `Resolved`: human acceptance passed.
+- `Deferred`: work was explicitly postponed and may be resumed later.
+- `WontFix`: a decision was made not to repair it, and the workflow is closed.
+
+The current migration generator incorrectly projects `Deferred` and `WontFix` as `Open`. This is a compatibility gap, not authorization to restart the work.
 
 Attribution attempts use only `Confirmed` and `Refuted`. A supported attribution starts as `Confirmed`. A later attempt changes it to `Refuted` and adds `RefutedBy` and the reason.
 
@@ -15,7 +19,7 @@ Attribution attempts use only `Confirmed` and `Refuted`. A supported attribution
 # <Bug ID> <Title>
 
 Reporter: <Human|Agent>
-Status: <Open|InProgress|Pending|Resolved>
+Status: <Open|InProgress|Pending|Resolved|Deferred|WontFix>
 CurrentAttempt: <A1...An>
 
 ## 1. Phenomenon

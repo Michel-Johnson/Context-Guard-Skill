@@ -24,7 +24,7 @@
 ### [<Bug ID> <标题>](bugs/<id>.md)
 <Bug 现象原文>
 
-Status: <Open|InProgress|Pending|Resolved>
+Status: <Open|InProgress|Pending|Resolved|Deferred|WontFix>
 
 ## Todo
 

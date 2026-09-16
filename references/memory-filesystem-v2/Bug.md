@@ -6,6 +6,10 @@
 - `InProgress`：Developer 与 Tester 的处理流程尚未结束。
 - `Pending`：测试已完成，等待人类验收。
 - `Resolved`：人类验收通过。
+- `Deferred`：已明确延期，后续可以恢复处理。
+- `WontFix`：已明确决定不修复，流程关闭。
+
+当前迁移生成器会把 `Deferred` 和 `WontFix` 错投影为 `Open`；这是待修复的兼容缺口，不能据此重新启动工作。
 
 归因轮次只使用 `Confirmed` 和 `Refuted`。新归因在本轮证据支持时写 `Confirmed`；后续轮次推翻后改为 `Refuted`，并补充 `RefutedBy` 和原因。
 
@@ -15,7 +19,7 @@
 # <Bug ID> <标题>
 
 Reporter: <Human|Agent>
-Status: <Open|InProgress|Pending|Resolved>
+Status: <Open|InProgress|Pending|Resolved|Deferred|WontFix>
 CurrentAttempt: <A1...An>
 
 ## 1. 现象
