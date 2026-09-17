@@ -771,6 +771,25 @@ try {
   await attachmentPage.screenshot({ path: path.join(output, 'quark-mobile.png'), fullPage: true });
   const phoneSplit = attachmentPage.locator('#drawer-split');
   assert.equal(await attachmentPage.locator('html').evaluate(el => el.classList.contains('cg-phone')), true);
+  await attachmentPage.locator('#workbench-tools > summary').click();
+  const phoneToolsMenu = await attachmentPage.locator('.workbench-tools-menu').evaluate(menu => {
+    const rect = menu.getBoundingClientRect();
+    const point = { x: rect.left + Math.min(rect.width / 2, 20), y: rect.top + Math.min(rect.height / 2, 20) };
+    return { open: menu.closest('details')?.open, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      hit: menu.contains(document.elementFromPoint(point.x, point.y)), viewport: { width: innerWidth, height: innerHeight } };
+  });
+  assert.ok(phoneToolsMenu.open && phoneToolsMenu.hit && phoneToolsMenu.rect.left >= 0
+    && phoneToolsMenu.rect.right <= phoneToolsMenu.viewport.width
+    && phoneToolsMenu.rect.bottom <= phoneToolsMenu.viewport.height,
+  `phone workbench tools menu must actually be visible: ${JSON.stringify(phoneToolsMenu)}`);
+  for (const selector of ['#dir-toggle', '#btn-rel', '#btn-auth', '#btn-bugs', '#btn-todos']) {
+    assert.equal(await attachmentPage.locator(selector).evaluate(control => {
+      const rect = control.getBoundingClientRect();
+      return control.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }), true, `${selector} must be reachable in the phone tools menu`);
+  }
+  await attachmentPage.locator('#workbench-tools > summary').click();
+  record('Phone workbench tools menu opens visibly inside the viewport');
   await phoneSplit.focus();
   for (let i = 0; i < 24; i++) await phoneSplit.press('Shift+ArrowUp');
   const expandedPhoneDrawer = await attachmentPage.evaluate(() => ({
