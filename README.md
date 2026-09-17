@@ -1,65 +1,46 @@
 [Website & interactive demos](https://michel-johnson.github.io/Context-Guard-Skill/?lang=en)
 
-# Context Guard Skill
+# Context Guard
 
 Language: **English** | [中文](README.zh-CN.md)
 
-[Repository documentation and file layout](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/README.md)
+**A next-generation collaboration layer for humans and coding agents.**
 
-Context Guard is a durable project-memory skill for Codex, Cursor, and Claude. It keeps the task route, branches, bad cases, and verification paths inside the project's own `.codex/context/` folder, so agents can understand where the work is, what went wrong before, and how to avoid repeating fixed mistakes across sessions.
+Most tools still treat *chat* as the workplace. The thread is the memory, the approval surface, and the project. When it ends, the next agent starts cold. A human “yes” in chat is not a grant, not a publication, and not a durable record.
 
-## What It Does
+Context Guard treats the **project** as the workplace:
 
-- **Four stores**: sessions, bugs, tasks, map — with local drafts/caches in the opened project’s `.codex/context/`
-- **First-use map**: the agent and the human decide the first layer together (several candidate cuts, then lock L1), then L2, then L3. Titles must be instantly readable. Later sessions open that map
-- **Human workbench**: people confirm in `prototype/workbench.html`. Agents read small indexes, not the whole map
-- **User wording**: durable prompts go in `user-messages.md`; secrets stay under `private/`
-- **Record language**: Chinese or English per project, shared by its linked worktrees
-- **Lifecycle**: create session records, retain user messages, and persist agent-identified bad cases through one command
+1. **A shared Map** — modules, responsibilities, bugs, todos, and verification live on one durable structure.
+2. **Isolated Sessions** — each agent run writes its own Session Map. A chat is not Main.
+3. **Human confirmation in a workbench** — ordinary proposals, grants, and publication happen in an authorized page, not as chat assent.
+4. **Explicit grants** — an agent reads the slices it is allowed to read. Grey cards are out of scope.
+5. **Publication into Main** — only verified work enters the committed-main baseline. Session drafts stay drafts.
 
-v1 does **not** include Roadmap HTML, Test Hub, or feature chains.
+It installs as a skill and lifecycle hooks for **Codex**, **Cursor**, and **Claude**.
 
-## Human workbench
+[Repository docs and file layout](docs/README.md) · [One-page skill](SKILL.md)
 
-People look at the map in `prototype/workbench.html`. Agents read the small indexes under `.codex/context/`; they do not drive the canvas.
+## Why this is a different paradigm
 
-**Cloud:** when configured, Cloud is the only human-facing workbench; the local service handles synchronization and host delivery. Private deployments require browser login. A device logs in once per project, and new Sessions reuse that connection with `context-guard workbench --root <project> --session <actual-session-id>`. They do not need separate tokens or project IDs. See [the connection contract](references/server-memory.md).
+| Chat as the workplace | Context Guard |
+| --- | --- |
+| History in a thread | Structure on a Map |
+| Next session starts over | Next session opens the same Map |
+| “Looks good” in chat | Human confirms in the workbench |
+| Agent sees whatever was pasted | Agent sees granted nodes |
+| Memory is retrieval over files | Memory is owned project state, with version and publication |
 
-**Local:** verify the actual Session binding and reuse the project's established service. First-time project setup, ambiguous identity and worktree migration require a user choice; a new Session in an already connected project does not require repeated confirmation. Session views remain isolated across linked worktrees. The shared backend sends heartbeats independently of optional Hooks; a binding record alone does not prove that backend is online.
+This is not another prompt pack, RAG folder, or “remember this” plugin. It is a **human–agent operating loop** for software work: locate the node, confirm the intent, execute in a Session, verify, then publish.
 
-**Development policy for this repository:** source code follows the existing
-branch/PR rules into GitHub main; the entire `.codex/` tree stays out of Git and
-release artifacts. All development memory must come from the user-designated
-private server, with local caches and isolated Session records. All Sessions reads
-the server's committed-main baseline. The private service/client and local
-acceptance tests and one production deployment/migration have been verified.
-Native Hook trust and actual host delivery have separate acceptance limits;
-further migrations need approval. See [the memory contract](references/server-memory.md).
-Other projects do not automatically inherit this repository's server configuration.
+Role prompts for Coordinator / Developer / Tester exist so a project can split planning, implementation, and checks. Role text does not grant protocol permissions. Automatic multi-agent orchestration is still advancing; the collaboration contract (Map, Session, grant, human confirmation, Main) is the product.
 
-```bash
-context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
-context-guard workbench --list --root /path/to/project
-context-guard workbench --root /path/to/project --session <actual-session-id> --workbench-url http://project-name.localhost:1355/prototype/workbench.html
-context-guard workbench --diagnose --root /path/to/project --session <actual-session-id>
-# only after explicit confirmation to move an existing binding:
-context-guard workbench --root /other/worktree --session <actual-session-id> --rebind
-context-guard workbench --root /path/to/project --stop
-```
+## See the workbench
 
-Local URLs default to `http://project-name.localhost:1355` (a subsequent free port
-is used if occupied), with no global Portless installation. Binding verifies the
-named URL, Git project, backend instance, and runtime before persisting; returned
-URLs pin the selected Session and never auto-switch to a newer active task. Explicit
-`workbench bind --root <worktree> --project-root <existing-map-worktree>`
-selects a service target without merging Maps or replacing the required Session
-binding. Session records remain isolated in their own worktrees. Diagnose old or
-duplicate services first; explicit migration backs up their private context and
-signals only the reviewed `pid:instance` identities without force-killing them.
-See [named workbenches](references/named-workbench.md) and
-[Portless attribution](THIRD_PARTY_NOTICES.md); Apache-2.0 notices ship with the package.
+People look at the Map in the workbench. Agents read small authorized indexes; they do not drive the canvas.
 
-The workbench chrome is Chinese or English. Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
+**Cloud:** when configured, Cloud is the only human-facing workbench. The local service syncs and delivers to the host. Private deployments require browser login. A device logs in once per project; new Sessions reuse that connection.
+
+**Local:** verify the actual Session binding and reuse the project’s established service. First-time setup, ambiguous identity, and worktree migration need a human choice. A new Session in an already connected project does not.
 
 ### Overview
 
@@ -91,6 +72,8 @@ Click a bug with an assigned session. The path from the root to that node lights
 
 ![Auth mode](docs/shots/workbench/auth-mode.png)
 
+Open **Settings** on the far right of the top bar for language and theme. Map titles, purposes, and memories stay in the language they were written.
+
 ## Install
 
 Install with npx. The installer detects Codex, Cursor, and Claude, then installs both the skill and lifecycle hooks while preserving existing configuration:
@@ -99,146 +82,87 @@ Install with npx. The installer detects Codex, Cursor, and Claude, then installs
 npx @michelj/context-guard install
 ```
 
-Or install globally and let the package configure detected clients automatically:
+Or install globally:
 
 ```bash
 npm install -g @michelj/context-guard --registry=https://registry.npmjs.org
 ```
 
-Force installation for all three clients:
+Force all three clients:
 
 ```bash
 npx @michelj/context-guard install --platform all
 ```
 
-Hooks are installed by default. To copy only the skill, opt out explicitly:
+Hooks are on by default. Skill only:
 
 ```bash
 npx @michelj/context-guard install --no-hooks
 ```
 
-Default skill paths are `~/.codex/skills/context-guard`, `~/.cursor/skills/context-guard`, and `~/.claude/skills/context-guard`. The installer backs up and merges existing hook/settings files. For Codex it also enables `[features] hooks = true` and migrates the deprecated `codex_hooks` alias.
+Default skill paths are `~/.codex/skills/context-guard`, `~/.cursor/skills/context-guard`, and `~/.claude/skills/context-guard`. The installer backs up and merges existing hook/settings files. For Codex it also enables `[features] hooks = true`.
 
-Use from GitHub before the npm package is published:
+Before the npm package is published:
 
 ```bash
 npx github:Michel-Johnson/Context-Guard-Skill install
 ```
 
-Manual install is also supported:
+After installation, clients should discover `SKILL.md` in those skill directories.
+
+Then, in a real project:
 
 ```bash
-git clone git@github.com:Michel-Johnson/Context-Guard-Skill.git
-cd Context-Guard-Skill
-mkdir -p ~/.codex/skills/context-guard
-rsync -a --delete \
-  SKILL.md README.md README.zh-CN.md agents prototype references scripts \
-  ~/.codex/skills/context-guard/
+context-guard workbench --root /path/to/project --session <actual-session-id>
+context-guard doctor --platform cursor --root /path/to/project
 ```
 
-After installation, the matching clients should discover:
+Local URLs default to `http://project-name.localhost:1355`. Binding pins the named URL, Git project, backend, and Session; it never auto-switches to a newer task. See [named workbenches](references/named-workbench.md).
+
+## How a loop runs
+
+1. **Open the Map** — first use: human and agent lock L1 together (readable titles), then L2, then L3. Later sessions open that Map.
+2. **Bind the Session** — `context-guard workbench --root <project> --session <actual-session-id>`.
+3. **Grant a slice** — the human marks what this Session may read.
+4. **Work** — the agent reads `map read`, writes through `map apply` with a real session, base version, and stable operation id. Chat assent does not write the Map.
+5. **Confirm** — ordinary proposals wait in the workbench.
+6. **Publish** — verified Session work can enter Main. Session drafts are not Main.
+
+On the first session, if record language is still unset, the hook tells the agent to ask “中文 or English?” and persist the answer. Later sessions do not ask again.
 
 ```text
-~/.codex/skills/context-guard/SKILL.md
-~/.cursor/skills/context-guard/SKILL.md
-~/.claude/skills/context-guard/SKILL.md
+Use $context-guard. Shared Map, isolated Sessions, human confirmation, publication into Main.
 ```
 
-## Publishing
-
-GitHub Releases are not part of this package's delivery path. Users install the skill from npm, so publishing is driven by a version tag:
-
-1. Update `package.json` to the next stable version and merge that commit into `main`.
-2. Create the matching `vX.Y.Z` tag on that commit.
-3. Push the tag. `.github/workflows/npm-publish.yml` validates, packs, smoke-tests, and publishes that exact tarball to npm.
-
-The workflow has no manual trigger. Pushing a matching version tag starts the complete publish pipeline automatically; it tests fresh installs and upgrades from npm `latest`, preserves user configuration/context/hooks, and verifies that npm serves the same SHA-256 tarball that passed acceptance. The validated tarball and upgrade baseline are retained as GitHub Actions artifacts for 14 days, and the post-publish proof is written to the Actions summary. It reuses npm Trusted Publishing for `Michel-Johnson/Context-Guard-Skill`, workflow filename `npm-publish.yml`, with the `npm publish` action allowed. Local npm login is not required for Actions publishing. See the [release and recovery runbook](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/main/docs/npm-release-runbook.md).
-
-## Where Context Lives
-
-Context stays under the opened local project, independent of the client:
-
-```text
-<project root>/.codex/context/
-```
-
-Do not write project context into:
-
-- the skill install directory
-- a chat/thread directory
-- a temporary directory
-- an SSH remote server path
-
-Short user prompts that matter for future work are kept in:
-
-```text
-<project root>/.codex/context/user-messages.md
-```
-
-If the user provides a credential that future turns need, Context Guard records only a redacted pointer in public context. Raw durable secrets must stay local-only under:
-
-```text
-<project root>/.codex/context/private/
-```
-
-When running scripts manually, pass the project root:
+Useful commands:
 
 ```bash
-python3 scripts/context_guard.py init --root /path/to/project
-python3 scripts/context_guard.py set-language --root /path/to/project --language English
-```
-
-On the first session, if `record_language` is still `unset`, the hook instructs the agent to ask “中文 or English?” and persist the answer. Later sessions do not ask again. The `workbench` command starts the local server and returns its browser URL.
-
-## Common Usage
-
-```text
-Use $context-guard. Four stores: sessions, bugs, tasks, map.
-```
-
-```bash
-python3 scripts/context_guard.py init --root /path/to/project
-python3 scripts/context_guard.py set-language --root /path/to/project --language English
-python3 scripts/context_guard.py workbench --root /path/to/project
+context-guard workbench --binding-status --root /path/to/project --session <actual-session-id>
+context-guard workbench --list --root /path/to/project
+context-guard map read --root /path/to/project --session <actual-session-id> --node <id>
 context-guard doctor --platform codex --root /path/to/project
 ```
 
-Run `context-guard workbench --root /path/to/project` to see the map. The top bar uses `platform-thread-name` (for example, `codex-basic`) while the session ID remains an internal identifier; Settings can switch sessions and grants are persisted across workbench restarts. Use `record-bad-case --session ...` and `record-bad-case-fix` for the minimal failure/fix loop and `write-candidates --input ...` for validated first-use L1 candidates. `archive-session --files ...` saves durable Session results and adds the summary to accepted Map nodes covered by `owns`. Unowned files remain unclassified. Use `archive-session --input ...` to explicitly assign support files to an existing node or submit an evidence-backed new-node proposal for human confirmation.
+`record-bad-case` / `record-bad-case-fix` close a failure/fix loop. `archive-session` saves durable Session results onto accepted Map nodes covered by `owns`; unowned files stay unclassified until a human confirms assignment.
 
-Codex installs eleven lifecycle hooks (excluding `SessionEnd`). They deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes to the Agent at reasoning boundaries; run Cloud Sync `prepare` only at the first mutation of a plan; and check conflicts before requiring `sync finish`. New user requirements are classified semantically into Map TODOs. `TODO.md` stays human-owned. Hook events carry stable IDs and occurrence/recording timestamps.
+Codex installs eleven lifecycle hooks (excluding `SessionEnd`). At reasoning boundaries they deliver the real Map, grants, assigned TODOs/Bugs, and other-session changes. New requirements become Map TODOs. `TODO.md` stays human-owned.
 
-## Local compatibility cache
+## Cloud
 
-```text
-.codex/context/
-|-- FIND.md
-|-- sessions.jsonl
-|-- sessions/
-|-- bugs-index.json
-|-- bugs/ and fixes/
-|-- tasks/
-|-- map.json
-|-- owns-index.json and cards/   # generated
-|-- preferences.json
-|-- user-messages.md
-`-- private/                     # gitignored
-```
+When Cloud is configured it is the only human-facing workbench. Sync is event-based (project SSE), not a periodic full Map replace. `sync prepare` before development, `sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified.
 
-These files remain for the local compatibility protocol. The reviewed target
-for the Cloud Agent read surface is the node/module Markdown filesystem in
-[Memory Filesystem v2](references/memory-filesystem-v2/README.md), including
-complete examples and per-Agent editing responsibilities. Until the Cloud API
-or Hook exposes those projections, legacy records remain compatibility transport
-and clients must not pretend that private server files are directly readable.
+Server install, project credentials, and host moves: [Cloud deployment](references/cloud-deployment.md). Protocol: [Cloud Sync](references/cloud-sync-interface.md). Memory authority: [server memory](references/server-memory.md).
 
-See [`SKILL.md`](SKILL.md) (one page) and `.codex/context/FIND.md`.
+## Documentation
 
-## Local workbench synchronization
+| Topic | Where |
+| --- | --- |
+| Skill (one page, for the agent) | [SKILL.md](SKILL.md) |
+| Docs index | [docs/README.md](docs/README.md) |
+| Workbench / map CLI | [workbench interface](references/workbench-interface.md) |
+| Roles (Coordinator / Developer / Tester) | [roles.md](roles.md) |
+| npm publish | [release runbook](docs/npm-release-runbook.md) |
 
-Node now owns local map submissions, live page updates, and attachments. In a served workbench, human uploads are written as unique files under `docs/shots/`; the browser no longer needs project-directory permission, and only map-referenced files can be downloaded through the attachment endpoint. Its event journal is cursor-chain validated at startup: an interrupted final append is backed up and repaired with an explicit history-gap event, while interior corruption keeps the map read-only until a human confirms recovery in Settings. Agents cannot approve journal loss. Use `context-guard map read` and `map apply` with an actual session ID, a base version and a stable operation ID. Browser cache is recovery-only; static pages are read-only. Python remains required for hooks and context initialization. See [the interface and migration guide](references/workbench-interface.md).
+This repository keeps **source** on GitHub `main` and **development memory** on the user-designated private server. The entire `.codex/` tree stays out of Git and npm. Other projects do not inherit this repo’s server config. See [RULE.md](RULE.md).
 
-## Cloud event synchronization
-
-Cloud Sync receives project-scoped SSE events instead of periodically replacing every Map. Run `context-guard sync prepare` before development and `context-guard sync finish` after verification. Disjoint changes rebase; overlapping node, field, or file scopes return `WORK_IMPACT` and stay unverified. See the [Cloud Sync interface](references/cloud-sync-interface.md).
-
-To install Cloud on a new Linux server, create project credentials, connect working copies, or move the service to another host, follow the [Cloud deployment guide](references/cloud-deployment.md). Cloud stays in this repository; its persistent data and secrets stay outside the Git checkout.
+The local `.codex/context/` tree is a compatibility cache and draft, not a second authority. Cloud Agent read surface is moving to node/module Markdown in [Memory Filesystem v2](references/memory-filesystem-v2/README.md); until that projection is exposed, do not pretend private server files are directly readable.

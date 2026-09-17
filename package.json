@@ -1,7 +1,7 @@
 {
   "name": "@michelj/context-guard",
   "version": "0.4.4",
-  "description": "Install and run Context Guard for Codex, Cursor, and Claude.",
+  "description": "Next-generation collaboration layer for humans and coding agents on Codex, Cursor, and Claude.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Michel-Johnson/Context-Guard-Skill.git"
