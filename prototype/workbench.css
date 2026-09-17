@@ -852,6 +852,10 @@ html.cg-phone .top-tools{
   scrollbar-width:thin;padding:2px 0 4px;gap:6px 8px;
 }
 html.cg-phone .top-tools > *{flex:0 0 auto}
+html.cg-phone .workbench-tools-menu{
+  position:fixed;top:calc(var(--chrome-top) + 4px);left:10px;right:auto;
+  max-height:calc(100dvh - var(--chrome-top) - var(--safe-bottom) - 12px);overflow-y:auto;
+}
 html.cg-phone .repo-status{max-width:42vw}
 html.cg-phone .repo-menu{min-width:0;width:min(280px,calc(100vw - 20px));max-height:min(70vh,480px);overflow:auto}
 html.cg-phone .settings-menu{width:min(260px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto}
