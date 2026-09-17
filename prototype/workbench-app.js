@@ -4360,9 +4360,8 @@ function clampBugPanelWidth(px){
 }
 function clampDrawerHeight(px){
   const top = chromeTop();
-  const room = Math.max(220, (window.innerHeight || 0) - top);
-  const max = Math.max(160, Math.min(Math.floor(room * 0.72), room - 72));
-  return Math.max(132, Math.min(max, Math.round(px)));
+  const room = Math.max(0, (window.innerHeight || 0) - top);
+  return Math.min(room, Math.max(132, Math.round(px)));
 }
 function applyDrawerWidth(px, save){
   const w = clampDrawerWidth(px);

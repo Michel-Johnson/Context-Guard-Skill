@@ -769,6 +769,21 @@ try {
   await attachmentPage.screenshot({ path: path.join(output, 'quark-desktop.png'), fullPage: true });
   await attachmentPage.setViewportSize({ width: 390, height: 844 });
   await attachmentPage.screenshot({ path: path.join(output, 'quark-mobile.png'), fullPage: true });
+  const phoneSplit = attachmentPage.locator('#drawer-split');
+  assert.equal(await attachmentPage.locator('html').evaluate(el => el.classList.contains('cg-phone')), true);
+  await phoneSplit.focus();
+  for (let i = 0; i < 24; i++) await phoneSplit.press('Shift+ArrowUp');
+  const expandedPhoneDrawer = await attachmentPage.evaluate(() => ({
+    chromeBottom: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-top')),
+    drawerTop: document.querySelector('.drawer').getBoundingClientRect().top,
+    viewportHeight: document.querySelector('#viewport').getBoundingClientRect().height,
+  }));
+  assert.ok(Math.abs(expandedPhoneDrawer.drawerTop - expandedPhoneDrawer.chromeBottom) <= 2, `phone inspector can reach the top bar: ${JSON.stringify(expandedPhoneDrawer)}`);
+  assert.ok(expandedPhoneDrawer.viewportHeight <= 2, 'phone inspector need not leave the map visible');
+  await attachmentPage.screenshot({ path: path.join(output, 'phone-inspector-expanded.png'), fullPage: true });
+  await phoneSplit.dblclick();
+  assert.ok(await attachmentPage.locator('#viewport').evaluate(el => el.getBoundingClientRect().height) > 100, 'double-click restores the map area');
+  record('Phone inspector can expand over the map and restore its default split');
   await attachmentPage.close();
   record('Visible Cloud attachment picker uploads a PDF, persists a protected Quark link and survives refresh');
 
