@@ -136,6 +136,9 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   assert.match(prompt, /先读代码并提交 Plan/);
   assert.match(prompt, /--input <JSON文件路径>/);
   assert.match(prompt, /--input -（stdin）/);
+  assert.match(prompt, /不得手工创建、选择、分配或替换 Session/);
+  assert.match(prompt, /map task plan 成功返回 awaiting-plan-review 后，立即结束本轮/);
+  assert.match(prompt, /不得直接改写 Main/);
   assert.ok(!prompt.includes('--input <JSON>'));
   const direct = await executionPrompt({ ...assignment, payload: { ...assignment.payload, mode: 'session' } }, read);
   for (const value of ['approved requirement', 'map task start delivery', 'map task finish delivery', '--summary']) assert.ok(direct.includes(value));
