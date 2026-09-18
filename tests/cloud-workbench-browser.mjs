@@ -399,7 +399,7 @@ try {
     }
     const readConversation=new URL(route.request().url()).searchParams.get('conversation');coordinatorReads.push(readConversation);
     if(coordinatorReadFailure){coordinatorReadFailure=false;return route.abort();}
-    const responseState=readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:runningPreview?{...coordinatorState,status:'running',streamingText:'正在生成一段连续回复'}:coordinatorState;
+    const responseState=readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:runningPreview?{...coordinatorState,status:'running',streamingText:'第一段回复。\n第二段回复。\n第三段回复。'}:coordinatorState;
     await route.fulfill({ json: responseState });
   });
   await page.reload(); await synchronized();
@@ -472,8 +472,13 @@ try {
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
+  await page.waitForFunction(() => {
+    const node=document.querySelector('.coordinator-streaming-text');
+    return node && node.textContent && node.textContent !== '第一段回复。\n第二段回复。\n第三段回复。' && node.textContent.includes('\n');
+  });
   await page.waitForTimeout(650);
-  assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '正在生成一段连续回复', 'buffered text catches up without dropping content');
+  assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '第一段回复。\n第二段回复。\n第三段回复。', 'streaming text reveals complete lines without dropping content');
+  assert.equal(await coordinator.locator('.coordinator-streaming .coordinator-markdown').evaluate(node => getComputedStyle(node, '::after').content), 'none', 'streaming response has no blinking caret');
   assert.equal(await coordinator.locator('.coordinator-streaming').getAttribute('data-motion-probe'), 'stable', 'streaming updates preserve the message node instead of replaying the whole transcript');
   runningPreview=false;
   await page.locator('#btn-coordinator').click();
