@@ -67,6 +67,8 @@ test('Resume control prompt preserves the control receipt and requires a resumed
   assert.match(prompt, /用新的 operationId 提交 Plan/);
   assert.match(prompt, /reviewed 任务不使用 map task start\/finish/);
   assert.match(prompt, /如果原任务是链路验证或明确要求不修改业务文件/);
+  assert.match(prompt, /只读证据提交 map task handoff/);
+  assert.match(prompt, /map exchange --input -（stdin）/);
   assert.equal(await executionPrompt(message), prompt, 'replay retains the resume report identity');
 });
 
@@ -148,6 +150,9 @@ test('IF-043: host prompts preserve approved requirements, node routing and pinn
   assert.equal(direct.includes('收到审核通过后再执行'), false);
   await assert.rejects(executionPrompt(assignment, async () => ({ kind: 'plan', version: 'brief-v1', content: { text: 'wrong' } })), { code: 'CONFLICT' });
   const review = { v: 2, id: 'review', type: 'review.result', session, payload: { kind: 'plan', ref: 'plan', version: 'plan-v1', decision: 'approved', reason: 'matches requirements', receiptId: 'receipt' } };
+  const reviewedPrompt = await executionPrompt(review, async () => ({ kind: 'reviewReceipt', content: { ...review.payload } }));
+  assert.match(reviewedPrompt, /链路验证或明确要求不修改业务文件/);
+  assert.match(reviewedPrompt, /只读证据提交 handoff/);
   await assert.rejects(executionPrompt(review, async () => ({ kind: 'reviewReceipt', content: { ...review.payload, decision: 'rejected' } })), { code: 'CONFLICT' });
 });
 
