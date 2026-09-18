@@ -285,8 +285,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           try {
             if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
               const native = await claudeRuntime.status(session.id);
-              if (native.status !== 'interrupted' || !native.deliveryId) protocolFail('RECOVERY_NOT_AVAILABLE', 'Claude has no matching interrupted turn');
-              await claudeRuntime.recover(session.id, { operationId: `cloud-${hash(message.id)}`, deliveryId: native.deliveryId, message: prompt }, session.worktreeRoot || root);
+              if (native.status === 'interrupted' && native.deliveryId) {
+                await claudeRuntime.recover(session.id, { operationId: `cloud-${hash(message.id)}`, deliveryId: native.deliveryId, message: prompt }, session.worktreeRoot || root);
+              } else if (native.status === 'stopped') {
+                // A resumed-only turn may have already finished and cleared
+                // `active` before Cloud sends the next continuation control.
+                // Re-deliver to the same bound Session; never create a new
+                // Session or reinterpret this as a new task.
+                await delivery.deliver({ id: `${message.session.generation}:${message.id}:resume`, platform: 'claude', sessionId: session.id,
+                  root: session.worktreeRoot || root, message: prompt });
+              } else {
+                protocolFail('RECOVERY_NOT_AVAILABLE', 'Claude has no matching interrupted turn');
+              }
               return { ...result, deliveryState: 'received' };
             }
             const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
