@@ -33,14 +33,14 @@ export async function executionPrompt(message, readObject) {
     const receipt = await readObject(p.receiptId, p.receiptId);
     if (receipt.kind !== 'reviewReceipt' || receipt.content?.ref !== p.ref || receipt.content?.version !== p.version || receipt.content?.decision !== p.decision) fail('CONFLICT', 'Plan review receipt differs');
     return `Context Guard：Plan ${p.ref}@${p.version} 审核${p.decision === 'approved' ? '通过，可继续执行' : '未通过，请修改 Plan'}。\n${p.reason}\n回执：${p.receiptId}\n` +
-      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON文件路径> 或 --input -（stdin）交付 CI TODO、测试证据和经验。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
+      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON文件路径> 或 --input -（stdin）交付 CI TODO、测试证据和经验。若原任务是链路验证或明确要求不修改业务文件，只做只读核对（Session、任务、回执、git status），不要改 Main/map.json 或业务文件；随后用只读证据提交 handoff，不要自行创建或分配 Session。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n${p.reason ? `返工原因：${p.reason}\n` : ''}代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
   if (message.type === 'task.control' && p.action === 'resume') return [
     `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
     '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
-    '如果原任务是链路验证或明确要求不修改业务文件：只回报 resumed，随后立即结束本轮；不要读取或改写 Main、map.json 或业务文件，也不要自行创建/分配 Session，等待 Coordinator 的下一条明确控制。',
-    '确认可以继续后，用 map exchange --input <JSON文件> 回报 resumed；消息必须保留原控制编号：',
+    '如果原任务是链路验证或明确要求不修改业务文件：只读核对 Session、任务、回执和 git status；不得读取或改写 Main、map.json 或业务文件，也不得自行创建/分配 Session。回报 resumed 后，使用只读证据提交 map task handoff（--input - 通过 stdin），让流程进入 CI/验收；不要再次等待或触发自动恢复。',
+    '确认可以继续后，用 map exchange --input -（stdin）回报 resumed；消息必须保留原控制编号：',
     JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
       payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
     '回报后按已批准 Plan 继续；若 Plan 未批准或范围仍不清楚，保持只读并通过 ask_user 请求确认。',
