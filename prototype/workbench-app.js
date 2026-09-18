@@ -4714,7 +4714,7 @@ async function installCoordinatorPanel(sync){
     const tick=()=>{
       const distance=streamTarget.length-streamShown.length;
       if(distance<=0){streamFrame=0;return;}
-      const amount=Math.max(1,Math.ceil(distance/3));
+      const amount=Math.min(2,Math.max(1,Math.ceil(distance/12)));
       streamShown=streamTarget.slice(0,streamShown.length+amount);output.textContent=streamShown;
       if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
       streamFrame=requestAnimationFrame(tick);
@@ -4754,6 +4754,18 @@ async function installCoordinatorPanel(sync){
     card.append(wrap); textarea.focus();
   });
   let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='';
+  const optimisticRequests=new Map();
+  const messageMatchesRequest=(message,request)=>{
+    if(message?.role!=='user'||typeof message.text!=='string'||!request?.text)return false;
+    const text=message.text.trim(),requestText=request.text.trim();
+    return text===requestText||text.endsWith('\n'+requestText);
+  };
+  const appendOptimisticMessage=request=>{
+    if(!request||messages.querySelector(`[data-request-id="${request.id}"]`))return;
+    const row=document.createElement('article');row.className='coordinator-message user coordinator-optimistic';row.dataset.requestId=request.id;
+    const body=document.createElement('div');body.className='coordinator-markdown';body.textContent=request.text;row.append(body);messages.append(row);
+    messages.scrollTop=messages.scrollHeight;
+  };
   const setRetryMode=mode=>{
     retry.hidden=!mode;
     const label=mode==='read'?'重试读取':'重试原请求';
@@ -4828,6 +4840,11 @@ async function installCoordinatorPanel(sync){
       if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
     }else if(stableKey!==lastStableContent||hasStreaming!==Boolean(lastStreamingText)){
     const visibleMessages=[...(state.messages||[])];
+    for(const [requestId,entry] of optimisticRequests){
+      if(entry.conversationId!==renderedConversation)continue;
+      if(visibleMessages.some(message=>messageMatchesRequest(message,entry.request))){optimisticRequests.delete(requestId);continue;}
+      visibleMessages.push({role:'user',text:entry.request.text,optimistic:true});
+    }
     if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
     const follow=lastStableContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
@@ -4958,6 +4975,8 @@ async function installCoordinatorPanel(sync){
   const submit=async request=>{
     if(busy) return;
     const id=selected;
+    optimisticRequests.set(request.id,{conversationId:id,request});
+    appendOptimisticMessage(request);
     busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     setTyping(!answeringCard);
