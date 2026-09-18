@@ -451,18 +451,24 @@ try {
     const send = el.querySelector('.coordinator-input-shell > button');
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
       inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
-      typingTransition: getComputedStyle(typing).transitionProperty, typingDots: typing.querySelectorAll('i').length };
+      typingTransition: getComputedStyle(typing).transitionProperty,
+      workingLabel: typing.querySelector('.coordinator-typing-label')?.textContent,
+      workingPhase: typing.querySelector('.coordinator-typing-phase')?.textContent,
+      typingDots: typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
   assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendPosition, 'static', 'send button participates in the compact composer row');
   assert.match(coordinatorLayout.typingTransition, /opacity/);
+  assert.equal(coordinatorLayout.workingLabel, 'Working', 'reply state uses a quiet Cursor-like working label');
+  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state starts in planning phase');
   assert.equal(coordinatorLayout.typingDots, 3, 'reply indicator uses staggered dots');
   runningPreview=true;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-typing.is-visible').waitFor();
+  assert.equal(await coordinator.locator('.coordinator-typing-phase').textContent(), 'Writing response', 'streaming switches the working phase without rebuilding the indicator');
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
@@ -594,8 +600,10 @@ try {
   assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   record('coordinator-node-navigation-without-approval');
-  coordinatorState.status='running';coordinatorState.streamingText='正在形成可见答案';
+  coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
+  coordinatorState.streamingText='正在形成可见答案';
   await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
