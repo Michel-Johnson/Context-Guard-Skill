@@ -39,6 +39,7 @@ export async function executionPrompt(message, readObject) {
   if (message.type === 'task.control' && p.action === 'resume') return [
     `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
     '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
+    '如果原任务是链路验证或明确要求不修改业务文件：只回报 resumed，随后立即结束本轮；不要读取或改写 Main、map.json 或业务文件，也不要自行创建/分配 Session，等待 Coordinator 的下一条明确控制。',
     '确认可以继续后，用 map exchange --input <JSON文件> 回报 resumed；消息必须保留原控制编号：',
     JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
       payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
