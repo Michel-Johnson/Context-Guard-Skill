@@ -13,10 +13,11 @@ export const verifyTaskClose = (_identity, task, data) => {
 // from server configuration, never from model-provided URLs or success claims.
 export async function verifyTaskCompletion({ project, repositoryId, memory, task, receipts, fetch: request = globalThis.fetch }) {
   const policy = project?.completion;
-  if (!policy || task.stage !== 'accepted' || task.ci?.verdict !== 'passed' || task.acceptanceReview?.decision !== 'approved') return false;
+  if (task.stage !== 'accepted' || task.ci?.verdict !== 'passed' || task.acceptanceReview?.decision !== 'approved') return false;
   if (task.verificationOnly && receipts.gitReceiptRef === 'verification-only' && receipts.archiveReceiptRef === task.ci.ref) {
     return { verificationOnly: true, sourceSha: task.sourceSha, ciRef: task.ci.ref };
   }
+  if (!policy) return false;
   if (!/^[\w.-]+\/[\w.-]+$/.test(project.repository || '') || !/^refs\/heads\/.+/.test(project.ref || '') ||
       !Array.isArray(policy.requiredChecks) || !policy.requiredChecks.length ||
       policy.requiredChecks.some(check => !check.name || !Number.isSafeInteger(check.appId))) return false;
