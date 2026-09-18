@@ -74,10 +74,9 @@ const I18N = {
     attachTitle:"附带文件或图片",
     remove:"移除", addModule:"接入模块",
     noOpenBugs:"没有 Bug。", unnamedBug:"未命名 Bug", noOpenTodos:"没有 TODO。", unnamedTodo:"未命名 TODO",
-    leave:"取消认领", claim:"由本会话处理", assignSession:"分配 Session", bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskBlocked:"等待前序任务完成", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
-    allSessions:"主工作台 · 工作中 Session", globalSessionView:"仅跟随 Main", targetSession:"处理 Session", chooseSession:"请选择 Session",
+    bugSending:"发送中", bugSendFailed:"发送失败", taskQueued:"Cloud 已排队", taskCloudQueued:"等待本地接收", taskBlocked:"等待前序任务完成", taskReceived:"Codex 已收到", taskUncertain:"接收结果待确认", taskInterrupted:"执行中断", taskWaitingReview:"等待 Plan 审核",
+    allSessions:"主工作台 · 工作中 Session", globalSessionView:"仅跟随 Main",
     projectOverview:"项目总览",
-    bugDescLabel:"Bug 描述", todoDescLabel:"TODO 描述", createAndSend:"创建并发送", authorizeAndSend:"确认授权并发送",
     scopeRequired:"该 Session 尚未获得当前节点权限。确认后将授权当前节点、所有上级和直接关联节点，共 {n} 个新节点。",
     bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
     bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugDeferred:"已延期", bugWontFix:"不处理",
@@ -179,10 +178,9 @@ const I18N = {
     attachTitle:"Attach a file or image",
     remove:"Remove", addModule:"Attach module",
     noOpenBugs:"No bugs.", unnamedBug:"Untitled bug", noOpenTodos:"No TODOs.", unnamedTodo:"Untitled TODO",
-    leave:"Unassign", claim:"Handle in this session", assignSession:"Assign session", bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskInterrupted:"Interrupted", taskWaitingReview:"Waiting for Plan review",
-    allSessions:"Main workbench · Working sessions", globalSessionView:"Main branch only", targetSession:"Target session", chooseSession:"Choose a session",
+    bugSending:"Sending", bugSendFailed:"Send failed", taskQueued:"Queued in Cloud", taskCloudQueued:"Waiting for local host", taskReceived:"Received by Codex", taskUncertain:"Receipt uncertain", taskInterrupted:"Interrupted", taskWaitingReview:"Waiting for Plan review",
+    allSessions:"Main workbench · Working sessions", globalSessionView:"Main branch only",
     projectOverview:"Projects",
-    bugDescLabel:"Bug description", createAndSend:"Create and send", authorizeAndSend:"Authorize and send",
     scopeRequired:"This session cannot access the current node. Confirm to authorize the node, its ancestors, and direct relations ({n} new nodes).",
     bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
     bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugDeferred:"Deferred", bugWontFix:"Won't fix",
@@ -202,7 +200,7 @@ const I18N = {
     moduleName:"Module name", childName:"Child name",
     memory:"Memory", ideas:"Idea", todos:"TODO", bugs:"Bug", inherited:"Inherited", dormant:"Dormant lessons",
     addMem:"Add memory", addIdea:"Add idea", addTodo:"Add TODO", addBug:"Add bug",
-    todoDescLabel:"TODO description", todoPending:"Pending", todoProcessing:"In progress", todoDone:"Completed", todoScopeRequired:"Authorization required", todoAuthorizeAndSend:"Authorize and send", todoRetry:"Retry",
+    todoPending:"Pending", todoProcessing:"In progress", todoDone:"Completed", todoScopeRequired:"Authorization required", todoAuthorizeAndSend:"Authorize and send", todoRetry:"Retry",
     module:"Module", cancelledChip:"Cancelled",
     state_dirty:"Not started", state_untested:"Built, no tests", state_success:"Tests passed", state_failed:"Tests failed",
     stateHint_dirty:"Development has not started",
@@ -2120,24 +2118,6 @@ function walkAll(node, fn, parents=[]){
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
 function currentSessionId(){ return isAllSessionsView() ? null : workbenchSync?.activeSession || null; }
-function canAssignBugSession(){
-  /* GitHack / static preview has no Agent session. Don't paint "分配 Session"
-     on every selected row — that is a claim action, not a status. Live
-     workbench still offers it in All Sessions so you can pick a handler. */
-  return !!currentSessionId() || !!window.__CG_SERVER;
-}
-function bugClaimControlHtml({selected, unassigned, mine, sending, inspector}){
-  if(unassigned) return inspector ? `<span class="muted">未挂节点</span>` : "";
-  if(!canAssignBugSession()) return "";
-  const sid = currentSessionId();
-  const label = sending ? t("bugSending") : sid ? (mine ? t("leave") : t("claim")) : t("assignSession");
-  if(selected){
-    const cls = inspector ? "quiet" : "claim";
-    const hook = inspector ? `data-act="claim"` : "data-claim";
-    return `<button type="button" class="${cls}" ${hook} ${sending?"disabled":""}>${label}</button>`;
-  }
-  return mine ? `<span class="claim">${esc(t("claim"))}</span>` : "";
-}
 const bugDispatching = new Set();
 const todoDispatching = new Set();
 function sessionColor(name){
@@ -2395,94 +2375,6 @@ function openBugPanel(open, kind=activeWorkPanelKind){
   document.getElementById("btn-todos").classList.toggle("on", !!open && kind==="todo");
 }
 
-function sessionOptionsHtml(selected, requireChoice){
-  const empty = requireChoice ? `<option value="">${esc(t("chooseSession"))}</option>` : "";
-  const sessions=normalizeSessions(workbenchSync?.sessions||[]);
-  return empty + sessions.map(meta=>{
-    const id=sessionIdOf(meta), lifecycle=sessionLifecycle(meta);
-    return `<option value="${escAttr(id)}" ${id===selected?"selected":""} ${lifecycle.disabled?"disabled":""}>${esc(sessionMetaLabel(meta,sessions))}</option>`;
-  }).join("");
-}
-
-function scopePreview(plan){
-  const labels = (plan?.missing||[]).map(id=>getNodeAny(id)?.title||id);
-  const shown = labels.slice(0,8).join("、");
-  return shown + (labels.length>8?` 等 ${labels.length} 个节点`:"");
-}
-
-async function promptWorkAssignment(node, item=null, kind="bug"){
-  const fixedSession = currentSessionId();
-  const creating = !item;
-  const clarify = creating && !fixedSession && workbenchSync?.config?.interfaceCapabilities?.coordinator;
-  const todo = kind==="todo";
-  const dialog = document.createElement("dialog");
-  dialog.className = "bug-assign-dialog";
-  dialog.innerHTML = `<form>
-    ${creating?`<label>${esc(t(todo?"todoDescLabel":"bugDescLabel"))}<textarea name="desc" required maxlength="10000"></textarea></label>`:""}
-    ${clarify ? '<p>创建后由 Coordinator 与你澄清需求，确认后再选择执行会话。</p>' : fixedSession
-      ? `<input type="hidden" name="session" value="${escAttr(fixedSession)}">`
-      : `<label>${esc(t("targetSession"))}<select name="session" required>${sessionOptionsHtml("",true)}</select></label>`}
-    <div class="scope-warning" data-scope hidden></div>
-    <div class="dialog-actions">
-      <button type="button" data-cancel>${esc(t("cancel"))}</button>
-      <button type="submit" class="primary" data-submit disabled>${esc(t("createAndSend"))}</button>
-    </div>
-  </form>`;
-  document.body.append(dialog);
-  const form = dialog.querySelector("form");
-  const select = form.elements.session;
-  const warning = dialog.querySelector("[data-scope]");
-  const submit = dialog.querySelector("[data-submit]");
-  let plan = null, generation = 0, settled = false;
-  const finish = value=>{
-    if(settled) return;
-    settled = true;
-    dialog.close();
-    dialog.remove();
-    resolveDialog(value);
-  };
-  let resolveDialog;
-  const result = new Promise(resolve=>{ resolveDialog=resolve; });
-  async function updatePlan(){
-    if(clarify){ submit.disabled=false; submit.textContent='创建并讨论'; return; }
-    const sid = select.value;
-    const turn = ++generation;
-    plan = null; submit.disabled = true; warning.hidden = true;
-    if(!sid) return;
-    try{
-      const next = await workbenchSync.accessPlan(sid,node.id);
-      if(turn!==generation) return;
-      plan = next;
-      const count = next.missing?.length||0;
-      warning.hidden = count===0;
-      warning.textContent = count ? `${t("scopeRequired").replace("{n}",count)} ${scopePreview(next)}` : "";
-      submit.textContent = count?t("authorizeAndSend"):t("createAndSend");
-      submit.disabled = false;
-    }catch(error){
-      if(turn!==generation) return;
-      workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message);
-    }
-  }
-  if(select) select.onchange = updatePlan;
-  dialog.querySelector("[data-cancel]").onclick = ()=>finish(null);
-  dialog.addEventListener("cancel",e=>{ e.preventDefault(); finish(null); });
-  form.onsubmit = e=>{
-    e.preventDefault();
-    if(!clarify && (!plan || plan.sessionId!==select.value)) return;
-    const desc = creating ? String(form.elements.desc.value||"").trim() : "";
-    const title = desc.split(/\r?\n/)[0].trim().slice(0,120);
-    if(creating && !desc){ form.elements.desc.focus(); return; }
-    finish({sessionId:select?.value || null, plan, title, desc, clarify});
-  };
-  dialog.showModal();
-  if(creating) form.elements.desc.focus();
-  void updatePlan();
-  return result;
-}
-
-function promptBugAssignment(node,bug=null){ return promptWorkAssignment(node,bug,"bug"); }
-function promptTodoAssignment(node,todo=null){ return promptWorkAssignment(node,todo,"todo"); }
-
 async function saveCoordinatorIntake(node,item,kind){
   renderAll();
   const panel=document.getElementById('coordinator-panel');
@@ -2493,6 +2385,28 @@ async function saveCoordinatorIntake(node,item,kind){
     workbenchSync.setStatus(workbenchSync.status,'事项已保存，Coordinator 将与你澄清需求');
   }catch(error){
     workbenchSync.setStatus(workbenchSync.status,'事项尚未同步，请重试保存：'+error.message);
+  }
+}
+
+async function finishNewWorkItem(node,item,kind){
+  if(workbenchSync?.config?.interfaceCapabilities?.coordinator){
+    await saveCoordinatorIntake(node,item,kind);
+    return;
+  }
+  const sessionId = currentSessionId();
+  if(!sessionId){
+    workbenchSync?.setStatus(workbenchSync.status,"请打开 Coordinator 处理新事项");
+    return;
+  }
+  try{
+    const plan = await workbenchSync.accessPlan(sessionId,node.id);
+    if(plan.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
+    await (kind === "todo" ? dispatchTodoToSession(node,item,sessionId,plan) : dispatchBugToSession(node,item,sessionId,plan));
+  }catch(error){
+    item.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
+    workbenchSync?.setStatus(workbenchSync.status,"事项发送失败");
+    renderAll();
+    await workbenchSync?.flush();
   }
 }
 
@@ -2517,20 +2431,6 @@ async function dispatchBugToSession(node,bug,sessionId,plan){
     renderAll();
     await workbenchSync?.flush();
   }
-}
-
-async function createAssignedBug(node){
-  const assignment = await promptBugAssignment(node);
-  if(!assignment) return;
-  foldBug = true;
-  const used = new Set();
-  walkAll(data,n=>(n.bugs||[]).forEach(bug=>used.add(bug.id)));
-  let bid;
-  do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
-  const bug = {id:bid,instanceId:crypto.randomUUID(),title:assignment.title,desc:assignment.desc,status:"open",sessions:[],files:[],record:".codex/context/bugs/"+bid+".md"};
-  node.bugs.push(bug);
-  if(assignment.clarify){ await saveCoordinatorIntake(node,bug,'bug'); return; }
-  await dispatchBugToSession(node,bug,assignment.sessionId,assignment.plan);
 }
 
 function nextTodoId(){
@@ -2566,38 +2466,9 @@ async function dispatchTodoToSession(node,todo,sessionId,plan){
   }
 }
 
-async function createAssignedTodo(node){
-  const assignment = await promptTodoAssignment(node);
-  if(!assignment) return;
-  foldTodo = true;
-  const todo = {id:nextTodoId(),instanceId:crypto.randomUUID(),title:assignment.title,desc:assignment.desc,status:"pending",sessions:[]};
-  node.todos.push(todo);
-  if(assignment.clarify){ await saveCoordinatorIntake(node,todo,'todo'); return; }
-  await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
-}
-
-async function finalizeInlineTodo(node,todo){
-  const sessionId = todo?.target_session;
-  if(!node || !todo || !sessionId || !todo.desc) return;
-  try{
-    const plan = await workbenchSync.accessPlan(sessionId,node.id);
-    if(plan.missing?.length){
-      todo.dispatch = {status:"scope-required",session_id:sessionId,at:new Date().toISOString()};
-      renderAll();
-      await workbenchSync?.flush();
-      return;
-    }
-    await dispatchTodoToSession(node,todo,sessionId,plan);
-  }catch(error){
-    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
-    renderAll();
-    await workbenchSync?.flush();
-  }
-}
-
 async function sendPendingTodo(node,todo){
-  const sessionId = todo?.target_session || currentSessionId();
-  if(!sessionId) return;
+  const sessionId = todo?.dispatch?.session_id;
+  if(!sessionId) return false;
   try{
     const plan = await workbenchSync.accessPlan(sessionId,node.id);
     await dispatchTodoToSession(node,todo,sessionId,plan);
@@ -2620,56 +2491,10 @@ async function advanceTodo(node,todo){
     renderAll();
     return;
   }
-  const assignment = await promptTodoAssignment(node,todo);
-  if(assignment) await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);
-}
-
-async function toggleBugSession(node, bug){
-  if(!node || !bug) return;
-  let sid = currentSessionId();
-  const list = bugSessionsOf(bug);
-  const i = sid ? list.indexOf(sid) : -1;
-  if(i>=0){
-    list.splice(i,1);
-    if(bug.dispatch?.session_id===sid) delete bug.dispatch;
-    renderAll();
-    return;
-  }
-  let plan;
-  if(sid){
-    try{ plan = await workbenchSync.accessPlan(sid,node.id); }
-    catch(error){ workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message); return; }
-  }
-  if(!sid || plan?.missing?.length){
-    const assignment = await promptBugAssignment(node,bug);
-    if(!assignment) return;
-    sid = assignment.sessionId; plan = assignment.plan;
-  }
-  await dispatchBugToSession(node,bug,sid,plan);
-}
-async function toggleTodoSession(node, todo){
-  if(!node || !todo) return;
-  let sid = currentSessionId();
-  const list = todoSessionsOf(todo);
-  const i = sid ? list.indexOf(sid) : -1;
-  if(i>=0){
-    list.splice(i,1);
-    if(todo.dispatch?.session_id===sid) delete todo.dispatch;
-    todo.status = list.length ? "processing" : "pending";
-    renderAll();
-    return;
-  }
-  let plan;
-  if(sid){
-    try{ plan = await workbenchSync.accessPlan(sid,node.id); }
-    catch(error){ workbenchSync?.setStatus(workbenchSync.status,"无法核对 Session 权限："+error.message); return; }
-  }
-  if(!sid || plan?.missing?.length){
-    const assignment = await promptTodoAssignment(node,todo);
-    if(!assignment) return;
-    sid = assignment.sessionId; plan = assignment.plan;
-  }
-  await dispatchTodoToSession(node,todo,sid,plan);
+  // Pending work is owned by Coordinator. The check control only updates the
+  // local human review state and never selects or routes an execution Session.
+  todo.status = "done";
+  renderAll();
 }
 function renderBugPanel(){
   const kind = activeWorkPanelKind;
@@ -2687,32 +2512,21 @@ function renderBugPanel(){
     ul.innerHTML = `<li class="empty">${t(kind==="todo"?"noOpenTodos":"noOpenBugs")}</li>`;
     return;
   }
-  const sid = currentSessionId();
   ul.innerHTML = list.map(item=>{
     const title = item.item.title || t(kind==="todo"?"unnamedTodo":"unnamedBug");
     const on = bugFocus && bugFocus.nodeId===item.node.id && (bugFocus.itemId||bugFocus.bugId)===item.item.id && (bugFocus.kind||"bug")===kind;
-    const sessions = bugSessionsOf(item.item);
-    const mine = sessions.indexOf(sid)>=0;
-    const sending = (kind==="todo"?todoDispatching:bugDispatching).has(item.item.id);
     const progress = kind==="todo"?todoProgress:bugProgress;
     const state = progress(item.item);
     const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
-    const claim = bugClaimControlHtml({selected:on, unassigned:item.unassigned, mine, sending});
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-${kind}="${escAttr(item.item.id)}">
       <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${kind==="todo"?todoProgressHtml(item.item):bugProgressHtml(item.item)}</span>
-      <span class="bug-row">${dot}${claim}</span>
+      <span class="bug-row">${dot}</span>
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
     const item = list[index];
     li.onclick = e=>{
-      if(e.target.closest("[data-claim]")) return;
       enterBugPath(item.node.id, item.item.id, kind);
-    };
-    const claim = li.querySelector("[data-claim]");
-    if(claim) claim.onclick = async e=>{
-      e.preventDefault(); e.stopPropagation();
-      await (kind==="todo"?toggleTodoSession:toggleBugSession)(item.node, item.item);
     };
   });
 }
@@ -3683,21 +3497,15 @@ function renderDetail(){
     const hit = focusedWorkItem();
     const bug = hit && hit.item;
     const kind = hit?.kind || "bug";
-    const sid = currentSessionId();
     const sessions = bugSessionsOf(bug);
-    const mine = bug && sessions.indexOf(sid)>=0;
-    const sending = bug && (kind==="todo"?todoDispatching:bugDispatching).has(bug.id);
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
       <h2>${esc(bug && bug.title ? bug.title : (kind==="todo"?"TODO":"Bug"))}${kind==="todo"?todoProgressHtml(bug):bugProgressHtml(bug)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
-        ${bugClaimControlHtml({selected:true, unassigned:hit && hit.unassigned, mine, sending, inspector:true})}
       </div>
       ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(hit.node.id,kind,bug)+taskSummaryHtml(bug) : ""}`;
-    const claim = el.querySelector('[data-act="claim"]');
-    if(claim) claim.onclick = async ()=>{ if(!hit?.unassigned) await (kind==="todo"?toggleTodoSession:toggleBugSession)(hit && hit.node, bug); };
     el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
     return;
   }
@@ -3757,7 +3565,6 @@ function renderDetail(){
   const todoHtml = nodeTodos.length
     ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
         const done = todo.status==="done";
-        const unassigned = workbenchSync?.config?.interfaceCapabilities?.humanReview && !todo.dispatch?.task_id && !todo.dispatch?.status && !done;
         const needsAction = todo.dispatch?.status==="scope-required" || todo.dispatch?.status==="failed";
         return `<li class="${done?"todo-done":""}">
           ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>`}
@@ -3766,7 +3573,6 @@ function renderDetail(){
             ${todo.draft?"":todoProgressHtml(todo)}
             ${taskSummaryHtml(todo)}
             ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(todo.id)}" data-coordinator-node="${escAttr(node.id)}" data-coordinator-kind="todo">对话</button>`:""}
-            ${unassigned?`<button type="button" data-todo-assign="${escAttr(todo.id)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
           </div>
         </li>`;
@@ -3789,7 +3595,6 @@ function renderDetail(){
             ${bugProgressHtml(b)}
             ${taskSummaryHtml(b)}
             ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(b.id)}" data-coordinator-node="${escAttr(row.from)}" data-coordinator-kind="bug">对话</button>`:""}
-            ${workbenchSync?.config?.interfaceCapabilities?.humanReview && !b.dispatch?.task_id && !["resolved","dormant"].includes(b.status)?`<button type="button" data-bug-assign="${escAttr(b.id)}" data-bug-node="${escAttr(row.from)}">${uiLang==="en"?"Assign":"分配"}</button>`:""}
             ${attach}
           </div>
         </li>`;
@@ -3872,9 +3677,7 @@ function renderDetail(){
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
   el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
-  el.querySelectorAll("[data-bug-assign]").forEach(button=>button.onclick=async()=>{const owner=findPath(button.dataset.bugNode)?.at(-1),bug=owner?.bugs.find(item=>item.id===button.dataset.bugAssign);const assignment=await promptBugAssignment(owner,bug);if(assignment) await dispatchBugToSession(owner,bug,assignment.sessionId,assignment.plan);});
   el.querySelectorAll('[data-coordinator-item]').forEach(button=>button.onclick=()=>window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:button.dataset.coordinatorNode,itemId:button.dataset.coordinatorItem,kind:button.dataset.coordinatorKind}})));
-  el.querySelectorAll("[data-todo-assign]").forEach(button=>button.onclick=async()=>{const todo=node.todos.find(item=>item.id===button.dataset.todoAssign);const assignment=await promptTodoAssignment(node,todo);if(assignment) await dispatchTodoToSession(node,todo,assignment.sessionId,assignment.plan);});
   el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
   el.querySelectorAll("[data-todo-send]").forEach(button=>button.onclick=()=>sendPendingTodo(node,node.todos.find(todo=>todo.id===button.dataset.todoSend)));
   const q = s=>el.querySelector(s);
@@ -3907,17 +3710,23 @@ function renderDetail(){
   };
   if(q('[data-act="add-todo"]')) q('[data-act="add-todo"]').onclick = async (e)=>{
     e.preventDefault(); e.stopPropagation();
-    const sessionId = currentSessionId();
-    if(!sessionId){ await createAssignedTodo(node); return; }
     foldTodo = true;
-    node.todos.push({id:nextTodoId(),title:"",desc:"",status:"pending",sessions:[],target_session:sessionId,draft:true});
+    node.todos.push({id:nextTodoId(),instanceId:crypto.randomUUID(),title:"",desc:"",status:"pending",sessions:[],draft:true});
     renderAll();
     const last = el.querySelector('[data-fold="todo"] .todo-list li:last-child .todo-text');
     if(last) last.focus();
   };
   if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = async (e)=>{
     e.preventDefault(); e.stopPropagation();
-    await createAssignedBug(node);
+    foldBug = true;
+    const used = new Set();
+    walkAll(data,n=>(n.bugs||[]).forEach(bug=>used.add(bug.id)));
+    let bid;
+    do { bid = "B"+(BUG_SEQ++); } while(used.has(bid));
+    node.bugs.push({id:bid,instanceId:crypto.randomUUID(),title:"",desc:"",status:"open",sessions:[],files:[],draft:true,record:".codex/context/bugs/"+bid+".md"});
+    renderAll();
+    const last = el.querySelector('[data-fold="bug"] .bug-list li:last-child .bug-title');
+    if(last) last.focus();
   };
   if(q('[data-act="focus"]'))   q('[data-act="focus"]').onclick   = ()=>{
     focusId = (focusId===node.id? null : node.id); renderAll(); };
@@ -3983,7 +3792,7 @@ function renderDetail(){
         todo.title = v.split(/\r?\n/)[0].trim().slice(0,120);
         if(blur && todo.draft){
           delete todo.draft;
-          setTimeout(()=>finalizeInlineTodo(node,todo),0);
+          setTimeout(()=>finishNewWorkItem(node,todo,"todo"),0);
         }
         persist(); return;
       }
@@ -3999,7 +3808,13 @@ function renderDetail(){
         const b = node.bugs.find(x=>x.id===ed.dataset.bug);
         if(!b) return;
         if(!v){ node.bugs = node.bugs.filter(x=>x.id!==b.id); renderAll(); return; }
-        b.title = v; return;
+        b.title = v;
+        if(blur && b.draft){
+          b.desc = b.desc || v;
+          delete b.draft;
+          setTimeout(()=>finishNewWorkItem(node,b,"bug"),0);
+        }
+        persist(); return;
       }
       if(kind==="bug-desc"){
         const b = node.bugs.find(x=>x.id===ed.dataset.bug);

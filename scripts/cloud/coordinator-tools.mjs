@@ -10,7 +10,7 @@ export const coordinatorReferences = ['map-read.md', 'map-mount.md', 'user-reply
 const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT', toolHint: message }); };
 
 export const coordinatorTools = [
-  definition('list_tasks', 'List project requirements, creation status and their execution Session when ready. New tasks receive fresh Sessions automatically.', {}),
+  definition('list_tasks', 'List project requirements plus unfinished TODO/Bug items from Main Map. Entries without executionSessionId are not yet dispatched; new tasks receive fresh Sessions automatically.', {}),
   definition('list_sessions', 'List execution Sessions assigned to this Coordinator. Use only sessions[].executionSessionId in task tools. Registration is not proof of liveness.', {}),
   definition('list_conversations', 'List saved Coordinator conversations for topic continuity. conversationId is never an executionSessionId and cannot be used in task tools.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
@@ -19,7 +19,7 @@ export const coordinatorTools = [
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
   definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { executionSessionId, ref: string, version: string }),
   definition('propose_mount', 'Propose a Main node; this does not write Main or approve it. Wait for a human.', { mainVersion: string, parentId: string, title: string, purpose: string, owns: strings }),
-  definition('prepare_task', 'Initiate creation of a fresh execution Session for a task: prepare requirements for human approval, then the scheduler creates and dispatches the Session automatically. The Coordinator can initiate this and must not claim it cannot create Sessions.', { executionSessionId, taskId: string, text: string, acceptance: string, nodeIds: strings, mainVersion: string }, ['taskId', 'text', 'acceptance', 'nodeIds', 'mainVersion']),
+  definition('prepare_task', 'Initiate creation of a fresh execution Session for a task: prepare requirements for human approval, then the scheduler creates and dispatches the Session automatically. The Coordinator can initiate this and must not claim it cannot create Sessions. For a Main TODO/Bug, copy itemId, nodeId and kind from list_tasks.', { taskId: string, text: string, acceptance: string, nodeIds: strings, mainVersion: string, itemId: string, nodeId: string, kind: { enum: ['todo', 'bug'] } }, ['taskId', 'text', 'acceptance', 'nodeIds', 'mainVersion']),
   definition('dispatch_task', 'Dispatch a human-approved brief in reviewed mode. Routing is copied from the approved brief.', { ...task, briefRef: string, briefVersion: string }),
   definition('review_plan', 'Review the exact submitted Plan; cannot approve a brief or human acceptance.', { ...task, planRef: string, planVersion: string, decision: { enum: ['approved', 'rejected'] }, reason: string }),
   definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
@@ -88,7 +88,7 @@ export function createCoordinatorExecutor(ctx) {
     if (name === 'prepare_task') {
       for (const id of input.nodeIds) if ((await ctx.readMap(id)).version !== input.mainVersion) fail('Main changed; re-confirm task routing');
       if (ctx.prepareProjectTask) {
-        const { executionSessionId: ignored, ...requirements } = input;
+        const requirements = { ...input };
         return ctx.prepareProjectTask(requirements, operationId);
       }
       const text = JSON.stringify({ v: 1, taskId: input.taskId, text: input.text, acceptance: input.acceptance, nodeIds: input.nodeIds, mainVersion: input.mainVersion });

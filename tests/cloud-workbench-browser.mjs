@@ -722,11 +722,10 @@ try {
   for (const kind of ['todo', 'bug']) {
     await page.locator('#btn-coordinator').click();
     await page.locator(`[data-act="add-${kind}"]`).click();
-    const dialog = page.locator('dialog.bug-assign-dialog');
-    assert.equal(await dialog.locator('[name="session"]').count(), 0, 'intake must not require an existing Session');
-    await dialog.locator('textarea').fill(`Discuss new ${kind} before dispatch`);
     const previous = await syncVersion();
-    await dialog.getByRole('button', { name: '创建并讨论', exact: true }).click();
+    const editor = kind === 'todo' ? page.locator('#detail [data-ed="todo-text"]').last() : page.locator('#detail [data-ed="bug-title"]').last();
+    await editor.fill(`Discuss new ${kind} before dispatch`);
+    await editor.press('Tab');
     await synchronizedAfter(previous);
     assert.equal(await coordinator.getAttribute('open'), '', 'creating work opens the conversation immediately');
     const saved = await request(`${service.url}/v1/projects/context-guard/main`, { headers: headers('project-memory-token') });

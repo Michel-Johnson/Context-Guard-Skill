@@ -28,6 +28,7 @@ const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const idPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(String(value)).digest('hex');
+const mapWorkTaskId = (projectId, nodeId, kind, itemId) => `map-${kind}-${digest(`${projectId}:${nodeId}:${kind}:${itemId}`).slice(0, 24)}`;
 export function applyCoordinatorAssignments(document, assignments) {
   if (!document?.root || !assignments?.size) return document;
   const projectItems = node => ({ ...node,
@@ -566,11 +567,60 @@ export async function startCloudServer({
             return { sessions };
           },
           listConversations: async () => ({ conversations: (await conversations.list()).map(({ id, ...item }) => ({ conversationId: id, ...item })) }),
-          listTasks: async () => ({ tasks: (await store.projectTasks(principal)).filter(task => task.conversationId === conversationId)
-            .map(({ taskId, stage, sessionId, error }) => ({ taskId, stage, executionSessionId: sessionId || null, error })) }),
+          listTasks: async () => {
+            const projectTasks = (await store.projectTasks(principal)).filter(task => task.conversationId === conversationId);
+            const tasks = projectTasks.map(({ taskId, stage, sessionId, error }) =>
+              ({ taskId, stage, executionSessionId: sessionId || null, error }));
+            const knownItems = new Set(projectTasks.map(task => task.itemId).filter(Boolean));
+            const snapshot = await readMemoryProject(configuredMemory, project.id);
+            const root = snapshot.main?.memory?.map?.root;
+            if (root) {
+              const index = entries(root), allowed = Array.isArray(config.nodeIds) ? new Set(config.nodeIds) : null;
+              const inScope = id => {
+                if (!allowed) return true;
+                for (let current = index.get(id); current; current = current.parentId ? index.get(current.parentId) : null) {
+                  if (allowed.has(current.node.id)) return true;
+                }
+                return false;
+              };
+              for (const { node } of index.values()) {
+                if (!inScope(node.id)) continue;
+                for (const kind of ['todo', 'bug']) for (const item of node[`${kind}s`] || []) {
+                  if (!item?.id || knownItems.has(item.id)) continue;
+                  const closed = kind === 'todo' ? item.status === 'done' : ['resolved', 'dormant', 'wontfix'].includes(item.status);
+                  if (closed) continue;
+                  const dispatch = item.dispatch || {};
+                  tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '', stage: dispatch.status || item.status || 'pending',
+                    executionSessionId: dispatch.session_id || null,
+                    // A stable task identity lets the Coordinator prepare a
+                    // Map item from the legacy/Main conversation without
+                    // inventing a second random task on retry.
+                    taskId: dispatch.task_id || mapWorkTaskId(project.id, node.id, kind, item.id), nodeId: node.id });
+                }
+              }
+            }
+            return { tasks };
+          },
           prepareProjectTask: async (input, operationId) => {
-            if (JSON.stringify(input).length > 2000) protocolFail('INVALID_ARGUMENT', 'Keep requirements within 2000 characters');
-            const task = await store.prepareProjectTask(principal, input, operationId, conversationId);
+            const requirements = conversation?.itemId
+              ? { ...input, itemId: conversation.itemId, nodeId: conversation.nodeId, kind: conversation.kind }
+              : { ...input };
+            if (requirements.itemId) {
+              if (!requirements.nodeId || !['todo', 'bug'].includes(requirements.kind)) protocolFail('INVALID_ARGUMENT', 'Map TODO/Bug routing metadata is incomplete');
+              const snapshot = await readMemoryProject(configuredMemory, project.id), root = snapshot.main?.memory?.map?.root;
+              const entry = root && entries(root).get(requirements.nodeId)?.node;
+              const item = entry?.[`${requirements.kind}s`]?.find(value => value?.id === requirements.itemId);
+              if (!item) protocolFail('NOT_FOUND', 'Map TODO/Bug is no longer available');
+              const expectedTaskId = item.dispatch?.task_id || mapWorkTaskId(project.id, requirements.nodeId, requirements.kind, requirements.itemId);
+              if (requirements.taskId !== expectedTaskId) protocolFail('CONFLICT', 'Task identity does not match the Map TODO/Bug');
+              if (!requirements.nodeIds.includes(requirements.nodeId)) {
+                const routedNodes = [...new Set([...requirements.nodeIds, requirements.nodeId])];
+                if (routedNodes.length > 3) protocolFail('INVALID_ARGUMENT', 'Map TODO/Bug routing exceeds three nodes');
+                requirements.nodeIds = routedNodes;
+              }
+            }
+            if (JSON.stringify(requirements).length > 2000) protocolFail('INVALID_ARGUMENT', 'Keep requirements within 2000 characters');
+            const task = await store.prepareProjectTask(principal, requirements, operationId, conversationId);
             return { ...task, projectTask: true, requiresHumanApproval: true };
           },
           resolveNodes: async ids => {
@@ -1058,7 +1108,8 @@ export async function startCloudServer({
     const { store, principal } = interfaceProject(project);
     const assignments = new Map();
     for (const task of await store.projectTasks(principal)) {
-      const owner = registry.items?.[task.conversationId];
+      const owner = registry.items?.[task.conversationId] || (task.itemId && task.nodeId && task.kind
+        ? { nodeId: task.nodeId, kind: task.kind, itemId: task.itemId } : null);
       const assignmentKey = coordinatorAssignmentKey(document, owner, task.taskId);
       if (!assignmentKey || ['brief', 'brief-rejected', 'dispatched', 'completed'].includes(task.stage)) continue;
       assignments.set(assignmentKey, { status: task.stage === 'failed' ? 'failed' : 'queued',
