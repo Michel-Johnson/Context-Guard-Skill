@@ -4801,12 +4801,14 @@ async function installCoordinatorPanel(sync){
     const hasStreaming=Boolean(state.streamingText);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
-      const content=streamingMessage.querySelector('.coordinator-markdown')||streamingMessage;
-      const next=conversationFragments([{role:'assistant',text:state.streamingText,streaming:true}],document).body;
-      const nextContent=next.querySelector?.('.coordinator-markdown');
-      content.replaceChildren(...(nextContent?.childNodes||next.childNodes));
+      if(state.streamingText!==lastStreamingText){
+        const content=streamingMessage.querySelector('.coordinator-markdown')||streamingMessage;
+        const next=conversationFragments([{role:'assistant',text:state.streamingText,streaming:true}],document).body;
+        const nextContent=next.querySelector?.('.coordinator-markdown');
+        content.replaceChildren(...(nextContent?.childNodes||next.childNodes));
+        lastStreamingText=state.streamingText;
+      }
       if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
-      lastStreamingText=state.streamingText;
     }else if(stableKey!==lastStableContent||hasStreaming!==Boolean(lastStreamingText)){
     const visibleMessages=[...(state.messages||[])];
     if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
