@@ -25,6 +25,7 @@ export async function executionPrompt(message, readObject) {
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
       `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main 记忆版本（不是 Git SHA）：${p.mainVersion}`, brief.content.text,
       '使用 map task plan --input <JSON文件路径> 或 --input -（stdin）提交 {operationId,content:{paths,steps}}；不要把 JSON 正文当文件名。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
+      '执行边界：Coordinator 已经创建并绑定本任务的独立执行 Session；不得手工创建、选择、分配或替换 Session，不得直接改写 Main、.codex/context/main/map.json 或任何服务器状态。若这是链路验证任务，只读核对任务、Session、回执和状态，不要把验证动作变成业务开发。map task plan 成功返回 awaiting-plan-review 后，立即结束本轮并等待 review.result；不要继续调用工具、修改文件、提交 handoff 或自行派发。',
       reviewedRetry,
       `交付编号：${message.id}；同一编号不得重复执行。`].join('\n');
   }
