@@ -4498,7 +4498,7 @@ async function installCoordinatorPanel(sync){
   const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
-  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.innerHTML='<span class="coordinator-typing-label">正在回复</span><span class="coordinator-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.innerHTML='<span class="coordinator-typing-label">Working</span><span class="coordinator-typing-phase">Planning next moves</span><span class="coordinator-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
   const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
@@ -4515,7 +4515,7 @@ async function installCoordinatorPanel(sync){
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
-  const setTyping=visible=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));};
+  const setTyping=(visible,phase='Planning next moves')=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));const label=typing.querySelector('.coordinator-typing-phase');if(label)label.textContent=phase;};
   let streamFrame=0,streamTarget='',streamShown='';
   const stopStreamingAnimation=()=>{if(streamFrame){cancelAnimationFrame(streamFrame);streamFrame=0;}streamTarget='';streamShown='';};
   const updateStreamingText=(message,text,immediate=false)=>{
@@ -4643,9 +4643,9 @@ async function installCoordinatorPanel(sync){
     renderHistory(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
-    setTyping(state.status==='running'&&!answering);
-    const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const hasStreaming=Boolean(state.streamingText);
+    setTyping(state.status==='running'&&!answering,hasStreaming?'Writing response':'Planning next moves');
+    const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
       if(state.streamingText!==lastStreamingText){
