@@ -457,8 +457,10 @@ try {
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-typing.is-visible').waitFor();
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
+  assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
   await page.waitForTimeout(650);
+  assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '正在生成一段连续回复', 'buffered text catches up without dropping content');
   assert.equal(await coordinator.locator('.coordinator-streaming').getAttribute('data-motion-probe'), 'stable', 'streaming updates preserve the message node instead of replaying the whole transcript');
   runningPreview=false;
   await page.locator('#btn-coordinator').click();
