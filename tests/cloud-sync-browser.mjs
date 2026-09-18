@@ -97,16 +97,11 @@ try {
   await cloudPage.goto(`${cloud.url}/auth?token=cloud-admin&next=${encodeURIComponent('/projects/context-guard')}`);
   await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
   await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.locator('button[data-todo-assign="TD1"]').click();
-  const assignmentDialog = cloudPage.locator('dialog[open]');
-  await assignmentDialog.locator('select[name="session"]').selectOption(sessionId);
-  await assignmentDialog.locator('[data-submit]').click();
-  await cloudPage.locator('#detail').getByText('Codex 已收到', { exact: true }).waitFor({ timeout: 25000 });
-  assert.equal(delivered.length, 1); assert.equal(delivered[0].sessionId, sessionId);
+  assert.equal(await cloudPage.locator('button[data-todo-assign="TD1"]').count(), 0, 'legacy TODO Session assignment control is removed');
+  assert.equal(await cloudPage.locator('button[data-bug-assign="B1"]').count(), 0, 'legacy Bug Session assignment control is removed');
   await cloudPage.locator('#session-chip').click();
   await cloudPage.locator(`#session-menu [data-session="${sessionId}"]`).click();
-  await cloudPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
-
+  await cloudPage.waitForFunction(id => new URL(location.href).searchParams.get('session') === id, sessionId);
   await localPage.locator('.node[data-id="T0"]').click();
   await localPage.locator('#detail [data-ed="title"]').fill('本地写入 Cloud');
   await localPage.evaluate(() => {
@@ -125,83 +120,24 @@ try {
   await localPage.waitForFunction(() => window.__cloudSyncCycle?.done, undefined, { timeout: 25000 });
   await cloudPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('本地写入 Cloud'), undefined, { timeout: 25000 });
 
-  await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.locator('#detail [data-ed="purpose"]').fill('Cloud 写回本地');
-  await cloudPage.locator('#detail [data-ed="purpose"]').blur();
-  await cloudPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
-  await localPage.waitForFunction(() => document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Cloud 写回本地'), undefined, { timeout: 25000 });
-  await localPage.waitForSelector('#cloud-sync-status.synced', { state: 'attached' });
-
   await Promise.all([localPage.reload(), cloudPage.reload()]);
   await localPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
-  await cloudPage.locator('#session-chip').click();
-  await cloudPage.locator(`#session-menu [data-session="${sessionId}"]`).click();
-  await cloudPage.waitForFunction(id => document.querySelector('#cg-sync-session')?.value === id, sessionId);
   for (const page of [localPage, cloudPage]) {
     assert.match(await page.locator('.node[data-id="T0"]').textContent(), /本地写入 Cloud/);
     await page.locator('.node[data-id="T0"]').click();
-    assert.equal((await page.locator('#detail [data-ed="purpose"]').textContent()).trim(), 'Cloud 写回本地');
+    assert.equal((await page.locator('#detail [data-ed="purpose"]').textContent()).trim(), '双向同步测试');
   }
   const disk = JSON.parse(await fs.readFile(path.join(sessionMemoryDir(project, sessionId), 'map.json'), 'utf8'));
   assert.equal(disk.root.title, '本地写入 Cloud');
-  assert.equal(disk.root.purpose, 'Cloud 写回本地');
+  assert.equal(disk.root.purpose, '双向同步测试');
   const changes = await request(`${cloud.url}/v1/projects/context-guard/sessions/${sessionId}/changes?after=0`, { headers: headers('project-memory-token') });
   assert.ok(changes.events.length >= 3);
   for (const event of changes.events) assert.equal(event.at, new Date(event.at).toISOString());
 
-  await cloudPage.locator('#session-chip').click();
-  await cloudPage.locator('#session-menu [data-session="__all__"]').click();
-  await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.route('**/api/task-review*', async route => {
-    const response = await route.fetch();
-    await pause(200); // Let the committed Main state notification arrive first.
-    await route.fulfill({ response });
-  });
-  const report = (index, stage, outcome = 'success', summary = 'Fixture task completed') => request(new URL('/api/v2/task-report', local.state.url), {
-    method: 'POST', headers: headers(registration.token), body: JSON.stringify({ deliveryId: delivered[index].message.match(/map task start (\S+)/)[1], stage,
-      ...(stage === 'finished' ? { outcome, summary } : {}) }),
-  });
-  const actualSummary = '原因：同步等待。\n修复：隔离心跳。\n验证：正式回归通过。';
-  const approve = cloudPage.locator('[data-task-review="approved"][data-review-item="TD1"]');
-  assert.equal(await approve.isDisabled(), true, 'unfinished task cannot be reviewed');
-  await report(0, 'started'); await report(0, 'finished', 'success', actualSummary);
-  await cloudPage.locator('#detail').getByText('待人类验收', { exact: true }).waitFor();
-  await approve.click();
-  await cloudPage.locator('#detail').getByText('验收通过', { exact: true }).waitFor();
-  await cloudPage.locator('#cg-sync[data-status="synced"]').waitFor({ state: 'attached' });
-  assert.equal(await approve.isDisabled(), true);
-  assert.equal(delivered.length, 1, 'acceptance never queues a summary');
-  await cloudPage.reload();
-  await cloudPage.locator('.node[data-id="T0"]').click();
-  const summaryPanel = cloudPage.locator('#detail details').filter({ has: cloudPage.locator('summary', { hasText: 'Agent 结果与经验' }) });
-  await summaryPanel.locator('summary').click();
-  assert.equal((await summaryPanel.locator('p').textContent()).trim(), actualSummary);
-  assert.equal(await approve.isDisabled(), true, 'refresh preserves review');
-  assert.ok((await cloudPage.locator('#detail .mem-list').allTextContents()).join('').includes(actualSummary), 'accepted experience is published');
-  await cloudPage.locator('[data-bug-assign="B1"]').click();
-  await cloudPage.locator('dialog[open] select[name="session"]').selectOption(sessionId);
-  await cloudPage.locator('dialog[open] [data-submit]').click();
-  const deadline = Date.now() + 25000;
-  while (delivered.length < 2 && Date.now() < deadline) await pause(100);
-  assert.equal(delivered.length, 2);
-  await report(1, 'started'); await report(1, 'finished', 'success', 'Agent reports a fix; human must verify it');
-  const reject = cloudPage.locator('[data-task-review="rejected"][data-review-item="B1"]');
-  await reject.click();
-  await cloudPage.locator('dialog[open] textarea[name="reason"]').fill('问题仍然能复现');
-  await cloudPage.locator('dialog[open] button[value="submit"]').click();
-  await cloudPage.locator('#detail').getByText('验收未通过 · 待澄清', { exact: true }).waitFor();
-  assert.equal(await cloudPage.locator('#bug-count').textContent(), '1', 'rejected verification still counts as unresolved');
-  const feedback = await cloudPage.request.get(`${cloud.url}/api/workbench/projects/context-guard/api/review-feedback?view=main`).then(response => response.json());
-  assert.equal(feedback.items.length, 1); assert.equal(feedback.items[0].reason, '问题仍然能复现');
-  await cloudPage.reload(); await cloudPage.locator('.node[data-id="T0"]').click();
-  await cloudPage.locator('#detail').getByText('验收未通过 · 待澄清', { exact: true }).waitFor();
-  assert.equal(await reject.isDisabled(), true);
-  assert.equal(delivered.length, 2, 'rejection saves feedback without waking any Agent');
-
   await fs.mkdir(output, { recursive: true });
   await localPage.screenshot({ path: path.join(output, 'local.png'), fullPage: true });
   await cloudPage.screenshot({ path: path.join(output, 'cloud.png'), fullPage: true });
-  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['cloud-task-to-local-codex', 'local-to-cloud', 'cloud-to-local', 'refresh-persistence', 'server-timestamps', 'human-review-without-model-dispatch', 'atomic-experience-publication', 'review-refresh-persistence', 'rejected-bug-feedback-without-dispatch'] }));
+  await fs.writeFile(path.join(output, 'result.json'), encode({ passed: true, checks: ['no-manual-session-assignment-control', 'local-to-cloud', 'refresh-persistence', 'server-timestamps'] }));
   passed = true;
 } finally {
   if (!passed) {

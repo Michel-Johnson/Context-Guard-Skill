@@ -987,11 +987,13 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   const readObject = coordinatorTools.find(tool => tool.name === 'read_object');
   const sessions = coordinatorTools.find(tool => tool.name === 'list_sessions');
   const conversations = coordinatorTools.find(tool => tool.name === 'list_conversations');
-  assert.ok(prepare.input_schema.properties.executionSessionId);
+  assert.equal(prepare.input_schema.properties.executionSessionId, undefined);
+  assert.ok(prepare.input_schema.properties.itemId);
+  assert.ok(prepare.input_schema.properties.nodeId);
+  assert.ok(prepare.input_schema.properties.kind);
   assert.ok(readObject.input_schema.properties.executionSessionId);
   assert.equal(readObject.input_schema.properties.sessionId, undefined);
   assert.equal(prepare.input_schema.properties.sessionId, undefined);
-  assert.match(prepare.input_schema.properties.executionSessionId.description, /Never use/);
   assert.match(prepare.description, /Coordinator can initiate/);
   assert.match(prepare.description, /must not claim it cannot create Sessions/);
   assert.match(sessions.description, /executionSessionId/);
@@ -1008,6 +1010,19 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   assert.equal(readSession, 'actual-session');
   await execute('read_object', { executionSessionId: 'actual-session', ref: 'plan:task-1', version: 'plan-v1' }, { operationId: 'read-plan' });
   assert.deepEqual(exchanges, [{ sessionId: 'actual-session', id: 'read-plan', type: 'object.read', payload: { ref: 'plan:task-1', version: 'plan-v1' } }]);
+});
+
+test('Coordinator prepares a Map TODO with stable identity and no Session selector', async () => {
+  const captured = [];
+  const execute = createCoordinatorExecutor({
+    readMap: async () => ({ version: 'main-1' }),
+    prepareProjectTask: async (requirements, operationId) => { captured.push({ requirements, operationId }); return { projectTask: true, requiresHumanApproval: true, ...requirements }; },
+  });
+  const input = { taskId: 'map-todo-123', itemId: 'TD1', nodeId: 'N1', kind: 'todo', text: 'Run the task', acceptance: 'Report the result', nodeIds: ['N1'], mainVersion: 'main-1' };
+  const result = await execute('prepare_task', input, { operationId: 'prepare-map-todo' });
+  assert.equal(result.projectTask, true);
+  assert.deepEqual(captured, [{ requirements: input, operationId: 'prepare-map-todo' }]);
+  await assert.rejects(execute('prepare_task', { ...input, executionSessionId: 'session-old' }, { operationId: 'legacy-selector' }), /fields differ/);
 });
 
 test('Coordinator conversation ownership is routing metadata, not task authorization', async () => {

@@ -89,6 +89,7 @@
 - 真实 TODO/Bug 创建已触发模型读取和 `ask_user`，但问题正文被公共消息投影丢弃。补充成功提问的聊天正文投影，保持其他工具参数隐藏；重启恢复和浏览器可见性回归，部署验收仍待完成。
 
 - [ ] Coordinator 对话体验与任务入口：安全 Markdown、聊天排版、折叠内部事件；新增 TODO/Bug 主动对接；Cloud 发起本机新 Session。各能力分别验收，不能把界面渲染当成派单能力完成。
+- [ ] Coordinator 节点详情与事项面板中的人工“分配/认领 Session”入口已删除；仅完成语法检查，待 Cloud 浏览器回归确认。
   - 聊天界面已合并部署并核验实际 Cloud 页面：列表/代码/表格/链接、拒绝 HTML 执行与外部图片请求、折叠运行记录。
   - Main 新建事项先澄清入口：已通过消费游标重启/丢失回复去重及浏览器 TODO/Bug 保存不派单回归；尚待 Required CI、部署及真实模型主动提问验收。Session Map 内的创建入口及新建本机 Session 尚未接通。
   - Cloud 新建 Claude Session 开发中：持久创建请求、设备隔离、独立 worktree/profile、原生绑定回执、Coordinator 动态会话名单和页面重试入口已接线。相关单元、失败回报经心跳补传、模板 CI 接收方委托及模拟浏览器用例通过；尚缺真实创建、真实 CI 联动及部署验收，不视为已交付。
@@ -285,4 +286,5 @@
 - [x] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层，并同时覆盖本地 CSP、Cloud 静态路由和官网演示构建（`prototype/workbench.css`、`prototype/workbench-fixtures.js`、`prototype/workbench-app.js`）
 - [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
 - [x] Session 下拉框按 ID 去重且不展示原始 ID，URL 固定当前会话，发布/关闭项移除、失效项禁用；关系模式默认关闭并在 Session 切换时退出（`tests/workbench-browser.mjs`、`tests/cloud-workbench-browser.mjs`）
+- [x] Coordinator TODO/Bug 自动路由：删除手动 Session 选择与认领入口，新事项保留 `itemId/nodeId/kind` 和稳定 `taskId`，后台按项目任务为每项创建独立执行 Session；定向协议 84 项通过、两套浏览器回归通过。生产 E2E 待线上部署恢复后复跑；本轮线上 502 记录为 B108。
 - [x] 用统一清单约束自动测试、独立套件与 helper，禁止遗漏和 `.only`，并明确开发/Review/E2E 的责任边界（`tests/test-manifest.json`、`docs/test-governance.md`）
