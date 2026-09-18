@@ -339,6 +339,7 @@ try {
   let coordinatorReadFailure = false;
   const markdownImageRequests = [];
   page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
+  let runningPreview = false;
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     sessionTemplates: [{ id: 'developer-template', name: 'Claude Developer' }], sessionCreations: [],
     conversations: [{id:'main',scope:'main',title:'Main 对话'},{id:'session:history-one',scope:'session',title:'历史开发 Session'}],
@@ -391,7 +392,8 @@ try {
     }
     const readConversation=new URL(route.request().url()).searchParams.get('conversation');coordinatorReads.push(readConversation);
     if(coordinatorReadFailure){coordinatorReadFailure=false;return route.abort();}
-    await route.fulfill({ json: readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:coordinatorState });
+    const responseState=readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:runningPreview?{...coordinatorState,status:'running',streamingText:'正在生成一段连续回复'}:coordinatorState;
+    await route.fulfill({ json: responseState });
   });
   await page.reload(); await synchronized();
   const coordinator = page.locator('#coordinator-panel');
@@ -437,10 +439,29 @@ try {
   const coordinatorLayout = await coordinator.evaluate(el => {
     const drawer = el.parentElement.getBoundingClientRect();
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
-    return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom };
+    const input = el.querySelector('.coordinator-input-shell textarea');
+    const typing = el.querySelector('.coordinator-typing');
+    const send = el.querySelector('.coordinator-input-shell > button');
+    return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
+      inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
+      typingTransition: getComputedStyle(typing).transitionProperty, typingDots: typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
+  assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
+  assert.equal(coordinatorLayout.sendPosition, 'static', 'send button participates in the compact composer row');
+  assert.match(coordinatorLayout.typingTransition, /opacity/);
+  assert.equal(coordinatorLayout.typingDots, 3, 'reply indicator uses staggered dots');
+  runningPreview=true;
+  await page.locator('#btn-coordinator').click();
+  await page.locator('#btn-coordinator').click();
+  await coordinator.locator('.coordinator-typing.is-visible').waitFor();
+  assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
+  runningPreview=false;
+  await page.locator('#btn-coordinator').click();
+  await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(() => !document.querySelector('.coordinator-typing.is-visible'));
+  record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
   assert.equal(await coordinator.locator('img,script,iframe').count(), 0, 'Markdown cannot inject HTML or fetch remote images');
