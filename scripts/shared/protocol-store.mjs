@@ -383,10 +383,10 @@ export class ProtocolStore extends EventEmitter {
         const taskId = payload?.taskId;
         if (taskId) {
           const task = state.tasks[scopedObjectKey(p, message.session, `task:${taskId}`)];
-          const projectTask = Object.values(state.projectTasks || {}).find(item =>
-            item.repositoryId === p.repositoryId && item.taskId === taskId && item.sessionId === message.session.id);
+          const projectTask = Object.values(state.projectTasks || {}).find(item => item.taskId === taskId);
           if (task && projectTask) {
-            const text = `${projectTask.text || ''} ${projectTask.acceptance || ''}`;
+            const brief = task.brief && state.objects[scopedObjectKey(p, message.session, task.brief.ref)]?.versions?.[task.brief.version]?.content;
+            const text = `${projectTask.text || ''} ${projectTask.acceptance || ''} ${brief?.text || ''}`;
             task.verificationOnly = projectTask.verificationOnly === true || /链路验证|只读|不修改(?:业务)?(?:文件|代码)|无业务(?:文件|代码)|不改(?:动)?业务/.test(text);
           }
         }
