@@ -335,6 +335,7 @@ try {
     await route.fulfill({ response, json: body });
   });
   const submissions = [];
+  let releaseDelayedSubmission;
   const coordinatorReads = [];
   let coordinatorReadFailure = false;
   const markdownImageRequests = [];
@@ -377,6 +378,12 @@ try {
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON());
+      if (submissions.at(-1).text === '立即显示测试') {
+        await new Promise(resolve => { releaseDelayedSubmission = resolve; });
+        coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false,
+          messages: [...coordinatorState.messages, { role: 'user', text: '立即显示测试', tools: [] }] };
+        return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
+      }
       if (submissions.at(-1).text === '已持久化但响应丢失') {
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false,
           acceptedRequestIds: [submissions.at(-1).id] };
@@ -693,6 +700,16 @@ try {
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
+
+  await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
+  assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
+  assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
+  releaseDelayedSubmission();
+  await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
+  assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
+  record('Coordinator sends with immediate optimistic message feedback');
 
   const itemConversations=[];
   await page.route(/\/api\/coordinator\/conversations(?:\?|$)/,async route=>{
