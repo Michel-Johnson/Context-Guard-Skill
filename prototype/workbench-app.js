@@ -4516,8 +4516,21 @@ async function installCoordinatorPanel(sync){
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
   const setTyping=(visible,phase='Planning next moves')=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));const label=typing.querySelector('.coordinator-typing-phase');if(label)label.textContent=phase;};
-  let streamFrame=0,streamTarget='',streamShown='';
-  const stopStreamingAnimation=()=>{if(streamFrame){cancelAnimationFrame(streamFrame);streamFrame=0;}streamTarget='';streamShown='';};
+  let streamTimer=0,streamTarget='',streamShown='';
+  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';};
+  const nextStreamingBoundary=(text,start)=>{
+    if(start>=text.length)return text.length;
+    const rest=text.slice(start);
+    const paragraph=rest.search(/\n\s*\n/);
+    if(paragraph>=0&&paragraph<=96){const match=rest.slice(paragraph).match(/^\n\s*\n/);return start+paragraph+(match?.[0].length||2);}
+    const line=rest.indexOf('\n');
+    if(line>=0&&line<=96)return start+line+1;
+    if(rest.length<=72)return text.length;
+    const sentence=rest.slice(0,104).search(/[。！？!?](?:\s|$)/);
+    if(sentence>=24)return start+sentence+1;
+    const whitespace=rest.slice(0,88).lastIndexOf(' ');
+    return start+(whitespace>=28?whitespace+1:Math.min(72,rest.length));
+  };
   const updateStreamingText=(message,text,immediate=false)=>{
     const content=message?.querySelector('.coordinator-markdown');
     if(!content)return;
@@ -4525,16 +4538,17 @@ async function installCoordinatorPanel(sync){
     if(!output){output=document.createElement('span');output.className='coordinator-streaming-text';content.replaceChildren(output);}
     if(immediate||!text.startsWith(streamShown)){streamShown='';output.textContent='';}
     streamTarget=text;
-    if(streamFrame||streamShown===streamTarget)return;
-    const tick=()=>{
-      const distance=streamTarget.length-streamShown.length;
-      if(distance<=0){streamFrame=0;return;}
-      const amount=Math.min(2,Math.max(1,Math.ceil(distance/12)));
-      streamShown=streamTarget.slice(0,streamShown.length+amount);output.textContent=streamShown;
+    if(!streamShown&&streamTarget){streamShown=streamTarget.slice(0,nextStreamingBoundary(streamTarget,0));output.textContent=streamShown;}
+    if(streamTimer||streamShown===streamTarget)return;
+    const revealNextChunk=()=>{
+      streamTimer=0;
+      if(streamShown.length>=streamTarget.length)return;
+      streamShown=streamTarget.slice(0,nextStreamingBoundary(streamTarget,streamShown.length));
+      output.textContent=streamShown;
       if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
-      streamFrame=requestAnimationFrame(tick);
+      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,80);
     };
-    streamFrame=requestAnimationFrame(tick);
+    streamTimer=setTimeout(revealNextChunk,80);
   };
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
