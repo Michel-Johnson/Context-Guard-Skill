@@ -457,6 +457,9 @@ try {
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-typing.is-visible').waitFor();
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
+  await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
+  await page.waitForTimeout(650);
+  assert.equal(await coordinator.locator('.coordinator-streaming').getAttribute('data-motion-probe'), 'stable', 'streaming updates preserve the message node instead of replaying the whole transcript');
   runningPreview=false;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();

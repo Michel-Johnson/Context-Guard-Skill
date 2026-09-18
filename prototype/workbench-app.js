@@ -4733,7 +4733,7 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastContent=null;
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='';
   const setRetryMode=mode=>{
     retry.hidden=!mode;
     const label=mode==='read'?'重试读取':'重试原请求';
@@ -4748,7 +4748,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastContent=null;canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
+    lastStableContent=null;lastStreamingText='';canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4797,11 +4797,20 @@ async function installCoordinatorPanel(sync){
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     setTyping(state.status==='running'&&!answering);
+    const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
+    const hasStreaming=Boolean(state.streamingText);
+    const streamingMessage=messages.querySelector('.coordinator-streaming');
+    if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
+      const content=streamingMessage.querySelector('.coordinator-markdown')||streamingMessage;
+      const next=conversationFragments([{role:'assistant',text:state.streamingText,streaming:true}],document).body;
+      const nextContent=next.querySelector?.('.coordinator-markdown');
+      content.replaceChildren(...(nextContent?.childNodes||next.childNodes));
+      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+      lastStreamingText=state.streamingText;
+    }else if(stableKey!==lastStableContent||hasStreaming!==Boolean(lastStreamingText)){
     const visibleMessages=[...(state.messages||[])];
-    if(state.streamingText) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
-    const contentKey=JSON.stringify([visibleMessages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
-    if(contentKey!==lastContent){
-    const follow=lastContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
+    if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
+    const follow=lastStableContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
     const transcript=conversationFragments(visibleMessages,document,{nodes:state.nodeReferences||[],
       canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
@@ -4906,7 +4915,8 @@ async function installCoordinatorPanel(sync){
       streamingMessage?.classList.add('coordinator-streaming');
     }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
-    lastContent=contentKey;
+    lastStableContent=stableKey;
+    lastStreamingText=state.streamingText||'';
     }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
