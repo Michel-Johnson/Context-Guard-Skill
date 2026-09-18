@@ -66,6 +66,7 @@ test('Resume control prompt preserves the control receipt and requires a resumed
   assert.match(prompt, /回复未知时保留原 operationId/);
   assert.match(prompt, /用新的 operationId 提交 Plan/);
   assert.match(prompt, /reviewed 任务不使用 map task start\/finish/);
+  assert.match(prompt, /如果原任务是链路验证或明确要求不修改业务文件/);
   assert.equal(await executionPrompt(message), prompt, 'replay retains the resume report identity');
 });
 
