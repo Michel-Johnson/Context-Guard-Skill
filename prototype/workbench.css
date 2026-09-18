@@ -962,6 +962,15 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-actions p { flex-basis: 100%; margin: 0; color: #746e5e; font-size: 13px; }
 #coordinator-panel .coordinator-answer { white-space: pre-wrap; background: #fff0a9; padding: 10px; border-radius: 8px; }
 #coordinator-panel .coordinator-typing,#coordinator-panel .coordinator-question-status { color: #817660; font-size: 13px; }
+#coordinator-panel .coordinator-typing{display:flex;align-items:center;gap:5px;max-height:0;margin:0;overflow:hidden;opacity:0;transform:translateY(4px);transition:max-height .22s ease,opacity .22s ease,transform .22s ease;padding:0 2px}
+#coordinator-panel .coordinator-typing.is-visible{max-height:28px;margin:4px 0 2px;opacity:1;transform:translateY(0)}
+#coordinator-panel .coordinator-typing-dots{display:inline-flex;gap:3px;align-items:center}
+#coordinator-panel .coordinator-typing-dots i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.35;animation:coordinator-dot 1.1s ease-in-out infinite}
+#coordinator-panel .coordinator-typing-dots i:nth-child(2){animation-delay:.16s}
+#coordinator-panel .coordinator-typing-dots i:nth-child(3){animation-delay:.32s}
+@keyframes coordinator-dot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-2px)}}
+#coordinator-panel .coordinator-streaming .coordinator-markdown::after{content:"";display:inline-block;width:5px;height:1.05em;margin-left:4px;vertical-align:-.16em;border-radius:2px;background:#bba759;animation:coordinator-caret .9s steps(1,end) infinite}
+@keyframes coordinator-caret{0%,48%{opacity:1}49%,100%{opacity:0}}
 #coordinator-panel .user .coordinator-markdown { background: #fff0a9; border-radius: 16px 16px 4px 16px; padding: 10px 14px; }
 #coordinator-panel .coordinator-markdown p { margin: 0 0 12px; }
 #coordinator-panel .coordinator-markdown > :last-child { margin-bottom: 0; }
@@ -999,11 +1008,11 @@ html.cg-phone .drawer h2{font-size:18px}
 .coordinator-review-dialog { width: min(460px, calc(100vw - 32px)); border: 2px solid #333; border-radius: 16px; padding: 20px; background: #fffcf4; color: #302d26; box-shadow: 5px 6px 0 #333; }
 .coordinator-review-dialog::backdrop { background: rgb(48 45 38 / 28%); }
 .coordinator-review-dialog textarea { margin-top: 8px; min-height: 100px; }
-#coordinator-panel form { padding-top: 12px; margin-top: 4px; }
-#coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 78px; max-height: 160px; padding: 10px 12px; resize: vertical; font: inherit; }
+#coordinator-panel form { padding-top: 8px; margin-top: 2px; }
+#coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 48px; max-height: 140px; height: 48px; padding: 10px 12px; resize: none; overflow-y: auto; font: inherit; transition:border-color .18s ease,box-shadow .18s ease; }
 #coordinator-panel textarea:focus { outline: 2px solid #bba759; outline-offset: 1px; }
-#coordinator-panel .coordinator-input-shell { position: relative; }
-#coordinator-panel .coordinator-input-shell textarea { padding: 10px 74px 44px 12px; }
+#coordinator-panel .coordinator-input-shell { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px; }
+#coordinator-panel .coordinator-input-shell textarea { padding: 10px 12px; }
 #coordinator-panel .coordinator-session-create { margin-top: 12px; padding: 12px; border: 1px solid #dccfaa; border-radius: 12px; background: #faf3dc; }
 #coordinator-panel .coordinator-session-create form { padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.8fr); gap: 8px; }
 #coordinator-panel .coordinator-session-create input,#coordinator-panel .coordinator-session-create select { min-width: 0; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 9px; padding: 8px 10px; font: inherit; }
@@ -1011,6 +1020,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-session-create p { margin: 9px 0 0; color: #746e5e; font-size: 12px; }
 #coordinator-panel .coordinator-session-create ul { margin: 9px 0 0; padding-left: 20px; color: #746e5e; font-size: 12px; }
 #coordinator-panel button { margin: 8px 8px 0 0; padding: 7px 16px; border: 1px solid #bdae89; border-radius: 9px; font: inherit; cursor: pointer; }
+#coordinator-panel .coordinator-input-shell > button{position:static;min-height:40px;margin:0;padding:7px 16px;background:#ffe87e;font-weight:600;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+#coordinator-panel .coordinator-input-shell > button:not(:disabled):hover{transform:translateY(-1px);box-shadow:2px 2px 0 #2d2d2d}
+#coordinator-panel .coordinator-input-shell > button:disabled{background:#f1ead6}
 #coordinator-panel button[type=submit] { background: #ffe87e; font-weight: 600; }
 #coordinator-panel button:disabled { opacity: .5; cursor: default; }
 #coordinator-panel .coordinator-node-link { display: inline; margin: 0; padding: 2px 7px; color: #27624b; background: #fff2ad; font-weight: 650; vertical-align: baseline; }

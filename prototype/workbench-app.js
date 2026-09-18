@@ -4683,9 +4683,9 @@ async function installCoordinatorPanel(sync){
   const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
-  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.textContent='正在回复…';typing.hidden=true;
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.innerHTML='<span class="coordinator-typing-label">正在回复</span><span class="coordinator-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
   const form=document.createElement('form');form.className='coordinator-compose';
-  const input=document.createElement('textarea'); input.maxLength=8000; input.rows=3;
+  const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
   const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
@@ -4700,6 +4700,7 @@ async function installCoordinatorPanel(sync){
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
+  const setTyping=visible=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));};
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
     panel.open=open;panel.toggleAttribute('open',open);
@@ -4747,7 +4748,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastContent=null;canCorrect=false;messages.replaceChildren();typing.hidden=true;send.disabled=true;
+    lastContent=null;canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4795,7 +4796,7 @@ async function installCoordinatorPanel(sync){
     renderHistory(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
-    typing.hidden=state.status!=='running'||answering;
+    setTyping(state.status==='running'&&!answering);
     const visibleMessages=[...(state.messages||[])];
     if(state.streamingText) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
     const contentKey=JSON.stringify([visibleMessages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
@@ -4900,6 +4901,10 @@ async function installCoordinatorPanel(sync){
       }
       messages.append(card);
     }
+    if(state.streamingText){
+      const streamingMessage=[...messages.querySelectorAll('.coordinator-message')].at(-1);
+      streamingMessage?.classList.add('coordinator-streaming');
+    }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastContent=contentKey;
     }
@@ -4917,7 +4922,7 @@ async function installCoordinatorPanel(sync){
     refreshing=true;
     const id=selected;let delay=3000;
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
-    catch(error){typing.hidden=true;status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
+    catch(error){setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
   const submit=async request=>{
@@ -4925,7 +4930,7 @@ async function installCoordinatorPanel(sync){
     const id=selected;
     busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
-    typing.hidden=!!answeringCard;
+    setTyping(!answeringCard);
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
@@ -4933,12 +4938,15 @@ async function installCoordinatorPanel(sync){
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;typing.hidden=true;for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
+      if(id===selected){pendingError=message;setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
     finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
     await refresh();
   };
+  const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
+  input.addEventListener('input',resizeInput);
+  resizeInput();
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});
