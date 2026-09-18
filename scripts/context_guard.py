@@ -590,7 +590,9 @@ def resolve_prompt_signal(
         raise ValueError(f"unknown prompt signal: {signal_id}")
     previous = str(signal.get("kind") or "")
     if signal.get("status") == "resolved" and previous and previous != kind:
-        raise ValueError(f"prompt signal is already resolved as {previous}")
+        upgrade = {"task": {"todo", "bad-case"}}
+        if kind not in upgrade.get(previous, set()):
+            raise ValueError(f"prompt signal is already resolved as {previous}")
     signal.update({
         "status": "resolved",
         "kind": kind,
@@ -953,7 +955,7 @@ def record_todo(
     signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
     if not signal:
         raise ValueError(f"unknown prompt signal: {signal_id}")
-    if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "todo"}:
+    if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "todo", "task"}:
         raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
     require_known_map_node(root, node_id, session_id)
     todo_id = "TD-" + hashlib.sha256(f"{session_id}\0{signal_id}".encode("utf-8")).hexdigest()[:16]
@@ -1138,7 +1140,7 @@ def record_bad_case(
         signal = next((item for item in signals if isinstance(item, dict) and item.get("id") == signal_id), None)
         if not signal:
             raise ValueError(f"unknown prompt signal: {signal_id}")
-        if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "bad-case"}:
+        if signal.get("status") == "resolved" and signal.get("kind") not in {None, "", "bad-case", "task"}:
             raise ValueError(f"prompt signal is already resolved as {signal.get('kind')}")
     if node:
         require_known_map_node(root, node, session_id)

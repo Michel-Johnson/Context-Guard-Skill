@@ -945,6 +945,114 @@ test('accept-layer accepted Session Map nodes validate without disk map.json or 
   assert.equal(recorded.node.todos[0].title, '实现 M1 入口');
 });
 
+test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first sessions', async t => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-task-signal-todo-'));
+  let workbenchPid = null;
+  t.after(async () => {
+    if (workbenchPid) await stopFixtureWorkbench(project, workbenchPid);
+    else {
+      spawnSync(process.execPath, [workbenchCli, 'workbench', '--root', project, '--stop'], {
+        encoding: 'utf8', timeout: 15_000, windowsHide: true,
+      });
+    }
+    await fs.rm(project, { recursive: true, force: true, maxRetries: 3 });
+  });
+  execFileSync('git', ['init', '-b', 'trunk'], { cwd: project, stdio: 'pipe', windowsHide: true });
+  execFileSync('git', [
+    '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null',
+    'commit', '--allow-empty', '-m', 'fixture',
+  ], { cwd: project, stdio: 'pipe', windowsHide: true });
+  run(python, [contextScript, 'init', '--root', project]);
+  await saveMainBinding(project, { mode: 'local', branch: 'trunk' });
+  const session = 'empty-graph-task-signal';
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
+  await fs.mkdir(path.join(project, 'src/m1'), { recursive: true });
+  await fs.writeFile(path.join(project, 'src/m1/export.md'), '# export\n');
+
+  const port = await freePort();
+  run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--session', session, '--port', String(port)]);
+  const resolved = await resolveProject(project);
+  const state = JSON.parse(await fs.readFile(path.join(resolved.sharedDir, 'workbench.json'), 'utf8'));
+  workbenchPid = state.pid;
+
+  let snapshot = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'read', '--root', project, '--session', session]).stdout);
+  run(process.execPath, [workbenchCli, 'map', 'apply', '--root', project, '--session', session], {
+    input: JSON.stringify({
+      operationId: 'propose-M1-export',
+      baseVersion: snapshot.version,
+      operations: [{
+        type: 'create',
+        parentId: 'T0',
+        node: {
+          id: 'M1',
+          title: 'HTTP service and routing',
+          kind: 'module',
+          purpose: 'Own HTTP entry points',
+          owns: ['src/m1/'],
+          ideas: [{ text: '支持导出 markdown：GET /export.md', state: 'dirty' }],
+          memories: [{
+            text: 'Bootstrap first layer',
+            paths: ['src/m1/export.md'],
+            proposalEvidence: {
+              parentId: 'T0',
+              basis: 'new-module',
+              reason: 'First layer bootstrap module',
+              files: ['src/m1/export.md'],
+            },
+          }],
+        },
+      }],
+    }),
+  });
+
+  const prompt = hook('UserPromptSubmit', project, session, {
+    turn_id: 'idea-turn',
+    prompt: '在 M1 上记 idea：支持导出 markdown，然后变成可执行 todo',
+  });
+  const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
+  assert.ok(signalId);
+
+  const blocked = hook('PreToolUse', project, session, {
+    tool_name: 'apply_patch',
+    tool_use_id: 'bootstrap-blocked',
+    tool_input: { command: `*** Update File: ${path.join(project, 'src/m1/export.md')}` },
+  });
+  assert.equal(blocked.json.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, /Classify pending user signals/);
+
+  run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
+
+  run(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从节点 idea 写入可执行 todo',
+  ]);
+  run(python, [
+    contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从节点 idea 写入可执行 todo',
+  ]);
+
+  const recorded = JSON.parse(run(process.execPath, [
+    workbenchCli, 'map', 'read', '--root', project, '--session', session, '--node', 'M1',
+  ]).stdout);
+  assert.equal(recorded.node.todos.length, 1);
+  assert.equal(recorded.node.todos[0].title, '支持导出 markdown');
+  assert.equal(recorded.node.todos[0].source_signal, signalId);
+  assert.equal(recorded.node.todos[0].target_session, session);
+
+  const runtime = JSON.parse(await fs.readFile(
+    path.join(project, '.codex/context/private/hook-runtime', `${createHash('sha256').update(session).digest('hex')}.json`),
+    'utf8',
+  ));
+  assert.equal(runtime.signals.find(item => item.id === signalId)?.kind, 'todo');
+  assert.equal(runtime.signals.find(item => item.id === signalId)?.record_id, recorded.node.todos[0].id);
+
+  assert.throws(() => run(python, [
+    contextScript, 'record-bad-case', '--root', project, '--session', session, '--signal', signalId,
+    '--node', 'M1', '--title', 'must not reclassify', '--phenomenon', 'todo already recorded',
+  ]), /already resolved as todo/);
+});
+
 test('completion receipts require evidence, scope review, all files and fresh content', async t => {
   const project = await fixture(), session = 'receipt-session';
   t.after(() => dispose(project));
