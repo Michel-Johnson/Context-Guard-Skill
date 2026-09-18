@@ -4516,8 +4516,9 @@ async function installCoordinatorPanel(sync){
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
   const setTyping=(visible,phase='Planning next moves')=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));const label=typing.querySelector('.coordinator-typing-phase');if(label)label.textContent=phase;};
-  let streamTimer=0,streamTarget='',streamShown='';
+  let streamTimer=0,streamTarget='',streamShown='',finalRevealTimer=0,finalRevealCleanup=null,lastAssistantRevealKey='';
   const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';};
+  const stopFinalReveal=()=>{if(finalRevealTimer){clearTimeout(finalRevealTimer);finalRevealTimer=0;}finalRevealCleanup?.();finalRevealCleanup=null;};
   const nextStreamingBoundary=(text,start)=>{
     if(start>=text.length)return text.length;
     const rest=text.slice(start);
@@ -4549,6 +4550,29 @@ async function installCoordinatorPanel(sync){
       if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,80);
     };
     streamTimer=setTimeout(revealNextChunk,80);
+  };
+  const revealAssistantMessage=(row,text,key)=>{
+    if(!row||!text||row.classList.contains('coordinator-streaming')||lastAssistantRevealKey===key)return;
+    const content=row.querySelector('.coordinator-markdown');
+    if(!content||content.querySelector('.coordinator-question,.coordinator-actions,.coordinator-answer-compose'))return;
+    stopFinalReveal();lastAssistantRevealKey=key;
+    const original=document.createElement('span');original.className='coordinator-reveal-original';original.hidden=true;
+    while(content.firstChild)original.append(content.firstChild);
+    const output=document.createElement('span');output.className='coordinator-streaming-text coordinator-final-reveal';
+    content.append(original,output);
+    let shown=text.slice(0,nextStreamingBoundary(text,0));output.textContent=shown;
+    const restore=()=>{output.remove();content.replaceChildren(...original.childNodes);};
+    finalRevealCleanup=restore;
+    if(shown===text){restore();finalRevealCleanup=null;return;}
+    const revealNextChunk=()=>{
+      finalRevealTimer=0;
+      if(!output.isConnected){finalRevealCleanup=null;return;}
+      shown=text.slice(0,nextStreamingBoundary(text,shown.length));output.textContent=shown;
+      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+      if(shown.length<text.length)finalRevealTimer=setTimeout(revealNextChunk,80);
+      else{restore();finalRevealCleanup=null;}
+    };
+    finalRevealTimer=setTimeout(revealNextChunk,80);
   };
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
@@ -4609,7 +4633,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
+    lastStableContent=null;lastStreamingText='';lastAssistantRevealKey='';stopStreamingAnimation();stopFinalReveal();canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4651,6 +4675,7 @@ async function installCoordinatorPanel(sync){
   };
   const render=state=>{
     const renderedConversation=selected;
+    const firstRender=lastStableContent===null;
     // A lost HTTP response is not a lost turn. Reconcile the original request
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
@@ -4694,7 +4719,7 @@ async function installCoordinatorPanel(sync){
         enterView(id,{unpack:false});
       }catch(error){status.textContent='无法定位节点：'+error.message;}
     }});
-    messages.replaceChildren(transcript.body);
+    stopFinalReveal();messages.replaceChildren(transcript.body);
     const initialStreamingMessage=messages.querySelector('.coordinator-message:last-child');
     if(hasStreaming&&initialStreamingMessage){
       initialStreamingMessage.classList.add('coordinator-streaming');
@@ -4783,6 +4808,16 @@ async function installCoordinatorPanel(sync){
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
     lastStreamingText=state.streamingText||'';
+    }
+    const latestAssistantText=[...(state.messages||[])].reverse().find(message=>message.role==='assistant'&&message.text)?.text||'';
+    if(!hasStreaming&&latestAssistantText){
+      const revealKey=latestAssistantText;
+      if(firstRender)lastAssistantRevealKey=revealKey;
+      else if(revealKey!==lastAssistantRevealKey){
+        const prefix=latestAssistantText.slice(0,32);
+        const row=[...messages.querySelectorAll('.coordinator-message.assistant')].reverse().find(item=>item.textContent.includes(prefix));
+        revealAssistantMessage(row,latestAssistantText,revealKey);
+      }
     }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);

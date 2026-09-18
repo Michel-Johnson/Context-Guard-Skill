@@ -484,6 +484,16 @@ try {
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
   await page.waitForFunction(() => !document.querySelector('.coordinator-typing.is-visible'));
+  const oneShotText='第一段最终回复。\n第二段最终回复。\n第三段最终回复。';
+  coordinatorState={...coordinatorState,status:'waiting-for-user',streamingText:'',messages:[...coordinatorState.messages,{role:'assistant',text:oneShotText,tools:[]}]};
+  await page.locator('#btn-coordinator').click();
+  await page.locator('#btn-coordinator').click();
+  await coordinator.locator('.coordinator-final-reveal').waitFor({state:'attached'});
+  assert.notEqual(await coordinator.locator('.coordinator-final-reveal').textContent(),oneShotText,'one-shot long replies reveal a chunk before the full text');
+  await page.waitForFunction(() => !document.querySelector('.coordinator-final-reveal'));
+  const oneShotMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'第一段最终回复。'}).last();
+  assert.equal(await oneShotMessage.locator('.coordinator-reveal-original').count(),0,'completed reveal restores the original Markdown DOM');
+  assert.ok(await oneShotMessage.locator('p').count()>=1,'completed reveal keeps Markdown structure');
   record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
