@@ -815,6 +815,14 @@ def temp_request_roots() -> list[Path]:
     return found
 
 
+def temp_output_path(target: str) -> bool:
+    """True when a shell redirect target is a host-temp capture file."""
+    candidate = _resolved_path(Path(target.strip("\"'")))
+    if candidate is None:
+        return False
+    return any(_under(candidate, temp) for temp in temp_request_roots())
+
+
 def protocol_request_write(payload: object, root: Path) -> bool:
     """Allow only host-temp JSON request files, never sibling trees or user hooks."""
     targets = tool_target_strings(payload)
@@ -906,6 +914,10 @@ def shell_segments(command: str) -> list[list[str]] | None:
                 index += 2
                 continue
             if token == "&>" and target == "/dev/null":
+                index += 2
+                continue
+            # Read-only inspection may capture CLI output in host temp without a plan.
+            if token in {">", ">>"} and current and read_only_words(current) and temp_output_path(target):
                 index += 2
                 continue
             return None
