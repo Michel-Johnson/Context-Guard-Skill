@@ -25,7 +25,7 @@ export const coordinatorTools = [
   definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
   definition('resume_task', 'Resume an interrupted, incomplete task with its original Session, Plan and evidence; the system may invoke this automatically and never creates a new task.', { ...task, reason: string }),
-  definition('complete_task', 'After human acceptance, request closure with a merged GitHub PR and published Session memory version. The server independently verifies both; this tool does not merge code.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
+  definition('complete_task', 'After human acceptance, request closure. Normal development tasks require a merged GitHub PR and published Session memory version; explicit read-only verification tasks use gitReceiptRef="verification-only" and their CI ref as archiveReceiptRef.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
   definition('edit_map', 'Create, rename, update or move Main nodes through the configured Coordinator identity. This never deletes nodes or edits records.', {
     mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
       op: { enum: ['create', 'update', 'move'] }, id: string, parentId: string, order: { type: 'integer', minimum: 0 },

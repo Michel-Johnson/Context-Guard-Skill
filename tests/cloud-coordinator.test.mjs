@@ -618,6 +618,13 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
   assert.equal(verifyTaskClose(null, closing, { controlId: 'other', closeReceiptId: 'control' }), false);
   assert.equal(verifyTaskClose(null, closing, { controlId: 'control', closeReceiptId: 'invented' }), false);
   assert.equal(verifyTaskClose(null, { ...closing, sourceSha: 'changed' }, { controlId: 'control', closeReceiptId: 'control' }), false);
+  const verificationTask = { ...task, verificationOnly: true, ci: { ref: 'ci:verification', verdict: 'passed' } };
+  const verification = await verifyTaskCompletion({ ...options, task: verificationTask,
+    receipts: { gitReceiptRef: 'verification-only', archiveReceiptRef: 'ci:verification' } });
+  assert.deepEqual(verification, { verificationOnly: true, sourceSha, ciRef: 'ci:verification' });
+  assert.equal(verifyTaskClose(null, { ...verificationTask, control: { id: 'verification-control' },
+    completion: { proof: verification, closeReceiptId: 'verification-control' } },
+  { controlId: 'verification-control', closeReceiptId: 'verification-control' }), true);
 });
 
 const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };

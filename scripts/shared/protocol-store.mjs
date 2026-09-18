@@ -379,7 +379,19 @@ export class ProtocolStore extends EventEmitter {
     return this.execute(principal, input, async (state, p, message, emit) => {
       const payload = message.payload;
       if (message.type === 'workbench.read' && options.workbenchRead) return options.workbenchRead(p, message);
-      if (workflowTypes.has(message.type)) return reduceWorkflow(state, p, message, emit, options.workflow);
+      if (workflowTypes.has(message.type)) {
+        const taskId = payload?.taskId;
+        if (taskId) {
+          const task = state.tasks[scopedObjectKey(p, message.session, `task:${taskId}`)];
+          const projectTask = Object.values(state.projectTasks || {}).find(item =>
+            item.repositoryId === p.repositoryId && item.taskId === taskId && item.sessionId === message.session.id);
+          if (task && projectTask) {
+            const text = `${projectTask.text || ''} ${projectTask.acceptance || ''}`;
+            task.verificationOnly = projectTask.verificationOnly === true || /链路验证|只读|不修改(?:业务)?文件/.test(text);
+          }
+        }
+        return reduceWorkflow(state, p, message, emit, options.workflow);
+      }
       if (message.type === 'blob.put' && options.blobs) return options.blobs.register(p, message.session, payload);
       if (message.type === 'blob.get' && options.blobs) return options.blobs.metadata(p, message.session, payload.blobId);
       if (message.type === 'session.bind') {

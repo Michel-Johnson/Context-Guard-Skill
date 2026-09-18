@@ -2,15 +2,21 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fail } from '../shared/protocol.mjs';
 
-export const verifyTaskClose = (_identity, task, data) => !!task.completion?.proof?.mergeSha &&
-  task.completion.proof.sourceSha === task.sourceSha && data.controlId === task.control?.id &&
-  data.closeReceiptId === task.completion.closeReceiptId;
+export const verifyTaskClose = (_identity, task, data) => {
+  const proof = task.completion?.proof;
+  if (!proof || data.controlId !== task.control?.id || data.closeReceiptId !== task.completion.closeReceiptId) return false;
+  if (proof.verificationOnly) return proof.sourceSha === task.sourceSha && proof.ciRef === task.ci?.ref;
+  return !!proof.mergeSha && proof.sourceSha === task.sourceSha;
+};
 
 // Read-only GitHub verification. Repository, branch and check identities come
 // from server configuration, never from model-provided URLs or success claims.
 export async function verifyTaskCompletion({ project, repositoryId, memory, task, receipts, fetch: request = globalThis.fetch }) {
   const policy = project?.completion;
   if (!policy || task.stage !== 'accepted' || task.ci?.verdict !== 'passed' || task.acceptanceReview?.decision !== 'approved') return false;
+  if (task.verificationOnly && receipts.gitReceiptRef === 'verification-only' && receipts.archiveReceiptRef === task.ci.ref) {
+    return { verificationOnly: true, sourceSha: task.sourceSha, ciRef: task.ci.ref };
+  }
   if (!/^[\w.-]+\/[\w.-]+$/.test(project.repository || '') || !/^refs\/heads\/.+/.test(project.ref || '') ||
       !Array.isArray(policy.requiredChecks) || !policy.requiredChecks.length ||
       policy.requiredChecks.some(check => !check.name || !Number.isSafeInteger(check.appId))) return false;
