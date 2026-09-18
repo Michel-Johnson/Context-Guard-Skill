@@ -25,6 +25,7 @@ export async function executionPrompt(message, readObject) {
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
       `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main 记忆版本（不是 Git SHA）：${p.mainVersion}`, brief.content.text,
       '使用 map task plan --input <JSON文件路径> 或 --input -（stdin）提交 {operationId,content:{paths,steps}}；不要把 JSON 正文当文件名。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
+      '执行边界：Coordinator 已经创建并绑定本任务的独立执行 Session；不得手工创建、选择、分配或替换 Session，不得直接改写 Main、.codex/context/main/map.json 或任何服务器状态。若这是链路验证任务，只读核对任务、Session、回执和状态，不要把验证动作变成业务开发。map task plan 成功返回 awaiting-plan-review 后，立即结束本轮并等待 review.result；不要继续调用工具、修改文件、提交 handoff 或自行派发。',
       reviewedRetry,
       `交付编号：${message.id}；同一编号不得重复执行。`].join('\n');
   }
@@ -38,6 +39,7 @@ export async function executionPrompt(message, readObject) {
   if (message.type === 'task.control' && p.action === 'resume') return [
     `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
     '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
+    '如果原任务是链路验证或明确要求不修改业务文件：只回报 resumed，随后立即结束本轮；不要读取或改写 Main、map.json 或业务文件，也不要自行创建/分配 Session，等待 Coordinator 的下一条明确控制。',
     '确认可以继续后，用 map exchange --input <JSON文件> 回报 resumed；消息必须保留原控制编号：',
     JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
       payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
