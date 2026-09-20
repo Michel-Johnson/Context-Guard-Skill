@@ -4516,6 +4516,13 @@ async function installCoordinatorPanel(sync){
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
   const setTyping=(visible,phase='Planning next moves')=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));const label=typing.querySelector('.coordinator-typing-phase');if(label)label.textContent=phase;};
+  const placeTyping=()=>{
+    if(!typing.classList.contains('is-visible'))return;
+    const userMessages=messages.querySelectorAll('.coordinator-message.user');
+    const anchor=userMessages[userMessages.length-1];
+    if(anchor)anchor.after(typing);else messages.prepend(typing);
+    if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+  };
   let streamTimer=0,streamTarget='',streamShown='',finalRevealTimer=0,finalRevealCleanup=null,lastAssistantRevealKey='';
   const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const appendRevealedText=(output,text)=>{
@@ -4698,8 +4705,11 @@ async function installCoordinatorPanel(sync){
     renderHistory(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
-    const hasStreaming=Boolean(state.streamingText);
-    setTyping(state.status==='running'&&!answering&&!hasStreaming,'Planning next moves');
+    const streamingText=String(state.streamingText||'');
+    const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
+    const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
+    const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
+    setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
@@ -4823,7 +4833,7 @@ async function installCoordinatorPanel(sync){
     }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
-    lastStreamingText=state.streamingText||'';
+    lastStreamingText=hasStreaming?streamingText:'';
     }
     const latestAssistantText=[...(state.messages||[])].reverse().find(message=>message.role==='assistant'&&message.text)?.text||'';
     if(!hasStreaming&&latestAssistantText){
@@ -4840,6 +4850,7 @@ async function installCoordinatorPanel(sync){
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
     send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
     setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
+    placeTyping();
   };
   const refresh=async()=>{
     clearTimeout(timer);
