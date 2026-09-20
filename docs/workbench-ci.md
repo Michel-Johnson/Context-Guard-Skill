@@ -1,9 +1,17 @@
 # Workbench / Agent CI
 
 The `CI` workflow runs on branch/tag pushes and pull requests targeting `main`.
-`Required` succeeds only when package checks, all three installation jobs, and
-the Ubuntu Chromium browser job succeed. A failed, skipped or cancelled job is
-not a pass. This workflow does not publish npm packages or call AI models.
+Pull requests always run security and deterministic impact selection; the selector
+uses the merge-base diff and `.github/ci-impact.json` to run only relevant
+functional, package, installation, minimum-runtime, browser, client and site jobs.
+Unknown paths and CI/governance changes fail closed to the complete workflow.
+Pushes to `main` and tags always run every job as the result listener/canary.
+
+`Required` compares every job's actual result with the selector plan: selected
+jobs must succeed and unselected jobs must be skipped. An arbitrary failed,
+cancelled or skipped selected job is not a pass. The plan is retained as a
+short-lived artifact and rendered in the Actions summary. This workflow does not
+publish npm packages or call AI models.
 
 ## Run locally
 
