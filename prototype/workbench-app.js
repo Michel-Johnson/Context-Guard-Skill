@@ -4637,14 +4637,15 @@ async function installCoordinatorPanel(sync){
     if(sync.viewId!=='main'&&!await sync.selectSession('__all__'))throw new Error('当前视图尚不能切换到 Main');
     const node=getNode(id);
     if(!node||isCancelled(node))throw new Error('该节点已不存在，请刷新对话');
-    clearRelationMode();focusId=null;enterView(id,{unpack:false});
+    clearRelationMode();focusId=null;
+    if(id===viewRootId)return;
+    await new Promise(resolve=>enterView(id,{unpack:false,_mapMotionComplete:resolve}));
   };
   const tourMapNodes=async ids=>{
     const run=++navigationRun;
     for(let index=0;index<ids.length;index++){
       if(run!==navigationRun)return;
       await openMapNode(ids[index]);
-      if(index<ids.length-1)await new Promise(resolve=>setTimeout(resolve,480));
     }
   };
   const consumeNavigationActions=state=>{

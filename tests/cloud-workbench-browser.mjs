@@ -23,7 +23,10 @@ const mainMap = {
   project: 'Context Guard',
   bootstrap: 'ready',
   flows: [],
-  root: { id: 'T0', title: 'Main map', purpose: 'published baseline', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+  root: { id: 'T0', title: 'Main map', purpose: 'published baseline', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [
+    { id: 'N1', title: 'Tour one', purpose: 'first tour node', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+    { id: 'N2', title: 'Tour two', purpose: 'second tour node', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+  ] },
 };
 const sessionMap = structuredClone(mainMap);
 sessionMap.root.title = 'Session map';
@@ -646,11 +649,14 @@ try {
   assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'direct navigation action opens the Map node without another click');
   const directMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'已打开定位节点。'}).last();
   assert.equal(await directMessage.getByRole('button',{name:'定位节点',exact:true}).count(),0,'direct navigation action does not render a second-step node button');
-  const tourActionId='coordinator:tour-T0';
-  coordinatorState.messages.push({role:'assistant',text:'已展示 Map 游览。',actions:[{kind:'node-tour',actionId:tourActionId,nodes:[{id:'T0',title:'定位节点'}]}]});
+  const tourActionId='coordinator:tour-N1-N2';
+  await page.evaluate(()=>localStorage.setItem('cg-workbench-beta-map-motion','1'));
+  await page.addInitScript(()=>{window.__coordinatorTourTransitions=[];addEventListener('cg:map-transition-end',event=>window.__coordinatorTourTransitions.push(event.detail.viewRootId));});
+  coordinatorState.messages.push({role:'assistant',text:'已展示 Map 游览。',actions:[{kind:'node-tour',actionId:tourActionId,nodes:[{id:'N1',title:'Tour one'},{id:'N2',title:'Tour two'}]}]});
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',tourActionId);
-  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'Map tour drives navigation without a click');
+  await page.waitForFunction(()=>document.querySelector('#nav-crumbs')?.textContent?.includes('Tour two'));
+  assert.deepEqual(await page.evaluate(()=>window.__coordinatorTourTransitions),['N1','N2'],'Map tour waits for each animation to finish before starting the next');
   assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'已展示 Map 游览。'}).last().locator('button').count(),0,'Map tour renders no manual node controls');
   const readActionId='coordinator:read-T0';
   coordinatorState.messages.push({role:'assistant',text:'读取完成。',actions:[{kind:'node-read',actionId:readActionId,node:{id:'T0',title:'定位节点'}}]});
