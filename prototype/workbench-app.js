@@ -4525,7 +4525,8 @@ async function installCoordinatorPanel(sync){
   };
   let streamTimer=0,streamTarget='',streamShown='',finalRevealTimer=0,finalRevealCleanup=null,lastAssistantRevealKey='';
   const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const appendRevealedText=(output,text)=>{
+  const appendRevealedText=(output,text,animated=true)=>{
+    if(!animated){output.append(document.createTextNode(text));return;}
     for(const part of text.split(/(\s+)/)){
       if(!part)continue;
       if(/^\s+$/.test(part)){output.append(document.createTextNode(part));continue;}
@@ -4582,7 +4583,7 @@ async function installCoordinatorPanel(sync){
     const output=document.createElement('span');output.className='coordinator-streaming-text coordinator-final-reveal';
     content.append(original,output);
     if(prefersReducedMotion()){content.replaceChildren(...original.childNodes);finalRevealCleanup=null;return;}
-    let shown=text.slice(0,nextStreamingBoundary(text,0));appendRevealedText(output,shown);
+    let shown=text.slice(0,nextStreamingBoundary(text,0));appendRevealedText(output,shown,false);
     const restore=()=>{output.remove();content.replaceChildren(...original.childNodes);};
     finalRevealCleanup=restore;
     if(shown===text){finalRevealTimer=setTimeout(()=>{finalRevealTimer=0;restore();finalRevealCleanup=null;},150);return;}
@@ -4590,7 +4591,7 @@ async function installCoordinatorPanel(sync){
       finalRevealTimer=0;
       if(!output.isConnected){finalRevealCleanup=null;return;}
       const end=nextStreamingBoundary(text,shown.length);
-      appendRevealedText(output,text.slice(shown.length,end));shown=text.slice(0,end);
+      appendRevealedText(output,text.slice(shown.length,end),false);shown=text.slice(0,end);
       if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
       if(shown.length<text.length)finalRevealTimer=setTimeout(revealNextChunk,80);
       else finalRevealTimer=setTimeout(()=>{finalRevealTimer=0;restore();finalRevealCleanup=null;},150);
@@ -4871,6 +4872,7 @@ async function installCoordinatorPanel(sync){
     busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     setTyping(!answeringCard);
+    placeTyping();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{

@@ -497,7 +497,7 @@ try {
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-final-reveal').waitFor({state:'attached'});
   assert.notEqual(await coordinator.locator('.coordinator-final-reveal').textContent(),oneShotText,'one-shot long replies reveal a chunk before the full text');
-  assert.ok(await coordinator.locator('.coordinator-final-reveal .coordinator-word-reveal').count()>=1,'one-shot responses reuse the same new-word fade');
+  assert.equal(await coordinator.locator('.coordinator-final-reveal .coordinator-word-reveal').count(),0,'one-shot response chunks appear without replaying a full-block opacity animation');
   await page.waitForFunction(() => !document.querySelector('.coordinator-final-reveal'));
   const oneShotMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'第一段最终回复。'}).last();
   assert.equal(await oneShotMessage.locator('.coordinator-reveal-original').count(),0,'completed reveal restores the original Markdown DOM');
@@ -759,8 +759,10 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
+  await coordinator.locator('.coordinator-typing.is-visible').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
+  assert.match(await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>node.previousElementSibling?.className||''),/coordinator-optimistic/,'planning motion appears immediately below the optimistic user message');
   releaseDelayedSubmission();
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
