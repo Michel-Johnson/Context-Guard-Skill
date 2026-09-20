@@ -950,7 +950,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-history-list p{margin:2px 4px;color:#817660;font-size:12px}
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
 #coordinator-panel > [role=status]:empty { display: none; }
-#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 12px 6px;scrollbar-gutter:stable; }
+#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 28px 6px;scroll-padding-bottom:28px;scrollbar-gutter:stable; }
 #coordinator-panel .coordinator-message { width:min(100%,880px);margin:0 0 16px; }
 #coordinator-panel .coordinator-message.user { width:fit-content;max-width:min(82%,760px);margin-left:auto; }
 #coordinator-panel .coordinator-message.user:has(+ .coordinator-typing.is-visible){margin-bottom:8px}
