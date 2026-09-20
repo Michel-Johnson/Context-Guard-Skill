@@ -4544,6 +4544,27 @@ async function installCoordinatorPanel(sync){
     const whitespace=rest.slice(0,88).lastIndexOf(' ');
     return start+(whitespace>=28?whitespace+1:Math.min(72,rest.length));
   };
+  const patchStreamingNode=(current,fresh)=>{
+    if(current.nodeType!==fresh.nodeType||current.nodeName!==fresh.nodeName){current.replaceWith(fresh);return;}
+    if(current.nodeType===Node.TEXT_NODE){if(current.nodeValue!==fresh.nodeValue)current.nodeValue=fresh.nodeValue;return;}
+    const freshAttributes=new Map([...fresh.attributes].map(attribute=>[attribute.name,attribute.value]));
+    for(const attribute of [...current.attributes])if(!freshAttributes.has(attribute.name))current.removeAttribute(attribute.name);
+    for(const [name,value] of freshAttributes)if(current.getAttribute(name)!==value)current.setAttribute(name,value);
+    const freshChildren=[...fresh.childNodes];
+    for(let index=0;index<freshChildren.length;index++){
+      const existing=current.childNodes[index];
+      if(existing)patchStreamingNode(existing,freshChildren[index]);else current.append(freshChildren[index]);
+    }
+    while(current.childNodes.length>freshChildren.length)current.lastChild.remove();
+  };
+  const patchStreamingContent=(output,fragment)=>{
+    const freshChildren=[...fragment.childNodes];
+    for(let index=0;index<freshChildren.length;index++){
+      const existing=output.childNodes[index];
+      if(existing)patchStreamingNode(existing,freshChildren[index]);else output.append(freshChildren[index]);
+    }
+    while(output.childNodes.length>freshChildren.length)output.lastChild.remove();
+  };
   const updateStreamingText=(message,text,immediate=false,onDrained=null)=>{
     const content=message?.querySelector('.coordinator-markdown');
     if(!content)return;
@@ -4555,7 +4576,7 @@ async function installCoordinatorPanel(sync){
     const renderShown=next=>{
       const follow=messages.scrollHeight-messages.scrollTop-messages.clientHeight<64;
       streamShown=next;
-      output.replaceChildren(markdownFragment(streamShown,document));
+      patchStreamingContent(output,markdownFragment(streamShown,document));
       if(follow)messages.scrollTop=messages.scrollHeight;
     };
     const finish=()=>{if(streamShown!==streamTarget||!streamDrained)return;const callback=streamDrained;streamDrained=null;queueMicrotask(callback);};
@@ -4609,7 +4630,7 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='',sendBlocked=true;
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true;
   const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
   const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
@@ -4638,7 +4659,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4692,10 +4713,25 @@ async function installCoordinatorPanel(sync){
     const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
     setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
+    const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
-    if(!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&streamShown!==lastTextMessage.text){
-      updateStreamingText(streamingMessage,lastTextMessage.text,false,()=>{if(renderedConversation===selected)render(state,true);});
-      lastStreamingText=lastTextMessage.text;
+    const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&
+      !lastTextMessage.questions?.length&&!lastTextMessage.actions?.length&&extrasKey===lastRenderedExtras;
+    if(canFinalizeStreamingInPlace){
+      const finalize=()=>{
+        if(renderedConversation!==selected)return;
+        const content=streamingMessage.querySelector('.coordinator-markdown');
+        const output=content?.querySelector('.coordinator-streaming-text');
+        if(output)content.replaceChildren(...output.childNodes);
+        streamingMessage.classList.remove('coordinator-streaming');
+        stopStreamingAnimation();lastStableContent=stableKey;lastStreamingText='';
+        if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
+        canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
+        if(canCorrect)status.textContent+=' · 可补充纠正意见';
+        setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
+        setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';
+      };
+      if(streamShown!==lastTextMessage.text){lastStreamingText=lastTextMessage.text;updateStreamingText(streamingMessage,lastTextMessage.text,false,finalize);}else finalize();
       setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
       setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';placeTyping();
       return;
@@ -4821,6 +4857,7 @@ async function installCoordinatorPanel(sync){
     }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
+    lastRenderedExtras=extrasKey;
     lastStreamingText=hasStreaming?streamingText:'';
     }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
