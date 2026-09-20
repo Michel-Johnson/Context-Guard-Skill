@@ -27,6 +27,13 @@ function forbidMatch(content, pattern, message) {
   if (pattern.test(content)) throw new Error(message);
 }
 
+function workflowJob(content, name, nextName) {
+  const start = content.indexOf(`\n  ${name}:`);
+  const end = nextName ? content.indexOf(`\n  ${nextName}:`, start + 1) : content.length;
+  if (start < 0 || end < 0) throw new Error(`Cannot locate workflow job ${name}.`);
+  return content.slice(start, end);
+}
+
 export function verifyReleaseHardening(publishContent) {
   const packageJob = publishContent.slice(publishContent.indexOf("  package:"), publishContent.indexOf("  unix-smoke:"));
   const releaseJob = publishContent.slice(publishContent.indexOf("  publish:"), publishContent.indexOf("  verify-published:"));
@@ -71,6 +78,10 @@ requireMatch(ci, /^\s*pull_request:\s*$/m, "CI must run for pull requests.");
 requireMatch(ci, /^\s*push:\s*$/m, "CI must run after changes reach main.");
 requireMatch(ci, /^\s+branches:\s*$[\s\S]*?^\s+- main\s*$/m, "CI push coverage must include main.");
 requireMatch(ci, /^\s*name:\s*Required\s*$/m, "CI must expose the unique Required status check.");
+requireMatch(ci, /^  impact:\s*$/m, "CI must compute a deterministic impact plan.");
+requireMatch(ci, /run: >-[\s\S]*?ci-impact\.mjs[\s\S]*?--event/, "CI must execute the repository impact selector.");
+requireMatch(ci, /fetch-depth:\s*0/, "Impact analysis needs complete merge-base history.");
+requireMatch(ci, /name:\s*context-guard-ci-impact-plan/, "CI must retain the impact plan for review and listener analysis.");
 requireMatch(ci, /^\s*- security\s*$/m, "Required must depend on the security job.");
 requireMatch(ci, /test "\$SECURITY_RESULT" = "success"/, "Required must reject failed or skipped security checks.");
 requireMatch(ci, /security-scan\.mjs ci/, "CI must scan the event commit range.");
@@ -79,16 +90,28 @@ requireMatch(ci, /^  browser:\s*$/m, "CI must execute the approved browser flow.
 requireMatch(ci, /run: npm ci --ignore-scripts/, "Browser dependencies must be locked and must not run the Skill installer.");
 requireMatch(ci, /run: npm run test:browser/, "Browser CI must run the real test entry.");
 const aggregate = ci.slice(ci.indexOf("  required:"));
-for (const job of ["package", "install", "minimum-runtime", "browser", "clients", "site"]) {
+for (const job of ["impact", "test", "package", "install", "minimum-runtime", "browser", "clients", "site"]) {
   requireMatch(aggregate, new RegExp(`^      - ${job}\\s*$`, "m"), `Required must wait for ${job}.`);
 }
-for (const result of ["PACKAGE", "INSTALL", "MINIMUM_RUNTIME", "BROWSER", "CLIENTS", "SITE"]) {
-  requireMatch(aggregate, new RegExp(`test "\\$${result}_RESULT" = "success"`), `Required must reject failed/skipped ${result.toLowerCase()}.`);
+for (const result of ["TEST", "PACKAGE", "INSTALL", "MINIMUM_RUNTIME", "BROWSER", "CLIENTS", "SITE"]) {
+  requireMatch(
+    aggregate,
+    new RegExp(`^\\s+${result}_EXPECTED:\\s+\\$\\{\\{ needs\\.impact\\.outputs\\.[^}]+ \\}\\}$`, "m"),
+    `Required must read the selector decision for ${result.toLowerCase()}.`,
+  );
 }
+requireMatch(aggregate, /check_selected\(\)/, "Required must compare each job result with the impact plan.");
+requireMatch(aggregate, /test "\$IMPACT_RESULT" = "success"/, "Required must reject a failed impact selector.");
 forbidMatch(ci, /continue-on-error:\s*true/, "Required CI failures must propagate.");
-const installJob = ci.slice(ci.indexOf("  install:"), ci.indexOf("  minimum-runtime:"));
+const installJob = workflowJob(ci, "install", "minimum-runtime");
 requireMatch(installJob, /os:\s*windows-latest/, "Install CI must retain the Windows runner for workbench process regressions.");
 forbidMatch(installJob, /run:\s*npm test/, "Install jobs must not repeat the complete test suite.");
+const testJob = workflowJob(ci, "test", "package");
+requireMatch(testJob, /if:\s*needs\.impact\.outputs\.test == 'true'/, "Functional tests must follow the impact plan.");
+requireMatch(testJob, /run:\s*npm test/, "Selected functional CI must retain the complete repository test entry.");
+const packageJob = workflowJob(ci, "package", "install");
+requireMatch(packageJob, /needs\.impact\.outputs\.package == 'true'/, "Packaging must follow the impact plan.");
+forbidMatch(packageJob, /run:\s*npm test/, "The package job must not duplicate selected functional tests.");
 requireMatch(ci, /^  minimum-runtime:\s*$/m, "CI must test the documented minimum runtimes.");
 requireMatch(ci, /python-version:\s*"3\.9"/, "CI must test the documented minimum Python version.");
 requireMatch(packageJson.scripts.test, /run-node-tests\.mjs/, "npm test must discover Node test files automatically.");
@@ -99,8 +122,9 @@ requireMatch(packageJson.scripts.test, /verify-hidden-processes\.mjs/, "npm test
 requireMatch(packageJson.scripts.test, /verify-test-governance\.mjs/, "npm test must enforce the shared test manifest and style policy.");
 
 for (const [name, content] of [["CI", ci], ["CD", publish]]) {
-  const gate = content.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');
-  const upload = content.indexOf("uses: actions/upload-artifact@");
+  const artifactScope = name === "CI" ? packageJob : content;
+  const gate = artifactScope.indexOf('security-scan.mjs package "$PACKAGE_TARBALL"');
+  const upload = artifactScope.indexOf("uses: actions/upload-artifact@");
   if (gate < 0 || upload < gate) throw new Error(`${name} must scan the final package before uploading it.`);
   requireMatch(content, /npm run security:setup/, `${name} must prepare the pinned scanner.`);
 }

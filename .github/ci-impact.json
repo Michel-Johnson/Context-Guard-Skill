@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "jobs": [
+    "test",
+    "package",
+    "install",
+    "minimum-runtime",
+    "browser",
+    "clients",
+    "site"
+  ],
+  "fullRunPatterns": [
+    ".github/**",
+    ".github/ci-impact.json",
+    ".github/workflows/ci.yml",
+    ".github/scripts/ci-impact.mjs",
+    ".github/scripts/ci-impact.test.mjs",
+    ".github/scripts/verify-workflows.mjs",
+    ".github/security/**",
+    "package.json",
+    "package-lock.json",
+    "tests/test-manifest.json",
+    "RULE.md",
+    "docs/engineering/README.md",
+    "docs/test-governance.md"
+  ],
+  "rules": [
+    {
+      "id": "repository-docs",
+      "patterns": [
+        "AGENTS.md",
+        "CI_todo.md",
+        "TODO.md",
+        "docs/**"
+      ],
+      "jobs": []
+    },
+    {
+      "id": "packaged-docs",
+      "patterns": [
+        "README.md",
+        "README.zh-CN.md",
+        "THIRD_PARTY_NOTICES.md",
+        "Coordinator.md",
+        "Developer.md",
+        "Tester.md",
+        "roles.md",
+        "references/**",
+        "licenses/**"
+      ],
+      "jobs": ["package"]
+    },
+    {
+      "id": "site",
+      "patterns": ["site/**"],
+      "jobs": ["site"]
+    },
+    {
+      "id": "site-shared-inputs",
+      "patterns": ["prototype/workbench.html", "SKILL.md"],
+      "jobs": ["site"]
+    },
+    {
+      "id": "workbench-ui",
+      "patterns": ["prototype/**"],
+      "jobs": ["test", "package", "browser"]
+    },
+    {
+      "id": "cloud-runtime",
+      "patterns": ["scripts/cloud/**"],
+      "jobs": ["test", "package", "minimum-runtime", "browser"]
+    },
+    {
+      "id": "shared-runtime",
+      "patterns": ["scripts/shared/**", "scripts/sync/**"],
+      "jobs": ["test", "package", "install", "minimum-runtime", "browser", "clients"]
+    },
+    {
+      "id": "legacy-runtime",
+      "patterns": ["scripts/legacy/**"],
+      "jobs": ["test", "package", "minimum-runtime"]
+    },
+    {
+      "id": "local-workbench-runtime",
+      "patterns": ["scripts/workbench/**"],
+      "jobs": ["test", "package", "install", "minimum-runtime", "browser", "clients"]
+    },
+    {
+      "id": "python-runtime",
+      "patterns": [
+        "scripts/context_guard.py",
+        "scripts/context_guard_hook.py",
+        "scripts/map_owns.py"
+      ],
+      "jobs": ["test", "package", "install", "minimum-runtime", "clients"]
+    },
+    {
+      "id": "installation-and-clients",
+      "patterns": [
+        ".codex-plugin/**",
+        "agents/**",
+        "bin/**",
+        "hooks.json",
+        "SKILL.md"
+      ],
+      "jobs": ["test", "package", "install", "minimum-runtime", "clients"]
+    },
+    {
+      "id": "node-tests",
+      "patterns": ["tests/*.test.mjs"],
+      "jobs": ["test"]
+    },
+    {
+      "id": "browser-tests",
+      "patterns": ["tests/*-browser.mjs", "tests/workbench-browser.mjs"],
+      "jobs": ["browser"]
+    },
+    {
+      "id": "test-helpers",
+      "patterns": ["tests/ci-smoke.mjs", "tests/crash-worker.mjs", "tests/win-file-lock.py"],
+      "jobs": ["test", "minimum-runtime"]
+    },
+    {
+      "id": "deployment",
+      "patterns": ["deploy/**"],
+      "jobs": ["test"]
+    },
+    {
+      "id": "repository-security",
+      "patterns": [
+        ".gitattributes",
+        ".gitignore",
+        ".githooks/**",
+        ".github/dependabot.yml",
+        ".github/client-versions.json",
+        ".github/scripts/**",
+        ".github/workflows/**",
+        ".cursor/**",
+        "scripts/branch_guard.py"
+      ],
+      "jobs": ["test"]
+    }
+  ]
+}

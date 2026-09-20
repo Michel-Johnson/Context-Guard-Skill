@@ -22,6 +22,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  impact:
+    name: CI | 确定性影响分析
+    runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.select.outputs.full }}
+      test: ${{ steps.select.outputs.test }}
+      package: ${{ steps.select.outputs.package }}
+      install: ${{ steps.select.outputs.install }}
+      minimum_runtime: ${{ steps.select.outputs.minimum_runtime }}
+      browser: ${{ steps.select.outputs.browser }}
+      clients: ${{ steps.select.outputs.clients }}
+      site: ${{ steps.select.outputs.site }}
+    steps:
+      - name: Checkout complete history for merge-base diff
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: CI | 选择受影响检查，未知范围回退全量
+        id: select
+        shell: bash
+        run: >-
+          node .github/scripts/ci-impact.mjs
+          --event "${{ github.event_name }}"
+          --base "${{ github.event.pull_request.base.sha || '' }}"
+          --head "${{ github.event.pull_request.head.sha || github.sha }}"
+          --output "$GITHUB_OUTPUT"
+          --summary "$GITHUB_STEP_SUMMARY"
+          --plan "$RUNNER_TEMP/ci-impact-plan.json"
+      - name: Store impact plan for listener and review
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: context-guard-ci-impact-plan
+          path: ${{ runner.temp }}/ci-impact-plan.json
+          if-no-files-found: error
+          retention-days: 14
+
   security:
     name: CI | 敏感信息与禁入文件检查
     runs-on: ubuntu-latest
@@ -40,9 +83,10 @@ jobs:
       - name: CI | 检查当前代码与新增提交
         run: node .github/scripts/security-scan.mjs ci
 
-  package:
-    name: CI 1 | 功能测试与包内容检查
-    needs: security
+  test:
+    name: CI 1 | 功能测试
+    needs: [impact, security]
+    if: needs.impact.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -66,6 +110,30 @@ jobs:
 
       - name: CI | 运行功能测试
         run: npm test
+
+  package:
+    name: CI 2 | 包内容检查
+    needs: [impact, security, test]
+    if: >-
+      always() &&
+      needs.impact.outputs.package == 'true' &&
+      needs.security.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: CI | 准备安全检查
+        run: npm run security:setup
 
       - name: CI | 打包并检查必需及禁止文件
         shell: bash
@@ -92,8 +160,9 @@ jobs:
           compression-level: 0
 
   install:
-    name: CI 2 | 安装测试 - ${{ matrix.name }}
-    needs: package
+    name: CI 3 | 安装测试 - ${{ matrix.name }}
+    needs: [impact, package]
+    if: needs.impact.outputs.install == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -141,8 +210,9 @@ jobs:
         run: node .github/scripts/smoke-npm-package.mjs --workspace "${{ runner.temp }}/context-guard-ci-smoke"
 
   minimum-runtime:
-    name: CI 3 | 最低 Node 与 Python 版本
-    needs: security
+    name: CI 4 | 最低 Node 与 Python 版本
+    needs: [impact, security]
+    if: needs.impact.outputs.minimum_runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -163,7 +233,9 @@ jobs:
         run: npm test
 
   browser:
-    name: CI 4 | 工作台与 Agent 浏览器协作
+    name: CI 5 | 工作台与 Agent 浏览器协作
+    needs: [impact, security]
+    if: needs.impact.outputs.browser == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -207,8 +279,9 @@ jobs:
           retention-days: 3
 
   clients:
-    name: CI 5 | ${{ matrix.label }}
-    needs: package
+    name: CI 6 | ${{ matrix.label }}
+    needs: [impact, package]
+    if: needs.impact.outputs.clients == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -256,8 +329,9 @@ jobs:
           retention-days: 3
 
   site:
-    name: CI 6 | 官网构建与行为测试
-    needs: security
+    name: CI 7 | 官网构建与行为测试
+    needs: [impact, security]
+    if: needs.impact.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -284,7 +358,9 @@ jobs:
     name: Required
     if: always()
     needs:
+      - impact
       - security
+      - test
       - package
       - install
       - minimum-runtime
@@ -293,22 +369,49 @@ jobs:
       - site
     runs-on: ubuntu-latest
     steps:
-      - name: CI 4 | 汇总全部检查，决定是否允许合并
+      - name: CI 8 | 核对选择计划与实际结果，决定是否允许合并
         shell: bash
         env:
+          IMPACT_RESULT: ${{ needs.impact.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
+          TEST_EXPECTED: ${{ needs.impact.outputs.test }}
+          TEST_RESULT: ${{ needs.test.result }}
+          PACKAGE_EXPECTED: ${{ needs.impact.outputs.package }}
           PACKAGE_RESULT: ${{ needs.package.result }}
+          INSTALL_EXPECTED: ${{ needs.impact.outputs.install }}
           INSTALL_RESULT: ${{ needs.install.result }}
+          MINIMUM_RUNTIME_EXPECTED: ${{ needs.impact.outputs.minimum_runtime }}
           MINIMUM_RUNTIME_RESULT: ${{ needs.minimum-runtime.result }}
+          BROWSER_EXPECTED: ${{ needs.impact.outputs.browser }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          CLIENTS_EXPECTED: ${{ needs.impact.outputs.clients }}
           CLIENTS_RESULT: ${{ needs.clients.result }}
+          SITE_EXPECTED: ${{ needs.impact.outputs.site }}
           SITE_RESULT: ${{ needs.site.result }}
         run: |
           set -euo pipefail
+          check_selected() {
+            local name="$1"
+            local expected="$2"
+            local actual="$3"
+            if [ "$expected" = "true" ]; then
+              test "$actual" = "success" || {
+                echo "$name was selected but finished as $actual" >&2
+                exit 1
+              }
+            else
+              test "$actual" = "skipped" || {
+                echo "$name was not selected but finished as $actual" >&2
+                exit 1
+              }
+            fi
+          }
+          test "$IMPACT_RESULT" = "success"
           test "$SECURITY_RESULT" = "success"
-          test "$PACKAGE_RESULT" = "success"
-          test "$INSTALL_RESULT" = "success"
-          test "$MINIMUM_RUNTIME_RESULT" = "success"
-          test "$BROWSER_RESULT" = "success"
-          test "$CLIENTS_RESULT" = "success"
-          test "$SITE_RESULT" = "success"
+          check_selected test "$TEST_EXPECTED" "$TEST_RESULT"
+          check_selected package "$PACKAGE_EXPECTED" "$PACKAGE_RESULT"
+          check_selected install "$INSTALL_EXPECTED" "$INSTALL_RESULT"
+          check_selected minimum-runtime "$MINIMUM_RUNTIME_EXPECTED" "$MINIMUM_RUNTIME_RESULT"
+          check_selected browser "$BROWSER_EXPECTED" "$BROWSER_RESULT"
+          check_selected clients "$CLIENTS_EXPECTED" "$CLIENTS_RESULT"
+          check_selected site "$SITE_EXPECTED" "$SITE_RESULT"
