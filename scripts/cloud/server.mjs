@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../shared/map-model.mjs';
 import { atomicWrite } from '../shared/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
+import { projectMemoryFile } from './memory-filesystem.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
@@ -65,6 +66,10 @@ const passwordHashPattern = /^scrypt\$([A-Za-z0-9_-]{20,})\$([A-Za-z0-9_-]{80,})
 const workbenchCookieMaxAge = 30 * 24 * 60 * 60;
 const sessionActivityTtlMs = 2 * 60 * 1000;
 const sessionHeartbeatTtlMs = 30 * 1000;
+// A legacy project can contain hundreds of megabytes of cold conversation
+// history. Automatic publication must not parse that history on the Cloud
+// event loop and starve unrelated Coordinator projects.
+const automaticPublicationMaxBytes = 128 * 1024 * 1024;
 export const coordinatorTaskOwnerRequired = type => type === 'brief.submit';
 const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 const developerStructureFields = new Set(['parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']);
@@ -1226,6 +1231,15 @@ export async function startCloudServer({
       try {
         for (const project of registry.projects) {
           if (!configuredMemory.projects?.[project.id]) continue;
+          try {
+            const size = (await fs.stat(projectMemoryFile(configuredMemory.dataDir, project.id))).size;
+            if (size > automaticPublicationMaxBytes) {
+              console.error(`[context-guard] automatic Main publication skipped for ${project.id}: memory history is ${size} bytes`);
+              continue;
+            }
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
           const state = await readMemoryProject(configuredMemory, project.id);
           const sessions = Object.values(state.sessions || {})
             .sort((left, right) => String(left.updatedAt || '').localeCompare(String(right.updatedAt || '')));
