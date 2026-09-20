@@ -4488,9 +4488,12 @@ function renderAll(){
 async function installCoordinatorPanel(sync){
   const launcher=document.getElementById('btn-coordinator');
   if(!sync.config?.interfaceCapabilities?.coordinator){if(launcher)launcher.hidden=true;return;}
-  let conversationFragments;
-  try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
-  catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
+  let conversationFragments,markdownFragment;
+  try{({conversationFragments,markdownFragment}=await import('./coordinator-markdown.mjs'));}
+  catch{
+    markdownFragment=(text,doc=document)=>{const body=doc.createDocumentFragment(),p=doc.createElement('p');p.textContent=text;body.append(p);return body;};
+    conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};
+  }
   const panel=document.createElement('section');
   panel.id='coordinator-panel';
   panel.open=false;
@@ -4523,16 +4526,9 @@ async function installCoordinatorPanel(sync){
     if(anchor)anchor.after(typing);else messages.prepend(typing);
     if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
   };
-  let streamTimer=0,streamTarget='',streamShown='';
+  let streamTimer=0,streamTarget='',streamShown='',streamDrained=null;
   const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const appendRevealedText=(output,text)=>{
-    for(const part of text.split(/(\s+)/)){
-      if(!part)continue;
-      if(/^\s+$/.test(part)){output.append(document.createTextNode(part));continue;}
-      const word=document.createElement('span');word.className='coordinator-word-reveal';word.textContent=part;output.append(word);
-    }
-  };
-  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';};
+  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';streamDrained=null;};
   const nextStreamingBoundary=(text,start)=>{
     if(start>=text.length)return text.length;
     const rest=text.slice(start);
@@ -4546,30 +4542,38 @@ async function installCoordinatorPanel(sync){
     const whitespace=rest.slice(0,88).lastIndexOf(' ');
     return start+(whitespace>=28?whitespace+1:Math.min(72,rest.length));
   };
-  const updateStreamingText=(message,text,immediate=false)=>{
+  const updateStreamingText=(message,text,immediate=false,onDrained=null)=>{
     const content=message?.querySelector('.coordinator-markdown');
     if(!content)return;
     let output=content.querySelector('.coordinator-streaming-text');
-    if(!output){output=document.createElement('span');output.className='coordinator-streaming-text';content.replaceChildren(output);}
+    if(!output){output=document.createElement('div');output.className='coordinator-streaming-text';content.replaceChildren(output);}
     if(immediate||!text.startsWith(streamShown)){streamShown='';output.replaceChildren();}
     streamTarget=text;
+    if(onDrained)streamDrained=onDrained;
+    const renderShown=next=>{
+      const follow=messages.scrollHeight-messages.scrollTop-messages.clientHeight<64;
+      streamShown=next;
+      output.replaceChildren(markdownFragment(streamShown,document));
+      if(follow)messages.scrollTop=messages.scrollHeight;
+    };
+    const finish=()=>{if(streamShown!==streamTarget||!streamDrained)return;const callback=streamDrained;streamDrained=null;queueMicrotask(callback);};
     if(prefersReducedMotion()){
-      output.textContent=streamTarget;streamShown=streamTarget;
+      renderShown(streamTarget);
       if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}
+      finish();
       return;
     }
-    if(!streamShown&&streamTarget){const end=nextStreamingBoundary(streamTarget,0);appendRevealedText(output,streamTarget.slice(0,end));streamShown=streamTarget.slice(0,end);}
-    if(streamTimer||streamShown===streamTarget)return;
+    if(!streamShown&&streamTarget){const end=nextStreamingBoundary(streamTarget,0);renderShown(streamTarget.slice(0,end));}
+    if(streamShown===streamTarget){finish();return;}
+    if(streamTimer)return;
     const revealNextChunk=()=>{
       streamTimer=0;
-      if(streamShown.length>=streamTarget.length)return;
+      if(streamShown.length>=streamTarget.length){finish();return;}
       const end=nextStreamingBoundary(streamTarget,streamShown.length);
-      appendRevealedText(output,streamTarget.slice(streamShown.length,end));
-      streamShown=streamTarget.slice(0,end);
-      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
-      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,80);
+      renderShown(streamTarget.slice(0,end));
+      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,90);else finish();
     };
-    streamTimer=setTimeout(revealNextChunk,80);
+    streamTimer=setTimeout(revealNextChunk,90);
   };
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
@@ -4670,7 +4674,7 @@ async function installCoordinatorPanel(sync){
     if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
     else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
   };
-  const render=state=>{
+  const render=(state,forceFinal=false)=>{
     const renderedConversation=selected;
     // A lost HTTP response is not a lost turn. Reconcile the original request
     // against the server's durable receipt; model retries remain explicit.
@@ -4685,6 +4689,13 @@ async function installCoordinatorPanel(sync){
     setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
+    if(!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&streamShown!==lastTextMessage.text){
+      updateStreamingText(streamingMessage,lastTextMessage.text,false,()=>{if(renderedConversation===selected)render(state,true);});
+      lastStreamingText=lastTextMessage.text;
+      send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
+      setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';placeTyping();
+      return;
+    }
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
       if(state.streamingText!==lastStreamingText){
         updateStreamingText(streamingMessage,state.streamingText);

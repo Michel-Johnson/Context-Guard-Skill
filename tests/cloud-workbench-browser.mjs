@@ -474,10 +474,7 @@ try {
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
   assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 0, 'planning state exits as soon as response text exists');
-  const firstRevealedWord=coordinator.locator('.coordinator-word-reveal').first();
-  await firstRevealedWord.waitFor();
-  const wordMotion=await firstRevealedWord.evaluate(node=>({duration:getComputedStyle(node).animationDuration,timing:getComputedStyle(node).animationTimingFunction}));
-  assert.deepEqual(wordMotion,{duration:'0.15s',timing:'ease'},'new response words use Cursor desktop 150ms ease fade');
+  assert.equal(await coordinator.locator('.coordinator-word-reveal').count(),0,'response chunks appear without per-word opacity animation');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
   await page.waitForFunction(() => {
     const node=document.querySelector('.coordinator-streaming-text');
@@ -502,14 +499,10 @@ try {
   const stableFinalLayout=await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height}));
   await page.waitForTimeout(300);
   assert.deepEqual(await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height})),stableFinalLayout,'one-shot reply layout stays unchanged after first paint');
-  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>getComputedStyle(node).paddingBottom),'28px','latest message keeps space above the composer');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>getComputedStyle(node).paddingBottom),'36px','latest message keeps space above the composer');
   await page.emulateMedia({reducedMotion:'reduce'});
-  const reducedMotion=await coordinator.evaluate(el=>{
-    const probe=document.createElement('span');probe.className='coordinator-word-reveal';probe.textContent='probe';el.append(probe);
-    const result={wordAnimation:getComputedStyle(probe).animationName,shimmerAnimation:getComputedStyle(el.querySelector('.coordinator-typing-phase')).animationName};
-    probe.remove();return result;
-  });
-  assert.deepEqual(reducedMotion,{wordAnimation:'none',shimmerAnimation:'none'},'reduced motion disables both Cursor-derived animations');
+  const reducedMotion=await coordinator.evaluate(el=>({shimmerAnimation:getComputedStyle(el.querySelector('.coordinator-typing-phase')).animationName}));
+  assert.deepEqual(reducedMotion,{shimmerAnimation:'none'},'reduced motion disables the planning shimmer');
   await page.emulateMedia({reducedMotion:'no-preference'});
   record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
@@ -657,6 +650,26 @@ try {
   assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:transitionText}).count(),1,'a committed final response suppresses the identical streaming preview');
   assert.equal(await coordinator.locator('.coordinator-streaming').count(),0,'the committed response is never rendered as a second streaming row');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  const seamlessText='先检查页面层级与段落间距。\n\n1. 检查对齐与留白。\n2. 检查窄屏换行。';
+  coordinatorState.messages.push({role:'user',text:'检查流式完成态'});
+  coordinatorState.status='running';coordinatorState.streamingText=seamlessText.slice(0,-10);
+  await coordinator.locator('.coordinator-streaming').waitFor();
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  coordinatorState.streamingText=seamlessText;
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text ol li:last-child')?.textContent==='检查窄屏换行。');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'stream updates do not steal scroll position while the user reads older messages');
+  const streamLayout=await coordinator.locator('.coordinator-streaming').evaluate(node=>{
+    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-streaming-text');
+    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
+  });
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';coordinatorState.messages.push({role:'assistant',text:seamlessText});
+  const seamlessFinal=coordinator.locator('.coordinator-message.assistant').filter({hasText:'先检查页面层级与段落间距。'}).last();
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
+  const finalLayout=await seamlessFinal.evaluate(node=>{
+    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-markdown');
+    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
+  });
+  assert.deepEqual(finalLayout,streamLayout,'stream completion keeps the same Markdown block layout without a second reflow');
   record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
