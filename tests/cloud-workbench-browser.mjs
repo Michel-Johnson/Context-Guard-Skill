@@ -448,29 +448,36 @@ try {
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
     const input = el.querySelector('.coordinator-input-shell textarea');
     const typing = el.querySelector('.coordinator-typing');
+    const typingPhase = typing.querySelector('.coordinator-typing-phase');
     const send = el.querySelector('.coordinator-input-shell > button');
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
       inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
-      typingTransition: getComputedStyle(typing).transitionProperty,
-      workingLabel: typing.querySelector('.coordinator-typing-label')?.textContent,
-      workingPhase: typing.querySelector('.coordinator-typing-phase')?.textContent,
+      workingPhase: typingPhase?.textContent,
+      shimmerDuration: getComputedStyle(typingPhase).animationDuration,
+      shimmerTiming: getComputedStyle(typingPhase).animationTimingFunction,
+      shimmerIteration: getComputedStyle(typingPhase).animationIterationCount,
       typingDots: typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
   assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendPosition, 'static', 'send button participates in the compact composer row');
-  assert.match(coordinatorLayout.typingTransition, /opacity/);
-  assert.equal(coordinatorLayout.workingLabel, 'Working', 'reply state uses a quiet Cursor-like working label');
-  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state starts in planning phase');
-  assert.equal(coordinatorLayout.typingDots, 3, 'reply indicator uses staggered dots');
+  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state uses Cursor desktop wording');
+  assert.equal(coordinatorLayout.shimmerDuration, '1s', 'planning shimmer matches Cursor desktop duration');
+  assert.equal(coordinatorLayout.shimmerTiming, 'linear', 'planning shimmer matches Cursor desktop easing');
+  assert.equal(coordinatorLayout.shimmerIteration, 'infinite', 'planning shimmer continues until response text arrives');
+  assert.equal(coordinatorLayout.typingDots, 0, 'Cursor planning state has no staggered dots');
   runningPreview=true;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
-  await coordinator.locator('.coordinator-typing.is-visible').waitFor();
-  assert.equal(await coordinator.locator('.coordinator-typing-phase').textContent(), 'Writing response', 'streaming switches the working phase without rebuilding the indicator');
+  await coordinator.locator('.coordinator-streaming').waitFor();
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 0, 'planning state exits as soon as response text exists');
+  const firstRevealedWord=coordinator.locator('.coordinator-word-reveal').first();
+  await firstRevealedWord.waitFor();
+  const wordMotion=await firstRevealedWord.evaluate(node=>({duration:getComputedStyle(node).animationDuration,timing:getComputedStyle(node).animationTimingFunction}));
+  assert.deepEqual(wordMotion,{duration:'0.15s',timing:'ease'},'new response words use Cursor desktop 150ms ease fade');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
   await page.waitForFunction(() => {
     const node=document.querySelector('.coordinator-streaming-text');
@@ -490,10 +497,19 @@ try {
   await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-final-reveal').waitFor({state:'attached'});
   assert.notEqual(await coordinator.locator('.coordinator-final-reveal').textContent(),oneShotText,'one-shot long replies reveal a chunk before the full text');
+  assert.ok(await coordinator.locator('.coordinator-final-reveal .coordinator-word-reveal').count()>=1,'one-shot responses reuse the same new-word fade');
   await page.waitForFunction(() => !document.querySelector('.coordinator-final-reveal'));
   const oneShotMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'第一段最终回复。'}).last();
   assert.equal(await oneShotMessage.locator('.coordinator-reveal-original').count(),0,'completed reveal restores the original Markdown DOM');
   assert.ok(await oneShotMessage.locator('p').count()>=1,'completed reveal keeps Markdown structure');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reducedMotion=await coordinator.evaluate(el=>{
+    const probe=document.createElement('span');probe.className='coordinator-word-reveal';probe.textContent='probe';el.append(probe);
+    const result={wordAnimation:getComputedStyle(probe).animationName,shimmerAnimation:getComputedStyle(el.querySelector('.coordinator-typing-phase')).animationName};
+    probe.remove();return result;
+  });
+  assert.deepEqual(reducedMotion,{wordAnimation:'none',shimmerAnimation:'none'},'reduced motion disables both Cursor-derived animations');
+  await page.emulateMedia({reducedMotion:'no-preference'});
   record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
@@ -620,9 +636,10 @@ try {
   await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),0,'planning shimmer disappears on the first visible response chunk');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
-  await coordinator.getByText('最终答案',{exact:true}).waitFor();
+  await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'stream preview is replaced by the durable final message');
   record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
