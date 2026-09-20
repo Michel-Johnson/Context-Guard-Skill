@@ -450,9 +450,12 @@ try {
     const typing = el.querySelector('.coordinator-typing');
     const typingPhase = typing.querySelector('.coordinator-typing-phase');
     const send = el.querySelector('.coordinator-input-shell > button');
+    const inputRect = input.getBoundingClientRect();
+    const sendRect = send.getBoundingClientRect();
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
-      inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
-      sendWidth:send.getBoundingClientRect().width,sendHeight:send.getBoundingClientRect().height,sendRadius:getComputedStyle(send).borderRadius,
+      inputHeight: inputRect.height, sendPosition: getComputedStyle(send).position,
+      sendWidth:sendRect.width,sendHeight:sendRect.height,sendRadius:getComputedStyle(send).borderRadius,
+      sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
       sendDisabled:send.disabled,
       workingPhase: typingPhase?.textContent,
       shimmerDuration: getComputedStyle(typingPhase).animationDuration,
@@ -465,6 +468,7 @@ try {
   assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendPosition, 'absolute', 'send button sits inside the composer like ChatGPT');
   assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[40,40,'50%'],'send uses a compact circular control');
+  assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
   await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
