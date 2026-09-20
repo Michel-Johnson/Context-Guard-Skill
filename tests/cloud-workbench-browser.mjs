@@ -529,6 +529,15 @@ try {
   assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
+  const inlineCodeLayout=await page.evaluate(async()=>{
+    const {markdownFragment}=await import('/prototype/coordinator-markdown.mjs');
+    const host=document.createElement('div');
+    host.append(markdownFragment('服务器相关最合适的是工程节点。理由：它 owns `.github/workflows/`、`scripts/`、`package.json` 与 `_config.yml`，80 端口部署成果也归档在这里。'));
+    return {paragraphs:host.querySelectorAll('p').length,codes:[...host.querySelectorAll('code')].map(node=>node.textContent),text:host.textContent};
+  });
+  assert.deepEqual(inlineCodeLayout.codes,['.github/workflows/','scripts/','package.json','_config.yml'],'long prose preserves every inline code span');
+  assert.equal(inlineCodeLayout.paragraphs,1,'inline Markdown keeps the model-authored paragraph boundary');
+  assert.doesNotMatch(inlineCodeLayout.text,/`/,'rendered Coordinator text never exposes code delimiters');
   assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '请审核这个计划');
   assert.equal(await coordinator.locator('.coordinator-speaker').count(), 0);
   assert.equal(await coordinator.getByRole('status').count(), 0, 'normal status is not displayed');
