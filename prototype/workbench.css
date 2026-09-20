@@ -1011,8 +1011,8 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel form { padding-top: 8px; margin-top: 2px; }
 #coordinator-panel textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 12px; min-height: 48px; max-height: 140px; height: 48px; padding: 10px 12px; resize: none; overflow-y: auto; font: inherit; transition:border-color .18s ease,box-shadow .18s ease; }
 #coordinator-panel textarea:focus { outline: 2px solid #bba759; outline-offset: 1px; }
-#coordinator-panel .coordinator-input-shell { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px; }
-#coordinator-panel .coordinator-input-shell textarea { padding: 10px 12px; }
+#coordinator-panel .coordinator-input-shell { position:relative; }
+#coordinator-panel .coordinator-input-shell textarea { padding:10px 58px 10px 12px; }
 #coordinator-panel .coordinator-session-create { margin-top: 12px; padding: 12px; border: 1px solid #dccfaa; border-radius: 12px; background: #faf3dc; }
 #coordinator-panel .coordinator-session-create form { padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,.8fr); gap: 8px; }
 #coordinator-panel .coordinator-session-create input,#coordinator-panel .coordinator-session-create select { min-width: 0; box-sizing: border-box; border: 1px solid #cfc4aa; background: #fffdf8; border-radius: 9px; padding: 8px 10px; font: inherit; }
@@ -1020,9 +1020,12 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-session-create p { margin: 9px 0 0; color: #746e5e; font-size: 12px; }
 #coordinator-panel .coordinator-session-create ul { margin: 9px 0 0; padding-left: 20px; color: #746e5e; font-size: 12px; }
 #coordinator-panel button { margin: 8px 8px 0 0; padding: 7px 16px; border: 1px solid #bdae89; border-radius: 9px; font: inherit; cursor: pointer; }
-#coordinator-panel .coordinator-input-shell > button{position:static;min-height:40px;margin:0;padding:7px 16px;background:#ffe87e;font-weight:600;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
-#coordinator-panel .coordinator-input-shell > button:not(:disabled):hover{transform:translateY(-1px);box-shadow:2px 2px 0 #2d2d2d}
-#coordinator-panel .coordinator-input-shell > button:disabled{background:#f1ead6}
+#coordinator-panel .coordinator-input-shell > .coordinator-send{position:absolute;right:5px;bottom:4px;display:grid;place-items:center;width:40px;height:40px;min-height:40px;margin:0;padding:0;border:0;border-radius:50%;background:#2f6fd6;color:#fff;box-shadow:none;transition:background .16s ease,transform .16s ease}
+#coordinator-panel .coordinator-input-shell > .coordinator-send svg{width:23px;height:23px}
+#coordinator-panel .coordinator-input-shell > .coordinator-send:not(:disabled):hover{background:#285fb8;transform:none;box-shadow:none}
+#coordinator-panel .coordinator-input-shell > .coordinator-send:not(:disabled):active{transform:scale(.94)}
+#coordinator-panel .coordinator-input-shell > .coordinator-send:focus-visible{outline:2px solid #2f6fd6;outline-offset:2px}
+#coordinator-panel .coordinator-input-shell > .coordinator-send:disabled{background:#deddd9;color:#8e8d89;opacity:1}
 #coordinator-panel button[type=submit] { background: #ffe87e; font-weight: 600; }
 #coordinator-panel button:disabled { opacity: .5; cursor: default; }
 #coordinator-panel .coordinator-node-link { display: inline; margin: 0; padding: 2px 7px; color: #27624b; background: #fff2ad; font-weight: 650; vertical-align: baseline; }

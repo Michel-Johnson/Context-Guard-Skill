@@ -452,6 +452,8 @@ try {
     const send = el.querySelector('.coordinator-input-shell > button');
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
       inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
+      sendWidth:send.getBoundingClientRect().width,sendHeight:send.getBoundingClientRect().height,sendRadius:getComputedStyle(send).borderRadius,
+      sendDisabled:send.disabled,
       workingPhase: typingPhase?.textContent,
       shimmerDuration: getComputedStyle(typingPhase).animationDuration,
       shimmerTiming: getComputedStyle(typingPhase).animationTimingFunction,
@@ -461,7 +463,12 @@ try {
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
   assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
-  assert.equal(coordinatorLayout.sendPosition, 'static', 'send button participates in the compact composer row');
+  assert.equal(coordinatorLayout.sendPosition, 'absolute', 'send button sits inside the composer like ChatGPT');
+  assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[40,40,'50%'],'send uses a compact circular control');
+  assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
+  await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
   assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state uses Cursor desktop wording');
   assert.equal(coordinatorLayout.shimmerDuration, '1s', 'planning shimmer matches Cursor desktop duration');
   assert.equal(coordinatorLayout.shimmerTiming, 'linear', 'planning shimmer matches Cursor desktop easing');
@@ -673,7 +680,8 @@ try {
   record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
-  assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'发送','the main send control stays inside the input border');
+  assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).getAttribute('title'),'发送','the icon-only send control keeps an accessible label');
   await coordinator.getByLabel('发送给 Coordinator').fill('保留我的自由对话草稿');
   await coordinator.getByLabel('回答：要上传什么？').fill('保留我的补充');
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
@@ -753,7 +761,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && !document.querySelector('#coordinator-panel button[type=submit]').disabled);
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -765,7 +773,7 @@ try {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
-      !panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
+      panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
