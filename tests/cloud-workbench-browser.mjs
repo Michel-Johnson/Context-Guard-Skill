@@ -495,13 +495,14 @@ try {
   coordinatorState={...coordinatorState,status:'waiting-for-user',streamingText:'',messages:[...coordinatorState.messages,{role:'assistant',text:oneShotText,tools:[]}]};
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
-  await coordinator.locator('.coordinator-final-reveal').waitFor({state:'attached'});
-  assert.notEqual(await coordinator.locator('.coordinator-final-reveal').textContent(),oneShotText,'one-shot long replies reveal a chunk before the full text');
-  assert.equal(await coordinator.locator('.coordinator-final-reveal .coordinator-word-reveal').count(),0,'one-shot response chunks appear without replaying a full-block opacity animation');
-  await page.waitForFunction(() => !document.querySelector('.coordinator-final-reveal'));
   const oneShotMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'第一段最终回复。'}).last();
-  assert.equal(await oneShotMessage.locator('.coordinator-reveal-original').count(),0,'completed reveal restores the original Markdown DOM');
-  assert.ok(await oneShotMessage.locator('p').count()>=1,'completed reveal keeps Markdown structure');
+  await oneShotMessage.waitFor();
+  assert.equal(await coordinator.locator('.coordinator-final-reveal,.coordinator-reveal-original').count(),0,'one-shot replies render only their final Markdown DOM');
+  assert.ok(await oneShotMessage.locator('p').count()>=1,'one-shot replies use final Markdown structure immediately');
+  const stableFinalLayout=await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height}));
+  await page.waitForTimeout(300);
+  assert.deepEqual(await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height})),stableFinalLayout,'one-shot reply layout stays unchanged after first paint');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>getComputedStyle(node).paddingBottom),'28px','latest message keeps space above the composer');
   await page.emulateMedia({reducedMotion:'reduce'});
   const reducedMotion=await coordinator.evaluate(el=>{
     const probe=document.createElement('span');probe.className='coordinator-word-reveal';probe.textContent='probe';el.append(probe);
