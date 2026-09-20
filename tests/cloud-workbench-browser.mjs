@@ -689,6 +689,25 @@ try {
   });
   assert.deepEqual(finalLayout,streamLayout,'stream completion keeps the same Markdown block layout without a second reflow');
   record('coordinator-streaming-text-is-visible-before-final-message');
+  const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
+  coordinatorState.status='running';coordinatorState.streamingText=structuredQuestionText;
+  await coordinator.locator('.coordinator-streaming').waitFor();
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text')?.textContent==='当前有四个未完成事项。想先处理哪一项？');
+  await coordinator.locator('.coordinator-streaming').evaluate(node=>{
+    node.dataset.questionTransitionProbe='kept';
+    node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
+  });
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:structuredQuestionText,questions:[{id:'next-task',text:'想先处理哪一项？',options:['部署博客','处理 Bug']}]});
+  await coordinator.getByRole('button',{name:'部署博客',exact:true}).waitFor();
+  const structuredQuestion=coordinator.locator('.coordinator-message.assistant').filter({hasText:'当前有四个未完成事项。'}).last();
+  assert.equal(await structuredQuestion.getAttribute('data-question-transition-probe'),'kept','structured questions keep the streaming assistant message node');
+  assert.equal(await structuredQuestion.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
+  assert.equal(await structuredQuestion.getByText('当前有四个未完成事项。',{exact:true}).count(),1,'structured questions retain the non-duplicate lead text');
+  assert.equal(await structuredQuestion.getByText('想先处理哪一项？',{exact:true}).count(),1,'the question prompt appears once instead of duplicating the streamed suffix');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
+  coordinatorState.messages.pop();
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
   assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');

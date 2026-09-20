@@ -4711,18 +4711,37 @@ async function installCoordinatorPanel(sync){
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
     const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
+    const renderConversation=items=>conversationFragments(items,document,{nodes:state.nodeReferences||[],
+      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
+      questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
+      onConversation:selectConversation,
+      onAnswer:(question,answer)=>{
+        if(busy||pending||send.disabled)return;
+        const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
+        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
+      },onNode:async id=>{
+        try{
+          if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
+          const node=getNode(id);
+          if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
+          clearRelationMode();focusId=null;
+          enterView(id,{unpack:false});
+        }catch(error){status.textContent='无法定位节点：'+error.message;}
+      }});
     setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
-    const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&
-      !lastTextMessage.questions?.length&&!lastTextMessage.actions?.length&&extrasKey===lastRenderedExtras;
+    const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&extrasKey===lastRenderedExtras;
     if(canFinalizeStreamingInPlace){
       const finalize=()=>{
         if(renderedConversation!==selected)return;
         const content=streamingMessage.querySelector('.coordinator-markdown');
         const output=content?.querySelector('.coordinator-streaming-text');
         if(output)content.replaceChildren(...output.childNodes);
+        const finalRow=renderConversation([lastTextMessage]).body.firstElementChild;
+        const finalContent=finalRow?.querySelector('.coordinator-markdown');
+        if(content&&finalContent)patchStreamingContent(content,finalContent);
         streamingMessage.classList.remove('coordinator-streaming');
         stopStreamingAnimation();lastStableContent=stableKey;lastStreamingText='';
         if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
@@ -4752,23 +4771,7 @@ async function installCoordinatorPanel(sync){
     if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
     const follow=lastStableContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
-    const transcript=conversationFragments(visibleMessages,document,{nodes:state.nodeReferences||[],
-      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
-      questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
-      onConversation:selectConversation,
-      onAnswer:(question,answer)=>{
-        if(busy||pending||send.disabled)return;
-        const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
-        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
-      },onNode:async id=>{
-      try{
-        if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
-        const node=getNode(id);
-        if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
-        clearRelationMode();focusId=null;
-        enterView(id,{unpack:false});
-      }catch(error){status.textContent='无法定位节点：'+error.message;}
-    }});
+    const transcript=renderConversation(visibleMessages);
     messages.replaceChildren(transcript.body);
     const initialStreamingMessage=messages.querySelector('.coordinator-message:last-child');
     if(hasStreaming&&initialStreamingMessage){
