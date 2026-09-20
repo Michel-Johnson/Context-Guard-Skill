@@ -667,12 +667,12 @@ try {
   await coordinator.locator('.coordinator-streaming').waitFor();
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.finalizationProbe='kept';
-    node.querySelector('.coordinator-streaming-text > :first-child').dataset.blockProbe='kept';
+    node.querySelector('.coordinator-streaming-text > :first-child').__coordinatorBlockProbe='kept';
   });
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   coordinatorState.streamingText=seamlessText;
   await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text ol li:last-child')?.textContent==='检查窄屏换行。');
-  assert.equal(await coordinator.locator('.coordinator-streaming-text > :first-child').getAttribute('data-block-probe'),'kept','stream updates patch stable Markdown blocks instead of replacing them');
+  assert.equal(await coordinator.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream updates patch stable Markdown blocks instead of replacing them');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'stream updates do not steal scroll position while the user reads older messages');
   const streamLayout=await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-streaming-text');
@@ -682,7 +682,7 @@ try {
   const seamlessFinal=coordinator.locator('.coordinator-message.assistant').filter({hasText:'先检查页面层级与段落间距。'}).last();
   await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
   assert.equal(await seamlessFinal.getAttribute('data-finalization-probe'),'kept','stream completion keeps the existing assistant message node');
-  assert.equal(await seamlessFinal.locator('.coordinator-markdown > :first-child').getAttribute('data-block-probe'),'kept','stream completion unwraps the existing Markdown blocks without rebuilding them');
+  assert.equal(await seamlessFinal.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream completion unwraps the existing Markdown blocks without rebuilding them');
   const finalLayout=await seamlessFinal.evaluate(node=>{
     const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-markdown');
     return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
