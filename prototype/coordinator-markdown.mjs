@@ -9,7 +9,10 @@ function paragraphize(source, limit = 60) {
   let fence = false;
   for (const line of lines) {
     if (/^\s*```/.test(line)) { fence = !fence; output.push(line); continue; }
-    if (fence || line.length <= limit || /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)/.test(line)) { output.push(line); continue; }
+    // Inline code is semantic Markdown, not plain prose. A synthetic paragraph
+    // boundary inside a backtick span turns the remaining delimiters into
+    // visible text, so preserve the model-authored paragraph and let CSS wrap it.
+    if (fence || line.length <= limit || line.includes('`') || /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)/.test(line)) { output.push(line); continue; }
     let rest = line;
     while (rest.length > limit) {
       const boundary = Math.min(rest.length - 1, limit + 20);
