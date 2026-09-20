@@ -4630,7 +4630,7 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='',sendBlocked=true;
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true;
   const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
   const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
@@ -4659,7 +4659,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4713,9 +4713,10 @@ async function installCoordinatorPanel(sync){
     const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
     setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
+    const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
     const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&
-      !lastTextMessage.questions?.length&&!lastTextMessage.actions?.length&&!(state.approvals||[]).some(item=>item.pending)&&!(state.acceptances||[]).some(item=>item.pending);
+      !lastTextMessage.questions?.length&&!lastTextMessage.actions?.length&&extrasKey===lastRenderedExtras;
     if(canFinalizeStreamingInPlace){
       const finalize=()=>{
         if(renderedConversation!==selected)return;
@@ -4856,6 +4857,7 @@ async function installCoordinatorPanel(sync){
     }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
+    lastRenderedExtras=extrasKey;
     lastStreamingText=hasStreaming?streamingText:'';
     }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
