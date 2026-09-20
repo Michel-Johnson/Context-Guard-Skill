@@ -4631,6 +4631,36 @@ async function installCoordinatorPanel(sync){
     card.append(wrap); textarea.focus();
   });
   let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true;
+  const handledNavigationActions=new Set();
+  let navigationRun=0;
+  const openMapNode=async id=>{
+    if(sync.viewId!=='main'&&!await sync.selectSession('__all__'))throw new Error('当前视图尚不能切换到 Main');
+    const node=getNode(id);
+    if(!node||isCancelled(node))throw new Error('该节点已不存在，请刷新对话');
+    clearRelationMode();focusId=null;enterView(id,{unpack:false});
+  };
+  const tourMapNodes=async ids=>{
+    const run=++navigationRun;
+    for(let index=0;index<ids.length;index++){
+      if(run!==navigationRun)return;
+      await openMapNode(ids[index]);
+      if(index<ids.length-1)await new Promise(resolve=>setTimeout(resolve,480));
+    }
+  };
+  const consumeNavigationActions=state=>{
+    const actions=(state.messages||[]).flatMap(message=>message.actions||[]).filter(action=>action.actionId&&(
+      (action.kind==='node-navigation'||action.kind==='node-read')&&action.node?.id||action.kind==='node-tour'&&action.nodes?.length));
+    const fresh=actions.filter(action=>{
+      if(handledNavigationActions.has(action.actionId))return false;
+      try{if(sessionStorage.getItem('cg-coordinator-navigation:'+action.actionId))return false;}catch{}
+      return true;
+    });
+    if(!fresh.length)return;
+    for(const action of fresh){handledNavigationActions.add(action.actionId);try{sessionStorage.setItem('cg-coordinator-navigation:'+action.actionId,'1');}catch{}}
+    const ids=fresh.flatMap(action=>action.kind==='node-tour'?action.nodes.map(node=>node.id):[action.node.id])
+      .filter((id,index,list)=>index===0||id!==list[index-1]);
+    void tourMapNodes(ids).catch(error=>{status.textContent='无法定位节点：'+error.message;});
+  };
   const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
   const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
@@ -4705,6 +4735,7 @@ async function installCoordinatorPanel(sync){
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
+    consumeNavigationActions(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     const streamingText=String(state.streamingText||'');
@@ -4716,18 +4747,10 @@ async function installCoordinatorPanel(sync){
       questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
       onConversation:selectConversation,
       onAnswer:(question,answer)=>{
-        if(busy||pending||send.disabled)return;
+        if(busy||pending)return;
         const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
         void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
-      },onNode:async id=>{
-        try{
-          if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
-          const node=getNode(id);
-          if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
-          clearRelationMode();focusId=null;
-          enterView(id,{unpack:false});
-        }catch(error){status.textContent='无法定位节点：'+error.message;}
-      }});
+      },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
     setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);

@@ -683,6 +683,51 @@ test('Structured node tools expose stable buttons without leaking tool-only map 
   await assert.rejects(execute('show_nodes', { message: '太多节点', nodeIds: ['N1', 'N2', 'N3', 'N4'] }, { operationId: 'too-many' }), { code: 'INVALID_ARGUMENT' });
 });
 
+test('Coordinator can issue one durable direct Map navigation action', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-node-navigation-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async ids => ids.map(id => ({ id, title: '管理', purpose: '后台管理' })) });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => ++calls === 1 ? {
+    stop: 'tool_use', content: [{ type: 'tool_use', id: 'open', name: 'open_node', input: { nodeId: 'N2' } }],
+  } : { stop: 'end_turn', content: [{ type: 'text', text: '已打开管理模块。' }] } } });
+  await service.submit({ id: 'turn', text: '帮我打开管理模块' }); await service.close();
+  const assistant = (await service.state()).messages.find(message => message.role === 'assistant');
+  assert.equal(assistant.text, '已打开管理模块。');
+  assert.equal(assistant.actions[0].kind, 'node-navigation');
+  assert.match(assistant.actions[0].actionId, /^coordinator:/);
+  assert.deepEqual(assistant.actions[0].node, { id: 'N2', title: '管理', purpose: '后台管理' });
+});
+
+test('Coordinator can issue one ordered Map tour without node buttons', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-node-tour-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async ids => ids.map(id => ({ id, title: id === 'N1' ? '首页' : '管理' })) });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => ++calls === 1 ? {
+    stop: 'tool_use', content: [{ type: 'tool_use', id: 'tour', name: 'tour_nodes', input: { nodeIds: ['N1', 'N2'] } }],
+  } : { stop: 'end_turn', content: [{ type: 'text', text: '已展示 Map 节点游览。' }] } } });
+  await service.submit({ id: 'turn', text: '展示一下你操作 Map 的功能' }); await service.close();
+  const assistant = (await service.state()).messages.find(message => message.role === 'assistant');
+  assert.equal(assistant.actions[0].kind, 'node-tour');
+  assert.deepEqual(assistant.actions[0].nodes.map(node => node.id), ['N1', 'N2']);
+});
+
+test('Successful read_map exposes only a visible node-read action', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-map-read-action-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const execute = createCoordinatorExecutor({ readMap: async () => ({ version: 'v1', node: { id: 'N1', title: '管理', memories: [{ text: 'private' }] } }) });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => ++calls === 1 ? {
+    stop: 'tool_use', content: [{ type: 'tool_use', id: 'read', name: 'read_map', input: { nodeId: 'N1' } }],
+  } : { stop: 'end_turn', content: [{ type: 'text', text: '读取完成。' }] } } });
+  await service.submit({ id: 'turn', text: '读取管理节点' }); await service.close();
+  const action = (await service.state()).messages.find(message => message.role === 'assistant').actions[0];
+  assert.deepEqual(action.node, { id: 'N1', title: '管理' });
+  assert.equal(action.kind, 'node-read');
+  assert.doesNotMatch(JSON.stringify(action), /private|memories|v1/);
+});
+
 test('Completed tool turns expose one final answer with the structured action', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-concise-actions-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
