@@ -950,7 +950,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-history-list p{margin:2px 4px;color:#817660;font-size:12px}
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
 #coordinator-panel > [role=status]:empty { display: none; }
-#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 28px 6px;scroll-padding-bottom:28px;scrollbar-gutter:stable; }
+#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 36px 6px;scroll-padding-bottom:36px;scrollbar-gutter:stable; }
 #coordinator-panel .coordinator-message { width:min(100%,880px);margin:0 0 16px; }
 #coordinator-panel .coordinator-message.user { width:fit-content;max-width:min(82%,760px);margin-left:auto; }
 #coordinator-panel .coordinator-message.user:has(+ .coordinator-typing.is-visible){margin-bottom:8px}
@@ -967,12 +967,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-typing.is-visible{display:block}
 #coordinator-panel .coordinator-typing-phase{display:inline-block;color:#9a9287;background-image:linear-gradient(90deg,var(--coordinator-shimmer-base) 0%,var(--coordinator-shimmer-base) 25%,var(--coordinator-shimmer-highlight) 60%,var(--coordinator-shimmer-base) 75%,var(--coordinator-shimmer-base) 100%);background-size:200% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;--coordinator-shimmer-base:color-mix(in srgb,#817660 60%,transparent);--coordinator-shimmer-highlight:#302d26;animation:coordinator-text-shimmer 1s linear infinite}
 @keyframes coordinator-text-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
-#coordinator-panel .coordinator-streaming-text{white-space:pre-wrap}
-#coordinator-panel .coordinator-word-reveal{animation:coordinator-word-fade 150ms ease both}
-@keyframes coordinator-word-fade{from{opacity:0}to{opacity:1}}
+#coordinator-panel .coordinator-streaming-text{display:block}
 @media (prefers-reduced-motion:reduce){
   #coordinator-panel .coordinator-typing-phase{animation:none;background-image:none;-webkit-text-fill-color:currentColor}
-  #coordinator-panel .coordinator-word-reveal{animation:none}
 }
 #coordinator-panel .user .coordinator-markdown { background: #fff0a9; border-radius: 14px 14px 4px 14px; padding: 9px 13px; }
 #coordinator-panel .coordinator-markdown p { margin: 0 0 8px; }
