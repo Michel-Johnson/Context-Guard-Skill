@@ -634,6 +634,14 @@ try {
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
+  const planningPlacement=await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>({
+    parent:node.parentElement?.className,
+    previous:node.previousElementSibling?.className,
+    beforeComposer:node.nextElementSibling?.className,
+  }));
+  assert.match(planningPlacement.parent,/coordinator-messages/,'planning state belongs to the message timeline');
+  assert.match(planningPlacement.previous,/coordinator-message user/,'planning state follows the current user message');
+  assert.notEqual(planningPlacement.beforeComposer,'coordinator-compose','planning state is not fixed above the composer');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
   assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),0,'planning shimmer disappears on the first visible response chunk');
@@ -641,6 +649,13 @@ try {
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
   await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'stream preview is replaced by the durable final message');
+  const transitionText='流式转最终只保留一份';
+  coordinatorState.status='running';coordinatorState.streamingText=transitionText;
+  coordinatorState.messages.push({role:'user',text:'检查重复过渡'},{role:'assistant',text:transitionText});
+  await coordinator.locator('.coordinator-message.assistant').filter({hasText:transitionText}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:transitionText}).count(),1,'a committed final response suppresses the identical streaming preview');
+  assert.equal(await coordinator.locator('.coordinator-streaming').count(),0,'the committed response is never rendered as a second streaming row');
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   record('coordinator-streaming-text-is-visible-before-final-message');
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
