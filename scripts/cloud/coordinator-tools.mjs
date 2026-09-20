@@ -1,6 +1,7 @@
 const string = { type: 'string', minLength: 1 };
 const strings = { type: 'array', items: string, minItems: 1 };
 const nodeIds = { type: 'array', items: string, minItems: 1, maxItems: 3 };
+const tourNodeIds = { type: 'array', items: string, minItems: 2, maxItems: 6, uniqueItems: true };
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
 const executionSessionId = { type: 'string', minLength: 1,
@@ -15,6 +16,8 @@ export const coordinatorTools = [
   definition('list_conversations', 'List saved Coordinator conversations for topic continuity. conversationId is never an executionSessionId and cannot be used in task tools.', {}),
   definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
   definition('show_nodes', 'Show 1–3 exact Main node buttons only when they are direct recommendations or requested actions.', { message: string, nodeIds }),
+  definition('open_node', 'Immediately open one exact Main node in the human workbench. Use for explicit open, enter, jump or locate requests; do not ask what open means after the node is unambiguous.', { nodeId: string }),
+  definition('tour_nodes', 'Visibly tour 2–6 exact Main nodes in order. Use when the human asks to demonstrate, show or walk through Map operation; prefer representative nodes and do not replace the tour with a textual read-only explanation.', { nodeIds: tourNodeIds }),
   definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
   definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { executionSessionId, ref: string, version: string }),
@@ -66,8 +69,10 @@ export function createCoordinatorExecutor(ctx) {
     if (name === 'list_tasks') return ctx.listTasks();
     if (name === 'list_sessions') return ctx.listSessions();
     if (name === 'list_conversations') return ctx.listConversations();
-    if (name === 'read_map') return ctx.readMap(input.nodeId);
+    if (name === 'read_map') return { ...(await ctx.readMap(input.nodeId)), kind: 'map-read', actionId: operationId };
     if (name === 'show_nodes') return { kind: 'node-references', message: input.message, nodes: await ctx.resolveNodes(input.nodeIds) };
+    if (name === 'open_node') return { kind: 'node-navigation', actionId: operationId, node: (await ctx.resolveNodes([input.nodeId]))[0] };
+    if (name === 'tour_nodes') return { kind: 'node-tour', actionId: operationId, nodes: await ctx.resolveNodes(input.nodeIds) };
     if (name === 'read_reference') return ctx.readReference(input.name);
     if (name === 'ask_user') {
       if (input.options && (input.options.length < 2 || input.options.length > 6 || new Set(input.options).size !== input.options.length || input.options.some(option => option.length > 120))) fail('Provide 2–6 unique short options');

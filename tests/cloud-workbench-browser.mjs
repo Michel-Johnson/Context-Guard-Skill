@@ -595,6 +595,9 @@ try {
     const host = document.createElement('div'); host.id = 'structured-node-test';
     host.append(conversationFragments([{ role: 'assistant', text: '建议放在这里。', actions: [
       { kind: 'node-references', message: '候选节点', nodes: [{ id: 'reader', title: '阅读' }, { id: 'admin', title: '管理' }, { id: 'content', title: '内容' }, { id: 'test', title: '工程' }] },
+      { kind: 'node-navigation', actionId: 'direct-open', node: { id: 'admin', title: '管理' } },
+      { kind: 'node-tour', actionId: 'direct-tour', nodes: [{ id: 'reader', title: '阅读' }, { id: 'admin', title: '管理' }] },
+      { kind: 'node-read', actionId: 'direct-read', node: { id: 'reader', title: '阅读' } },
       { kind: 'conversation-mounted', conversationId: 'item-next', node: { id: 'reader', title: '阅读' } },
     ] }, { role: 'assistant', text: '选择节点', questions: [{ id: 'node-choice', text: '挂到哪里？', nodes: [{ id: 'reader', title: '阅读' }] }] }], document, {
       canAnswer: true, onNode: id => { host.dataset.selected = id; }, onConversation: id => { host.dataset.conversation = id; }, onAnswer: () => {},
@@ -636,6 +639,25 @@ try {
   assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   record('coordinator-node-navigation-without-approval');
+  const directActionId='coordinator:direct-open-T0';
+  coordinatorState.messages.push({role:'assistant',text:'已打开定位节点。',actions:[{kind:'node-navigation',actionId:directActionId,node:{id:'T0',title:'定位节点'}}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',directActionId);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'direct navigation action opens the Map node without another click');
+  const directMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'已打开定位节点。'}).last();
+  assert.equal(await directMessage.getByRole('button',{name:'定位节点',exact:true}).count(),0,'direct navigation action does not render a second-step node button');
+  const tourActionId='coordinator:tour-T0';
+  coordinatorState.messages.push({role:'assistant',text:'已展示 Map 游览。',actions:[{kind:'node-tour',actionId:tourActionId,nodes:[{id:'T0',title:'定位节点'}]}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',tourActionId);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'Map tour drives navigation without a click');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'已展示 Map 游览。'}).last().locator('button').count(),0,'Map tour renders no manual node controls');
+  const readActionId='coordinator:read-T0';
+  coordinatorState.messages.push({role:'assistant',text:'读取完成。',actions:[{kind:'node-read',actionId:readActionId,node:{id:'T0',title:'定位节点'}}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',readActionId);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'read_map action visibly focuses the node');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'读取完成。'}).last().locator('button').count(),0,'read_map focus needs no manual node button');
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
@@ -712,7 +734,7 @@ try {
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
   assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).getAttribute('title'),'发送','the icon-only send control keeps an accessible label');
-  await coordinator.getByLabel('发送给 Coordinator').fill('保留我的自由对话草稿');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'','question answers work while the main composer is empty');
   await coordinator.getByLabel('回答：要上传什么？').fill('保留我的补充');
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
   assert.equal(submissions.length,0,'the first option click only selects it');
@@ -726,7 +748,7 @@ try {
   assert.equal(submissions[0].text,'网站构建产物\n\n保留我的补充');
   assert.equal(submissions[0].answerTo,'choice');
   assert.equal(await coordinator.getByLabel('回答：要上传什么？').inputValue(),'保留我的补充');
-  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'保留我的自由对话草稿');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'');
   assert.equal(await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).isEnabled(),false);
   assert.equal(approvals.length+mountReviews.length,0,'choice answers are never approvals');
   coordinatorState.status='running';coordinatorState.activeTurnId=submissions[0].id;

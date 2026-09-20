@@ -178,6 +178,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       card.append(activity); content.append(card);
     }
     for (const action of message.actions || []) {
+      if (action.kind === 'node-navigation' || action.kind === 'node-tour' || action.kind === 'node-read') continue;
       const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
       if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
       for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {
