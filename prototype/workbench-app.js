@@ -4506,7 +4506,9 @@ async function installCoordinatorPanel(sync){
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
-  const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
+  const send=document.createElement('button');send.type='submit';send.className='coordinator-send';send.setAttribute('aria-label','发送');send.title='发送';
+  const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');sendIcon.setAttribute('viewBox','0 0 24 24');sendIcon.setAttribute('aria-hidden','true');
+  const sendPath=document.createElementNS('http://www.w3.org/2000/svg','path');sendPath.setAttribute('d','M12 19V5m0 0-6 6m6-6 6 6');sendPath.setAttribute('fill','none');sendPath.setAttribute('stroke','currentColor');sendPath.setAttribute('stroke-width','2.4');sendPath.setAttribute('stroke-linecap','round');sendPath.setAttribute('stroke-linejoin','round');sendIcon.append(sendPath);send.append(sendIcon);
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
   const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
   retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
@@ -4607,7 +4609,9 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='';
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='',sendBlocked=true;
+  const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
+  const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
   const messageMatchesRequest=(message,request)=>{
     if(message?.role!=='user'||typeof message.text!=='string'||!request?.text)return false;
@@ -4634,7 +4638,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
+    lastStableContent=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4692,7 +4696,7 @@ async function installCoordinatorPanel(sync){
     if(!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&streamShown!==lastTextMessage.text){
       updateStreamingText(streamingMessage,lastTextMessage.text,false,()=>{if(renderedConversation===selected)render(state,true);});
       lastStreamingText=lastTextMessage.text;
-      send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
+      setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
       setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';placeTyping();
       return;
     }
@@ -4822,7 +4826,7 @@ async function installCoordinatorPanel(sync){
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
-    send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
+    setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
     setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
     placeTyping();
   };
@@ -4842,7 +4846,7 @@ async function installCoordinatorPanel(sync){
     const id=selected;
     optimisticRequests.set(request.id,{conversationId:id,request});
     appendOptimisticMessage(request);
-    busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
+    busy=true; pending=request; pendingError=''; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     setTyping(!answeringCard);
     placeTyping();
@@ -4856,12 +4860,13 @@ async function installCoordinatorPanel(sync){
       if(id===selected){pendingError=message;setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
-    finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
+    finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
     await refresh();
   };
   const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
-  input.addEventListener('input',resizeInput);
+  input.addEventListener('input',()=>{resizeInput();syncSendState();});
   resizeInput();
+  syncSendState();
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});
