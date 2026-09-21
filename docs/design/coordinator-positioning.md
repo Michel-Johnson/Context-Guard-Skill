@@ -1,6 +1,6 @@
 # Coordinator 定位
 
-> 状态：共创草稿
+> 状态：共创草稿。**未升格草案**，不是当前设计版本。对人入口的现行说明见 [Coordinator.md](../../Coordinator.md) 与 [当前设计版本](../../references/design-current.md)。
 
 ## 定位
 

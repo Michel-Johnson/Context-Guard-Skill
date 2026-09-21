@@ -2,11 +2,13 @@
 
 > 历史设计背景；当前传输格式以 [接口规范 v2](../interface-contract-v2.md) 为准。本文不与 v2 叠加执行。
 
+**未升格草案。** 不是当前设计版本。下文「已明确的产品边界」是当时讨论记录，**不是现行法**。现行存储法是 [`fs-v2`](../../references/design-current.md)；发布与 Main 写入以 [服务器记忆](../../references/server-memory.md) 为准。
+
 状态：提案，等待逐项讨论；不是已实现的 API 承诺。源码对照基线：`69c3f77d`。
 
 本文不修改运行协议、不部署服务。现有 `references/workbench-interface.md`、`references/cloud-sync-interface.md` 和 `references/server-memory.md` 仍描述现行约束；有差异处以本文的“提案”标识进入后续设计，不自动覆盖实现。
 
-## 1. 已明确的产品边界
+## 1. 当时讨论过的产品边界（草案，未升格）
 
 1. Session 在各自 worktree 工作，不直接编辑 GitHub Main 或 Cloud Main。
 2. GitHub PR 负责源码、正式测试及获准的工程文件；执行 CI 和分发/提交过滤。
