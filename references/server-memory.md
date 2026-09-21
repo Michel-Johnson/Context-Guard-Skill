@@ -1,16 +1,21 @@
 # Server-backed development memory
 
+读者：产品角色 Agent（项目选用私有记忆时）；仓库开发 Agent 只把本仓库「选用该模式」写在 `RULE.md`，产品契约以本文为准。
+
 Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
+
+Current design version: [`fs-v2`](design-current.md).
 
 **Status: private service/client implementation, automated acceptance, and the
 production filesystem v2 migration have been verified.** The node/module and
 work-item document contract is [Memory Filesystem v2](memory-filesystem-v2/README.md).
 Runtime compatibility still retains legacy records; default API/context exclusion
 of those records remains an explicit acceptance item in `CI_todo.md` and must not
-be inferred from the documentation alone. Further installations and migrations
-still require explicit approval. When
+be inferred from the documentation alone. Which catalog an Agent opens first
+(FIND.md / snapshot vs v2 Markdown) is **not decided**. Further installations and
+migrations still require explicit approval. When
 `CONTEXT_GUARD_MEMORY_CONFIG` is configured, the normal Cloud process mounts this
 API at the same HTTPS origin. Without that explicit configuration, no private
 memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`.
@@ -122,10 +127,9 @@ main-memory version. Authenticated human workbench edits may update the Main Map
 directly. Each edit uses the displayed Main version as an optimistic concurrency
 base and is persisted atomically with its timestamp, event and idempotency receipt.
 Ordinary project-scoped Agent credentials still cannot write Main directly.
-An explicitly allowlisted developer client may use the separate Main-structure
-protocol to create, rename, update or move nodes with a `developer` audit actor;
-it cannot delete nodes or change access, work items, memories, relations,
-preferences or document metadata. Main/preferences restoration still requires
+The only non-human writer of Main **structure** is Coordinator (`edit_map` /
+`mapWrite`, audit actor `coordinator`). Do not document an allowlisted developer
+client as the current product exception. Main/preferences restoration still requires
 administrator authorization.
 Main advancement, unmerged source or concurrent publication fails without changing
 the baseline. Workbench refreshes the baseline every 30 seconds and shows stale or
