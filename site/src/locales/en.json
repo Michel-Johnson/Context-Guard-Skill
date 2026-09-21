@@ -311,6 +311,7 @@
   "已解决": "Resolved",
   "这期先不做": "Not this cycle",
   "已延期": "Unfixable (do not defer)",
+  "修不好": "Unfixable",
   "设计如此不改": "Working as designed",
   "不处理": "Won't fix",
   "手机竖屏时抽屉把手被底栏挡住，标题折成两行看点和分配会不会挤掉": "On a phone the drawer handle sits under the bottom bar; a two-line title checks whether the status dot gets squeezed",

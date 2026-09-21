@@ -506,7 +506,7 @@ const CONTEXT_GUARD_MAP = {
         },
         {
           "id": "B48",
-          "title": "这期先不做",
+          "title": "修不好",
           "desc": "修不好",
           "status": "deferred",
           "files": [],
