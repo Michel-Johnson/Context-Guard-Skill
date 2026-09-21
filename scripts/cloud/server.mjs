@@ -103,14 +103,23 @@ export function coordinatorStructureOperations(actions, operationId) {
     if (!action || typeof action !== 'object' || Array.isArray(action)) protocolFail('INVALID_ARGUMENT', 'Map action must be an object');
     const allowed = action.op === 'create' ? ['op', 'id', 'parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']
       : action.op === 'update' ? ['op', 'id', 'title', 'purpose', 'kind', 'state', 'owns']
-      : action.op === 'move' ? ['op', 'id', 'parentId', 'order'] : [];
-    if (!allowed.length || Object.keys(action).some(key => !allowed.includes(key))) protocolFail('FORBIDDEN', 'Coordinator Map actions are limited to node create, update and move');
+      : action.op === 'move' ? ['op', 'id', 'parentId', 'order', 'kind']
+      : action.op === 'delete' ? ['op', 'id', 'kind', 'nodeId'] : [];
+    if (!allowed.length || Object.keys(action).some(key => !allowed.includes(key))) protocolFail('FORBIDDEN', 'Invalid Coordinator Map action');
     const id = action.id || `NCC${digest(`${operationId}:${index}`).slice(0, 20)}`;
     if (action.op === 'create') {
       if (typeof action.parentId !== 'string' || !action.parentId || typeof action.title !== 'string' || !action.title.trim()) protocolFail('INVALID_ARGUMENT', 'Create needs parentId and title');
       return { type: 'create', parentId: action.parentId, ...(action.order === undefined ? {} : { order: action.order }), node: {
         id, title: action.title, purpose: action.purpose || '', kind: action.kind || 'module', state: action.state || 'untested', owns: action.owns || [],
       } };
+    }
+    if (action.op === 'delete') {
+      if (typeof action.id !== 'string' || !action.id) protocolFail('INVALID_ARGUMENT', 'Delete needs an id');
+      const kind = action.kind || 'node';
+      if (!['node', 'module', 'work', 'todo', 'bug'].includes(kind)) protocolFail('INVALID_ARGUMENT', 'Delete kind must be node, module, work, todo or bug');
+      if (['node', 'module', 'work'].includes(kind)) return { type: 'delete', id: action.id };
+      if (action.nodeId !== undefined && (typeof action.nodeId !== 'string' || !action.nodeId)) protocolFail('INVALID_ARGUMENT', 'nodeId must be a non-empty string');
+      return { type: 'delete-work-item', ...(action.nodeId ? { nodeId: action.nodeId } : {}), kind, itemId: action.id };
     }
     if (typeof action.id !== 'string' || !action.id) protocolFail('INVALID_ARGUMENT', 'Update and move need a node id');
     if (action.op === 'move') {

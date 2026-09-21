@@ -335,6 +335,29 @@ export function applyOperations(document, operations, actor, grants = []) {
       if (existing && !same(existing, op.bug)) throw new MapError('DUPLICATE_ID', 'Bug ID already exists', 409);
       if (!existing) list.push(copy(op.bug));
       resultIds.push(op.id || doc.root.id);
+    } else if (op.type === 'delete-work-item') {
+      if (!human && !coordinator) throw new MapError('FORBIDDEN', 'Only the workbench or Coordinator can delete TODO/Bug records', 403);
+      if (!['todo', 'bug'].includes(op.kind) || typeof op.itemId !== 'string' || !op.itemId || (op.nodeId !== undefined && (typeof op.nodeId !== 'string' || !op.nodeId))) {
+        throw new MapError('INVALID_OPERATION', 'Invalid work item deletion');
+      }
+      const field = `${op.kind}s`;
+      let owner = op.nodeId ? index.get(op.nodeId)?.node : null, ownerId = op.nodeId || '';
+      if (op.nodeId && !owner) throw new MapError('NOT_FOUND', `Node ${op.nodeId} is missing`, 404);
+      if (!owner) {
+        const matches = [...index.entries()].filter(([, entry]) => (entry.node[field] || []).some(item => item?.id === op.itemId));
+        if (matches.length > 1) throw new MapError('CONFLICT', `${op.kind} ${op.itemId} has multiple owners`, 409);
+        if (matches.length === 1) { ownerId = matches[0][0]; owner = matches[0][1].node; }
+      }
+      if (owner) {
+        const list = owner[field] || [], position = list.findIndex(item => item?.id === op.itemId);
+        if (position < 0) throw new MapError('NOT_FOUND', `${op.kind} ${op.itemId} is missing`, 404);
+        owner[field] = list.filter((_, current) => current !== position);
+        resultIds.push(ownerId);
+      } else if (op.kind === 'bug' && Array.isArray(doc.unassigned_bugs)) {
+        const position = doc.unassigned_bugs.findIndex(item => item?.id === op.itemId);
+        if (position < 0) throw new MapError('NOT_FOUND', `${op.kind} ${op.itemId} is missing`, 404);
+        doc.unassigned_bugs.splice(position, 1); resultIds.push(doc.root.id);
+      } else throw new MapError('NOT_FOUND', `${op.kind} ${op.itemId} is missing`, 404);
     } else if (op.type === 'update-bug') {
       if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '') || !['open', 'fixed', 'resolved', 'deferred', 'wontfix'].includes(op.bug.status)) throw new MapError('INVALID_BUG', 'Invalid bug status update');
       let found = null, owner = doc.root.id;
@@ -361,8 +384,14 @@ export function applyOperations(document, operations, actor, grants = []) {
         if (op.order !== undefined && (!Number.isSafeInteger(op.order) || op.order < 0 || op.order > children.length)) throw new MapError('INVALID_ORDER', 'Sibling position is outside the list');
         children.splice(op.order ?? children.length, 0, target.node);
       } else if (op.type === 'delete') {
-        if (!human || !target.parent) throw new MapError('FORBIDDEN', 'Only human can permanently remove a non-root node', 403);
+        if ((!human && !coordinator) || !target.parent) throw new MapError('FORBIDDEN', 'Only the workbench or Coordinator can remove a non-root node', 403);
+        const removed = new Set(entries(target.node).keys());
         target.parent[target.bucket] = target.parent[target.bucket].filter(x => x.id !== op.id);
+        if (Array.isArray(doc.flows)) doc.flows = doc.flows.filter(flow => !removed.has(flow.from) && !removed.has(flow.to));
+        for (const { node } of entries(doc.root).values()) for (const field of ['memories', 'ideas', 'todos', 'bugs']) {
+          for (const item of node[field] || []) if (Array.isArray(item.also)) item.also = item.also.filter(id => !removed.has(id));
+        }
+        for (const id of removed) resultIds.push(id);
       } else throw new MapError('INVALID_OPERATION', 'Unknown operation type');
       resultIds.push(op.id);
     }
