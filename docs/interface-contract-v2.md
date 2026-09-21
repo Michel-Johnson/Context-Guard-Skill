@@ -1,6 +1,10 @@
 # 接口规范 v2（精简草案）
 
+读者：**仓库开发 Agent**。本文在未随包的 `docs/` 里，安装后的产品角色默认拿不到。现行工作项**文件**格式以 [`fs-v2`](../references/design-current.md) 为准。传输层短枚举这次不改 JSON 行为。
+
 完整目标待验收，部分基础能力已实现（见下）。本版替代 draft-1 的消息分类；现有运行 API 保留。本地-cloud、云端agent-cloud、agent-本地及上下行模块保留。
+
+工作项文件与传输层：v2 文件没有延期状态；不需要修的 Bug **删除文件**（索引中消失），修不好用 `Unfixable`。传输层仍是 todo `pending/processing/done`、bug `open/resolved`，**不要**在 JSON 里发明 `deferred`。删除 = 不再出现在索引；不要把历史 `deferred`/`wontfix` 静默映射成 `open` 当未完成。Agent 打开模块时读哪套目录尚未拍板。
 
 ### 1.0 实现进度
 
