@@ -33,6 +33,7 @@ export const installedFiles = [
   "references/cloud-sync-interface.md",
   "references/cloud-deployment.md",
   "references/server-memory.md",
+  "references/design-current.md",
   "references/memory-filesystem-v2/README.md",
   "references/memory-filesystem-v2/Node_Module_Index.md",
   "references/memory-filesystem-v2/Node_Module_Index.en.md",
