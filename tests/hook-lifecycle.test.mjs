@@ -539,10 +539,11 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   await confirmBinding(project, session);
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
+  await seedHumanReview(project, session);
   await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
   const ctx = path.join(project, '.codex/context');
   await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
-  await startPlan(t, project, session);
+  await startPlan(t, project, session, ['src/'], { humanReview: false });
 
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
