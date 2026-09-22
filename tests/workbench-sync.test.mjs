@@ -15,7 +15,7 @@ import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '.
 import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
-import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate } from '../scripts/shared/map-model.mjs';
+import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
@@ -1287,6 +1287,21 @@ test('bad-case compatibility operations attach unassigned cases and resolve them
   const resolved = applyOperations(attached, [{ type: 'update-bug', bug: { id: 'B1', status: 'resolved' } }], agent).doc;
   assert.equal(resolved.unassigned_bugs[0].status, 'resolved');
   assert.throws(() => applyOperations(resolved, [{ type: 'update-bug', bug: { id: 'B9', status: 'resolved' } }], agent), { code: 'NOT_FOUND' });
+});
+
+test('bug status writes reject deferral and accept unfixable without reopening leftover deferred records', () => {
+  const f = { doc: { v: 1, root: { id: 'T0', title: 'Root', kind: 'module', state: 'dirty', children: [], bugs: [
+    { id: 'B1', title: '现行', status: 'open' },
+    { id: 'B2', title: '历史延期', status: 'deferred' },
+  ] } } };
+  assert.equal(isClosedBugStatus('fixed'), false);
+  assert.equal(isClosedBugStatus('deferred'), true);
+  assert.throws(() => applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'deferred' } }], agent), { code: 'INVALID_BUG' });
+  assert.throws(() => applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'wontfix' } }], agent), { code: 'INVALID_BUG' });
+  assert.throws(() => applyOperations(f.doc, [{ type: 'attach-bug', bug: { id: 'B3', title: '新延期', status: 'deferred' } }], agent), { code: 'INVALID_BUG' });
+  const closed = applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'unfixable' } }], agent).doc;
+  assert.equal(closed.root.bugs.find(item => item.id === 'B1').status, 'unfixable');
+  assert.equal(closed.root.bugs.find(item => item.id === 'B2').status, 'deferred');
 });
 
 test('projection retains legacy/manual content, includes state and bugs, detects pending versions', async () => {

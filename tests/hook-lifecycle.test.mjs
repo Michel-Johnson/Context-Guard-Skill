@@ -638,6 +638,10 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   assert.equal(map.root.children[0].bugs[0].sessions[0], session);
   const badEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
   assert.equal(badEvents[0].signal_id, badSignal);
+  const deferredStatus = spawnSync(python, [contextScript, 'record-bad-case', '--root', project, '--session', session,
+    '--title', '延期', '--phenomenon', '不得延期', '--status', 'deferred'], { cwd: project, encoding: 'utf8', windowsHide: true });
+  assert.notEqual(deferredStatus.status, 0);
+  assert.match(deferredStatus.stderr, /deferred|unfixable|invalid choice/i);
 
   const crashPrompt = hook('UserPromptSubmit', project, session, { turn_id: 'bad-crash-turn', prompt: '保存过程崩溃也必须恢复坏例' });
   const crashSignal = crashPrompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];

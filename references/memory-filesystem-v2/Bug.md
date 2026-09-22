@@ -12,7 +12,7 @@
 
 图片等二进制文件单独存储，只在本文挂引用链接。
 
-当前迁移生成器仍可能把历史 `deferred`/`wontfix` 投影成 `Open`；那是兼容缺口，不能据此重新开工，也不要把它们当成现行状态词。
+迁移生成器把历史 `deferred` 投影为 `Unfixable`，历史 `wontfix` 不生成文件。二者都不会变成 `Open`。
 
 归因轮次只使用 `Confirmed` 和 `Refuted`。新归因在本轮证据支持时写 `Confirmed`；后续轮次推翻后改为 `Refuted`，并补充 `RefutedBy` 和原因。
 

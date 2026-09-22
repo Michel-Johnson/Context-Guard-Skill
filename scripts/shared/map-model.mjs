@@ -1,5 +1,16 @@
 // Shared by the workbench and Node service. Unknown stored fields are retained.
 export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
+// Transport JSON stays open/fixed/resolved plus Unfixable as an end state.
+// `fixed` is agent-complete and still reviewable. Do not add deferred/wontfix as
+// live write values; leftover stored ones stay closed.
+export const WRITABLE_BUG_STATUSES = Object.freeze(['open', 'fixed', 'resolved', 'unfixable']);
+export const CLOSED_BUG_STATUSES = Object.freeze(['resolved', 'unfixable', 'dormant', 'deferred', 'wontfix']);
+export function isWritableBugStatus(status) {
+  return WRITABLE_BUG_STATUSES.includes(status);
+}
+export function isClosedBugStatus(status) {
+  return CLOSED_BUG_STATUSES.includes(status);
+}
 export class MapError extends Error {
   constructor(code, message, status = 400, details = {}) { super(message); Object.assign(this, { code, status, details }); }
 }
@@ -330,6 +341,9 @@ export function applyOperations(document, operations, actor, grants = []) {
     } else if (op.type === 'attach-bug') {
       // Compatibility operation only adds a bug stub; it cannot confirm or rewrite nodes.
       if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '')) throw new MapError('INVALID_BUG', 'Invalid bug');
+      if (op.bug.status !== undefined && !isWritableBugStatus(op.bug.status)) {
+        throw new MapError('INVALID_BUG', 'Bugs cannot be deferred; delete the record or close it as unfixable');
+      }
       const list = target ? (target.node.bugs ||= []) : (doc.unassigned_bugs ||= []);
       const existing = list.find(x => x.id === op.bug.id);
       if (existing && !same(existing, op.bug)) throw new MapError('DUPLICATE_ID', 'Bug ID already exists', 409);
@@ -359,7 +373,9 @@ export function applyOperations(document, operations, actor, grants = []) {
         doc.unassigned_bugs.splice(position, 1); resultIds.push(doc.root.id);
       } else throw new MapError('NOT_FOUND', `${op.kind} ${op.itemId} is missing`, 404);
     } else if (op.type === 'update-bug') {
-      if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '') || !['open', 'fixed', 'resolved', 'deferred', 'wontfix'].includes(op.bug.status)) throw new MapError('INVALID_BUG', 'Invalid bug status update');
+      if (!object(op.bug) || !/^B[0-9]+$/.test(op.bug.id || '') || !isWritableBugStatus(op.bug.status)) {
+        throw new MapError('INVALID_BUG', 'Bugs cannot be deferred; delete the record or close it as unfixable');
+      }
       let found = null, owner = doc.root.id;
       for (const [id, entry] of index) {
         found = (entry.node.bugs || []).find(item => item.id === op.bug.id);

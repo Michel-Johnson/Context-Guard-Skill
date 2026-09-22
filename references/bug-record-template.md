@@ -8,7 +8,7 @@ Workbench shows the title only.
 # {id} {title}
 
 - node: {homeNodeId}
-- status: open | fixed | deferred | wontfix
+- status: open | fixed | resolved | unfixable
 - 现象: one line
 - keys: search words, comma separated
 - fix: .codex/context/fixes/{id}.md
@@ -35,3 +35,5 @@ Workbench shows the title only.
 ```
 
 Unfixed how-to is `未修`. Code is repo-relative paths only.
+
+Do not write `deferred` or `wontfix`. If no fix is needed, delete the Bug file. If it cannot be fixed, use `unfixable`.

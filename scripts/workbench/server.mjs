@@ -29,7 +29,7 @@ import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
 import { fail as protocolFail, ProtocolError, validateMessage } from '../shared/protocol.mjs';
 import { syncPaths } from '../shared/sync-paths.mjs';
-import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
+import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, isClosedBugStatus } from '../shared/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
@@ -1043,7 +1043,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const todo = (node?.todos || []).find(item => item?.id === todoId);
             if (!node || (!bug && !todo) || (bugId && todoId)) throw new MapError('NOT_FOUND', 'Work item or owner node is missing', 404);
             if (!access.grants(sessionId, activeStore.doc).includes(nodeId)) throw new MapError('SESSION_SCOPE_REQUIRED', 'Authorize this node for the session before assigning work', 403);
-            if (bug && ['resolved', 'dormant', 'wontfix'].includes(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
+            if (bug && isClosedBugStatus(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
             if (todo?.status === 'done') throw new MapError('TODO_CLOSED', 'Completed TODOs cannot be assigned', 409);
             const message = bug ? bugSessionMessage(node, bug) : todoSessionMessage(node, todo);
             const payload = { sessionId, message, root: session.worktreeRoot || root, session, node: structuredClone(node) };

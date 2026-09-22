@@ -2,7 +2,7 @@
 
 读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
 
-- [ ] Filesystem v2 运行时闭环仍待验收：生成器、API/Hook 是否暴露 Markdown 投影、多轮持久化。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred`/`wontfix` 错投影为 `Open` 仍是缺口，不能据此重新开工。Todo/Idea 索引摘要仍截成 20 字、只重建 A1 等运行时限制照旧记录。
+- [ ] Filesystem v2 运行时闭环仍待验收：生成器、API/Hook 是否暴露 Markdown 投影、多轮持久化。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。Todo/Idea 索引摘要仍截成 20 字、只重建 A1 等运行时限制照旧记录。
 
 - [x] Coordinator 节点挂载拒绝按钮不再依赖浏览器原生 `prompt`，点击即提交稳定拒绝并通知模型重新提案；PR #287（`f4f3c79`）Required 全绿并部署，Cloud 浏览器回归覆盖真实拒绝请求。生产原审核卡已不再处于待审核状态，无法对同一提案重复拒绝。
 
