@@ -35,7 +35,7 @@
 | 本地总入口 | [package.json](../../package.json) 的 npm test | 安全、流程静态检查、Node 测试与包冒烟；完整浏览器另有入口 |
 | PR 门禁 | [ci.yml](../../.github/workflows/ci.yml) | Required 对各 needs 逐项要求 success；配置不是远端分支保护已生效的证明 |
 | 发布 | [npm-publish](../../.github/workflows/npm-publish.yml)、[runbook](../npm-release-runbook.md) | 稳定标签、Main 归属、制品校验、跨平台安装、发布后下载校验；不能从 CI 绿推断已发布 |
-| 安全 | [development-security](../development-security.md) | staged/history/CI/package 分层扫描，保留本地文件，不覆盖第三方 Hook |
+| 安全 | [检查怎样算通过](../ci.md#安全) | staged/history/CI/package 分层扫描，保留本地文件，不覆盖第三方 Hook |
 | 权威记忆 | [server-memory](../../references/server-memory.md) | 私有服务器权威、Session 隔离、版本/CAS/回执；Agent 不获得人类 Main 编辑权限 |
 | 未完成验收 | [CI_todo](../../CI_todo.md) | 最新专项状态优先；存在历史和被替代记录，勾选不能代表所有宿主当前有效 |
 | 角色编排 | [roles](../../roles.md)、[文档入口](../README.md) | 角色需明确，不因阅读角色设计获得权限，不将全部设计当作已部署能力 |
@@ -64,7 +64,7 @@
 | B05 | 每 PR 现行完整 Required；没有基于风险降低远端门禁的已实现机制 | 文档建议被误读为允许跳过门禁 | 分级只决定设计深度、开发迭代与附加验收；不降低现行 Required 和 npm test 要求 |
 | B06 | RULE 对合并后安装与清理 temp 用统一措辞；有只改仓库文档或需保留未完成实验的情况 | 无关全局安装、误删其他工作树/证据 | 提出有范围证据的 N/A 和保留策略，审批前不擅自删除、升级或豁免安全 |
 | B07 | npm runbook 写普通分支 push 触发 CI；当前 ci.yml 的 push.branches 只包含 main，PR 到 main 另触发 | 普通分支推送被误报已经有 CI | 流程以当前 workflow 为准，修正说明；任何触发变更单独审阅 |
-| B08 | development-security 仍要求在 Python 中登记测试白名单；现有 branch_guard 读取暂存区 manifest | 维护第二份清单并不能改变真实批准集合 | 对齐已有测试治理，文档只引用唯一 manifest，不改工具 |
+| B08 | [检查怎样算通过](../ci.md#安全) 仍要求不在 Python 中另登记测试白名单；现有 branch_guard 读取暂存区 manifest | 维护第二份清单并不能改变真实批准集合 | 对齐已有测试治理，文档只引用唯一 manifest，不改工具 |
 
 这些发现是静态证据支持的边界，B02/B03 不代表已经发现当前测试漏执行或恶意代码。阶段六应对关键边界做隔离反例验证，并保留失败证据。
 
