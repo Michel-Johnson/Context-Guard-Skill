@@ -1,9 +1,10 @@
 // Shared by the workbench and Node service. Unknown stored fields are retained.
 export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
 // Transport JSON stays open/fixed/resolved plus Unfixable as an end state.
-// Do not add deferred/wontfix as live write values; leftover stored ones stay closed.
+// `fixed` is agent-complete and still reviewable. Do not add deferred/wontfix as
+// live write values; leftover stored ones stay closed.
 export const WRITABLE_BUG_STATUSES = Object.freeze(['open', 'fixed', 'resolved', 'unfixable']);
-export const CLOSED_BUG_STATUSES = Object.freeze(['resolved', 'unfixable', 'dormant', 'deferred', 'wontfix', 'fixed']);
+export const CLOSED_BUG_STATUSES = Object.freeze(['resolved', 'unfixable', 'dormant', 'deferred', 'wontfix']);
 export function isWritableBugStatus(status) {
   return WRITABLE_BUG_STATUSES.includes(status);
 }
