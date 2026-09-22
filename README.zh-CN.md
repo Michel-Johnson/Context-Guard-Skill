@@ -10,13 +10,12 @@
 
 Context Guard 把 **项目** 当成工作场所：
 
-1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。
-2. **隔离的 Session** — 每次 Agent 运行写自己的 Session Map。对话不是 Main。
-3. **在工作台里由人确认** — 普通提案、授权和发布发生在已鉴权的页面，而不是聊天附和。
-4. **显式授权** — Agent 只读被允许的切片。灰色卡片不在范围内。
-5. **发布进 Main** — 只有经过验证的工作进入已提交的 main 基线。Session 草稿仍是草稿。
+1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design-current.md)。
+2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。人确认任务并挂载节点后，自动新建执行 Session 并绑到该 TODO/Bug。
+3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
+4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
 
-它作为 Skill 和生命周期 Hook 安装到 **Codex**、**Cursor** 和 **Claude**。
+它作为 Skill 安装到 **Codex**、**Cursor** 和 **Claude**。这一轮不开发新 Hook。
 
 [仓库文档与文件布局](docs/README.md) · [一页 Skill](SKILL.md)
 
@@ -26,8 +25,8 @@ Context Guard 把 **项目** 当成工作场所：
 | --- | --- |
 | 历史在线程里 | 结构在 Map 上 |
 | 下一轮从零开始 | 下一轮打开同一张 Map |
-| 聊天里说「看起来可以」 | 人在工作台确认 |
-| Agent 看见什么取决于粘贴了什么 | Agent 看见被授权的节点 |
+| 随便一个聊天里说「看起来可以」 | 人跟 Coordinator 确认 |
+| Agent 看见什么取决于粘贴了什么 | 执行 Agent 绑定到对应 TODO/Bug |
 | 记忆是对文件的检索 | 记忆是带版本与发布的项目状态 |
 
 这不是又一份 prompt 包、RAG 目录，或「记住这个」插件。它是软件工作的 **人–Agent 操作环**：定位节点、确认意图、在 Session 中执行、验证，然后发布。
@@ -36,7 +35,7 @@ Coordinator / Developer / Tester 的角色提示词用于拆开规划、实现�
 
 ## 看工作台
 
-人在工作台里看 Map。Agent 读小范围已授权索引，不操作画布。
+人在工作台里看 Map。Coordinator 可以定位、游览和改结构。干活的 Session 不对人说话。
 
 **云端：** 配置 Cloud 后，它是唯一的人类工作台前端。本地服务负责同步和宿主投递。私有部署需要浏览器登录。设备每个项目登录一次，新 Session 复用该连接。
 
@@ -68,7 +67,7 @@ Coordinator / Developer / Tester 的角色提示词用于拆开规划、实现�
 
 ### 授权模式
 
-「授权模式」标出这次会话 Agent 能读哪一段。灰色卡片未授权。
+「授权模式」可以标切片。灰卡可见范围是以后的事，不是当前默认。新 Session 默认看见自己这张 Session Map。
 
 ![授权模式](docs/shots/workbench/auth-mode.png)
 

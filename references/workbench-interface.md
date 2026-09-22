@@ -1,5 +1,7 @@
 # Workbench / Agent interface (local Node protocol 2)
 
+读者：产品角色 Agent（本机工作台 / Session 协议）。仓库开发 Agent 改实现时也读本文。当前设计版本 [`fs-v2`](design-current.md)。
+
 This reference describes the local workbench and isolated Git Session caches.
 `references/server-memory.md` defines the private memory service, publication and
 migration boundary. An implemented client is not evidence of deployment: do not
@@ -101,25 +103,23 @@ is not safe to proceed by reading a stale card. A read describes that moment, no
 lock held throughout the model's reasoning. Always pass its `version` when submitting
 the next change.
 
-## Developer Main structure writes
+## Coordinator Main structure writes
 
-A Cloud operator may explicitly allowlist a trusted project client ID in the
-repository's private `developerMainWriteClientIds` configuration. That client may
-then maintain only the authoritative Main node structure without impersonating a
-human or binding a lifecycle Session:
+The current non-human writer of Main **structure** is Coordinator (`edit_map` /
+`mapWrite`). Drafts may exist first; they enter Main only through the existing
+gate. Execution Agents still cannot write Main.
 
-```sh
-context-guard map main read --root "/path/to/project"
-context-guard map main apply --root "/path/to/project" --input request.json
-```
+A leftover allowlisted `developerMainWriteClientIds` / `map main apply` path may
+still exist in runtime. It is **not** the current product exception. Do not
+document it as the way Agents maintain Main.
 
 The request contains `operationId`, the `baseVersion` returned by `main read`, and
 v2 node `changes`. It may create nodes or update their title, purpose, kind, state,
 owns, parent and order. Delete, access, proposal state, tasks, Bugs, memories,
 relations and document metadata are rejected. Every accepted change keeps the
-usual optimistic version check and idempotent receipt, and history records the
-`developer` actor plus its allowlisted client ID. The allowlist is absent by
-default, project-scoped, and stored outside source control.
+usual optimistic version check and idempotent receipt. Runtime may still record a
+legacy `developer` actor if that leftover path is invoked; do not treat it as
+current product law. The allowlist is absent by default.
 
 ## Submit operations
 
@@ -455,7 +455,7 @@ Unknown shell/script scopes are explicitly marked unverified, never described
 as checked. Tool hooks do not run cloud synchronization per file. Read-only
 inspection and standalone Context Guard recovery commands remain available.
 
-After testing, archive every changed file with `archive-session --files ...
+After testing, **do not archive until the human has reviewed**. After that review, archive every changed file with `archive-session --files ...
 --input <archive.json>`. In addition to optional assignments/proposal, supply:
 
 ```json
@@ -472,8 +472,8 @@ These are Agent judgments: the Hook checks that they exist, not their truth.
 No-files plans still append the summary/evidence to the authorized plan nodes.
 Unclassified changed files cannot yield a successful plan archive receipt.
 
-For ordinary local work, run `plan-finish --root ... --session ...` after the
-archive. For a Cloud reviewed task, keep the archived Plan active while you
+For ordinary local work, run `plan-finish --root ... --session ...` only after
+human review and the archive. For a Cloud reviewed task, keep the archived Plan active while you
 commit the exact files and run `map task handoff`; run `plan-finish` only after
 the handoff receipt succeeds. The finish command checks the successful archive,
 file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sync
