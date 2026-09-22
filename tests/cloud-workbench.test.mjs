@@ -315,7 +315,7 @@ test('one cloud process serves the private Main and Session memory API', async t
   assert.equal(cloudMap.body.document, null, 'private Session memory must not overwrite the public/Main map');
 });
 
-test('allowlisted developer clients can patch Main structure without human identity', async t => {
+test('allowlisted developer clients cannot patch Main structure; Coordinator remains the writer', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-developer-main-'));
   const memoryDir = path.join(dataDir, 'memory'), projectId = 'context-guard';
   const memoryConfig = {
@@ -349,7 +349,7 @@ test('allowlisted developer clients can patch Main structure without human ident
   };
   const developer = await open('developer-client');
   assert.equal(developer.response.status, 200);
-  assert.ok(developer.body.data.capabilities.includes('developer-main-structure'));
+  assert.equal(developer.body.data.capabilities.includes('developer-main-structure'), false);
   const send = (credential, message) => request(service.url, '/api/v2/messages', { method: 'POST', headers: {
     Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json',
   }, body: JSON.stringify(message) });
@@ -357,24 +357,15 @@ test('allowlisted developer clients can patch Main structure without human ident
     op: 'create', kind: 'node', id: 'content', fields: { parentId: 'T0', title: '内容', purpose: '维护文章', kind: 'module', state: 'untested', owns: ['source/'] },
   }] } };
   const created = await send(developer.credential, patch);
-  assert.equal(created.response.status, 200, JSON.stringify(created.body));
-  assert.equal(created.body.data.committed, true);
-  assert.deepEqual(created.body.data.nodeIds, ['content']);
-  assert.deepEqual((await send(developer.credential, patch)).body, created.body, 'same request id returns the durable receipt');
+  assert.equal(created.response.status, 403, JSON.stringify(created.body));
+  assert.equal(created.body.error.code, 'FORBIDDEN');
   const memory = await request(service.url, `/v1/projects/${projectId}/main`, { headers: { Authorization: 'Bearer project-memory-token' } });
-  assert.equal(memory.body.snapshot.memory.map.root.children[0].title, '内容');
-  const history = JSON.parse(await fs.readFile(path.join(memoryProjectDir, 'memory.json'), 'utf8')).history;
-  assert.equal(history.at(-1).actor.kind, 'developer');
-  assert.equal(history.at(-1).actor.clientId, 'developer-client');
+  assert.equal(memory.body.snapshot.memory.map.root.children?.length || 0, 0);
 
   const stranger = await open('stranger-client');
   assert.equal(stranger.body.data.capabilities.includes('developer-main-structure'), false);
-  const denied = await send(stranger.credential, { ...patch, id: 'stranger-create', payload: { ...patch.payload, baseVersion: created.body.data.version } });
+  const denied = await send(stranger.credential, { ...patch, id: 'stranger-create' });
   assert.equal(denied.response.status, 403); assert.equal(denied.body.error.code, 'FORBIDDEN');
-  const deletion = await send(developer.credential, { v: 2, id: 'developer-delete', type: 'main.structure.patch', payload: {
-    baseVersion: created.body.data.version, changes: [{ op: 'delete', kind: 'node', id: 'content' }],
-  } });
-  assert.equal(deletion.response.status, 403); assert.equal(deletion.body.error.code, 'FORBIDDEN');
 });
 
 test('verified Session publication needs no exposed admin token and the authenticated Main workbench persists human edits', async t => {

@@ -4,7 +4,7 @@
   "interfaces": [
     {
       "type": "main.structure.patch",
-      "purpose": "由显式授权的开发者客户端直接维护 Main 节点结构",
+      "purpose": "遗留协议类型；运行时拒绝。非人写 Main 结构只走 Coordinator",
       "payload": {
         "baseVersion": "main-v1",
         "changes": [
@@ -26,10 +26,12 @@
         ]
       },
       "result": {
-        "committed": true,
-        "version": "main-v2"
+        "error": {
+          "code": "FORBIDDEN",
+          "message": "Only Coordinator can write Main structure"
+        }
       },
-      "rule": "仅服务器配置 developerMainWriteClientIds 中显式列出的项目客户端可用；只允许节点创建、更新、改名和移动，禁止删除、权限、任务、Bug、记忆和文档元数据修改。必须携带已读取的 Main 版本与稳定请求 ID，结果以 developer 身份写入审计记录。",
+      "rule": "非人写 Main 结构只有 Coordinator。developerMainWriteClientIds 不是现行写路径；main.structure.patch 仍是合法协议消息，运行时一律 FORBIDDEN。人仍可通过工作台改 Main TODO。",
       "parents": [
         "N460"
       ]

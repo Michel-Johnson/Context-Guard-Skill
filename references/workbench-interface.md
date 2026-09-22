@@ -109,17 +109,12 @@ The current non-human writer of Main **structure** is Coordinator (`edit_map` /
 `mapWrite`). Drafts may exist first; they enter Main only through the existing
 gate. Execution Agents still cannot write Main.
 
-A leftover allowlisted `developerMainWriteClientIds` / `map main apply` path may
-still exist in runtime. It is **not** the current product exception. Do not
-document it as the way Agents maintain Main.
+Humans can still edit Main TODOs and comments through the workbench. That is not
+a developer-client structure write.
 
-The request contains `operationId`, the `baseVersion` returned by `main read`, and
-v2 node `changes`. It may create nodes or update their title, purpose, kind, state,
-owns, parent and order. Delete, access, proposal state, tasks, Bugs, memories,
-relations and document metadata are rejected. Every accepted change keeps the
-usual optimistic version check and idempotent receipt. Runtime may still record a
-legacy `developer` actor if that leftover path is invoked; do not treat it as
-current product law. The allowlist is absent by default.
+`developerMainWriteClientIds` is leftover config. It does not grant a live write
+path. `map main apply` and `main.structure.patch` refuse with `FORBIDDEN`. Do not
+treat an allowlisted developer client as a Coordinator substitute.
 
 ## Submit operations
 
