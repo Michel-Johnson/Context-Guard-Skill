@@ -319,7 +319,9 @@ test('Cloud item conversations have separate messages and survive restart withou
   const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
   await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
   const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
-    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: { enabled: true, providerFile, bindings: {} } },
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'],
+    } },
   } };
   const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
@@ -327,6 +329,7 @@ test('Cloud item conversations have separate messages and survive restart withou
     id: 'T0', title: 'Lab', children: [], todos: [{ id: 'TD1', title: 'First' }], bugs: [{ id: 'B1', title: 'Second' }],
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
   const options = { dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
     coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Response' }] }) }),
   };
@@ -338,8 +341,20 @@ test('Cloud item conversations have separate messages and survive restart withou
     assert.ok(response.ok, await response.clone().text()); return response.json();
   };
   server = await startCloudServer(options);
+  const login = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/lab', clientId: 'device', password: 'synthetic-password' },
+  }) });
+  assert.equal(login.status, 200);
+  const bound = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.headers.get('x-context-guard-credential')}` }, body: JSON.stringify({
+    v: 2, id: 'bind-template', type: 'session.bind', payload: { sessionId: 'template', worktreeId: 'template-tree', agentId: 'template-agent', expectedBindingVersion: '' },
+  }) });
+  assert.equal(bound.status, 200, await bound.clone().text());
   const a = (await call('/conversations', { nodeId: 'T0', kind: 'todo', itemId: 'TD1' })).id;
   const b = (await call('/conversations', { nodeId: 'T0', kind: 'bug', itemId: 'B1' })).id;
+  const mounted = await readMemoryView(memoryConfig, projectId);
+  const todoSession = mounted.main.memory.map.root.todos[0].sessions[0];
+  const bugSession = mounted.main.memory.map.root.bugs[0].sessions[0];
+  assert.ok(todoSession && bugSession && todoSession !== bugSession && todoSession !== 'template');
   await call('?conversation=legacy', { id: 'legacy', text: 'Old project discussion' });
   await call('?conversation=' + a, { id: 'same-id', text: 'Only first item' });
   await call('?conversation=' + b, { id: 'same-id', text: 'Only second item' });
@@ -768,7 +783,9 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
   await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
   const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
-    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: { enabled: true, mapWrite: true, providerFile, bindings: {} } },
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, mapWrite: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'],
+    } },
   } };
   const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
@@ -777,6 +794,7 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
   let phase = 'edit', step = 0, latestVersion = 'v1', todoId = '', childId = '';
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
     coordinatorModelFactory: () => ({ next: async () => {
       step++;
@@ -814,6 +832,15 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
     throw new Error('Coordinator remained busy');
   };
   const wait = async () => { for (let i = 0; i < 100; i++) { const state = await call('GET'); if (state.status === 'waiting-for-user') return state; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Coordinator did not finish'); };
+  const login = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/lab', clientId: 'device', password: 'synthetic-password' },
+  }) });
+  assert.equal(login.status, 200);
+  const deviceHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${login.headers.get('x-context-guard-credential')}` };
+  const bindTemplate = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: deviceHeaders, body: JSON.stringify({
+    v: 2, id: 'bind-template', type: 'session.bind', payload: { sessionId: 'template', worktreeId: 'template-tree', agentId: 'template-agent', expectedBindingVersion: '' },
+  }) });
+  assert.equal(bindTemplate.status, 200, await bindTemplate.clone().text());
   await submit({ id: 'edit-turn', text: '新增阅读节点' });
   let state = await wait(), memory = await readMemoryView(memoryConfig, projectId);
   assert.equal(memory.main.memory.map.root.children[0].title, '阅读');
@@ -822,9 +849,14 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   latestVersion = memory.main.version; phase = 'mount';
   await submit({ id: 'mount-turn', text: '挂载这个需求' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
   assert.equal(memory.main.memory.map.root.todos[0].title, '提升阅读体验');
+  assert.equal(memory.main.memory.map.root.todos[0].sessions.length, 1);
+  assert.notEqual(memory.main.memory.map.root.todos[0].sessions[0], 'template');
   const mounted = state.messages.findLast(message => message.actions)?.actions[0];
   assert.equal(mounted.kind, 'conversation-mounted');
+  assert.equal(mounted.executionSessionId, memory.main.memory.map.root.todos[0].sessions[0]);
   assert.match(mounted.conversationId, /^item-/);
+  assert.equal((await call('GET')).projectTasks.length, 0);
+  assert.equal((await call('GET')).sessionCreations.filter(item => item.sessionId === mounted.executionSessionId).length, 1);
   const continuedResponse = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator?conversation=${mounted.conversationId}`, {
     headers: { Authorization: 'Bearer test-browser' },
   });
@@ -838,6 +870,141 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   assert.deepEqual(memory.main.memory.map.root.children, []);
   assert.equal(state.messages.findLast(message => message.actions)?.actions[0].kind, 'map-action');
 });
+
+test('Mounting a TODO or Bug binds its execution Session before brief approval', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-session-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, mapWrite: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'],
+    } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  const root = { id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [
+    { id: 'TD-local', title: '本地事项', desc: '从工作台挂上 Coordinator', status: 'pending', sessions: [] },
+    { id: 'TD-done', title: '已完成', desc: '不再开工', status: 'done', sessions: [] },
+  ], bugs: [
+    { id: 'B900', title: '暂缓缺陷', desc: '延期记录仍在', status: 'deferred', sessions: [] },
+  ], dormant: [], files: [], owns: [], children: [], proposal: 'accepted' };
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: {
+    v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root,
+  }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  let mode = 'idle', mainVersion = 'v1';
+  const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
+  server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/repo' }] },
+    coordinatorModelFactory: () => ({ next: async () => {
+      const current = mode;
+      if (current !== 'idle') mode = 'idle';
+      if (current === 'prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task', input: {
+        taskId, text: '从工作台挂上 Coordinator', acceptance: '事项上能看到绑定的 Session', nodeIds: ['T0'], mainVersion,
+      } }] };
+      if (current === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
+        mainVersion, nodeId: 'T0', kind: 'idea', title: '先记一笔', description: '想法不需要执行 Session',
+      } }] };
+      if (current === 'bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-bug', name: 'mount_conversation', input: {
+        mainVersion, nodeId: 'T0', kind: 'bug', title: '挂载时就绑定', description: '缺陷一挂上就有执行 Session',
+      } }] };
+      return { stop: 'end_turn', content: [{ type: 'text', text: '好' }] };
+    } }),
+  });
+  const headers = { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' };
+  const post = async (url, value) => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(value) });
+      const result = await response.json();
+      if (response.status < 300) return result;
+      if (result.error?.code !== 'COORDINATOR_BUSY') assert.fail(JSON.stringify(result));
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.fail('Coordinator remained busy');
+  };
+  const login = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    v: 2, id: 'login', type: 'auth.open', payload: { repository: 'https://github.com/example/repo', clientId: 'device', password: 'synthetic-password' },
+  }) });
+  assert.equal(login.status, 200);
+  const deviceHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${login.headers.get('x-context-guard-credential')}` };
+  const deviceMessage = async value => {
+    const response = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: deviceHeaders, body: JSON.stringify({ v: 2, ...value }) });
+    const result = await response.json();
+    assert.equal(response.status < 300, true, JSON.stringify(result));
+    return result;
+  };
+  await deviceMessage({ id: 'bind-template', type: 'session.bind', payload: { sessionId: 'template', worktreeId: 'template-tree', agentId: 'template-agent', expectedBindingVersion: '' } });
+  await deviceMessage({ id: 'heartbeat-template', type: 'sync.heartbeat', payload: { sessions: [{ id: 'template', generation: 1, ackedSeq: 0, execution: { status: 'stopped', at: new Date().toISOString() } }] } });
+  const workbench = `${server.url}/api/workbench/projects/${projectId}`;
+  const opened = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-local' });
+  const again = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-local' });
+  assert.equal(again.id, opened.id);
+  await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-done' });
+  await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'bug', itemId: 'B900' });
+  let memory = await readMemoryView(memoryConfig, projectId);
+  const local = memory.main.memory.map.root.todos.find(item => item.id === 'TD-local');
+  const done = memory.main.memory.map.root.todos.find(item => item.id === 'TD-done');
+  const deferred = memory.main.memory.map.root.bugs.find(item => item.id === 'B900');
+  assert.equal(local.sessions.length, 1);
+  assert.notEqual(local.sessions[0], 'template');
+  assert.deepEqual(done.sessions, []);
+  assert.equal(deferred.status, 'deferred');
+  assert.deepEqual(deferred.sessions, []);
+  const itemEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(opened.id)}`;
+  const itemState = async () => (await fetch(itemEndpoint, { headers })).json();
+  const beforeApproval = await itemState();
+  assert.equal(beforeApproval.projectTasks.length, 0);
+  assert.equal(beforeApproval.sessionCreations.filter(item => item.sessionId === local.sessions[0]).length, 1);
+  mainVersion = memory.main.version;
+  mode = 'prepare';
+  await post(itemEndpoint, { id: 'prepare-local', text: '准备这个事项' });
+  const poll = async predicate => {
+    for (let i = 0; i < 200; i++) { const state = await itemState(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
+    assert.fail('Coordinator state did not advance');
+  };
+  const ready = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === taskId));
+  assert.equal(ready.sessionCreations.length, 1);
+  assert.equal(ready.projectTasks[0].stage, 'brief');
+  assert.equal(ready.projectTasks[0].sessionId, undefined);
+  const approve = { id: 'approve-local', proposalId: ready.approvals.find(item => item.taskId === taskId).id, decision: 'approved', reason: '可以做' };
+  await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(opened.id)}`, approve);
+  await deviceMessage({ id: 'bind-fresh', type: 'session.bind', payload: { sessionId: local.sessions[0], worktreeId: 'fresh-tree', agentId: local.sessions[0], expectedBindingVersion: '' } });
+  const dispatched = await poll(state => state.projectTasks?.some(task => task.stage === 'dispatched'));
+  assert.equal(dispatched.projectTasks[0].sessionId, local.sessions[0]);
+  assert.equal(dispatched.sessionCreations.length, 1);
+  memory = await readMemoryView(memoryConfig, projectId);
+  mainVersion = memory.main.version;
+  const legacy = `${workbench}/api/coordinator`;
+  const waitMounted = async predicate => {
+    for (let i = 0; i < 100; i++) {
+      const state = await (await fetch(legacy, { headers })).json();
+      if (state.status === 'error') assert.fail(JSON.stringify(state.error));
+      const current = await readMemoryView(memoryConfig, projectId);
+      if (predicate(current) && state.status === 'waiting-for-user' && !state.activeTurnId) return current;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.fail('mount did not land');
+  };
+  mode = 'idea';
+  await post(legacy, { id: 'mount-idea', text: '记一个想法' });
+  memory = await waitMounted(current => current.main.memory.map.root.ideas?.[0]?.text === '先记一笔');
+  assert.equal(memory.main.memory.map.root.ideas[0].sessions, undefined);
+  assert.equal((await itemState()).sessionCreations.length, 1);
+  mainVersion = memory.main.version;
+  mode = 'bug';
+  await post(legacy, { id: 'mount-bug', text: '挂一个缺陷' });
+  memory = await waitMounted(current => current.main.memory.map.root.bugs?.some(item => item.title === '挂载时就绑定'));
+  const mountedBug = memory.main.memory.map.root.bugs.find(item => item.title === '挂载时就绑定');
+  assert.equal(mountedBug.sessions.length, 1);
+  assert.notEqual(mountedBug.sessions[0], local.sessions[0]);
+  assert.equal(memory.main.memory.map.root.bugs.find(item => item.id === 'B900').status, 'deferred');
+  const afterBug = await itemState();
+  assert.equal(afterBug.sessionCreations.length, 2);
+  assert.equal(afterBug.sessionCreations.filter(item => item.sessionId === local.sessions[0]).length, 1);
+});
+
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
   const names = [];
   const execute = createCoordinatorExecutor({ readReference: async name => { names.push(name); return { name }; } });
