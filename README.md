@@ -11,7 +11,7 @@ Most tools still treat *chat* as the workplace. The thread is the memory, the ap
 Context Guard treats the **project** as the workplace:
 
 1. **A shared Map** — modules, responsibilities, bugs, todos, and verification live on one durable structure. Current storage law is [`fs-v2`](references/design-current.md).
-2. **Isolated Sessions** — each execution run writes its own Session. A chat is not Main. After the human confirms a task and mounts a node, a new execution Session is created and bound to that TODO or Bug.
+2. **Isolated Sessions** — each execution run writes its own Session. A chat is not Main. When the user mounts the Coordinator onto a TODO or Bug, a new execution Session is created and bound to that item. Approving the brief still gates dispatch.
 3. **The human talks to Coordinator** — Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator. Confirmation and “go implement this” happen there. Execution Sessions do not talk to the human. Grey-card visibility slicing is later work, not the current default.
 4. **Publication into Main** — only reviewed work enters the committed-main baseline. Session drafts stay drafts until the gate. Humans may edit Main TODOs directly.
 

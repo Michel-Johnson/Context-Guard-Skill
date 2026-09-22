@@ -11,7 +11,7 @@
 Context Guard 把 **项目** 当成工作场所：
 
 1. **一张共享 Map** — 模块、职责、Bug、待办和验证落在同一份耐久结构上。现行存储法是 [`fs-v2`](references/design-current.md)。
-2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。人确认任务并挂载节点后，自动新建执行 Session 并绑到该 TODO/Bug。
+2. **隔离的 Session** — 每次执行写自己的 Session。对话不是 Main。用户把 Coordinator 挂到 TODO 或 Bug 上时，就自动新建执行 Session 并绑定。需求批准后才派发。
 3. **人只跟 Coordinator 说话** — Cloud Coordinator、本地工作台 Coordinator，或 Codex Session 当 Coordinator。确认和「去做」发生在那里。干活的 Session 不对人说。灰卡切片是以后的事，不是当前默认。
 4. **发布进 Main** — 人审核过的工作才进已提交的 main 基线。Session 草稿仍是草稿，直到过门禁。人可以直接改 Main 上的 TODO。
 

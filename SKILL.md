@@ -9,7 +9,7 @@ description: "Keep folder-scoped project memory: sessions, bugs, tasks, and the 
 
 当前设计版本：[`fs-v2`](references/design-current.md)。
 
-Human–agent project memory for Codex, Cursor, and Claude. The human talks to a **Coordinator** (Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator). Execution Sessions do not talk to the human. After the human confirms a task and mounts a node, the product automatically creates an execution Session bound to that TODO or Bug. Confirmation and “go implement this” happen in any Coordinator-identity conversation. Do not develop new Hooks in this round (including `SessionEnd`).
+Human–agent project memory for Codex, Cursor, and Claude. The human talks to a **Coordinator** (Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator). Execution Sessions do not talk to the human. When the user mounts the Coordinator onto a TODO or Bug, the product automatically creates an execution Session and binds it to that item. Approving the brief still gates dispatch. Confirmation and “go implement this” happen in any Coordinator-identity conversation. Do not develop new Hooks in this round (including `SessionEnd`).
 
 ## When to use
 
