@@ -22,7 +22,11 @@
     "tests/test-manifest.json",
     "RULE.md",
     "docs/engineering/README.md",
-    "docs/test-governance.md"
+    "docs/engineering/automation.md",
+    "docs/test-governance.md",
+    "docs/development-security.md",
+    "docs/workbench-ci.md",
+    "docs/client-ci.md"
   ],
   "rules": [
     {

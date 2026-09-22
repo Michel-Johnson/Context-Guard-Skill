@@ -4,7 +4,7 @@ The `CI` workflow runs on branch/tag pushes and pull requests targeting `main`.
 Pull requests always run security and deterministic impact selection; the selector
 uses the merge-base diff and `.github/ci-impact.json` to run only relevant
 functional, package, installation, minimum-runtime, browser, client and site jobs.
-Unknown paths and CI/governance changes fail closed to the complete workflow.
+Unknown paths, CI config, and the pass-rule docs (`development-security.md`, `workbench-ci.md`, `client-ci.md`, `engineering/automation.md`, `test-governance.md`) fail closed to the complete workflow.
 Pushes to `main` and tags always run every job as the result listener/canary.
 
 `Required` compares every job's actual result with the selector plan: selected
