@@ -1159,11 +1159,18 @@ test('archive-session and plan-finish refuse until a human review of that work i
   await confirmBinding(project, session);
   hook('SessionStart', project, session, { is_background_agent: true });
   await installMap(project);
-  await fs.writeFile(path.join(project, 'src/scratch.txt'), 'work');
   await startPlan(t, project, session, ['src/'], { humanReview: false });
+  await fs.writeFile(path.join(project, 'src/scratch.txt'), 'changed\n');
+  hook('PostToolUse', project, session, {
+    tool_name: 'apply_patch', tool_use_id: 'review-gate', tool_input: { path: path.join(project, 'src/scratch.txt') },
+  });
   assert.throws(() => archivePlan(project, session, 'src/scratch.txt'), /Human review of this work is required/);
   assert.throws(() => finishPlan(project, session), /Archive this plan|Human review of this work is required/);
   await seedHumanReview(project, session);
+  const inbox = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'inbox', '--root', project, '--session', session, '--start']).stdout);
+  if (inbox.receipt) {
+    run(process.execPath, [workbenchCli, 'map', 'ack', '--root', project, '--session', session, '--receipt', String(inbox.receipt)]);
+  }
   archivePlan(project, session, 'src/scratch.txt');
   finishPlan(project, session);
 });
