@@ -29,10 +29,10 @@ export const coordinatorTools = [
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
   definition('resume_task', 'Resume an interrupted, incomplete task with its original Session, Plan and evidence; the system may invoke this automatically and never creates a new task.', { ...task, reason: string }),
   definition('complete_task', 'After human acceptance, request closure. Normal development tasks require a merged GitHub PR and published Session memory version; explicit read-only verification tasks use gitReceiptRef="verification-only" and their CI ref as archiveReceiptRef.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
-  definition('edit_map', 'Create, rename, update or move Main nodes through the configured Coordinator identity. This never deletes nodes or edits records.', {
+  definition('edit_map', 'Create, rename, update, move or delete Main nodes and TODO/Bug records through the configured Coordinator identity. Use the current Main version; changes are atomic, idempotent and audited.', {
     mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
-      op: { enum: ['create', 'update', 'move'] }, id: string, parentId: string, order: { type: 'integer', minimum: 0 },
-      title: string, purpose: string, kind: { enum: ['module', 'work'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
+      op: { enum: ['create', 'update', 'move', 'delete'] }, id: string, parentId: string, nodeId: string, order: { type: 'integer', minimum: 0 },
+      title: string, purpose: string, kind: { enum: ['module', 'work', 'node', 'todo', 'bug'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
     }, required: ['op'], additionalProperties: false } },
   }),
   definition('mount_conversation', 'Attach the current intent to a Main TODO, Bug or Idea and return its durable conversation.', {

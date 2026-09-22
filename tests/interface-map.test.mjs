@@ -59,14 +59,21 @@ test('developer actor directly maintains node structure without gaining human-on
   assert.throws(() => applyOperations(updated, [{ type: 'update', id: 'A', fields: { access: [] } }], developer), { code: 'FORBIDDEN' });
 });
 
-test('coordinator actor can apply server-restricted structure and still cannot delete or change access', () => {
+test('coordinator actor can apply full Main structure and work-item changes without changing access', () => {
   const doc = { v: 1, project: 'test', root: { id: 'T0', title: 'root', kind: 'module', state: 'dirty', children: [] } };
   const actor = { kind: 'coordinator', sessionId: '', agentId: 'coordinator:project' };
   const created = applyOperations(doc, [{ type: 'create', parentId: 'T0', node: {
     id: 'C1', title: 'Content', kind: 'module', state: 'untested', purpose: 'Content', owns: ['content/'],
   } }], actor).doc;
   assert.equal(created.root.children.at(-1).origin, 'coordinator');
-  assert.throws(() => applyOperations(created, [{ type: 'delete', id: 'C1' }], actor), { code: 'FORBIDDEN' });
+  const withItems = applyOperations(created, [{ type: 'update', id: 'C1', fields: { todos: [{ id: 'TD1', title: 'Task', status: 'pending' }], bugs: [{ id: 'B1', title: 'Bug', status: 'open' }] } }], actor).doc;
+  const deletedTodo = applyOperations(withItems, [{ type: 'delete-work-item', nodeId: 'C1', kind: 'todo', itemId: 'TD1' }], actor).doc;
+  assert.deepEqual(deletedTodo.root.children[0].todos, []);
+  const globalDelete = applyOperations(deletedTodo, [{ type: 'update', id: 'C1', fields: { todos: [{ id: 'TD2', title: 'Global task', status: 'pending' }] } },
+    { type: 'delete-work-item', kind: 'todo', itemId: 'TD2' }], actor).doc;
+  assert.deepEqual(globalDelete.root.children[0].todos, []);
+  const deletedNode = applyOperations(globalDelete, [{ type: 'delete', id: 'C1' }], actor).doc;
+  assert.deepEqual(deletedNode.root.children, []);
   assert.throws(() => applyOperations(created, [{ type: 'update', id: 'C1', fields: { access: [] } }], actor), { code: 'FORBIDDEN' });
 });
 

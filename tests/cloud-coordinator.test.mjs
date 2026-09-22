@@ -744,7 +744,7 @@ test('Completed tool turns expose one final answer with the structured action', 
   assert.deepEqual(assistant[0].actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
 });
 
-test('Coordinator Map actions compile only non-destructive structural changes', () => {
+test('Coordinator Map actions compile structural and destructive Main changes', () => {
   const operations = coordinatorStructureOperations([
     { op: 'create', parentId: 'T0', title: '内容', purpose: '文章内容', owns: ['source/'] },
     { op: 'update', id: 'N1', title: '阅读' },
@@ -754,7 +754,10 @@ test('Coordinator Map actions compile only non-destructive structural changes', 
   assert.match(operations[0].node.id, /^NCC[a-f0-9]{20}$/);
   assert.deepEqual(operations[1], { type: 'update', id: 'N1', fields: { title: '阅读' } });
   assert.deepEqual(operations[2], { type: 'move', id: 'N1', parentId: 'T0', order: 0 });
-  assert.throws(() => coordinatorStructureOperations([{ op: 'delete', id: 'N1' }], 'turn:delete'), { code: 'FORBIDDEN' });
+  assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'N1', kind: 'node' }], 'turn:delete'), [{ type: 'delete', id: 'N1' }]);
+  assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'todo', nodeId: 'N1' }], 'turn:todo'), [{ type: 'delete-work-item', nodeId: 'N1', kind: 'todo', itemId: 'TD1' }]);
+  assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'todo' }], 'turn:todo-global'), [{ type: 'delete-work-item', kind: 'todo', itemId: 'TD1' }]);
+  assert.throws(() => coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'memory' }], 'turn:invalid-kind'), { code: 'INVALID_ARGUMENT' });
   assert.throws(() => coordinatorStructureOperations([{ op: 'update', id: 'N1', todos: [] }], 'turn:records'), { code: 'FORBIDDEN' });
 });
 
@@ -772,16 +775,23 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
     id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
-  let phase = 'edit', step = 0, latestVersion = 'v1';
+  let phase = 'edit', step = 0, latestVersion = 'v1', todoId = '', childId = '';
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
     coordinatorModelFactory: () => ({ next: async () => {
       step++;
       if (step % 2 === 0) return { stop: 'end_turn', content: [{ type: 'text', text: '完成' }] };
-      return phase === 'edit' ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'edit', name: 'edit_map', input: {
+      if (phase === 'edit') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'edit', name: 'edit_map', input: {
         mainVersion: latestVersion, actions: [{ op: 'create', parentId: 'T0', title: '阅读', purpose: '读者体验', owns: ['frontend/'] }],
-      } }] } : { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {
+      } }] };
+      if (phase === 'mount') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {
         mainVersion: latestVersion, nodeId: 'T0', kind: 'todo', title: '提升阅读体验', description: '页面更快且更清楚',
+      } }] };
+      return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'cleanup', name: 'edit_map', input: {
+        mainVersion: latestVersion, actions: [
+          { op: 'delete', kind: 'todo', id: todoId, nodeId: 'T0' },
+          { op: 'delete', kind: 'node', id: childId },
+        ],
       } }] };
     } }),
   });
@@ -820,6 +830,13 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   });
   assert.ok(continuedResponse.ok);
   assert.match(JSON.stringify((await continuedResponse.json()).messages), /挂载这个需求/);
+  todoId = memory.main.memory.map.root.todos[0].id;
+  childId = memory.main.memory.map.root.children[0].id;
+  latestVersion = memory.main.version; phase = 'cleanup';
+  await submit({ id: 'cleanup-turn', text: '删除这个 TODO 和阅读模块' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
+  assert.deepEqual(memory.main.memory.map.root.todos, []);
+  assert.deepEqual(memory.main.memory.map.root.children, []);
+  assert.equal(state.messages.findLast(message => message.actions)?.actions[0].kind, 'map-action');
 });
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
   const names = [];
