@@ -52,10 +52,7 @@ test("CI selector and governance changes force the complete CI", () => {
     ".github/ci-impact.json",
     ".github/workflows/ci.yml",
     "docs/test-governance.md",
-    "docs/development-security.md",
-    "docs/workbench-ci.md",
-    "docs/client-ci.md",
-    "docs/engineering/automation.md",
+    "docs/ci.md",
   ]) {
     const plan = selectImpact({ config, eventName: "pull_request", changedPaths: [path] });
     assert.equal(plan.full, true, path);

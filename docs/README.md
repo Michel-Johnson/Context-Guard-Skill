@@ -20,7 +20,7 @@
 | 私有 Main / Session 记忆及发布 | [服务器记忆](../references/server-memory.md) |
 | Cloud node/module、Bug、Todo、Idea 文件格式 | [Memory Filesystem v2](../references/memory-filesystem-v2/README.md) |
 | Map-only 兼容同步 | [Cloud Sync](../references/cloud-sync-interface.md)；不是新 Session 的默认连接方式 |
-| 部署、发布、安全、测试 | [Cloud 部署](../references/cloud-deployment.md)、[npm 发布](npm-release-runbook.md)、[安全](development-security.md)、[测试治理](test-governance.md) |
+| 部署、发布、安全、测试 | [Cloud 部署](../references/cloud-deployment.md)、[npm 发布](npm-release-runbook.md)、[检查怎样算通过](ci.md)、[测试治理](test-governance.md) |
 
 同一功能只在对应契约维护定义，其他文档引用它；接口变更同时标明实现、测试和部署范围，不用“本轮”“最新”替代版本证据。
 
@@ -38,6 +38,6 @@
 - [工作台设计画廊](design/workbench-gallery/index.html)：独立静态设计资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
 - [接口讨论](design/interface-design-discussion.md)、[Session 接口历史草案](design/session-workbench-interface-draft.md)：保留背景，不叠加为现行规则。
 - [可靠性 Review](reliability-review.md)、[消融 Review](ablation-review.md)、[Hook 验收记录](hook-closure-validation.md)：历史证据，当前限制查 CI_todo。
-- [客户端 CI](client-ci.md)、[工作台 CI](workbench-ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。
+- [检查怎样算通过](ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。
 
 开发私有记忆、真实数据与凭据不进入本目录；项目记忆仍由配置的私有服务器管理。

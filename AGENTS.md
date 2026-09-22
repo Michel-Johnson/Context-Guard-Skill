@@ -4,7 +4,7 @@
 
 End-to-end development flow and evidence: `docs/engineering/README.md`.
 
-Product vs test branches and security checks: `docs/development-security.md`.
+Product vs test branches and security checks: `docs/ci.md`.
 
 - **Product / main**: workbench, skill, product scripts, and approved CI/CD automation. Keep `tests/ci-smoke.mjs` and `.github/`; exclude them from the npm package through `package.json.files` and the package contract.
 - **Temporary test branch** (`cursor/test-layout-f54e`): merge product in, change only `tests/`. Fake repos live in `tests/eval/`; do not merge temporary tests or fake repos back into main.
