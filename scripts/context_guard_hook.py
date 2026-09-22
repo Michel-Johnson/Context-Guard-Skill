@@ -21,7 +21,7 @@ from context_guard import acquire_hook_runtime_lock, append_session_event
 from context_guard import add_prompt_signal
 from context_guard import context_dir as context_folder
 from context_guard import configure_stdio, ensure_session_file, folder_root, init_context, is_context_guard_skill_path
-from context_guard import hook_runtime_lock, read_hook_runtime, read_json, start_workbench, utc_now
+from context_guard import hook_runtime_lock, read_hook_runtime, read_json, require_human_work_review, start_workbench, utc_now
 from context_guard import safe_identifier, session_records, write_hook_runtime, write_json
 from context_guard import run_node_workbench
 
@@ -1346,6 +1346,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
         receipt = plan.get("archive")
         if not isinstance(receipt, dict) or receipt.get("revision") != plan.get("revision"):
             raise ValueError("Archive this plan with verification and node assessment before plan-finish")
+        require_human_work_review(root, session, plan)
         if scope_snapshot(root, plan["paths"]) != receipt.get("snapshot"):
             raise ValueError("Files changed after archive; verify and archive again")
         inbox = run_node_workbench(["map", "inbox", "--root", str(root), "--session", session])

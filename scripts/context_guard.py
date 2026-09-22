@@ -692,6 +692,7 @@ def archive_session(
     governance: dict[str, object] = {}
     runtime = read_hook_runtime(root, session_id)
     plan = runtime.get("active_plan")
+    require_human_work_review(root, session_id, plan if isinstance(plan, dict) else None)
     closure: dict[str, object] = {}
     if input_path:
         raw_governance = read_input_json(input_path)
@@ -924,6 +925,67 @@ def authoritative_map_file(root: Path, session_id: str = "") -> Path:
 def load_authoritative_map(root: Path, session_id: str = "") -> dict[str, object]:
     doc = read_json(authoritative_map_file(root, session_id), {})
     return doc if isinstance(doc, dict) else {}
+
+
+def iter_map_nodes(node: object):
+    if not isinstance(node, dict):
+        return
+    yield node
+    for key in ("children", "_inbox"):
+        items = node.get(key)
+        if isinstance(items, list):
+            for child in items:
+                yield from iter_map_nodes(child)
+
+
+def approved_work_item_review(item: object, session_id: str) -> bool:
+    if not isinstance(item, dict):
+        return False
+    review = item.get("review")
+    if not isinstance(review, dict) or review.get("decision") != "approved":
+        return False
+    if str(review.get("sessionId") or "") == session_id:
+        return True
+    sessions = item.get("sessions") if isinstance(item.get("sessions"), list) else []
+    dispatch = item.get("dispatch") if isinstance(item.get("dispatch"), dict) else {}
+    return session_id in sessions or dispatch.get("session_id") == session_id
+
+
+def recorded_human_work_review(root: Path, session_id: str, plan: object = None) -> dict[str, object] | None:
+    """Reuse Map item.review and Cloud acceptance receipts. Do not invent a Hook."""
+    node_ids = None
+    if isinstance(plan, dict):
+        ids = plan.get("node_ids")
+        if isinstance(ids, list) and any(isinstance(item, str) and item for item in ids):
+            node_ids = {str(item) for item in ids if item}
+    doc = load_authoritative_map(root, session_id)
+    for node in iter_map_nodes(doc.get("root") if isinstance(doc, dict) else None):
+        if node_ids is not None and str(node.get("id") or "") not in node_ids:
+            continue
+        for field in ("bugs", "todos"):
+            items = node.get(field)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if approved_work_item_review(item, session_id):
+                    return {"source": "map-item-review", "nodeId": node.get("id"), "itemId": item.get("id")}
+    try:
+        execution = run_node_workbench(["map", "execution", "--root", str(root), "--session", session_id])
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
+        execution = {}
+    active = execution.get("active") if isinstance(execution, dict) and isinstance(execution.get("active"), dict) else {}
+    acceptance = active.get("acceptanceReview") if isinstance(active.get("acceptanceReview"), dict) else {}
+    if acceptance.get("decision") == "approved":
+        return {"source": "cloud-acceptance", "taskId": active.get("taskId")}
+    if active.get("stage") in {"accepted", "closing", "closed"}:
+        return {"source": "cloud-accepted-stage", "taskId": active.get("taskId")}
+    return None
+
+
+def require_human_work_review(root: Path, session_id: str, plan: object = None) -> None:
+    if recorded_human_work_review(root, session_id, plan):
+        return
+    raise ValueError("Human review of this work is required before archive-session or plan-finish")
 
 
 def require_known_map_node(root: Path, node_id: str, session_id: str = "") -> None:
