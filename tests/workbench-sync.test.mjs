@@ -1289,6 +1289,19 @@ test('bad-case compatibility operations attach unassigned cases and resolve them
   assert.throws(() => applyOperations(resolved, [{ type: 'update-bug', bug: { id: 'B9', status: 'resolved' } }], agent), { code: 'NOT_FOUND' });
 });
 
+test('bug status writes reject deferral and accept unfixable without reopening leftover deferred records', () => {
+  const f = { doc: { v: 1, root: { id: 'T0', title: 'Root', kind: 'module', state: 'dirty', children: [], bugs: [
+    { id: 'B1', title: '现行', status: 'open' },
+    { id: 'B2', title: '历史延期', status: 'deferred' },
+  ] } } };
+  assert.throws(() => applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'deferred' } }], agent), { code: 'INVALID_BUG' });
+  assert.throws(() => applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'wontfix' } }], agent), { code: 'INVALID_BUG' });
+  assert.throws(() => applyOperations(f.doc, [{ type: 'attach-bug', bug: { id: 'B3', title: '新延期', status: 'deferred' } }], agent), { code: 'INVALID_BUG' });
+  const closed = applyOperations(f.doc, [{ type: 'update-bug', bug: { id: 'B1', status: 'unfixable' } }], agent).doc;
+  assert.equal(closed.root.bugs.find(item => item.id === 'B1').status, 'unfixable');
+  assert.equal(closed.root.bugs.find(item => item.id === 'B2').status, 'deferred');
+});
+
 test('projection retains legacy/manual content, includes state and bugs, detects pending versions', async () => {
   const f = await fixture(); await fs.mkdir(path.join(f.ctx, 'cards')); await fs.writeFile(path.join(f.ctx, 'cards/N1.md'), '人工笔记不能丢失\n');
   f.doc.root.children[0].bugs.push({ id: 'B32', title: '回归坏例', status: 'open' });

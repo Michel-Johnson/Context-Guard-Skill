@@ -1144,7 +1144,7 @@ try {
     });
     const kinds = new Set(panelDots.map(row => row.badge));
     const colors = new Set(panelDots.map(row => row.bg));
-    ["waiting","processing","handoff","resolved","deferred"].forEach(kind => {
+    ["waiting","processing","handoff","resolved","unfixable"].forEach(kind => {
       assert.ok(kinds.has(kind), `missing ${kind} in ${[...kinds].join(",")}`);
     });
     assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelDots)}`);

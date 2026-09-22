@@ -101,3 +101,20 @@ test('encodes parentheses in generated Markdown links', () => {
 
   assert.match(root, /%28v2%29-node\/index\.md/);
 });
+
+test('projects leftover deferred bugs as Unfixable and omits leftover wontfix files', () => {
+  const input = snapshot();
+  input.memory.records['bugs/B3.md'] = '# B3 以后再说\n\n- node: N1\n- status: deferred\n- 现象: 旧延期记录。';
+  input.memory.records['bugs/B4.md'] = '# B4 不改了\n\n- node: N1\n- status: wontfix\n- 现象: 旧不处理记录。';
+  const { files, report } = buildFilesystemV2(input);
+  const deferred = files.get('nodes/前端-module/提交按钮-node/bugs/B3.md');
+  const index = files.get('nodes/前端-module/提交按钮-node/index.md');
+
+  assert.match(deferred, /Status: Unfixable/);
+  assert.equal(files.has('nodes/前端-module/提交按钮-node/bugs/B4.md'), false);
+  assert.match(index, /Status: Unfixable/);
+  assert.doesNotMatch(index, /旧不处理记录/);
+  assert.equal(report.warnings.some(item => item.code === 'HISTORICAL_DEFERRED' && item.id === 'B3'), true);
+  assert.equal(report.warnings.some(item => item.code === 'DROPPED_WONTFIX' && item.id === 'B4'), true);
+  assert.equal(report.bugs.migrated, 3);
+});

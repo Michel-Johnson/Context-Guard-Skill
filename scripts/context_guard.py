@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 WINDOWS_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+WRITABLE_BUG_STATUSES = ("open", "fixed", "resolved", "unfixable")
 
 
 def configure_stdio() -> None:
@@ -1122,6 +1123,8 @@ def record_bad_case(
     signal_id: str = "",
 ) -> tuple[str, Path]:
     init_context(root)
+    if status not in WRITABLE_BUG_STATUSES:
+        raise ValueError("Bugs cannot be deferred; delete the Bug file if no fix is needed, or close it as unfixable")
     ctx = context_dir(root)
     recover_bad_case_transactions(root)
     events = read_json(ctx / "bad-case-events.json", [])
@@ -1276,6 +1279,8 @@ def record_bad_case_fix(
         raise ValueError(f"unknown bad case: {bug_id}")
     if not method.strip() or not evidence.strip():
         raise ValueError("record-bad-case-fix needs --method and --evidence")
+    if status not in WRITABLE_BUG_STATUSES:
+        raise ValueError("Bugs cannot be deferred; delete the Bug file if no fix is needed, or close it as unfixable")
     bug_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", bug_path.read_text(encoding="utf-8"), count=1)
     fix_text = re.sub(r"(?m)^- status: .*?$", f"- status: {status}", fix_path.read_text(encoding="utf-8"), count=1)
     fix_text = replace_markdown_section(fix_text, "怎么修", method)
@@ -1409,7 +1414,7 @@ def main() -> int:
     parser.add_argument("--cause", default="")
     parser.add_argument("--guard", default="")
     parser.add_argument("--node", default="")
-    parser.add_argument("--status", choices=["open", "fixed", "resolved", "deferred", "wontfix"], default="open")
+    parser.add_argument("--status", choices=list(WRITABLE_BUG_STATUSES), default="open")
     parser.add_argument("--keys", default="")
     parser.add_argument("--session", default="")
     parser.add_argument("--case", dest="case_id", default="")

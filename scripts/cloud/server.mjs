@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess } from '../shared/map-model.mjs';
+import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess, isClosedBugStatus } from '../shared/map-model.mjs';
 import { atomicWrite } from '../shared/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { projectMemoryFile } from './memory-filesystem.mjs';
@@ -517,7 +517,7 @@ export async function startCloudServer({
     .map(value => String(value || '').trim()).filter(Boolean);
   const openWorkItem = (kind, item) => kind === 'todo'
     ? item?.status !== 'done'
-    : kind === 'bug' && !['resolved', 'dormant', 'wontfix', 'deferred', 'fixed'].includes(item?.status);
+    : kind === 'bug' && !isClosedBugStatus(item?.status);
   const mountedSessionOperationId = (project, nodeId, kind, itemId) => `mount-session:${digest(`${project.id}:${nodeId}:${kind}:${itemId}`)}`;
   const schedulerPrincipal = (project, human) => {
     const config = configuredMemory.projects[project.id].coordinator;
@@ -706,7 +706,7 @@ export async function startCloudServer({
                 if (!inScope(node.id)) continue;
                 for (const kind of ['todo', 'bug']) for (const item of node[`${kind}s`] || []) {
                   if (!item?.id || knownItems.has(item.id)) continue;
-                  const closed = kind === 'todo' ? item.status === 'done' : ['resolved', 'dormant', 'wontfix'].includes(item.status);
+                  const closed = kind === 'todo' ? item.status === 'done' : isClosedBugStatus(item.status);
                   if (closed) continue;
                   const dispatch = item.dispatch || {};
                   tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '', stage: dispatch.status || item.status || 'pending',
@@ -1965,7 +1965,7 @@ export async function startCloudServer({
             if (matches.length > 1) protocolFail('CONFLICT', 'Work item ID is duplicated; repair its identity before assigning');
             const item = matches[0];
             if (!node || !item) protocolFail('NOT_FOUND', 'Work item or owner node is missing');
-            if ((bugId && ['resolved', 'dormant', 'wontfix'].includes(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
+            if ((bugId && isClosedBugStatus(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
             const nodeIds = assignmentScope(main.document, nodeId);
             const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
             if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');

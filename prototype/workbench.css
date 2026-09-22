@@ -589,7 +589,7 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-panel .bug-dot.processing{background:var(--blue)}
 .bug-panel .bug-dot.handoff{background:var(--red)}
 .bug-panel .bug-dot.settling,.bug-panel .bug-dot.fixed,.bug-panel .bug-dot.resolved{background:var(--green)}
-.bug-panel .bug-dot.deferred,.bug-panel .bug-dot.wontfix{background:var(--gray)}
+.bug-panel .bug-dot.unfixable{background:var(--gray)}
 .bug-panel .sess-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
 .bug-panel .claim{font-size:11.5px;padding:0;border:0;box-shadow:none;background:transparent;color:var(--module);font-weight:800;white-space:nowrap}
 .bug-panel .claim:hover{background:transparent;transform:none;box-shadow:none;text-decoration:underline}
@@ -601,7 +601,7 @@ body.bugs-open .drawer-split{right:calc(var(--bug-panel-width) - 12px)}
 .bug-status.processing{background:var(--blue-soft);color:var(--module)}
 .bug-status.handoff{background:var(--red-soft);color:var(--red)}
 .bug-status.settling,.bug-status.fixed,.bug-status.resolved{background:var(--green-soft);color:var(--green)}
-.bug-status.deferred,.bug-status.wontfix{background:#eeeeec;color:var(--muted)}
+.bug-status.unfixable{background:#eeeeec;color:var(--muted)}
 .bug-main>.bug-status{margin:3px 0 0 8px}
 body.bug-path-mode{background:#f7f1e6}
 body.bug-path-mode header.top{background:#f7f1e6}

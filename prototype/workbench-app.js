@@ -79,7 +79,7 @@ const I18N = {
     projectOverview:"项目总览",
     scopeRequired:"该 Session 尚未获得当前节点权限。确认后将授权当前节点、所有上级和直接关联节点，共 {n} 个新节点。",
     bugWaiting:"待处理", bugProcessing:"处理中", bugHandoff:"待接手",
-    bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugDeferred:"已延期", bugWontFix:"不处理",
+    bugSettling:"收尾中", bugFixed:"已修复", bugResolved:"已解决", bugUnfixable:"修不好",
     exitChain:"退出链路",
     trayEmpty:"没有已取消的提议。",
     restoreMap:"↩ 重新加入 Map",
@@ -183,7 +183,7 @@ const I18N = {
     projectOverview:"Projects",
     scopeRequired:"This session cannot access the current node. Confirm to authorize the node, its ancestors, and direct relations ({n} new nodes).",
     bugWaiting:"Waiting", bugProcessing:"In progress", bugHandoff:"Needs handoff",
-    bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugDeferred:"Deferred", bugWontFix:"Won't fix",
+    bugSettling:"Wrapping up", bugFixed:"Fixed", bugResolved:"Resolved", bugUnfixable:"Unfixable",
     exitChain:"Exit chain",
     trayEmpty:"No cancelled proposals.",
     restoreMap:"↩ Restore to map",
@@ -2175,8 +2175,7 @@ function bugProgress(bug){
   }
   if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
   if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
-  if(status==="deferred") return {kind:"deferred", label:t("bugDeferred"), detail:""};
-  if(status==="wontfix") return {kind:"wontfix", label:t("bugWontFix"), detail:""};
+  if(status==="unfixable"||status==="deferred"||status==="wontfix") return {kind:"unfixable", label:t("bugUnfixable"), detail:""};
   const task = workbenchSync?.taskStates.get(bug?.dispatch?.task_id);
   const delivery = task?.state || bug?.dispatch?.status || "";
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
@@ -2501,7 +2500,7 @@ function renderBugPanel(){
   const bugList = openWorkItemList("bug"), todoList = openWorkItemList("todo");
   const list = kind==="todo" ? todoList : bugList;
   const countEl = document.getElementById("bug-count");
-  if(countEl) countEl.textContent = bugList.filter(({item})=>!["resolved","wontfix"].includes(bugProgress(item).kind)).length;
+  if(countEl) countEl.textContent = bugList.filter(({item})=>!["resolved","unfixable"].includes(bugProgress(item).kind)).length;
   const todoCountEl = document.getElementById("todo-count");
   if(todoCountEl) todoCountEl.textContent = todoList.filter(({item})=>todoProgress(item).kind!=="resolved").length;
   const titleEl = document.getElementById("work-panel-title");

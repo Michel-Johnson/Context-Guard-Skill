@@ -12,7 +12,7 @@
 
 Store images and other binaries separately; this Markdown file only holds a reference link.
 
-The current migration generator may still project leftover `deferred`/`wontfix` values as `Open`. That is a compatibility gap, not authorization to restart the work, and not a current status word.
+The migration generator projects leftover `deferred` values as `Unfixable` and omits leftover `wontfix` files. Neither becomes `Open`.
 
 Attribution attempts use only `Confirmed` and `Refuted`. A supported attribution starts as `Confirmed`. A later attempt changes it to `Refuted` and adds `RefutedBy` and the reason.
 

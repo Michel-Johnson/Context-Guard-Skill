@@ -7,10 +7,15 @@ import { entries } from './map-model.mjs';
 const BUG_STATUS = {
   open: 'Open',
   handling: 'InProgress',
+  inprogress: 'InProgress',
+  pending: 'Pending',
   fixed: 'Pending',
   resolved: 'Resolved',
   recurred: 'InProgress',
+  unfixable: 'Unfixable',
 };
+const DROP_BUG_STATUS = new Set(['wontfix']);
+const END_LEGACY_BUG_STATUS = { deferred: 'Unfixable' };
 
 const TODO_STATUS = { pending: 'Open', processing: 'InProgress', done: 'Done' };
 
@@ -128,7 +133,19 @@ export function buildFilesystemV2(snapshot) {
     const title = raw.match(/^#\s+(.+)$/m)?.[1] || id;
     const nodeId = extract(raw, 'node');
     const phenomenon = extract(raw, '现象') || 'NULL';
-    const status = BUG_STATUS[extract(raw, 'status')] || 'Open';
+    const rawStatus = extract(raw, 'status').toLowerCase();
+    if (DROP_BUG_STATUS.has(rawStatus)) {
+      warnings.push({ code: 'DROPPED_WONTFIX', id, nodeId });
+      continue;
+    }
+    const status = BUG_STATUS[rawStatus] || END_LEGACY_BUG_STATUS[rawStatus];
+    if (!status) {
+      warnings.push({ code: 'UNKNOWN_BUG_STATUS', id, nodeId, status: rawStatus || null });
+    }
+    const fileStatus = status || 'Open';
+    if (END_LEGACY_BUG_STATUS[rawStatus]) {
+      warnings.push({ code: 'HISTORICAL_DEFERRED', id, nodeId, projected: fileStatus });
+    }
     const assigned = byId.has(nodeId);
     if (!assigned) warnings.push({ code: 'ORPHAN_BUG', id, nodeId });
 
@@ -156,7 +173,7 @@ ${code}` : 'NULL';
     put(file, `# ${title}
 
 Reporter: NULL
-Status: ${status}
+Status: ${fileStatus}
 CurrentAttempt: A1
 
 ## 1. 现象
@@ -187,7 +204,7 @@ ${attributionBlock}
 
 - [A1](${relative(file, traceFile)})`);
 
-    const item = { id, title, phenomenon, status, file, legacyNode: nodeId };
+    const item = { id, title, phenomenon, status: fileStatus, file, legacyNode: nodeId };
     if (assigned) {
       const list = bugsByNode.get(nodeId) || [];
       list.push(item);
