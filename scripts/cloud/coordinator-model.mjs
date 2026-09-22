@@ -196,7 +196,10 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
       await save(state);
     }
     if (receipt.isError) failed = true;
-    if (!receipt.isError && ['node-references', 'conversation-mounted', 'map-action'].includes(receipt.result?.kind)) visible.push(receipt.result);
+    if (!receipt.isError && receipt.result?.kind === 'map-read' && receipt.result.node?.id) visible.push({
+      kind: 'node-read', actionId: receipt.result.actionId, node: { id: receipt.result.node.id, title: receipt.result.node.title || '' },
+    });
+    else if (!receipt.isError && ['node-references', 'node-navigation', 'node-tour', 'conversation-mounted', 'map-action'].includes(receipt.result?.kind)) visible.push(receipt.result);
     if (!receipt.isError && receipt.result?.kind === 'conversation-mounted') transferred = true;
     responses.push(toolReply(call, receipt));
   }

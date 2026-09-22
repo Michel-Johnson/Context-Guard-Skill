@@ -1,6 +1,8 @@
 # Coordinator 开发计划
 
-状态：实现候选已完成，等待合并、安装及线上灰度验收。
+**未升格草案。** 不是当前设计版本，不进现行规则表。「实现候选已完成」只描述当时代码检查，不等于线上已验收，也不等于产品法。现行对人入口与 Map 权限以 [Coordinator.md](../../Coordinator.md) 和 [当前设计版本](../../references/design-current.md) 为准。
+
+读者：仓库开发 Agent。
 
 设计依据：用户的《Context-Guard Agent设计》及本次讨论。
 https://micheljohnson.top/post.html?slug=context-guard-agent%E8%AE%BE%E8%AE%A1&theme=sketch

@@ -506,8 +506,8 @@ const CONTEXT_GUARD_MAP = {
         },
         {
           "id": "B48",
-          "title": "这期先不做",
-          "desc": "已延期",
+          "title": "修不好",
+          "desc": "修不好",
           "status": "deferred",
           "files": [],
           "sessions": [],
@@ -1655,7 +1655,7 @@ const DEMO_OPEN_BUGS = [
   { parentId:"M1", bug: demoBug("B45", "修完在写记忆", {desc:"收尾中", status:"pending"}) },
   { parentId:"M1", bug: demoBug("B46", "测试已经过了", {desc:"已修复", status:"fixed"}) },
   { parentId:"M1", bug: demoBug("B47", "人点过可以关", {desc:"已解决", status:"resolved"}) },
-  { parentId:"M1", bug: demoBug("B48", "这期先不做", {desc:"已延期", status:"deferred"}) },
+  { parentId:"M1", bug: demoBug("B48", "修不好", {desc:"修不好", status:"deferred"}) },
   { parentId:"M1", bug: demoBug("B49", "设计如此不改", {desc:"不处理", status:"wontfix"}) },
   { parentId:"M1", bug: demoBug("B50", "手机竖屏时抽屉把手被底栏挡住，标题折成两行看点和分配会不会挤掉", {desc:"长标题", sessions:["S-live"]}) }
 ];

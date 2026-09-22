@@ -1,11 +1,14 @@
 # 文档入口
 
-先区分现行接口、未来设计和历史证据；设计文档存在不代表功能已实现。
+读者：仓库开发 Agent（本目录多数文件未随 Skill 分发）。产品角色请从 [当前设计版本](../references/design-current.md) 和 [SKILL.md](../SKILL.md) 进入。
+
+先区分现行接口、未来设计和历史证据；设计文档存在不代表功能已实现。当前设计版本是 **`fs-v2`**，见 [当前设计版本](../references/design-current.md)。`docs/design/` 不是现行法。
 
 ## 现行规则与接口
 
 | 要查什么 | 入口 |
 | --- | --- |
+| 当前设计版本 | [design-current.md](../references/design-current.md)（`fs-v2`） |
 | 开发、PR、交付规则 | [RULE.md](../RULE.md) |
 | 需求到复盘的完整流程、风险与证据 | [开发流程规范](engineering/README.md)、[最小模板](engineering/templates.md) |
 | 已验证范围与未完成验收 | [CI_todo.md](../CI_todo.md)；历史条目不覆盖后续替代说明 |
@@ -23,13 +26,15 @@
 
 ## 分级 Agent：角色设计，不等于已接通流程
 
-[角色入口](../roles.md)及 [Coordinator](../Coordinator.md)、[Developer](../Developer.md)、[Tester](../Tester.md) 保留独立设计。
+[角色入口](../roles.md)及 [Coordinator](../Coordinator.md)、[Developer](../Developer.md)、[Tester](../Tester.md) 是产品角色规范（随包）。
 目标是 Coordinator 理解需求、组织节点和任务，执行 Session 按需读取 Map，流程结束后沉淀经验；不把项目知识永久绑定到某个 Session。
 当前 Cloud 通信实现与未来角色编排分开维护，不能因角色文档已合并就宣称自动多 Agent 已实现。
 
 ## 设计草案与历史证据
 
-- [文件与记忆设计](design/file-design.md)：设计方向与合成实验，不是已实施的存储布局。
+草案不是当前设计版本，禁止当存储、权限或发布协议。要升格必须按 [设计版本管理](../references/design-current.md) 开下一版。
+
+- [文件与记忆设计](design/file-design.md)：未升格草案。禁止当现行存储法，也不要用其中的目录候选去改 v2。
 - [工作台设计画廊](design/workbench-gallery/index.html)：独立静态设计资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
 - [接口讨论](design/interface-design-discussion.md)、[Session 接口历史草案](design/session-workbench-interface-draft.md)：保留背景，不叠加为现行规则。
 - [可靠性 Review](reliability-review.md)、[消融 Review](ablation-review.md)、[Hook 验收记录](hook-closure-validation.md)：历史证据，当前限制查 CI_todo。

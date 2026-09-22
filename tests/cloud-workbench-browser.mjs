@@ -23,7 +23,10 @@ const mainMap = {
   project: 'Context Guard',
   bootstrap: 'ready',
   flows: [],
-  root: { id: 'T0', title: 'Main map', purpose: 'published baseline', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+  root: { id: 'T0', title: 'Main map', purpose: 'published baseline', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [
+    { id: 'N1', title: 'Tour one', purpose: 'first tour node', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+    { id: 'N2', title: 'Tour two', purpose: 'second tour node', kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [] },
+  ] },
 };
 const sessionMap = structuredClone(mainMap);
 sessionMap.root.title = 'Session map';
@@ -448,29 +451,44 @@ try {
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
     const input = el.querySelector('.coordinator-input-shell textarea');
     const typing = el.querySelector('.coordinator-typing');
+    const typingPhase = typing.querySelector('.coordinator-typing-phase');
     const send = el.querySelector('.coordinator-input-shell > button');
+    const inputRect = input.getBoundingClientRect();
+    const sendRect = send.getBoundingClientRect();
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
-      inputHeight: input.getBoundingClientRect().height, sendPosition: getComputedStyle(send).position,
-      typingTransition: getComputedStyle(typing).transitionProperty,
-      workingLabel: typing.querySelector('.coordinator-typing-label')?.textContent,
-      workingPhase: typing.querySelector('.coordinator-typing-phase')?.textContent,
+      inputHeight: inputRect.height, sendPosition: getComputedStyle(send).position,
+      sendWidth:sendRect.width,sendHeight:sendRect.height,sendRadius:getComputedStyle(send).borderRadius,
+      sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
+      sendDisabled:send.disabled,
+      workingPhase: typingPhase?.textContent,
+      shimmerDuration: getComputedStyle(typingPhase).animationDuration,
+      shimmerTiming: getComputedStyle(typingPhase).animationTimingFunction,
+      shimmerIteration: getComputedStyle(typingPhase).animationIterationCount,
       typingDots: typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
   assert.ok(coordinatorLayout.inputHeight <= 58, `composer starts compact instead of filling the inspector: ${JSON.stringify(coordinatorLayout)}`);
-  assert.equal(coordinatorLayout.sendPosition, 'static', 'send button participates in the compact composer row');
-  assert.match(coordinatorLayout.typingTransition, /opacity/);
-  assert.equal(coordinatorLayout.workingLabel, 'Working', 'reply state uses a quiet Cursor-like working label');
-  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state starts in planning phase');
-  assert.equal(coordinatorLayout.typingDots, 3, 'reply indicator uses staggered dots');
+  assert.equal(coordinatorLayout.sendPosition, 'absolute', 'send button sits inside the composer like ChatGPT');
+  assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[32,32,'50%'],'send uses a compact circular control');
+  assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
+  assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
+  await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
+  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state uses Cursor desktop wording');
+  assert.equal(coordinatorLayout.shimmerDuration, '1s', 'planning shimmer matches Cursor desktop duration');
+  assert.equal(coordinatorLayout.shimmerTiming, 'linear', 'planning shimmer matches Cursor desktop easing');
+  assert.equal(coordinatorLayout.shimmerIteration, 'infinite', 'planning shimmer continues until response text arrives');
+  assert.equal(coordinatorLayout.typingDots, 0, 'Cursor planning state has no staggered dots');
   runningPreview=true;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
-  await coordinator.locator('.coordinator-typing.is-visible').waitFor();
-  assert.equal(await coordinator.locator('.coordinator-typing-phase').textContent(), 'Writing response', 'streaming switches the working phase without rebuilding the indicator');
+  await coordinator.locator('.coordinator-streaming').waitFor();
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 0, 'planning state exits as soon as response text exists');
+  assert.equal(await coordinator.locator('.coordinator-word-reveal').count(),0,'response chunks appear without per-word opacity animation');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
   await page.waitForFunction(() => {
     const node=document.querySelector('.coordinator-streaming-text');
@@ -488,12 +506,18 @@ try {
   coordinatorState={...coordinatorState,status:'waiting-for-user',streamingText:'',messages:[...coordinatorState.messages,{role:'assistant',text:oneShotText,tools:[]}]};
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
-  await coordinator.locator('.coordinator-final-reveal').waitFor({state:'attached'});
-  assert.notEqual(await coordinator.locator('.coordinator-final-reveal').textContent(),oneShotText,'one-shot long replies reveal a chunk before the full text');
-  await page.waitForFunction(() => !document.querySelector('.coordinator-final-reveal'));
   const oneShotMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'第一段最终回复。'}).last();
-  assert.equal(await oneShotMessage.locator('.coordinator-reveal-original').count(),0,'completed reveal restores the original Markdown DOM');
-  assert.ok(await oneShotMessage.locator('p').count()>=1,'completed reveal keeps Markdown structure');
+  await oneShotMessage.waitFor();
+  assert.equal(await coordinator.locator('.coordinator-final-reveal,.coordinator-reveal-original').count(),0,'one-shot replies render only their final Markdown DOM');
+  assert.ok(await oneShotMessage.locator('p').count()>=1,'one-shot replies use final Markdown structure immediately');
+  const stableFinalLayout=await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height}));
+  await page.waitForTimeout(300);
+  assert.deepEqual(await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height})),stableFinalLayout,'one-shot reply layout stays unchanged after first paint');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>getComputedStyle(node).paddingBottom),'36px','latest message keeps space above the composer');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const reducedMotion=await coordinator.evaluate(el=>({shimmerAnimation:getComputedStyle(el.querySelector('.coordinator-typing-phase')).animationName}));
+  assert.deepEqual(reducedMotion,{shimmerAnimation:'none'},'reduced motion disables the planning shimmer');
+  await page.emulateMedia({reducedMotion:'no-preference'});
   record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
@@ -505,6 +529,15 @@ try {
   assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
+  const inlineCodeLayout=await page.evaluate(async()=>{
+    const {markdownFragment}=await import('/prototype/coordinator-markdown.mjs');
+    const host=document.createElement('div');
+    host.append(markdownFragment('服务器相关最合适的是工程节点。理由：它 owns `.github/workflows/`、`scripts/`、`package.json` 与 `_config.yml`，80 端口部署成果也归档在这里。'));
+    return {paragraphs:host.querySelectorAll('p').length,codes:[...host.querySelectorAll('code')].map(node=>node.textContent),text:host.textContent};
+  });
+  assert.deepEqual(inlineCodeLayout.codes,['.github/workflows/','scripts/','package.json','_config.yml'],'long prose preserves every inline code span');
+  assert.equal(inlineCodeLayout.paragraphs,1,'inline Markdown keeps the model-authored paragraph boundary');
+  assert.doesNotMatch(inlineCodeLayout.text,/`/,'rendered Coordinator text never exposes code delimiters');
   assert.equal(await coordinator.locator('.coordinator-message.user').textContent(), '请审核这个计划');
   assert.equal(await coordinator.locator('.coordinator-speaker').count(), 0);
   assert.equal(await coordinator.getByRole('status').count(), 0, 'normal status is not displayed');
@@ -574,6 +607,9 @@ try {
     const host = document.createElement('div'); host.id = 'structured-node-test';
     host.append(conversationFragments([{ role: 'assistant', text: '建议放在这里。', actions: [
       { kind: 'node-references', message: '候选节点', nodes: [{ id: 'reader', title: '阅读' }, { id: 'admin', title: '管理' }, { id: 'content', title: '内容' }, { id: 'test', title: '工程' }] },
+      { kind: 'node-navigation', actionId: 'direct-open', node: { id: 'admin', title: '管理' } },
+      { kind: 'node-tour', actionId: 'direct-tour', nodes: [{ id: 'reader', title: '阅读' }, { id: 'admin', title: '管理' }] },
+      { kind: 'node-read', actionId: 'direct-read', node: { id: 'reader', title: '阅读' } },
       { kind: 'conversation-mounted', conversationId: 'item-next', node: { id: 'reader', title: '阅读' } },
     ] }, { role: 'assistant', text: '选择节点', questions: [{ id: 'node-choice', text: '挂到哪里？', nodes: [{ id: 'reader', title: '阅读' }] }] }], document, {
       canAnswer: true, onNode: id => { host.dataset.selected = id; }, onConversation: id => { host.dataset.conversation = id; }, onAnswer: () => {},
@@ -615,20 +651,105 @@ try {
   assert.equal(await syncVersion(), navigationVersion, 'navigation does not mutate Main');
   assert.equal(approvals.length + mountReviews.length + submissions.length, 0, 'navigation never approves or dispatches');
   record('coordinator-node-navigation-without-approval');
+  const directActionId='coordinator:direct-open-T0';
+  coordinatorState.messages.push({role:'assistant',text:'已打开定位节点。',actions:[{kind:'node-navigation',actionId:directActionId,node:{id:'T0',title:'定位节点'}}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',directActionId);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'direct navigation action opens the Map node without another click');
+  const directMessage=coordinator.locator('.coordinator-message.assistant').filter({hasText:'已打开定位节点。'}).last();
+  assert.equal(await directMessage.getByRole('button',{name:'定位节点',exact:true}).count(),0,'direct navigation action does not render a second-step node button');
+  const tourActionId='coordinator:tour-N1-N2';
+  await page.evaluate(()=>localStorage.setItem('cg-workbench-beta-map-motion','1'));
+  await page.addInitScript(()=>{window.__coordinatorTourTransitions=[];addEventListener('cg:map-transition-end',event=>window.__coordinatorTourTransitions.push(event.detail.viewRootId));});
+  coordinatorState.messages.push({role:'assistant',text:'已展示 Map 游览。',actions:[{kind:'node-tour',actionId:tourActionId,nodes:[{id:'N1',title:'Tour one'},{id:'N2',title:'Tour two'}]}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',tourActionId);
+  await page.waitForFunction(()=>document.querySelector('#nav-crumbs')?.textContent?.includes('Tour two'));
+  assert.deepEqual(await page.evaluate(()=>window.__coordinatorTourTransitions),['N1','N2'],'Map tour waits for each animation to finish before starting the next');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'已展示 Map 游览。'}).last().locator('button').count(),0,'Map tour renders no manual node controls');
+  const readActionId='coordinator:read-T0';
+  coordinatorState.messages.push({role:'assistant',text:'读取完成。',actions:[{kind:'node-read',actionId:readActionId,node:{id:'T0',title:'定位节点'}}]});
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',readActionId);
+  assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'read_map action visibly focuses the node');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'读取完成。'}).last().locator('button').count(),0,'read_map focus needs no manual node button');
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
+  const planningPlacement=await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>({
+    parent:node.parentElement?.className,
+    previous:node.previousElementSibling?.className,
+    beforeComposer:node.nextElementSibling?.className,
+  }));
+  assert.match(planningPlacement.parent,/coordinator-messages/,'planning state belongs to the message timeline');
+  assert.match(planningPlacement.previous,/coordinator-message user/,'planning state follows the current user message');
+  assert.notEqual(planningPlacement.beforeComposer,'coordinator-compose','planning state is not fixed above the composer');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),0,'planning shimmer disappears on the first visible response chunk');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
-  await coordinator.getByText('最终答案',{exact:true}).waitFor();
+  await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'stream preview is replaced by the durable final message');
+  const transitionText='流式转最终只保留一份';
+  coordinatorState.status='running';coordinatorState.streamingText=transitionText;
+  coordinatorState.messages.push({role:'user',text:'检查重复过渡'},{role:'assistant',text:transitionText});
+  await coordinator.locator('.coordinator-message.assistant').filter({hasText:transitionText}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:transitionText}).count(),1,'a committed final response suppresses the identical streaming preview');
+  assert.equal(await coordinator.locator('.coordinator-streaming').count(),0,'the committed response is never rendered as a second streaming row');
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  const seamlessText='先检查页面层级与段落间距。\n\n1. 检查对齐与留白。\n2. 检查窄屏换行。';
+  coordinatorState.messages.push({role:'user',text:'检查流式完成态'});
+  coordinatorState.status='running';coordinatorState.streamingText=seamlessText.slice(0,-10);
+  await coordinator.locator('.coordinator-streaming').waitFor();
+  await coordinator.locator('.coordinator-streaming').evaluate(node=>{
+    node.dataset.finalizationProbe='kept';
+    node.querySelector('.coordinator-streaming-text > :first-child').__coordinatorBlockProbe='kept';
+  });
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  coordinatorState.streamingText=seamlessText;
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text ol li:last-child')?.textContent==='检查窄屏换行。');
+  assert.equal(await coordinator.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream updates patch stable Markdown blocks instead of replacing them');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'stream updates do not steal scroll position while the user reads older messages');
+  const streamLayout=await coordinator.locator('.coordinator-streaming').evaluate(node=>{
+    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-streaming-text');
+    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
+  });
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';coordinatorState.messages.push({role:'assistant',text:seamlessText});
+  const seamlessFinal=coordinator.locator('.coordinator-message.assistant').filter({hasText:'先检查页面层级与段落间距。'}).last();
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
+  assert.equal(await seamlessFinal.getAttribute('data-finalization-probe'),'kept','stream completion keeps the existing assistant message node');
+  assert.equal(await seamlessFinal.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream completion unwraps the existing Markdown blocks without rebuilding them');
+  const finalLayout=await seamlessFinal.evaluate(node=>{
+    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-markdown');
+    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
+  });
+  assert.deepEqual(finalLayout,streamLayout,'stream completion keeps the same Markdown block layout without a second reflow');
   record('coordinator-streaming-text-is-visible-before-final-message');
+  const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
+  coordinatorState.status='running';coordinatorState.streamingText=structuredQuestionText;
+  await coordinator.locator('.coordinator-streaming').waitFor();
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text')?.textContent==='当前有四个未完成事项。想先处理哪一项？');
+  await coordinator.locator('.coordinator-streaming').evaluate(node=>{
+    node.dataset.questionTransitionProbe='kept';
+    node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
+  });
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:structuredQuestionText,questions:[{id:'next-task',text:'想先处理哪一项？',options:['部署博客','处理 Bug']}]});
+  await coordinator.getByRole('button',{name:'部署博客',exact:true}).waitFor();
+  const structuredQuestion=coordinator.locator('.coordinator-message.assistant').filter({hasText:'当前有四个未完成事项。'}).last();
+  assert.equal(await structuredQuestion.getAttribute('data-question-transition-probe'),'kept','structured questions keep the streaming assistant message node');
+  assert.equal(await structuredQuestion.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
+  assert.equal(await structuredQuestion.getByText('当前有四个未完成事项。',{exact:true}).count(),1,'structured questions retain the non-duplicate lead text');
+  assert.equal(await structuredQuestion.getByText('想先处理哪一项？',{exact:true}).count(),1,'the question prompt appears once instead of duplicating the streamed suffix');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
+  coordinatorState.messages.pop();
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
-  assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'发送','the main send control stays inside the input border');
-  await coordinator.getByLabel('发送给 Coordinator').fill('保留我的自由对话草稿');
+  assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).getAttribute('title'),'发送','the icon-only send control keeps an accessible label');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'','question answers work while the main composer is empty');
   await coordinator.getByLabel('回答：要上传什么？').fill('保留我的补充');
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
   assert.equal(submissions.length,0,'the first option click only selects it');
@@ -642,7 +763,7 @@ try {
   assert.equal(submissions[0].text,'网站构建产物\n\n保留我的补充');
   assert.equal(submissions[0].answerTo,'choice');
   assert.equal(await coordinator.getByLabel('回答：要上传什么？').inputValue(),'保留我的补充');
-  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'保留我的自由对话草稿');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'');
   assert.equal(await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).isEnabled(),false);
   assert.equal(approvals.length+mountReviews.length,0,'choice answers are never approvals');
   coordinatorState.status='running';coordinatorState.activeTurnId=submissions[0].id;
@@ -707,7 +828,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && !document.querySelector('#coordinator-panel button[type=submit]').disabled);
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -719,7 +840,7 @@ try {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
-      !panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
+      panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
@@ -727,8 +848,10 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
+  await coordinator.locator('.coordinator-typing.is-visible').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
+  assert.match(await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>node.previousElementSibling?.className||''),/coordinator-optimistic/,'planning motion appears immediately below the optimistic user message');
   releaseDelayedSubmission();
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');

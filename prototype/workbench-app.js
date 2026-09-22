@@ -4488,9 +4488,12 @@ function renderAll(){
 async function installCoordinatorPanel(sync){
   const launcher=document.getElementById('btn-coordinator');
   if(!sync.config?.interfaceCapabilities?.coordinator){if(launcher)launcher.hidden=true;return;}
-  let conversationFragments;
-  try{({conversationFragments}=await import('./coordinator-markdown.mjs'));}
-  catch{conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};}
+  let conversationFragments,markdownFragment;
+  try{({conversationFragments,markdownFragment}=await import('./coordinator-markdown.mjs'));}
+  catch{
+    markdownFragment=(text,doc=document)=>{const body=doc.createDocumentFragment(),p=doc.createElement('p');p.textContent=text;body.append(p);return body;};
+    conversationFragments=items=>{const body=document.createDocumentFragment();for(const item of items){if(item.text&&!item.text.startsWith('[服务器工作流事件，不是新的用户授权]\n')){const p=document.createElement('p');p.textContent=item.text;body.append(p);}}return{body};};
+  }
   const panel=document.createElement('section');
   panel.id='coordinator-panel';
   panel.open=false;
@@ -4498,12 +4501,14 @@ async function installCoordinatorPanel(sync){
   const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
-  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.innerHTML='<span class="coordinator-typing-label">Working</span><span class="coordinator-typing-phase">Planning next moves</span><span class="coordinator-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.innerHTML='<span class="coordinator-typing-phase">Planning next moves</span>';
   const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
   input.placeholder='描述需求，或补充你的反馈…';
-  const send=document.createElement('button'); send.type='submit'; send.textContent='发送';
+  const send=document.createElement('button');send.type='submit';send.className='coordinator-send';send.setAttribute('aria-label','发送');send.title='发送';
+  const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');sendIcon.setAttribute('viewBox','0 0 24 24');sendIcon.setAttribute('aria-hidden','true');
+  const sendPath=document.createElementNS('http://www.w3.org/2000/svg','path');sendPath.setAttribute('d','M12 19V5m0 0-6 6m6-6 6 6');sendPath.setAttribute('fill','none');sendPath.setAttribute('stroke','currentColor');sendPath.setAttribute('stroke-width','2.4');sendPath.setAttribute('stroke-linecap','round');sendPath.setAttribute('stroke-linejoin','round');sendIcon.append(sendPath);send.append(sendIcon);
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
   const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
   retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
@@ -4516,9 +4521,16 @@ async function installCoordinatorPanel(sync){
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
   const setTyping=(visible,phase='Planning next moves')=>{typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));const label=typing.querySelector('.coordinator-typing-phase');if(label)label.textContent=phase;};
-  let streamTimer=0,streamTarget='',streamShown='',finalRevealTimer=0,finalRevealCleanup=null,lastAssistantRevealKey='';
-  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';};
-  const stopFinalReveal=()=>{if(finalRevealTimer){clearTimeout(finalRevealTimer);finalRevealTimer=0;}finalRevealCleanup?.();finalRevealCleanup=null;};
+  const placeTyping=()=>{
+    if(!typing.classList.contains('is-visible'))return;
+    const userMessages=messages.querySelectorAll('.coordinator-message.user');
+    const anchor=userMessages[userMessages.length-1];
+    if(anchor)anchor.after(typing);else messages.prepend(typing);
+    if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+  };
+  let streamTimer=0,streamTarget='',streamShown='',streamDrained=null;
+  const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';streamDrained=null;};
   const nextStreamingBoundary=(text,start)=>{
     if(start>=text.length)return text.length;
     const rest=text.slice(start);
@@ -4532,47 +4544,59 @@ async function installCoordinatorPanel(sync){
     const whitespace=rest.slice(0,88).lastIndexOf(' ');
     return start+(whitespace>=28?whitespace+1:Math.min(72,rest.length));
   };
-  const updateStreamingText=(message,text,immediate=false)=>{
+  const patchStreamingNode=(current,fresh)=>{
+    if(current.nodeType!==fresh.nodeType||current.nodeName!==fresh.nodeName){current.replaceWith(fresh);return;}
+    if(current.nodeType===Node.TEXT_NODE){if(current.nodeValue!==fresh.nodeValue)current.nodeValue=fresh.nodeValue;return;}
+    const freshAttributes=new Map([...fresh.attributes].map(attribute=>[attribute.name,attribute.value]));
+    for(const attribute of [...current.attributes])if(!freshAttributes.has(attribute.name))current.removeAttribute(attribute.name);
+    for(const [name,value] of freshAttributes)if(current.getAttribute(name)!==value)current.setAttribute(name,value);
+    const freshChildren=[...fresh.childNodes];
+    for(let index=0;index<freshChildren.length;index++){
+      const existing=current.childNodes[index];
+      if(existing)patchStreamingNode(existing,freshChildren[index]);else current.append(freshChildren[index]);
+    }
+    while(current.childNodes.length>freshChildren.length)current.lastChild.remove();
+  };
+  const patchStreamingContent=(output,fragment)=>{
+    const freshChildren=[...fragment.childNodes];
+    for(let index=0;index<freshChildren.length;index++){
+      const existing=output.childNodes[index];
+      if(existing)patchStreamingNode(existing,freshChildren[index]);else output.append(freshChildren[index]);
+    }
+    while(output.childNodes.length>freshChildren.length)output.lastChild.remove();
+  };
+  const updateStreamingText=(message,text,immediate=false,onDrained=null)=>{
     const content=message?.querySelector('.coordinator-markdown');
     if(!content)return;
     let output=content.querySelector('.coordinator-streaming-text');
-    if(!output){output=document.createElement('span');output.className='coordinator-streaming-text';content.replaceChildren(output);}
-    if(immediate||!text.startsWith(streamShown)){streamShown='';output.textContent='';}
+    if(!output){output=document.createElement('div');output.className='coordinator-streaming-text';content.replaceChildren(output);}
+    if(immediate||!text.startsWith(streamShown)){streamShown='';output.replaceChildren();}
     streamTarget=text;
-    if(!streamShown&&streamTarget){streamShown=streamTarget.slice(0,nextStreamingBoundary(streamTarget,0));output.textContent=streamShown;}
-    if(streamTimer||streamShown===streamTarget)return;
+    if(onDrained)streamDrained=onDrained;
+    const renderShown=next=>{
+      const follow=messages.scrollHeight-messages.scrollTop-messages.clientHeight<64;
+      streamShown=next;
+      patchStreamingContent(output,markdownFragment(streamShown,document));
+      if(follow)messages.scrollTop=messages.scrollHeight;
+    };
+    const finish=()=>{if(streamShown!==streamTarget||!streamDrained)return;const callback=streamDrained;streamDrained=null;queueMicrotask(callback);};
+    if(prefersReducedMotion()){
+      renderShown(streamTarget);
+      if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}
+      finish();
+      return;
+    }
+    if(!streamShown&&streamTarget){const end=nextStreamingBoundary(streamTarget,0);renderShown(streamTarget.slice(0,end));}
+    if(streamShown===streamTarget){finish();return;}
+    if(streamTimer)return;
     const revealNextChunk=()=>{
       streamTimer=0;
-      if(streamShown.length>=streamTarget.length)return;
-      streamShown=streamTarget.slice(0,nextStreamingBoundary(streamTarget,streamShown.length));
-      output.textContent=streamShown;
-      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
-      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,80);
+      if(streamShown.length>=streamTarget.length){finish();return;}
+      const end=nextStreamingBoundary(streamTarget,streamShown.length);
+      renderShown(streamTarget.slice(0,end));
+      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,90);else finish();
     };
-    streamTimer=setTimeout(revealNextChunk,80);
-  };
-  const revealAssistantMessage=(row,text,key)=>{
-    if(!row||!text||row.classList.contains('coordinator-streaming')||lastAssistantRevealKey===key)return;
-    const content=row.querySelector('.coordinator-markdown');
-    if(!content||content.querySelector('.coordinator-question,.coordinator-actions,.coordinator-answer-compose'))return;
-    stopFinalReveal();lastAssistantRevealKey=key;
-    const original=document.createElement('span');original.className='coordinator-reveal-original';original.hidden=true;
-    while(content.firstChild)original.append(content.firstChild);
-    const output=document.createElement('span');output.className='coordinator-streaming-text coordinator-final-reveal';
-    content.append(original,output);
-    let shown=text.slice(0,nextStreamingBoundary(text,0));output.textContent=shown;
-    const restore=()=>{output.remove();content.replaceChildren(...original.childNodes);};
-    finalRevealCleanup=restore;
-    if(shown===text){restore();finalRevealCleanup=null;return;}
-    const revealNextChunk=()=>{
-      finalRevealTimer=0;
-      if(!output.isConnected){finalRevealCleanup=null;return;}
-      shown=text.slice(0,nextStreamingBoundary(text,shown.length));output.textContent=shown;
-      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
-      if(shown.length<text.length)finalRevealTimer=setTimeout(revealNextChunk,80);
-      else{restore();finalRevealCleanup=null;}
-    };
-    finalRevealTimer=setTimeout(revealNextChunk,80);
+    streamTimer=setTimeout(revealNextChunk,90);
   };
   const inspector=document.getElementById('detail');
   const setPanelOpen=open=>{
@@ -4606,7 +4630,40 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastStreamingText='';
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true;
+  const handledNavigationActions=new Set();
+  let navigationRun=0;
+  const openMapNode=async id=>{
+    if(sync.viewId!=='main'&&!await sync.selectSession('__all__'))throw new Error('当前视图尚不能切换到 Main');
+    const node=getNode(id);
+    if(!node||isCancelled(node))throw new Error('该节点已不存在，请刷新对话');
+    clearRelationMode();focusId=null;
+    if(id===viewRootId)return;
+    await new Promise(resolve=>enterView(id,{unpack:false,_mapMotionComplete:resolve}));
+  };
+  const tourMapNodes=async ids=>{
+    const run=++navigationRun;
+    for(let index=0;index<ids.length;index++){
+      if(run!==navigationRun)return;
+      await openMapNode(ids[index]);
+    }
+  };
+  const consumeNavigationActions=state=>{
+    const actions=(state.messages||[]).flatMap(message=>message.actions||[]).filter(action=>action.actionId&&(
+      (action.kind==='node-navigation'||action.kind==='node-read')&&action.node?.id||action.kind==='node-tour'&&action.nodes?.length));
+    const fresh=actions.filter(action=>{
+      if(handledNavigationActions.has(action.actionId))return false;
+      try{if(sessionStorage.getItem('cg-coordinator-navigation:'+action.actionId))return false;}catch{}
+      return true;
+    });
+    if(!fresh.length)return;
+    for(const action of fresh){handledNavigationActions.add(action.actionId);try{sessionStorage.setItem('cg-coordinator-navigation:'+action.actionId,'1');}catch{}}
+    const ids=fresh.flatMap(action=>action.kind==='node-tour'?action.nodes.map(node=>node.id):[action.node.id])
+      .filter((id,index,list)=>index===0||id!==list[index-1]);
+    void tourMapNodes(ids).catch(error=>{status.textContent='无法定位节点：'+error.message;});
+  };
+  const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
+  const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
   const messageMatchesRequest=(message,request)=>{
     if(message?.role!=='user'||typeof message.text!=='string'||!request?.text)return false;
@@ -4633,7 +4690,7 @@ async function installCoordinatorPanel(sync){
     browsingHistory=historyMode;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastStreamingText='';lastAssistantRevealKey='';stopStreamingAnimation();stopFinalReveal();canCorrect=false;messages.replaceChildren();setTyping(false);send.disabled=true;
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';stopStreamingAnimation();canCorrect=false;messages.replaceChildren();setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   const renderHistory=state=>{
@@ -4673,19 +4730,55 @@ async function installCoordinatorPanel(sync){
     if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
     else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
   };
-  const render=state=>{
+  const render=(state,forceFinal=false)=>{
     const renderedConversation=selected;
-    const firstRender=lastStableContent===null;
     // A lost HTTP response is not a lost turn. Reconcile the original request
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
+    consumeNavigationActions(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
     const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
-    const hasStreaming=Boolean(state.streamingText);
-    setTyping(state.status==='running'&&!answering,hasStreaming?'Writing response':'Planning next moves');
+    const streamingText=String(state.streamingText||'');
+    const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
+    const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
+    const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
+    const renderConversation=items=>conversationFragments(items,document,{nodes:state.nodeReferences||[],
+      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
+      questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
+      onConversation:selectConversation,
+      onAnswer:(question,answer)=>{
+        if(busy||pending)return;
+        const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
+        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
+      },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
+    setTyping(state.status==='running'&&!answering&&!streamingText,'Planning next moves');
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
+    const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const streamingMessage=messages.querySelector('.coordinator-streaming');
+    const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown)&&extrasKey===lastRenderedExtras;
+    if(canFinalizeStreamingInPlace){
+      const finalize=()=>{
+        if(renderedConversation!==selected)return;
+        const content=streamingMessage.querySelector('.coordinator-markdown');
+        const output=content?.querySelector('.coordinator-streaming-text');
+        if(output)content.replaceChildren(...output.childNodes);
+        const finalRow=renderConversation([lastTextMessage]).body.firstElementChild;
+        const finalContent=finalRow?.querySelector('.coordinator-markdown');
+        if(content&&finalContent)patchStreamingContent(content,finalContent);
+        streamingMessage.classList.remove('coordinator-streaming');
+        stopStreamingAnimation();lastStableContent=stableKey;lastStreamingText='';
+        if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
+        canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
+        if(canCorrect)status.textContent+=' · 可补充纠正意见';
+        setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
+        setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';
+      };
+      if(streamShown!==lastTextMessage.text){lastStreamingText=lastTextMessage.text;updateStreamingText(streamingMessage,lastTextMessage.text,false,finalize);}else finalize();
+      setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
+      setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';placeTyping();
+      return;
+    }
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
       if(state.streamingText!==lastStreamingText){
         updateStreamingText(streamingMessage,state.streamingText);
@@ -4702,24 +4795,8 @@ async function installCoordinatorPanel(sync){
     if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
     const follow=lastStableContent===null||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
-    const transcript=conversationFragments(visibleMessages,document,{nodes:state.nodeReferences||[],
-      canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
-      questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
-      onConversation:selectConversation,
-      onAnswer:(question,answer)=>{
-        if(busy||pending||send.disabled)return;
-        const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
-        void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
-      },onNode:async id=>{
-      try{
-        if(sync.viewId!=='main'&&!await sync.selectSession('__all__')) throw new Error('当前视图尚不能切换到 Main');
-        const node=getNode(id);
-        if(!node||isCancelled(node)) throw new Error('该节点已不存在，请刷新对话');
-        clearRelationMode();focusId=null;
-        enterView(id,{unpack:false});
-      }catch(error){status.textContent='无法定位节点：'+error.message;}
-    }});
-    stopFinalReveal();messages.replaceChildren(transcript.body);
+    const transcript=renderConversation(visibleMessages);
+    messages.replaceChildren(transcript.body);
     const initialStreamingMessage=messages.querySelector('.coordinator-message:last-child');
     if(hasStreaming&&initialStreamingMessage){
       initialStreamingMessage.classList.add('coordinator-streaming');
@@ -4807,23 +4884,15 @@ async function installCoordinatorPanel(sync){
     }
     messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
-    lastStreamingText=state.streamingText||'';
-    }
-    const latestAssistantText=[...(state.messages||[])].reverse().find(message=>message.role==='assistant'&&message.text)?.text||'';
-    if(!hasStreaming&&latestAssistantText){
-      const revealKey=latestAssistantText;
-      if(firstRender)lastAssistantRevealKey=revealKey;
-      else if(revealKey!==lastAssistantRevealKey){
-        const prefix=latestAssistantText.slice(0,32);
-        const row=[...messages.querySelectorAll('.coordinator-message.assistant')].reverse().find(item=>item.textContent.includes(prefix));
-        revealAssistantMessage(row,latestAssistantText,revealKey);
-      }
+    lastRenderedExtras=extrasKey;
+    lastStreamingText=hasStreaming?streamingText:'';
     }
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
-    send.disabled=busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect;
+    setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
     setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
+    placeTyping();
   };
   const refresh=async()=>{
     clearTimeout(timer);
@@ -4841,9 +4910,10 @@ async function installCoordinatorPanel(sync){
     const id=selected;
     optimisticRequests.set(request.id,{conversationId:id,request});
     appendOptimisticMessage(request);
-    busy=true; pending=request; pendingError=''; send.disabled=true; retry.disabled=true; status.textContent='';
+    busy=true; pending=request; pendingError=''; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     setTyping(!answeringCard);
+    placeTyping();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
@@ -4854,12 +4924,13 @@ async function installCoordinatorPanel(sync){
       if(id===selected){pendingError=message;setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
-    finally{busy=false;retry.disabled=false;send.disabled=!!pending;}
+    finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
     await refresh();
   };
   const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
-  input.addEventListener('input',resizeInput);
+  input.addEventListener('input',()=>{resizeInput();syncSendState();});
   resizeInput();
+  syncSendState();
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});

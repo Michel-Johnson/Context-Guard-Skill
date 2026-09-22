@@ -9,7 +9,10 @@ function paragraphize(source, limit = 60) {
   let fence = false;
   for (const line of lines) {
     if (/^\s*```/.test(line)) { fence = !fence; output.push(line); continue; }
-    if (fence || line.length <= limit || /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)/.test(line)) { output.push(line); continue; }
+    // Inline code is semantic Markdown, not plain prose. A synthetic paragraph
+    // boundary inside a backtick span turns the remaining delimiters into
+    // visible text, so preserve the model-authored paragraph and let CSS wrap it.
+    if (fence || line.length <= limit || line.includes('`') || /^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)/.test(line)) { output.push(line); continue; }
     let rest = line;
     while (rest.length > limit) {
       const boundary = Math.min(rest.length - 1, limit + 20);
@@ -104,6 +107,14 @@ export function markdownFragment(text, doc = document) {
 
 export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
+  const questionLead = (text, questions = []) => {
+    let lead = String(text || '').trim();
+    for (const question of questions) {
+      const prompt = String(question?.text || '').trim();
+      if (prompt && lead.endsWith(prompt)) lead = lead.slice(0, -prompt.length).trimEnd();
+    }
+    return lead;
+  };
   const answerComposer = (question, draft, answerValue) => {
     const compose = doc.createElement('div'); compose.className = 'coordinator-answer-compose';
     const input = doc.createElement('textarea'); input.rows = 2; input.maxLength = 6000;
@@ -126,7 +137,8 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     const cleanText = message.text.replace(/^\[实验：模拟人工输入\]\n/, '');
     const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
-    if (!message.questions?.length && !legacy) content.append(markdownFragment(cleanText, doc));
+    const lead = message.questions?.length ? questionLead(cleanText, message.questions) : cleanText;
+    if (lead && !legacy) content.append(markdownFragment(lead, doc));
     if (legacy?.before) content.append(markdownFragment(legacy.before, doc));
     for (const question of legacy?.items || []) {
       const card = doc.createElement('section'); card.className = 'coordinator-question coordinator-legacy-question'; card.dataset.questionId = question.id;
@@ -169,6 +181,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       card.append(activity); content.append(card);
     }
     for (const action of message.actions || []) {
+      if (action.kind === 'node-navigation' || action.kind === 'node-tour' || action.kind === 'node-read') continue;
       const actions = doc.createElement('div'); actions.className = 'coordinator-actions';
       if (action.message && action.message !== cleanText) { const label = doc.createElement('p'); label.textContent = action.message; actions.append(label); }
       for (const node of (action.nodes || (action.node ? [action.node] : [])).slice(0, 3)) {

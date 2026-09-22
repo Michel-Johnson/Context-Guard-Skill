@@ -10,13 +10,12 @@ Most tools still treat *chat* as the workplace. The thread is the memory, the ap
 
 Context Guard treats the **project** as the workplace:
 
-1. **A shared Map** — modules, responsibilities, bugs, todos, and verification live on one durable structure.
-2. **Isolated Sessions** — each agent run writes its own Session Map. A chat is not Main.
-3. **Human confirmation in a workbench** — ordinary proposals, grants, and publication happen in an authorized page, not as chat assent.
-4. **Explicit grants** — an agent reads the slices it is allowed to read. Grey cards are out of scope.
-5. **Publication into Main** — only verified work enters the committed-main baseline. Session drafts stay drafts.
+1. **A shared Map** — modules, responsibilities, bugs, todos, and verification live on one durable structure. Current storage law is [`fs-v2`](references/design-current.md).
+2. **Isolated Sessions** — each execution run writes its own Session. A chat is not Main. After the human confirms a task and mounts a node, a new execution Session is created and bound to that TODO or Bug.
+3. **The human talks to Coordinator** — Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator. Confirmation and “go implement this” happen there. Execution Sessions do not talk to the human. Grey-card visibility slicing is later work, not the current default.
+4. **Publication into Main** — only reviewed work enters the committed-main baseline. Session drafts stay drafts until the gate. Humans may edit Main TODOs directly.
 
-It installs as a skill and lifecycle hooks for **Codex**, **Cursor**, and **Claude**.
+It installs as a skill for **Codex**, **Cursor**, and **Claude**. New Hooks are not in scope this round.
 
 [Repository docs and file layout](docs/README.md) · [One-page skill](SKILL.md)
 
@@ -26,8 +25,8 @@ It installs as a skill and lifecycle hooks for **Codex**, **Cursor**, and **Clau
 | --- | --- |
 | History in a thread | Structure on a Map |
 | Next session starts over | Next session opens the same Map |
-| “Looks good” in chat | Human confirms in the workbench |
-| Agent sees whatever was pasted | Agent sees granted nodes |
+| “Looks good” in a random chat | Human confirms with Coordinator |
+| Agent sees whatever was pasted | Execution Agents work a bound TODO/Bug |
 | Memory is retrieval over files | Memory is owned project state, with version and publication |
 
 This is not another prompt pack, RAG folder, or “remember this” plugin. It is a **human–agent operating loop** for software work: locate the node, confirm the intent, execute in a Session, verify, then publish.
@@ -36,7 +35,7 @@ Role prompts for Coordinator / Developer / Tester exist so a project can split p
 
 ## See the workbench
 
-People look at the Map in the workbench. Agents read small authorized indexes; they do not drive the canvas.
+People look at the Map in the workbench. Coordinator may drive focus, tours, and structure edits. Execution Agents do not talk to the human.
 
 **Cloud:** when configured, Cloud is the only human-facing workbench. The local service syncs and delivers to the host. Private deployments require browser login. A device logs in once per project; new Sessions reuse that connection.
 
@@ -68,7 +67,7 @@ Click a bug with an assigned session. The path from the root to that node lights
 
 ### Auth / inspect mode
 
-「授权模式」 marks which slices this session’s agent may read. Grey cards are not authorized.
+「授权模式」 can mark slices. Grey-card visibility slicing is later work, not the current default. New Sessions currently see their own Session Map.
 
 ![Auth mode](docs/shots/workbench/auth-mode.png)
 

@@ -12,7 +12,7 @@ Ask user 与路由只读**已发布 Main**。Session 草稿不是项目事实，
 
 ## 怎么读
 
-先读足以定位职责的导航（节点标题与职责），再读目标节点上的记忆、Idea、Todo、Bug。按需读取，不要把整张 Map 贴进对话。不要 Grep 整个 `.codex/context/`。
+先读足以定位职责的导航（节点标题与职责），再读目标节点上的记忆、Idea、Todo、Bug。按需读取，不要把整张 Map 贴进对话。不要 Grep 整个 `.codex/context/`。当活动接口已经暴露 Filesystem v2 投影时，从目标 `index.md` 跟随 Markdown 链接；链接就是跳转。Agent 打开模块时先读哪套目录（FIND.md / snapshot 与 v2）尚未拍板，不得在本文选边。
 
 已知节点时，从该节点读起。未知节点时，沿 Map 的模块与职责定位，不得猜测一个不存在的节点。专用检索是可选加速，不是必经步骤。
 

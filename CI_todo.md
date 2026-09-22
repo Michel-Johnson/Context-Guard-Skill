@@ -1,6 +1,8 @@
 # CI TODO
 
-- [ ] Filesystem v2 Agent 读取与格式闭环：Cloud API、Hook 上下文和 Coordinator 默认只暴露 node/module Markdown 与关联 Bug/Todo/Idea 文档；不得继续传播或推荐 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json`。当前 `runtime-state.json` 仍保留并合并 `memory.records`，生成器也只会重建 A1、Todo A1 缺少归因状态、Todo/Idea 索引摘要仍截断为 20 个 Unicode 字符，并把 Bug 的 `deferred`/`wontfix` 错投影为 `Open`。文档完成不代表运行时隔离或多轮格式已实现；验收需覆盖 Main、Session、新建 Session、接口分析 Agent、多轮持久化、状态生成、完整首段复制及延期/不修复状态保真。
+读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
+
+- [ ] Filesystem v2 运行时闭环仍待验收：生成器、API/Hook 是否暴露 Markdown 投影、多轮持久化。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred`/`wontfix` 错投影为 `Open` 仍是缺口，不能据此重新开工。Todo/Idea 索引摘要仍截成 20 字、只重建 A1 等运行时限制照旧记录。
 
 - [x] Coordinator 节点挂载拒绝按钮不再依赖浏览器原生 `prompt`，点击即提交稳定拒绝并通知模型重新提案；PR #287（`f4f3c79`）Required 全绿并部署，Cloud 浏览器回归覆盖真实拒绝请求。生产原审核卡已不再处于待审核状态，无法对同一提案重复拒绝。
 
@@ -11,7 +13,7 @@
 - 新执行 Session 完成独立 worktree 注册后直接进入耐久派发队列，不再复用旧 Session 的 `stopped` 空闲门槛。PR #283（`bea80a3`）Required 全绿并部署；生产 TD1 已进入新 Session 的唯一 `task.assign`，本地 Claude delivery 为 running。
 - [x] Coordinator 普通对话发起的新 Session 任务，按唯一同 ID 的 Main TODO/Bug 投影当前执行状态，不再继续展示旧 Session 派单；重复 ID 拒绝猜测。PR #285（`201cc37`）Required 全绿并部署，生产页面刷新后 TD1 已由“等待前序任务完成”变为“执行中”。
 
-- [ ] Coordinator 已移除展示层 120 字硬截断，历史回复、流式文本、问题卡与动作说明恢复完整原文；精简仅作为生成目标，不再破坏句子或 Markdown。待补语义压缩方案，不得重新引入字符裁切。
+- [ ] Coordinator 已移除展示层 120 字硬截断；**现行法是生成目标，没有字数硬上限**，不得重新引入字符裁切。待补语义压缩方案。历史「强制 120 字」证据不覆盖这条。
 - [ ] Coordinator 自动将 `acceptance-rejected` 原任务推进到返工、`read_task` 返回权威阻塞任务且不再询问用户执行 Session；本轮按用户要求直接开发，未新增或运行测试。
 - [ ] 恢复控制重复投递：保存 Cloud 已确认的 resumed 回执，重启后抑制同控制再次唤起模型；新控制正常交付，任务/代次隔离。实现已随 `638acd3d` 部署，正式 delivery/workflow 及合并后的全量 438 项通过；真实断线恢复专项仍未执行，不能据此宣称全部通过。
 - [x] 旧测试基线 Windows Python 启动失败：复用 main 已有 `python-command.mjs` 与测试，不再写死 python3；Python 探测与真实 Codex SQLite 注册共 4 项通过。原全量失败日志保留，本项通过不代表全量通过。
