@@ -895,19 +895,31 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
   let mode = 'idle', mainVersion = 'v1';
   const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
+  const scoped = (request = {}) => {
+    const system = String(request.system || ''), marker = '本对话仅负责这一 Map 事项：';
+    const at = system.indexOf(marker);
+    if (at < 0) return { itemId: null, unscoped: true };
+    try { return { itemId: JSON.parse((system.slice(at + marker.length).match(/\{[\s\S]*?\}/) || ['null'])[0])?.itemId || null, unscoped: false }; }
+    catch { return { itemId: null, unscoped: false }; }
+  };
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/repo' }] },
-    coordinatorModelFactory: () => ({ next: async () => {
+    coordinatorModelFactory: () => ({ next: async (request = {}) => {
+      const { itemId, unscoped } = scoped(request);
       const current = mode;
-      if (current !== 'idle') mode = 'idle';
-      if (current === 'prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task', input: {
+      // Leftover item-conversation review.result turns must not consume idea/bug mounts.
+      const consume = (current === 'prepare' && itemId === 'TD-local')
+        || ((current === 'idea' || current === 'bug') && unscoped);
+      if (consume) mode = 'idle';
+      const used = consume ? current : 'idle';
+      if (used === 'prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task', input: {
         taskId, text: '从工作台挂上 Coordinator', acceptance: '事项上能看到绑定的 Session', nodeIds: ['T0'], mainVersion,
       } }] };
-      if (current === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
+      if (used === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
         mainVersion, nodeId: 'T0', kind: 'idea', title: '先记一笔', description: '想法不需要执行 Session',
       } }] };
-      if (current === 'bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-bug', name: 'mount_conversation', input: {
+      if (used === 'bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-bug', name: 'mount_conversation', input: {
         mainVersion, nodeId: 'T0', kind: 'bug', title: '挂载时就绑定', description: '缺陷一挂上就有执行 Session',
       } }] };
       return { stop: 'end_turn', content: [{ type: 'text', text: '好' }] };
