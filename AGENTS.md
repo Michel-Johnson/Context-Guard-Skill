@@ -1,6 +1,6 @@
 # This repository
 
-动手前先读仓库根目录的 `RULE.md` 和 `CI_todo.md`。
+读者：**仓库开发 Agent**。动手前先读 `RULE.md`、`CI_todo.md` 和 [当前设计版本](references/design-current.md)（`fs-v2`）。
 
 End-to-end development flow and evidence: `docs/engineering/README.md`.
 
@@ -15,14 +15,11 @@ npm run dev:setup
 ```
 
 All `.codex/` records stay out of Git commits and distribution artifacts.
-This repository uses the user-designated private server as the authority for all
-development memory; read `references/server-memory.md` before memory-dependent
-work. Local context is only a versioned cache or unsynced draft. Keep Session
-memory separate from the server's committed-main baseline; never silently fall
-back to stale local memory. Connection details stay in the untracked local handoff
-file named by `RULE.md`. Read `references/server-memory.md` and the latest specific
-entries in `CI_todo.md` for verified implementation, deployment, migration, and
-remaining acceptance limits; historical evidence does not prove current operation.
-Preserve local files when removing them from tracking. Run `npm test` before
-delivery. Never bypass a secret finding or replace an existing user hook without
-explicit review.
+This repository uses the user-designated private server as the authority for
+**this repo's** development memory. Product memory law lives in
+`references/server-memory.md` and `references/design-current.md`. Local context
+is only a versioned cache or unsynced draft. Connection details stay in the
+untracked local handoff file named by `RULE.md`. Historical evidence in
+`CI_todo.md` does not prove current operation. Preserve local files when
+removing them from tracking. Run `npm test` before delivery. Never bypass a
+secret finding or replace an existing user hook without explicit review.
