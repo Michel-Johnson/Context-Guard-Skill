@@ -951,6 +951,45 @@ try {
     return (box.bottom-view.top)/view.height;
   });
   assert.ok(confirmedTurnRatio>.38&&confirmedTurnRatio<.7,`server confirmation keeps the pinned turn stable: ${confirmedTurnRatio}`);
+  const longReplyBlocks=Array.from({length:16},(_,index)=>`回复第 ${index+1} 段：这里是已经完成的一段内容。`);
+  const longReply=longReplyBlocks.join('\n\n')+'\n\n';
+  coordinatorState.status='running';
+  coordinatorState.streamingText=longReplyBlocks[0]+'\n\n';
+  await coordinator.locator('.coordinator-streaming .coordinator-rise').first().waitFor();
+  const firstReplyTurnRatio=await coordinator.locator('.coordinator-message.user').filter({hasText:'立即显示测试'}).evaluate(node=>{
+    const pane=node.closest('.coordinator-messages'),box=node.getBoundingClientRect(),view=pane.getBoundingClientRect();
+    return (box.bottom-view.top)/view.height;
+  });
+  assert.ok(Math.abs(firstReplyTurnRatio-confirmedTurnRatio)<.08,
+    `the first reply block does not snap the sent turn away: ${firstReplyTurnRatio}`);
+  coordinatorState.streamingText=longReply;
+  await page.waitForFunction(()=>document.querySelectorAll('.coordinator-streaming .coordinator-rise').length>=16);
+  const streamedTail=await coordinator.locator('.coordinator-streaming .coordinator-rise').last().evaluate(node=>{
+    const pane=node.closest('.coordinator-messages');
+    return {bottom:node.getBoundingClientRect().bottom,viewportBottom:pane.getBoundingClientRect().bottom};
+  });
+  assert.ok(streamedTail.bottom<=streamedTail.viewportBottom-16,
+    `long replies remain visible as they grow rather than leaving the viewport in the middle: ${JSON.stringify(streamedTail)}`);
+  const tallBlock='很长的单段回复。'.repeat(190);
+  const beforeTallScroll=await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop);
+  coordinatorState.streamingText=longReply+tallBlock+'\n\n';
+  await page.waitForFunction(()=>document.querySelectorAll('.coordinator-streaming .coordinator-rise').length>=17);
+  const tallPlacement=await coordinator.locator('.coordinator-streaming .coordinator-rise').last().evaluate(node=>{
+    const pane=node.closest('.coordinator-messages'),box=node.getBoundingClientRect(),view=pane.getBoundingClientRect();
+    return {top:box.top,bottom:box.bottom,viewportBottom:view.bottom,scrollTop:pane.scrollTop};
+  });
+  assert.ok(tallPlacement.top<tallPlacement.viewportBottom-64&&tallPlacement.bottom>tallPlacement.viewportBottom,
+    `a tall paragraph shows its beginning without jumping to its middle: ${JSON.stringify(tallPlacement)}`);
+  assert.ok(tallPlacement.scrollTop-beforeTallScroll<220,'one oversized paragraph does not cause a large scroll jump');
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  coordinatorState.streamingText=longReply+tallBlock+'\n\n用户上滚后追加的新段落。\n\n';
+  await page.waitForFunction(()=>document.querySelectorAll('.coordinator-streaming .coordinator-rise').length>=18);
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,
+    'reading older messages cancels automatic reply following');
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:longReply+tallBlock+'\n\n用户上滚后追加的新段落。\n\n'});
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
+  record('Coordinator reply follows visible text without snapping or stealing manual scroll');
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await page.waitForFunction(()=>document.querySelector('.coordinator-messages').scrollTop===0);
   await page.waitForTimeout(50);

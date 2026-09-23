@@ -4493,6 +4493,7 @@ async function installCoordinatorPanel(sync){
     if(Math.abs(messages.scrollTop-top)>=2)messages.scrollTop=top;
     return true;
   };
+  const releaseTurnPin=()=>{stickToTurn=false;pinnedTurn=null;pinnedRequest=null;};
   messages.addEventListener('scroll',()=>{
     if(stickToTurn&&Math.abs(messages.scrollTop-(pinnedScrollTop()??messages.scrollTop))>80)stickToTurn=false;
   });
@@ -4512,7 +4513,9 @@ async function installCoordinatorPanel(sync){
     streamTarget=text;
     if(onDrained)streamDrained=onDrained;
     const release=next=>{
-      const follow=messages.scrollHeight-messages.scrollTop-messages.clientHeight<64;
+      const viewportBottom=messages.getBoundingClientRect().bottom-36;
+      const previousBottom=output.getBoundingClientRect().bottom;
+      const follow=stickToTurn||previousBottom<=viewportBottom+24;
       const piece=streamTarget.slice(streamShown.length,next).trim();
       streamShown=streamTarget.slice(0,next);
       if(piece){
@@ -4520,8 +4523,18 @@ async function installCoordinatorPanel(sync){
         rise.className='coordinator-rise';body.className='coordinator-rise-body';
         if(!prefersReducedMotion())rise.classList.add('is-entering');
         body.append(markdownFragment(piece,document));rise.append(body);output.append(rise);
+        // The sent bubble stays centered only until the reply starts. Follow
+        // the visible reply edge, not the spacer below the conversation.
+        if(stickToTurn)releaseTurnPin();
+        if(follow){
+          const rect=rise.getBoundingClientRect();
+          // A single very tall paragraph must open at its beginning instead
+          // of jumping into its middle to reveal the entire block at once.
+          const targetBottom=rect.height<messages.clientHeight*.8
+            ? rect.bottom : rect.top+Math.min(rect.height,Math.max(64,messages.clientHeight*.12));
+          if(targetBottom>viewportBottom)messages.scrollTop+=targetBottom-viewportBottom;
+        }
       }
-      if(!pinTurn()&&follow)messages.scrollTop=messages.scrollHeight;
     };
     const finish=()=>{if(streamShown!==streamTarget||!streamDrained)return;const callback=streamDrained;streamDrained=null;queueMicrotask(callback);};
     if(prefersReducedMotion()){
@@ -4793,7 +4806,7 @@ async function installCoordinatorPanel(sync){
         updateStreamingText(streamingMessage,state.streamingText);
         lastStreamingText=state.streamingText;
       }
-      if(!pinTurn()&&messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+      pinTurn();
     }else if(stableKey!==lastStableContent||hasStreaming!==Boolean(lastStreamingText)){
     const visibleMessages=[...(state.messages||[])];
     for(const [requestId,entry] of optimisticRequests){
@@ -4823,6 +4836,7 @@ async function installCoordinatorPanel(sync){
           rise.className='coordinator-rise';body.className='coordinator-rise-body';
           if(!prefersReducedMotion())rise.classList.add('is-entering');
           body.append(...content.childNodes);rise.append(body);content.append(rise);
+          if(stickToTurn)releaseTurnPin();
           settleTypingAfterPaint(renderedConversation);
         }
       }
