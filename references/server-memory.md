@@ -95,17 +95,22 @@ server write time. Do not upload secret content.
 Deleting a Bug from a Main or Session Map removes its active legacy Bug/fix
 records in the same transaction and persists internal deletion keys. Stale
 Session uploads and publication cannot restore those records or reuse the
-deleted Bug ID. Immutable history remains available; an authorized restore of
-an earlier Main snapshot is a separate, version-checked operation.
+deleted Bug ID. Main retains only its five most recent recoverable snapshots;
+older entries keep audit metadata but cannot be restored. An authorized restore
+of a retained Main snapshot is a separate, version-checked operation.
 
 `memory.display` optionally carries `{name, platform}` for the current Session.
 The client reads the registered host task title, never guesses it from prompts.
 The fields are limited to 200/30 characters. Cloud falls back to this Session's
 existing lifecycle names when metadata is absent; display data grants no authority.
 
-Every acknowledged write appends an immutable, server-timestamped history entry
-containing the full memory snapshot. `memory history --scope main` or `--scope
-session:<id>` reads it. `memory restore --input <private-request>` creates a new
+Every acknowledged write appends a server-timestamped history entry. Session
+history retains full snapshots; Main retains full snapshots for its five most
+recent versions and strips older snapshot content, including copies in retry
+receipts. Older Main entries retain version, time and actor for audit, while
+their operation IDs still prevent duplicate writes. `memory history --scope main`
+or `--scope session:<id>` reads the available history. `memory restore --input
+<private-request>` creates a new
 version from `targetVersion`; it never rewinds the revision counter. The request
 must include `operationId`, `scope`, `baseVersion`, and `targetVersion`. A stale
 `baseVersion` fails instead of overwriting a newer human or Agent edit. Restoring
