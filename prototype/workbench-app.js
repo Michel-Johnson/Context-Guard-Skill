@@ -4817,6 +4817,8 @@ async function installCoordinatorPanel(sync){
     if(hasStreaming) visibleMessages.push({role:'assistant',text:state.streamingText,streaming:true});
     const follow=!messages.querySelector(':scope > .coordinator-message')||messages.scrollHeight-messages.scrollTop-messages.clientHeight<48;
     const scrollTop=messages.scrollTop;
+    const pinnedBeforeRender=stickToTurn;
+    let oneShotReply=null;
     reconcileMessageRows(visibleMessages,state,renderConversation);
     const initialStreamingMessage=[...messages.children].filter(node=>node.classList?.contains('coordinator-message')).at(-1);
     if(hasStreaming&&initialStreamingMessage){
@@ -4830,7 +4832,8 @@ async function installCoordinatorPanel(sync){
     if(!hasStreaming&&liveReplyAwaiting&&state.status!=='running'){
       const assistantRows=[...messages.querySelectorAll('.coordinator-message.assistant')];
       if(assistantRows.length>liveReplyAssistantCount){
-        const content=assistantRows.at(-1).querySelector('.coordinator-markdown');
+        oneShotReply=assistantRows.at(-1);
+        const content=oneShotReply.querySelector('.coordinator-markdown');
         if(content?.childNodes.length){
           const rise=document.createElement('div'),body=document.createElement('div');
           rise.className='coordinator-rise';body.className='coordinator-rise-body';
@@ -4926,7 +4929,15 @@ async function installCoordinatorPanel(sync){
     }
     lastRenderedExtras=extrasKey;
     }
-    if(!pinTurn())messages.scrollTop=follow?messages.scrollHeight:scrollTop;
+    if(oneShotReply){
+      messages.scrollTop=scrollTop;
+      if(follow||pinnedBeforeRender){
+        const rect=oneShotReply.getBoundingClientRect();
+        const viewportBottom=messages.getBoundingClientRect().bottom-36;
+        const firstLinesBottom=rect.top+Math.min(rect.height,Math.max(64,messages.clientHeight*.12));
+        if(firstLinesBottom>viewportBottom)messages.scrollTop+=firstLinesBottom-viewportBottom;
+      }
+    }else if(!pinTurn())messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
     lastStreamingText=hasStreaming?streamingText:'';
     }
