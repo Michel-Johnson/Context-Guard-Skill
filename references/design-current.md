@@ -4,9 +4,9 @@
 
 **当前版本：`fs-v2`**
 
-现行存储与工作项文件格式是 [Memory Filesystem v2](memory-filesystem-v2/README.md)。Agent 默认只认这一份。改设计必须开下一版，不能在同一份「现行」上悄悄换意思。旧版归档不删。
+现行存储与工作项文件格式是 [Memory Filesystem v2](memory-filesystem-v2/README.md)。Agent 默认只认这一份。改设计必须开下一版，不能在同一份「现行」上悄悄换意思。旧版不留在 main。
 
-`docs/design/` 里的稿（含 [file-design.md](../docs/design/file-design.md)、Coordinator 开发计划、Session 接口草案）不是当前版本，也不是已升格的法。没升版之前，实现和 Skill 都不得拿它们当存储、权限或发布协议。
+未升格设计草案不是当前版本，也不是已升格的法。没升版之前，实现和 Skill 都不得拿它们当存储、权限或发布协议。
 
 尚未拍板、本文不选边：
 

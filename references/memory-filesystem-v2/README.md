@@ -5,7 +5,7 @@
 **版本：`fs-v2`（当前设计版本）**  
 从何而来：已评审的 Cloud Main / Session 记忆文件结构。  
 确认：现行存储法只认这一版。下一版必须另开版本号。入口见 [当前设计版本](../design-current.md)。  
-`docs/design/file-design.md` 不是本版本，不得当存储法。
+未升格设计草案不是本版本，不得当存储法。
 
 这是 Cloud Main 与 Session 记忆的已评审目标文件结构。启用 fs-v2 的服务器提供按版本读取单份 Markdown 的显式 API，Agent 可通过 `context-guard memory file` 读取获授权的文档；这不是本地私有 `content/` 磁盘路径。未启用 fs-v2 的项目不能使用该入口，旧记录仍只作兼容传输。Agent 打开模块时默认读哪套目录（FIND.md / snapshot 与本投影如何切换）尚未拍板，不得在本文里选边。
 

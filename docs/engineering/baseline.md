@@ -39,7 +39,7 @@
 | 权威记忆 | [server-memory](../../references/server-memory.md) | 私有服务器权威、Session 隔离、版本/CAS/回执；Agent 不获得人类 Main 编辑权限 |
 | 未完成验收 | [CI_todo](../../CI_todo.md) | 最新专项状态优先；存在历史和被替代记录，勾选不能代表所有宿主当前有效 |
 | 角色编排 | [roles](../../roles.md)、[文档入口](../README.md) | 角色需明确，不因阅读角色设计获得权限，不将全部设计当作已部署能力 |
-| 文件记忆设计 | [file-design](../design/file-design.md) | 设计和合成实验，不是当前存储 schema；不据此迁移现有 Session Map |
+| 文件记忆 | [Memory Filesystem v2](../../references/memory-filesystem-v2/README.md) | 现行存储法是 fs-v2。未升格草案不在本树，不据此迁移现有 Session Map |
 
 本次实际执行 `node .github/scripts/verify-test-governance.mjs` 返回：35 个候选测试文件、6 个独立套件、2 个 helper。输出虽称 automatic tests，但 35 包含被排除后独立执行的 1 个安全套件，实际共享 runner 为 34 个文件。这个数字是文件清点，不是用例数量或完整测试通过数。
 
