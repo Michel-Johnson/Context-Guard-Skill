@@ -12,8 +12,9 @@ import { encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { applyOperations, entries, MapError, validate, restoreSessionWorkItemOperations } from '../shared/map-model.mjs';
 import { translateChanges, operationGrants } from '../shared/protocol-map.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
+import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
 import { memoryReadViews } from './memory-read-view.mjs';
-import { ensureFilesystemProjection, projectMemoryFile, projectMemoryLockFile, writeProjectMemory } from './memory-filesystem.mjs';
+import { ensureFilesystemProjection, projectMemoryFile, projectMemoryLockFile, readFilesystemDocument, writeProjectMemory } from './memory-filesystem.mjs';
 const exec = promisify(execFile);
 const equal = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
 const validSessionId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\/\u0000-\u001f\u007f]/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
@@ -376,9 +377,44 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
       res.end(body); return true;
     };
     const url = new URL(req.url, 'http://localhost');
+    const filesystemRoute = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/filesystem\/(main|sessions\/([^/]+))\/(.+)$/);
     const route = url.pathname.match(/^\/v1\/projects\/([a-z0-9-]+)\/(main|preferences|sessions\/([^/]+)(?:\/(map|changes|events))?|publish|history|restore)$/);
-    if (!route) return false;
+    if (!route && !filesystemRoute) return false;
     try {
+      if (filesystemRoute) {
+        const [, projectId, rawScope, rawSession, rawName] = filesystemRoute;
+        let sessionId = '';
+        try { sessionId = rawSession ? decodeURIComponent(rawSession) : ''; }
+        catch { throw new MapError('INVALID_SESSION', 'Invalid encoded Session', 400); }
+        if (rawSession && !validSessionId(sessionId)) throw new MapError('INVALID_SESSION', 'Invalid Session', 400);
+        if (req.method !== 'GET') throw new MapError('METHOD', 'GET required', 405);
+        const credential = req.headers.authorization?.replace(/^Bearer /, '') || '';
+        const project = projects[projectId], admin = equal(credential, adminToken);
+        const projectCredential = !!project?.token && equal(credential, project.token);
+        if (!project || !admin && !projectCredential && !await authorizeDevice?.({ credential, projectId, sessionId, scope: rawScope, method: req.method })) {
+          throw new MapError('UNAUTHORIZED', 'Project-scoped authorization required', 401);
+        }
+        let name;
+        try { name = decodeURIComponent(rawName); } catch { throw new MapError('INVALID_PATH', 'Invalid encoded document path', 400); }
+        const segments = name.split('/');
+        if (!admin && (segments.includes('ideas') || segments[0] !== 'nodes' && name !== 'map.json' || name !== 'map.json' && !name.endsWith('.md'))) {
+          throw new MapError('FORBIDDEN', 'This document is outside the Agent reading surface', 403);
+        }
+        const state = await readMemoryView(configuration, projectId);
+        const snapshot = sessionId ? state.sessions[sessionId] : state.main;
+        if (!snapshot) throw new MapError('NOT_FOUND', 'Memory scope is unavailable', 404);
+        const pinned = url.searchParams.get('version');
+        if (pinned && pinned !== snapshot.version) throw new MapError('VERSION_CONFLICT', 'Memory version changed; restart the document read', 409);
+        const scopeName = sessionId ? `session:${sessionId}` : 'main';
+        let content = await readFilesystemDocument(dataDir, projectId, scopeName, snapshot.version, name);
+        if (!admin && name.endsWith('/index.md')) {
+          const scoped = structuredClone(snapshot);
+          for (const { node } of entries(scoped.memory.map.root).values()) node.ideas = [];
+          content = buildFilesystemV2(scoped).files.get(name);
+          if (content === undefined) throw new MapError('NOT_FOUND', 'Node index is unavailable', 404);
+        }
+        return send(200, { projectId, scope: scopeName, version: snapshot.version, path: name, content, sha256: hash(content) });
+      }
       const [, projectId, scope, rawSession, sessionAction] = route;
       const sessionId = rawSession ? decodeURIComponent(rawSession) : '';
       if (rawSession && !validSessionId(sessionId)) {

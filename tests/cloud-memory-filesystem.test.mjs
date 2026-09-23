@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import test from 'node:test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
 import {
   filesystemProjectDirectory,
@@ -13,8 +17,12 @@ import {
   writeProjectMemory,
 } from '../scripts/cloud/memory-filesystem.mjs';
 import { withFileLock } from '../scripts/shared/io.mjs';
-import { commitMainMemoryMap, readMemoryProject } from '../scripts/cloud/memory.mjs';
+import { commitMainMemoryMap, createMemoryHandler, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { memoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
+import { memoryConfigPath } from '../scripts/workbench/memory.mjs';
+import { resolveProject } from '../scripts/workbench/project.mjs';
+
+const runProcess = promisify(execFile);
 
 function state() {
   return {
@@ -127,6 +135,82 @@ test('later Todo attempts survive committed updates, restart and projection repa
   assert.equal(restored.main.memory.map.root.children[0].todos[0].attempts.length, 2);
   assert.equal(await fs.readFile(file, 'utf8'), before);
   assert.match(await fs.readFile(path.join(root, 'content/main/nodes/项目-module/提交-node/todos/tests/T1-A2.md'), 'utf8'), /并发回归通过。/);
+});
+
+test('versioned filesystem reads expose scoped Markdown without legacy records or Agent Ideas', async t => {
+  const value = await fixture(t);
+  const seeded = state();
+  seeded.main.memory.map.root.ideas = [{ id: 'I1', text: 'Coordinator-only idea text', state: 'pending' }];
+  await fs.writeFile(value.legacy, JSON.stringify(seeded));
+  const configuration = { dataDir: value.dataDir, adminToken: 'admin', projects: { project: { token: 'project-token' } } };
+  const service = await startMemoryServer({ ...configuration, port: 0 });
+  const get = (route, token = 'project-token') => fetch(`${service.url}/v1/projects/project/filesystem/${route}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  try {
+    const unavailable = await get('main/map.json');
+    assert.equal(unavailable.status, 409);
+    assert.equal((await unavailable.json()).error.code, 'FSV2_UNAVAILABLE');
+    await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
+    const map = await get('main/map.json');
+    assert.equal(map.status, 200);
+    const mapBody = await map.json();
+    assert.equal(mapBody.version, 'main-v1');
+    assert.equal(JSON.parse(mapBody.content).root, 'M1');
+    assert.equal(Object.hasOwn(mapBody, 'records'), false);
+    const indexPath = 'nodes/项目-module/index.md'.split('/').map(encodeURIComponent).join('/');
+    const agentIndex = await get(`main/${indexPath}?version=main-v1`);
+    assert.equal(agentIndex.status, 200);
+    assert.doesNotMatch((await agentIndex.json()).content, /Coordinator-only idea text/);
+    const adminIndex = await get(`main/${indexPath}`, 'admin');
+    assert.match((await adminIndex.json()).content, /Coordinator-only ide/);
+    const ideaPath = 'nodes/项目-module/ideas/I1.md'.split('/').map(encodeURIComponent).join('/');
+    assert.equal((await get(`main/${ideaPath}`)).status, 403);
+    assert.match((await (await get(`main/${ideaPath}`, 'admin')).json()).content, /Coordinator-only idea text/);
+    assert.equal((await get('main/legacy-records/FIND.md', 'admin')).status, 404);
+    assert.equal((await get('main/map.json?version=old')).status, 409);
+    const traversal = await get('main/nodes/%2E%2E%2Flegacy-records%2FFIND.md', 'admin');
+    assert.equal(traversal.status, 400);
+    const sessionMap = await get('sessions/sessionA/map.json');
+    assert.equal(sessionMap.status, 200);
+    assert.equal((await sessionMap.json()).scope, 'session:sessionA');
+    const clientRoot = path.join(value.dataDir, 'client');
+    await fs.mkdir(clientRoot);
+    const client = await resolveProject(clientRoot);
+    await fs.mkdir(path.dirname(memoryConfigPath(client)), { recursive: true });
+    await fs.writeFile(memoryConfigPath(client), JSON.stringify({ url: service.url, projectId: value.projectId, token: 'project-token' }));
+    const cli = fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url));
+    const command = await runProcess(process.execPath, [cli, 'memory', 'file', '--root', clientRoot, '--scope', 'main', '--path', 'map.json'], { windowsHide: true });
+    assert.equal(JSON.parse(command.stdout).path, 'map.json');
+  } finally { await service.close(); }
+});
+
+test('device filesystem reads are bound to their own Session', async t => {
+  const value = await fixture(t);
+  await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
+  const configuration = { dataDir: value.dataDir, adminToken: 'admin', projects: { project: { token: 'project-token' } } };
+  const observed = [];
+  const handler = createMemoryHandler(configuration, { authorizeDevice: async input => {
+    observed.push({ sessionId: input.sessionId, scope: input.scope, method: input.method });
+    return input.credential === 'device-token' && input.method === 'GET' && (!input.sessionId || input.sessionId === 'sessionA');
+  } });
+  const server = http.createServer(async (request, response) => {
+    if (!await handler(request, response)) { response.writeHead(404); response.end(); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/v1/projects/project/filesystem/`;
+  const read = route => fetch(url + route, { headers: { Authorization: 'Bearer device-token' } });
+  try {
+    assert.equal((await read('main/map.json')).status, 200);
+    assert.equal((await read('sessions/sessionA/map.json')).status, 200);
+    assert.equal((await read('sessions/sessionB/map.json')).status, 401);
+    assert.deepEqual(observed.map(item => [item.sessionId, item.scope, item.method]), [
+      ['', 'main', 'GET'], ['sessionA', 'sessions/sessionA', 'GET'], ['sessionB', 'sessions/sessionB', 'GET'],
+    ]);
+  } finally {
+    handler.close();
+    await new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
+  }
 });
 
 test('repairs a missing projection from the committed v2 runtime state', async (t) => {
