@@ -60,6 +60,29 @@ export async function executionPrompt(message, readObject) {
 // prevents a second model invocation when acceptance cannot be established.
 export class ProtocolDelivery {
   constructor(directory, adapters) { this.directory = directory; this.adapters = adapters; }
+  async retryBusy(canRetry, limit = 4) {
+    const names = await fs.readdir(this.directory).catch(error => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    const candidates = (await Promise.all(names.filter(value => value.endsWith('.json')).map(async name => ({
+      name, mtimeMs: await fs.stat(path.join(this.directory, name)).then(stat => stat.mtimeMs, () => 0),
+    })))).sort((a, b) => b.mtimeMs - a.mtimeMs);
+    let attempted = 0;
+    for (const { name, mtimeMs } of candidates) {
+      if (attempted >= limit) break;
+      if (!mtimeMs || Date.now() - mtimeMs > 24 * 60 * 60 * 1000) continue;
+      const file = path.join(this.directory, name);
+      const previous = await readJSON(file, null);
+      if (previous?.state !== 'failed' || previous.errorCode !== 'RUNTIME_BUSY' || !previous.input) continue;
+      if (!await canRetry(previous.input)) continue;
+      attempted++;
+      await this.deliver(previous.input).catch(error => {
+        if (error.code !== 'UNAVAILABLE') throw error;
+      });
+    }
+    return attempted;
+  }
   async deliver(input) {
     const adapter = this.adapters[input.platform];
     const invoke = typeof adapter === 'function' ? adapter : adapter?.deliver;

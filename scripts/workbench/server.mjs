@@ -165,6 +165,10 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   let deviceHeartbeatTimer = null, deviceHeartbeatRunning = null, deviceHeartbeatStopping = false;
   const ciConnections = new Map();
   const ciRetries = new Map();
+  const taskDelivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), {
+    codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime,
+  });
+  let taskDeliveryRetry = null;
   const ciChannel = (sessionId, connection) => {
     if (!ciConnections.has(sessionId) || ciConnections.get(sessionId).origin !== connection.origin) {
       const channel = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2', 'ci', sessionId), origin: connection.origin, allowLoopback: true,
@@ -211,6 +215,16 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
       },
       sessions: async () => {
+        if (!taskDeliveryRetry) taskDeliveryRetry = taskDelivery.retryBusy(async input => {
+          if (input.platform !== 'claude' || !access.binding(input.sessionId)) return false;
+          const plan = /^Context Guard：Plan (\S+)@(\S+) 审核/.exec(input.message);
+          if (!plan) return false;
+          const binding = await protocolStore.registeredBinding(backendPrincipal, input.sessionId);
+          const execution = binding && await protocolStore.activeExecution(backendPrincipal, { id: input.sessionId, generation: binding.generation });
+          if (execution?.closed || execution?.plan?.ref !== plan[1] || execution.plan.version !== plan[2]) return false;
+          return (await claudeRuntime.status(input.sessionId)).status === 'stopped';
+        }).catch(error => { device.lastError = error.code || 'TASK_DELIVERY_RETRY_FAILED'; })
+          .finally(() => { taskDeliveryRetry = null; });
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
         const heads = await protocolStore.queueHeads(backendPrincipal), queued = new Set(heads.map(head => head.session.id));
         // A freshly provisioned Session has no queued task yet: Cloud waits for
@@ -259,7 +273,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
           const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
           const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
-          const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), { codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime });
           try {
             if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
               const native = await claudeRuntime.status(session.id);
@@ -270,7 +283,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
                 // `active` before Cloud sends the next continuation control.
                 // Re-deliver to the same bound Session; never create a new
                 // Session or reinterpret this as a new task.
-                await delivery.deliver({ id: `${message.session.generation}:${message.id}:resume`, platform: 'claude', sessionId: session.id,
+                await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}:resume`, platform: 'claude', sessionId: session.id,
                   root: session.worktreeRoot || root, message: prompt });
               } else {
                 protocolFail('RECOVERY_NOT_AVAILABLE', 'Claude has no matching interrupted turn');
@@ -279,7 +292,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             }
             const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
             if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
-            await delivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
+            await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
               ...(ci ? { execution: { session: message.session, taskId: message.payload.taskId, sourceSha: message.payload.sourceSha, ciTodoRef: message.payload.ciTodoRef, references: message.payload.references || {} } } : {}) });
             return { ...result, deliveryState: 'received' };
           } catch (error) {
