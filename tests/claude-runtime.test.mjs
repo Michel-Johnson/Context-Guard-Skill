@@ -205,6 +205,12 @@ test('Claude runtime allows a long active turn but interrupts a silent native pr
   };
   await runtime.deliver({ id: 'active', platform: 'claude', sessionId, root: directory, message: 'active' });
   assert.equal((await wait('active')).state, 'finished', 'progress must extend the idle deadline');
+  const boundedSessionId = randomUUID();
+  await runtime.configure(boundedSessionId, { ...config, maxTurnMs: 650 });
+  await runtime.deliver({ id: 'bounded', platform: 'claude', sessionId: boundedSessionId, root: directory, message: 'active' });
+  const bounded = await wait('bounded', boundedSessionId);
+  assert.equal(bounded.state, 'interrupted', 'continuous output must not extend the turn deadline');
+  assert.equal(bounded.error, 'CLAUDE_TURN_LIMIT');
   await runtime.deliver({ id: 'silent', platform: 'claude', sessionId, root: directory, message: 'silent' });
   const interrupted = await wait('silent');
   assert.equal(interrupted.state, 'interrupted');
