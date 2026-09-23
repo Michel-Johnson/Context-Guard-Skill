@@ -831,9 +831,14 @@ export async function startCloudServer({
         if (task.stage !== 'starting') continue;
         const creation = (await store.sessionCreations(human)).find(item => item.id === task.creationId);
         if (creation?.state === 'failed') {
-          // A new creation request would mint a second executionSessionId for
-          // the same approved task. Preserve the failed identity for recovery.
-          await store.updateProjectTask(principal, task.taskId, { stage: 'failed', error: creation.error || 'CREATION_FAILED' });
+          const retries = task.creationRetries || 0;
+          if (retries >= 2) {
+            await store.updateProjectTask(principal, task.taskId, { stage: 'failed', error: creation.error || 'CREATION_FAILED' });
+            continue;
+          }
+          if (Date.now() - Date.parse(creation.completedAt || task.updatedAt) < 5000) continue;
+          await store.retrySessionCreation(principal, creation.id);
+          await store.updateProjectTask(principal, task.taskId, { creationRetries: retries + 1, error: 'RETRYING_SESSION_CREATION' });
           continue;
         }
         if (creation?.state !== 'registered') {

@@ -61,6 +61,31 @@ test('Native Session creation is human requested, device scoped and durable with
   assert.deepEqual(await store.pendingSessionCreations(device), []);
   await assert.rejects(store.finishSessionCreation(device, { id: first.id, error: 'FAILED' }), { code: 'ID_REUSED' });
 });
+test('Coordinator retries a failed creation with the same execution Session identity', async t => {
+  const { dir, store } = await fixture(t);
+  const coordinator = { ...principal, role: 'coordinator', agentId: 'scheduler:repo-1', creationTemplates: [session.id] };
+  const device = { ...principal, role: 'device' };
+  const input = { operationId: 'task:one', templateSessionId: session.id, name: 'Task one' };
+  const first = await store.requestSessionCreation(coordinator, input);
+  const failed = await store.finishSessionCreation(device, { id: first.id, error: 'NATIVE_START_FAILED' });
+  assert.equal(failed.state, 'failed');
+  await assert.rejects(store.retrySessionCreation({ ...coordinator, agentId: 'other' }, first.id), { code: 'FORBIDDEN' });
+  const retried = await store.retrySessionCreation(coordinator, first.id);
+  assert.equal(retried.state, 'pending');
+  assert.equal(retried.id, first.id);
+  assert.equal(retried.sessionId, first.sessionId);
+  assert.equal(retried.retryCount, 1);
+  assert.equal(retried.lastError, 'NATIVE_START_FAILED');
+  assert.ok(retried.lastFailedAt);
+  assert.deepEqual(await new ProtocolStore(dir).retrySessionCreation(coordinator, first.id), retried);
+  assert.deepEqual(await store.pendingSessionCreations(device), [retried]);
+  await store.handle(device, { v: 2, id: 'retry-bind', type: 'session.bind', payload: {
+    sessionId: first.sessionId, worktreeId: 'recovered-worktree', agentId: first.sessionId, expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const registered = (await store.sessionCreations({ ...principal, role: 'human' }))[0];
+  assert.equal(registered.state, 'registered');
+  assert.equal(registered.sessionId, first.sessionId);
+});
 test('human task results remain reviewable across binding generations but isolated from Agents', async t => {
   const { store, dir } = await fixture(t);
   const human = { ...principal, role: 'human' };
