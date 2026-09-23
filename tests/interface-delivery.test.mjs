@@ -72,6 +72,15 @@ test('Resume control prompt preserves the control receipt and requires a resumed
   assert.equal(await executionPrompt(message), prompt, 'replay retains the resume report identity');
 });
 
+test('Timed-out Claude continuation does not repeat exploratory checks', async () => {
+  const message = { v: 2, id: 'turn-limit-control', type: 'task.control', session: { id: 'developer', generation: 3 },
+    payload: { taskId: 'task', action: 'resume', expectedVersion: 'v10', data: { reason: 'CLAUDE_TURN_LIMIT' } } };
+  const prompt = await executionPrompt(message);
+  assert.match(prompt, /不要重跑同一批探索性检查/);
+  assert.match(prompt, /明确回报阻塞与未验证项/);
+  assert.match(prompt, /map execution/);
+});
+
 test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

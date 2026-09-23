@@ -304,7 +304,9 @@ async function runWorker(file, jobFile) {
     };
     const active = () => { clearTimeout(idleTimer); idleTimer = setTimeout(terminate, idleMs); };
     active();
-    const hardTimer = setTimeout(terminate, Math.max(idleMs, 3600000));
+    // Activity keeps the idle timer alive, but cannot extend a native turn
+    // indefinitely. A stopped turn stays recoverable in the same Session.
+    const hardTimer = setTimeout(() => terminate('CLAUDE_TURN_LIMIT'), Math.max(idleMs, config.maxTurnMs || 1800000));
     const interrupted = () => terminate();
     process.once('SIGTERM', interrupted); process.once('SIGINT', interrupted);
     child.stdout.on('data', chunk => {

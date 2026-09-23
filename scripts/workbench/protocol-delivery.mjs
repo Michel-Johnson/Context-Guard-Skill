@@ -40,6 +40,8 @@ export async function executionPrompt(message, readObject) {
   if (message.type === 'task.control' && p.action === 'resume') return [
     `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
     '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
+    ...(p.data?.reason === 'CLAUDE_TURN_LIMIT' || p.data?.reason === 'CLAUDE_TIMEOUT_OR_INTERRUPTED' || p.data?.reason === 'CLAUDE_OUTPUT_LIMIT'
+      ? ['上一轮因执行时限或输出量中断。不要重跑同一批探索性检查；先盘点已有改动和验证证据，优先完成已批准范围内的交付。若仍不能满足验收，明确回报阻塞与未验证项，不要声称测试通过。'] : []),
     '如果原任务是链路验证或明确要求不修改业务文件：只读核对 Session、任务、回执和 git status；不得读取或改写 Main、map.json 或业务文件，也不得自行创建/分配 Session。回报 resumed 后，使用只读证据提交 map task handoff（--input - 通过 stdin），让流程进入 CI/验收；不要再次等待或触发自动恢复。',
     '确认可以继续后，用 map exchange --input -（stdin）回报 resumed；消息必须保留原控制编号：',
     JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,

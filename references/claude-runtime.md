@@ -93,6 +93,10 @@ backend restart can recover a lost acknowledgement from the receiver's saved
 intent without launching the same prompt again. Native workers outlive backend
 restarts; they do not own another heartbeat service.
 
+`timeoutMs` limits silence; `maxTurnMs` limits the total native turn (30 minutes
+by default). Either limit preserves an interrupted delivery for recovery in the
+same Session rather than treating elapsed time as task completion.
+
 The Claude installer includes failure, permission, pre/post-compaction and
 SessionEnd hooks in addition to start/tool/stop events. Non-decision events only
 record state; they do not restart model generation. See the native
