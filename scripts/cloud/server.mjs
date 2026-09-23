@@ -2157,7 +2157,7 @@ export async function startCloudServer({
           return send(res, 200, result);
         }
       }
-      if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments|coordinator-markdown|marked)\.mjs$/.test(route)) {
+      if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments|coordinator-markdown|coordinator-working-blot|marked)\.mjs$/.test(route)) {
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, path.basename(route) === 'map-model.mjs' ? 'scripts/shared' : path.basename(route) === 'marked.mjs' ? 'prototype/vendor' : 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
@@ -2171,6 +2171,11 @@ export async function startCloudServer({
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, 'prototype', path.basename(route)));
         res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
+      }
+      if (req.method === 'GET' && /\/working-blot-atlas\.png$/.test(route)) {
+        requirePrivateRead(req, url);
+        const source = await fs.readFile(path.join(root, 'prototype/working-blot-atlas.png'));
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(source);
       }
       if (req.method === 'GET' && (route === '/' || route === '/prototype/' || route === '/workbench.html' || /^\/projects\/[^/]+$/.test(route))) {
         if (privateAccess && browserPasswordHash && !hasWorkbenchAccess(req, url)) return redirect(res, `/login?next=${encodeURIComponent(`${route}${url.search}`)}`);

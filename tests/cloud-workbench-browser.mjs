@@ -113,6 +113,7 @@ try {
   browser = await chromium.launch({ headless: true });
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   page = await context.newPage();
+  assert.equal((await fetch(`${service.url}/prototype/working-blot-atlas.png`)).status,401,'Ready ink atlas stays behind Cloud workbench authentication');
   // Cloud publication and cross-view reconciliation run on a 30-second cycle.
   // Keep assertions strict while allowing one complete authoritative refresh.
   page.setDefaultTimeout(35000);
@@ -342,7 +343,11 @@ try {
   const coordinatorReads = [];
   let coordinatorReadFailure = false;
   const markdownImageRequests = [];
-  page.on('request', request=>{if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());});
+  const workingBlotRequests = [];
+  page.on('request', request=>{
+    if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());
+    if(request.url().includes('/working-blot-atlas.png'))workingBlotRequests.push(request.url());
+  });
   let runningPreview = false;
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     sessionTemplates: [{ id: 'developer-template', name: 'Claude Developer' }], sessionCreations: [],
@@ -456,7 +461,7 @@ try {
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
     const input = el.querySelector('.coordinator-input-shell textarea');
     const typing = el.querySelector('.coordinator-typing');
-    const typingPhase = typing.querySelector('.coordinator-typing-phase');
+    const blot = typing.querySelector('.coordinator-working-blot');
     const send = el.querySelector('.coordinator-input-shell > button');
     const inputRect = input.getBoundingClientRect();
     const sendRect = send.getBoundingClientRect();
@@ -465,11 +470,8 @@ try {
       sendWidth:sendRect.width,sendHeight:sendRect.height,sendRadius:getComputedStyle(send).borderRadius,
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
       sendDisabled:send.disabled,
-      workingPhase: typingPhase?.textContent,
-      shimmerDuration: getComputedStyle(typingPhase).animationDuration,
-      shimmerTiming: getComputedStyle(typingPhase).animationTimingFunction,
-      shimmerIteration: getComputedStyle(typingPhase).animationIterationCount,
-      typingDots: typing.querySelectorAll('i').length };
+      workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
+      blotPixels:[blot?.width,blot?.height],typingDots:typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
   assert.ok(coordinatorLayout.formBottom <= coordinatorLayout.drawerBottom + 1, 'chat composer remains visible inside the inspector');
@@ -481,11 +483,11 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
-  assert.equal(coordinatorLayout.workingPhase, 'Planning next moves', 'reply state uses Cursor desktop wording');
-  assert.equal(coordinatorLayout.shimmerDuration, '1s', 'planning shimmer matches Cursor desktop duration');
-  assert.equal(coordinatorLayout.shimmerTiming, 'linear', 'planning shimmer matches Cursor desktop easing');
-  assert.equal(coordinatorLayout.shimmerIteration, 'infinite', 'planning shimmer continues until response text arrives');
-  assert.equal(coordinatorLayout.typingDots, 0, 'Cursor planning state has no staggered dots');
+  assert.equal(coordinatorLayout.workingLabel,'正在处理','Ready working mark retains an accessible status');
+  assert.deepEqual([coordinatorLayout.blotWidth,coordinatorLayout.blotPixels],[36,[160,160]],'Ready ink atlas renders in a 36px canvas');
+  assert.equal(coordinatorLayout.typingDots,0,'the old dots are removed');
+  const historicalMessage=coordinator.locator('.coordinator-message.assistant').first();
+  await historicalMessage.evaluate(node=>{node.dataset.historyProbe='kept';});
   runningPreview=true;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
@@ -499,6 +501,15 @@ try {
   await coordinator.locator('.coordinator-rise').first().waitFor();
   const firstRise=coordinator.locator('.coordinator-rise').first();
   await firstRise.evaluate(node=>{node.dataset.stableBlock='kept';});
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{
+    node.__removedCommittedRows=0;
+    node.__rowObserver=new MutationObserver(records=>{
+      for(const record of records)for(const removed of record.removedNodes){
+        if(removed.classList?.contains('coordinator-message')&&!removed.classList.contains('coordinator-streaming'))node.__removedCommittedRows++;
+      }
+    });
+    node.__rowObserver.observe(node,{childList:true});
+  });
   assert.equal(await firstRise.textContent(),'第一段回复。','Ready-style reveal waits for a complete paragraph');
   assert.equal(await firstRise.locator('.coordinator-rise-body').evaluate(node=>getComputedStyle(node).transitionDuration),'1.05s, 1.05s','new block uses Ready rise timing');
   const readsBeforeReconcile=coordinatorReads.length;
@@ -506,6 +517,15 @@ try {
   for(let attempt=0;coordinatorReads.length===readsBeforeReconcile&&attempt<30;attempt++)await page.waitForTimeout(20);
   assert.ok(coordinatorReads.length>readsBeforeReconcile,'streaming state was refreshed after metadata changed');
   assert.equal(await firstRise.getAttribute('data-stable-block'),'kept','metadata refresh preserves already revealed blocks');
+  assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept','metadata refresh does not rebuild committed transcript rows');
+  const readsBeforeTool=coordinatorReads.length;
+  coordinatorState.messages.push({role:'assistant',text:'',tools:[{name:'read_map'}]});
+  for(let attempt=0;coordinatorReads.length===readsBeforeTool&&attempt<30;attempt++)await page.waitForTimeout(20);
+  assert.ok(coordinatorReads.length>readsBeforeTool,'tool progress was polled');
+  assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept','tool progress does not rebuild prior messages');
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>{
+    node.__rowObserver.disconnect();return node.__removedCommittedRows;
+  }),0,'polling and tool progress never detach committed message rows');
   await page.waitForFunction(()=>document.querySelectorAll('.coordinator-streaming-text .coordinator-rise').length===3);
   assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '第一段回复。第二段回复。第三段回复。', 'streaming response reveals whole paragraphs without dropping content');
   assert.equal(await firstRise.getAttribute('data-stable-block'),'kept','earlier blocks stay mounted while later blocks enter');
@@ -538,10 +558,6 @@ try {
   await page.waitForTimeout(300);
   assert.deepEqual(await oneShotMessage.evaluate(node=>({text:node.textContent,html:node.innerHTML,height:node.getBoundingClientRect().height})),stableFinalLayout,'one-shot reply layout stays unchanged after first paint');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>getComputedStyle(node).paddingBottom),'36px','latest message keeps space above the composer');
-  await page.emulateMedia({reducedMotion:'reduce'});
-  const reducedMotion=await coordinator.evaluate(el=>({shimmerAnimation:getComputedStyle(el.querySelector('.coordinator-typing-phase')).animationName}));
-  assert.deepEqual(reducedMotion,{shimmerAnimation:'none'},'reduced motion disables the planning shimmer');
-  await page.emulateMedia({reducedMotion:'no-preference'});
   record('Coordinator composer is compact and reply state uses a continuous indicator');
   await coordinator.getByText('<img src=x onerror=alert(1)>', { exact: false }).waitFor();
   assert.ok(coordinatorReads.includes('main'), 'Main opens a fresh scoped conversation instead of legacy history');
@@ -699,14 +715,47 @@ try {
   assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'读取完成。'}).last().locator('button').count(),0,'read_map focus needs no manual node button');
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
-  await coordinator.getByText('Planning next moves',{exact:true}).waitFor();
+  await historicalMessage.evaluate(node=>{node.dataset.historyProbe='kept-after-reload';});
+  await coordinator.locator('.coordinator-typing.is-visible canvas').waitFor();
+  await page.waitForFunction(()=>{
+    const canvas=document.querySelector('.coordinator-typing.is-visible canvas');
+    if(!canvas)return false;
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
+    return false;
+  });
+  assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
+  await coordinator.locator('.coordinator-typing.is-visible').scrollIntoViewIfNeeded();
+  await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
+  const blotCanvas=coordinator.locator('.coordinator-typing.is-visible canvas');
+  const inkFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
+  await page.waitForTimeout(150);
+  assert.notEqual(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),inkFrame,'working mark advances through Ready ink frames');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  coordinatorState.status='waiting-for-user';
+  await coordinator.locator('.coordinator-typing').waitFor({state:'hidden'});
+  coordinatorState.status='running';
+  await coordinator.locator('.coordinator-typing').waitFor({state:'visible'});
+  await page.waitForFunction(()=>{
+    const canvas=document.querySelector('.coordinator-typing.is-visible canvas');
+    if(!canvas)return false;
+    const pixels=canvas.getContext('2d').getImageData(0,0,160,160).data;
+    for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
+    return false;
+  });
+  const stillFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
+  await page.waitForTimeout(150);
+  assert.equal(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),stillFrame,'reduced motion freezes the Ready mark');
+  await page.emulateMedia({reducedMotion:'no-preference'});
   const planningPlacement=await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>({
     parent:node.parentElement?.className,
     previous:node.previousElementSibling?.className,
+    followsLatest:node.previousElementSibling===[...node.parentElement.children].filter(child=>child.classList?.contains('coordinator-message')&&!child.classList.contains('coordinator-streaming')).at(-1),
     beforeComposer:node.nextElementSibling?.className,
   }));
   assert.match(planningPlacement.parent,/coordinator-messages/,'planning state belongs to the message timeline');
-  assert.match(planningPlacement.previous,/coordinator-message user/,'planning state follows the current user message');
+  assert.match(planningPlacement.previous,/coordinator-message/,'working state follows a real message');
+  assert.equal(planningPlacement.followsLatest,true,'working state follows the latest committed message');
   assert.notEqual(planningPlacement.beforeComposer,'coordinator-compose','planning state is not fixed above the composer');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
@@ -727,28 +776,29 @@ try {
   coordinatorState.messages.push({role:'user',text:'检查流式完成态'});
   coordinatorState.status='running';coordinatorState.streamingText=seamlessText.slice(0,-10);
   await coordinator.locator('.coordinator-streaming').waitFor();
-  await coordinator.locator('.coordinator-streaming-text .coordinator-rise').first().waitFor();
+  await coordinator.locator('.coordinator-streaming .coordinator-streaming-text .coordinator-rise').first().waitFor();
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.finalizationProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__coordinatorBlockProbe='kept';
   });
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   coordinatorState.streamingText=seamlessText;
-  await coordinator.locator('.coordinator-streaming-text .coordinator-rise').first().waitFor();
-  assert.equal(await coordinator.locator('.coordinator-streaming-text ol li:last-child').count(),0,'incomplete list stays buffered until its closing boundary');
-  assert.equal(await coordinator.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream updates patch stable Markdown blocks instead of replacing them');
+  await coordinator.locator('.coordinator-streaming .coordinator-streaming-text .coordinator-rise').first().waitFor();
+  assert.equal(await coordinator.locator('.coordinator-streaming .coordinator-streaming-text ol li:last-child').count(),0,'incomplete list stays buffered until its closing boundary');
+  assert.equal(await coordinator.locator('.coordinator-streaming .coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream updates patch stable Markdown blocks instead of replacing them');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'stream updates do not steal scroll position while the user reads older messages');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';coordinatorState.messages.push({role:'assistant',text:seamlessText});
   const seamlessFinal=coordinator.locator('.coordinator-message.assistant').filter({hasText:'先检查页面层级与段落间距。'}).last();
   await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
   assert.equal(await seamlessFinal.getAttribute('data-finalization-probe'),'kept','stream completion keeps the existing assistant message node');
-  assert.equal(await seamlessFinal.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream completion unwraps the existing Markdown blocks without rebuilding them');
+  assert.equal(await seamlessFinal.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream completion keeps the existing Markdown block without rebuilding it');
   assert.equal(await seamlessFinal.locator('ol li').last().textContent(),'检查窄屏换行。','the final buffered list appears after completion');
+  assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','finalization preserves older transcript rows');
   record('coordinator-streaming-text-is-visible-before-final-message');
   const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
   coordinatorState.status='running';coordinatorState.streamingText=structuredQuestionText;
   await coordinator.locator('.coordinator-streaming').waitFor();
-  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text')?.textContent==='当前有四个未完成事项。');
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming .coordinator-streaming-text')?.textContent==='当前有四个未完成事项。');
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.questionTransitionProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
@@ -759,10 +809,11 @@ try {
   await coordinator.getByRole('button',{name:'部署博客',exact:true}).waitFor();
   const structuredQuestion=coordinator.locator('.coordinator-message.assistant').filter({hasText:'当前有四个未完成事项。'}).last();
   assert.equal(await structuredQuestion.getAttribute('data-question-transition-probe'),'kept','structured questions keep the streaming assistant message node');
-  assert.equal(await structuredQuestion.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
+  assert.equal(await structuredQuestion.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
   assert.equal(await structuredQuestion.getByText('当前有四个未完成事项。',{exact:true}).count(),1,'structured questions retain the non-duplicate lead text');
   assert.equal(await structuredQuestion.getByText('想先处理哪一项？',{exact:true}).count(),1,'the question prompt appears once instead of duplicating the streamed suffix');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
+  assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','question-card insertion does not remount older messages');
   coordinatorState.messages.pop();
   coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
