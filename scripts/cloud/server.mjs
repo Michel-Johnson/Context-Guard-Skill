@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess, isClosedBugStatus } from '../shared/map-model.mjs';
 import { atomicWrite } from '../shared/io.mjs';
-import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
+import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, enforceMainHistoryRetention, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { projectMemoryFile } from './memory-filesystem.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../shared/protocol-map.mjs';
@@ -404,6 +404,7 @@ export async function startCloudServer({
   const configuredMemory = memoryConfig || (process.env.CONTEXT_GUARD_MEMORY_CONFIG
     ? await readJson(path.resolve(process.env.CONTEXT_GUARD_MEMORY_CONFIG), null)
     : null);
+  if (configuredMemory) await enforceMainHistoryRetention(configuredMemory);
   const memoryHandler = configuredMemory ? createMemoryHandler(configuredMemory, { authorizeDevice: async ({ credential, projectId, sessionId, scope, method }) => {
     if (!interfaceAuth) return false;
     const principal = await interfaceAuth.authenticate(credential);

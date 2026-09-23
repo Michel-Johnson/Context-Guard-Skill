@@ -24,6 +24,7 @@ function validateOptions({ dataDir, adminToken }) {
 }
 
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
+const MAIN_HISTORY_LIMIT = 5;
 const memoryHubs = new WeakMap();
 const headCaches = new WeakMap();
 
@@ -146,7 +147,37 @@ function appendHistory(state, { scope, action, snapshot, previousVersion = null,
     snapshot: structuredClone(snapshot),
   };
   state.history.push(entry);
+  compactMainHistorySnapshots(state);
   return entry;
+}
+
+export function compactMainHistorySnapshots(state) {
+  const retained = new Set((state.history || []).filter(entry => entry.scope === 'main').slice(-MAIN_HISTORY_LIMIT).map(entry => entry.version));
+  let changed = false;
+  for (const entry of state.history || []) {
+    if (entry.scope !== 'main' || retained.has(entry.version) || !Object.hasOwn(entry, 'snapshot')) continue;
+    delete entry.snapshot;
+    changed = true;
+  }
+  for (const receipt of Object.values(state.receipts || {})) {
+    const result = receipt?.result;
+    if (result?.history?.scope !== 'main' || retained.has(result.history.version)) continue;
+    if (Object.hasOwn(result, 'snapshot')) { delete result.snapshot; changed = true; }
+    if (Object.hasOwn(result.history, 'snapshot')) { delete result.history.snapshot; changed = true; }
+    if (!result.historyExpired) { result.historyExpired = true; changed = true; }
+  }
+  return changed;
+}
+
+export async function enforceMainHistoryRetention(configuration) {
+  validateOptions(configuration);
+  for (const projectId of Object.keys(configuration.projects || {})) {
+    await withFileLock(projectMemoryLockFile(configuration.dataDir, projectId), async () => {
+      const file = projectMemoryFile(configuration.dataDir, projectId);
+      const state = await readJSON(file, null);
+      if (state && compactMainHistorySnapshots(state)) await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
+    });
+  }
 }
 
 function scopeValue(state, scope) {
@@ -588,6 +619,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
 export async function startMemoryServer({ dataDir, adminToken, projects = {}, host = '127.0.0.1', port = 0 } = {}) {
   validateOptions({ dataDir, adminToken });
   if (!['127.0.0.1', '::1', 'localhost'].includes(host)) throw new Error('Private memory service must listen on loopback behind an authenticated TLS endpoint');
+  await enforceMainHistoryRetention({ dataDir, adminToken, projects });
   const handler = createMemoryHandler({ dataDir, adminToken, projects });
   const server = http.createServer(async (req, res) => {
     if (!await handler(req, res)) {
