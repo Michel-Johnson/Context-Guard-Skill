@@ -34,6 +34,7 @@ export class WorkbenchSync {
     this.manualSession = Boolean(requestedSession);
     this.pendingSession = requestedSession || '';
     this.taskStates = new Map();
+    this.projectTaskStates = new Map();
     this.refreshingAccess = null;
     this.accessRefreshQueued = false;
     // Cloud authentication scopes access; a deep link only selects the initial
@@ -710,8 +711,9 @@ export class WorkbenchSync {
   }
   taskState(taskId) { return this.taskStates.get(taskId)?.state || ''; }
   taskResult(taskId) { return this.taskStates.get(taskId)?.result || null; }
+  projectTaskState(kind, nodeId, itemId) { return this.projectTaskStates?.get(`${kind}:${nodeId}:${itemId}`) || null; }
   async refreshTaskStatuses() {
-    if (!this.config.interfaceCapabilities?.taskDispatch || !this.taskStates.size || this.taskStatusRunning) return;
+    if (!this.config.interfaceCapabilities?.taskDispatch || this.taskStatusRunning) return;
     this.taskStatusRunning = true;
     try {
       const result = await this.call('/api/task-status', { tasks: [...this.taskStates.values()].map(({ taskId, sessionId }) => ({ taskId, sessionId })) });
@@ -721,6 +723,13 @@ export class WorkbenchSync {
         if (!previous || previous.state !== item.state || previous.version !== item.version) changed = true;
         this.taskStates.set(item.taskId, item);
       }
+      const projectTasks = new Map();
+      for (const item of result.projectTasks || []) {
+        const key = `${item.kind}:${item.nodeId}:${item.itemId}`, previous = projectTasks.get(key);
+        if (!previous || Date.parse(item.updatedAt) >= Date.parse(previous.updatedAt)) projectTasks.set(key, item);
+      }
+      if (!same([...(this.projectTaskStates || new Map()).entries()], [...projectTasks.entries()])) changed = true;
+      this.projectTaskStates = projectTasks;
       if (changed) this.a.statusChanged?.();
     } finally { this.taskStatusRunning = false; }
   }

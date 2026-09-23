@@ -56,6 +56,23 @@ test('browser reconnect retries share one operation and Session switches wait', 
   assert.equal(calls, 1, 'unavailable Session must not reconnect');
 });
 
+test('Workbench follows v2 project-task stages without requiring legacy dispatch metadata', async () => {
+  const sync = Object.create(WorkbenchSync.prototype);
+  const calls = []; let renders = 0;
+  Object.assign(sync, { config: { interfaceCapabilities: { taskDispatch: true } }, taskStates: new Map(), projectTaskStates: new Map(),
+    a: { statusChanged: () => renders++ }, call: async (_route, input) => {
+      calls.push(input); return { tasks: [], projectTasks: [{ taskId: 'task-1', itemId: 'TD1', nodeId: 'N1', kind: 'todo',
+        state: calls.length === 1 ? 'executing' : 'accepted', updatedAt: '2026-09-23T00:00:00Z' }] };
+    } });
+  await sync.refreshTaskStatuses();
+  assert.deepEqual(calls[0], { tasks: [] }, 'new tasks need no old Session dispatch field');
+  assert.equal(sync.projectTaskState('todo', 'N1', 'TD1').state, 'executing');
+  assert.equal(sync.projectTaskState('todo', 'N2', 'TD1'), null, 'duplicate item IDs in another node cannot inherit this status');
+  await sync.refreshTaskStatuses();
+  assert.equal(sync.projectTaskState('todo', 'N1', 'TD1').state, 'accepted');
+  assert.equal(renders, 2);
+});
+
 test('Session reopen merge preserves disjoint append-only records and rejects conflicting content', () => {
   const base = { v: 1, root: { id: 'T0', title: 'Project', proposal: 'accepted', memories: [], children: [] } };
   const local = structuredClone(base), main = structuredClone(base);

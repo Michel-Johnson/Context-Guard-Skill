@@ -1839,7 +1839,8 @@ export async function startCloudServer({
             try { tasks.push(await store.taskStatus(principal, { id: sessionId, generation: binding.generation }, taskId)); }
             catch (error) { if (error.code !== 'NOT_FOUND') throw error; }
           }
-          return send(res, 200, { tasks });
+          const projectTasks = viewId === 'main' ? await store.projectTaskStatuses(principal) : [];
+          return send(res, 200, { tasks, projectTasks });
         }
         if (action === '/api/publication' && req.method === 'GET') {
           if (!project) return send(res, 200, { status: 'unavailable', reason: 'PROJECT_REQUIRED' });
