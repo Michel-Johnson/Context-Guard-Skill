@@ -1,9 +1,10 @@
 import '../.github/scripts/test-environment.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CoordinatorModel, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
+import { CoordinatorModel, coordinatorInputTokens, coordinatorModelMessages, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from '../scripts/cloud/coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume,
+  coordinatorCompactBoundary, COORDINATOR_COMPACT_AT_TOKENS } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -712,6 +713,111 @@ test('Coordinator streams text deltas while retaining one complete assistant mes
   assert.equal(result.stop, 'end_turn');
 });
 
+test('Coordinator compacts at actual input-token usage without changing the saved conversation', async t => {
+  assert.equal(COORDINATOR_COMPACT_AT_TOKENS, 500_000);
+  assert.equal(coordinatorInputTokens({ input_tokens: 499_000, cache_read_input_tokens: 1_000 }), 500_000);
+  assert.equal(coordinatorInputTokens({ prompt_tokens: 500_000 }), 500_000);
+  assert.equal(coordinatorInputTokens({ input_tokens: '500000' }), null);
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-compact-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const sent = []; let summaries = 0;
+  const model = { next: async ({ system, messages, tools, maxTokens }) => {
+    if (system.includes('历史对话')) {
+      summaries++;
+      assert.deepEqual(tools, []);
+      assert.equal(maxTokens, 4096);
+      assert.match(messages[0].content, /第 1 轮/);
+      return { stop: 'end_turn', content: [{ type: 'text', text: '第 1 轮已完成；后续以实时 Map 为准。' }] };
+    }
+    sent.push(messages);
+    return { stop: 'end_turn', content: [{ type: 'text', text: `回复 ${sent.length}` }],
+      usage: { input_tokens: sent.length === 5 ? 500_000 : 10 } };
+  } };
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, model });
+  for (let number = 1; number <= 5; number++) {
+    await service.submit({ id: `turn-${number}`, text: `第 ${number} 轮` });
+    await service.close();
+  }
+  assert.equal(summaries, 1);
+  let saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.compaction.through, 2, 'four recent human turns remain verbatim');
+  assert.equal(saved.compaction.triggerInputTokens, 500_000);
+  assert.equal(saved.messages.length, 10, 'the original transcript remains intact');
+  const publicState = await service.state();
+  assert.equal(publicState.messages.length, 10, 'the user still sees the full conversation');
+  assert.equal(publicState.compaction.compactedThrough, 2);
+  assert.equal(publicState.compaction.thresholdTokens, 500_000);
+  assert.ok(!JSON.stringify(publicState).includes('后续以实时 Map 为准'), 'summary internals stay server-side');
+  await new CoordinatorConversations(directory).continueIn('legacy', 'main');
+  const continued = JSON.parse(await fs.readFile(path.join(directory, 'main', 'conversation.json'), 'utf8'));
+  assert.equal(continued.compaction.sourceHash, saved.compaction.sourceHash, 'a continued conversation keeps the validated checkpoint');
+  assert.equal(coordinatorModelMessages(continued).length, 9);
+  await service.submit({ id: 'turn-6', text: '第 6 轮' });
+  await service.close();
+  assert.match(sent.at(-1)[0].content, /历史对话摘要/);
+  assert.deepEqual(sent.at(-1).slice(1), saved.messages.slice(2).map(({ role, content }) => ({ role, content })).concat({ role: 'user', content: '第 6 轮' }));
+  saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.messages.length, 12);
+  assert.deepEqual(coordinatorModelMessages(saved), sent.at(-1).slice(0, -1).concat({ role: 'user', content: '第 6 轮' }, { role: 'assistant', content: [{ type: 'text', text: '回复 6' }] }));
+});
+
+test('Coordinator keeps tool pairs and raw history when compaction fails', async t => {
+  const messages = [
+    { role: 'user', content: '开始' },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'read', name: 'read_map', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read', content: '{}' }] },
+    { role: 'assistant', content: [{ type: 'text', text: '已读取' }] },
+    { role: 'user', content: '继续' },
+    { role: 'assistant', content: [{ type: 'text', text: '好的' }] },
+  ];
+  assert.equal(coordinatorCompactBoundary(messages), 4, 'tool result is never the compact boundary');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-compact-failure-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, compactAtTokens: 100,
+    model: { next: async ({ system }) => system.includes('历史对话')
+      ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'bad', name: 'read_map', input: {} }] }
+      : { stop: 'end_turn', content: [{ type: 'text', text: `回复 ${++calls}` }], usage: { input_tokens: 100 } } } });
+  await service.submit({ id: 'first', text: '第一轮' }); await service.close();
+  await service.submit({ id: 'second', text: '第二轮' }); await service.close();
+  const saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.status, 'waiting-for-user');
+  assert.equal(saved.compaction, undefined);
+  assert.equal(saved.compactionError.code, 'COMPACTION_FAILED');
+  assert.equal(saved.messages.length, 4);
+});
+
+test('A background summary cannot overwrite a newer Coordinator turn', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-compact-race-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let release, started;
+  const summarizing = new Promise(resolve => { started = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  let replies = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, compactAtTokens: 100,
+    model: { next: async ({ system }) => {
+      if (system.includes('历史对话')) { started(); await held; return { stop: 'end_turn', content: [{ type: 'text', text: '旧摘要' }] }; }
+      replies++;
+      return { stop: 'end_turn', content: [{ type: 'text', text: '好的' }], usage: { input_tokens: replies === 3 ? 10 : 100 } };
+    } } });
+  await service.submit({ id: 'one', text: '第一轮' }); await service.close();
+  await service.submit({ id: 'two', text: '第二轮' });
+  await summarizing;
+  await service.submit({ id: 'three', text: '第三轮' });
+  while ((await service.state()).status === 'running') await new Promise(resolve => setTimeout(resolve, 5));
+  release(); await service.close();
+  const saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(saved.messages.length, 6);
+  assert.equal(saved.compaction, undefined, 'a summary from an older snapshot is discarded');
+  assert.equal(saved.status, 'waiting-for-user');
+});
+
+test('Coordinator rejects a corrupted compact checkpoint instead of silently dropping history', () => {
+  const state = { messages: [{ role: 'user', content: '原文' }, { role: 'assistant', content: [{ type: 'text', text: '回复' }] }],
+    compaction: { through: 1, sourceHash: 'wrong', summary: '篡改后的摘要' } };
+  assert.throws(() => coordinatorModelMessages(state), { code: 'INVALID_COMPACTION' });
+});
+
 test('Structured node tools expose stable buttons without leaking tool-only map data', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-node-actions-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -1095,6 +1201,18 @@ test('Coordinator rejects model substitution, partial output, duplicate calls, a
   }
   const large = new CoordinatorModel({ ...config, fetch: async () => new Response('x'.repeat(4 * 1024 * 1024 + 1)) });
   await assert.rejects(large.next({ system: '', messages: [] }), { code: 'MODEL_RESPONSE_TOO_LARGE' });
+});
+
+test('Coordinator request transport permits token-window growth but retains an independent byte guard', async () => {
+  let sentBytes = 0;
+  const model = new CoordinatorModel({ ...config, fetch: async (_url, options) => {
+    sentBytes = Buffer.byteLength(options.body);
+    return Response.json(text);
+  } });
+  await model.next({ system: '', messages: [{ role: 'user', content: 'x'.repeat(513 * 1024) }] });
+  assert.ok(sentBytes > 512 * 1024);
+  await assert.rejects(model.next({ system: '', messages: [{ role: 'user', content: 'x'.repeat(8 * 1024 * 1024) }] }),
+    { code: 'CONTEXT_TOO_LARGE' });
 });
 
 test('Coordinator deadline aborts the request and exposes a stable timeout error', async () => {

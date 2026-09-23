@@ -16,6 +16,8 @@
 - [x] Coordinator 普通对话发起的新 Session 任务，按唯一同 ID 的 Main TODO/Bug 投影当前执行状态，不再继续展示旧 Session 派单；重复 ID 拒绝猜测。PR #285（`201cc37`）Required 全绿并部署，生产页面刷新后 TD1 已由“等待前序任务完成”变为“执行中”。
 
 - [ ] Coordinator 已移除展示层 120 字硬截断；**现行法是生成目标，没有字数硬上限**，不得重新引入字符裁切。待补语义压缩方案。历史「强制 120 字」证据不覆盖这条。
+- [ ] Cloud Coordinator 的 500k 输入 token 对话 compact 已有模拟供应商用量、后台竞态、原文保留、工具配对和续接回归；真实 DeepSeek 达阈值后的摘要质量、长请求传输及首次压缩耗时仍待生产专项验收，不能用模拟测试声称已验证。
+- 2026-09-23 本机 `npm test`：509 项中 505 通过、1 失败、3 跳过；失败为既有 `.github/scripts/codex-exec-session.test.mjs` 的 Codex SQLite 会话注册返回 `UNKNOWN_SESSION`（403），单独重跑同样失败。本次 Coordinator 定向 58 通过、1 个需真实供应商凭据的测试跳过；不把本机全量称为通过。
 - [ ] Coordinator 自动将 `acceptance-rejected` 原任务推进到返工、`read_task` 返回权威阻塞任务且不再询问用户执行 Session；本轮按用户要求直接开发，未新增或运行测试。
 - [ ] 恢复控制重复投递：保存 Cloud 已确认的 resumed 回执，重启后抑制同控制再次唤起模型；新控制正常交付，任务/代次隔离。实现已随 `638acd3d` 部署，正式 delivery/workflow 及合并后的全量 438 项通过；真实断线恢复专项仍未执行，不能据此宣称全部通过。
 - [x] 旧测试基线 Windows Python 启动失败：复用 main 已有 `python-command.mjs` 与测试，不再写死 python3；Python 探测与真实 Codex SQLite 注册共 4 项通过。原全量失败日志保留，本项通过不代表全量通过。
