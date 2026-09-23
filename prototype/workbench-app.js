@@ -2117,9 +2117,6 @@ function walkAll(node, fn, parents=[]){
   (node.children||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
   (node._inbox||[]).forEach(c=>walkAll(c, fn, [...parents, node]));
 }
-function currentSessionId(){ return isAllSessionsView() ? null : workbenchSync?.activeSession || null; }
-const bugDispatching = new Set();
-const todoDispatching = new Set();
 function sessionColor(name){
   const pal=["#2f7ae6","#d48b12","#6b4ea8","#2f9e44","#d23d3d"];
   let h=0;
@@ -2193,7 +2190,6 @@ function bugProgress(bug){
   if(status==="pending") return {kind:"settling", label:t("bugSettling"), detail:""};
   const sessions = bugSessionsOf(bug);
   if(!sessions.length){
-    if(bugDispatching.has(bug?.id)) return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSending")}`, detail:""};
     if(bug?.dispatch?.status==="failed") return {kind:"waiting", label:`${t("bugWaiting")} · ${t("bugSendFailed")}`, detail:""};
     return {kind:"waiting", label:t("bugWaiting"), detail:""};
   }
@@ -2237,7 +2233,6 @@ function todoProgress(todo){
   if(delivery==="uncertain") return {kind:"waiting",label:t("taskUncertain"),detail:""};
   if(delivery==="waiting_review") return {kind:"waiting",label:t("taskWaitingReview"),detail:""};
   if(status==="pending"){
-    if(todoDispatching.has(todo?.id)) return {kind:"waiting",label:`${t("todoPending")} · ${t("bugSending")}`,detail:""};
     if(todo?.dispatch?.status==="scope-required") return {kind:"waiting",label:`${t("todoPending")} · ${t("todoScopeRequired")}`,detail:""};
     if(todo?.dispatch?.status==="failed") return {kind:"waiting",label:`${t("todoPending")} · ${t("bugSendFailed")}`,detail:""};
     return {kind:"waiting",label:t("todoPending"),detail:""};
@@ -2392,43 +2387,11 @@ async function finishNewWorkItem(node,item,kind){
     await saveCoordinatorIntake(node,item,kind);
     return;
   }
-  const sessionId = currentSessionId();
-  if(!sessionId){
-    workbenchSync?.setStatus(workbenchSync.status,"请打开 Coordinator 处理新事项");
-    return;
-  }
-  try{
-    const plan = await workbenchSync.accessPlan(sessionId,node.id);
-    if(plan.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
-    await (kind === "todo" ? dispatchTodoToSession(node,item,sessionId,plan) : dispatchBugToSession(node,item,sessionId,plan));
-  }catch(error){
-    item.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
-    workbenchSync?.setStatus(workbenchSync.status,"事项发送失败");
-    renderAll();
-    await workbenchSync?.flush();
-  }
-}
-
-async function dispatchBugToSession(node,bug,sessionId,plan){
-  if(!node || !bug || !sessionId || bugDispatching.has(bug.id)) return false;
-  bugDispatching.add(bug.id);
-  renderAll();
   try{
     await workbenchSync.flush();
-    if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
-    const delivery = await workbenchSync.sendBug(sessionId,node.id,bug.id);
-    const sessions = bugSessionsOf(bug);
-    if(!sessions.includes(sessionId)) sessions.push(sessionId);
-    bug.dispatch = {status:delivery.state,task_id:delivery.taskId,session_id:sessionId,at:new Date().toISOString()};
-    return true;
+    workbenchSync.setStatus(workbenchSync.status,"事项已保存；等待 Coordinator 可用后继续处理");
   }catch(error){
-    bug.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
-    workbenchSync?.setStatus(workbenchSync.status,"Bug 信息发送失败");
-    return false;
-  }finally{
-    bugDispatching.delete(bug.id);
-    renderAll();
-    await workbenchSync?.flush();
+    workbenchSync?.setStatus(workbenchSync.status,"事项尚未同步，请重试保存："+error.message);
   }
 }
 
@@ -2440,46 +2403,9 @@ function nextTodoId(){
   return id;
 }
 
-async function dispatchTodoToSession(node,todo,sessionId,plan){
-  if(!node || !todo || !sessionId || todoDispatching.has(todo.id)) return false;
-  todoDispatching.add(todo.id);
-  renderAll();
-  try{
-    await workbenchSync.flush();
-    if(plan?.missing?.length) await workbenchSync.grantSessionScope(sessionId,plan.nodes);
-    const delivery = await workbenchSync.sendTodo(sessionId,node.id,todo.id);
-    const sessions = todoSessionsOf(todo);
-    if(!sessions.includes(sessionId)) sessions.push(sessionId);
-    todo.status = "processing";
-    todo.dispatch = {status:delivery.state,task_id:delivery.taskId,session_id:sessionId,at:new Date().toISOString()};
-    return true;
-  }catch(error){
-    todo.status = "pending";
-    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
-    workbenchSync?.setStatus(workbenchSync.status,"TODO 信息发送失败");
-    return false;
-  }finally{
-    todoDispatching.delete(todo.id);
-    renderAll();
-    await workbenchSync?.flush();
-  }
-}
-
-async function sendPendingTodo(node,todo){
-  const sessionId = todo?.dispatch?.session_id;
-  if(!sessionId) return false;
-  try{
-    const plan = await workbenchSync.accessPlan(sessionId,node.id);
-    await dispatchTodoToSession(node,todo,sessionId,plan);
-  }catch(error){
-    todo.dispatch = {status:"failed",session_id:sessionId,at:new Date().toISOString(),error:error?.code||"SESSION_MESSAGE_FAILED"};
-    renderAll();
-    await workbenchSync?.flush();
-  }
-}
 
 async function advanceTodo(node,todo){
-  if(!node || !todo || todo.draft || todoDispatching.has(todo.id)) return;
+  if(!node || !todo || todo.draft) return;
   if(todo.status==="done"){
     todo.status = todo.sessions?.length ? "processing" : "pending";
     renderAll();
@@ -3564,7 +3490,6 @@ function renderDetail(){
   const todoHtml = nodeTodos.length
     ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
         const done = todo.status==="done";
-        const needsAction = todo.dispatch?.status==="scope-required" || todo.dispatch?.status==="failed";
         return `<li class="${done?"todo-done":""}">
           ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>`}
           <div class="todo-main">
@@ -3572,7 +3497,6 @@ function renderDetail(){
             ${todo.draft?"":todoProgressHtml(todo)}
             ${taskSummaryHtml(todo)}
             ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(todo.id)}" data-coordinator-node="${escAttr(node.id)}" data-coordinator-kind="todo">对话</button>`:""}
-            ${needsAction?`<button type="button" class="todo-inline-action" data-todo-send="${escAttr(todo.id)}">${esc(t(todo.dispatch.status==="scope-required"?"todoAuthorizeAndSend":"todoRetry"))}</button>`:""}
           </div>
         </li>`;
       }).join("")+`</ul>`
@@ -3678,7 +3602,6 @@ function renderDetail(){
   el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
   el.querySelectorAll('[data-coordinator-item]').forEach(button=>button.onclick=()=>window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:button.dataset.coordinatorNode,itemId:button.dataset.coordinatorItem,kind:button.dataset.coordinatorKind}})));
   el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
-  el.querySelectorAll("[data-todo-send]").forEach(button=>button.onclick=()=>sendPendingTodo(node,node.todos.find(todo=>todo.id===button.dataset.todoSend)));
   const q = s=>el.querySelector(s);
   if(q('[data-act="accept"]'))  q('[data-act="accept"]').onclick  = ()=>acceptProposal(node);
   bindSilent(q('[data-act="cancel"]'), ()=>{ clearCompose(); cancelProposal(node); });
