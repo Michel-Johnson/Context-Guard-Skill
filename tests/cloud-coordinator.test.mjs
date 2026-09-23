@@ -608,6 +608,121 @@ test('Coordinator shutdown finishes its current durable step and restart resumes
   assert.equal(calls, 2); assert.equal(effects, 1);
 });
 
+test('Stopping a Coordinator reply aborts only the current model turn and preserves visible text', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-cancel-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let entered, calls = 0, aborted = 0;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    model: { next: async ({ onText, signal }) => {
+      calls++;
+      if (calls > 1) return { stop: 'end_turn', content: [{ type: 'text', text: '下一轮正常回复' }] };
+      await onText('已经显示的文字'); entered();
+      return new Promise((_, reject) => signal.addEventListener('abort', () => {
+        aborted++; reject(Object.assign(new Error('stopped'), { code: 'MODEL_CANCELLED' }));
+      }, { once: true }));
+    } },
+  });
+  await service.submit({ id: 'first', text: '开始回复' }); await waiting;
+  await assert.rejects(service.cancel({ id: 'another' }), { code: 'CONFLICT' });
+  assert.deepEqual(await service.cancel({ id: 'first' }), { accepted: true, id: 'first' });
+  await service.close();
+  const stopped = await service.state();
+  assert.equal(aborted, 1);
+  assert.equal(stopped.status, 'waiting-for-user');
+  assert.equal(stopped.activeTurnId, null);
+  assert.equal(stopped.cancelledTurnId, 'first');
+  assert.equal(stopped.streamingText, '');
+  assert.match(stopped.messages.at(-1).text, /已经显示的文字.*已停止生成/s);
+  assert.deepEqual(await service.cancel({ id: 'first' }), { accepted: true, id: 'first', cancelled: true });
+  await service.submit({ id: 'second', text: '继续' }); await service.close();
+  assert.equal((await service.state()).messages.at(-1).text, '下一轮正常回复');
+  assert.deepEqual(await service.cancel({ id: 'second' }), { accepted: false, id: 'second', completed: true },
+    'a stop arriving after completion must not report an uncertain failure');
+});
+
+test('Stopping during a tool preserves its receipt and skips unstarted tools', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-cancel-tool-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let entered, release, effects = 0;
+  const waiting = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'read_map' }],
+    execute: async () => { effects++; entered(); await gate; return { version: 'v1' }; },
+    model: { next: async () => ({ stop: 'tool_use', content: ['first', 'second'].map(id => ({ type: 'tool_use', id, name: 'read_map', input: {} })) }) },
+  });
+  await service.submit({ id: 'turn', text: '读取节点' }); await waiting;
+  await service.cancel({ id: 'turn' }); release(); await service.close();
+  assert.equal(effects, 1, 'an already-running tool is not rolled back or repeated');
+  const state = await service.state();
+  assert.equal(state.status, 'waiting-for-user');
+  const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  const replies = raw.messages.findLast(message => message.role === 'user' && Array.isArray(message.content)).content;
+  assert.equal(replies.length, 2, 'all tool calls receive a durable matching result');
+  assert.equal(replies[0].is_error, undefined);
+  assert.equal(JSON.parse(replies[1].content).error.code, 'MODEL_CANCELLED');
+});
+
+test('A saved stop request survives a Coordinator process restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-cancel-restart-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.writeFile(path.join(directory, 'conversation.json'), JSON.stringify({ status: 'running', activeTurnId: 'turn',
+    messages: [{ role: 'user', content: '等待回复' }], requests: { turn: 'saved' }, steps: 0, toolReceipts: {} }));
+  await fs.writeFile(path.join(directory, 'cancel.json'), JSON.stringify({ id: 'turn' }));
+  let modelCalls = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    model: { next: async () => { modelCalls++; throw new Error('must not restart a cancelled model turn'); } } });
+  service.kick(); await service.close();
+  assert.equal(modelCalls, 0);
+  assert.equal((await service.state()).cancelledTurnId, 'turn');
+});
+
+test('Cloud stop endpoint requires the browser and stops only the matching Coordinator turn', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-cancel-http-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    'context-guard': { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, providerFile, bindings: {},
+    } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update('context-guard').digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'main-1', memory: { records: {}, map: {
+    v: 1, bootstrap: 'ready', root: { id: 'T0', title: 'Project', kind: 'module', state: 'dirty', owns: [], children: [] },
+  } } }, sessions: {}, receipts: {}, history: [], events: [], eventCursors: {}, closedSessions: {} }));
+  let started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  server = await startCloudServer({ dataDir: directory, port: 0, memoryConfig, browserToken: 'synthetic-browser',
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId: 'context-guard', slug: 'example/repo' }] },
+    coordinatorModelFactory: () => ({ next: async ({ signal }) => {
+      started();
+      return new Promise((_, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('stopped'), { code: 'MODEL_CANCELLED' })), { once: true }));
+    } }),
+  });
+  const endpoint = `${server.url}/api/workbench/projects/context-guard/api/coordinator`;
+  const headers = { Authorization: 'Bearer synthetic-browser', 'Content-Type': 'application/json' };
+  const post = (url, value, auth = headers) => fetch(url, { method: 'POST', headers: auth, body: JSON.stringify(value) });
+  assert.equal((await post(endpoint, { id: 'turn', text: '开始生成' })).status, 202);
+  await waiting;
+  assert.equal((await post(endpoint + '/cancel', { id: 'turn' }, { 'Content-Type': 'application/json' })).status, 401);
+  assert.equal((await post(endpoint + '/cancel', { id: 'other' })).status, 409);
+  assert.equal((await post(endpoint + '/cancel', { id: 'turn' })).status, 202);
+  for (let index = 0; index < 50; index++) {
+    const state = await (await fetch(endpoint, { headers })).json();
+    if (state.cancelledTurnId === 'turn') {
+      assert.equal(state.status, 'waiting-for-user');
+      assert.equal(state.activeTurnId, null);
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.fail('Cloud stop did not settle the original turn');
+});
+
 test('Cloud mount confirmation is browser-only, commits a versioned batch atomically, and preserves replay after restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-http-'));
   let server;
@@ -1304,6 +1419,18 @@ test('Coordinator deadline aborts the request and exposes a stable timeout error
     signal.addEventListener('abort', () => reject(new Error(config.token)), { once: true });
   }) });
   await assert.rejects(model.next({ system: '', messages: [] }), { code: 'MODEL_TIMEOUT' });
+});
+
+test('Coordinator user stop aborts transport with a distinct cancellation outcome', async () => {
+  const controller = new AbortController();
+  let started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const model = new CoordinatorModel({ ...config, fetch: (_url, { signal }) => new Promise((_resolve, reject) => {
+    started(); signal.addEventListener('abort', () => reject(new Error(config.token)), { once: true });
+  }) });
+  const reply = model.next({ system: '', messages: [], signal: controller.signal });
+  await waiting; controller.abort();
+  await assert.rejects(reply, error => error.code === 'MODEL_CANCELLED' && !error.message.includes(config.token));
 });
 
 test('Coordinator deadline escapes a response stream that stalls after partial text', async () => {

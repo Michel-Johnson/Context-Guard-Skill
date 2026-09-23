@@ -378,6 +378,13 @@ try {
     coordinatorState.approvals[0].pending = false;
     return route.fulfill({ json: { receiptId: 'human-receipt' } });
   });
+  const cancellations = [];
+  await page.route(/\/api\/coordinator\/cancel(?:\?|$)/, async route => {
+    const request = route.request().postDataJSON(); cancellations.push(request);
+    coordinatorState = { ...coordinatorState, status: 'waiting-for-user', activeTurnId: null, streamingText: '', cancelledTurnId: request.id,
+      messages: [...coordinatorState.messages, { role: 'assistant', text: '已停止生成。' }] };
+    return route.fulfill({ status: 202, json: { accepted: true, id: request.id } });
+  });
   const conversationCreationRequests = [];
   await page.route(/\/api\/coordinator\/conversations\/new(?:\?|$)/, async route => {
     const request = route.request().postDataJSON();conversationCreationRequests.push(request);
@@ -473,10 +480,14 @@ try {
     const blot = send.querySelector('.coordinator-working-blot');
     const inputRect = input.getBoundingClientRect();
     const sendRect = send.getBoundingClientRect();
+    const iconRect = send.querySelector('svg').getBoundingClientRect();
+    const blotRect = blot.getBoundingClientRect();
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
       inputHeight: inputRect.height, sendPosition: getComputedStyle(send).position,
       sendWidth:sendRect.width,sendHeight:sendRect.height,sendRadius:getComputedStyle(send).borderRadius,
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
+      iconCenterDelta: Math.abs((iconRect.left + iconRect.right - sendRect.left - sendRect.right) / 2),
+      blotCenterDelta: Math.abs((blotRect.left + blotRect.right - sendRect.left - sendRect.right) / 2),
       sendDisabled:send.disabled,
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
       blotParent:blot.parentElement===send,
@@ -488,7 +499,25 @@ try {
   assert.equal(coordinatorLayout.sendPosition, 'absolute', 'send button sits inside the composer like ChatGPT');
   assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[32,32,'50%'],'send uses a compact circular control');
   assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
+  assert.ok(coordinatorLayout.iconCenterDelta <= 0.5 && coordinatorLayout.blotCenterDelta <= 0.5,
+    `arrow and ink must share the button center: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
+  await page.setViewportSize({width:390,height:844});
+  await coordinator.getByLabel('发送给 Coordinator').fill('第一行\n第二行\n第三行');
+  const phoneComposer = await coordinator.evaluate(el=>{
+    const input=el.querySelector('.coordinator-input-shell textarea').getBoundingClientRect();
+    const button=el.querySelector('.coordinator-send').getBoundingClientRect();
+    const icon=el.querySelector('.coordinator-send svg').getBoundingClientRect();
+    return {height:input.height,right:input.right-button.right,bottom:input.bottom-button.bottom,top:button.top-input.top,
+      iconCenterDelta:Math.abs((icon.left+icon.right-button.left-button.right)/2)};
+  });
+  assert.ok(phoneComposer.height>48,`mobile multiline input expands: ${JSON.stringify(phoneComposer)}`);
+  assert.ok(Math.abs(phoneComposer.right-8)<=1&&Math.abs(phoneComposer.bottom-8)<=1&&phoneComposer.top>8,
+    `send button stays at the lower-right of the expanded mobile input: ${JSON.stringify(phoneComposer)}`);
+  assert.ok(phoneComposer.iconCenterDelta<=0.5,`mobile send icon stays centered in its button: ${JSON.stringify(phoneComposer)}`);
+  await coordinator.screenshot({path:path.join(output,'coordinator-phone-compose.png')});
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
+  await page.setViewportSize({width:1440,height:1000});
   await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
@@ -764,6 +793,13 @@ try {
   assert.match(planningPlacement.parent,/coordinator-send/,'working state replaces the send arrow');
   assert.equal(planningPlacement.insideComposer,true,'Ready ink stays in the composer');
   assert.equal(planningPlacement.messageInk,false,'the message timeline contains no working ink');
+  coordinatorState.activeTurnId='browser-stop-turn';
+  await coordinator.getByRole('button',{name:'停止当前回复'}).click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel .coordinator-message.assistant:last-of-type')?.textContent?.includes('已停止生成。'));
+  assert.deepEqual(cancellations,[{id:'browser-stop-turn'}],'clicking the working mark stops only the active Coordinator turn');
+  assert.equal(await coordinator.locator('.coordinator-send.is-cancellable').count(),0,'the stop control returns to the send state');
+  coordinatorState.status='running';coordinatorState.activeTurnId=null;coordinatorState.cancelledTurnId=null;
+  await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
@@ -920,7 +956,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel .coordinator-send')?.disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -932,7 +968,7 @@ try {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
-      panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
+      panel.querySelector('.coordinator-send').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
@@ -1012,6 +1048,7 @@ try {
   assert.equal(await oneShotLive.locator('.coordinator-rise.is-entering').count(),1,'a live one-shot response uses one Ready-style entering group');
   assert.equal(await oneShotLive.locator('.coordinator-rise-body p').count(),2,'the one-shot group keeps its final Markdown layout');
   await coordinator.getByLabel('发送给 Coordinator').fill('一次性长回复测试');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'a new draft switches the finished reveal back to send');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({hasText:'一次性长回复测试'}).waitFor();
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=node.scrollHeight;});
