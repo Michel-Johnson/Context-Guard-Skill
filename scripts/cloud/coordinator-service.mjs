@@ -211,7 +211,7 @@ export class CoordinatorService {
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
       acceptedRequestIds: Object.keys(state.requests || {}).slice(-100),
       streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
-      activity: state.status === 'running' && state.activity?.turnId === state.activeTurnId ? state.activity.kind : null,
+      activity: state.status === 'running' && state.activity?.turnId && state.activity.turnId === state.activeTurnId ? state.activity.kind : null,
       timing: state.activeTiming || null,
       canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
       retryInput: state.status === 'error' ? state.activeInput || null : null,
