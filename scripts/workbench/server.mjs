@@ -218,10 +218,13 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         if (!taskDeliveryRetry) taskDeliveryRetry = taskDelivery.retryBusy(async input => {
           if (input.platform !== 'claude' || !access.binding(input.sessionId)) return false;
           const plan = /^Context Guard：Plan (\S+)@(\S+) 审核/.exec(input.message);
-          if (!plan) return false;
+          if (!plan && input.deliveryType !== 'task.message') return false;
           const binding = await protocolStore.registeredBinding(backendPrincipal, input.sessionId);
           const execution = binding && await protocolStore.activeExecution(backendPrincipal, { id: input.sessionId, generation: binding.generation });
-          if (execution?.closed || execution?.plan?.ref !== plan[1] || execution.plan.version !== plan[2]) return false;
+          if (input.deliveryType === 'task.message') {
+            if (execution?.closed || execution?.taskId !== input.taskId ||
+                input.planRef && (execution.plan?.ref !== input.planRef || execution.plan.version !== input.planVersion)) return false;
+          } else if (execution?.closed || execution?.plan?.ref !== plan[1] || execution.plan.version !== plan[2]) return false;
           return (await claudeRuntime.status(input.sessionId)).status === 'stopped';
         }).catch(error => { device.lastError = error.code || 'TASK_DELIVERY_RETRY_FAILED'; })
           .finally(() => { taskDeliveryRetry = null; });
@@ -293,6 +296,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
             if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
             await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,
+              ...(message.type === 'task.message' ? { deliveryType: 'task.message', taskId: message.payload.taskId,
+                ...(message.payload.planRef ? { planRef: message.payload.planRef, planVersion: message.payload.planVersion } : {}) } : {}),
               ...(ci ? { execution: { session: message.session, taskId: message.payload.taskId, sourceSha: message.payload.sourceSha, ciTodoRef: message.payload.ciTodoRef, references: message.payload.references || {} } } : {}) });
             return { ...result, deliveryState: 'received' };
           } catch (error) {

@@ -81,6 +81,16 @@ test('Timed-out Claude continuation does not repeat exploratory checks', async (
   assert.match(prompt, /map execution/);
 });
 
+test('Coordinator guidance preserves task and Plan and tells Claude to hand off before review', async () => {
+  const message = { v: 2, id: 'guide-1', type: 'task.message', session: { id: 'developer', generation: 1 },
+    payload: { taskId: 'task', text: 'Finish the existing implementation', planRef: 'plan', planVersion: 'v1' } };
+  const prompt = await executionPrompt(message);
+  assert.match(prompt, /Finish the existing implementation/);
+  assert.match(prompt, /保留本任务、当前执行 Session 和已批准的 Plan/);
+  assert.match(prompt, /handoff 在 Tester 和人工验收之前/);
+  assert.match(prompt, /指导编号：guide-1/);
+});
+
 test('desktop loading precedes native queue delivery without duplicate model invocation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-desktop-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

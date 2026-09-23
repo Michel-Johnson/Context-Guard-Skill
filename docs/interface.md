@@ -77,6 +77,7 @@ CLI 负责写和状态变化。
 | task | 取消任务 | Coordinator | 可以取消任务 |
 | task | `task.control` complete | Coordinator | 需要已核验的合并回执和归档回执 |
 | task | `task.report` | executor 或 device | 进度回报 |
+| task | `task.message` | Coordinator | 向原任务绑定的执行 Session 发送指导；不改变任务阶段、Plan 或 Session；忙碌时保留投递并幂等重试 |
 | task | 失败退回 | | 测试或验收失败时，同一任务回到同一执行者。不新开任务 |
 | task | 发布之后继续 | Coordinator | 这一轮发布之后结束。还要做，按最新 Main 重新发起任务 |
 | bug | `createBug` `updateBug` `resolveBug` | C / E / T | 创建、更新、修复。Bug 只有一份记录 |

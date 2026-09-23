@@ -468,9 +468,10 @@ No-files plans still append the summary/evidence to the authorized plan nodes.
 Unclassified changed files cannot yield a successful plan archive receipt.
 
 For ordinary local work, run `plan-finish --root ... --session ...` only after
-human review and the archive. For a Cloud reviewed task, keep the archived Plan active while you
-commit the exact files and run `map task handoff`; run `plan-finish` only after
-the handoff receipt succeeds. The finish command checks the successful archive,
+human review and the archive. For a Cloud reviewed task, commit the exact files
+and run `map task handoff` before Tester and human acceptance. Keep the Plan
+active; after human review, archive the changed files and run `plan-finish`.
+The finish command checks the successful archive,
 file hashes and unacknowledged Map changes, then tracks/checks/finishes Cloud Sync
 when configured. Failure leaves the plan unfinished. Changes after archive
 require a new verified archive. `plan-status` returns the active plan, last
