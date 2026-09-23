@@ -158,6 +158,7 @@ test('versioned filesystem reads expose scoped Markdown without legacy records o
     assert.equal(mapBody.version, 'main-v1');
     assert.equal(JSON.parse(mapBody.content).root, 'M1');
     assert.equal(Object.hasOwn(mapBody, 'records'), false);
+    assert.equal((await get('main/map.json', 'wrong-token')).status, 401);
     const indexPath = 'nodes/项目-module/index.md'.split('/').map(encodeURIComponent).join('/');
     const agentIndex = await get(`main/${indexPath}?version=main-v1`);
     assert.equal(agentIndex.status, 200);
@@ -171,6 +172,7 @@ test('versioned filesystem reads expose scoped Markdown without legacy records o
     assert.equal((await get('main/map.json?version=old')).status, 409);
     const traversal = await get('main/nodes/%2E%2E%2Flegacy-records%2FFIND.md', 'admin');
     assert.equal(traversal.status, 400);
+    assert.equal((await get('sessions/session%2Fother/map.json', 'admin')).status, 400);
     const sessionMap = await get('sessions/sessionA/map.json');
     assert.equal(sessionMap.status, 200);
     assert.equal((await sessionMap.json()).scope, 'session:sessionA');
@@ -182,6 +184,12 @@ test('versioned filesystem reads expose scoped Markdown without legacy records o
     const cli = fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url));
     const command = await runProcess(process.execPath, [cli, 'memory', 'file', '--root', clientRoot, '--scope', 'main', '--path', 'map.json'], { windowsHide: true });
     assert.equal(JSON.parse(command.stdout).path, 'map.json');
+    const source = path.join(filesystemProjectDirectory(value.dataDir, value.projectId), 'content/main/nodes/项目-module/index.md');
+    const outside = path.join(value.dataDir, 'outside.md');
+    await fs.writeFile(outside, 'outside secret');
+    await fs.unlink(source);
+    await fs.symlink(outside, source);
+    assert.equal((await get(`main/${indexPath}`, 'admin')).status, 400);
   } finally { await service.close(); }
 });
 
