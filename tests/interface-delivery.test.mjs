@@ -9,6 +9,35 @@ import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
 import { queueCodexMessage } from '../scripts/workbench/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 
+test('Authenticated Cloud acceptance reaches the original local execution for archive review', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-acceptance-projection-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(directory);
+  const device = { repositoryId: 'repo', deviceId: 'device', agentId: 'backend', role: 'device' };
+  const session = { id: 'developer', generation: 1 };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'tree', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  await store.receiveNotification(device, { v: 2, id: 'assign-1', type: 'task.assign', session, payload: {
+    taskId: 'task', briefRef: 'brief', briefVersion: 'v1', sessionId: session.id, nodeIds: ['M1'], mainVersion: 'm1',
+  } });
+  const acceptance = { v: 2, id: 'accept-1', type: 'review.result', session, payload: {
+    kind: 'acceptance', ref: 'ci:task:result-1', version: 'ci-v1', decision: 'approved', reason: 'Verified', receiptId: 'review-1',
+  } };
+  await store.receiveNotification(device, acceptance);
+  await store.receiveNotification(device, acceptance);
+  let current = await store.activeExecution(device, session);
+  assert.deepEqual(current.acceptanceReview, { ref: acceptance.payload.ref, version: 'ci-v1', decision: 'approved', reason: 'Verified', receiptId: 'review-1' });
+  await store.transaction(state => { delete Object.values(state.localExecutions)[0].acceptanceReview; });
+  current = await store.activeExecution(device, session);
+  assert.equal(current.acceptanceReview.receiptId, 'review-1', 'old acknowledged notifications recover from the durable inbox');
+  await store.receiveNotification(device, { ...acceptance, id: 'foreign-accept', payload: { ...acceptance.payload, ref: 'ci:other:result-1' } });
+  current = await store.activeExecution(device, session);
+  assert.equal(current.acceptanceReview.receiptId, 'review-1', 'another task cannot authorize this Session');
+  await store.receiveNotification(device, { ...acceptance, id: 'reject-1', payload: { ...acceptance.payload, decision: 'rejected', receiptId: 'review-2' } });
+  assert.equal((await store.activeExecution(device, session)).acceptanceReview.decision, 'rejected');
+});
+
 test('Applied resume receipts suppress replayed native delivery across restart without suppressing new controls', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-resume-delivery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

@@ -136,7 +136,12 @@ export class ProtocolStore extends EventEmitter {
         if (input.payload.stage === 'planReady') { current.plan = { ref: input.payload.data.planRef, version: input.payload.data.planVersion, sourceSha: input.payload.data.sourceSha }; current.approval = null; }
       }
       if (input.type === 'review.result' && input.payload.kind === 'plan' && current?.plan?.ref === input.payload.ref && current.plan.version === input.payload.version) current.approval = input.payload.decision === 'approved' ? input.payload.receiptId : null;
-      if (input.type === 'task.rework' && current?.taskId === input.payload.taskId) { current.plan = null; current.approval = null; }
+      if (input.type === 'review.result' && input.payload.kind === 'acceptance' && current && !current.closed &&
+          input.payload.ref.startsWith(`ci:${current.taskId}:`) && input.payload.receiptId) {
+        current.acceptanceReview = { ref: input.payload.ref, version: input.payload.version,
+          decision: input.payload.decision, reason: input.payload.reason, receiptId: input.payload.receiptId };
+      }
+      if (input.type === 'task.rework' && current?.taskId === input.payload.taskId) { current.plan = null; current.approval = null; current.acceptanceReview = null; }
       emit(input); return { outcome: 'applied' };
     });
   }
@@ -535,7 +540,18 @@ export class ProtocolStore extends EventEmitter {
     return this.transaction(state => {
       requireBinding(state, principal, session);
       const current = state.localExecutions?.[queueKey(principal, session)];
-      return current && !current.closed ? current : null;
+      if (!current || current.closed) return null;
+      if (current.acceptanceReview !== undefined) return current;
+      // Existing receivers may have acknowledged acceptance before the local
+      // projection included it. Rebuild only from the authenticated durable
+      // downlink journal; never trust a model-supplied review claim.
+      const accepted = [...(state.queues?.[queueKey(principal, session)]?.items || [])].reverse()
+        .map(item => item.message).find(message => message.type === 'review.result' &&
+          message.payload.kind === 'acceptance' && message.payload.receiptId &&
+          message.payload.ref.startsWith(`ci:${current.taskId}:`));
+      if (!accepted) return current;
+      const { ref, version, decision, reason, receiptId } = accepted.payload;
+      return { ...current, acceptanceReview: { ref, version, decision, reason, receiptId } };
     }, { readOnly: true });
   }
   async executionReport(principal, session, { deliveryId, stage, summary, outcome = 'success' }) {
