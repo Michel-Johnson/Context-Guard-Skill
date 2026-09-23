@@ -71,7 +71,7 @@ CLI 负责写和状态变化。
 | map | 任务复查 | | 不写入 Main 节点 |
 | map | 挂载 | | 为该节点创建 Session。不写入 Main 节点 |
 | task | `createTask` `updateTask` | C / E / T | 创建、更新 Todo/任务 |
-| task | 派发 | 人批准 brief 之后 | 交给一个执行 Session。没有直接派发 |
+| task | 派发 | 人批准 brief 之后 | 系统派发给该任务自动创建的执行 Session；人不选择 Session，也不能跳过 brief 审批 |
 | task | 任务与 Session | | 一个任务使用一个 Session。新任务新建 Session |
 | task | `closeTask` | Coordinator | 完成任务。做没做完由 Coordinator 判断 |
 | task | 取消任务 | Coordinator | 可以取消任务 |
@@ -110,7 +110,7 @@ Workbench Frontend 对 Backend。
 | plan | `getPlan` | | 读 |
 | result | `getResult` | | 读 |
 | result | `acceptResult` `rejectResult` | human | 测试已通过之后，人签当前已通过的测试结果 |
-| session | `listSessions` `getSession` `switchSession` | | |
+| session | `listSessions` `getSession` `switchSession` | human | 查看正在工作的 Session 的进度和状态；切换只改变查看对象，不改变任务路由 |
 | conversation | 与 Coordinator 对话 | human | 人可以打开对话并发送消息 |
 | permission | `getGrants` | | 读 |
 | permission | `grant` `revoke` | human | 唯一的权限接口 |
@@ -149,6 +149,7 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | conflict | `getConflict` `resolveConflict` | 能识别人当前是否正在改，并提醒人 |
 | auth | `login` `refreshToken` `logout` | 登录只有这一套 |
 | memory | `getMainMemory` `getSessionMemory` `updateMemory` | |
+| memory | `getMemoryFile` | 按 Main/Session 和版本读取单个文件；版本变化时返回冲突 |
 | memory | 恢复 Main | 只保留最近 5 个 Main 版本。更早的版本自动删除 |
 | recovery | `retrySync` `recoverSession` | |
 | heartbeat | `heartbeat` `getPresence` | |
