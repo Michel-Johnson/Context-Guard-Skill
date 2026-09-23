@@ -141,7 +141,7 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
   assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
   assert.match(prompt, /用户问“你能否创建 Session”或同义问题时，明确回答“可以”/);
-  assert.match(prompt, /不得回答“不能”“我只能等待系统创建”/);
+  assert.match(prompt, /人批准 brief 后后台为任务自动创建执行 Session/);
   assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
   assert.match(prompt, /推荐不等于批准或派单/);
   assert.match(mount, /只问缺失的业务信息/);
@@ -353,9 +353,8 @@ test('Cloud item conversations have separate messages and survive restart withou
   const a = (await call('/conversations', { nodeId: 'T0', kind: 'todo', itemId: 'TD1' })).id;
   const b = (await call('/conversations', { nodeId: 'T0', kind: 'bug', itemId: 'B1' })).id;
   const mounted = await readMemoryView(memoryConfig, projectId);
-  const todoSession = mounted.main.memory.map.root.todos[0].sessions[0];
-  const bugSession = mounted.main.memory.map.root.bugs[0].sessions[0];
-  assert.ok(todoSession && bugSession && todoSession !== bugSession && todoSession !== 'template');
+  assert.deepEqual(mounted.main.memory.map.root.todos[0].sessions || [], []);
+  assert.deepEqual(mounted.main.memory.map.root.bugs[0].sessions || [], []);
   await call('?conversation=legacy', { id: 'legacy', text: 'Old project discussion' });
   await call('?conversation=' + a, { id: 'same-id', text: 'Only first item' });
   await call('?conversation=' + b, { id: 'same-id', text: 'Only second item' });
@@ -997,14 +996,13 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   latestVersion = memory.main.version; phase = 'mount';
   await submit({ id: 'mount-turn', text: '挂载这个需求' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
   assert.equal(memory.main.memory.map.root.todos[0].title, '提升阅读体验');
-  assert.equal(memory.main.memory.map.root.todos[0].sessions.length, 1);
-  assert.notEqual(memory.main.memory.map.root.todos[0].sessions[0], 'template');
+  assert.deepEqual(memory.main.memory.map.root.todos[0].sessions, []);
   const mounted = state.messages.findLast(message => message.actions)?.actions[0];
   assert.equal(mounted.kind, 'conversation-mounted');
-  assert.equal(mounted.executionSessionId, memory.main.memory.map.root.todos[0].sessions[0]);
+  assert.equal(mounted.executionSessionId, undefined);
   assert.match(mounted.conversationId, /^item-/);
   assert.equal((await call('GET')).projectTasks.length, 0);
-  assert.equal((await call('GET')).sessionCreations.filter(item => item.sessionId === mounted.executionSessionId).length, 1);
+  assert.equal((await call('GET')).sessionCreations.length, 0);
   const continuedResponse = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator?conversation=${mounted.conversationId}`, {
     headers: { Authorization: 'Bearer test-browser' },
   });
@@ -1019,7 +1017,7 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   assert.equal(state.messages.findLast(message => message.actions)?.actions[0].kind, 'map-action');
 });
 
-test('Mounting a TODO or Bug binds its execution Session before brief approval', async t => {
+test('Mounting a TODO or Bug creates no execution Session before brief approval', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-mount-session-'));
   let server;
   t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
@@ -1034,6 +1032,8 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
   const root = { id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [
     { id: 'TD-local', title: '本地事项', desc: '从工作台挂上 Coordinator', status: 'pending', sessions: [] },
+    { id: 'TD-legacy', title: '旧派单', desc: '需要先核对原任务', status: 'pending', sessions: ['legacy-session'],
+      dispatch: { task_id: 'legacy-task', session_id: 'legacy-session', status: 'received' } },
     { id: 'TD-done', title: '已完成', desc: '不再开工', status: 'done', sessions: [] },
   ], bugs: [
     { id: 'B900', title: '暂缓缺陷', desc: '延期记录仍在', status: 'deferred', sessions: [] },
@@ -1041,7 +1041,7 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: {
     v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root,
   }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
-  let mode = 'idle', mainVersion = 'v1';
+  let mode = 'idle', mainVersion = 'v1', bugItemId = '', bugTaskId = '';
   const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
   const scoped = (request = {}) => {
     const system = String(request.system || ''), marker = '本对话仅负责这一 Map 事项：';
@@ -1058,17 +1058,26 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
       const current = mode;
       // Leftover item-conversation review.result turns must not consume idea/bug mounts.
       const consume = (current === 'prepare' && itemId === 'TD-local')
+        || (current === 'prepare-bug' && itemId === bugItemId)
+        || (current === 'prepare-legacy' && itemId === 'TD-legacy')
         || ((current === 'idea' || current === 'bug') && unscoped);
       if (consume) mode = 'idle';
       const used = consume ? current : 'idle';
       if (used === 'prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task', input: {
         taskId, text: '从工作台挂上 Coordinator', acceptance: '事项上能看到绑定的 Session', nodeIds: ['T0'], mainVersion,
       } }] };
+      if (used === 'prepare-bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-bug', name: 'prepare_task', input: {
+        taskId: bugTaskId, text: '修复审批后绑定的缺陷', acceptance: '修复完成并通过测试', nodeIds: ['T0'], mainVersion,
+      } }] };
+      if (used === 'prepare-legacy') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-legacy', name: 'prepare_task', input: {
+        taskId: `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-legacy`).digest('hex').slice(0, 24)}`,
+        text: '不要重复派发旧任务', acceptance: '原任务状态已核对', nodeIds: ['T0'], mainVersion,
+      } }] };
       if (used === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
         mainVersion, nodeId: 'T0', kind: 'idea', title: '先记一笔', description: '想法不需要执行 Session',
       } }] };
       if (used === 'bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-bug', name: 'mount_conversation', input: {
-        mainVersion, nodeId: 'T0', kind: 'bug', title: '挂载时就绑定', description: '缺陷一挂上就有执行 Session',
+        mainVersion, nodeId: 'T0', kind: 'bug', title: '审批后绑定', description: '缺陷批准后才有执行 Session',
       } }] };
       return { stop: 'end_turn', content: [{ type: 'text', text: '好' }] };
     } }),
@@ -1107,8 +1116,7 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   const local = memory.main.memory.map.root.todos.find(item => item.id === 'TD-local');
   const done = memory.main.memory.map.root.todos.find(item => item.id === 'TD-done');
   const deferred = memory.main.memory.map.root.bugs.find(item => item.id === 'B900');
-  assert.equal(local.sessions.length, 1);
-  assert.notEqual(local.sessions[0], 'template');
+  assert.deepEqual(local.sessions, []);
   assert.deepEqual(done.sessions, []);
   assert.equal(deferred.status, 'deferred');
   assert.deepEqual(deferred.sessions, []);
@@ -1116,25 +1124,32 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   const itemState = async () => (await fetch(itemEndpoint, { headers })).json();
   const beforeApproval = await itemState();
   assert.equal(beforeApproval.projectTasks.length, 0);
-  assert.equal(beforeApproval.sessionCreations.filter(item => item.sessionId === local.sessions[0]).length, 1);
+  assert.equal(beforeApproval.sessionCreations.length, 0);
   mainVersion = memory.main.version;
   mode = 'prepare';
   await post(itemEndpoint, { id: 'prepare-local', text: '准备这个事项' });
-  const poll = async predicate => {
-    for (let i = 0; i < 200; i++) { const state = await itemState(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
+  const poll = async (predicate, load = itemState) => {
+    for (let i = 0; i < 200; i++) { const state = await load(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
     assert.fail('Coordinator state did not advance');
   };
   const ready = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === taskId));
-  assert.equal(ready.sessionCreations.length, 1);
+  assert.equal(ready.sessionCreations.length, 0);
   assert.equal(ready.projectTasks[0].stage, 'brief');
   assert.equal(ready.projectTasks[0].sessionId, undefined);
   const approve = { id: 'approve-local', proposalId: ready.approvals.find(item => item.taskId === taskId).id, decision: 'approved', reason: '可以做' };
   await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(opened.id)}`, approve);
-  await deviceMessage({ id: 'bind-fresh', type: 'session.bind', payload: { sessionId: local.sessions[0], worktreeId: 'fresh-tree', agentId: local.sessions[0], expectedBindingVersion: '' } });
+  const creating = await poll(state => state.sessionCreations.length === 1);
+  const executionSessionId = creating.sessionCreations[0].sessionId;
+  assert.notEqual(executionSessionId, 'template');
+  assert.notEqual(executionSessionId, 'legacy-session');
+  await deviceMessage({ id: 'bind-fresh', type: 'session.bind', payload: { sessionId: executionSessionId, worktreeId: 'fresh-tree', agentId: executionSessionId, expectedBindingVersion: '' } });
   const dispatched = await poll(state => state.projectTasks?.some(task => task.stage === 'dispatched'));
-  assert.equal(dispatched.projectTasks[0].sessionId, local.sessions[0]);
+  assert.equal(dispatched.projectTasks[0].sessionId, executionSessionId);
   assert.equal(dispatched.sessionCreations.length, 1);
+  await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(opened.id)}`, approve);
+  assert.equal((await itemState()).sessionCreations.length, 1, 'replaying brief approval must not create another Session');
   memory = await readMemoryView(memoryConfig, projectId);
+  assert.deepEqual(memory.main.memory.map.root.todos.find(item => item.id === 'TD-local').sessions, [executionSessionId]);
   mainVersion = memory.main.version;
   const legacy = `${workbench}/api/coordinator`;
   const waitMounted = async predicate => {
@@ -1155,14 +1170,49 @@ test('Mounting a TODO or Bug binds its execution Session before brief approval',
   mainVersion = memory.main.version;
   mode = 'bug';
   await post(legacy, { id: 'mount-bug', text: '挂一个缺陷' });
-  memory = await waitMounted(current => current.main.memory.map.root.bugs?.some(item => item.title === '挂载时就绑定'));
-  const mountedBug = memory.main.memory.map.root.bugs.find(item => item.title === '挂载时就绑定');
-  assert.equal(mountedBug.sessions.length, 1);
-  assert.notEqual(mountedBug.sessions[0], local.sessions[0]);
+  memory = await waitMounted(current => current.main.memory.map.root.bugs?.some(item => item.title === '审批后绑定'));
+  const mountedBug = memory.main.memory.map.root.bugs.find(item => item.title === '审批后绑定');
+  assert.deepEqual(mountedBug.sessions, []);
   assert.equal(memory.main.memory.map.root.bugs.find(item => item.id === 'B900').status, 'deferred');
   const afterBug = await itemState();
-  assert.equal(afterBug.sessionCreations.length, 2);
-  assert.equal(afterBug.sessionCreations.filter(item => item.sessionId === local.sessions[0]).length, 1);
+  assert.equal(afterBug.sessionCreations.length, 1);
+  assert.equal(afterBug.sessionCreations[0].sessionId, executionSessionId);
+  bugItemId = mountedBug.id;
+  bugTaskId = `map-bug-${createHash('sha256').update(`${projectId}:T0:bug:${bugItemId}`).digest('hex').slice(0, 24)}`;
+  const bugConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'bug', itemId: bugItemId });
+  const bugEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(bugConversation.id)}`;
+  mainVersion = memory.main.version; mode = 'prepare-bug';
+  await post(bugEndpoint, { id: 'prepare-bug', text: '准备修复缺陷' });
+  const bugState = async () => (await fetch(bugEndpoint, { headers })).json();
+  const bugReady = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === bugTaskId), bugState);
+  const bugApproval = bugReady.approvals.find(item => item.taskId === bugTaskId);
+  await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(bugConversation.id)}`,
+    { id: 'approve-bug', proposalId: bugApproval.id, decision: 'approved', reason: '可以修复' });
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if ((await bugState()).sessionCreations.length === 2) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const failureCreation = (await bugState()).sessionCreations.find(item => item.sessionId !== executionSessionId);
+  assert.ok(failureCreation);
+  await deviceMessage({ id: 'fail-bug-creation', type: 'sync.heartbeat', payload: {
+    sessions: [], creationResults: [{ id: failureCreation.id, error: 'NATIVE_START_FAILED' }],
+  } });
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if ((await bugState()).projectTasks.some(task => task.taskId === bugTaskId && task.stage === 'failed')) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const failed = await bugState();
+  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).stage, 'failed');
+  assert.equal(failed.sessionCreations.length, 2, 'creation failure must retain the first Session identity');
+  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
+  const legacyConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-legacy' });
+  const legacyEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(legacyConversation.id)}`;
+  mode = 'prepare-legacy'; mainVersion = (await readMemoryView(memoryConfig, projectId)).main.version;
+  await post(legacyEndpoint, { id: 'prepare-legacy', text: '继续这个旧事项' });
+  const legacyState = await poll(state => state.status === 'waiting-for-user' && !state.activeTurnId,
+    async () => (await fetch(legacyEndpoint, { headers })).json());
+  assert.equal(legacyState.projectTasks.length, 0, 'a pre-existing legacy dispatch cannot silently become a new task');
+  assert.equal(legacyState.sessionCreations.length, 2);
 });
 
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
@@ -1402,8 +1452,8 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   assert.ok(readObject.input_schema.properties.executionSessionId);
   assert.equal(readObject.input_schema.properties.sessionId, undefined);
   assert.equal(prepare.input_schema.properties.sessionId, undefined);
-  assert.match(prepare.description, /Coordinator can initiate/);
-  assert.match(prepare.description, /must not claim it cannot create Sessions/);
+  assert.match(prepare.description, /After approval the scheduler creates one fresh execution Session/);
+  assert.match(prepare.description, /Never select or reuse a prior Session/);
   assert.match(sessions.description, /executionSessionId/);
   assert.match(conversations.description, /conversationId is never an executionSessionId/);
 
