@@ -10,6 +10,34 @@ import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
 import { verifyTaskClose } from '../scripts/cloud/completion.mjs';
 import { reduceWorkflow } from '../scripts/shared/protocol-workflow.mjs';
 
+test('Coordinator guidance is idempotent, bound to the same Plan and does not advance the task', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-task-guidance-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(directory), session = { id: 'developer', generation: 1 };
+  const device = { repositoryId: 'repo', deviceId: 'local', agentId: 'backend', role: 'device' };
+  const coordinator = { repositoryId: 'repo', deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator', bindings: { developer: 'wt' } };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'wt', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  const key = scopedObjectKey(coordinator, session, 'task:task');
+  await store.transaction(current => { current.tasks[key] = { id: 'task', repositoryId: 'repo', session,
+    stage: 'executing', version: 'task-v1', busy: true, plan: { ref: 'plan-1', version: 'plan-v1' } }; });
+  const guidance = { v: 2, id: 'guide-1', type: 'task.message', session,
+    payload: { taskId: 'task', text: 'Commit and hand off before human review', planRef: 'plan-1', planVersion: 'plan-v1' } };
+  const first = await store.handle(coordinator, guidance);
+  const replay = await store.handle(coordinator, guidance);
+  assert.deepEqual(replay, first);
+  assert.equal(first.data.stage, 'executing');
+  assert.equal(first.data.version, 'task-v1');
+  const task = (await store.workflowTasks(coordinator, session))[0];
+  assert.equal(task.stage, 'executing');
+  assert.equal(task.version, 'task-v1');
+  const read = await store.handle(device, { v: 2, id: 'read-guidance', type: 'sync.read', session, payload: { afterSeq: 0, limit: 100 } });
+  assert.equal(read.data.messages.filter(item => item.message.type === 'task.message').length, 1);
+  await assert.rejects(store.handle(coordinator, { ...guidance, id: 'stale-guide', payload: { ...guidance.payload, planVersion: 'old-plan' } }), { code: 'CONFLICT' });
+  await assert.rejects(store.handle(device, { ...guidance, id: 'device-guide' }), { code: 'FORBIDDEN' });
+});
+
 test('CI routing requires one independently bound receiver and keeps missing routes awaiting CI', async () => {
   const principal = { repositoryId: 'repo', deviceId: 'cloud', agentId: 'coordinator', role: 'coordinator' };
   const session = { id: 'developer', generation: 1 };

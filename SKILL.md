@@ -176,7 +176,7 @@ First use (no map yet): talk with the human layer by layer. First offer several 
 When a credible failure or user-reported bad case appears, record it immediately with `context-guard record-bad-case --root <project> --session <actual-session-id> --title <title> --phenomenon <what-failed> --trigger <trigger> --cause <cause-or-pending> --guard <regression-guard> --node <map-node> --keys <comma-separated>`. Omit `--node` only when the case is intentionally unassigned. After a verified fix, run `context-guard record-bad-case-fix --root <project> --case <B-id> --method <fix> --evidence <proof> --status resolved --session <actual-session-id>`. Do not create a bad case from a guess.
 
 For first-use mapping, use `write-candidates --root <project> --input <file-or->`.
-Before completing development, wait for human review. Only then run `archive-session --root <project> --session
+For Cloud reviewed tasks, first commit the approved files and submit `map task handoff` so the independent Tester and human can review the result. Do not wait for human acceptance before handoff. Before completing development, wait for human review. Only then run `archive-session --root <project> --session
 <actual-session-id> --summary <summary> --files <comma-separated> --input <archive.json>`.
 Include all changed files. Owned files add memories to existing nodes; unowned
 support files need explicit `assignments`, not automatic nodes. Propose an

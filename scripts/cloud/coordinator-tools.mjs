@@ -28,6 +28,7 @@ export const coordinatorTools = [
   definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
   definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
   definition('resume_task', 'Resume an interrupted, incomplete task with its original Session, Plan and evidence; the system may invoke this automatically and never creates a new task.', { ...task, reason: string }),
+  definition('guide_task', 'Send guidance to the existing task execution Session, including after human acceptance for archive. Does not change task stage, Plan or Session. For an active task use this, not resume_task; a busy receiver queues delivery.', { ...task, message: { ...string, maxLength: 2000 } }),
   definition('complete_task', 'After human acceptance, request closure. Normal development tasks require a merged GitHub PR and published Session memory version; explicit read-only verification tasks use gitReceiptRef="verification-only" and their CI ref as archiveReceiptRef.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
   definition('edit_map', 'Create, rename, update, move or delete Main nodes and TODO/Bug records through the configured Coordinator identity. Use the current Main version; changes are atomic, idempotent and audited.', {
     mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
@@ -47,7 +48,7 @@ function validateInput(tool, input) {
   if (Object.keys(input).some(key => !Object.hasOwn(properties, key)) || required.some(key => !Object.hasOwn(input, key))) fail('Tool fields differ from its schema');
   for (const [key, value] of Object.entries(input)) {
     const rule = properties[key];
-    if (rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > 8000) || rule.enum && !rule.enum.includes(value) ||
+    if (rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > (rule.maxLength || 8000)) || rule.enum && !rule.enum.includes(value) ||
         rule.type === 'array' && (!Array.isArray(value) || value.length < (rule.minItems || 1) || value.length > (rule.maxItems || 100) ||
           rule.items?.type === 'string' && value.some(item => typeof item !== 'string' || !item.trim()))) fail('Invalid tool field');
   }
@@ -104,6 +105,8 @@ export function createCoordinatorExecutor(ctx) {
         nodeIds: input.nodeIds, mainVersion: input.mainVersion, brief, requiresHumanApproval: true };
     }
     const current = await ctx.readTask(input.executionSessionId, input.taskId);
+    if (name === 'guide_task') return exchange('task.message', { taskId: input.taskId, text: input.message,
+      ...(current.plan ? { planRef: current.plan.ref, planVersion: current.plan.version } : {}) });
     if (name === 'resume_task') return exchange('task.control', { taskId: input.taskId, action: 'resume', expectedVersion: current.version,
       data: { reason: input.reason } });
     if (name === 'complete_task') return exchange('task.control', { taskId: input.taskId, action: 'complete', expectedVersion: current.version,

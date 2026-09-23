@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { canonical, fail } from './protocol.mjs';
 import { hash } from './io.mjs';
 
-export const workflowTypes = new Set(['brief.submit', 'review.request', 'review.result', 'task.assign', 'task.report', 'task.rework', 'ci.request', 'ci.result', 'executor.state', 'task.control']);
+export const workflowTypes = new Set(['brief.submit', 'review.request', 'review.result', 'task.assign', 'task.message', 'task.report', 'task.rework', 'ci.request', 'ci.result', 'executor.state', 'task.control']);
 export const scopedObjectKey = (p, session, ref) => hash(canonical([p.repositoryId, session.id, session.generation, ref]));
 
 // All effects stay inside ProtocolStore's transaction. Model calls and GitHub
@@ -62,6 +62,15 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
   }
   if (!task) fail('NOT_FOUND', 'Task is not registered in this Session');
   const at = (...stages) => { if (!stages.includes(task.stage)) fail('CONFLICT', 'Task is at a different stage', { currentVersion: task.version }); };
+  if (message.type === 'task.message') {
+    role('coordinator');
+    at('assigned', 'plan-ready', 'plan-rejected', 'executing', 'rework', 'accepted');
+    if (Boolean(p.planRef) !== Boolean(p.planVersion) ||
+        p.planRef && (task.plan?.ref !== p.planRef || task.plan.version !== p.planVersion)) fail('CONFLICT', 'Task Plan changed before guidance');
+    const notification = { ...structuredClone(message), id: randomUUID() };
+    const seq = emit(notification);
+    return { taskId: task.id, version: task.version, stage: task.stage, notificationId: notification.id, seq };
+  }
   if (message.type === 'review.request') {
     role('coordinator');
     if (p.kind === 'brief') {

@@ -74,8 +74,9 @@ After committing the delivered code, `map task handoff --input <file>` accepts
 must describe actual runs; experiences may be empty if nothing reusable was
 learned. The command refuses a dirty worktree, persists immutable objects and
 reports their references with the exact commit SHA. It does not assert CI success,
-human acceptance or a merge. Keep the archived local Plan active through this
-handoff and run `plan-finish` only after its receipt succeeds. The Coordinator consumes the existing protocol
+human acceptance or a merge. Keep the local Plan active through handoff. The
+handoff precedes Tester and human acceptance; archive and run `plan-finish` only
+after human review. The Coordinator consumes the existing protocol
 journal to receive brief decisions, Plan submissions and CI results; model
 failures remain paused until an explicit retry.
 

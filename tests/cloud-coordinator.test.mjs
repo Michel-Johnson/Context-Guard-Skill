@@ -1572,6 +1572,19 @@ test('Coordinator can resume an interrupted task only with the current version a
   } }]);
 });
 
+test('Coordinator guides the existing execution Session without changing its Plan', async () => {
+  const calls = [], current = { version: 'v7', stage: 'executing', plan: { ref: 'plan-1', version: 'plan-v1' } };
+  const execute = createCoordinatorExecutor({
+    readTask: async () => current,
+    exchange: async (sessionId, id, type, payload) => { calls.push({ sessionId, id, type, payload }); return { notificationId: 'note-1' }; },
+  });
+  const result = await execute('guide_task', { executionSessionId: 'session-1', taskId: 'task-1', message: 'Commit and hand off' }, { operationId: 'guide-op' });
+  assert.deepEqual(result, { notificationId: 'note-1' });
+  assert.deepEqual(calls, [{ sessionId: 'session-1', id: 'guide-op', type: 'task.message', payload: {
+    taskId: 'task-1', text: 'Commit and hand off', planRef: 'plan-1', planVersion: 'plan-v1',
+  } }]);
+});
+
 test('Coordinator inbox automatically resumes an interrupted notification without a user turn', async () => {
   const session = { id: 'session-1', generation: 1 }, interruption = { v: 2, id: 'interrupt-1', type: 'task.report', session,
     payload: { taskId: 'task-1', stage: 'interrupted', data: { reason: 'timeout', occurredAt: '2026-09-10T00:00:00Z' } } };

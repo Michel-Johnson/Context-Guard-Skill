@@ -85,6 +85,7 @@ export const payloadRules = {
   'review.request': v => { object({ kind: choice('brief', 'plan'), ref: id, version, taskId: id, requirementsRef: optional(id), requirementsVersion: optional(version), rulesVersion: optional(version) })(v); if (v.kind === 'plan') check(!!v.requirementsRef && !!v.requirementsVersion && !!v.rulesVersion, 'plan review references'); },
   'review.result': object({ kind: choice('brief', 'plan', 'acceptance'), ref: id, version, decision: choice('approved', 'rejected'), reason: text, receiptId: optional(id) }),
   'task.assign': object({ taskId: id, briefRef: id, briefVersion: version, sessionId: id, nodeIds: ids, mainVersion: version, mode: optional(choice('session', 'reviewed')) }),
+  'task.message': object({ taskId: id, text, planRef: optional(id), planVersion: optional(version) }),
   'task.report': v => { object({ taskId: id, stage: choice(...Object.keys(reportData)), data: jsonObject })(v); reportData[v.stage](v.data); },
   'task.rework': v => { object({ taskId: id, sourceSha: sha, ciResultRef: id, failedTestIds: refs, reason: optional(text) })(v); check(v.failedTestIds.length > 0 || !!v.reason, 'rework evidence or human feedback'); check(new Set(v.failedTestIds).size === v.failedTestIds.length, 'unique failed tests'); },
   'ci.request': object({ taskId: id, sourceSha: sha, ciTodoRef: id, unitTestRefs: refs, references: optional(jsonObject) }),

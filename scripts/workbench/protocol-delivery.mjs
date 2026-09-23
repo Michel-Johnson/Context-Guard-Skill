@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, fail, validateMessage } from '../shared/protocol.mjs';
 
-export const executionNotifications = new Set(['task.assign', 'task.rework', 'task.control', 'ci.request']);
+export const executionNotifications = new Set(['task.assign', 'task.message', 'task.rework', 'task.control', 'ci.request']);
 const reviewedRetry = 'reviewed 任务不使用 map task start/finish。回复未知时保留原 operationId；收到明确 CONFLICT 后先核对状态，条件已恢复时用新的 operationId 提交 Plan，旧编号会重放旧拒绝。不得因报错跳过审核或报告完成。';
 export async function executionPrompt(message, readObject) {
   validateMessage(message);
@@ -37,6 +37,13 @@ export async function executionPrompt(message, readObject) {
       (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input -（stdin，优先）或 --input <JSON文件路径>（仅当前 Session 工作树内）交付 CI TODO、测试证据和经验。若原任务是链路验证或明确要求不修改业务文件，只做只读核对（Session、任务、回执、git status），不要改 Main/map.json 或业务文件；随后用只读证据提交 handoff，不要自行创建或分配 Session。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核；使用 stdin 或当前工作树内文件，不要使用共享 /tmp 文件。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n${p.reason ? `返工原因：${p.reason}\n` : ''}代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
+  if (message.type === 'task.message') return [
+    `Context Guard：Coordinator 对原任务 ${p.taskId} 的指导。保留本任务、当前执行 Session 和已批准的 Plan。`,
+    p.text,
+    '先用 map execution 核对权威任务、Plan 与现有文件；不要重复已完成操作。此消息不批准新范围、不代替人工验收。',
+    '若代码已实现并验证，先提交准确文件，再用 map task handoff --input - 交出代码 SHA、CI TODO 与真实证据；handoff 在 Tester 和人工验收之前，不需要先 archive-session 或 plan-finish。人工验收后再归档并结束计划。',
+    `指导编号：${message.id}`,
+  ].join('\n');
   if (message.type === 'task.control' && p.action === 'resume') return [
     `Context Guard：任务 ${p.taskId} 已收到恢复控制，原因：${p.data?.reason || '用户要求继续'}。`,
     '这是原任务的受控恢复，不是新任务；先用 map execution 读取当前授权 Plan、任务和已有证据，不重复已完成操作。',
