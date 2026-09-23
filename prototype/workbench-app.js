@@ -4577,15 +4577,15 @@ async function installCoordinatorPanel(sync){
     if(!pinnedTurn?.isConnected)return;
     tailSpace.style.height=Math.round(messages.clientHeight*.58)+'px';pinTurn();
   });
-  let streamTimer=0,streamTarget='',streamShown='',streamDrained=null,streamNextAt=0,streamGatherUntil=0;
+  let streamTimer=0,streamTarget='',streamShown='',streamDrained=null,streamNextAt=0,revealSettling=false;
   const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';streamDrained=null;streamNextAt=0;streamGatherUntil=0;};
+  const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';streamDrained=null;streamNextAt=0;};
   const updateStreamingText=(message,text,immediate=false,onDrained=null)=>{
     const content=message?.querySelector('.coordinator-markdown');
     if(!content)return;
     let output=content.querySelector('.coordinator-streaming-text');
     if(!output){output=document.createElement('div');output.className='coordinator-streaming-text';content.replaceChildren(output);}
-    if(immediate||!text.startsWith(streamShown)){streamShown='';output.replaceChildren();streamNextAt=0;streamGatherUntil=0;}
+    if(immediate||!text.startsWith(streamShown)){streamShown='';output.replaceChildren();streamNextAt=0;}
     streamTarget=text;
     if(onDrained)streamDrained=onDrained;
     const release=next=>{
@@ -4617,13 +4617,12 @@ async function installCoordinatorPanel(sync){
         const ticks=[...streamTarget.slice(streamShown.length,end).matchAll(/(?<!\\)`+/g)];
         if(ticks.some((match,index)=>ticks.filter(item=>item[0].length===match[0].length).length%2===1))end=streamShown.length;
       }
-      if(end<=streamShown.length){streamGatherUntil=0;finish();return;}
-      if(!done&&!streamGatherUntil){streamGatherUntil=now+380;streamTimer=setTimeout(revealNextChunk,380);return;}
-      if(!done&&now<streamGatherUntil){streamTimer=setTimeout(revealNextChunk,streamGatherUntil-now);return;}
-      streamGatherUntil=0;
+      if(end<=streamShown.length){finish();return;}
       release(end);
-      streamNextAt=performance.now()+1100;
-      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,1100);else finish();
+      // The stream itself supplies the cadence. Only separate already buffered
+      // blocks enough to paint them in order; never queue seconds of text.
+      streamNextAt=performance.now()+80;
+      if(streamShown.length<streamTarget.length)streamTimer=setTimeout(revealNextChunk,80);else finish();
     };
     if(!streamTimer)streamTimer=setTimeout(revealNextChunk,0);
   };
@@ -4772,6 +4771,13 @@ async function installCoordinatorPanel(sync){
   const rowKey=(message,state)=>JSON.stringify([message,
     message.questions?.length||message.role==='assistant'&&legacyQuestionList(message.text)
       ? [!busy&&!pending&&state.status==='waiting-for-user',state.activeTurnId,state.status==='running'] : null]);
+  const settleTypingAfterPaint=conversationId=>{
+    revealSettling=true;setTyping(true);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      revealSettling=false;
+      if(conversationId===selected&&latestConversationState?.status!=='running')setTyping(false);
+    }));
+  };
   const reconcileMessageRows=(items,state,renderConversation)=>{
     const visible=items.filter(visibleConversationMessage);
     const previous=[...messages.children].filter(node=>node.classList?.contains('coordinator-message'));
@@ -4821,7 +4827,7 @@ async function installCoordinatorPanel(sync){
         void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
     const streamingMessage=messages.querySelector('.coordinator-streaming');
-    setTyping(state.status==='running'||!!streamingMessage);
+    setTyping(state.status==='running'||!!streamingMessage||revealSettling);
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown);
@@ -4847,7 +4853,7 @@ async function installCoordinatorPanel(sync){
         if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
         canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
         if(canCorrect)status.textContent+=' · 可补充纠正意见';
-        setTyping(false);
+        settleTypingAfterPaint(renderedConversation);
         setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
         setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';
         queueMicrotask(()=>{if(renderedConversation===selected)render(latestConversationState||state,true);});
@@ -4894,6 +4900,7 @@ async function installCoordinatorPanel(sync){
           rise.className='coordinator-rise';body.className='coordinator-rise-body';
           if(!prefersReducedMotion())rise.classList.add('is-entering');
           body.append(...content.childNodes);rise.append(body);content.append(rise);
+          settleTypingAfterPaint(renderedConversation);
         }
       }
       if(assistantRows.length>liveReplyAssistantCount||state.status==='error')liveReplyAwaiting=false;
