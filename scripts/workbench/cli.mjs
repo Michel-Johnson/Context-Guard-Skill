@@ -615,6 +615,17 @@ async function inputJSON(file) {
   else for await (const chunk of process.stdin) text += chunk;
   return parseInputJSON(text);
 }
+async function worktreeInputJSON(file, root) {
+  if (file && file !== '-') {
+    const worktree = await fs.realpath(root);
+    const inputFile = await fs.realpath(path.resolve(file));
+    const relative = path.relative(worktree, inputFile);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new MapError('INPUT_OUTSIDE_WORKTREE', 'Use --input - or a JSON file inside this Session worktree; shared temporary files can be overwritten by another Session', 400);
+    }
+  }
+  return inputJSON(file);
+}
 export async function connectCloudProject(root, { url, password, repositoryLookup = lookupRepository }) {
   const project = await ensureProjectBinding(await resolveProject(root));
   const prior = await readJSON(memoryConfigPath(project), null);
@@ -778,7 +789,7 @@ async function main(args) {
   if (action === 'execution') return call('/api/v2/execution');
   if (action === 'ci') {
     if (opt._[1] === 'context') return call('/api/v2/execution');
-    if (opt._[1] === 'exchange') return call('/api/v2/ci', { method: 'POST', body: await inputJSON(opt.input) });
+    if (opt._[1] === 'exchange') return call('/api/v2/ci', { method: 'POST', body: await worktreeInputJSON(opt.input, root) });
     throw new MapError('INVALID_ARGUMENT', 'Use map ci context|exchange --input <message.json>');
   }
   if (action === 'interrupted') return call('/api/v2/interrupt', { method: 'POST', body: {
@@ -792,7 +803,7 @@ async function main(args) {
   }
   if (action === 'task') {
     if (['plan', 'handoff'].includes(opt._[1])) {
-      const input = await inputJSON(opt.input), execution = await call('/api/v2/execution');
+      const input = await worktreeInputJSON(opt.input, root), execution = await call('/api/v2/execution');
       if (execution.active?.mode !== 'reviewed' || !execution.session) throw new MapError('FORBIDDEN', 'An assigned reviewed task is required');
       if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 96) throw new MapError('INVALID_ARGUMENT', 'Provide a stable operationId of at most 96 characters');
       const taskId = execution.active.taskId;

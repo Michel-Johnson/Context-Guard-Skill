@@ -9,7 +9,7 @@ export async function executionPrompt(message, readObject) {
   const p = message.payload;
   if (message.type === 'ci.request') return ['Context Guard：执行独立 CI，只测试指定提交，不修改业务源码、不提交开发 Plan。',
     `任务：${p.taskId}`, `准确 SHA：${p.sourceSha}`, `CI TODO：${p.ciTodoRef}`, `开发证据：${p.unitTestRefs.join(', ')}`,
-    '用 map ci context 读取当前授权，用 map ci exchange --input <文件> 读取引用、上传证据并提交 ci.result。',
+    '用 map ci context 读取当前授权，用 map ci exchange --input -（stdin，优先）或当前 Session 工作树内文件读取引用、上传证据并提交 ci.result；不要使用共享 /tmp 文件。',
     '如实报告失败和复现证据；没有执行的测试不得标为通过。'].join('\n');
   if (message.type === 'task.assign') {
     const brief = await readObject(p.briefRef, p.briefVersion);
@@ -24,7 +24,7 @@ export async function executionPrompt(message, readObject) {
     }
     return ['Context Guard：已确认的任务，请先读代码并提交 Plan，收到审核通过后再执行。',
       `任务：${p.taskId}`, `节点：${p.nodeIds.join(', ')}`, `Main 记忆版本（不是 Git SHA）：${p.mainVersion}`, brief.content.text,
-      '使用 map task plan --input <JSON文件路径> 或 --input -（stdin）提交 {operationId,content:{paths,steps}}；不要把 JSON 正文当文件名。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
+      '优先使用 map task plan --input -（stdin），或 --input <JSON文件路径>（文件必须位于当前 Session 工作树内）提交 {operationId,content:{paths,steps}}；不要使用 /tmp/plan.json 等共享临时文件，可能被并行 Session 覆盖。不清楚时先读 map task plan --help。审核前只读，不启动开发 Plan。',
       '执行边界：Coordinator 已经创建并绑定本任务的独立执行 Session；不得手工创建、选择、分配或替换 Session，不得直接改写 Main、.codex/context/main/map.json 或任何服务器状态。若这是链路验证任务，只读核对任务、Session、回执和状态，不要把验证动作变成业务开发。map task plan 成功返回 awaiting-plan-review 后，立即结束本轮并等待 review.result；不要继续调用工具、修改文件、提交 handoff 或自行派发。',
       reviewedRetry,
       `交付编号：${message.id}；同一编号不得重复执行。`].join('\n');
@@ -33,7 +33,7 @@ export async function executionPrompt(message, readObject) {
     const receipt = await readObject(p.receiptId, p.receiptId);
     if (receipt.kind !== 'reviewReceipt' || receipt.content?.ref !== p.ref || receipt.content?.version !== p.version || receipt.content?.decision !== p.decision) fail('CONFLICT', 'Plan review receipt differs');
     return `Context Guard：Plan ${p.ref}@${p.version} 审核${p.decision === 'approved' ? '通过，可继续执行' : '未通过，请修改 Plan'}。\n${p.reason}\n回执：${p.receiptId}\n` +
-      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input <JSON文件路径> 或 --input -（stdin）交付 CI TODO、测试证据和经验。若原任务是链路验证或明确要求不修改业务文件，只做只读核对（Session、任务、回执、git status），不要改 Main/map.json 或业务文件；随后用只读证据提交 handoff，不要自行创建或分配 Session。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核。');
+      (p.decision === 'approved' ? '用 map execution 读取当前审核身份，再按 Skill 的 plan-start 开发；提交代码后用 map task handoff --input -（stdin，优先）或 --input <JSON文件路径>（仅当前 Session 工作树内）交付 CI TODO、测试证据和经验。若原任务是链路验证或明确要求不修改业务文件，只做只读核对（Session、任务、回执、git status），不要改 Main/map.json 或业务文件；随后用只读证据提交 handoff，不要自行创建或分配 Session。' : '保持只读；用新的 operationId 和 map task plan 提交修订版，等待审核；使用 stdin 或当前工作树内文件，不要使用共享 /tmp 文件。');
   }
   if (message.type === 'task.rework') return `Context Guard：原任务 ${p.taskId} 返工，不创建新任务。\n${p.reason ? `返工原因：${p.reason}\n` : ''}代码：${p.sourceSha}\nCI：${p.ciResultRef}\n失败测试：${p.failedTestIds.join(', ')}\n交付编号：${message.id}`;
   if (message.type === 'task.control' && p.action === 'resume') return [
