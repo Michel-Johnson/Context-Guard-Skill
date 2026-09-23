@@ -627,6 +627,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     const sessionProject = await resolveProject(input.worktreeRoot || root);
     if (sessionProject.projectId !== project.projectId) throw new MapError('PROJECT_MISMATCH', 'Session worktree belongs to another project', 403);
     const previous = access.binding(sessionId);
+    const role = input.role === undefined ? previous?.role || 'executor' : input.role;
+    if (!['executor', 'coordinator'].includes(role)) throw new MapError('INVALID_ROLE', 'Use executor or coordinator for Session context', 400);
     const sameWorktree = previous && (previous.worktreeId === sessionProject.worktreeId
       || !previous.gitDir && previous.worktreeRoot === sessionProject.worktreeRoot);
     if (previous && !sameWorktree) {
@@ -643,7 +645,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       if (!allowedOrigin || candidate.pathname !== '/prototype/workbench.html') throw new MapError('INVALID_WORKBENCH_URL', 'Binding URL must be this project workbench page', 400);
       workbenchUrl = candidate.href;
     }
-    return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId, { workbenchUrl }) };
+    return { sessionId, sessionProject, previous, sameWorktree, binding: await sessionBinding(sessionProject, sessionId, { workbenchUrl, role }) };
   }
   const isHuman = actor => { if (actor.kind !== 'human') throw new MapError('FORBIDDEN', 'Requires the workbench capability', 403); };
   try {
