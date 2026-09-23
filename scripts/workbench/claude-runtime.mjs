@@ -201,6 +201,27 @@ export class ClaudeRuntime {
       message: `Context Guard：本地操作者明确要求恢复当前会话。先核对原任务、审核与已有文件/回执，不重复已完成的操作；这不是新任务或新的开发授权。\n${input.message}`,
       ...(previous.execution ? { execution: previous.execution } : {}) });
   }
+  guidanceRecovery(input, deliveryId) {
+    return { operationId: `guide:${hash(input.id)}`, deliveryId, message: input.message };
+  }
+  async deliverGuidance(input) {
+    if (input.deliveryType === 'task.message') {
+      const native = await this.status(input.sessionId);
+      if (native.status === 'interrupted' && native.deliveryId) {
+        return this.recover(input.sessionId, this.guidanceRecovery(input, native.deliveryId), input.root);
+      }
+    }
+    return this.deliver(input);
+  }
+  async receivedGuidance(input) {
+    if (await this.received(input)) return true;
+    if (input.deliveryType !== 'task.message') return false;
+    const operationId = this.guidanceRecovery(input, '').operationId;
+    const prior = await readJSON(this.jobFile(input.sessionId, `recovery:${operationId}`), null);
+    if (!prior?.recoveredDeliveryId) return false;
+    await this.recover(input.sessionId, this.guidanceRecovery(input, prior.recoveredDeliveryId), input.root);
+    return true;
+  }
   async deliver(input) {
     const file = this.sessionFile(input.sessionId), jobFile = this.jobFile(input.sessionId, input.id);
     const fingerprint = hash(canonical(input));
