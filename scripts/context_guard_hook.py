@@ -999,7 +999,12 @@ def shell_segments(command: str) -> list[list[str]] | None:
 def git_read_only(words: list[str]) -> bool:
     if len(words) < 2:
         return False
-    command_index = 2 if words[1] == "--no-pager" else 1
+    command_index = 1
+    while command_index < len(words) and words[command_index] in {"--no-pager", "-C"}:
+        if words[command_index] == "-C":
+            command_index += 2
+        else:
+            command_index += 1
     if command_index >= len(words) or words[command_index].startswith("-"):
         return False
     command = words[command_index]
@@ -1158,6 +1163,11 @@ def read_only_words(words: list[str]) -> bool:
         return not any(item in dangerous for item in words[1:])
     if executable == "git":
         return git_read_only(words)
+    if executable == "gh":
+        return len(words) >= 3 and (words[1], words[2]) in {
+            ("auth", "status"), ("pr", "checks"), ("pr", "list"),
+            ("pr", "view"), ("run", "view"), ("run", "list"),
+        }
     if executable in {"ps", "pgrep", "lsof", "netstat", "ss"}:
         return True
     if executable == "kill":
@@ -1242,6 +1252,45 @@ def mutating_tool(payload: object) -> bool:
     # Unknown scripts stay potentially mutating. Inspection pipelines are allowed
     # only when every command and redirection is independently read-only.
     return not read_only_shell(command)
+
+
+def post_plan_delivery_command(payload: object, root: Path) -> bool:
+    """Allow only repository delivery after reviewed work is archived and finished."""
+    command = tool_command(payload)
+    segments = shell_segments(command)
+    if not segments or len(segments) != 1:
+        return False
+    words = segments[0]
+    if not words or any(char in command for char in ("$", "`", "\n")):
+        return False
+    executable = Path(words[0]).name
+    if executable == "git":
+        index = 1
+        if index < len(words) and words[index] == "-C":
+            if index + 1 >= len(words) or _resolved_path(Path(words[index + 1])) != root.resolve():
+                return False
+            index += 2
+        if index < len(words) and words[index] == "push":
+            return not any(arg in {"--force", "-f", "--force-with-lease", "--mirror", "--delete"}
+                           or arg.startswith("--force-") for arg in words[index + 1:])
+        return False
+    if executable == "gh" and len(words) >= 3 and words[1] == "pr":
+        if words[2] not in {"create", "merge"}:
+            return False
+        return not any(arg in {"--admin", "--repo", "-R", "--delete-branch"}
+                       or arg.startswith(("--repo=", "--admin=")) for arg in words[3:])
+    return False
+
+
+def post_plan_delivery_ready(runtime: dict, execution: dict, root: Path) -> bool:
+    last = runtime.get("last_plan") if isinstance(runtime.get("last_plan"), dict) else {}
+    active = execution.get("active") or {}
+    acceptance = active.get("acceptanceReview") or {}
+    return (active.get("mode") == "reviewed"
+            and acceptance.get("decision") == "approved"
+            and last.get("status") == "completed"
+            and isinstance(last.get("archive"), dict)
+            and not git_changed_paths(root))
 
 
 def pending_signals(runtime: dict) -> list[str]:
@@ -1685,6 +1734,12 @@ def main() -> int:
                     return hook_response(platform, event)
                 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "CI may run only its assigned test commands; business source edits are forbidden."}}, ensure_ascii=False))
                 return 0
+            if post_plan_delivery_command(payload, root) and post_plan_delivery_ready(runtime, execution, root):
+                append_session_event(root, event, platform, current_session_id, session_details(audit_details(
+                    payload, event, current_session_id, runtime,
+                    {"result": "post-plan-delivery", "taskId": ci.get("taskId")},
+                )))
+                return hook_response(platform, event)
         snapshot = map_snapshot(ctx, current_session_id)
         owners = owner_nodes(paths, snapshot)
         missing = sorted(set(owners.values()) - active_grants(snapshot))
