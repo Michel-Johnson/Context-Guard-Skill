@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, coordinatorAssignmentKey, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
+import { compactMainHistorySnapshots } from '../scripts/cloud/memory.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
@@ -120,6 +121,54 @@ test('memory read views share cold reads, invalidate replaces, and preserve comp
   await failing.read(file, {});
   await assert.rejects(failing.write(file, { ...state, revision: 4 }), /disk full/);
   assert.equal((await failing.read(file, {})).revision, 3, 'a failed write cannot publish an uncommitted view');
+});
+
+test('Main keeps five recoverable snapshots while startup compacts old content and preserves audit receipts', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-main-retention-'));
+  const projectId = 'context-guard', memoryDir = path.join(dataDir, 'memory');
+  const memoryConfig = { dataDir: memoryDir, adminToken: 'memory-admin', projects: { [projectId]: { token: 'project-memory-token' } } };
+  const memoryProjectDir = path.join(memoryDir, createHash('sha256').update(projectId).digest('hex'));
+  await fs.mkdir(memoryProjectDir, { recursive: true });
+  const file = path.join(memoryProjectDir, 'memory.json');
+  const snapshot = n => ({ version: `main-${n}`, memory: { map: { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: {
+    id: 'T0', title: `Main ${n}`, kind: 'module', state: 'dirty', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [],
+  } }, records: {} } });
+  const history = Array.from({ length: 7 }, (_, index) => ({ revision: index + 1, scope: 'main', action: 'workbench.commit',
+    version: `main-${index + 1}`, at: '2026-09-23T00:00:00.000Z', snapshot: snapshot(index + 1) }));
+  history.splice(3, 0, { revision: 8, scope: 'session:dev', action: 'write', version: 'session-1', snapshot: { version: 'session-1' } });
+  const originalHistory = structuredClone(history);
+  const state = { revision: 8, main: snapshot(7), preferences: null, sessions: {}, closedSessions: {},
+    receipts: { old: { fingerprint: 'original', result: { history: structuredClone(history[0]), snapshot: snapshot(1) } } },
+    history, events: [{ scope: 'main', version: 'main-1' }], eventCursors: {} };
+  assert.equal(compactMainHistorySnapshots(state), true);
+  assert.equal(compactMainHistorySnapshots(state), false, 'retention is idempotent');
+  assert.deepEqual(state.history.filter(entry => entry.scope === 'main' && entry.snapshot).map(entry => entry.version), ['main-3', 'main-4', 'main-5', 'main-6', 'main-7']);
+  assert.equal(state.history.find(entry => entry.scope === 'session:dev').snapshot.version, 'session-1');
+  assert.equal(state.receipts.old.fingerprint, 'original');
+  assert.equal(state.receipts.old.result.snapshot, undefined);
+  assert.equal(state.receipts.old.result.history.snapshot, undefined);
+  assert.equal(state.receipts.old.result.historyExpired, true);
+  await fs.writeFile(file, JSON.stringify({ ...state, history: originalHistory,
+    receipts: { old: { fingerprint: 'original', result: { history: structuredClone(originalHistory[0]), snapshot: snapshot(1) } } } }));
+  let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  t.after(async () => { await service.close().catch(() => {}); await fs.rm(dataDir, { recursive: true, force: true }); });
+  const stored = await readJSON(file);
+  assert.deepEqual(stored.history.filter(entry => entry.scope === 'main' && entry.snapshot).map(entry => entry.version), ['main-3', 'main-4', 'main-5', 'main-6', 'main-7']);
+  assert.deepEqual(stored.events, state.events);
+  assert.equal(stored.receipts.old.result.snapshot, undefined);
+  const headers = { Authorization: 'Bearer memory-admin', 'Content-Type': 'application/json' };
+  const old = await request(service.url, '/v1/projects/context-guard/restore', { method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'restore-old', scope: 'main', baseVersion: 'main-7', targetVersion: 'main-2' }) });
+  assert.equal(old.response.status, 404); assert.equal(old.body.error.code, 'HISTORY_NOT_FOUND');
+  const retained = await request(service.url, '/v1/projects/context-guard/restore', { method: 'POST', headers,
+    body: JSON.stringify({ operationId: 'restore-retained', scope: 'main', baseVersion: 'main-7', targetVersion: 'main-3' }) });
+  assert.equal(retained.response.status, 200, JSON.stringify(retained.body));
+  assert.equal(retained.body.snapshot.memory.map.root.title, 'Main 3');
+  await service.close();
+  service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
+  const reloaded = await readJSON(file);
+  assert.equal(reloaded.history.filter(entry => entry.scope === 'main' && entry.snapshot).length, 5);
+  assert.equal(reloaded.history.find(entry => entry.scope === 'session:dev').snapshot.version, 'session-1');
 });
 
 test('fifty concurrent memory views fit a small heap despite large cold history', async t => {
