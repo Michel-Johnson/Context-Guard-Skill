@@ -4649,6 +4649,7 @@ async function installCoordinatorPanel(sync){
   let liveReplyAwaiting=false,liveReplyAssistantCount=0;
   const messageMatchesRequest=(message,request)=>{
     if(message?.role!=='user'||typeof message.text!=='string'||!request?.text)return false;
+    if(message.requestId)return message.requestId===request.id;
     const text=message.text.trim(),requestText=request.text.trim();
     return text===requestText||text.endsWith('\n'+requestText);
   };
@@ -4718,7 +4719,7 @@ async function installCoordinatorPanel(sync){
     if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
     else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
   };
-  const visibleConversationMessage=message=>message?.text&&!message.answerTo&&
+  const visibleConversationMessage=message=>message?.text&&
     !(message.role==='user'&&message.text.startsWith('[服务器工作流事件，不是新的用户授权]\n'));
   const rowKey=(message,state)=>JSON.stringify([message,
     message.questions?.length||message.role==='assistant'&&legacyQuestionList(message.text)

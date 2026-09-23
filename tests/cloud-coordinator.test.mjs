@@ -442,6 +442,10 @@ test('Choice questions persist and stop before a redundant model summary; answer
   assert.equal(calls, 2, 'a repeated answer request does not run the model twice');
   const restored = await new CoordinatorService(options).state();
   assert.deepEqual(restored.messages.flatMap(message => message.questions || []).find(question => question.id === questionId).answer, { text: '网站构建产物', requestId: 'answer' });
+  const answeredAt = restored.messages.findIndex(message => message.answerTo === questionId);
+  assert.ok(answeredAt > state.messages.length - 1, 'the answer follows its question in durable conversation order');
+  assert.deepEqual({ text: restored.messages[answeredAt].text, requestId: restored.messages[answeredAt].requestId },
+    { text: '网站构建产物', requestId: 'answer' }, 'the public answer is user-readable and matches its optimistic request');
   assert.equal(restored.approvals.length, 0);
   await assert.rejects(service.submit({ id: 'second-answer', text: 'Changed', answerTo: questionId }), { code: 'ALREADY_ANSWERED' });
 });

@@ -43,10 +43,12 @@ function publicMessages(state) {
     const sourceText = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('');
     const questions = questionsAt(state, index);
     const actions = message.actions || [];
-    const text = sourceText;
+    const answer = message.answerTo ? state.answers?.[message.answerTo] : null;
+    const text = answer?.text || sourceText;
     return { role: message.role, text: text || (questions.length ? questions.map(question => question.text).join('\n\n') : ''),
       ...(questions.length && !text ? { questionOnly: true } : {}),
       ...(message.answerTo ? { answerTo: message.answerTo } : {}),
+      ...(answer?.requestId ? { requestId: answer.requestId } : {}),
       ...(questions.length ? { questions } : {}),
       ...(actions.length ? { actions } : {}),
       tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
