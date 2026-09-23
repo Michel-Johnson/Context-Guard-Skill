@@ -1,6 +1,5 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
-import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -28,7 +27,6 @@ import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs'
 import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
 import { fail as protocolFail, validateMessage } from '../shared/protocol.mjs';
-import { syncPaths } from '../shared/sync-paths.mjs';
 import { MapError, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
@@ -336,7 +334,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     file: path.join(project.sharedDir, 'workbench-access.json'),
     bindingsFile: sessionBindingsPath(project),
   } : {}).init();
-  let stopAccessWatch = () => {}, stopCloudWatch = () => {};
+  let stopAccessWatch = () => {};
   const stores = new Map(), projectionQueues = new Map(), storeViews = new WeakMap(), syncCoordinators = new Map(), attachmentStores = new WeakMap();
   let mainStore, mainSource = null;
   const attachmentsFor = store => {
@@ -486,21 +484,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   }
   async function cloudSyncStatus(viewId = 'main') {
     if (syncCoordinators.has(viewId)) return syncCoordinators.get(viewId).snapshot();
-    const paths = syncPaths(root);
-    const config = await readJSON(paths.config, null) || await readJSON(paths.legacyConfig, null);
-    const state = await readJSON(paths.state, null);
-    const serviceState = await readJSON(paths.service, null);
-    let serviceAlive = false;
-    if (serviceState?.pid) try { process.kill(serviceState.pid, 0); serviceAlive = true; } catch {}
-    return {
-      configured: !!config,
-      ...(config ? { projectId: config.projectId, url: config.url } : {}),
-      status: !config ? 'disabled' : state?.status || 'connecting',
-      cursor: state?.cursor || 0,
-      receivedCursor: state?.receivedCursor || 0,
-      conflict: state?.conflict || null,
-      serviceAlive,
-    };
+    return { configured: false, status: 'disabled', cursor: 0, receivedCursor: 0, conflict: null, serviceAlive: false };
   }
   function viewPeers(viewId) { return [...peers.values()].filter(peer => !viewId || peer.viewId === viewId); }
   function pendingPeers(viewId) { return viewPeers(viewId).filter(p => p.dirty || !p.res || p.res.destroyed).map(p => p.id); }
@@ -652,13 +636,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
       await atomicWrite(sourceFile, encode(mainSource));
       mainStore = await createStore('main', root);
     }
-    const cloudSyncDir = path.join(ctx, 'private/cloud-sync');
-    await fs.mkdir(cloudSyncDir, { recursive: true });
-    const cloudWatcher = watch(cloudSyncDir, () => {
-      clearTimeout(cloudWatcher.timer);
-      cloudWatcher.timer = setTimeout(() => cloudSyncStatus().then(status => broadcast('cloud-sync', status)).catch(() => {}), 30);
-    });
-    stopCloudWatch = () => { clearTimeout(cloudWatcher.timer); cloudWatcher.close(); };
     server = http.createServer(async (req, res) => {
       try {
         const direct = req.headers.host === new URL(base).host;
@@ -1081,7 +1058,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         clearInterval(ownershipWatch);
         await refreshing?.catch(() => {});
         stopAccessWatch();
-        stopCloudWatch();
         clearInterval(deviceHeartbeatTimer); deviceHeartbeatTimer = null;
         deviceHeartbeatStopping = true;
         await deviceHeartbeatRunning; await device?.close();
@@ -1107,5 +1083,5 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     // Handler needs the shutdown closure after initialization.
     server.cgClose = close;
     return { state, project, store: mainStore, stores, access, server, close, humanToken };
-  } catch (e) { stopAccessWatch(); stopCloudWatch(); await Promise.all([...syncCoordinators.values()].map(coordinator => coordinator.close())); await Promise.all([...new Set(stores.values())].map(store => store.close())); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
+  } catch (e) { stopAccessWatch(); await Promise.all([...syncCoordinators.values()].map(coordinator => coordinator.close())); await Promise.all([...new Set(stores.values())].map(store => store.close())); server?.close(); if ((await readJSON(lock, null))?.instance === instance) await fs.unlink(lock); throw e; }
 }
