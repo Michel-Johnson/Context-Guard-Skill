@@ -143,6 +143,23 @@ async function fixture() {
   await fs.writeFile(path.join(ctx, 'sessions.jsonl'), JSON.stringify({ at: '2026-01-01T00:00:00Z', platform: 'codex', session_id: agent.sessionId, thread_name: '真实会话名称', event: 'session-start' }) + '\n');
   return { root, ctx, doc };
 }
+test('local workbench serves the Ready Coordinator working animation and its atlas', async () => {
+  const f = await fixture();
+  const running = await startServer({ root: f.root, port: 0 });
+  try {
+    const base = new URL(running.state.url).origin;
+    const module = await fetch(base + '/prototype/coordinator-working-blot.mjs');
+    assert.equal(module.status, 200);
+    assert.match(module.headers.get('content-type'), /text\/javascript/);
+    assert.match(await module.text(), /createCoordinatorWorkingBlot/);
+    const atlas = await fetch(base + '/prototype/working-blot-atlas.png');
+    assert.equal(atlas.status, 200);
+    assert.equal(atlas.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await atlas.arrayBuffer()), await fs.readFile('prototype/working-blot-atlas.png'));
+  } finally {
+    await running.close();
+  }
+});
 function edit(store, title, extras = {}) { return { baseVersion: store.version, operationId: randomUUID(), operations: [{ type: 'update', id: 'N1', fields: { title } }], ...extras }; }
 function agentProposal(id = 'N2', title = '提议', file = 'src/proposal.mjs') {
   return {

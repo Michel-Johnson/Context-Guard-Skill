@@ -86,7 +86,7 @@ function paragraphize(source, limit = 60) {
 // a numbered list instead of calling ask_user. Keep those turns actionable by
 // recognizing only an explicit question/confirmation list; ordinary numbered
 // Markdown lists remain unchanged.
-function legacyQuestionList(source) {
+export function legacyQuestionList(source) {
   const text = String(source || '').replace(/\r\n?/g, '\n');
   const heading = text.match(/(^|\n)([^\n]*(?:问题|确认)[^\n]*(?:如下|分别|需要)[^\n]*：?)[ \t]*\n[ \t]*\n/m);
   if (!heading) return null;

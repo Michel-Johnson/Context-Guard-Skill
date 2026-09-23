@@ -28,6 +28,8 @@ export const installedFiles = [
   "prototype/workbench-sync.mjs",
   "prototype/attachments.mjs",
   "prototype/coordinator-markdown.mjs",
+  "prototype/coordinator-working-blot.mjs",
+  "prototype/working-blot-atlas.png",
   "prototype/vendor/marked.mjs",
   "references/workbench-interface.md",
   "references/cloud-sync-interface.md",
