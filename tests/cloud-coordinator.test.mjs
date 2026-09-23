@@ -1602,6 +1602,26 @@ test('Coordinator inbox automatically resumes an interrupted notification withou
   assert.equal(resumed, 1); assert.equal(submitted, 1); assert.equal(acknowledged, 1);
 });
 
+test('Coordinator acceptance event guides archive and PR before completion', async () => {
+  const session = { id: 'session-1', generation: 1 }, acceptance = { v: 2, id: 'acceptance-1', type: 'review.result', session,
+    payload: { kind: 'acceptance', ref: 'ci-1', version: 'v1', decision: 'approved', reason: 'Verified' } };
+  const submitted = [], acknowledged = [];
+  const store = { on() {}, off() {}, registeredBinding: async () => ({ worktreeId: 'worktree', generation: 1 }), handle: async (_principal, message) => {
+    if (message.type === 'sync.heartbeat') return { data: { sessions: [{ ...session, latestSeq: 1, ackedSeq: 0 }] } };
+    if (message.type === 'sync.read') return { data: { messages: [{ seq: 1, message: acceptance }], nextSeq: 1 } };
+    if (message.type === 'sync.ack') { acknowledged.push(message.payload.items[0].seq); return { data: {} }; }
+    throw new Error(`unexpected ${message.type}`);
+  } };
+  const service = { state: async () => ({ status: 'idle' }), submit: async request => { submitted.push(JSON.parse(request.text)); } };
+  const inbox = new CoordinatorInbox({ store, principal: {}, sessionIds: [session.id], service, intervalMs: 60000 });
+  await inbox.pump(); await inbox.close();
+  assert.equal(submitted.length, 1);
+  assert.match(submitted[0].instruction, /guide_task/);
+  assert.match(submitted[0].instruction, /归档、结束计划并创建 PR/);
+  assert.match(submitted[0].instruction, /发布后.*complete_task/);
+  assert.deepEqual(acknowledged, [1]);
+});
+
 test('Coordinator inbox resumes durable interrupted tasks after a Cloud restart', async () => {
   const session = { id: 'session-restarted', generation: 2 };
   const task = { id: 'task-restarted', stage: 'interrupted', busy: true, version: 'v9',
