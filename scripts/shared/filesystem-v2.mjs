@@ -26,10 +26,25 @@ function cleanSegment(value) {
     .trim() || 'unnamed';
 }
 
-function brief(value) {
+function firstParagraph(value) {
   const text = String(value || '').trim();
   if (!text) return 'NULL';
-  return [...text].slice(0, 20).join('');
+  return text.split(/\r?\n\s*\r?\n/)[0].trim();
+}
+
+const textOrNull = value => String(value || '').trim() || 'NULL';
+const linesOrNull = lines => lines.length ? lines.join('\n\n') : 'NULL';
+
+function codeIndex(attempt) {
+  return attempt.codeIndex?.length ? attempt.codeIndex.map(entry => `- \`${entry.path}\`\n  ${entry.summary}`).join('\n') : 'NULL';
+}
+
+function attemptEvent(attempt, number) {
+  return attempt.event ? `- A${number} / ${attempt.eventSource || 'Agent'}：${attempt.event}` : null;
+}
+
+function attemptStatus(attempt) {
+  return `Status: ${attempt.status}${attempt.status === 'Refuted' ? `\nRefutedBy: ${attempt.refutedBy}\nReason: ${attempt.reason}` : ''}`;
 }
 
 function extract(text, label) {
@@ -128,12 +143,26 @@ export function buildFilesystemV2(snapshot) {
   const bugsByNode = new Map();
   const unassignedBugs = [];
   const bugRecords = Object.entries(records).filter(([name]) => /^bugs\/[^/]+\.md$/.test(name));
-  for (const [name, raw] of bugRecords) {
-    const id = path.posix.basename(name, '.md');
-    const title = raw.match(/^#\s+(.+)$/m)?.[1] || id;
-    const nodeId = extract(raw, 'node');
-    const phenomenon = extract(raw, '现象') || 'NULL';
-    const rawStatus = extract(raw, 'status').toLowerCase();
+  const mapBugs = new Map();
+  for (const { node } of nodeEntries) for (const item of node.bugs || []) {
+    if (!item.id) continue;
+    if (mapBugs.has(item.id)) warnings.push({ code: 'DUPLICATE_BUG_ID', id: item.id });
+    else mapBugs.set(item.id, { item, nodeId: node.id });
+  }
+  for (const item of document.unassigned_bugs || []) {
+    if (!item.id) continue;
+    if (mapBugs.has(item.id)) warnings.push({ code: 'DUPLICATE_BUG_ID', id: item.id });
+    else mapBugs.set(item.id, { item, nodeId: '' });
+  }
+  const legacyBugs = new Map(bugRecords.map(([name, raw]) => [path.posix.basename(name, '.md'), raw]));
+  for (const id of new Set([...legacyBugs.keys(), ...mapBugs.keys()])) {
+    const raw = legacyBugs.get(id) || '';
+    const mapped = mapBugs.get(id), item = mapped?.item;
+    const title = textOrNull(item?.title || raw.match(/^#\s+(.+)$/m)?.[1] || id);
+    const heading = title === id || title.startsWith(`${id} `) ? title : `${id} ${title}`;
+    const nodeId = mapped ? mapped.nodeId : extract(raw, 'node');
+    const phenomenon = textOrNull(item?.phenomenon || item?.description || item?.desc || extract(raw, '现象'));
+    const rawStatus = String(item?.status || extract(raw, 'status')).toLowerCase();
     if (DROP_BUG_STATUS.has(rawStatus)) {
       warnings.push({ code: 'DROPPED_WONTFIX', id, nodeId });
       continue;
@@ -157,24 +186,33 @@ export function buildFilesystemV2(snapshot) {
     const evidence = section(fixRaw, '证据') || 'NULL';
     const dir = assigned ? nodeDir.get(nodeId) : 'unassigned';
     const file = `${dir}/bugs/${id}.md`;
-    const testFile = `${dir}/bugs/tests/${id}-A1.md`;
-    const traceFile = `${dir}/bugs/traces/${id}-A1.md`;
     const sessions = extract(raw, 'sessions').split(/[,，]\s*/).filter(Boolean);
-    const attributionBlock = isMeaningful(cause) ? `### A1
+    const attempts = Array.isArray(item?.attempts) && item.attempts.length ? item.attempts : null;
+    const attributionBlock = attempts ? attempts.map((attempt, index) => `### A${index + 1}
+${attemptStatus(attempt)}
+
+原因：${textOrNull(attempt.cause)}
+
+#### code index
+${codeIndex(attempt)}`).join('\n\n') : isMeaningful(cause) ? `### A1
 Status: Confirmed
 
 原因：${cause}
 
 #### code index
 ${code}` : 'NULL';
+    const rounds = attempts || [{ reproduction: trigger, test: { summary: evidence, content: evidence }, sessionIds: sessions }];
+    for (const [index, attempt] of rounds.entries()) {
+      const round = `A${index + 1}`;
+      put(`${dir}/bugs/tests/${id}-${round}.md`, `# ${id} ${round}\n\n${textOrNull(attempt.test?.content)}`);
+      put(`${dir}/bugs/traces/${id}-${round}.md`, `# ${id} ${round}\n\n${attempt.sessionIds?.length ? attempt.sessionIds.map(value => `- sessions/${value}.md`).join('\n') : 'NULL'}`);
+    }
+    const effective = attempts ? attempts.filter(attempt => attempt.status === 'Confirmed').at(-1) : null;
+    put(file, `# ${heading}
 
-    put(testFile, `# ${id} A1\n\n${evidence}`);
-    put(traceFile, `# ${id} A1\n\n${sessions.length ? sessions.map((value) => `- sessions/${value}.md`).join('\n') : 'NULL'}`);
-    put(file, `# ${title}
-
-Reporter: NULL
+Reporter: ${['Human', 'Agent'].includes(item?.reporter) ? item.reporter : 'NULL'}
 Status: ${fileStatus}
-CurrentAttempt: A1
+CurrentAttempt: A${rounds.length}
 
 ## 1. 现象
 
@@ -182,35 +220,34 @@ ${phenomenon}
 
 ## 2. 后续纠正事件
 
-NULL
+${attempts ? linesOrNull(attempts.map((attempt, index) => attemptEvent(attempt, index + 1)).filter(Boolean)) : 'NULL'}
 
 ## 3. 复现
 
-### A1
-${trigger}
+${rounds.map((attempt, index) => `### A${index + 1}\n${textOrNull(attempt.reproduction)}`).join('\n\n')}
 
 ## 4. 原因与代码改动
 
 ### 当前有效结论
-${method}
+${attempts ? textOrNull(effective?.resolution || effective?.cause) : method}
 
 ${attributionBlock}
 
 ## 5. 测试
 
-- [A1](${relative(file, testFile)})：${evidence}
+${rounds.map((attempt, index) => `- [A${index + 1}](${relative(file, `${dir}/bugs/tests/${id}-A${index + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
 
 ## 6. 修复 Session 索引
 
-- [A1](${relative(file, traceFile)})`);
+${rounds.map((_, index) => `- [A${index + 1}](${relative(file, `${dir}/bugs/traces/${id}-A${index + 1}.md`)})`).join('\n')}`);
 
-    const item = { id, title, phenomenon, status: fileStatus, file, legacyNode: nodeId };
+    const projected = { id, title: heading, phenomenon, status: fileStatus, file, legacyNode: nodeId };
     if (assigned) {
       const list = bugsByNode.get(nodeId) || [];
-      list.push(item);
+      list.push(projected);
       bugsByNode.set(nodeId, list);
     } else {
-      unassignedBugs.push(item);
+      unassignedBugs.push(projected);
     }
   }
 
@@ -235,15 +272,20 @@ LegacyNode: ${bug.legacyNode || 'NULL'}`).join('\n\n')}`);
       const description = String(todo.description || todo.desc || todo.title || '').trim() || 'NULL';
       const status = TODO_STATUS[todo.status] || 'Open';
       const file = `${nodeDir.get(node.id)}/todos/${id}.md`;
-      const testFile = `${nodeDir.get(node.id)}/todos/tests/${id}-A1.md`;
-      const traceFile = `${nodeDir.get(node.id)}/todos/traces/${id}-A1.md`;
-      put(testFile, `# ${id} A1\n\nNULL`);
-      put(traceFile, `# ${id} A1\n\nNULL`);
+      const attempts = Array.isArray(todo.attempts) && todo.attempts.length ? todo.attempts : null;
+      const rounds = attempts || [{ acceptance: 'NULL', solution: 'NULL', test: { summary: 'NULL', content: 'NULL' } }];
+      if (!attempts) warnings.push({ code: 'TODO_ATTEMPT_UNCLASSIFIED', id, nodeId: node.id });
+      for (const [roundIndex, attempt] of rounds.entries()) {
+        const round = `A${roundIndex + 1}`;
+        put(`${nodeDir.get(node.id)}/todos/tests/${id}-${round}.md`, `# ${id} ${round}\n\n${textOrNull(attempt.test?.content)}`);
+        put(`${nodeDir.get(node.id)}/todos/traces/${id}-${round}.md`, `# ${id} ${round}\n\n${attempt.sessionIds?.length ? attempt.sessionIds.map(value => `- sessions/${value}.md`).join('\n') : 'NULL'}`);
+      }
+      const effective = attempts?.filter(attempt => attempt.status === 'Confirmed').at(-1);
       put(file, `# ${id} ${title}
 
-Reporter: NULL
+Reporter: ${['Human', 'Agent'].includes(todo.reporter) ? todo.reporter : 'NULL'}
 Status: ${status}
-CurrentAttempt: A1
+CurrentAttempt: A${rounds.length}
 
 ## 1. 需求
 
@@ -251,31 +293,26 @@ ${description}
 
 ## 2. 后续调整事件
 
-NULL
+${attempts ? linesOrNull(attempts.map((attempt, roundIndex) => attemptEvent(attempt, roundIndex + 1)).filter(Boolean)) : 'NULL'}
 
 ## 3. 验收标准
 
-### A1
-NULL
+${rounds.map((attempt, roundIndex) => `### A${roundIndex + 1}\n${textOrNull(attempt.acceptance)}`).join('\n\n')}
 
 ## 4. 方案与代码改动
 
 ### 当前有效方案
-NULL
+${attempts ? textOrNull(effective?.solution) : 'NULL'}
 
-### A1
-方案：NULL
-
-#### code index
-NULL
+${rounds.map((attempt, roundIndex) => `### A${roundIndex + 1}\n${attempts ? `${attemptStatus(attempt)}\n` : ''}\n方案：${textOrNull(attempt.solution)}\n\n#### code index\n${codeIndex(attempt)}`).join('\n\n')}
 
 ## 5. 测试
 
-- [A1](${relative(file, testFile)})：NULL
+${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${relative(file, `${nodeDir.get(node.id)}/todos/tests/${id}-A${roundIndex + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
 
 ## 6. 实现 Session 索引
 
-- [A1](${relative(file, traceFile)})`);
+- ${rounds.map((_, roundIndex) => `[A${roundIndex + 1}](${relative(file, `${nodeDir.get(node.id)}/todos/traces/${id}-A${roundIndex + 1}.md`)})`).join('\n- ')}`);
       const list = todosByNode.get(node.id) || [];
       list.push({ id, title, description, status, file });
       todosByNode.set(node.id, list);
@@ -286,7 +323,7 @@ NULL
       index += 1;
       const id = idea.id || `I-${node.id}-${index}`;
       const text = String(idea.text || '').trim() || 'NULL';
-      const title = text === 'NULL' ? id : brief(text);
+      const title = text === 'NULL' ? id : text.split(/\r?\n/)[0].trim();
       const status = idea.state === 'success' ? 'Accepted' : 'Proposed';
       const file = `${nodeDir.get(node.id)}/ideas/${id}.md`;
       put(file, `# ${id} ${title}\nStatus: ${status}\n\n## 1. 想法\n\n${text}\n\n## 2. 讨论与结论\n\nNULL`);
@@ -298,7 +335,7 @@ NULL
 
   const linkBlock = (from, ids) => ids.length ? ids.map((id) => {
     const targetNode = byId.get(id).node;
-    return `#### [${targetNode.title}](${relative(from, `${nodeDir.get(id)}/index.md`)})\n${brief(targetNode.purpose)}`;
+    return `#### [${targetNode.title}](${relative(from, `${nodeDir.get(id)}/index.md`)})\n${firstParagraph(targetNode.purpose)}`;
   }).join('\n\n') : 'NULL';
 
   for (const { node } of nodeEntries) {
@@ -307,12 +344,12 @@ NULL
     const bugs = bugsByNode.get(node.id) || [];
     const todos = todosByNode.get(node.id) || [];
     const ideas = ideasByNode.get(node.id) || [];
-    const bugBlock = bugs.length ? bugs.map((bug) => `### [${bug.title}](${relative(file, bug.file)})\n${bug.phenomenon}\n\nStatus: ${bug.status}`).join('\n\n') : 'NULL';
-    const todoBlock = todos.length ? todos.map((todo) => `### [${todo.title}](${relative(file, todo.file)})\n${brief(todo.description)}\n\nStatus: ${todo.status}`).join('\n\n') : 'NULL';
-    const ideaBlock = ideas.length ? ideas.map((idea) => `### [${idea.title}](${relative(file, idea.file)})\n${brief(idea.text)}\n\nStatus: ${idea.status}`).join('\n\n') : 'NULL';
+    const bugBlock = bugs.length ? bugs.map((bug) => `### [${bug.title}](${relative(file, bug.file)})\n${firstParagraph(bug.phenomenon)}\n\nStatus: ${bug.status}`).join('\n\n') : 'NULL';
+    const todoBlock = todos.length ? todos.map((todo) => `### [${todo.title}](${relative(file, todo.file)})\n${firstParagraph(todo.description)}\n\nStatus: ${todo.status}`).join('\n\n') : 'NULL';
+    const ideaBlock = ideas.length ? ideas.map((idea) => `### [${idea.title}](${relative(file, idea.file)})\n${firstParagraph(idea.text)}\n\nStatus: ${idea.status}`).join('\n\n') : 'NULL';
     put(file, `# ${node.title}
 
-${brief(node.purpose)}
+${firstParagraph(node.purpose)}
 
 ## 关联模块与节点
 
@@ -370,7 +407,7 @@ ${ideaBlock}`);
       legacyRecords: Object.keys(records).length,
     },
     lossy: {
-      briefsTruncated: nodeEntries.filter(({ node }) => [...String(node.purpose || '').trim()].length > 20).length,
+      briefsTruncated: 0,
       briefsMissing: nodeEntries.filter(({ node }) => !String(node.purpose || '').trim()).length,
       reporterUnknown: bugRecords.length + [...todosByNode.values()].flat().length,
     },

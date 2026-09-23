@@ -13,7 +13,7 @@ import {
   writeProjectMemory,
 } from '../scripts/cloud/memory-filesystem.mjs';
 import { withFileLock } from '../scripts/shared/io.mjs';
-import { readMemoryProject } from '../scripts/cloud/memory.mjs';
+import { commitMainMemoryMap, readMemoryProject } from '../scripts/cloud/memory.mjs';
 import { memoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 
 function state() {
@@ -99,6 +99,34 @@ test('reads and writes the active runtime state while refreshing Markdown', asyn
   const index = await fs.readFile(path.join(filesystemProjectDirectory(value.dataDir, value.projectId), 'content/main/nodes/项目-module/index.md'), 'utf8');
   assert.match(index, /更新后的项目简介/);
   assert.equal(JSON.parse(await fs.readFile(value.legacy, 'utf8')).revision, 7);
+});
+
+test('later Todo attempts survive committed updates, restart and projection repair', async t => {
+  const value = await fixture(t);
+  await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
+  const configuration = { dataDir: value.dataDir, adminToken: 'admin', projects: { project: { token: 'token' } } };
+  const base = (await readMemoryProject(configuration, value.projectId)).main;
+  const todo = { id: 'T1', title: '防止重复提交', desc: '并发提交只能创建一条记录。', status: 'processing', attempts: [
+    { status: 'Confirmed', acceptance: '单窗口不得重复', solution: '禁用按钮', test: { summary: '单窗口通过', content: '单窗口验证通过。' } },
+  ] };
+  const first = await commitMainMemoryMap(configuration, value.projectId, { operationId: 'todo-a1', baseVersion: base.version,
+    operations: [{ type: 'update', id: 'N1', fields: { todos: [todo] } }] });
+  todo.attempts[0] = { ...todo.attempts[0], status: 'Refuted', refutedBy: 'A2', reason: '跨窗口仍重复' };
+  todo.attempts.push({ status: 'Confirmed', acceptance: '两个窗口只创建一条', solution: '增加服务端唯一约束',
+    test: { summary: '跨窗口通过', content: '并发回归通过。' }, sessionIds: ['sessionA'] });
+  await commitMainMemoryMap(configuration, value.projectId, { operationId: 'todo-a2', baseVersion: first.version,
+    operations: [{ type: 'update', id: 'N1', fields: { todos: [todo] } }] });
+  const root = filesystemProjectDirectory(value.dataDir, value.projectId);
+  const file = path.join(root, 'content/main/nodes/项目-module/提交-node/todos/T1.md');
+  const before = await fs.readFile(file, 'utf8');
+  assert.match(before, /CurrentAttempt: A2/);
+  assert.match(before, /Status: Refuted\nRefutedBy: A2/);
+  assert.match(before, /增加服务端唯一约束/);
+  await fs.rm(path.join(root, 'content'), { recursive: true, force: true });
+  const restored = await readMemoryProject(configuration, value.projectId);
+  assert.equal(restored.main.memory.map.root.children[0].todos[0].attempts.length, 2);
+  assert.equal(await fs.readFile(file, 'utf8'), before);
+  assert.match(await fs.readFile(path.join(root, 'content/main/nodes/项目-module/提交-node/todos/tests/T1-A2.md'), 'utf8'), /并发回归通过。/);
 });
 
 test('repairs a missing projection from the committed v2 runtime state', async (t) => {
