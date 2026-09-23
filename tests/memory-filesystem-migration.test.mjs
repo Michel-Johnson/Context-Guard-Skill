@@ -208,7 +208,7 @@ test('deleting a Bug removes its active record and regenerated Markdown without 
 
 test('renders durable Bug and Todo rounds, refutations, links and complete first paragraphs', () => {
   const input = snapshot();
-  input.memory.map.root.purpose = '前端模块负责全部交互、状态同步与可访问性。\n\n后续段落不进索引。';
+  input.memory.map.root.purpose = '前端模块负责全部交互、状态同步与可访问性。[说明](https://example.invalid/docs)\n\n后续段落不进索引。';
   input.memory.map.root.todos[0].description = '需要保留完整的需求第一段，不按二十字截断。\n\n第二段只在详情里。';
   input.memory.map.root.ideas[0].text = '想法的完整第一段也必须保留，不按二十字截断。\n\n第二段只在详情里。';
   input.memory.map.root.todos[0].attempts = [

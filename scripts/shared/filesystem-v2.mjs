@@ -77,13 +77,8 @@ function groupBy(items, keyOf) {
   return groups;
 }
 
-export function validateGeneratedLinks(files) {
-  for (const [name, content] of files) {
-    for (const match of content.matchAll(/\]\(([^)]+)\)/g)) {
-      const target = path.posix.normalize(path.posix.join(path.posix.dirname(name), decodeURIComponent(match[1])));
-      assert(files.has(target), `${name}: missing linked file ${match[1]}`);
-    }
-  }
+export function validateGeneratedLinks(files, links) {
+  for (const { from, to } of links) assert(files.has(to), `${from}: missing linked file ${to}`);
 }
 
 export function buildFilesystemV2(snapshot) {
@@ -94,6 +89,8 @@ export function buildFilesystemV2(snapshot) {
   const byId = new Map(nodeEntries.map((entry) => [entry.node.id, entry]));
   const warnings = [];
   const files = new Map();
+  const generatedLinks = [];
+  const link = (from, to) => { generatedLinks.push({ from, to }); return relative(from, to); };
   const put = (name, content) => {
     assert(!files.has(name), `Duplicate generated path: ${name}`);
     files.set(name, `${content.trim()}\n`);
@@ -235,11 +232,11 @@ ${attributionBlock}
 
 ## 5. 测试
 
-${rounds.map((attempt, index) => `- [A${index + 1}](${relative(file, `${dir}/bugs/tests/${id}-A${index + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
+${rounds.map((attempt, index) => `- [A${index + 1}](${link(file, `${dir}/bugs/tests/${id}-A${index + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
 
 ## 6. 修复 Session 索引
 
-${rounds.map((_, index) => `- [A${index + 1}](${relative(file, `${dir}/bugs/traces/${id}-A${index + 1}.md`)})`).join('\n')}`);
+${rounds.map((_, index) => `- [A${index + 1}](${link(file, `${dir}/bugs/traces/${id}-A${index + 1}.md`)})`).join('\n')}`);
 
     const projected = { id, title: heading, phenomenon, status: fileStatus, file, legacyNode: nodeId };
     if (assigned) {
@@ -254,7 +251,7 @@ ${rounds.map((_, index) => `- [A${index + 1}](${relative(file, `${dir}/bugs/trac
   if (unassignedBugs.length) {
     put('unassigned/index.md', `# Unassigned migration records
 
-${unassignedBugs.map((bug) => `### [${bug.title}](${relative('unassigned/index.md', bug.file)})
+${unassignedBugs.map((bug) => `### [${bug.title}](${link('unassigned/index.md', bug.file)})
 ${bug.phenomenon}
 
 Status: ${bug.status}
@@ -308,11 +305,11 @@ ${rounds.map((attempt, roundIndex) => `### A${roundIndex + 1}\n${attempts ? `${a
 
 ## 5. 测试
 
-${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${relative(file, `${nodeDir.get(node.id)}/todos/tests/${id}-A${roundIndex + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
+${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${link(file, `${nodeDir.get(node.id)}/todos/tests/${id}-A${roundIndex + 1}.md`)})：${textOrNull(attempt.test?.summary)}`).join('\n')}
 
 ## 6. 实现 Session 索引
 
-- ${rounds.map((_, roundIndex) => `[A${roundIndex + 1}](${relative(file, `${nodeDir.get(node.id)}/todos/traces/${id}-A${roundIndex + 1}.md`)})`).join('\n- ')}`);
+- ${rounds.map((_, roundIndex) => `[A${roundIndex + 1}](${link(file, `${nodeDir.get(node.id)}/todos/traces/${id}-A${roundIndex + 1}.md`)})`).join('\n- ')}`);
       const list = todosByNode.get(node.id) || [];
       list.push({ id, title, description, status, file });
       todosByNode.set(node.id, list);
@@ -335,7 +332,7 @@ ${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${relative(file, `
 
   const linkBlock = (from, ids) => ids.length ? ids.map((id) => {
     const targetNode = byId.get(id).node;
-    return `#### [${targetNode.title}](${relative(from, `${nodeDir.get(id)}/index.md`)})\n${firstParagraph(targetNode.purpose)}`;
+    return `#### [${targetNode.title}](${link(from, `${nodeDir.get(id)}/index.md`)})\n${firstParagraph(targetNode.purpose)}`;
   }).join('\n\n') : 'NULL';
 
   for (const { node } of nodeEntries) {
@@ -344,9 +341,9 @@ ${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${relative(file, `
     const bugs = bugsByNode.get(node.id) || [];
     const todos = todosByNode.get(node.id) || [];
     const ideas = ideasByNode.get(node.id) || [];
-    const bugBlock = bugs.length ? bugs.map((bug) => `### [${bug.title}](${relative(file, bug.file)})\n${firstParagraph(bug.phenomenon)}\n\nStatus: ${bug.status}`).join('\n\n') : 'NULL';
-    const todoBlock = todos.length ? todos.map((todo) => `### [${todo.title}](${relative(file, todo.file)})\n${firstParagraph(todo.description)}\n\nStatus: ${todo.status}`).join('\n\n') : 'NULL';
-    const ideaBlock = ideas.length ? ideas.map((idea) => `### [${idea.title}](${relative(file, idea.file)})\n${firstParagraph(idea.text)}\n\nStatus: ${idea.status}`).join('\n\n') : 'NULL';
+    const bugBlock = bugs.length ? bugs.map((bug) => `### [${bug.title}](${link(file, bug.file)})\n${firstParagraph(bug.phenomenon)}\n\nStatus: ${bug.status}`).join('\n\n') : 'NULL';
+    const todoBlock = todos.length ? todos.map((todo) => `### [${todo.title}](${link(file, todo.file)})\n${firstParagraph(todo.description)}\n\nStatus: ${todo.status}`).join('\n\n') : 'NULL';
+    const ideaBlock = ideas.length ? ideas.map((idea) => `### [${idea.title}](${link(file, idea.file)})\n${firstParagraph(idea.text)}\n\nStatus: ${idea.status}`).join('\n\n') : 'NULL';
     put(file, `# ${node.title}
 
 ${firstParagraph(node.purpose)}
@@ -414,7 +411,7 @@ ${ideaBlock}`);
     warnings,
   };
   put('migration-report.json', JSON.stringify(report, null, 2));
-  validateGeneratedLinks(files);
+  validateGeneratedLinks(files, generatedLinks);
 
   const hashes = [...files].map(([name, content]) => ({
     path: name,
