@@ -253,31 +253,19 @@ test('legacy browser deliveries remain exportable and are never replayed during 
   assert.equal(values.size, 3, 'export and recovery scan must not delete or replay old requests');
 });
 
-test('IF-030: browser retries and reloads retain the delivery ID and refuse an old backend', async t => {
+test('IF-030: browser review retries retain one operation ID without a manual dispatch method', async t => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const values = new Map();
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } });
   t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage; });
-  const make = () => Object.assign(Object.create(WorkbenchSync.prototype), { config: { root: 'test-project', interfaceCapabilities: { durableDelivery: true } }, taskStates: new Map() });
-  const first = make(), seen = [];
-  first.call = async (_route, request) => { seen.push(request.operationId); throw new Error('reply lost'); };
-  await assert.rejects(first.sendTodo('s', 'node', 'todo'));
-  const reloaded = make();
-  reloaded.call = async (_route, request) => { seen.push(request.operationId); return { deliveryId: request.operationId, state: 'received' }; };
-  await reloaded.sendTodo('s', 'node', 'todo');
-  assert.equal(seen[0], seen[1]); assert.equal(values.size, 0);
-  reloaded.config.interfaceCapabilities = {};
-  await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /先升级/);
-  assert.equal(seen.length, 2);
-  reloaded.config.interfaceCapabilities.durableDelivery = true;
-  reloaded.call = async () => ({ sent: true });
-  await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /未返回可靠交付回执/);
-  reloaded.call = () => assert.fail('uncertain delivery must not dispatch again');
-  await assert.rejects(reloaded.sendTodo('s', 'node', 'todo'), /不会重复发送/);
-  reloaded.config.interfaceCapabilities.humanReview = true; reloaded.viewId = 'main';
+  const make = () => Object.assign(Object.create(WorkbenchSync.prototype), { config: { root: 'test-project', interfaceCapabilities: { humanReview: true } }, viewId: 'main' });
+  assert.equal(WorkbenchSync.prototype.sendTodo, undefined);
+  assert.equal(WorkbenchSync.prototype.sendBug, undefined);
+  assert.equal(WorkbenchSync.prototype.sendWorkItem, undefined);
+  const first = make(), reloaded = make();
   const review = { sessionId: 's', taskId: 't', resultVersion: 'v1', nodeId: 'node', itemId: 'todo', kind: 'todo', decision: 'approved' }, reviewIds = [];
-  reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); throw new Error('review reply lost'); };
-  await assert.rejects(reloaded.reviewTask(review));
+  first.call = async (_route, input) => { reviewIds.push(input.operationId); throw new Error('review reply lost'); };
+  await assert.rejects(first.reviewTask(review));
   reloaded.call = async (_route, input) => { reviewIds.push(input.operationId); return { operationId: input.operationId, review: input }; };
   await reloaded.reviewTask(review);
   assert.equal(reviewIds[0], reviewIds[1], 'review retry preserves its operation identity');

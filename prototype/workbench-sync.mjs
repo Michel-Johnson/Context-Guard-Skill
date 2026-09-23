@@ -663,17 +663,6 @@ export class WorkbenchSync {
   }
   isAllSessions() { return this.activeSession === ALL_SESSIONS; }
   grantsFor(sessionId) { return this.grants?.[sessionId]?.nodes || []; }
-  async accessPlan(sessionId, nodeId) { return this.call('/api/access-plan', { sessionId, nodeId }); }
-  async grantSessionScope(sessionId, nodes) {
-    await this.call('/api/access', { sessionId, addNodes: nodes });
-    await this.refreshAccess();
-  }
-  async sendBug(sessionId, nodeId, bugId) {
-    return this.sendWorkItem({ sessionId, nodeId, bugId });
-  }
-  async sendTodo(sessionId, nodeId, todoId) {
-    return this.sendWorkItem({ sessionId, nodeId, todoId });
-  }
   async reviewTask(input) {
     if (!this.config.interfaceCapabilities?.humanReview || this.viewId !== 'main') throw new Error('请在 Cloud 主工作台验收');
     const key = `cg-task-review:${this.config.root}:${JSON.stringify(input)}`;
@@ -704,26 +693,6 @@ export class WorkbenchSync {
       finally { submit.disabled = false; }
     };
     document.body.append(dialog); dialog.showModal(); input.focus();
-  }
-  async sendWorkItem(input) {
-    if (!this.config.interfaceCapabilities?.durableDelivery) throw new Error('当前后端不支持可靠任务交付，请先升级；尚未发送任务');
-    const key = `cg-delivery:${this.config.root}:${JSON.stringify(input)}`;
-    let request = stored(key);
-    if (request && (request.invalidJSON || typeof request.operationId !== 'string' || request.uncertain)) throw new Error('任务交付结果需要核对；不会重复发送');
-    request ||= { ...input, operationId: uniqueId() };
-    // Retain the same ID across a lost response, repeated click and page reload.
-    localStorage.setItem(key, JSON.stringify(request));
-    const result = await this.call('/api/session-message', request);
-    if (result.deliveryId !== request.operationId || !['queued', 'cloud_queued', 'local_received', 'codex_received', 'uncertain', 'received'].includes(result.state)) {
-      localStorage.setItem(key, JSON.stringify({ ...request, uncertain: true }));
-      throw new Error('后端未返回可靠交付回执，请先核对任务是否已收到');
-    }
-    localStorage.removeItem(key);
-    if (result.taskId) {
-      this.watchTask(result.taskId, result.sessionId || input.sessionId, result.state);
-      this.refreshTaskStatuses().catch(() => {});
-    }
-    return result;
   }
   watchTask(taskId, sessionId, state = '') {
     if (!taskId || !sessionId) return;

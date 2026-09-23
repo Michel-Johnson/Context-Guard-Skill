@@ -27,15 +27,14 @@ import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
 import { messageHandler, sendMessage } from './protocol-client.mjs';
-import { fail as protocolFail, ProtocolError, validateMessage } from '../shared/protocol.mjs';
+import { fail as protocolFail, validateMessage } from '../shared/protocol.mjs';
 import { syncPaths } from '../shared/sync-paths.mjs';
-import { MapError, assignmentScope, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, isClosedBugStatus } from '../shared/map-model.mjs';
+import { MapError, entries, validate, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession } from '../shared/map-model.mjs';
 export const skillRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const statePath = root => path.join(root, '.codex/context/private/workbench.json');
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
 export const projectLockPath = project => project.kind === 'git' ? path.join(project.sharedDir, 'node-workbench.lock') : path.join(project.worktreeRoot, '.codex/context/private/node-workbench.lock');
 const execFileAsync = promisify(execFile);
-const compactText = (value, limit = 2000) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 
 function missingCommitFields(input) {
   const missing = [];
@@ -66,25 +65,6 @@ export async function prepareSessionCommit(store, input, actor, sessionId) {
   };
 }
 
-export function bugSessionMessage(node, bug) {
-  return [
-    'Context Guard 工作台向你分配了一个 Bug。',
-    `Bug: ${compactText(bug.id, 128)} · ${compactText(bug.title)}`,
-    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
-    compactText(bug.desc) ? `描述: ${compactText(bug.desc)}` : '',
-    compactText(bug.record, 500) ? `记录: ${compactText(bug.record, 500)}` : '',
-    '请在当前项目中核对并处理；完成后更新 Context Guard 中的 Bug 状态和证据。',
-  ].filter(Boolean).join('\n');
-}
-export function todoSessionMessage(node, todo) {
-  return [
-    'Context Guard 工作台向你分配了一个 TODO。',
-    `TODO: ${compactText(todo.id, 128)} · ${compactText(todo.title)}`,
-    `节点: ${compactText(node.id, 128)} · ${compactText(node.title)}`,
-    compactText(todo.desc) ? `描述: ${compactText(todo.desc)}` : '',
-    '请在当前项目中完成这个开发事项；完成后把 Context Guard 中的 TODO 标记为已完成。',
-  ].filter(Boolean).join('\n');
-}
 export async function queueCodexMessage({ sessionId, message, root }, { run = execFileAsync, platform = process.platform } = {}) {
   if (platform === 'darwin') {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) throw Object.assign(new Error('Desktop delivery requires a Session UUID'), { code: 'INVALID_SESSION' });
@@ -710,7 +690,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           throw new MapError('INVALID_ARGUMENT', 'Use GET or POST', 400);
         }
         if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
-        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() });
+        if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { deviceLogin: true }, ...runtimeIdentity() });
         if (route === '/api/v2/messages') return messageHandler({
           allowedOrigin: requestOrigin,
           authenticate: request => {
@@ -1005,15 +985,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             } : snapshot;
             return send(res, 200, { ...scopedSnapshot, project: { id: project.projectId, kind: project.kind, github: project.github, bindingRequired: project.bindingRequired, main: mainSource } });
           }
-          if (route === '/api/access-plan' && req.method === 'POST') {
-            isHuman(actor); const input = await body(req);
-            const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
-            await access.register(sessionId);
-            await activeStore.serial(() => activeStore.refresh());
-            const nodes = assignmentScope(activeStore.doc, String(input.nodeId || '').trim());
-            const granted = new Set(access.grants(sessionId, activeStore.doc));
-            return send(res, 200, { sessionId, nodeId: input.nodeId, nodes, missing: nodes.filter(id => !granted.has(id)) });
-          }
           if (route === '/api/access' && req.method === 'POST') {
             isHuman(actor); const input = await body(req);
             await activeStore.serial(async () => {
@@ -1029,37 +1000,6 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               await activeStore.recordEvent({ operationId: randomUUID(), fromVersion: activeStore.version, version: activeStore.version, actor, actions: ['grant'], nodeIds: effective, sessionId: input.sessionId, mode });
             });
             broadcast('access', {}); return send(res, 200, { saved: true });
-          }
-          if (route === '/api/session-message' && req.method === 'POST') {
-            isHuman(actor); const input = await body(req);
-            const sessionId = typeof input.sessionId === 'string' ? input.sessionId.trim() : '';
-            const nodeId = typeof input.nodeId === 'string' ? input.nodeId.trim() : '';
-            const bugId = typeof input.bugId === 'string' ? input.bugId.trim() : '';
-            const todoId = typeof input.todoId === 'string' ? input.todoId.trim() : '';
-            const session = (await access.sessionRegistry()).find(item => item.id === sessionId);
-            if (!session) throw new MapError('UNKNOWN_SESSION', 'Session is not part of this project', 403);
-            if (session.platform !== 'codex') throw new MapError('UNSUPPORTED_PLATFORM', 'Automatic messages currently require a Codex session', 400);
-            await activeStore.serial(() => activeStore.refresh());
-            const node = activeStore.doc.root ? entries(activeStore.doc.root).get(nodeId)?.node : null;
-            const bug = (node?.bugs || []).find(item => item?.id === bugId);
-            const todo = (node?.todos || []).find(item => item?.id === todoId);
-            if (!node || (!bug && !todo) || (bugId && todoId)) throw new MapError('NOT_FOUND', 'Work item or owner node is missing', 404);
-            if (!access.grants(sessionId, activeStore.doc).includes(nodeId)) throw new MapError('SESSION_SCOPE_REQUIRED', 'Authorize this node for the session before assigning work', 403);
-            if (bug && isClosedBugStatus(bug.status)) throw new MapError('BUG_CLOSED', 'Closed bugs cannot be assigned', 409);
-            if (todo?.status === 'done') throw new MapError('TODO_CLOSED', 'Completed TODOs cannot be assigned', 409);
-            const message = bug ? bugSessionMessage(node, bug) : todoSessionMessage(node, todo);
-            const payload = { sessionId, message, root: session.worktreeRoot || root, session, node: structuredClone(node) };
-            if (bug) payload.bug = structuredClone(bug); else payload.todo = structuredClone(todo);
-            let deliveryReceipt;
-            try {
-              if (input.operationId !== undefined) {
-                if (typeof input.operationId !== 'string' || !input.operationId.trim() || input.operationId.length > 128) throw new MapError('INVALID_ARGUMENT', 'Invalid delivery operationId');
-                const delivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'deliveries'), { codex: () => messageQueue(payload) });
-                deliveryReceipt = await delivery.deliver({ id: input.operationId, platform: session.platform, sessionId, root: payload.root, message });
-              } else await messageQueue(payload); // Compatibility for pre-v2 workbenches.
-            }
-            catch (error) { if (error instanceof ProtocolError || error instanceof MapError) throw error; throw new MapError('SESSION_MESSAGE_FAILED', 'Work item could not be delivered to the session', 502); }
-            return send(res, 200, { sent: true, sessionId, ...deliveryReceipt, ...(bug ? { bugId } : { todoId }) });
           }
           if (route === '/api/migration-preview' && req.method === 'POST') {
             isHuman(actor); const input = await body(req); validate(input.doc);
@@ -1086,7 +1026,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         let file, contentType;
         if (route === '/' || route === '/prototype/workbench.html') {
           const html = await fs.readFile(path.join(skillRoot, 'prototype/workbench.html'), 'utf8');
-          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { durableDelivery: true, deviceLogin: true }, ...runtimeIdentity() }).replace(/</g, '\\u003c');
+          const boot = JSON.stringify({ token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { deviceLogin: true }, ...runtimeIdentity() }).replace(/</g, '\\u003c');
           const nonce = token();
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': `default-src 'self'; script-src 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'` });
           return res.end(html.replace('<!-- CG_SERVER_BOOT -->', `<script>window.__CG_SERVER=${boot};</script>`).replace(/<script(?=[\s>])/g, `<script nonce="${nonce}"`));

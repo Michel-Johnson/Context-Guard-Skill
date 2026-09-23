@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { applyOperations, assignmentScope, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess, isClosedBugStatus } from '../shared/map-model.mjs';
+import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess, isClosedBugStatus } from '../shared/map-model.mjs';
 import { atomicWrite } from '../shared/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, enforceMainHistoryRetention, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { projectMemoryFile } from './memory-filesystem.mjs';
@@ -106,15 +106,6 @@ export function coordinatorStructureOperations(actions, operationId) {
     if (!Object.keys(fields).length) protocolFail('INVALID_ARGUMENT', 'Update needs at least one structural field');
     return { type: 'update', id, fields };
   });
-}
-
-function cloudWorkItemBrief(node, item, kind) {
-  const label = kind === 'bug' ? 'Bug' : 'TODO';
-  const title = compactText(item.title), description = compactText(item.desc || item.description);
-  return [
-    `${label} ${compactText(item.id, 128)}｜${compactText(node.title, 128)}`,
-    description && description.startsWith(title) ? description : [title, description].filter(Boolean).join('\n'),
-  ].filter(Boolean).join('\n');
 }
 
 export function cloudSessionActivity({ lifecycleEvent = '', workStatus = '', lastSeen = '' } = {}, currentTime = Date.now(), ttlMs = sessionActivityTtlMs) {
@@ -1654,7 +1645,7 @@ export async function startCloudServer({
         const conversationId = url.searchParams.get('conversation') || 'legacy';
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, durableDelivery: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
         requireWorkbench(req, url);
         if (action === '/api/attachments' || action.startsWith('/api/attachments/')) {
           if (!project || !configuredMemory?.projects?.[project.id]) throw new MapError('PROJECT_REQUIRED', 'Select a configured project', 409);
@@ -1810,51 +1801,8 @@ export async function startCloudServer({
           }
           return send(res, 200, { sessions, grants, currentSessionId: null, project: { id: project.id, kind: 'git', main: { status: 'ready' } } });
         }
-        if (action === '/api/access-plan' && req.method === 'POST') {
-          if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before assigning work', 409);
-          const input = await requestBody(req), sessionId = compactText(input.sessionId, 128), nodeId = compactText(input.nodeId, 128);
-          const { principal, store } = interfaceProject(project);
-          const binding = await store.registeredBinding(principal, sessionId);
-          if (!binding) throw new MapError('SESSION_OFFLINE', 'This Session has not connected its local backend', 409);
-          const main = await mainMemorySnapshot(project);
-          if (!main?.document?.root) throw new MapError('MAIN_REQUIRED', 'Published Main memory is unavailable', 409);
-          const nodes = assignmentScope(main.document, nodeId);
-          const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
-          return send(res, 200, { sessionId, nodeId, nodes, missing: nodes.filter(id => !readable.includes(id)) });
-        }
         if (action === '/api/access' && req.method === 'POST') {
           throw new MapError('ACCESS_EDIT_REQUIRED', 'Cloud permission changes must be made explicitly on the node; the Session is not auto-authorized', 409);
-        }
-        if (action === '/api/session-message' && req.method === 'POST') {
-          if (!project) throw new MapError('PROJECT_REQUIRED', 'Select a project before assigning work', 409);
-          const input = await requestBody(req);
-          const operationId = compactText(input.operationId, 128), sessionId = compactText(input.sessionId, 128), nodeId = compactText(input.nodeId, 128);
-          const bugId = compactText(input.bugId, 128), todoId = compactText(input.todoId, 128);
-          if (input.purpose === 'summary') throw new MapError('ACTION_REPLACED', 'Use task review; human confirmation no longer dispatches summary tasks', 409);
-          if (input.purpose) throw new MapError('INVALID_ARGUMENT', 'Unknown dispatch purpose', 400);
-          if (!operationId || !sessionId || !nodeId || Boolean(bugId) === Boolean(todoId)) throw new MapError('INVALID_ARGUMENT', 'operationId, Session, node and exactly one work item are required', 400);
-          const { principal, store } = interfaceProject(project);
-          const binding = await store.registeredBinding(principal, sessionId);
-          if (!binding) throw new MapError('SESSION_OFFLINE', 'This Session has not connected its local backend', 409);
-          const session = { id: sessionId, generation: binding.generation };
-          const result = await store.submitApprovedTask(principal, { operationId, session, nodeId, bugId, todoId }, async () => {
-            const main = await mainMemorySnapshot(project);
-            if (!main?.document?.root) protocolFail('NOT_FOUND', 'Published Main memory is unavailable');
-            const node = entries(main.document.root).get(nodeId)?.node;
-            const matches = (bugId ? node?.bugs : node?.todos)?.filter(value => value?.id === (bugId || todoId)) || [];
-            if (matches.length > 1) protocolFail('CONFLICT', 'Work item ID is duplicated; repair its identity before assigning');
-            const item = matches[0];
-            if (!node || !item) protocolFail('NOT_FOUND', 'Work item or owner node is missing');
-            if ((bugId && isClosedBugStatus(item.status)) || (todoId && item.status === 'done')) protocolFail('CONFLICT', 'Closed work items cannot be assigned');
-            const nodeIds = assignmentScope(main.document, nodeId);
-            const readable = filterNodeAccess(main.document, [...entries(main.document.root).keys()], binding.agentId, 'read');
-            if (nodeIds.some(id => !readable.includes(id))) protocolFail('FORBIDDEN', 'The target Session cannot read every routed node');
-            return {
-              taskId: `task-${digest(`${project.id}\0${operationId}`).slice(0, 40)}`,
-              text: cloudWorkItemBrief(node, item, bugId ? 'bug' : 'todo'), nodeIds, mainVersion: main.version, mode: 'session',
-            };
-          }, { verifyRouting: verifyInterfaceRouting });
-          return send(res, 200, { ...result, deliveryId: operationId });
         }
         if (action === '/api/task-review' && req.method === 'POST') {
           if (!project || viewId !== 'main') throw new MapError('MAIN_REQUIRED', 'Review the task in the Main workbench', 409);
@@ -2110,7 +2058,7 @@ export async function startCloudServer({
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';
-        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, durableDelivery: !!projectId && !!interfaceConfig, humanReview: !!projectId && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[projectId]?.coordinator?.enabled } }).replace(/</g, '\\u003c');
+        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, humanReview: !!projectId && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[projectId]?.coordinator?.enabled } }).replace(/</g, '\\u003c');
         const marker = `<script>window.__CG_SERVER=${config};</script>`;
         const html = (await fs.readFile(htmlPath, 'utf8')).replace('<!-- CG_SERVER_BOOT -->', marker);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });
