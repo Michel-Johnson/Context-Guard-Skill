@@ -274,6 +274,35 @@ test('Explicit Claude recovery retains old intent, refuses live processes and re
   assert.equal(await fs.readFile(jobFile, 'utf8'), originalBytes, 'never rewrite or remove the old delivery');
 });
 
+test('a stored Coordinator guide recovers an interrupted Claude turn in the same Session', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-guide-recovery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
+  const environmentFile = path.join(directory, 'provider.json'); await fs.writeFile(environmentFile, '{}');
+  const runtime = new ClaudeRuntime(path.join(directory, 'runtime')), sessionId = randomUUID();
+  await runtime.configure(sessionId, { command: process.execPath, args: [], name: 'Guide', model: 'test-model', role: 'executor',
+    root: directory, configDir: path.join(directory, 'config'), environmentFile, resumeExisting: true });
+  const original = runtime.jobFile(sessionId, 'original');
+  await fs.mkdir(path.dirname(original), { recursive: true });
+  await fs.writeFile(original, JSON.stringify({ id: 'original', sessionId, message: 'Prior work', state: 'interrupted' }));
+  await fs.writeFile(runtime.sessionFile(sessionId), JSON.stringify({ ...await readJSON(runtime.sessionFile(sessionId)), active: original }));
+  runtime.wake = async () => {}; // Simulate a crash after the recovery intent is saved.
+  const input = { id: '1:guide-20', platform: 'claude', sessionId, root: directory, deliveryType: 'task.message',
+    taskId: 'task-1', message: 'Only push the committed branch and open its PR.' };
+  const queued = path.join(directory, 'task-deliveries'); await fs.mkdir(queued);
+  await fs.writeFile(path.join(queued, `${hash(input.id)}.json`), JSON.stringify({
+    fingerprint: hash(canonical(input)), state: 'failed', errorCode: 'RUNTIME_BUSY', input, attempts: 1,
+  }));
+  const delivery = new ProtocolDelivery(queued, { claude: {
+    deliver: request => runtime.deliverGuidance(request), received: request => runtime.receivedGuidance(request),
+  } });
+  assert.equal(await delivery.retryBusy(async request => (await runtime.status(request.sessionId)).status === 'interrupted'), 1);
+  assert.equal((await readJSON(path.join(queued, `${hash(input.id)}.json`))).state, 'received');
+  const recovered = runtime.jobFile(sessionId, `recovery:guide:${hash(input.id)}`);
+  assert.equal((await readJSON(recovered)).recoveredDeliveryId, 'original');
+  assert.equal(await runtime.receivedGuidance(input), true, 'uncertain retry reuses the same native recovery');
+  assert.equal((await readJSON(runtime.sessionFile(sessionId))).active, recovered);
+});
+
 test('Claude CI checks out the exact handoff SHA and rejects results after source mutation', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-ci-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));

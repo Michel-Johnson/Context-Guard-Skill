@@ -166,7 +166,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   const ciConnections = new Map();
   const ciRetries = new Map();
   const taskDelivery = new ProtocolDelivery(path.join(project.sharedDir, 'interface-v2', 'task-deliveries'), {
-    codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }), claude: claudeRuntime,
+    codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }),
+    claude: { deliver: input => claudeRuntime.deliverGuidance(input), received: input => claudeRuntime.receivedGuidance(input) },
   });
   let taskDeliveryRetry = null;
   const ciChannel = (sessionId, connection) => {
@@ -225,7 +226,8 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
             if (execution?.closed || execution?.taskId !== input.taskId ||
                 input.planRef && (execution.plan?.ref !== input.planRef || execution.plan.version !== input.planVersion)) return false;
           } else if (execution?.closed || execution?.plan?.ref !== plan[1] || execution.plan.version !== plan[2]) return false;
-          return (await claudeRuntime.status(input.sessionId)).status === 'stopped';
+          const status = (await claudeRuntime.status(input.sessionId)).status;
+          return status === 'stopped' || input.deliveryType === 'task.message' && status === 'interrupted';
         }).catch(error => { device.lastError = error.code || 'TASK_DELIVERY_RETRY_FAILED'; })
           .finally(() => { taskDeliveryRetry = null; });
         const registered = [], identities = new Map((await access.sessionRegistry()).map(item => [item.id, item]));
