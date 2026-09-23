@@ -386,6 +386,7 @@ test('Successful ask_user questions appear in public chat without exposing other
   const state = await service.state(), chat = JSON.stringify(state.messages);
   assert.match(chat, /预期行为/);
   assert.doesNotMatch(chat, /not-public|internal-node|Invalid question/);
+  assert.equal(state.messages.find(message => message.questions?.length)?.questionOnly,true,'tool-only questions retain their card title');
   assert.equal(state.approvals.length, 0, 'asking is never human approval');
   const restored = new CoordinatorService(options);
   assert.deepEqual((await restored.state()).messages, state.messages);

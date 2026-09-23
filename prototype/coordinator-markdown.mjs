@@ -183,7 +183,7 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     const cleanText = message.text.replace(/^\[实验：模拟人工输入\]\n/, '');
     const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
-    const lead = cleanText;
+    const lead = message.questionOnly ? '' : cleanText;
     if (lead && !legacy) content.append(markdownFragment(lead, doc));
     if (legacy?.before) content.append(markdownFragment(legacy.before, doc));
     for (const question of legacy?.items || []) {

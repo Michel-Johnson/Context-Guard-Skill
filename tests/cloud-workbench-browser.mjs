@@ -817,7 +817,7 @@ try {
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','question-card insertion does not remount older messages');
   coordinatorState.messages.pop();
-  coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
+  coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questionOnly:true,questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
   assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).getAttribute('title'),'发送','the icon-only send control keeps an accessible label');

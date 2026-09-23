@@ -33,6 +33,7 @@ function publicMessages(state) {
     const actions = message.actions || [];
     const text = sourceText;
     return { role: message.role, text: text || (questions.length ? questions.map(question => question.text).join('\n\n') : ''),
+      ...(questions.length && !text ? { questionOnly: true } : {}),
       ...(message.answerTo ? { answerTo: message.answerTo } : {}),
       ...(questions.length ? { questions } : {}),
       ...(actions.length ? { actions } : {}),
