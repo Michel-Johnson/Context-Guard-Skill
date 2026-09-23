@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
+import { MapError } from '../shared/map-model.mjs';
 
 const FORMAT = 'context-guard-memory-filesystem-v2';
 
@@ -29,6 +30,41 @@ export function projectMemoryFile(dataDir, projectId) {
   return fsSync.existsSync(path.join(directory, 'FORMAT'))
     ? path.join(directory, 'runtime-state.json')
     : legacyProjectMemoryFile(dataDir, projectId);
+}
+
+export async function readFilesystemDocument(dataDir, projectId, scope, version, name) {
+  const directory = filesystemProjectDirectory(dataDir, projectId);
+  if (!fsSync.existsSync(path.join(directory, 'FORMAT'))) throw new MapError('FSV2_UNAVAILABLE', 'Filesystem v2 is not active for this project', 409);
+  if (scope !== 'main' && (typeof scope !== 'string' || !scope.startsWith('session:') || !scope.slice(8))) {
+    throw new MapError('INVALID_SCOPE', 'Invalid filesystem v2 scope', 400);
+  }
+  if (typeof name !== 'string' || !name || name.length > 2000 || name.includes('\\') || name.includes('\0')
+      || path.posix.isAbsolute(name) || path.posix.normalize(name) !== name
+      || name.split('/').some(part => !part || part === '.' || part === '..')) throw new MapError('INVALID_PATH', 'Invalid filesystem v2 document path', 400);
+  const content = path.join(directory, 'content');
+  const root = scope === 'main' ? path.join(content, 'main') : path.join(content, 'sessions', hash(scope.slice('session:'.length)));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const before = await fs.stat(content);
+      const metadata = await readJSON(path.join(root, 'scope.json'), null);
+      if (!metadata) throw new MapError('NOT_FOUND', 'Filesystem v2 scope is unavailable', 404);
+      if (metadata.scope !== scope || metadata.version !== version) throw new MapError('VERSION_CONFLICT', 'Filesystem v2 scope changed; read its current version', 409);
+      const manifest = await readJSON(path.join(root, 'manifest.json'), null);
+      if (!manifest || manifest.sourceVersion !== version) throw new MapError('VERSION_CONFLICT', 'Filesystem v2 projection is not current', 409);
+      if (!Array.isArray(manifest.files) || !manifest.files.some(file => file.path === name)) throw new MapError('NOT_FOUND', 'Filesystem v2 document is unavailable', 404);
+      const rootPath = await fs.realpath(root);
+      const target = await fs.realpath(safeRecordPath(root, name));
+      if (!target.startsWith(`${rootPath}${path.sep}`)) throw new MapError('INVALID_PATH', 'Filesystem v2 document escapes its scope', 400);
+      const body = await fs.readFile(target, 'utf8');
+      const after = await fs.stat(content);
+      if (before.dev !== after.dev || before.ino !== after.ino || before.mtimeMs !== after.mtimeMs) continue;
+      return body;
+    } catch (error) {
+      if (error instanceof MapError) throw error;
+      if (error.code !== 'ENOENT' || attempt === 2) throw new MapError('MEMORY_UNAVAILABLE', 'Filesystem v2 projection changed while reading', 503);
+    }
+  }
+  throw new MapError('MEMORY_UNAVAILABLE', 'Filesystem v2 projection changed while reading', 503);
 }
 
 function safeRecordPath(root, name) {

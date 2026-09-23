@@ -154,12 +154,13 @@ Only explicitly allowlisted project clients can create, rename, update or move n
 ${HELP_EXIT_NOTE}`;
   }
   if (command === 'memory') {
-    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|publish|history|restore] [options]
+    return `Usage: context-guard memory [status|sync|prepare|rebase|configure|publish|history|restore|file] [options]
 
 Options:
   --root <dir>        Project root (default: current directory)
   --session <id>      Session ID
   --input <file|->    Private JSON for configure/publish/restore
+  file --scope main|session --path <relative Markdown path> [--version <revision>]
 ${HELP_EXIT_NOTE}`;
   }
   if (command === 'preferences') {
@@ -670,6 +671,16 @@ async function main(args) {
     if (opt._[0] === 'history') {
       const scope = String(opt.scope || (session ? `session:${session}` : 'main'));
       return memoryRequest(project, `history?scope=${encodeURIComponent(scope)}&after=${encodeURIComponent(opt.after || 0)}&limit=${encodeURIComponent(opt.limit || 100)}`);
+    }
+    if (opt._[0] === 'file') {
+      if (!['main', 'session'].includes(opt.scope) || typeof opt.path !== 'string' || !opt.path) {
+        throw new MapError('USAGE', 'memory file requires --scope main|session and --path');
+      }
+      if (opt.scope === 'session' && !session) throw new MapError('USAGE', 'Session file reads require --session');
+      const target = opt.scope === 'main' ? 'main' : `sessions/${encodeURIComponent(session)}`;
+      const file = opt.path.split('/').map(encodeURIComponent).join('/');
+      const version = opt.version ? `?version=${encodeURIComponent(opt.version)}` : '';
+      return memoryRequest(project, `filesystem/${target}/${file}${version}`);
     }
     if (opt._[0] === 'restore') return memoryRequest(project, 'restore', await inputJSON(opt.input));
     return memoryStatus(project, session);

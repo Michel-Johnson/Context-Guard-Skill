@@ -2,9 +2,9 @@
 
 读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
 
-- [ ] Filesystem v2 运行时闭环仍待验收：API/Hook 尚未暴露受限的 Markdown 阅读面；旧 Todo 缺少方案证据时仍为未判定 A1，报告标记 `TODO_ATTEMPT_UNCLASSIFIED`，待审核补齐，不能臆造 `Confirmed`。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。
+- [ ] Filesystem v2 运行时闭环仍待验收：已新增受限、按版本的单文档 API/CLI，但尚未裁定或切换 Hook 的默认阅读入口；旧 Todo 缺少方案证据时仍为未判定 A1，报告标记 `TODO_ATTEMPT_UNCLASSIFIED`，待审核补齐，不能臆造 `Confirmed`。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。
 
-- [ ] Idea 阅读隔离尚未完成：执行 Agent 的 v2 workbench 快照已过滤 Idea、普通 Agent 写入已拒绝；兼容用的私有 Main/Session 原始快照接口仍返回完整 Map。后续版本化阅读接口须按角色隔离，完成前不得宣称普通 Agent 无法从任何兼容入口读取 Idea。
+- [ ] Idea 阅读隔离尚未完成：执行 Agent 的 v2 workbench 快照已过滤 Idea、普通 Agent 写入已拒绝；新 fs-v2 单文档接口对普通凭据过滤索引中的 Idea 并拒绝 Idea 文件。兼容用的私有 Main/Session 原始快照接口仍返回完整 Map，完成前不得宣称普通 Agent 无法从任何兼容入口读取 Idea。
 
 - [x] Coordinator 节点挂载拒绝按钮不再依赖浏览器原生 `prompt`，点击即提交稳定拒绝并通知模型重新提案；PR #287（`f4f3c79`）Required 全绿并部署，Cloud 浏览器回归覆盖真实拒绝请求。生产原审核卡已不再处于待审核状态，无法对同一提案重复拒绝。
 

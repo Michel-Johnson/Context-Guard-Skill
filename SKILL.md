@@ -49,6 +49,14 @@ readable. Which catalog to open first (FIND.md / snapshot vs v2 `index.md`) is
 `bugs-index.json`, `tasks-index.json`, `jump-index.json`, or `owns-index.json`
 as the current Cloud index.
 
+When an active Cloud explicitly provides filesystem v2 reads, use
+`context-guard memory file --root <project> --session <actual-session-id>
+--scope main|session --path <linked-relative-path> [--version <observed-version>]`
+for one authorized document at a time. A version conflict requires a fresh
+index read; an unavailable endpoint is not evidence that the private server's
+disk path can be opened locally. This optional route does not decide the
+default catalog or grant access to compatibility records or Coordinator Ideas.
+
 ### Memory authority and publication
 
 When the project selects server-backed memory, read

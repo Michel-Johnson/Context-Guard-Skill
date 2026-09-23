@@ -22,14 +22,22 @@ memory routes are enabled. Runtime adoption and migration remain in `CI_todo.md`
 
 ## Filesystem v2 read boundary
 
-Cloud Main and each Session have separate filesystem v2 projections. After an
-API or Hook explicitly exposes a projection, an Agent starts from the target
-node/module `index.md`, follows only the relevant linked Bug, Todo, Idea, test,
-or Session document, and does not scan the whole tree. The current snapshot API
-does not provide private filesystem paths, so projection presence on disk is not
-evidence that an Agent can read it.
-Node indexes contain Related, Sub, Bug, Todo, and Idea directly; there is no
-current JSON work-item index.
+Cloud Main and each Session have separate filesystem v2 projections. An active
+fs-v2 server exposes an explicit, versioned single-document route:
+`GET /v1/projects/<id>/filesystem/main/<path>` or
+`GET /v1/projects/<id>/filesystem/sessions/<session-id>/<path>` with optional
+`?version=<observed-version>`. The CLI form is `context-guard memory file
+--scope main|session --path <relative-path> [--version <revision>]`, with the
+actual `--session` for Session scope. A stale pinned version fails instead of
+mixing documents. This route does not activate or migrate a legacy project.
+Once the endpoint is available, an Agent follows the relevant node/module
+`index.md` links to Bug, Todo, test or Session documents; it does not scan the
+whole tree. Ordinary Agent reads omit Idea entries and reject Idea documents;
+Coordinator's trusted server-side path retains Idea access. Which catalog to
+open first remains undecided. The raw snapshot API remains compatibility sync,
+not the Agent document-reading surface.
+Full Coordinator node indexes contain Related, Sub, Bug, Todo, and Idea;
+Agent-sliced indexes omit Idea. There is no current JSON work-item index.
 
 `runtime-state.json` is the transactional compatibility state.
 `legacy-records/` is retained for migration and rollback. Neither is a normal
