@@ -4504,10 +4504,9 @@ async function installCoordinatorPanel(sync){
   const heading=document.createElement('button');heading.type='button';heading.className='coordinator-heading';heading.textContent='← Coordinator';heading.setAttribute('aria-label','返回节点详情');
   const status=document.createElement('p'); status.setAttribute('role','status');
   const messages=document.createElement('div'); messages.className='coordinator-messages';
-  const extrasHost=document.createElement('div');extrasHost.className='coordinator-extras';messages.append(extrasHost);
-  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.setAttribute('aria-label','正在处理');
-  const workingBlot=createCoordinatorWorkingBlot?.(document,()=>{typing.textContent='正在处理…';});
-  if(workingBlot)typing.append(workingBlot.canvas);else typing.textContent='正在处理…';
+  const extrasHost=document.createElement('div');extrasHost.className='coordinator-extras';
+  const tailSpace=document.createElement('div');tailSpace.className='coordinator-messages-tail';messages.append(extrasHost,tailSpace);
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.setAttribute('aria-label','正在处理');typing.textContent='正在处理…';
   const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
@@ -4515,6 +4514,8 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button');send.type='submit';send.className='coordinator-send';send.setAttribute('aria-label','发送');send.title='发送';
   const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');sendIcon.setAttribute('viewBox','0 0 24 24');sendIcon.setAttribute('aria-hidden','true');
   const sendPath=document.createElementNS('http://www.w3.org/2000/svg','path');sendPath.setAttribute('d','M12 19V5m0 0-6 6m6-6 6 6');sendPath.setAttribute('fill','none');sendPath.setAttribute('stroke','currentColor');sendPath.setAttribute('stroke-width','2.4');sendPath.setAttribute('stroke-linecap','round');sendPath.setAttribute('stroke-linejoin','round');sendIcon.append(sendPath);send.append(sendIcon);
+  const workingBlot=createCoordinatorWorkingBlot?.(document,()=>{send.classList.add('is-working-fallback');});
+  if(workingBlot)send.append(workingBlot.canvas);
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
   const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
   retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
@@ -4530,16 +4531,29 @@ async function installCoordinatorPanel(sync){
     if(typing.classList.contains('is-visible')===visible)return;
     if(visible)workingBlot?.start();else workingBlot?.stop();
     typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));
+    send.classList.toggle('is-working',visible);send.classList.toggle('is-working-fallback',visible&&!workingBlot);
+    send.setAttribute('aria-label',visible?'正在处理':'发送');send.title=visible?'正在处理':'发送';
   };
-  const placeTyping=()=>{
-    if(!typing.classList.contains('is-visible')){if(!typing.isConnected)form.before(typing);return;}
-    const rows=[...messages.children].filter(node=>node.classList?.contains('coordinator-message'));
-    const tail=rows.at(-1);
-    const anchor=tail?.classList.contains('coordinator-streaming')&&!tail.querySelector('.coordinator-rise')?rows.at(-2):tail;
-    if(anchor){if(anchor.nextSibling!==typing)anchor.after(typing);}
-    else if(messages.firstChild!==typing)messages.prepend(typing);
-    if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+  let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;
+  const pinnedScrollTop=()=>{
+    if(!pinnedTurn?.isConnected)return null;
+    const pane=messages.getBoundingClientRect(),row=pinnedTurn.getBoundingClientRect();
+    return Math.max(0,messages.scrollTop+row.top-pane.top-(messages.clientHeight*.5-row.height-12));
   };
+  const pinTurn=()=>{
+    if(!stickToTurn)return false;
+    const top=pinnedScrollTop();
+    if(top===null)return false;
+    if(Math.abs(messages.scrollTop-top)>=2)messages.scrollTop=top;
+    return true;
+  };
+  messages.addEventListener('scroll',()=>{
+    if(stickToTurn&&Math.abs(messages.scrollTop-(pinnedScrollTop()??messages.scrollTop))>80)stickToTurn=false;
+  });
+  window.addEventListener('resize',()=>{
+    if(!pinnedTurn?.isConnected)return;
+    tailSpace.style.height=Math.round(messages.clientHeight*.58)+'px';pinTurn();
+  });
   let streamTimer=0,streamTarget='',streamShown='',streamDrained=null,streamNextAt=0,streamGatherUntil=0;
   const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const stopStreamingAnimation=()=>{if(streamTimer){clearTimeout(streamTimer);streamTimer=0;}streamTarget='';streamShown='';streamDrained=null;streamNextAt=0;streamGatherUntil=0;};
@@ -4562,7 +4576,7 @@ async function installCoordinatorPanel(sync){
         body.append(markdownFragment(piece,document));rise.append(body);output.append(rise);
         setTyping(false);
       }
-      if(follow)messages.scrollTop=messages.scrollHeight;
+      if(!pinTurn()&&follow)messages.scrollTop=messages.scrollHeight;
     };
     const finish=()=>{if(streamShown!==streamTarget||!streamDrained)return;const callback=streamDrained;streamDrained=null;queueMicrotask(callback);};
     if(prefersReducedMotion()){
@@ -4669,7 +4683,7 @@ async function installCoordinatorPanel(sync){
     if(!request||messages.querySelector(`[data-request-id="${request.id}"]`))return;
     const row=document.createElement('article');row.className='coordinator-message user coordinator-optimistic';row.dataset.requestId=request.id;
     const body=document.createElement('div');body.className='coordinator-markdown';body.textContent=request.text;row.append(body);messages.insertBefore(row,extrasHost);
-    messages.scrollTop=messages.scrollHeight;
+    pinnedTurn=row;pinnedRequest=request;stickToTurn=true;tailSpace.style.height=Math.round(messages.clientHeight*.58)+'px';pinTurn();
   };
   const setRetryMode=mode=>{
     retry.hidden=!mode;
@@ -4686,7 +4700,8 @@ async function installCoordinatorPanel(sync){
     liveReplyAwaiting=false;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;messages.replaceChildren(extrasHost);setTyping(false);setSendBlocked(true);
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;
+    pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   let lastHistoryKey=null;
@@ -4752,9 +4767,14 @@ async function installCoordinatorPanel(sync){
         rowKeys.set(old,key);return;
       }
       rowKeys.set(next,key);
-      if(old)old.replaceWith(next);else messages.insertBefore(next,extrasHost);
+      if(old){if(old===pinnedTurn)pinnedTurn=next;old.replaceWith(next);}else messages.insertBefore(next,extrasHost);
     });
     for(const old of previous.slice(visible.length))old.remove();
+    if(pinnedRequest){
+      const index=visible.findLastIndex(message=>messageMatchesRequest(message,pinnedRequest));
+      pinnedTurn=index<0?null:[...messages.children].filter(node=>node.classList?.contains('coordinator-message'))[index];
+      if(!pinnedTurn){pinnedRequest=null;stickToTurn=false;}
+    }
   };
   const render=(state,forceFinal=false)=>{
     const renderedConversation=selected;
@@ -4816,7 +4836,7 @@ async function installCoordinatorPanel(sync){
       }
       if(streamShown!==finalRevealText){lastStreamingText=finalRevealText;updateStreamingText(streamingMessage,finalRevealText,false,finalize);}else finalize();
       setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
-      setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';placeTyping();
+      setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';pinTurn();
       return;
     }
     if(hasStreaming&&stableKey===lastStableContent&&streamingMessage){
@@ -4824,7 +4844,7 @@ async function installCoordinatorPanel(sync){
         updateStreamingText(streamingMessage,state.streamingText);
         lastStreamingText=state.streamingText;
       }
-      if(messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
+      if(!pinTurn()&&messages.scrollHeight-messages.scrollTop-messages.clientHeight<48)messages.scrollTop=messages.scrollHeight;
     }else if(stableKey!==lastStableContent||hasStreaming!==Boolean(lastStreamingText)){
     const visibleMessages=[...(state.messages||[])];
     for(const [requestId,entry] of optimisticRequests){
@@ -4942,7 +4962,7 @@ async function installCoordinatorPanel(sync){
     }
     lastRenderedExtras=extrasKey;
     }
-    messages.scrollTop=follow?messages.scrollHeight:scrollTop;
+    if(!pinTurn())messages.scrollTop=follow?messages.scrollHeight:scrollTop;
     lastStableContent=stableKey;
     lastStreamingText=hasStreaming?streamingText:'';
     }
@@ -4951,7 +4971,7 @@ async function installCoordinatorPanel(sync){
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
     setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
     setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
-    placeTyping();
+    pinTurn();
   };
   const refresh=async()=>{
     clearTimeout(timer);
@@ -4974,7 +4994,7 @@ async function installCoordinatorPanel(sync){
     busy=true; pending=request; pendingError=''; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     setTyping(!answeringCard);
-    placeTyping();
+    pinTurn();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{

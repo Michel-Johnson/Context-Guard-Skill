@@ -461,8 +461,8 @@ try {
     const form = el.querySelector('form.coordinator-compose').getBoundingClientRect();
     const input = el.querySelector('.coordinator-input-shell textarea');
     const typing = el.querySelector('.coordinator-typing');
-    const blot = typing.querySelector('.coordinator-working-blot');
     const send = el.querySelector('.coordinator-input-shell > button');
+    const blot = send.querySelector('.coordinator-working-blot');
     const inputRect = input.getBoundingClientRect();
     const sendRect = send.getBoundingClientRect();
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
@@ -471,6 +471,7 @@ try {
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
       sendDisabled:send.disabled,
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
+      blotParent:blot.parentElement===send,
       blotPixels:[blot?.width,blot?.height],typingDots:typing.querySelectorAll('i').length };
   });
   assert.ok(coordinatorLayout.panelBottom <= coordinatorLayout.drawerBottom + 1, 'chat stays inside the inspector height');
@@ -484,6 +485,7 @@ try {
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
   assert.equal(coordinatorLayout.workingLabel,'正在处理','Ready working mark retains an accessible status');
+  assert.equal(coordinatorLayout.blotParent,true,'Ready ink mark lives in the composer send control');
   assert.deepEqual([coordinatorLayout.blotWidth,coordinatorLayout.blotPixels],[36,[160,160]],'Ready ink atlas renders in a 36px canvas');
   assert.equal(coordinatorLayout.typingDots,0,'the old dots are removed');
   const historicalMessage=coordinator.locator('.coordinator-message.assistant').first();
@@ -716,28 +718,27 @@ try {
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await historicalMessage.evaluate(node=>{node.dataset.historyProbe='kept-after-reload';});
-  await coordinator.locator('.coordinator-typing.is-visible canvas').waitFor();
+  await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   await page.waitForFunction(()=>{
-    const canvas=document.querySelector('.coordinator-typing.is-visible canvas');
+    const canvas=document.querySelector('.coordinator-send.is-working canvas');
     if(!canvas)return false;
     const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
     for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
     return false;
   });
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
-  await coordinator.locator('.coordinator-typing.is-visible').scrollIntoViewIfNeeded();
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
-  const blotCanvas=coordinator.locator('.coordinator-typing.is-visible canvas');
+  const blotCanvas=coordinator.locator('.coordinator-send.is-working canvas');
   const inkFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
   await page.waitForTimeout(150);
   assert.notEqual(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),inkFrame,'working mark advances through Ready ink frames');
   await page.emulateMedia({reducedMotion:'reduce'});
   coordinatorState.status='waiting-for-user';
-  await coordinator.locator('.coordinator-typing').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
   coordinatorState.status='running';
-  await coordinator.locator('.coordinator-typing').waitFor({state:'visible'});
+  await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   await page.waitForFunction(()=>{
-    const canvas=document.querySelector('.coordinator-typing.is-visible canvas');
+    const canvas=document.querySelector('.coordinator-send.is-working canvas');
     if(!canvas)return false;
     const pixels=canvas.getContext('2d').getImageData(0,0,160,160).data;
     for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
@@ -747,20 +748,18 @@ try {
   await page.waitForTimeout(150);
   assert.equal(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),stillFrame,'reduced motion freezes the Ready mark');
   await page.emulateMedia({reducedMotion:'no-preference'});
-  const planningPlacement=await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>({
+  const planningPlacement=await blotCanvas.evaluate(node=>({
     parent:node.parentElement?.className,
-    previous:node.previousElementSibling?.className,
-    followsLatest:node.previousElementSibling===[...node.parentElement.children].filter(child=>child.classList?.contains('coordinator-message')&&!child.classList.contains('coordinator-streaming')).at(-1),
-    beforeComposer:node.nextElementSibling?.className,
+    insideComposer:!!node.closest('.coordinator-compose'),
+    messageInk:!!document.querySelector('.coordinator-messages .coordinator-working-blot'),
   }));
-  assert.match(planningPlacement.parent,/coordinator-messages/,'planning state belongs to the message timeline');
-  assert.match(planningPlacement.previous,/coordinator-message/,'working state follows a real message');
-  assert.equal(planningPlacement.followsLatest,true,'working state follows the latest committed message');
-  assert.notEqual(planningPlacement.beforeComposer,'coordinator-compose','planning state is not fixed above the composer');
+  assert.match(planningPlacement.parent,/coordinator-send/,'working state replaces the send arrow');
+  assert.equal(planningPlacement.insideComposer,true,'Ready ink stays in the composer');
+  assert.equal(planningPlacement.messageInk,false,'the message timeline contains no working ink');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
-  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),1,'planning stays visible until a complete block is ready');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'planning stays visible until a complete block is ready');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
   await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
@@ -841,13 +840,13 @@ try {
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-question-status').waitFor({state:'visible'});
   assert.match(await coordinator.locator('.coordinator-answer').textContent(),/网站构建产物[\s\S]*保留我的补充/);
-  assert.equal(await coordinator.locator('.coordinator-typing').isVisible(),false,'answer activity stays with the question');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),0,'answer activity stays with the question');
   coordinatorState.status='waiting-for-user';coordinatorState.activeTurnId=null;
   await coordinator.locator('.coordinator-question-status').waitFor({state:'hidden'});
   coordinatorState.status='running';
-  await coordinator.locator('.coordinator-typing').waitFor({state:'visible'});
+  await coordinator.locator('.coordinator-send.is-working').waitFor();
   coordinatorState.status='waiting-for-user';
-  await coordinator.locator('.coordinator-typing').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
   // Reload clears the deliberately uncertain local request; this mock has not persisted it.
   submissions.length=0;coordinatorState.messages.pop();
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
@@ -918,13 +917,30 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
-  await coordinator.locator('.coordinator-typing.is-visible').waitFor({state:'visible'});
+  await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
-  assert.match(await coordinator.locator('.coordinator-typing.is-visible').evaluate(node=>node.previousElementSibling?.className||''),/coordinator-optimistic/,'planning motion appears immediately below the optimistic user message');
+  const sentTurnPlacement=await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({hasText:'立即显示测试'}).evaluate(node=>{
+    const pane=node.closest('.coordinator-messages'),box=node.getBoundingClientRect(),view=pane.getBoundingClientRect();
+    return {bottomRatio:(box.bottom-view.top)/view.height,tailHeight:pane.querySelector('.coordinator-messages-tail').getBoundingClientRect().height,
+      inkInComposer:!!document.querySelector('.coordinator-send.is-working .coordinator-working-blot')};
+  });
+  assert.ok(sentTurnPlacement.bottomRatio>.38&&sentTurnPlacement.bottomRatio<.7,`Ready-style send pins the new turn near the middle: ${JSON.stringify(sentTurnPlacement)}`);
+  assert.ok(sentTurnPlacement.tailHeight>0,'the message list reserves scroll room below the new turn');
+  assert.equal(sentTurnPlacement.inkInComposer,true,'planning motion appears in the composer, not under the new message');
   releaseDelayedSubmission();
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
+  const confirmedTurnRatio=await coordinator.locator('.coordinator-message.user').filter({hasText:'立即显示测试'}).evaluate(node=>{
+    const pane=node.closest('.coordinator-messages'),box=node.getBoundingClientRect(),view=pane.getBoundingClientRect();
+    return (box.bottom-view.top)/view.height;
+  });
+  assert.ok(confirmedTurnRatio>.38&&confirmedTurnRatio<.7,`server confirmation keeps the pinned turn stable: ${confirmedTurnRatio}`);
+  await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
+  await page.waitForFunction(()=>document.querySelector('.coordinator-messages').scrollTop===0);
+  await page.waitForTimeout(50);
+  await page.evaluate(()=>window.dispatchEvent(new Event('resize')));
+  assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'manual scroll releases the turn pin instead of pulling old messages back to center');
   record('Coordinator sends with immediate optimistic message feedback');
 
   await coordinator.getByLabel('发送给 Coordinator').fill('Ready 一次性回复');
