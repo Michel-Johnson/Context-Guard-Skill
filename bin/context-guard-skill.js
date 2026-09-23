@@ -14,7 +14,7 @@ const skillInstallEntries = [
   "SKILL.md",
   "roles.md",
   "Coordinator.md",
-  "Developer.md",
+  "Executor.md",
   "Tester.md",
   "README.md",
   "README.zh-CN.md",

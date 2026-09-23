@@ -129,7 +129,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
     const legacy = path.join(env.HOME, "legacy-claude");
     invoke(["install"], true, { ...env, CLAUDE_CONFIG_DIR: directory, CLAUDE_HOME: legacy });
     assert.ok(fs.existsSync(path.join(directory, "settings.json")));
-    for (const role of ["Coordinator.md", "Developer.md", "Tester.md", "roles.md"]) {
+    for (const role of ["Coordinator.md", "Executor.md", "Tester.md", "roles.md"]) {
       assert.equal(fs.readFileSync(path.join(directory, "skills", "context-guard", role), "utf8"), fs.readFileSync(path.join(packageDirectory, role), "utf8"));
     }
     assert.ok(!fs.existsSync(legacy));

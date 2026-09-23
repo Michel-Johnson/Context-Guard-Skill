@@ -3,7 +3,7 @@
 ## Status
 
 - `Open`: recorded, not started.
-- `InProgress`: the Developer and Tester workflow is not complete.
+- `InProgress`: the Executor and Tester workflow is not complete.
 - `Pending`: tests are complete and human acceptance is pending.
 - `Resolved`: human acceptance passed.
 - `Unfixable`: cannot be fixed; the workflow ends and the record stays. This is not deferral.

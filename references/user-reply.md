@@ -1,6 +1,6 @@
 # 回复规范
 
-读者：Coordinator（对人说话时）。开发 Agent 和测试 Agent 不对人说话，不要用本文去跟用户对话。
+读者：Coordinator（对人说话时）。Executor 和 Tester 不对人说话，不要用本文去跟用户对话。
 
 对用户作答时适用：语言、Markdown 与段落结构。
 

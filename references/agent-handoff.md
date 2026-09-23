@@ -1,6 +1,6 @@
 # Agent 交接
 
-Coordinator 向开发 Agent、测试 Agent 发送任务时适用。开发 Agent 接收时按同一四项核对。
+Coordinator 向 Executor、Tester 发送任务时适用。Executor 接收时按同一四项核对。
 
 一次交接必须写明：
 

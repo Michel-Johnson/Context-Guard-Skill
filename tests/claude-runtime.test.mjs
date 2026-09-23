@@ -54,7 +54,7 @@ test('Native creation isolates the worktree and profile, pins Main and preserves
   const runtime = new ClaudeRuntime(path.join(directory, '.git', 'runtime')), templateSessionId = randomUUID();
   const config = { command: process.execPath, root: directory, configDir, environmentFile: path.join(directory, '.git', 'provider.json'),
     name: 'Template', model: 'fixture', role: 'executor', resumeExisting: true, allowSessionCreation: true,
-    systemPromptFile: path.join(configDir, 'skills', 'context-guard', 'Developer.md') };
+    systemPromptFile: path.join(configDir, 'skills', 'context-guard', 'Executor.md') };
   await runtime.configure(templateSessionId, config);
   runtime.wake = async () => {}; // This test verifies preparation, not a real model invocation.
   const request = { id: hash('creation'), sessionId: randomUUID(), templateSessionId, name: 'New developer' };
@@ -73,7 +73,7 @@ test('Native creation isolates the worktree and profile, pins Main and preserves
   assert.equal(state.config.permissionMode, 'bypassPermissions');
   assert.equal(state.config.isolated, true);
   assert.equal(state.config.environmentFile, config.environmentFile);
-  assert.equal(state.config.systemPromptFile, path.join(state.config.configDir, 'skills', 'context-guard', 'Developer.md'));
+  assert.equal(state.config.systemPromptFile, path.join(state.config.configDir, 'skills', 'context-guard', 'Executor.md'));
   const settings = await readJSON(path.join(state.config.configDir, 'settings.json'));
   assert.equal(settings.permissions.allow[0], `Read(${first.root}/**)`);
   assert.equal(settings.hooks.SessionStart[0].command, `${state.config.configDir}/skills/context-guard/hook.py`);

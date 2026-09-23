@@ -5,9 +5,9 @@ honors that variable first and retains `CLAUDE_HOME` as a legacy fallback. Keep
 executor and CI profiles and real Session IDs separate; use one shared project
 backend and device heartbeat service, not a timer in every Hook.
 
-## Cloud-created developer Sessions
+## Cloud-created Executor Sessions
 
-The operator may opt an existing developer receiver into creation with
+The operator may opt an existing Executor receiver into creation with
 `allowSessionCreation:true` in its private runtime configuration. Cloud must also
 list that receiver's Session ID in the project's `coordinator.sessionTemplates`;
 both opt-ins are required. This does not enable permission bypass or install
@@ -22,9 +22,9 @@ Only the native startup binding changes the request to `registered`; that state
 is not proof of task execution or current online status. Failed preparation is
 reported through the same heartbeat, with durable retry until acknowledgment.
 
-Created developers use the template's existing independent CI receiver. The
+Created Executors use the template's existing independent CI receiver. The
 receiver stays serial; each handoff and CI capability still names the actual
-developer Session and exact SHA. Cloud verifies the persisted creation relation
+Executor Session and exact SHA. Cloud verifies the persisted creation relation
 and current device/worktree binding. Removing Cloud's template opt-in revokes this
 inherited delegation. No task is assigned merely by creating a Session.
 
@@ -46,13 +46,13 @@ issue a Cloud CI or Coordinator capability.
 
 For CI, also configure `executorSessionId` and an exact `ciCommands` allowlist
 (for example `npm test` and `npm run build`). The CI worktree must differ from
-the developer worktree. Cloud's private project Coordinator configuration must
+the Executor worktree. Cloud's private project Coordinator configuration must
 declare `ciReceivers[ciSessionId] = {executorSessionId, worktreeId}`. A body field
 or local role label cannot grant that authority. The backend reuses device login
 and the existing persistent transport; it does not start another heartbeat.
 
 On `ci.request`, the receiver checks out the handed-off SHA only in the clean CI
-worktree. `map ci context` returns the logical developer Session, task, exact SHA,
+worktree. `map ci context` returns the logical Executor Session, task, exact SHA,
 immutable reference versions and allowed commands. `map ci exchange --input -`
 accepts normal protocol JSON; the backend supplies that logical Session rather
 than changing the native CI Session identity. Allowed operations are
@@ -61,7 +61,7 @@ and `ci.result` for this task and SHA. A changed HEAD or dirty worktree prevents
 a CI result. CI Hooks allow only the configured test commands without a Plan;
 business-source writes and development Plans remain forbidden.
 
-## Reviewed developer tasks
+## Reviewed Executor tasks
 
 `map task plan --input <file>` accepts `{operationId,content:{paths,steps}}`.
 It records an immutable Plan at the actual HEAD and requests Coordinator review.

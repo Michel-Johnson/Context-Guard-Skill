@@ -31,7 +31,7 @@ Context Guard 把 **项目** 当成工作场所：
 
 这不是又一份 prompt 包、RAG 目录，或「记住这个」插件。它是软件工作的 **人–Agent 操作环**：定位节点、确认意图、在 Session 中执行、验证，然后发布。
 
-Coordinator / Developer / Tester 的角色提示词用于拆开规划、实现和检查。角色文本不等于协议权限。自动多 Agent 编排仍在推进；产品本身是协作契约（Map、Session、授权、人确认、Main）。
+Coordinator / Executor / Tester 的角色提示词用于拆开规划、执行和检查。角色文本不等于协议权限。自动多 Agent 编排仍在推进；产品本身是协作契约（Map、Session、授权、人确认、Main）。
 
 ## 看工作台
 
@@ -159,7 +159,7 @@ Codex 安装 11 个生命周期 Hook（不含 `SessionEnd`）。它们在推理�
 | Skill（一页，给 Agent） | [SKILL.md](SKILL.md) |
 | 文档索引 | [docs/README.md](docs/README.md) |
 | 工作台 / Map CLI | [工作台接口](references/workbench-interface.md) |
-| 角色（Coordinator / Developer / Tester） | [roles.md](roles.md) |
+| 角色（Coordinator / Executor / Tester） | [roles.md](roles.md) |
 | npm 发布 | [发布手册](docs/npm-release-runbook.md) |
 
 本仓库把 **源码** 放在 GitHub `main`，把 **开发记忆** 放在用户指定的私有服务器。整个 `.codex/` 不进 Git 或 npm。其他项目不会继承本仓库的服务器配置。见 [RULE.md](RULE.md)。

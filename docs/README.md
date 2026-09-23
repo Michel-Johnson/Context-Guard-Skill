@@ -25,7 +25,7 @@
 
 ## 分级 Agent：角色设计，不等于已接通流程
 
-[角色入口](../roles.md)及 [Coordinator](../Coordinator.md)、[Developer](../Developer.md)、[Tester](../Tester.md) 是产品角色规范（随包）。
+[角色入口](../roles.md)及 [Coordinator](../Coordinator.md)、[Executor](../Executor.md)、[Tester](../Tester.md) 是产品角色规范（随包）。
 目标是 Coordinator 理解需求、组织节点和任务，执行 Session 按需读取 Map，流程结束后沉淀经验；不把项目知识永久绑定到某个 Session。
 当前 Cloud 通信实现与未来角色编排分开维护，不能因角色文档已合并就宣称自动多 Agent 已实现。
 

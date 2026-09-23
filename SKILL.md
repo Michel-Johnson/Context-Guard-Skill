@@ -5,7 +5,7 @@ description: "Keep folder-scoped project memory: sessions, bugs, tasks, and the 
 
 # Context Guard
 
-读者：产品角色 Agent（任意项目里的 Skill / Coordinator / Developer / Tester）。本仓库合并后如何装 Skill 见仓库根目录 `RULE.md`，不要写进本文。
+读者：产品角色 Agent（任意项目里的 Skill / Coordinator / Executor / Tester）。本仓库合并后如何装 Skill 见仓库根目录 `RULE.md`，不要写进本文。
 
 当前设计版本：[`fs-v2`](references/design-current.md)。
 
@@ -20,7 +20,7 @@ Human–agent project memory for Codex, Cursor, and Claude. The human talks to a
 ## What to do
 
 When an orchestration task explicitly assigns an Agent role, read [roles.md](roles.md)
-and only that role's prompt. Humans talk only to Coordinator. Developer and Tester
+and only that role's prompt. Humans talk only to Coordinator. Executor and Tester
 Sessions do not talk to the human. Role instructions do not grant protocol
 permissions or replace human review at the end of a task. For a locally managed
 Claude CLI receiver, read [references/claude-runtime.md](references/claude-runtime.md)
