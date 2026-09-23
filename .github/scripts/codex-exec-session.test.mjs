@@ -52,6 +52,39 @@ test('Issue #55: Codex sqlite threads under ~/.codex/sqlite register without Ses
   const access = await new Access(root, { codexHome }).init();
   assert.equal(await access.sessionExists(sessionId, root), true);
   assert.deepEqual(await access.knownSessions(root), [sessionId]);
+  const canonicalRoot = await fs.realpath(root);
+  assert.equal(await (await new Access(canonicalRoot, { codexHome }).init()).sessionExists(sessionId, canonicalRoot), true,
+    `Codex cwd ${root} must match real project root ${canonicalRoot}`);
+  let running;
+  t.after(async () => { await running?.close(); });
+  running = await startServer({ root, port: 0 });
+  const response = await fetch(new URL('/api/session', running.state.url), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${running.state.adminToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, worktreeRoot: root }),
+  });
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+});
+
+test('Issue #55: a Codex cwd symlink resolves to the same worktree, not another project', async t => {
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-codex-alias-'));
+  t.after(() => fs.rm(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const root = path.join(sandbox, 'project');
+  const otherRoot = path.join(sandbox, 'other-project');
+  const aliasRoot = path.join(sandbox, 'project-alias');
+  const codexHome = path.join(sandbox, 'codex-home');
+  const sessionId = '01a0827b-f285-7a62-8c85-68aaa972f154';
+  await fs.mkdir(root, { recursive: true });
+  await fs.mkdir(otherRoot, { recursive: true });
+  await fs.symlink(root, aliasRoot, process.platform === 'win32' ? 'junction' : 'dir');
+  await initProject(root);
+  await seedCodexThread({ codexHome, sessionId, cwd: aliasRoot });
+  const previousCodexHome = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  t.after(() => { process.env.CODEX_HOME = previousCodexHome; });
+  const access = await new Access(await fs.realpath(root), { codexHome }).init();
+  assert.equal(await access.sessionExists(sessionId, root), true);
+  assert.equal(await access.sessionExists(sessionId, otherRoot), false);
   let running;
   t.after(async () => { await running?.close(); });
   running = await startServer({ root, port: 0 });
