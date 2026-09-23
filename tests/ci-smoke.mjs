@@ -260,6 +260,7 @@ async function main() {
     .trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(JSON.parse(cursorStop.stdout).decision, "block", "unclassified prompts cannot silently complete");
   assert.deepEqual(cursorEvents.map(({ event }) => event), ["session-start", "user-prompt-submit", "user-prompt-submit", "stop-blocked"]);
+  assert.equal(cursorEvents.at(-1).state, "active", "a blocked Stop cannot claim the Session stopped");
   assert.ok(cursorEvents.every(({ session_id }) => session_id === "session-one"), "turns must keep the client's conversation ID");
   assert.ok(cursorEvents.filter(({ event }) => event === "user-prompt-submit").every(({ message_status }) => message_status === "recorded"));
   const cursorMemory = fs.readFileSync(path.join(project, ".codex", "context", "user-messages.md"), "utf8");

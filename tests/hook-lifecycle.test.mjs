@@ -431,6 +431,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   for (const name of ['session-start', 'user-prompt-submit', 'pre-tool-use', 'post-tool-use', 'pre-compact', 'post-compact', 'subagent-start', 'subagent-stop', 'interrupt', 'stop']) {
     assert.ok(events.some(event => event.event === name), `missing ${name}`);
   }
+  assert.ok(events.filter(event => event.event === 'stop').every(event => event.state === 'stopped' && event.hook_event === 'Stop'));
 });
 
 test('read-only inspection remains available without a plan while writes stay gated', async t => {
@@ -1133,6 +1134,10 @@ test('completion receipts require evidence, scope review, all files and fresh co
   assert.equal(outside.json.hookSpecificOutput.permissionDecision, 'deny');
   await fs.writeFile(path.join(project, 'src/dirty.txt'), 'modified again');
   hook('PostToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' }, tool_response: { exit_code: 1 } });
+  hook('PostToolUseFailure', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' }, error: 'failed' });
+  const failureEvents = (await fs.readFile(path.join(project, '.codex/context/sessions.jsonl'), 'utf8')).trim().split(/\r?\n/).map(JSON.parse);
+  assert.ok(failureEvents.some(event => event.event === 'toolFailure' && event.hook_event === 'PostToolUse' && event.result === 'failed'));
+  assert.ok(failureEvents.some(event => event.event === 'toolFailure' && event.hook_event === 'PostToolUseFailure'));
   assert.throws(() => finishPlan(project, session), /Archive this plan/);
   assert.throws(() => archivePlan(project, session, 'src/dirty.txt'), /scope_review/);
   assert.throws(() => archivePlan(project, session, 'src/dirty.txt', { scope_review: 'checked src only' }), /failure_review/);
