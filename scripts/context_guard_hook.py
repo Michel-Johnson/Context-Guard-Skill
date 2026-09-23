@@ -1752,7 +1752,7 @@ def main() -> int:
         if plan and failed:
             plan["failure_review_required"] = True
             write_hook_runtime(root, current_session_id, runtime)
-        append_session_event(root, event, platform, current_session_id, session_details(audit_details(
+        append_session_event(root, "toolFailure" if failed else event, platform, current_session_id, session_details(audit_details(
             payload, event, current_session_id, runtime, {"result": "failed" if failed else "completed", "paths": paths},
         )))
         return hook_response(platform, event)
@@ -1877,7 +1877,8 @@ def main() -> int:
         result = "incomplete" if blocked else "deferred" if (plan or pending) else "completed"
         append_session_event(root, "stop-blocked" if blocked else event, platform, current_session_id,
                              session_details(audit_details(payload, event, current_session_id, runtime,
-                                                           {"result": result, "pending_signal_count": len(pending)})))
+                                                           {"result": result, "state": "active" if blocked else "stopped",
+                                                            "pending_signal_count": len(pending)})))
         if platform == "codex" or not blocked:
             # Pending signals and active plans are already durable and will be
             # re-injected through the next UserPromptSubmit additionalContext.
