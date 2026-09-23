@@ -81,6 +81,29 @@ print("CI_BOUNDARY_OK")`]);
   assert.equal(result.stdout.trim(), 'CI_BOUNDARY_OK');
 });
 
+test('completed reviewed Plan permits only clean repository delivery after acceptance', () => {
+  const result = run(python, ['-c', `import sys; from pathlib import Path; sys.path.insert(0,${JSON.stringify(path.join(repository, 'scripts'))}); import context_guard_hook as h
+root=Path('/tmp/context-guard-post-plan')
+command=lambda value:{"tool_name":"Bash","tool_input":{"command":value}}
+assert h.post_plan_delivery_command(command('git -C /tmp/context-guard-post-plan push -u origin HEAD'),root)
+assert h.post_plan_delivery_command(command('gh pr create --base main --title "verified work"'),root)
+assert h.post_plan_delivery_command(command('gh pr merge 123 --squash'),root)
+for value in ['git -C /tmp/other push origin HEAD','git push --force origin HEAD','gh pr merge 123 --admin','gh pr create --repo other/repo','git commit -am changed','git push origin HEAD && rm -f file']:
+    assert not h.post_plan_delivery_command(command(value),root),value
+assert h.read_only_shell('git -C /tmp/context-guard-post-plan remote -v')
+assert h.read_only_shell('gh pr checks 123')
+execution={"active":{"mode":"reviewed","acceptanceReview":{"decision":"approved"}}}
+runtime={"last_plan":{"status":"completed","archive":{"revision":1}}}
+h.git_changed_paths=lambda root: []
+assert h.post_plan_delivery_ready(runtime,execution,root)
+assert not h.post_plan_delivery_ready(runtime,{"active":{"mode":"ci","acceptanceReview":{"decision":"approved"}}},root)
+assert not h.post_plan_delivery_ready(runtime,{"active":{"mode":"reviewed","acceptanceReview":{"decision":"rejected"}}},root)
+h.git_changed_paths=lambda root: ['frontend/index.html']
+assert not h.post_plan_delivery_ready(runtime,execution,root)
+print('POST_PLAN_DELIVERY_OK')`]);
+  assert.equal(result.stdout.trim(), 'POST_PLAN_DELIVERY_OK');
+});
+
 test('Claude display name uses only the bounded own-session transcript metadata', async t => {
   const project = await fixture();
   t.after(() => fs.rm(project, { recursive: true, force: true }));
