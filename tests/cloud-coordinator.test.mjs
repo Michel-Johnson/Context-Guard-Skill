@@ -681,16 +681,25 @@ const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test
 test('Coordinator context carries the full static directory and only the mounted ancestry memories', () => {
   const snapshot = { version: 'main-v2', memory: { map: { root: { id: 'T0', title: 'Root', purpose: 'Whole project', memories: [{ text: 'root memory' }], children: [
     { id: 'N1', title: 'Reader', purpose: 'Public reading', memories: [{ text: 'reader memory' }], children: [
-      { id: 'N2', title: 'Article', purpose: 'Article page', memories: [{ text: 'article memory' }], children: [] },
+      { id: 'N2', title: 'Article', purpose: 'Article page', memories: [{ text: 'article memory' }],
+        todos: [{ id: 'TD1', title: 'Improve article', desc: 'Make the published article readable', status: 'pending' }], children: [] },
     ] },
     { id: 'N3', title: 'Admin', purpose: 'Private admin', memories: [{ text: 'private unrelated memory' }], children: [] },
   ] } } } };
-  const context = buildCoordinatorContext(snapshot, { conversation: { id: 'item-x', nodeId: 'N2', kind: 'todo', title: 'Improve article' } });
+  const conversation = { id: 'item-x', nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article' };
+  const context = buildCoordinatorContext(snapshot, { conversation });
   const payload = JSON.parse(context.text.slice(context.text.indexOf('{')));
   assert.equal(context.version, 'main-v2');
   assert.deepEqual(payload.staticDirectory.map(node => node.id), ['T0', 'N1', 'N2', 'N3']);
   assert.deepEqual(payload.mountedChain.map(node => node.id), ['T0', 'N1', 'N2']);
+  assert.deepEqual(payload.currentTask, { nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article',
+    summary: 'Make the published article readable', status: 'pending' });
   assert.doesNotMatch(JSON.stringify(payload.mountedChain), /private unrelated memory/);
+  snapshot.memory.map.root.children[0].children[0].todos[0].status = 'processing';
+  const refreshed = buildCoordinatorContext(snapshot, { conversation });
+  assert.equal(JSON.parse(refreshed.text.slice(refreshed.text.indexOf('{'))).currentTask.status, 'processing', 'a new turn reads the latest Main item');
+  const missing = buildCoordinatorContext(snapshot, { conversation: { ...conversation, itemId: 'TD-missing' } });
+  assert.equal(JSON.parse(missing.text.slice(missing.text.indexOf('{'))).currentTask.unavailable, true, 'a deleted item cannot inherit stale conversation text');
   const scoped = buildCoordinatorContext(snapshot, { nodeIds: ['N2'], conversation: { id: 'item-x', nodeId: 'N2' } });
   assert.deepEqual(JSON.parse(scoped.text.slice(scoped.text.indexOf('{'))).staticDirectory.map(node => node.id), ['T0', 'N1', 'N2']);
 });
