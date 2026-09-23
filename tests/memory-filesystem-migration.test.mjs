@@ -210,6 +210,7 @@ test('renders durable Bug and Todo rounds, refutations, links and complete first
   const input = snapshot();
   input.memory.map.root.purpose = '前端模块负责全部交互、状态同步与可访问性。\n\n后续段落不进索引。';
   input.memory.map.root.todos[0].description = '需要保留完整的需求第一段，不按二十字截断。\n\n第二段只在详情里。';
+  input.memory.map.root.ideas[0].text = '想法的完整第一段也必须保留，不按二十字截断。\n\n第二段只在详情里。';
   input.memory.map.root.todos[0].attempts = [
     { status: 'Refuted', refutedBy: 'A2', reason: '跨窗口仍重复', acceptance: '单窗口不得重复提交', solution: '仅禁用按钮',
       codeIndex: [{ path: 'src/button.js', summary: '禁用按钮' }], test: { summary: '跨窗口失败', content: '两个窗口复现重复。' }, sessionIds: ['s1'] },
@@ -234,6 +235,7 @@ test('renders durable Bug and Todo rounds, refutations, links and complete first
   const bug = files.get('nodes/前端-module/提交按钮-node/bugs/B5.md');
   assert.match(root, /前端模块负责全部交互、状态同步与可访问性。/);
   assert.match(root, /需要保留完整的需求第一段，不按二十字截断。/);
+  assert.match(root, /想法的完整第一段也必须保留，不按二十字截断。/);
   assert.match(childIndex, /并发点击导致重复反馈，现象需要完整保留。/);
   assert.doesNotMatch(root + childIndex, /后续段落不进索引|第二段只在详情里|后续诊断留在详情/);
   for (const file of [todo, bug]) {
