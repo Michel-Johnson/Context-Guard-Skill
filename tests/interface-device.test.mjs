@@ -14,7 +14,7 @@ import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 
 const execFileAsync = promisify(execFile);
 
-test('developer Main CLI reads and applies an allowlisted structural change without a Session binding', async t => {
+test('developer Main CLI still reads Main; apply is forbidden even when allowlisted', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-developer-main-cli-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const project = path.join(directory, 'project'); await fs.mkdir(project);
@@ -48,10 +48,17 @@ test('developer Main CLI reads and applies an allowlisted structural change with
   await fs.writeFile(requestFile, JSON.stringify({ operationId: 'cli-create-content', baseVersion: read.version, changes: [{
     op: 'create', kind: 'node', id: 'content', fields: { parentId: 'T0', title: '内容', purpose: '内容', kind: 'module', state: 'untested', owns: ['source/'] },
   }] }));
-  const applied = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'apply', '--root', project, '--input', requestFile], { windowsHide: true })).stdout);
-  assert.equal(applied.committed, true);
+  await assert.rejects(
+    () => execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'apply', '--root', project, '--input', requestFile], { windowsHide: true }),
+    error => {
+      const applied = JSON.parse(error.stdout);
+      assert.equal(applied.error.code, 'FORBIDDEN');
+      assert.match(applied.error.message, /Only Coordinator can write Main structure/);
+      return true;
+    },
+  );
   const after = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
-  assert.equal(after.doc.root.children[0].title, '内容');
+  assert.equal(after.doc.root.children?.length || 0, 0);
 });
 
 test('Creation failures survive local restart and are acknowledged through the device heartbeat', async t => {

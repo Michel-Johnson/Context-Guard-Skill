@@ -120,7 +120,7 @@ ${HELP_EXIT_NOTE}`;
 
 Actions:
   main read           Read the authoritative Main Map without binding a Session
-  main apply          Apply an authorized structural patch to Main from --input
+  main apply          Disabled leftover: only Coordinator writes Main structure
   status              Print map version and recovery state
   read                Read the map or one --node
   changes             Read changes after --cursor
@@ -686,17 +686,7 @@ async function main(args) {
       return { version: result.snapshot?.version || null, doc: result.snapshot?.memory?.map || null };
     }
     if (opt._[1] === 'apply') {
-      const config = await readJSON(memoryConfigPath(project), null);
-      if (!config?.url) throw new MapError('MEMORY_NOT_CONFIGURED', 'Connect this project to Cloud before developer Main writes', 503);
-      const input = await inputJSON(opt.input);
-      if (typeof input.operationId !== 'string' || !input.operationId || input.operationId.length > 128 ||
-          typeof input.baseVersion !== 'string' || !Array.isArray(input.changes) || !input.changes.length) {
-        throw new MapError('INVALID_ARGUMENT', 'Provide operationId, observed baseVersion and structural changes');
-      }
-      const device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: config.url, allowLoopback: true });
-      return device.send(validateMessage({ v: 2, id: input.operationId, type: 'main.structure.patch', payload: {
-        baseVersion: input.baseVersion, changes: input.changes,
-      } }));
+      throw new MapError('FORBIDDEN', 'Only Coordinator can write Main structure; developer Main apply is disabled', 403);
     }
     throw new MapError('INVALID_ARGUMENT', 'Use map main read|apply --input <request.json>');
   }
