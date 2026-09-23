@@ -14,8 +14,7 @@
 | 已验证范围与未完成验收 | [CI_todo.md](../CI_todo.md)；历史条目不覆盖后续替代说明 |
 | 文件归属与依赖边界 | [仓库布局](repository-layout.md) |
 | Agent 使用入口 | [SKILL.md](../SKILL.md) |
-| 设备 / Session 消息格式 | [接口 v2](interface-contract-v2.md)、[机器可读契约](interface-contract-v2.json) |
-| 数据对象与示例 | [数据契约](interface-data-contracts.md)、[JSON 示例](interface-json-examples.md) |
+| 设备 / Session 消息格式与示例 | [接口 v2](interface-contract-v2.md)、[机器可读契约](interface-contract-v2.json) |
 | Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md) |
 | 私有 Main / Session 记忆及发布 | [服务器记忆](../references/server-memory.md) |
 | Cloud node/module、Bug、Todo、Idea 文件格式 | [Memory Filesystem v2](../references/memory-filesystem-v2/README.md) |
