@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { buildFilesystemV2 } from '../scripts/shared/filesystem-v2.mjs';
 import { commitMainMemoryMap, commitSessionMap, publishSessionMemory, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
 import { filesystemProjectDirectory, migrateProjectMemoryToFilesystemV2 } from '../scripts/cloud/memory-filesystem.mjs';
+import { validate } from '../scripts/shared/map-model.mjs';
 
 const runGit = promisify(execFile);
 
@@ -203,4 +204,61 @@ test('deleting a Bug removes its active record and regenerated Markdown without 
     assert.equal(published.main.memory.records['bugs/B1.md'], undefined);
     assert.deepEqual(published.main.deletedRecordKeys, ['bugs/B1.md', 'fixes/B1.md']);
   } finally { await service.close(); }
+});
+
+test('renders durable Bug and Todo rounds, refutations, links and complete first paragraphs', () => {
+  const input = snapshot();
+  input.memory.map.root.purpose = '前端模块负责全部交互、状态同步与可访问性。[说明](https://example.invalid/docs)\n\n后续段落不进索引。';
+  input.memory.map.root.todos[0].description = '需要保留完整的需求第一段，不按二十字截断。\n\n第二段只在详情里。';
+  input.memory.map.root.ideas[0].text = '想法的完整第一段也必须保留，不按二十字截断。\n\n第二段只在详情里。';
+  input.memory.map.root.todos[0].attempts = [
+    { status: 'Refuted', refutedBy: 'A2', reason: '跨窗口仍重复', acceptance: '单窗口不得重复提交', solution: '仅禁用按钮',
+      codeIndex: [{ path: 'src/button.js', summary: '禁用按钮' }], test: { summary: '跨窗口失败', content: '两个窗口复现重复。' }, sessionIds: ['s1'] },
+    { status: 'Confirmed', acceptance: '两个窗口只提交一次', solution: '服务端唯一约束',
+      event: '扩展到跨窗口', eventSource: 'Human', codeIndex: [{ path: 'src/server.js', summary: '增加唯一约束' }],
+      test: { summary: '跨窗口通过', content: '两个窗口只生成一条记录。' }, sessionIds: ['s2'] },
+  ];
+  input.memory.map.root.children[0].bugs = [{ id: 'B5', title: '并发重复', status: 'open',
+    phenomenon: '并发点击导致重复反馈，现象需要完整保留。\n\n后续诊断留在详情。',
+    attempts: [
+      { status: 'Refuted', refutedBy: 'A2', reason: '未覆盖跨窗口', reproduction: '在一个窗口双击', cause: '按钮未禁用',
+        test: { summary: '跨窗口失败', content: '复现跨窗口重复。' } },
+      { status: 'Confirmed', reproduction: '两个窗口同时提交', cause: '服务端无原子唯一约束', resolution: '增加唯一约束',
+        codeIndex: [{ path: 'src/create.js', summary: '原子创建' }], test: { summary: '并发通过', content: '并发只创建一条。' } },
+    ] }];
+  for (const child of input.memory.map.root.children) child.kind = 'work';
+  validate(input.memory.map);
+  const { files, report } = buildFilesystemV2(input);
+  const root = files.get('nodes/前端-module/index.md');
+  const childIndex = files.get('nodes/前端-module/提交按钮-node/index.md');
+  const todo = files.get('nodes/前端-module/todos/T1.md');
+  const bug = files.get('nodes/前端-module/提交按钮-node/bugs/B5.md');
+  assert.match(root, /前端模块负责全部交互、状态同步与可访问性。/);
+  assert.match(root, /需要保留完整的需求第一段，不按二十字截断。/);
+  assert.match(root, /想法的完整第一段也必须保留，不按二十字截断。/);
+  assert.match(childIndex, /并发点击导致重复反馈，现象需要完整保留。/);
+  assert.doesNotMatch(root + childIndex, /后续段落不进索引|第二段只在详情里|后续诊断留在详情/);
+  for (const file of [todo, bug]) {
+    assert.match(file, /CurrentAttempt: A2/);
+    assert.match(file, /Status: Refuted\nRefutedBy: A2/);
+    assert.match(file, /### A2\nStatus: Confirmed/);
+    assert.match(file, /\[A2\]\(tests\//);
+    assert.match(file, /\[A2\]\(traces\//);
+  }
+  assert.match(todo, /当前有效方案\n服务端唯一约束/);
+  assert.match(bug, /当前有效结论\n增加唯一约束/);
+  assert.equal(files.get('nodes/前端-module/todos/tests/T1-A2.md').includes('两个窗口只生成一条记录。'), true);
+  assert.equal(files.get('nodes/前端-module/提交按钮-node/bugs/traces/B5-A2.md').includes('NULL'), true);
+  assert.equal(report.lossy.briefsTruncated, 0);
+});
+
+test('rejects refutations without a later round or an explicit reason', () => {
+  const input = snapshot().memory.map;
+  for (const child of input.root.children) child.kind = 'work';
+  input.root.todos[0].attempts = [{ status: 'Refuted', refutedBy: 'A2', reason: 'wrong' }];
+  assert.throws(() => validate(input), { code: 'INVALID_ATTEMPT' });
+  input.root.todos[0].attempts.push({ status: 'Confirmed', solution: 'fixed' });
+  validate(input);
+  input.root.todos[0].attempts[0].reason = '';
+  assert.throws(() => validate(input), { code: 'INVALID_ATTEMPT' });
 });

@@ -95,8 +95,11 @@ export function validate(doc) {
     for (const todo of node.todos || []) {
       if (typeof todo.title !== 'string' || todo.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO title`);
       if (todo.status && !['pending', 'processing', 'done'].includes(todo.status)) throw new MapError('INVALID_MAP', `${node.id}: invalid TODO status`);
+      validateAttempts(todo, 'Todo');
     }
+    for (const bug of node.bugs || []) validateAttempts(bug, 'Bug');
   }
+  for (const bug of doc.unassigned_bugs || []) validateAttempts(bug, 'Bug');
   for (const { node } of index.values()) {
     for (const message of node.messages || []) if (!object(message) || typeof message.text !== 'string') throw new MapError('INVALID_MAP', 'Message must contain text');
     const agents = new Set();
@@ -109,6 +112,32 @@ export function validate(doc) {
     if (!index.has(flow.from) || !index.has(flow.to)) throw new MapError('INVALID_REFERENCE', 'Flow endpoint is missing');
   }
   return index;
+}
+
+function validateAttempts(item, kind) {
+  if (item.attempts === undefined) return;
+  if (!Array.isArray(item.attempts) || !item.attempts.length) throw new MapError('INVALID_ATTEMPT', `${kind} attempts must be a nonempty list`);
+  for (const [index, attempt] of item.attempts.entries()) {
+    if (!object(attempt) || !['Confirmed', 'Refuted'].includes(attempt.status)) throw new MapError('INVALID_ATTEMPT', `${kind} attempt needs Confirmed or Refuted status`);
+    if (attempt.status === 'Refuted') {
+      const target = /^A([1-9]\d*)$/.exec(attempt.refutedBy || '');
+      if (!target || Number(target[1]) <= index + 1 || Number(target[1]) > item.attempts.length || !String(attempt.reason || '').trim()) {
+        throw new MapError('INVALID_ATTEMPT', `${kind} refutation needs a later attempt and reason`);
+      }
+    } else if (attempt.refutedBy !== undefined || attempt.reason !== undefined) throw new MapError('INVALID_ATTEMPT', `${kind} confirmed attempt cannot carry refutation fields`);
+    for (const field of ['reproduction', 'acceptance', 'cause', 'solution', 'resolution', 'event', 'eventSource']) {
+      if (attempt[field] !== undefined && typeof attempt[field] !== 'string') throw new MapError('INVALID_ATTEMPT', `${kind} ${field} must be text`);
+    }
+    if (attempt.codeIndex !== undefined && (!Array.isArray(attempt.codeIndex) || attempt.codeIndex.some(entry => !object(entry) || typeof entry.path !== 'string' || !entry.path || typeof entry.summary !== 'string'))) {
+      throw new MapError('INVALID_ATTEMPT', `${kind} code index is invalid`);
+    }
+    if (attempt.test !== undefined && (!object(attempt.test) || typeof attempt.test.summary !== 'string' || typeof attempt.test.content !== 'string')) {
+      throw new MapError('INVALID_ATTEMPT', `${kind} test evidence is invalid`);
+    }
+    if (attempt.sessionIds !== undefined && (!Array.isArray(attempt.sessionIds) || attempt.sessionIds.some(id => typeof id !== 'string' || !id.trim()))) {
+      throw new MapError('INVALID_ATTEMPT', `${kind} Session references are invalid`);
+    }
+  }
 }
 
 function relatedIds(node) {
