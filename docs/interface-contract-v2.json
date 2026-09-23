@@ -393,6 +393,25 @@
       ]
     },
     {
+      "type": "task.message",
+      "purpose": "Coordinator 指导原任务的执行 Session",
+      "payload": {
+        "taskId": "task-1",
+        "text": "先提交已完成的代码，再交付 handoff",
+        "planRef": "plan-1",
+        "planVersion": "v1"
+      },
+      "result": {
+        "state": "cloud_queued"
+      },
+      "rule": "只由 Coordinator 向原任务 Session 发送；可附当前 Plan 引用防止过期指导。不改变任务阶段、Plan 或 Session；忙碌时保留投递并按原编号重试。",
+      "parents": [
+        "MOD-cloud-agent-up",
+        "MOD-local-agent-down",
+        "MOD-offline-agent-down"
+      ]
+    },
+    {
       "type": "task.report",
       "purpose": "上报Plan、进度、中断或CI交接",
       "payload": {
