@@ -117,6 +117,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
       for (const client of clients) {
         if (expected.includes(client)) {
           for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)), `${client}/${file}`);
+          assert.ok(!fs.existsSync(path.join(skill(client), "Developer.md")));
           assertNoPythonCache(skill(client));
           assert.ok(fs.existsSync(config(client)), `${client} hooks missing`);
         } else assert.ok(!fs.existsSync(home(client)), `Must not install unrelated ${client}`);
@@ -170,7 +171,8 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
         if (client !== "cursor") assert.equal(groups.find(group => group.hooks.some(h => h.command === thirdParty.command)).matcher, "user-matcher");
         assert.deepEqual(snapshot(path.join(env.HOME, "project")), memory);
         for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)));
-        assert.ok(!fs.existsSync(path.join(skill(client), "Developer.md")));
+        assert.equal(fs.readFileSync(path.join(skill(client), "Developer.md"), "utf8"),
+          fs.readFileSync(path.join(skill(client), "Executor.md"), "utf8"));
         assertNoPythonCache(skill(client));
       }
       const backups = fs.readdirSync(home(client)).filter(file => file.startsWith(configName(client) + ".bak-"));

@@ -118,7 +118,6 @@ export const packedFiles = [...installedFiles, ...[
 ]];
 
 export const forbiddenInstalledPaths = [
-  "Developer.md",
   "scripts/cloud",
   "scripts/branch_guard.py",
   "scripts/__pycache__",

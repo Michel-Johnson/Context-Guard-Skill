@@ -394,8 +394,13 @@ function applyInstallPlan(plan, dryRun) {
       entry.next = path.join(entry.temp, "next");
       entry.previous = path.join(entry.temp, "previous");
       staged.push(entry);
-      if (entry.kind === "skill") copySkill(entry.next);
-      else fs.writeFileSync(entry.next, entry.content, { mode: entry.mode });
+      if (entry.kind === "skill") {
+        copySkill(entry.next);
+        // Existing Claude receivers may still reference this absolute prompt path.
+        if (fs.existsSync(path.join(entry.target, "Developer.md"))) {
+          fs.copyFileSync(path.join(entry.next, "Executor.md"), path.join(entry.next, "Developer.md"));
+        }
+      } else fs.writeFileSync(entry.next, entry.content, { mode: entry.mode });
     }
     for (const entry of staged) {
       if (fs.existsSync(entry.target)) {
