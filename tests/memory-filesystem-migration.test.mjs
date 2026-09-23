@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { buildFilesystemV2 } from '../scripts/shared/filesystem-v2.mjs';
+import { commitMainMemoryMap, commitSessionMap, publishSessionMemory, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
+import { filesystemProjectDirectory, migrateProjectMemoryToFilesystemV2 } from '../scripts/cloud/memory-filesystem.mjs';
+
+const runGit = promisify(execFile);
 
 function snapshot() {
   return {
@@ -117,4 +127,80 @@ test('projects leftover deferred bugs as Unfixable and omits leftover wontfix fi
   assert.equal(report.warnings.some(item => item.code === 'HISTORICAL_DEFERRED' && item.id === 'B3'), true);
   assert.equal(report.warnings.some(item => item.code === 'DROPPED_WONTFIX' && item.id === 'B4'), true);
   assert.equal(report.bugs.migrated, 3);
+});
+
+test('deleting a Bug removes its active record and regenerated Markdown without erasing history', async t => {
+  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-fs-v2-bug-delete-'));
+  t.after(() => fs.rm(dataDir, { recursive: true, force: true }));
+  const repository = path.join(dataDir, 'repository');
+  await fs.mkdir(repository);
+  for (const args of [['init', '-q'], ['config', 'user.email', 'test@example.test'], ['config', 'user.name', 'Test']]) {
+    await runGit('git', args, { cwd: repository, windowsHide: true });
+  }
+  await fs.writeFile(path.join(repository, 'README.md'), 'test repository\n');
+  await runGit('git', ['add', 'README.md'], { cwd: repository, windowsHide: true });
+  await runGit('git', ['commit', '-qm', 'test'], { cwd: repository, windowsHide: true });
+  const sourceCommit = (await runGit('git', ['rev-parse', 'HEAD'], { cwd: repository, windowsHide: true })).stdout.trim();
+  const projectId = 'test';
+  const configuration = { dataDir, adminToken: 'test-admin', projects: { [projectId]: { token: 'test-project', root: repository, ref: 'HEAD' } } };
+  const map = { v: 1, project: 'Test', bootstrap: 'ready', flows: [], root: {
+    id: 'T0', title: 'Test', kind: 'module', state: 'dirty', bugs: [{ id: 'B1', title: 'Old bug', status: 'open' }], children: [],
+  } };
+  const records = {
+    'bugs/B1.md': '# B1 Old bug\n\n- node: T0\n- status: open\n- 现象: Old problem.',
+    'fixes/B1.md': '# B1\n\n## 根因\n\nOld cause.',
+  };
+  const projectDir = path.join(dataDir, createHash('sha256').update(projectId).digest('hex'));
+  await fs.mkdir(projectDir, { recursive: true });
+  await fs.writeFile(path.join(projectDir, 'memory.json'), JSON.stringify({
+    revision: 1, main: { version: 'main-v1', memory: { map, records } },
+    sessions: { s1: { version: 'session-v1', memory: { map, records } } },
+    receipts: {}, history: [{ scope: 'main', version: 'main-v1', snapshot: { version: 'main-v1', memory: { map, records } } }], events: [], eventCursors: {},
+  }));
+  await migrateProjectMemoryToFilesystemV2(dataDir, projectId);
+  const request = { operationId: 'delete-b1', baseVersion: 'main-v1', operations: [
+    { type: 'delete-work-item', nodeId: 'T0', kind: 'bug', itemId: 'B1' },
+  ] };
+  const result = await commitMainMemoryMap(configuration, projectId, request);
+  assert.deepEqual(await commitMainMemoryMap(configuration, projectId, request), result);
+  const state = await readMemoryProject(configuration, projectId);
+  assert.equal(state.main.memory.map.root.bugs.length, 0);
+  assert.equal(state.main.memory.records['bugs/B1.md'], undefined);
+  assert.equal(state.main.memory.records['fixes/B1.md'], undefined);
+  assert.deepEqual(state.main.deletedRecordKeys, ['bugs/B1.md', 'fixes/B1.md']);
+  assert.equal(state.history.length, 2);
+  assert.equal(state.history[0].snapshot.memory.records['bugs/B1.md'], records['bugs/B1.md']);
+  assert.equal(state.history[1].snapshot.memory.records['bugs/B1.md'], undefined);
+  const content = path.join(filesystemProjectDirectory(dataDir, projectId), 'content', 'main', 'nodes', 'Test-module');
+  await assert.rejects(fs.stat(path.join(content, 'bugs', 'B1.md')), { code: 'ENOENT' });
+  assert.doesNotMatch(await fs.readFile(path.join(content, 'index.md'), 'utf8'), /Old bug/);
+  await assert.rejects(commitMainMemoryMap(configuration, projectId, { ...request, operationId: 'stale-b1' }), error => error.code === 'VERSION_CONFLICT');
+
+  const session = await commitSessionMap(configuration, projectId, 's1', { operationId: 'session-delete-b1', baseVersion: 'session-v1', operations: request.operations });
+  assert.equal(session.committed, true);
+  const next = await readMemoryProject(configuration, projectId);
+  assert.equal(next.sessions.s1.memory.records['bugs/B1.md'], undefined);
+  assert.deepEqual(next.sessions.s1.deletedRecordKeys, ['bugs/B1.md', 'fixes/B1.md']);
+
+  const service = await startMemoryServer({ ...configuration, port: 0 });
+  try {
+    const send = (operationId, nextMap) => fetch(`${service.url}/v1/projects/${projectId}/sessions/s2`, {
+      method: 'POST', headers: { Authorization: 'Bearer test-project', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operationId, baseVersion: null, baseMainVersion: next.main.version,
+        sourceCommit, memory: { map: nextMap, records } }),
+    });
+    const stale = await send('stale-session', map);
+    assert.equal(stale.status, 409);
+    assert.equal((await stale.json()).error.code, 'DELETED_WORK_ITEM');
+    const clean = await send('clean-session', next.main.memory.map);
+    assert.equal(clean.status, 200);
+    const saved = (await clean.json()).snapshot;
+    assert.equal(saved.memory.records['bugs/B1.md'], undefined, 'a new Session cannot revive a deleted legacy Bug record');
+    assert.deepEqual(saved.deletedRecordKeys, ['bugs/B1.md', 'fixes/B1.md']);
+    await publishSessionMemory(configuration, projectId, { operationId: 'publish-clean-session', baseVersion: next.main.version,
+      sessionId: 's2', sessionVersion: saved.version, expectedMainSha: sourceCommit });
+    const published = await readMemoryProject(configuration, projectId);
+    assert.equal(published.main.memory.records['bugs/B1.md'], undefined);
+    assert.deepEqual(published.main.deletedRecordKeys, ['bugs/B1.md', 'fixes/B1.md']);
+  } finally { await service.close(); }
 });
