@@ -1026,6 +1026,7 @@ try {
   assert.equal(await oneShotLive.locator('.coordinator-rise.is-entering').count(),1,'a live one-shot response uses one Ready-style entering group');
   assert.equal(await oneShotLive.locator('.coordinator-rise-body p').count(),2,'the one-shot group keeps its final Markdown layout');
   await coordinator.getByLabel('发送给 Coordinator').fill('一次性长回复测试');
+  assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'a new draft switches the finished reveal back to send');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({hasText:'一次性长回复测试'}).waitFor();
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=node.scrollHeight;});

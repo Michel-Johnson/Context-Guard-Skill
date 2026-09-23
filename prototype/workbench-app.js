@@ -4648,7 +4648,8 @@ async function installCoordinatorPanel(sync){
       .filter((id,index,list)=>index===0||id!==list[index-1]);
     void tourMapNodes(ids).catch(error=>{status.textContent='无法定位节点：'+error.message;});
   };
-  const canStopReply=()=>typingVisible&&Boolean(busy&&pending?.id||acceptedTurnId||latestConversationState?.status==='running'&&latestConversationState.activeTurnId||streamTimer||revealSettling);
+  const hasActiveReply=()=>Boolean(busy&&pending?.id||acceptedTurnId||latestConversationState?.status==='running'&&latestConversationState.activeTurnId);
+  const canStopReply=()=>typingVisible&&(hasActiveReply()||!input.value.trim()&&Boolean(streamTimer||revealSettling));
   const syncSendState=()=>{
     const stoppable=canStopReply();
     send.type=stoppable?'button':'submit';
