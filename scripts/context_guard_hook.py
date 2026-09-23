@@ -1277,9 +1277,42 @@ def post_plan_delivery_command(payload: object, root: Path) -> bool:
     if executable == "gh" and len(words) >= 3 and words[1] == "pr":
         if words[2] not in {"create", "merge"}:
             return False
+        if words[2] == "merge" and (len(words) < 4 or not re.fullmatch(r"[1-9]\d*", words[3])):
+            return False
         return not any(arg in {"--admin", "--repo", "-R", "--delete-branch"}
                        or arg.startswith(("--repo=", "--admin=")) for arg in words[3:])
     return False
+
+
+def post_plan_merge_target(payload: object) -> str | None:
+    segments = shell_segments(tool_command(payload))
+    words = segments[0] if segments and len(segments) == 1 else []
+    return words[3] if len(words) >= 4 and Path(words[0]).name == "gh" and words[1:3] == ["pr", "merge"] else None
+
+
+def merge_checks_green(pr: dict, source_sha: str) -> bool:
+    checks = pr.get("statusCheckRollup")
+    if (pr.get("state") != "OPEN" or pr.get("mergeStateStatus") != "CLEAN" or
+            pr.get("headRefOid") != source_sha or not isinstance(checks, list) or not checks or len(checks) > 100):
+        return False
+    def passed(check: dict) -> bool:
+        if check.get("__typename") == "CheckRun":
+            return check.get("status") == "COMPLETED" and check.get("conclusion") in {"SUCCESS", "SKIPPED"}
+        return check.get("__typename") == "StatusContext" and check.get("state") == "SUCCESS"
+    return all(isinstance(check, dict) and passed(check) for check in checks) and any(
+        check.get("conclusion") == "SUCCESS" or check.get("state") == "SUCCESS" for check in checks)
+
+
+def verified_merge_checks(root: Path, number: str) -> bool:
+    try:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
+                              timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
+        pr = subprocess.run(["gh", "pr", "view", number, "--json", "state,mergeStateStatus,statusCheckRollup,headRefOid"],
+                            cwd=root, capture_output=True, text=True, timeout=15, check=False,
+                            creationflags=WINDOWS_NO_WINDOW)
+        return head.returncode == 0 and pr.returncode == 0 and merge_checks_green(json.loads(pr.stdout), head.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
 
 
 def post_plan_delivery_ready(runtime: dict, execution: dict, root: Path) -> bool:
@@ -1734,7 +1767,15 @@ def main() -> int:
                     return hook_response(platform, event)
                 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "CI may run only its assigned test commands; business source edits are forbidden."}}, ensure_ascii=False))
                 return 0
-            if post_plan_delivery_command(payload, root) and post_plan_delivery_ready(runtime, execution, root):
+            if post_plan_delivery_command(payload, root):
+                reason = ""
+                if not post_plan_delivery_ready(runtime, execution, root):
+                    reason = "Post-plan delivery needs the accepted task, archived Plan and clean worktree."
+                elif (number := post_plan_merge_target(payload)) and not verified_merge_checks(root, number):
+                    reason = "GitHub PR is not ready: every check must be complete and green before merge."
+                if reason:
+                    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}, ensure_ascii=False))
+                    return 0
                 append_session_event(root, event, platform, current_session_id, session_details(audit_details(
                     payload, event, current_session_id, runtime,
                     {"result": "post-plan-delivery", "taskId": ci.get("taskId")},

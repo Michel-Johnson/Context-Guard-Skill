@@ -104,6 +104,28 @@ print('POST_PLAN_DELIVERY_OK')`]);
   assert.equal(result.stdout.trim(), 'POST_PLAN_DELIVERY_OK');
 });
 
+test('post-plan PR merge fails closed while GitHub checks fail or have not run', () => {
+  const result = run(python, ['-c', `import sys,copy,types; from pathlib import Path; sys.path.insert(0,${JSON.stringify(path.join(repository, 'scripts'))}); import context_guard_hook as h
+command=lambda value:{"tool_name":"Bash","tool_input":{"command":value}}
+assert h.post_plan_merge_target(command('gh pr merge 17 --merge')) == '17'
+assert not h.post_plan_delivery_command(command('gh pr merge --merge'),Path('/tmp/lab'))
+good={"state":"OPEN","mergeStateStatus":"CLEAN","headRefOid":"a"*40,"statusCheckRollup":[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"},{"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"}]}
+assert h.merge_checks_green(good,'a'*40)
+for change in ({"mergeStateStatus":"UNSTABLE"},{"statusCheckRollup":[]},{"headRefOid":"b"*40},{"statusCheckRollup":[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"FAILURE"}]},{"statusCheckRollup":[{"__typename":"CheckRun","status":"IN_PROGRESS","conclusion":None}]}):
+    candidate={**good,**change}
+    assert not h.merge_checks_green(candidate,'a'*40),candidate
+original=h.subprocess.run
+def run_failure(args,**kwargs):
+    return types.SimpleNamespace(returncode=0,stdout='a'*40+'\\n' if args[0]=='git' else __import__('json').dumps({**good,'mergeStateStatus':'UNSTABLE'}))
+h.subprocess.run=run_failure
+assert not h.verified_merge_checks(Path('/tmp/lab'),'17')
+h.subprocess.run=lambda args,**kwargs: types.SimpleNamespace(returncode=0,stdout='a'*40+'\\n' if args[0]=='git' else __import__('json').dumps(good))
+assert h.verified_merge_checks(Path('/tmp/lab'),'17')
+h.subprocess.run=original
+print('PR_MERGE_GATE_OK')`]);
+  assert.equal(result.stdout.trim(), 'PR_MERGE_GATE_OK');
+});
+
 test('Claude display name uses only the bounded own-session transcript metadata', async t => {
   const project = await fixture();
   t.after(() => fs.rm(project, { recursive: true, force: true }));
