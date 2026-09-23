@@ -97,11 +97,28 @@ export class WorkbenchSync {
     return this.cachedDiff.operations;
   }
   dirty() { return !!this.inputDraft || this.composing || !!this.inflight || !!this.pendingRequest || this.operations().length > 0; }
+  legacyDeliveryEntries() {
+    const prefix = `cg-delivery:${this.config?.root}:`;
+    const entries = [];
+    try {
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key?.startsWith(prefix)) entries.push({ key, raw: localStorage.getItem(key) });
+      }
+    } catch { return null; }
+    return entries;
+  }
+  recoveryNotice(fallback) {
+    const issue = this.legacyDeliveryRecovery === null ? '无法检查旧派发记录；请导出浏览器数据后再迁移接口'
+      : this.legacyDeliveryRecovery?.length ? `发现 ${this.legacyDeliveryRecovery.length} 项旧派发记录；请导出核对，系统不会自动重派发` : '';
+    return issue ? [fallback, issue].filter(Boolean).join('；') : fallback;
+  }
   loadRecovery() {
     const restored = this.captureKey ? stored(this.captureKey) : null;
     const legacy = stored('cg-workbench-maps-v16');
     this.recovery = restored; this.legacy = legacy;
-    return !!(restored || legacy);
+    this.legacyDeliveryRecovery = this.legacyDeliveryEntries();
+    return !!(restored || legacy || this.legacyDeliveryRecovery?.length || this.legacyDeliveryRecovery === null);
   }
   async restoreRecoveryDraft() {
     const draft = this.recovery;
@@ -135,7 +152,8 @@ export class WorkbenchSync {
     this.panel.querySelector('#cg-sync-status').textContent = labels[status] + (message ? ` · ${message}` : '');
     this.panel.querySelector('#cg-sync-version').textContent = this.version ? this.version.slice(0, 10) : '';
     this.panel.querySelector('#cg-sync-version').dataset.version = this.version || '';
-    const attention = { readonly: '只读', conflict: '同步冲突', offline: '连接中断', error: '保存失败' }[status];
+    const attention = { readonly: '只读', conflict: '同步冲突', offline: '连接中断', error: '保存失败' }[status]
+      || (this.legacyDeliveryRecovery?.length || this.legacyDeliveryRecovery === null ? '旧交付待核对' : '');
     /* 静态 htmlpreview 没有服务端：设置里仍记只读，顶栏不要跳出「只读」条。 */
     this.notice.hidden = !this.config || !attention;
     this.notice.textContent = attention ? `${attention}${status === 'error' && message ? ` · ${compact(message)}` : ''}` : '';
@@ -229,7 +247,7 @@ export class WorkbenchSync {
       const recovery = hasRecovery ? await this.restoreRecoveryDraft().catch(() => 'failed') : 'none';
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
       this.setStatus(recovery === 'conflict' ? 'conflict' : recovery === 'failed' ? 'error' : 'synced',
-        recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice);
+        this.recoveryNotice(recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice));
       this.startingRecovery = false;
       return true;
     } catch (e) {
@@ -434,7 +452,7 @@ export class WorkbenchSync {
   }
   download(value, name) { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   export() {
-    this.download({ project: this.doc?.project, current: this.ready ? { ...this.doc, root: copy(this.a.getRoot()) } : null, draft: this.captureKey ? stored(this.captureKey) : null, legacy: stored('cg-workbench-maps-v16'), inputDraft: this.inputDraft }, 'context-guard-recovery.json');
+    this.download({ project: this.doc?.project, current: this.ready ? { ...this.doc, root: copy(this.a.getRoot()) } : null, draft: this.captureKey ? stored(this.captureKey) : null, legacy: stored('cg-workbench-maps-v16'), legacyDeliveries: this.legacyDeliveryEntries(), inputDraft: this.inputDraft }, 'context-guard-recovery.json');
   }
   async reload() {
     if (!this.config) return;
@@ -463,7 +481,7 @@ export class WorkbenchSync {
     if (this.switchingSession) return;
     if (!this.events) { this.connect(); await this.refreshAccess(); }
     const hasRecovery = this.loadRecovery();
-    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : '');
+    await this.presence(); this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.recoveryNotice(this.source?.needsReconcile ? '基线待更新或服务器不可达，保留上次版本' : hasRecovery ? '发现草稿/旧缓存，请导出或导入比较；未自动回写' : ''));
   }
   async preview(input) {
     if (!this.config) throw new Error('请在本地 Node 工作台导入');
@@ -629,7 +647,7 @@ export class WorkbenchSync {
     if (sessionId === ALL_SESSIONS) url.searchParams.delete('session'); else url.searchParams.set('session', sessionId);
     history.replaceState(null, '', url);
     const hasRecovery = this.loadRecovery();
-    this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.source?.needsReconcile ? '基线待更新，保留上次版本' : hasRecovery ? '发现保留的草稿，请导入比较' : '');
+    this.setStatus(this.source?.needsReconcile ? 'error' : 'synced', this.recoveryNotice(this.source?.needsReconcile ? '基线待更新，保留上次版本' : hasRecovery ? '发现保留的草稿，请导入比较' : ''));
     this.connect();
     setTimeout(() => this.refreshAccess().catch(error => this.setStatus('error', error.message)), 0);
     return true;
