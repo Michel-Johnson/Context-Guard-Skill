@@ -178,10 +178,11 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
   };
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
-    if (workflow || !message.text) continue;
+    const visibleAction = message.actions?.some(action => !['node-navigation', 'node-tour', 'node-read'].includes(action.kind));
+    if (workflow || (!message.text && !message.questions?.length && !visibleAction)) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
-    const cleanText = message.text.replace(/^\[实验：模拟人工输入\]\n/, '');
+    const cleanText = String(message.text || '').replace(/^\[实验：模拟人工输入\]\n/, '');
     const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
     const lead = message.questionOnly ? '' : cleanText;
     if (lead && !legacy) content.append(markdownFragment(lead, doc));
