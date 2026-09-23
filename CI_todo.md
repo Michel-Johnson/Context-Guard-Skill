@@ -4,6 +4,8 @@
 
 - [ ] Filesystem v2 运行时闭环仍待验收：生成器、API/Hook 是否暴露 Markdown 投影、多轮持久化。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。Todo/Idea 索引摘要仍截成 20 字、只重建 A1 等运行时限制照旧记录。
 
+- [ ] Idea 阅读隔离尚未完成：执行 Agent 的 v2 workbench 快照已过滤 Idea、普通 Agent 写入已拒绝；兼容用的私有 Main/Session 原始快照接口仍返回完整 Map。后续版本化阅读接口须按角色隔离，完成前不得宣称普通 Agent 无法从任何兼容入口读取 Idea。
+
 - [x] Coordinator 节点挂载拒绝按钮不再依赖浏览器原生 `prompt`，点击即提交稳定拒绝并通知模型重新提案；PR #287（`f4f3c79`）Required 全绿并部署，Cloud 浏览器回归覆盖真实拒绝请求。生产原审核卡已不再处于待审核状态，无法对同一提案重复拒绝。
 
 - [ ] 真实 Cloud 联调已复现挂载后的接续丢失与旧 Main 版本错误循环；已修复自动接续、原轮次停止和受限静态纠错提示。真实新建本地 Session、Plan/CI/验收/合并归档仍在推进，不能以单元回归替代原生闭环。

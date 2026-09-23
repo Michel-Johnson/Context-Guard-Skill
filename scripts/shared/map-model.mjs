@@ -265,12 +265,14 @@ export function applyOperations(document, operations, actor, grants = []) {
   const human = actor.kind === 'human';
   const developer = actor.kind === 'developer';
   const coordinator = actor.kind === 'coordinator';
+  const ideaWriter = human || coordinator;
   const directStructure = human || developer || coordinator;
   const allowed = node => directStructure || grants.includes(node.id) || (node.proposal === 'proposed' && node.proposedBy === actor.sessionId);
   for (const op of operations) {
     if (op.type === 'initialize') {
       if (doc.root !== null || typeof op.project !== 'string' || !op.project.trim()) throw new MapError('INVALID_INITIALIZATION', 'Only an empty legacy pending map can be initialized');
       checkFields(op.node, ['id', ...editableFields, 'children', '_inbox']);
+      if (!ideaWriter && op.node.ideas?.length) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
       if (!human && op.node.access?.length) throw new MapError('FORBIDDEN', 'Agent cannot set node access', 403);
       if (!human && (op.node.children?.length || op.node._inbox?.length)) throw new MapError('FORBIDDEN', 'Only the workbench can initialize a complete map', 403);
       doc.project = op.project;
@@ -284,6 +286,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       const parent = index.get(op.parentId)?.node;
       if (!parent) throw new MapError('NOT_FOUND', 'Parent is missing', 404);
       checkFields(op.node, ['id', ...editableFields]);
+      if (!ideaWriter && op.node.ideas?.length) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
       if (!directStructure) {
@@ -389,6 +392,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       if (!allowed(target.node)) throw new MapError('FORBIDDEN', `Session is not authorized for ${op.id}`, 403);
       if (op.type === 'update') {
         checkFields(op.fields);
+        if (!ideaWriter && Object.hasOwn(op.fields, 'ideas')) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
         if (!human && ['proposal', 'isNew', 'access'].some(key => Object.hasOwn(op.fields, key))) throw new MapError('FORBIDDEN', 'Agent cannot confirm proposals or change node access', 403);
         Object.assign(target.node, copy(op.fields));
       } else if (op.type === 'move') {

@@ -1055,7 +1055,6 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
           kind: 'module',
           purpose: 'Own HTTP entry points',
           owns: ['src/m1/'],
-          ideas: [{ text: '支持导出 markdown：GET /export.md', state: 'dirty' }],
           memories: [{
             text: 'Bootstrap first layer',
             paths: ['src/m1/export.md'],
@@ -1073,7 +1072,7 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
 
   const prompt = hook('UserPromptSubmit', project, session, {
     turn_id: 'idea-turn',
-    prompt: '在 M1 上记 idea：支持导出 markdown，然后变成可执行 todo',
+    prompt: '在 M1 上记录需求：支持导出 markdown，变成可执行 todo',
   });
   const signalId = prompt.json.hookSpecificOutput.additionalContext.match(/User signal: (SIG-[a-f0-9]+)/)?.[1];
   assert.ok(signalId);
@@ -1090,11 +1089,11 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
 
   run(python, [
     contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
-    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从节点 idea 写入可执行 todo',
+    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从用户需求写入可执行 todo',
   ]);
   run(python, [
     contextScript, 'record-todo', '--root', project, '--session', session, '--signal', signalId,
-    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从节点 idea 写入可执行 todo',
+    '--node', 'M1', '--title', '支持导出 markdown', '--description', '从用户需求写入可执行 todo',
   ]);
 
   const recorded = JSON.parse(run(process.execPath, [

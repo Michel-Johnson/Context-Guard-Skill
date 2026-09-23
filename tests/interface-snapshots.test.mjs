@@ -30,6 +30,25 @@ test('IF-034: fixed-version pages survive edits and restart, but never bypass Se
   await assert.rejects(snapshots.read(principal, { ...message, payload: { ...message.payload, nodeIds: ['B'] } }, options), { code: 'FORBIDDEN' });
 });
 
+test('Idea text is absent from execution-Agent snapshots and role changes cannot reuse a cached page', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-idea-snapshot-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const snapshots = new WorkbenchSnapshots(directory);
+  const principal = { repositoryId: 'repo', deviceId: 'device', agentId: 'same-id', role: 'device' };
+  const message = { v: 2, id: 'read', type: 'workbench.read', session: { id: 's', generation: 1 },
+    payload: { scope: 'main', cursor: '', limit: 10 } };
+  const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', ideas: [{ id: 'I1', text: 'Coordinator only' }] } };
+  const options = { grants: async () => ['R'], load: async () => ({ doc, version: 'v1' }) };
+  const agentPage = await snapshots.read(principal, message, options);
+  assert.equal(Object.hasOwn(agentPage.items[0].node, 'ideas'), false);
+  const coordinator = { ...principal, role: 'coordinator' };
+  const coordinatorPage = await snapshots.read(coordinator, message, options);
+  assert.equal(coordinatorPage.items[0].node.ideas[0].text, 'Coordinator only');
+  assert.notDeepEqual(agentPage.items, coordinatorPage.items);
+  const pinned = { ...message, payload: { ...message.payload, version: 'v1' } };
+  assert.equal(Object.hasOwn((await snapshots.read(principal, pinned, options)).items[0].node, 'ideas'), false);
+});
+
 test('IF-042: recovery pages pin Map and pending messages to one durable barrier without acknowledging execution', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-recovery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
