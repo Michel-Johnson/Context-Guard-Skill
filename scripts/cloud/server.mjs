@@ -815,14 +815,18 @@ export async function startCloudServer({
             const creation = await store.requestSessionCreation(principal, { operationId: `task:${digest(task.taskId)}:${task.attempt || 0}`,
               templateSessionId: task.templateSessionId, name: `任务 ${task.taskId}` });
             task = await store.updateProjectTask(principal, task.taskId, { stage: 'starting', creationId: creation.id, sessionId: creation.sessionId });
-            if (task.itemId && task.nodeId && ['todo', 'bug'].includes(task.kind)) await writeItemSessions(project, task, creation.sessionId);
+            if (task.itemId && task.nodeId && ['todo', 'bug'].includes(task.kind) &&
+                await writeItemSessions(project, task, creation.sessionId) !== creation.sessionId) {
+              protocolFail('CONFLICT', 'The approved Map item disappeared before Session binding');
+            }
           }
         }
         if (task.stage !== 'starting') continue;
         const creation = (await store.sessionCreations(human)).find(item => item.id === task.creationId);
         if (creation?.state === 'failed') {
-          const attempt = (task.attempt || 0) + 1;
-          await store.updateProjectTask(principal, task.taskId, { stage: attempt < 3 ? 'queued' : 'failed', attempt, error: creation.error || 'CREATION_FAILED' });
+          // A new creation request would mint a second executionSessionId for
+          // the same approved task. Preserve the failed identity for recovery.
+          await store.updateProjectTask(principal, task.taskId, { stage: 'failed', error: creation.error || 'CREATION_FAILED' });
           continue;
         }
         if (creation?.state !== 'registered') {

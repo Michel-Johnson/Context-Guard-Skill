@@ -1030,7 +1030,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: {
     v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root,
   }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
-  let mode = 'idle', mainVersion = 'v1';
+  let mode = 'idle', mainVersion = 'v1', bugItemId = '', bugTaskId = '';
   const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
   const scoped = (request = {}) => {
     const system = String(request.system || ''), marker = '本对话仅负责这一 Map 事项：';
@@ -1047,11 +1047,15 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
       const current = mode;
       // Leftover item-conversation review.result turns must not consume idea/bug mounts.
       const consume = (current === 'prepare' && itemId === 'TD-local')
+        || (current === 'prepare-bug' && itemId === bugItemId)
         || ((current === 'idea' || current === 'bug') && unscoped);
       if (consume) mode = 'idle';
       const used = consume ? current : 'idle';
       if (used === 'prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare', name: 'prepare_task', input: {
         taskId, text: '从工作台挂上 Coordinator', acceptance: '事项上能看到绑定的 Session', nodeIds: ['T0'], mainVersion,
+      } }] };
+      if (used === 'prepare-bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-bug', name: 'prepare_task', input: {
+        taskId: bugTaskId, text: '修复审批后绑定的缺陷', acceptance: '修复完成并通过测试', nodeIds: ['T0'], mainVersion,
       } }] };
       if (used === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
         mainVersion, nodeId: 'T0', kind: 'idea', title: '先记一笔', description: '想法不需要执行 Session',
@@ -1108,8 +1112,8 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   mainVersion = memory.main.version;
   mode = 'prepare';
   await post(itemEndpoint, { id: 'prepare-local', text: '准备这个事项' });
-  const poll = async predicate => {
-    for (let i = 0; i < 200; i++) { const state = await itemState(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
+  const poll = async (predicate, load = itemState) => {
+    for (let i = 0; i < 200; i++) { const state = await load(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
     assert.fail('Coordinator state did not advance');
   };
   const ready = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === taskId));
@@ -1158,6 +1162,34 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   const afterBug = await itemState();
   assert.equal(afterBug.sessionCreations.length, 1);
   assert.equal(afterBug.sessionCreations[0].sessionId, executionSessionId);
+  bugItemId = mountedBug.id;
+  bugTaskId = `map-bug-${createHash('sha256').update(`${projectId}:T0:bug:${bugItemId}`).digest('hex').slice(0, 24)}`;
+  const bugConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'bug', itemId: bugItemId });
+  const bugEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(bugConversation.id)}`;
+  mainVersion = memory.main.version; mode = 'prepare-bug';
+  await post(bugEndpoint, { id: 'prepare-bug', text: '准备修复缺陷' });
+  const bugState = async () => (await fetch(bugEndpoint, { headers })).json();
+  const bugReady = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === bugTaskId), bugState);
+  const bugApproval = bugReady.approvals.find(item => item.taskId === bugTaskId);
+  await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(bugConversation.id)}`,
+    { id: 'approve-bug', proposalId: bugApproval.id, decision: 'approved', reason: '可以修复' });
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if ((await bugState()).sessionCreations.length === 2) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const failureCreation = (await bugState()).sessionCreations.find(item => item.sessionId !== executionSessionId);
+  assert.ok(failureCreation);
+  await deviceMessage({ id: 'fail-bug-creation', type: 'sync.heartbeat', payload: {
+    sessions: [], creationResults: [{ id: failureCreation.id, error: 'NATIVE_START_FAILED' }],
+  } });
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if ((await bugState()).projectTasks.some(task => task.taskId === bugTaskId && task.stage === 'failed')) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const failed = await bugState();
+  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).stage, 'failed');
+  assert.equal(failed.sessionCreations.length, 2, 'creation failure must retain the first Session identity');
+  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
 });
 
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
