@@ -613,7 +613,7 @@ export async function startCloudServer({
                   if (!item?.id || knownItems.has(item.id)) continue;
                   const closed = kind === 'todo' ? item.status === 'done' : isClosedBugStatus(item.status);
                   if (closed) continue;
-                  const legacyDispatch = item.dispatch?.task_id && item.dispatch?.session_id;
+                  const legacyDispatch = normalizedSessions(item).length > 0 || item.dispatch?.task_id || item.dispatch?.session_id;
                   tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '',
                     stage: legacyDispatch ? 'legacy-dispatch-review' : item.status || 'pending',
                     executionSessionId: null,
@@ -637,8 +637,8 @@ export async function startCloudServer({
               const entry = root && entries(root).get(requirements.nodeId)?.node;
               const item = entry?.[`${requirements.kind}s`]?.find(value => value?.id === requirements.itemId);
               if (!item) protocolFail('NOT_FOUND', 'Map TODO/Bug is no longer available');
-              if (item.dispatch?.task_id && item.dispatch?.session_id) {
-                protocolFail('CONFLICT', 'Legacy task dispatch needs reconciliation before a new Session can be created');
+              if (normalizedSessions(item).length || item.dispatch?.task_id || item.dispatch?.session_id) {
+                protocolFail('CONFLICT', 'Legacy Session metadata needs reconciliation before a new Session can be created');
               }
               const expectedTaskId = mapWorkTaskId(project.id, requirements.nodeId, requirements.kind, requirements.itemId);
               if (requirements.taskId !== expectedTaskId) protocolFail('CONFLICT', 'Task identity does not match the Map TODO/Bug');

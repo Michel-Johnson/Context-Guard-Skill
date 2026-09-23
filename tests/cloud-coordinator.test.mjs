@@ -1031,7 +1031,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
   const root = { id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [
-    { id: 'TD-local', title: '本地事项', desc: '从工作台挂上 Coordinator', status: 'pending', sessions: ['legacy-session'] },
+    { id: 'TD-local', title: '本地事项', desc: '从工作台挂上 Coordinator', status: 'pending', sessions: [] },
     { id: 'TD-legacy', title: '旧派单', desc: '需要先核对原任务', status: 'pending', sessions: ['legacy-session'],
       dispatch: { task_id: 'legacy-task', session_id: 'legacy-session', status: 'received' } },
     { id: 'TD-done', title: '已完成', desc: '不再开工', status: 'done', sessions: [] },
@@ -1116,7 +1116,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   const local = memory.main.memory.map.root.todos.find(item => item.id === 'TD-local');
   const done = memory.main.memory.map.root.todos.find(item => item.id === 'TD-done');
   const deferred = memory.main.memory.map.root.bugs.find(item => item.id === 'B900');
-  assert.deepEqual(local.sessions, ['legacy-session']);
+  assert.deepEqual(local.sessions, []);
   assert.deepEqual(done.sessions, []);
   assert.equal(deferred.status, 'deferred');
   assert.deepEqual(deferred.sessions, []);
@@ -1149,8 +1149,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   await post(`${workbench}/api/coordinator/approval?conversation=${encodeURIComponent(opened.id)}`, approve);
   assert.equal((await itemState()).sessionCreations.length, 1, 'replaying brief approval must not create another Session');
   memory = await readMemoryView(memoryConfig, projectId);
-  assert.deepEqual(memory.main.memory.map.root.todos.find(item => item.id === 'TD-local').sessions,
-    [executionSessionId, 'legacy-session']);
+  assert.deepEqual(memory.main.memory.map.root.todos.find(item => item.id === 'TD-local').sessions, [executionSessionId]);
   mainVersion = memory.main.version;
   const legacy = `${workbench}/api/coordinator`;
   const waitMounted = async predicate => {
