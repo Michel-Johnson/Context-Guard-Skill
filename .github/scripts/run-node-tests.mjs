@@ -22,11 +22,11 @@ if (files.length === 0) {
   throw new Error("No Node test files were discovered.");
 }
 
-// Several suites launch Git, Python and local servers. Bound file-level
-// concurrency instead of scaling subprocesses with the host's CPU count.
+// Several suites launch Git, Python and local servers. Two concurrent files
+// avoid starving Coordinator shutdown while keeping the full suite bounded.
 const started = Date.now();
 try {
-  await run(process.execPath, ["--test", "--test-concurrency=4", ...files], {
+  await run(process.execPath, ["--test", "--test-concurrency=2", ...files], {
     inheritOutput: true, timeout: 15 * 60 * 1000,
   });
 } catch (error) {
