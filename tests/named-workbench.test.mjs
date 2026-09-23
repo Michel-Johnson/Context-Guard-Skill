@@ -95,6 +95,18 @@ test('named HTTP entry preserves authentication, Origin/Host checks, session reg
   assert.equal((await call(named.url, '/__context_guard/health')).status, 200);
   assert.equal((await call(proxy.state.base, '/__cg_proxy/routes', { method: 'POST', body: {} })).status, 401);
 });
+
+test('an explicit local Coordinator role persists without granting Main write authority', async t => {
+  const { root, backend } = await environment(t);
+  const selected = await cliJSON(['workbench', '--root', root, '--session', 'test-0', '--role', 'coordinator', '--direct']);
+  assert.equal(selected.binding.role, 'coordinator');
+  const resumed = await cliJSON(['workbench', '--root', root, '--session', 'test-0', '--direct']);
+  assert.equal(resumed.binding.role, 'coordinator', 'ordinary rebinding retains the explicit context role');
+  const rejected = await request(backend.state, '/api/session-prepare', { method: 'POST', body: { sessionId: 'test-0', role: 'admin' } }).catch(error => error);
+  assert.equal(rejected.code, 'INVALID_ROLE');
+  assert.equal((await cliJSON(['workbench', '--binding-status', '--root', root, '--session', 'test-0'])).session.role, 'coordinator');
+  await assert.rejects(cliJSON(['map', 'main', 'apply', '--root', root, '--session', 'test-0']), /FORBIDDEN/);
+});
 test('five live SSE pages suppress automatic duplicate opens; first parallel claim wins', async t => {
   const { backend, named } = await environment(t);
   const claims = await Promise.all(Array.from({ length: 5 }, () => request(backend.state, '/api/open-claim', { method: 'POST', body: {} })));
