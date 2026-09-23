@@ -211,9 +211,58 @@ async function installMap(project) {
   return map;
 }
 
-async function startPlan(t, project, session, paths = ['src/']) {
+function findMapNode(node, nodeId) {
+  if (!node) return null;
+  if (node.id === nodeId) return node;
+  for (const child of [...(node.children || []), ...(node._inbox || [])]) {
+    const found = findMapNode(child, nodeId);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function seedHumanReview(project, session, nodeId = 'N1') {
+  const review = {
+    decision: 'approved', sessionId: session, reviewedAt: new Date().toISOString(), reason: 'recorded human review',
+  };
+  const item = { id: 'TD-human-review', title: '验收本轮工作', status: 'done', sessions: [session], review };
+  const identity = await resolveProject(project);
+  const stateFile = path.join(identity.sharedDir, 'workbench.json');
+  let state = null;
+  try { state = JSON.parse(await fs.readFile(stateFile, 'utf8')); } catch { state = null; }
+  if (state?.url) {
+    const boot = await fetch(new URL('/__context_guard/bootstrap', state.url)).then(response => response.json());
+    const headers = { Authorization: `Bearer ${boot.token}`, 'Content-Type': 'application/json' };
+    const current = await fetch(new URL('/api/state', state.url), { headers }).then(response => response.json());
+    const node = findMapNode(current.doc.root, nodeId) || current.doc.root;
+    const todos = [...(node.todos || [])];
+    const index = todos.findIndex(entry => entry.id === item.id);
+    if (index >= 0) todos[index] = { ...todos[index], ...item };
+    else todos.push(item);
+    const committed = await fetch(new URL('/api/commit', state.url), {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        baseVersion: current.version, operationId: `human-review:${session}`,
+        operations: [{ type: 'update', id: node.id, fields: { todos } }],
+      }),
+    });
+    assert.equal(committed.status, 200, await committed.text());
+    return;
+  }
+  const mapFile = path.join(project, '.codex/context/map.json');
+  const map = JSON.parse(await fs.readFile(mapFile, 'utf8'));
+  const node = findMapNode(map.root, nodeId) || map.root;
+  node.todos = Array.isArray(node.todos) ? node.todos : [];
+  const index = node.todos.findIndex(entry => entry.id === item.id);
+  if (index >= 0) node.todos[index] = { ...node.todos[index], ...item };
+  else node.todos.push(item);
+  await fs.writeFile(mapFile, `${JSON.stringify(map, null, 2)}\n`);
+}
+
+async function startPlan(t, project, session, paths = ['src/'], { humanReview = true } = {}) {
   const ctx = path.join(project, '.codex/context');
   await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), JSON.stringify({ sessions: { [session]: { nodes: ['N1'] } } }));
+  if (humanReview) await seedHumanReview(project, session);
   run(process.execPath, [workbenchCli, 'workbench', '--root', project, '--port', String(await freePort())]);
   return JSON.parse(run(python, [contextScript, 'plan-start', '--root', project, '--session', session, '--input', '-'], {
     input: JSON.stringify({ approved: true, summary: '实现并验证运行时', node_ids: ['N1'], paths }),
@@ -490,10 +539,11 @@ test('configured Cloud hooks prepare once, track paths, checkpoint and require f
   await confirmBinding(project, session);
   hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
   await installMap(project);
+  await seedHumanReview(project, session);
   await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
   const ctx = path.join(project, '.codex/context');
   await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
-  await startPlan(t, project, session);
+  await startPlan(t, project, session, ['src/'], { humanReview: false });
 
   const prepared = hook('PreToolUse', project, session, {
     tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
@@ -1102,6 +1152,28 @@ test('completion receipts require evidence, scope review, all files and fresh co
   const memory = map.root.children[0].memories.at(-1);
   assert.equal(memory.assessment.decision, 'reuse');
   assert.ok(memory.plan_id && memory.verification && memory.recorded_at);
+});
+
+test('archive-session and plan-finish refuse until a human review of that work is recorded', async t => {
+  const project = await fixture(), session = 'review-gate-session';
+  t.after(() => dispose(project));
+  await confirmBinding(project, session);
+  hook('SessionStart', project, session, { is_background_agent: true });
+  await installMap(project);
+  await startPlan(t, project, session, ['src/'], { humanReview: false });
+  await fs.writeFile(path.join(project, 'src/scratch.txt'), 'changed\n');
+  hook('PostToolUse', project, session, {
+    tool_name: 'apply_patch', tool_use_id: 'review-gate', tool_input: { path: path.join(project, 'src/scratch.txt') },
+  });
+  assert.throws(() => archivePlan(project, session, 'src/scratch.txt'), /Human review of this work is required/);
+  assert.throws(() => finishPlan(project, session), /Archive this plan|Human review of this work is required/);
+  await seedHumanReview(project, session);
+  const inbox = JSON.parse(run(process.execPath, [workbenchCli, 'map', 'inbox', '--root', project, '--session', session, '--start']).stdout);
+  if (inbox.receipt) {
+    run(process.execPath, [workbenchCli, 'map', 'ack', '--root', project, '--session', session, '--receipt', String(inbox.receipt)]);
+  }
+  archivePlan(project, session, 'src/scratch.txt');
+  finishPlan(project, session);
 });
 
 test('unclassified plan files fail before any Map write; explicit support assignments recover', async t => {

@@ -350,6 +350,22 @@ async function main() {
   const automaticUrl = automaticContext.match(/http:\/\/[^\s]+\/prototype\/workbench\.html/)?.[0];
   assert.ok(automaticUrl, `a bound SessionStart should reuse and report its project workbench URL\n${automaticWorkbenchStart.stderr}`);
   assert.equal((await fetch(automaticUrl)).status, 200);
+  const workbenchOrigin = new URL(automaticUrl).origin;
+  const boot = await (await fetch(`${workbenchOrigin}/__context_guard/bootstrap`)).json();
+  const humanHeaders = { Authorization: `Bearer ${boot.token}`, "Content-Type": "application/json" };
+  const current = await (await fetch(`${workbenchOrigin}/api/state`, { headers: humanHeaders })).json();
+  const reviewCommit = await fetch(`${workbenchOrigin}/api/commit`, {
+    method: "POST", headers: humanHeaders,
+    body: JSON.stringify({
+      baseVersion: current.version, operationId: "ci-human-review",
+      operations: [{ type: "update", id: current.doc.root.id, fields: { todos: [
+        ...(current.doc.root.todos || []),
+        { id: "TD-human-review", title: "验收本轮工作", status: "done", sessions: ["session-three"],
+          review: { decision: "approved", sessionId: "session-three", reviewedAt: new Date().toISOString(), reason: "CI smoke human review" } },
+      ] } }],
+    }),
+  });
+  assert.equal(reviewCommit.status, 200, await reviewCommit.text());
   run(python, [contextScript, "archive-session", "--root", project, "--session", "session-three", "--summary", "CI 主链路通过", "--decisions", "使用真实生命周期会话", "--next", "继续回归", "--files", "scripts/context_guard.py"]);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /## Archive .*CI 主链路通过/s);
   assert.match(fs.readFileSync(path.join(project, ".codex/context/sessions/session-three.md"), "utf8"), /unclassified files: scripts\/context_guard\.py/);
