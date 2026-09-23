@@ -496,6 +496,18 @@ try {
   assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[32,32,'50%'],'send uses a compact circular control');
   assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
+  await page.setViewportSize({width:390,height:844});
+  await coordinator.getByLabel('发送给 Coordinator').fill('第一行\n第二行\n第三行');
+  const phoneComposer = await coordinator.evaluate(el=>{
+    const input=el.querySelector('.coordinator-input-shell textarea').getBoundingClientRect();
+    const button=el.querySelector('.coordinator-send').getBoundingClientRect();
+    return {height:input.height,right:input.right-button.right,bottom:input.bottom-button.bottom,top:button.top-input.top};
+  });
+  assert.ok(phoneComposer.height>48,`mobile multiline input expands: ${JSON.stringify(phoneComposer)}`);
+  assert.ok(Math.abs(phoneComposer.right-8)<=1&&Math.abs(phoneComposer.bottom-8)<=1&&phoneComposer.top>8,
+    `send button stays at the lower-right of the expanded mobile input: ${JSON.stringify(phoneComposer)}`);
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
+  await page.setViewportSize({width:1440,height:1000});
   await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
