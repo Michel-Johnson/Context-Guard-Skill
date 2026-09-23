@@ -5,6 +5,7 @@ export const installedFiles = [
   "roles.md",
   "Coordinator.md",
   "Executor.md",
+  "Developer.md",
   "Tester.md",
   "scripts/workbench/device-heartbeat.mjs",
   "scripts/workbench/protocol-delivery.mjs",

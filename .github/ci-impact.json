@@ -44,6 +44,7 @@
         "THIRD_PARTY_NOTICES.md",
         "Coordinator.md",
         "Executor.md",
+        "Developer.md",
         "Tester.md",
         "roles.md",
         "references/**",
