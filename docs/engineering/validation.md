@@ -19,7 +19,7 @@
 
 | 案例与历史提交 | 按新流程推演 | 发现及判定 |
 |---|---|---|
-| [#136 文件/记忆设计](https://github.com/Michel-Johnson/Context-Guard-Skill/pull/136)，`d654a77f` | R0：只新增设计资料，不改变现行 schema；验收是准确区分设计、实验与实现，不复制私有数据 | Required 为 SUCCESS，PR 仅一个 MD；安装 N/A 有范围依据。证明小文档不必造运行验收；旧资料当前位于 `docs/design/file-design.md`，不能按历史路径建立第二份权威。 |
+| [#136 文件/记忆设计](https://github.com/Michel-Johnson/Context-Guard-Skill/pull/136)，`d654a77f` | R0：只新增设计资料，不改变现行 schema；验收是准确区分设计、实验与实现，不复制私有数据 | Required 为 SUCCESS，PR 仅一个 MD；安装 N/A 有范围依据。证明小文档不必造运行验收；该草案已不在 main，不能按历史路径建立第二份权威。 |
 | [#233 刷新后草稿恢复](https://github.com/Michel-Johnson/Context-Guard-Skill/pull/233)，`284823a7` | R3：虽仅少量文件，涉及恢复/重放和覆盖风险；验收应包括同版本恢复、陈旧草稿冲突、重复请求与持久结果 | diff 同时改实现与本地/Cloud 浏览器回归，历史 Required 为 SUCCESS。PR 描述未给旧版本失败证据，不能倒推已做；新模板要求补明。这次运行当前基线的隔离浏览器套件，结果见下。 |
 | [#179 共享层/演示隔离](https://github.com/Michel-Johnson/Context-Guard-Skill/pull/179)，`437c385` | R2：源码归属调整虽多文件，仍应围绕同一行为边界；需公共接口、旧入口兼容、包边界与运行升级 | diff 有共享依赖和包清单断言，历史 Required 为 SUCCESS；PR 自述曾有浏览器重跑中，不能把那句当最终通过。本次重跑当前协议回归，不宣称重演旧发布或当下生产。 |
 

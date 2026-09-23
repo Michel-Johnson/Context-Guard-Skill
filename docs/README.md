@@ -14,8 +14,7 @@
 | 已验证范围与未完成验收 | [CI_todo.md](../CI_todo.md)；历史条目不覆盖后续替代说明 |
 | 文件归属与依赖边界 | [仓库布局](repository-layout.md) |
 | Agent 使用入口 | [SKILL.md](../SKILL.md) |
-| 设备 / Session 消息格式 | [接口 v2](interface-contract-v2.md)、[机器可读契约](interface-contract-v2.json) |
-| 数据对象与示例 | [数据契约](interface-data-contracts.md)、[JSON 示例](interface-json-examples.md) |
+| 设备 / Session 消息格式与示例 | [接口 v2](interface-contract-v2.md)、[机器可读契约](interface-contract-v2.json) |
 | Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md) |
 | 私有 Main / Session 记忆及发布 | [服务器记忆](../references/server-memory.md) |
 | Cloud node/module、Bug、Todo、Idea 文件格式 | [Memory Filesystem v2](../references/memory-filesystem-v2/README.md) |
@@ -34,9 +33,7 @@
 
 草案不是当前设计版本，禁止当存储、权限或发布协议。要升格必须按 [设计版本管理](../references/design-current.md) 开下一版。
 
-- [文件与记忆设计](design/file-design.md)：未升格草案。禁止当现行存储法，也不要用其中的目录候选去改 v2。
-- [工作台设计画廊](design/workbench-gallery/index.html)：独立静态设计资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
-- [接口讨论](design/interface-design-discussion.md)、[Session 接口历史草案](design/session-workbench-interface-draft.md)：保留背景，不叠加为现行规则。
+- [工作台设计画廊](design/workbench-gallery/index.html)：浏览器测试仍加载的静态资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
 - [可靠性 Review](reliability-review.md)、[消融 Review](ablation-review.md)、[Hook 验收记录](hook-closure-validation.md)：历史证据，当前限制查 CI_todo。
 - [检查怎样算通过](ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。
 

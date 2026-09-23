@@ -7,7 +7,7 @@
 | 根目录 README / RULE / CI_todo / SKILL | 用户入口、开发规则、验证状态、Agent 入口；不放实验长文 |
 | 根目录 roles / Coordinator / Developer / Tester | 当前角色设计入口；本轮不迁移、不改角色行为 |
 | `references/` | 随 Skill 分发的操作契约及角色按需参考；不能依赖未分发文件才能执行 |
-| `docs/` | 仓库维护、接口规范和验证说明；`docs/design/` 只放设计讨论与草案 |
+| `docs/` | 仓库维护、接口规范和验证说明；`docs/design/` 只保留浏览器测试仍加载的工作台画廊，不随生产页面或 Skill 分发 |
 | `bin/` | 安装和命令启动入口，不堆业务状态机 |
 | `scripts/cloud/` | Cloud 服务、鉴权、服务端记忆及人工验收 |
 | `scripts/workbench/` | 本地服务、绑定、宿主投递和当前 Session 同步 |
