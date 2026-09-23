@@ -182,6 +182,41 @@ test('IF-044: interruption hook retries the original event and never saves adapt
   assert.equal(result.status, 0, result.stderr);
 });
 
+test('local Coordinator Hook injects current Main navigation and fails closed when Cloud Main is unavailable', () => {
+  const script = `import sys, pathlib, tempfile, json
+from types import SimpleNamespace
+sys.path.insert(0, str(pathlib.Path('scripts').resolve()))
+import context_guard_hook as h
+with tempfile.TemporaryDirectory() as directory:
+ root=pathlib.Path(directory)/'project'; ctx=root/'.codex/context'; ctx.mkdir(parents=True)
+ git=pathlib.Path(directory)/'git'; shared=git/'context-guard'; (shared/'main').mkdir(parents=True)
+ document={'root':{'id':'T0','title':'Root','purpose':'Project','children':[{'id':'N1','title':'Article','purpose':'Public','todos':[{'id':'TD1','title':'Current from Main','status':'processing'}],'children':[]}]}}
+ (shared/'main/map.json').write_text(json.dumps(document),encoding='utf-8')
+ h.subprocess.run=lambda args,**kwargs: SimpleNamespace(returncode=0,stdout=str(git),stderr='')
+ snapshot={'role':'coordinator','version':'session-v1','cloud_cursor':0,'grant_nodes':[],'todos':[{'id':'TD1','title':'Stale Session title','node':'N1','status':'pending'}],'bugs':[]}
+ h.map_snapshot=lambda *args: snapshot
+ h.map_inbox=lambda *args: {'pending':False}
+ coordinator,_=h.map_context(root,ctx,'session-1')
+ assert 'Coordinator static Main context' in coordinator and 'Article' in coordinator and 'Current from Main' in coordinator
+ assert 'Stale Session title' not in coordinator
+ snapshot['role']='executor'
+ executor,_=h.map_context(root,ctx,'session-1')
+ assert 'Coordinator static Main context' not in executor and 'Article' not in executor
+ snapshot['role']='coordinator'
+ (shared/'memory-client.json').write_text('{}',encoding='utf-8')
+ cloud_document={'root':{'id':'T0','title':'Cloud Root','children':[{'id':'N1','title':'Current Cloud Article','todos':[{'id':'TD1','title':'Fresh Cloud task','status':'done'}],'children':[]}]}}
+ h.subprocess.run=lambda args,**kwargs: SimpleNamespace(returncode=0,stdout=str(git) if args[0]=='git' else json.dumps({'version':'cloud-v2','doc':cloud_document}),stderr='')
+ cloud,_=h.map_context(root,ctx,'session-1')
+ assert 'Current Cloud Article' in cloud and 'Fresh Cloud task' in cloud and 'cloud-v2' in cloud
+ assert 'Current from Main' not in cloud
+ h.subprocess.run=lambda args,**kwargs: SimpleNamespace(returncode=0 if args[0]=='git' else 1,stdout=str(git) if args[0]=='git' else '',stderr='unavailable')
+ unavailable,_=h.map_context(root,ctx,'session-1')
+ assert 'Coordinator Main navigation unavailable' in unavailable and 'Article' not in unavailable
+`;
+  const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', script], { encoding: 'utf8', windowsHide: true });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test('IF-045: source preparation can retain a pending memory transport without bypassing conflict or authorization', () => {
   const script = `import sys, pathlib\nsys.path.insert(0, str(pathlib.Path('scripts').resolve()))\nimport context_guard_hook as h\nh.sync_command=lambda *args: {'error':{'code':'MEMORY_UNAVAILABLE','message':'private detail'}}\nassert h.prepare_plan_sync(pathlib.Path('.'),'s',['src/'])=={'pending':True,'code':'MEMORY_UNAVAILABLE'}\nfor code in ['FORBIDDEN','UNAUTHORIZED','WORK_IMPACT','MEMORY_CONFLICT','SESSION_BASELINE_REQUIRED']:\n h.sync_command=lambda *args: {'error':{'code':code}}\n try: h.prepare_plan_sync(pathlib.Path('.'),'s',['src/'])\n except ValueError: pass\n else: raise AssertionError(code)\nh.sync_command=lambda *args: {'status':'conflict'}\ntry: h.prepare_plan_sync(pathlib.Path('.'),'s',['src/'])\nexcept ValueError: pass\nelse: raise AssertionError('conflict bypassed')\n`;
   const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', script], { encoding: 'utf8', windowsHide: true });

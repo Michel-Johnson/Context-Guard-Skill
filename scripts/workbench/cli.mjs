@@ -193,6 +193,7 @@ Start or print the project workbench URL. --session is optional.
 Options:
   --root <dir>           Project root (default: current directory)
   --session <id>         Bind or pin this Session
+  --role <name>          Context role: executor (default) or coordinator
   --port <n>             Backend port (default: 8877)
   --stop                 Stop the project workbench
   --list                 List registered workbenches
@@ -742,7 +743,9 @@ async function main(args) {
     ? await stateForWorkbenchUrl(project, opt['workbench-url'])
     : await ensureServer(root, Number(opt.port ?? 8877));
   if (command === 'workbench') {
-    const bindInput = sessionId ? { sessionId, worktreeRoot: root, allowRebind: !!opt.rebind } : null;
+    if (opt.role && !sessionId) throw new MapError('SESSION_REQUIRED', '--role requires --session', 400);
+    if (opt.role && !['executor', 'coordinator'].includes(opt.role)) throw new MapError('INVALID_ROLE', 'Use executor or coordinator', 400);
+    const bindInput = sessionId ? { sessionId, worktreeRoot: root, allowRebind: !!opt.rebind, ...(opt.role ? { role: opt.role } : {}) } : null;
     if (bindInput) await request(state, '/api/session-prepare', { method: 'POST', body: bindInput });
     const cloud = await readJSON(memoryConfigPath(project), null);
     const refreshed = cloud?.url ? { source: null } : await request(state, '/api/project-refresh', { method: 'POST', body: {} });
