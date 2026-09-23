@@ -177,6 +177,24 @@ export class ProtocolStore extends EventEmitter {
     this.emit('change');
     return result;
   }
+  async retrySessionCreation(principal, id) {
+    requireIdentity(principal);
+    if (principal.role !== 'coordinator' || typeof id !== 'string' || !id) fail('FORBIDDEN', 'Coordinator creation retry required');
+    const result = await this.transaction(state => {
+      const creation = state.sessionCreations?.[id];
+      if (!creation || creation.repositoryId !== principal.repositoryId) fail('NOT_FOUND', 'Session creation is unavailable');
+      if (creation.requestedBy?.role !== 'coordinator' || creation.requestedBy.agentId !== principal.agentId ||
+          !principal.creationTemplates?.includes(creation.result.templateSessionId)) fail('FORBIDDEN', 'Creation belongs to another coordinator or template');
+      if (creation.result.state !== 'failed') return creation.result;
+      const { error, completedAt, ...rest } = creation.result;
+      creation.result = { ...rest, state: 'pending', retryCount: (rest.retryCount || 0) + 1,
+        lastError: error || 'SESSION_CREATION_FAILED', lastFailedAt: completedAt || null,
+        retryRequestedAt: new Date().toISOString() };
+      return creation.result;
+    });
+    this.emit('change');
+    return result;
+  }
   async prepareProjectTask(principal, input, operationId, conversationId) {
     requireIdentity(principal);
     if (principal.role !== 'coordinator') fail('FORBIDDEN', 'Coordinator identity required');

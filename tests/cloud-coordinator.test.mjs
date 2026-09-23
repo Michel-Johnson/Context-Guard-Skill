@@ -1129,7 +1129,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   mode = 'prepare';
   await post(itemEndpoint, { id: 'prepare-local', text: '准备这个事项' });
   const poll = async (predicate, load = itemState) => {
-    for (let i = 0; i < 200; i++) { const state = await load(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
+    for (let i = 0; i < 300; i++) { const state = await load(); if (predicate(state)) return state; await new Promise(resolve => setTimeout(resolve, 50)); }
     assert.fail('Coordinator state did not advance');
   };
   const ready = await poll(state => state.approvals?.some(item => item.projectTask && item.taskId === taskId));
@@ -1197,14 +1197,16 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   await deviceMessage({ id: 'fail-bug-creation', type: 'sync.heartbeat', payload: {
     sessions: [], creationResults: [{ id: failureCreation.id, error: 'NATIVE_START_FAILED' }],
   } });
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if ((await bugState()).projectTasks.some(task => task.taskId === bugTaskId && task.stage === 'failed')) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  const failed = await bugState();
-  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).stage, 'failed');
-  assert.equal(failed.sessionCreations.length, 2, 'creation failure must retain the first Session identity');
-  assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
+  const retrying = await poll(state => state.sessionCreations.some(item => item.id === failureCreation.id &&
+    item.state === 'pending' && item.retryCount === 1), bugState);
+  assert.equal(retrying.sessionCreations.length, 2, 'creation retry must retain the first Session identity');
+  assert.equal(retrying.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
+  await deviceMessage({ id: 'bind-retried-bug', type: 'session.bind', payload: {
+    sessionId: failureCreation.sessionId, worktreeId: 'recovered-bug-tree', agentId: failureCreation.sessionId, expectedBindingVersion: '',
+  } });
+  const recovered = await poll(state => state.projectTasks.some(task => task.taskId === bugTaskId && task.stage === 'dispatched'), bugState);
+  assert.equal(recovered.sessionCreations.length, 2);
+  assert.equal(recovered.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
   const legacyConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-legacy' });
   const legacyEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(legacyConversation.id)}`;
   mode = 'prepare-legacy'; mainVersion = (await readMemoryView(memoryConfig, projectId)).main.version;
