@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
-import { applyOperations, MapError, validate, restoreSessionWorkItemOperations } from '../shared/map-model.mjs';
+import { applyOperations, entries, MapError, validate, restoreSessionWorkItemOperations } from '../shared/map-model.mjs';
 import { translateChanges, operationGrants } from '../shared/protocol-map.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
 import { memoryReadViews } from './memory-read-view.mjs';
@@ -25,6 +25,37 @@ function validateOptions({ dataDir, adminToken }) {
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
 const memoryHubs = new WeakMap();
 const headCaches = new WeakMap();
+
+function bugIds(document) {
+  if (!document?.root) return new Set();
+  const ids = new Set((document.unassigned_bugs || []).map(item => item?.id).filter(Boolean));
+  for (const { node } of entries(document.root).values()) {
+    for (const item of node.bugs || []) if (item?.id) ids.add(item.id);
+  }
+  return ids;
+}
+
+function rejectDeletedBugIds(document, deleted) {
+  const active = bugIds(document);
+  for (const name of deleted) {
+    const id = /^bugs\/([^/]+)\.md$/.exec(name)?.[1];
+    if (id && active.has(id)) throw new MapError('DELETED_WORK_ITEM', `Deleted Bug ${id} cannot be restored by a stale Session`, 409);
+  }
+}
+
+function reconcileBugRecordDeletions(previous, nextMemory, inherited = []) {
+  const deleted = new Set(inherited);
+  const remaining = bugIds(nextMemory.map);
+  for (const id of bugIds(previous?.memory?.map)) {
+    if (remaining.has(id)) continue;
+    deleted.add(`bugs/${id}.md`);
+    deleted.add(`fixes/${id}.md`);
+  }
+  rejectDeletedBugIds(nextMemory.map, deleted);
+  const records = { ...nextMemory.records };
+  for (const name of deleted) delete records[name];
+  return { memory: { ...nextMemory, records }, deletedRecordKeys: [...deleted].sort() };
+}
 
 export async function memoryHeads(configuration, projectId) {
   let cache = headCaches.get(configuration);
@@ -217,10 +248,15 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     if (!await mergedIntoMain(project, session.sourceCommit, mainSha)) throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409);
     const previousVersion = state.main?.version || null;
     const publishedAt = new Date().toISOString();
+    const deletedRecordKeys = [...new Set([...(state.main?.deletedRecordKeys || []), ...(session.deletedRecordKeys || [])])].sort();
+    rejectDeletedBugIds(session.memory.map, deletedRecordKeys);
+    const records = { ...(state.main?.memory?.records || {}), ...session.memory.records };
+    for (const name of deletedRecordKeys) delete records[name];
     const snapshot = {
       ...session,
       version: hash(encode(input)),
-      memory: { map: session.memory.map, records: { ...(state.main?.memory?.records || {}), ...session.memory.records } },
+      memory: { map: session.memory.map, records },
+      deletedRecordKeys,
       mainSha,
       ref: project.ref,
       repository: project.repository || projectId,
@@ -260,10 +296,11 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     const applied = applyOperations(current.memory.map, input.operations, actor);
     validate(applied.doc);
     const updatedAt = new Date().toISOString();
+    const reconciled = reconcileBugRecordDeletions(current, { ...current.memory, map: applied.doc }, current.deletedRecordKeys);
     const snapshot = {
       ...current,
       version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })),
-      memory: { ...current.memory, map: applied.doc },
+      ...reconciled,
       updatedAt,
     };
     validateMemory(snapshot.memory);
@@ -308,7 +345,8 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     const applied = applyOperations(current.memory.map, operations, !policy && actor.kind === 'agent' ? { kind: 'human', sessionId: actor.sessionId } : actor, grants);
     validate(applied.doc);
     const updatedAt = new Date().toISOString();
-    const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), memory: { ...current.memory, map: applied.doc }, updatedAt };
+    const reconciled = reconcileBugRecordDeletions(current, { ...current.memory, map: applied.doc }, current.deletedRecordKeys);
+    const snapshot = { ...current, version: hash(encode({ previous: current.version, operationId: input.operationId, map: applied.doc, updatedAt })), ...reconciled, updatedAt };
     state.sessions[sessionId] = snapshot;
     state.revision++;
     appendHistory(state, { scope: `session:${sessionId}`, action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
@@ -446,12 +484,15 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
           } : null;
           if (client && client.sessionId !== id) throw new MapError('SESSION_MISMATCH', 'Request Session does not match its sync context', 409);
           if (!/^[a-f0-9]{40,64}$/.test(input.sourceCommit || '')) throw new MapError('INVALID_COMMIT', 'Source commit required');
+          const reconciled = reconcileBugRecordDeletions(current, input.memory, [
+            ...(state.main?.deletedRecordKeys || []), ...(current?.deletedRecordKeys || []),
+          ]);
           snapshot = {
             sessionId: id,
             version: hash(encode(input)),
             sourceCommit: input.sourceCommit,
             baseMainVersion: input.baseMainVersion ?? null,
-            memory: input.memory,
+            ...reconciled,
             updatedAt: new Date().toISOString(),
             generation: current?.generation || (reopening ? nextSessionGeneration(closed) : 1),
             ...(client ? { lastSync: client } : {}),
