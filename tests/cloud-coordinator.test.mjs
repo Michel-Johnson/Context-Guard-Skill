@@ -399,7 +399,7 @@ test('Choice questions persist and stop before a redundant model summary; answer
   let calls = 0;
   const options = { directory, system: 'Coordinator', tools: coordinatorTools, execute, model: { next: async () => {
     calls++;
-    return { stop: 'tool_use', content: [{ type: 'text', text: 'Internal preamble' }, { type: 'tool_use', id: 'choice', name: 'ask_user', input: { question: '要上传什么？', options: ['网站构建产物', '其他文件'] } }] };
+    return { stop: 'tool_use', content: [{ type: 'text', text: '我已整理好背景，请选择下一步。' }, { type: 'tool_use', id: 'choice', name: 'ask_user', input: { question: '要上传什么？', options: ['网站构建产物', '其他文件'] } }] };
   } } };
   const service = new CoordinatorService(options);
   await service.submit({ id: 'question', text: 'Upload' }); await service.close();
@@ -408,7 +408,8 @@ test('Choice questions persist and stop before a redundant model summary; answer
   assert.equal(state.status, 'waiting-for-user');
   assert.equal(state.approvals.length, 0);
   assert.deepEqual(state.messages.at(-1).questions[0].options, ['网站构建产物', '其他文件']);
-  assert.doesNotMatch(JSON.stringify(state.messages), /Internal preamble/);
+  assert.equal(state.messages.at(-1).text, '我已整理好背景，请选择下一步。','successful question cards preserve streamed assistant text');
+  assert.equal(state.activity, null,'completed question clears its transient status');
   assert.deepEqual((await new CoordinatorService(options).state()).messages, state.messages);
   const questionId = state.messages.at(-1).questions[0].id;
   await assert.rejects(service.submit({ id: 'unknown', text: 'Answer', answerTo: 'other-conversation-question' }), { code: 'NOT_FOUND' });
@@ -419,6 +420,37 @@ test('Choice questions persist and stop before a redundant model summary; answer
   assert.deepEqual(restored.messages.flatMap(message => message.questions || []).find(question => question.id === questionId).answer, { text: '网站构建产物', requestId: 'answer' });
   assert.equal(restored.approvals.length, 0);
   await assert.rejects(service.submit({ id: 'second-answer', text: 'Changed', answerTo: questionId }), { code: 'ALREADY_ANSWERED' });
+});
+
+test('ask_user activity appears while arguments are pending and clears when the card commits', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-question-activity-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let release, signal, finishTool, toolStarted;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { signal = resolve; });
+  const toolGate = new Promise(resolve => { finishTool = resolve; });
+  const executing = new Promise(resolve => { toolStarted = resolve; });
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'ask_user' }],
+    execute: async () => { toolStarted(); await toolGate; return {}; }, model: { next: async ({ onText, onToolStart }) => {
+      await onText('我正在梳理候选项。');
+      await onToolStart('ask_user'); signal();
+      await gate;
+      return { stop: 'tool_use', content: [{ type: 'text', text: '我正在梳理候选项。' },
+        { type: 'tool_use', id: 'choice', name: 'ask_user', input: { question: '选择哪项？', options: ['第一项'] } }] };
+    } } });
+  await service.submit({ id: 'request', text: '请给我选项' });
+  await started;
+  assert.equal((await service.state()).activity, 'preparing-question');
+  release(); await executing;
+  const pending = await service.state();
+  assert.equal(pending.messages.filter(message => message.role === 'assistant').length, 0,'pending tool block does not duplicate the live stream');
+  assert.equal(pending.streamingText, '我正在梳理候选项。');
+  finishTool(); await service.close();
+  const state = await service.state();
+  assert.equal(state.status, 'waiting-for-user');
+  assert.equal(state.activity, null);
+  assert.equal(state.messages.at(-1).text, '我正在梳理候选项。');
+  assert.equal(state.messages.at(-1).questions[0].text, '选择哪项？');
 });
 
 test('Main intake preserves first edits, skips history, and replays lost replies without duplicate turns', async t => {

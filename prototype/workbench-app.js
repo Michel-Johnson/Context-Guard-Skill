@@ -4514,7 +4514,7 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button');send.type='submit';send.className='coordinator-send';send.setAttribute('aria-label','发送');send.title='发送';
   const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');sendIcon.setAttribute('viewBox','0 0 24 24');sendIcon.setAttribute('aria-hidden','true');
   const sendPath=document.createElementNS('http://www.w3.org/2000/svg','path');sendPath.setAttribute('d','M12 19V5m0 0-6 6m6-6 6 6');sendPath.setAttribute('fill','none');sendPath.setAttribute('stroke','currentColor');sendPath.setAttribute('stroke-width','2.4');sendPath.setAttribute('stroke-linecap','round');sendPath.setAttribute('stroke-linejoin','round');sendIcon.append(sendPath);send.append(sendIcon);
-  const workingBlot=createCoordinatorWorkingBlot?.(document,()=>{send.classList.add('is-working-fallback');});
+  const workingBlot=createCoordinatorWorkingBlot?.(document,()=>{send.classList.add('is-working-fallback');send.classList.remove('is-working-ready');});
   if(workingBlot)send.append(workingBlot.canvas);
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
   const retry=document.createElement('button'); retry.type='button'; retry.className='coordinator-toolbar-action';retry.textContent='↻';retry.hidden=true;
@@ -4527,12 +4527,35 @@ async function installCoordinatorPanel(sync){
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
   panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
+  let typingVisible=false,typingStartedAt=0,typingExitTimer=0,typingStopTimer=0,inkReady=false;
   const setTyping=visible=>{
-    if(typing.classList.contains('is-visible')===visible)return;
-    if(visible)workingBlot?.start();else workingBlot?.stop();
-    typing.classList.toggle('is-visible',visible);typing.setAttribute('aria-hidden',String(!visible));
-    send.classList.toggle('is-working',visible);send.classList.toggle('is-working-fallback',visible&&!workingBlot);
-    send.setAttribute('aria-label',visible?'正在处理':'发送');send.title=visible?'正在处理':'发送';
+    if(visible){
+      clearTimeout(typingExitTimer);typingExitTimer=0;
+      clearTimeout(typingStopTimer);typingStopTimer=0;
+      if(typingVisible)return;
+      typingVisible=true;typingStartedAt=performance.now();
+      typing.classList.add('is-visible');typing.setAttribute('aria-hidden','false');
+      send.classList.add('is-working');send.classList.toggle('is-working-fallback',!workingBlot);
+      send.setAttribute('aria-label','正在处理');send.title='正在处理';
+      if(inkReady)send.classList.add('is-working-ready');
+      workingBlot?.start(()=>{if(!typingVisible)return;inkReady=true;send.classList.add('is-working-ready');});
+      return;
+    }
+    if(!typingVisible||typingExitTimer)return;
+    typingExitTimer=setTimeout(()=>{
+      typingExitTimer=0;typingVisible=false;
+      typing.classList.remove('is-visible');typing.setAttribute('aria-hidden','true');
+      send.classList.remove('is-working','is-working-ready','is-working-fallback');
+      send.setAttribute('aria-label','发送');send.title='发送';
+      typingStopTimer=setTimeout(()=>{workingBlot?.stop();inkReady=false;typingStopTimer=0;},180);
+    },Math.max(0,300-(performance.now()-typingStartedAt)));
+  };
+  const activity=document.createElement('p');activity.className='coordinator-tool-activity';activity.setAttribute('role','status');
+  activity.textContent='Working · 正在整理选项';
+  const syncActivity=(state,finishing=false)=>{
+    if(state.activity!=='preparing-question'&&!finishing){activity.remove();return;}
+    const target=messages.querySelector('.coordinator-streaming .coordinator-markdown');
+    if(target)target.append(activity);else messages.insertBefore(activity,extrasHost);
   };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;
   const pinnedScrollTop=()=>{
@@ -4574,7 +4597,6 @@ async function installCoordinatorPanel(sync){
         rise.className='coordinator-rise';body.className='coordinator-rise-body';
         if(!prefersReducedMotion())rise.classList.add('is-entering');
         body.append(markdownFragment(piece,document));rise.append(body);output.append(rise);
-        setTyping(false);
       }
       if(!pinTurn()&&follow)messages.scrollTop=messages.scrollHeight;
     };
@@ -4785,7 +4807,6 @@ async function installCoordinatorPanel(sync){
     renderHistory(state);
     consumeNavigationActions(state);
     status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
-    const answering=(state.messages||[]).flatMap(message=>message.questions||[]).some(question=>question.answer?.requestId===state.activeTurnId);
     const streamingText=String(state.streamingText||'');
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
@@ -4799,10 +4820,10 @@ async function installCoordinatorPanel(sync){
         const text=question.legacy?`针对问题：${question.text}\n\n我的回答：${answer}`:answer;
         void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
-    setTyping(state.status==='running'&&!answering&&!streamShown);
+    const streamingMessage=messages.querySelector('.coordinator-streaming');
+    setTyping(state.status==='running'||!!streamingMessage);
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
-    const streamingMessage=messages.querySelector('.coordinator-streaming');
     const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown);
     if(canFinalizeStreamingInPlace){
       const finalize=()=>{
@@ -4818,6 +4839,7 @@ async function installCoordinatorPanel(sync){
           // message swaps its paragraphs for different nodes and flashes them.
           if(output)output.after(...extras);else content.replaceChildren(...finalNodes);
         }
+        syncActivity(state);
         streamingMessage.classList.remove('coordinator-streaming');
         rowKeys.set(streamingMessage,rowKey(lastTextMessage,state));
         liveReplyAwaiting=false;
@@ -4825,16 +4847,14 @@ async function installCoordinatorPanel(sync){
         if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
         canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
         if(canCorrect)status.textContent+=' · 可补充纠正意见';
+        setTyping(false);
         setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
         setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';
         queueMicrotask(()=>{if(renderedConversation===selected)render(latestConversationState||state,true);});
       };
-      let finalRevealText=lastTextMessage.text;
-      for(const question of lastTextMessage.questions||[]){
-        const prompt=String(question.text||'').trim();
-        if(prompt&&finalRevealText.trimEnd().endsWith(prompt))finalRevealText=finalRevealText.trimEnd().slice(0,-prompt.length);
-      }
+      const finalRevealText=lastTextMessage.text;
       if(streamShown!==finalRevealText){lastStreamingText=finalRevealText;updateStreamingText(streamingMessage,finalRevealText,false,finalize);}else finalize();
+      syncActivity(state,true);
       setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
       setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';pinTurn();
       return;
@@ -4966,6 +4986,7 @@ async function installCoordinatorPanel(sync){
     lastStableContent=stableKey;
     lastStreamingText=hasStreaming?streamingText:'';
     }
+    syncActivity(state);
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';

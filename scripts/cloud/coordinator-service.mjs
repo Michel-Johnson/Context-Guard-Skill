@@ -24,17 +24,20 @@ function questionsAt(state, index) {
 
 function publicMessages(state) {
   const raw = state.messages.map((message, index) => {
+    // While a tool is executing, its assistant block is still the live stream.
+    // Exposing it now creates a duplicate row that is later replaced by a card.
+    if (state.pending && index === state.messages.length - 1 && message.role === 'assistant') return null;
     const blocks = Array.isArray(message.content) ? message.content : [];
-    const sourceText = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('\n');
+    const sourceText = typeof message.content === 'string' ? message.content : blocks.filter(block => block.type === 'text').map(block => block.text).join('');
     const questions = questionsAt(state, index);
     const actions = message.actions || [];
     const text = sourceText;
-    return { role: message.role, text: questions.length ? questions.map(question => question.text).join('\n\n') : text,
+    return { role: message.role, text: text || (questions.length ? questions.map(question => question.text).join('\n\n') : ''),
       ...(message.answerTo ? { answerTo: message.answerTo } : {}),
       ...(questions.length ? { questions } : {}),
       ...(actions.length ? { actions } : {}),
       tools: blocks.filter(block => block.type === 'tool_use').map(block => ({ id: block.id, name: block.name })) };
-  }).filter(message => message.text || message.tools.length);
+  }).filter(message => message && (message.text || message.tools.length));
   const visible = []; let carriedActions = [];
   for (let index = 0; index < raw.length; index++) {
     const message = raw[index];
@@ -208,6 +211,7 @@ export class CoordinatorService {
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
       acceptedRequestIds: Object.keys(state.requests || {}).slice(-100),
       streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
+      activity: state.status === 'running' && state.activity?.turnId === state.activeTurnId ? state.activity.kind : null,
       timing: state.activeTiming || null,
       canCorrect: state.status === 'error' && (correctableToolError(state.error?.code) && state.pending?.stop === 'tool_use' || state.error?.code === 'STEP_LIMIT' && !state.pending),
       retryInput: state.status === 'error' ? state.activeInput || null : null,
@@ -324,7 +328,7 @@ export class CoordinatorService {
         state.activeTiming = { receivedAt: new Date(receivedAt).toISOString(), contextMs: contextCompletedAt - contextStartedAt };
         state.activeTurnId = id; state.steps = 0; state.modelRetries = 0;
       }
-      state.status = 'running'; state.error = null;
+      state.status = 'running'; state.error = null; state.activity = null;
       await atomicWrite(this.file, encode(state));
     });
     this.kick();
@@ -356,12 +360,17 @@ export class CoordinatorService {
             state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
               system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
               onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
-                state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); } });
+                state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); },
+              onToolStart: async name => {
+                if (name !== 'ask_user' || state.activity?.turnId === state.activeTurnId) return;
+                state.activity = { kind: 'preparing-question', turnId: state.activeTurnId };
+                await save(state);
+              } });
             state.modelRetries = 0;
           } catch (cause) {
             if (['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE'].includes(cause.code) && (state.modelRetries || 0) < this.maxModelRetries && !state.pending) {
               state.modelRetries = (state.modelRetries || 0) + 1;
-              state.steps--; state.streaming = null;
+              state.steps--; state.streaming = null; state.activity = null;
               state.activeTiming.modelRetryAt = new Date().toISOString();
               await save(state);
               if (this.retryDelayMs) await new Promise(resolve => setTimeout(resolve, this.retryDelayMs));
@@ -370,13 +379,13 @@ export class CoordinatorService {
             throw cause;
           }
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
-          state.streaming = null;
+          state.streaming = null; state.activity = null;
           state.activeTiming.completedAt = new Date().toISOString();
           await save(state);
         }
         if (!this.stopping && state.activeTurnId) throw error('STEP_LIMIT', 'Coordinator stopped at its bounded tool-call limit');
       } catch (cause) {
-        state.status = 'error'; state.error = { code: cause.code || 'COORDINATOR_FAILED', message: '协调器已暂停；保留原对话与工具回执，可重试或检查配置。' };
+        state.status = 'error'; state.activity = null; state.error = { code: cause.code || 'COORDINATOR_FAILED', message: '协调器已暂停；保留原对话与工具回执，可重试或检查配置。' };
         await save(state);
       }
     });

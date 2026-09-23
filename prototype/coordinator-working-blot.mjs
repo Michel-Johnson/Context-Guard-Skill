@@ -86,17 +86,20 @@ export function createCoordinatorWorkingBlot(doc = document, onError = () => {})
     cancelAnimationFrame(frame);
     frame = 0;
   };
-  const start = () => {
+  const start = onFirstFrame => {
     if (active || !context) return;
     active = true;
-    const current = ++generation, started = performance.now();
+    const current = ++generation;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     void loadFrames(doc).then(frames => {
       if (!active || current !== generation || !frames.length) return;
-      if (reduced) { paint(frames, 0, true); return; }
+      if (reduced) { paint(frames, 0, true); onFirstFrame?.(); return; }
+      const started = performance.now();
+      let first = true;
       const tick = now => {
         if (!active || current !== generation) return;
         paint(frames, now - started, false);
+        if (first) { first = false; onFirstFrame?.(); }
         frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
