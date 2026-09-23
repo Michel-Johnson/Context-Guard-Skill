@@ -35,7 +35,7 @@ async function readBoundedJson(response, deadlineAt, abort) {
   catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
 }
 
-async function readEventStream(response, onText, deadlineAt, abort) {
+async function readEventStream(response, onText, onToolStart, deadlineAt, abort) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let buffer = '', size = 0, model = '', stopReason = '', usage = {}, visibleText = '';
   const blocks = [];
@@ -49,6 +49,7 @@ async function readEventStream(response, onText, deadlineAt, abort) {
       const block = value.content_block || {};
       blocks[value.index] = block.type === 'tool_use' ? { type: 'tool_use', id: block.id, name: block.name, input: block.input || {}, _json: '' }
         : block.type === 'text' ? { type: 'text', text: block.text || '' } : { ...block };
+      if (block.type === 'tool_use') await onToolStart?.(block.name);
       if (block.type === 'text' && block.text) { visibleText += block.text; await onText?.(visibleText); }
     }
     if (value.type === 'content_block_delta') {
@@ -120,7 +121,7 @@ export class CoordinatorModel {
     this.maxTokens = maxTokens; this.thinking = thinking ? { type: thinking.type } : null; this.fetch = fetchImpl;
   }
 
-  async next({ system, messages, tools = [], onText = null }) {
+  async next({ system, messages, tools = [], onText = null, onToolStart = null }) {
     const body = JSON.stringify({ model: this.model, max_tokens: this.maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })),
       stream: true, ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > 512 * 1024) throw problem('CONTEXT_TOO_LARGE', 'Coordinator context needs explicit compaction');
@@ -139,7 +140,7 @@ export class CoordinatorModel {
         throw problem(`MODEL_HTTP_${response.status}`, `Coordinator provider returned HTTP ${response.status}`);
       }
       const result = (response.headers.get('content-type') || '').includes('text/event-stream')
-        ? await readEventStream(response, onText, deadlineAt, abort) : await readBoundedJson(response, deadlineAt, abort);
+        ? await readEventStream(response, onText, onToolStart, deadlineAt, abort) : await readBoundedJson(response, deadlineAt, abort);
       if (result.model !== this.model || !Array.isArray(result.content) || !['end_turn', 'tool_use'].includes(result.stop_reason)) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned a different model or an incomplete turn');
       }
@@ -159,12 +160,13 @@ export class CoordinatorModel {
 
 // Persist every assistant response and tool receipt through the caller. Stable
 // operation IDs let protocol-backed tools replay a lost response idempotently.
-export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, onText = null }) {
+export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, onText = null, onToolStart = null }) {
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
   if (!state.pending) {
-    const next = await model.next({ system, messages: state.messages, tools, onText });
+    const next = await model.next({ system, messages: state.messages, tools, onText, onToolStart });
+    if (next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user')) await onToolStart?.('ask_user');
     state.messages.push({ role: 'assistant', content: next.content });
     state.pending = next;
     await save(state);

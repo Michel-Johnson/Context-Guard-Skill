@@ -497,7 +497,7 @@ try {
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
   await coordinator.locator('.coordinator-rise').first().waitFor();
-  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 0, 'planning state exits as soon as response text exists');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 1, 'working state remains while the response is still streaming');
   assert.equal(await coordinator.locator('.coordinator-word-reveal').count(),0,'response chunks appear without per-word opacity animation');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
   await coordinator.locator('.coordinator-rise').first().waitFor();
@@ -544,7 +544,7 @@ try {
     };
   });
   assert.deepEqual(segmentBoundaries,{paragraph:'第一段。\n\n'.length,openFence:0,closedFence:'```js\nconst value = 1;\n```\n'.length,brokenFence:'```js\nconst value = 1;'.length,final:'没有空行的一整段回复。'.length},'reveal boundaries preserve Markdown blocks and drain the final paragraph');
-  runningPreview=false;
+  runningPreview=false;coordinatorState.status='waiting-for-user';
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
   await page.waitForFunction(() => !document.querySelector('.coordinator-typing.is-visible'));
@@ -795,15 +795,17 @@ try {
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','finalization preserves older transcript rows');
   record('coordinator-streaming-text-is-visible-before-final-message');
   const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
-  coordinatorState.status='running';coordinatorState.streamingText=structuredQuestionText;
+  coordinatorState.status='running';coordinatorState.activity='preparing-question';coordinatorState.streamingText=structuredQuestionText;
   await coordinator.locator('.coordinator-streaming').waitFor();
   await page.waitForFunction(()=>document.querySelector('.coordinator-streaming .coordinator-streaming-text')?.textContent==='当前有四个未完成事项。');
+  await coordinator.getByText('Working · 正在整理选项',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-send.is-working-ready svg').count(),1,'arrow and ink remain mounted during the working transition');
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.questionTransitionProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
   });
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
-  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.streamingText='';coordinatorState.activity=null;coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:structuredQuestionText,questions:[{id:'next-task',text:'想先处理哪一项？',options:['部署博客','处理 Bug']}]});
   await coordinator.getByRole('button',{name:'部署博客',exact:true}).waitFor();
   const structuredQuestion=coordinator.locator('.coordinator-message.assistant').filter({hasText:'当前有四个未完成事项。'}).last();
@@ -811,10 +813,11 @@ try {
   assert.equal(await structuredQuestion.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
   assert.equal(await structuredQuestion.getByText('当前有四个未完成事项。',{exact:true}).count(),1,'structured questions retain the non-duplicate lead text');
   assert.equal(await structuredQuestion.getByText('想先处理哪一项？',{exact:true}).count(),1,'the question prompt appears once instead of duplicating the streamed suffix');
+  assert.equal(await coordinator.getByText('Working · 正在整理选项',{exact:true}).count(),0,'committed card replaces the transient tool status');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','question-card insertion does not remount older messages');
   coordinatorState.messages.pop();
-  coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
+  coordinatorState.messages.push({role:'assistant',text:'要上传什么？',questionOnly:true,questions:[{id:'choice',text:'要上传什么？',options:['网站构建产物','其他文件']}]});
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).waitFor();
   assert.equal(await coordinator.locator('.coordinator-input-shell > button').textContent(),'','the main send control uses an icon instead of a text label');
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).getAttribute('title'),'发送','the icon-only send control keeps an accessible label');
@@ -840,7 +843,7 @@ try {
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-question-status').waitFor({state:'visible'});
   assert.match(await coordinator.locator('.coordinator-answer').textContent(),/网站构建产物[\s\S]*保留我的补充/);
-  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),0,'answer activity stays with the question');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'answer status stays with the question while the agent remains working');
   coordinatorState.status='waiting-for-user';coordinatorState.activeTurnId=null;
   await coordinator.locator('.coordinator-question-status').waitFor({state:'hidden'});
   coordinatorState.status='running';
