@@ -344,7 +344,10 @@ export class Access {
       const [row] = await this.loadCodexRows(database, sql);
       if (!row) return null;
       const aliases = new Set((await rootPathAliases(root)).map(normalizeHostPath));
-      if (!aliases.has(normalizeHostPath(row.cwd))) return null;
+      if (!aliases.has(normalizeHostPath(row.cwd))) {
+        const realCwd = await fs.realpath(row.cwd || '').catch(() => '');
+        if (!realCwd || !aliases.has(normalizeHostPath(realCwd))) return null;
+      }
       return this.mapCodexRow(row, await this.rolloutState(row.rollout_path));
     } catch { return null; }
   }
