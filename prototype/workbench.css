@@ -1024,7 +1024,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-session-create p { margin: 9px 0 0; color: #746e5e; font-size: 12px; }
 #coordinator-panel .coordinator-session-create ul { margin: 9px 0 0; padding-left: 20px; color: #746e5e; font-size: 12px; }
 #coordinator-panel button { margin: 8px 8px 0 0; padding: 7px 16px; border: 1px solid #bdae89; border-radius: 9px; font: inherit; cursor: pointer; }
-#coordinator-panel .coordinator-input-shell > .coordinator-send{position:absolute;right:8px;bottom:8px;top:auto;display:grid;place-items:center;width:32px;height:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:50%;background:#2f6fd6;color:#fff;box-shadow:none;transform:none;transition:background .16s ease,transform .16s ease}
+#coordinator-panel .coordinator-input-shell > .coordinator-send{position:absolute;right:8px;bottom:8px;top:auto;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);place-items:center;width:32px;height:32px;min-height:32px;margin:0;padding:0;border:0;border-radius:50%;background:#2f6fd6;color:#fff;box-shadow:none;transform:none;transition:background .16s ease,transform .16s ease}
 #coordinator-panel .coordinator-input-shell > .coordinator-send svg{width:19px;height:19px;opacity:1;transform:scale(1);transition:opacity .18s ease,transform .18s ease}
 #coordinator-panel .coordinator-input-shell > .coordinator-send svg,#coordinator-panel .coordinator-input-shell > .coordinator-send canvas{grid-area:1/1}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:not(:disabled):hover{background:#285fb8;transform:none;box-shadow:none}

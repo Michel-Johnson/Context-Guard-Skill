@@ -480,10 +480,14 @@ try {
     const blot = send.querySelector('.coordinator-working-blot');
     const inputRect = input.getBoundingClientRect();
     const sendRect = send.getBoundingClientRect();
+    const iconRect = send.querySelector('svg').getBoundingClientRect();
+    const blotRect = blot.getBoundingClientRect();
     return { drawerBottom: drawer.bottom, panelBottom: el.getBoundingClientRect().bottom, formBottom: form.bottom,
       inputHeight: inputRect.height, sendPosition: getComputedStyle(send).position,
       sendWidth:sendRect.width,sendHeight:sendRect.height,sendRadius:getComputedStyle(send).borderRadius,
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
+      iconCenterDelta: Math.abs((iconRect.left + iconRect.right - sendRect.left - sendRect.right) / 2),
+      blotCenterDelta: Math.abs((blotRect.left + blotRect.right - sendRect.left - sendRect.right) / 2),
       sendDisabled:send.disabled,
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
       blotParent:blot.parentElement===send,
@@ -495,17 +499,23 @@ try {
   assert.equal(coordinatorLayout.sendPosition, 'absolute', 'send button sits inside the composer like ChatGPT');
   assert.deepEqual([coordinatorLayout.sendWidth,coordinatorLayout.sendHeight,coordinatorLayout.sendRadius],[32,32,'50%'],'send uses a compact circular control');
   assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
+  assert.ok(coordinatorLayout.iconCenterDelta <= 0.5 && coordinatorLayout.blotCenterDelta <= 0.5,
+    `arrow and ink must share the button center: ${JSON.stringify(coordinatorLayout)}`);
   assert.equal(coordinatorLayout.sendDisabled,true,'empty composer keeps the send arrow disabled');
   await page.setViewportSize({width:390,height:844});
   await coordinator.getByLabel('发送给 Coordinator').fill('第一行\n第二行\n第三行');
   const phoneComposer = await coordinator.evaluate(el=>{
     const input=el.querySelector('.coordinator-input-shell textarea').getBoundingClientRect();
     const button=el.querySelector('.coordinator-send').getBoundingClientRect();
-    return {height:input.height,right:input.right-button.right,bottom:input.bottom-button.bottom,top:button.top-input.top};
+    const icon=el.querySelector('.coordinator-send svg').getBoundingClientRect();
+    return {height:input.height,right:input.right-button.right,bottom:input.bottom-button.bottom,top:button.top-input.top,
+      iconCenterDelta:Math.abs((icon.left+icon.right-button.left-button.right)/2)};
   });
   assert.ok(phoneComposer.height>48,`mobile multiline input expands: ${JSON.stringify(phoneComposer)}`);
   assert.ok(Math.abs(phoneComposer.right-8)<=1&&Math.abs(phoneComposer.bottom-8)<=1&&phoneComposer.top>8,
     `send button stays at the lower-right of the expanded mobile input: ${JSON.stringify(phoneComposer)}`);
+  assert.ok(phoneComposer.iconCenterDelta<=0.5,`mobile send icon stays centered in its button: ${JSON.stringify(phoneComposer)}`);
+  await coordinator.screenshot({path:path.join(output,'coordinator-phone-compose.png')});
   await coordinator.getByLabel('发送给 Coordinator').fill('');
   await page.setViewportSize({width:1440,height:1000});
   await coordinator.getByLabel('发送给 Coordinator').fill('可以发送');
