@@ -12,7 +12,7 @@ import { MapStore } from '../scripts/workbench/store.mjs';
 import { MemorySyncCoordinator, mergeSessionDocuments, operationsOverlap, parseSseBlocks } from '../scripts/workbench/sync-coordinator.mjs';
 import { definitiveMemoryRejection, memoryRequest } from '../scripts/workbench/memory.mjs';
 import { memoryPublicationStatus, readMemoryProject, startMemoryServer } from '../scripts/cloud/memory.mjs';
-import { bugSessionMessage, prepareSessionCommit, startServer, todoSessionMessage } from '../scripts/workbench/server.mjs';
+import { prepareSessionCommit, startServer } from '../scripts/workbench/server.mjs';
 import { Access, hostAttestedPlatform, recordHostAttestedSession, rolloutTaskStatus } from '../scripts/workbench/access.mjs';
 import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
@@ -532,26 +532,6 @@ test('a governance-blocked Stop is not shown as a still-running Agent Session', 
   const session = (await access.snapshot()).sessions[0];
   assert.equal(session.status, 'stopped');
   assert.equal(session.lastEvent, 'stop-blocked');
-});
-
-test('Bug handoff message carries the actionable Bug and node context', () => {
-  const message = bugSessionMessage(
-    { id: 'N1', title: '工作台同步' },
-    { id: 'B7', title: '认领状态不真实', desc: '投递成功前不得显示处理中', record: '用户点击认领' },
-  );
-  assert.match(message, /B7 · 认领状态不真实/);
-  assert.match(message, /N1 · 工作台同步/);
-  assert.match(message, /投递成功前不得显示处理中/);
-});
-
-test('TODO handoff message carries the development item and node context', () => {
-  const message = todoSessionMessage(
-    { id: 'N1', title: '工作台同步' },
-    { id: 'TD7', title: '增加需求入口', desc: '复用 Session 授权和消息发送' },
-  );
-  assert.match(message, /TD7 · 增加需求入口/);
-  assert.match(message, /N1 · 工作台同步/);
-  assert.match(message, /复用 Session 授权和消息发送/);
 });
 
 test('Session sync compares node fields and parses chunked SSE safely', () => {
@@ -1510,28 +1490,12 @@ test('HTTP rejects forged role, origin, path access; sessions/scopes/revocation 
     dirtyPage.destroy(); await pause(30);
     assert.equal((await call('/api/state', credential)).status, 200, 'a disconnected dirty page must not remain as a phantom checkpoint peer');
     assert.equal((await call('/api/access', credential, { sessionId: agent.sessionId, nodes: ['N1'], actor: 'human' })).status, 403);
-    assert.equal((await call('/api/session-message', credential, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 403);
-    const plan = await call('/api/access-plan', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1' });
-    assert.equal(plan.status, 200);
-    assert.deepEqual(new Set(plan.data.nodes), new Set(['T0', 'N1']));
-    assert.deepEqual(plan.data.missing, []);
-    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 200);
+    assert.equal((await call('/api/access-plan', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1' })).status, 404);
+    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' })).status, 404);
     assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, nodes: [] })).status, 200);
-    const deniedMessage = await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', bugId: 'B1' });
-    assert.equal(deniedMessage.status, 403); assert.equal(deniedMessage.data.error.code, 'SESSION_SCOPE_REQUIRED');
     assert.equal((await call('/api/access', running.humanToken, { sessionId: agent.sessionId, mode: 'all' })).status, 200);
-    assert.equal((await call('/api/session-message', running.humanToken, { sessionId: agent.sessionId, nodeId: 'N1', todoId: 'TD1' })).status, 200);
-    assert.equal(delivered.length, 2);
-    assert.equal(delivered[1].todo.id, 'TD1');
-    assert.match(delivered[1].message, /TODO: TD1 · 新需求/);
-    const reliable = { operationId: 'delivery-retry', sessionId: agent.sessionId, nodeId: 'N1', todoId: 'TD1' };
-    assert.equal((await call('/__context_guard/bootstrap', running.humanToken)).data.interfaceCapabilities.durableDelivery, true);
-    const firstDelivery = await call('/api/session-message', running.humanToken, reliable);
-    const repeatedDelivery = await call('/api/session-message', running.humanToken, reliable);
-    assert.equal(firstDelivery.data.state, 'received');
-    assert.equal(firstDelivery.data.deliveryId, reliable.operationId);
-    assert.deepEqual(firstDelivery, repeatedDelivery);
-    assert.equal(delivered.length, 3, 'retry must not enqueue a second host message');
+    assert.equal((await call('/__context_guard/bootstrap', running.humanToken)).data.interfaceCapabilities.durableDelivery, undefined);
+    assert.equal(delivered.length, 0, 'human access changes must not deliver a task to an existing Session');
     const beforeScopedEdit = await call('/api/state', credential);
     const visibleBugs = beforeScopedEdit.data.doc.root.children[0].bugs;
     visibleBugs[0].title = '当前 Session 已修改';
