@@ -218,6 +218,22 @@ export class ProtocolStore extends EventEmitter {
     if (!['human', 'coordinator'].includes(principal.role)) fail('FORBIDDEN', 'Project task access required');
     return this.transaction(state => Object.values(state.projectTasks || {}).filter(item => item.repositoryId === principal.repositoryId), { readOnly: true });
   }
+  async projectTaskStatuses(principal) {
+    requireIdentity(principal);
+    if (!['human', 'coordinator'].includes(principal.role)) fail('FORBIDDEN', 'Project task access required');
+    return this.transaction(state => {
+      const executions = new Map(Object.values(state.tasks || {}).filter(task => task.repositoryId === principal.repositoryId)
+        .map(task => [key([task.id, task.session?.id]), task]));
+      return Object.values(state.projectTasks || {}).filter(item =>
+        item.repositoryId === principal.repositoryId && item.itemId && item.nodeId && ['todo', 'bug'].includes(item.kind))
+        .map(item => {
+          const execution = executions.get(key([item.taskId, item.sessionId]));
+          return { taskId: item.taskId, itemId: item.itemId, nodeId: item.nodeId, kind: item.kind,
+            sessionId: item.sessionId || null, state: execution?.stage || item.stage, projectStage: item.stage,
+            updatedAt: item.updatedAt || item.createdAt, ...(item.error ? { error: item.error } : {}) };
+        });
+    }, { readOnly: true });
+  }
   async reviewProjectTask(principal, taskId, brief, input) {
     requireIdentity(principal);
     if (principal.role !== 'human' || !['approved', 'rejected'].includes(input.decision) || typeof input.id !== 'string' || !input.id) fail('FORBIDDEN', 'A human decision and stable receipt are required');

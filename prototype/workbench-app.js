@@ -2161,7 +2161,7 @@ function taskSummaryHtml(item){
   const result = workbenchSync?.taskResult(item.dispatch?.task_id) || workbenchSync?.taskResult(item.resolution?.dispatch?.task_id);
   return result?.summary ? `<details><summary>${uiLang==="en"?"Agent result":"Agent 结果与经验"}</summary><p style="white-space:pre-wrap">${esc(result.summary)}</p></details>` : "";
 }
-function bugProgress(bug){
+function bugProgress(bug,nodeId=""){
   const human = humanReviewProgress(bug);
   if(human) return human;
   const status = String(bug?.status||"open");
@@ -2170,18 +2170,26 @@ function bugProgress(bug){
     const state = workbenchSync?.taskState(summaryId) || bug.resolution.dispatch.status;
     if(state!=="completed") return {kind:"settling",label:uiLang==="en"?"Resolved · summary pending":`已解决 · ${state==="failed"||state==="cancelled"?"总结未完成":state==="executing"?"总结中":"待总结"}`,detail:""};
   }
-  if(status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
-  if(status==="resolved"||status==="dormant") return {kind:"resolved", label:t("bugResolved"), detail:""};
-  if(status==="unfixable"||status==="deferred"||status==="wontfix") return {kind:"unfixable", label:t("bugUnfixable"), detail:""};
-  const task = workbenchSync?.taskStates.get(bug?.dispatch?.task_id);
+  const projectTask = workbenchSync?.projectTaskState("bug",nodeId,bug?.id);
+  if(!projectTask && status==="fixed") return {kind:"fixed", label:t("bugFixed"), detail:""};
+  if(!projectTask && (status==="resolved"||status==="dormant")) return {kind:"resolved", label:t("bugResolved"), detail:""};
+  if(!projectTask && (status==="unfixable"||status==="deferred"||status==="wontfix")) return {kind:"unfixable", label:t("bugUnfixable"), detail:""};
+  const task = projectTask || workbenchSync?.taskStates.get(bug?.dispatch?.task_id);
   const delivery = task?.state || bug?.dispatch?.status || "";
+  if(delivery==="closed") return {kind:"resolved",label:t("bugResolved"),detail:""};
+  if(delivery==="accepted") return {kind:"waiting",label:uiLang==="en"?"Accepted · awaiting merge":"已验收 · 待合并",detail:""};
+  if(delivery==="closing") return {kind:"processing",label:uiLang==="en"?"Closing":"收尾中",detail:""};
+  if(delivery==="brief") return {kind:"waiting",label:uiLang==="en"?"Awaiting brief approval":"待审批需求",detail:""};
+  if(["approved","creating-session","awaiting-session"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing execution":"准备执行环境",detail:""};
+  if(delivery==="dispatched") return {kind:"processing",label:uiLang==="en"?"Dispatched":"已派发",detail:""};
+  if(delivery==="rework") return {kind:"processing",label:uiLang==="en"?"Rework":"返工中",detail:""};
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
   if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
   if(["resuming","assigned","plan-ready"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing":"准备中",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
-  if(workbenchSync?.taskState(bug?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
+  if(["failed","cancelled","ci-failed","acceptance-rejected"].includes(delivery)) return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="cancelled"?"已取消":"需要处理"),detail:task?.error||""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("bugWaiting")} · ${task?.queue?.reason==="executor-busy"?t("taskBlocked"):t("taskQueued")}`,detail:task?.queue?.reason==="executor-busy"?"前序任务仍占用当前 Session 的执行槽":""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("bugWaiting")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
@@ -2208,25 +2216,33 @@ function bugProgress(bug){
     detail
   };
 }
-function bugProgressHtml(bug){
-  const state = bugProgress(bug);
+function bugProgressHtml(bug,nodeId=""){
+  const state = bugProgress(bug,nodeId);
   return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
 }
 function todoSessionsOf(todo){ return bugSessionsOf(todo); }
-function todoProgress(todo){
+function todoProgress(todo,nodeId=""){
   const human = humanReviewProgress(todo);
   if(human) return human;
   const status = String(todo?.status||"pending");
-  if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
-  const task = workbenchSync?.taskStates.get(todo?.dispatch?.task_id);
+  const projectTask = workbenchSync?.projectTaskState("todo",nodeId,todo?.id);
+  if(status==="done"&&!projectTask) return {kind:"resolved",label:t("todoDone"),detail:""};
+  const task = projectTask || workbenchSync?.taskStates.get(todo?.dispatch?.task_id);
   const delivery = task?.state || todo?.dispatch?.status || "";
+  if(delivery==="closed") return {kind:"resolved",label:t("todoDone"),detail:""};
+  if(delivery==="accepted") return {kind:"waiting",label:uiLang==="en"?"Accepted · awaiting merge":"已验收 · 待合并",detail:""};
+  if(delivery==="closing") return {kind:"processing",label:uiLang==="en"?"Closing":"收尾中",detail:""};
+  if(delivery==="brief") return {kind:"waiting",label:uiLang==="en"?"Awaiting brief approval":"待审批需求",detail:""};
+  if(["approved","creating-session","awaiting-session"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing execution":"准备执行环境",detail:""};
+  if(delivery==="dispatched") return {kind:"processing",label:uiLang==="en"?"Dispatched":"已派发",detail:""};
+  if(delivery==="rework") return {kind:"processing",label:uiLang==="en"?"Rework":"返工中",detail:""};
   if(delivery==="completed") return {kind:"waiting",label:uiLang==="en"?"Awaiting verification":"待人类验收",detail:""};
   if(delivery==="awaiting-merge") return {kind:"waiting",label:uiLang==="en"?"Awaiting merge":"待合并",detail:""};
   if(delivery==="awaiting-ci"||delivery==="testing") return {kind:"processing",label:uiLang==="en"?"Testing":"测试中",detail:""};
   if(["resuming","assigned","plan-ready"].includes(delivery)) return {kind:"processing",label:uiLang==="en"?"Preparing":"准备中",detail:""};
   if(delivery==="executing") return {kind:"processing",label:uiLang==="en"?"Running":"执行中",detail:""};
   if(delivery==="interrupted") return {kind:"waiting",label:t("taskInterrupted"),detail:""};
-  if(workbenchSync?.taskState(todo?.dispatch?.task_id)==="failed"||delivery==="cancelled") return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="failed"?"执行失败":"已取消"),detail:""};
+  if(["failed","cancelled","ci-failed","acceptance-rejected"].includes(delivery)) return {kind:"waiting",label:uiLang==="en"?delivery:(delivery==="cancelled"?"已取消":"需要处理"),detail:task?.error||""};
   if(delivery==="queued") return {kind:"waiting",label:`${t("todoPending")} · ${task?.queue?.reason==="executor-busy"?t("taskBlocked"):t("taskQueued")}`,detail:task?.queue?.reason==="executor-busy"?"前序任务仍占用当前 Session 的执行槽":""};
   if(delivery==="cloud_queued"||delivery==="local_received") return {kind:"waiting",label:`${t("todoPending")} · ${t("taskCloudQueued")}`,detail:""};
   if(delivery==="codex_received"||delivery==="received") return {kind:"processing",label:t("taskReceived"),detail:""};
@@ -2241,8 +2257,8 @@ function todoProgress(todo){
   const names = sessions.map(sessionDisplayName);
   return {kind:"processing",label:names.length?`${t("todoProcessing")} · ${names[0]}${names.length>1?` +${names.length-1}`:""}`:t("todoProcessing"),detail:names.join("、")};
 }
-function todoProgressHtml(todo){
-  const state = todoProgress(todo);
+function todoProgressHtml(todo,nodeId=""){
+  const state = todoProgress(todo,nodeId);
   return `<span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span>`;
 }
 function openWorkItemList(kind="bug"){
@@ -2426,9 +2442,9 @@ function renderBugPanel(){
   const bugList = openWorkItemList("bug"), todoList = openWorkItemList("todo");
   const list = kind==="todo" ? todoList : bugList;
   const countEl = document.getElementById("bug-count");
-  if(countEl) countEl.textContent = bugList.filter(({item})=>!["resolved","unfixable"].includes(bugProgress(item).kind)).length;
+  if(countEl) countEl.textContent = bugList.filter(({item,node})=>!["resolved","unfixable"].includes(bugProgress(item,node.id).kind)).length;
   const todoCountEl = document.getElementById("todo-count");
-  if(todoCountEl) todoCountEl.textContent = todoList.filter(({item})=>todoProgress(item).kind!=="resolved").length;
+  if(todoCountEl) todoCountEl.textContent = todoList.filter(({item,node})=>todoProgress(item,node.id).kind!=="resolved").length;
   const titleEl = document.getElementById("work-panel-title");
   if(titleEl) titleEl.textContent = t(kind==="todo"?"openTodos":"openBugs");
   const ul = document.getElementById("bug-panel-list");
@@ -2441,10 +2457,10 @@ function renderBugPanel(){
     const title = item.item.title || t(kind==="todo"?"unnamedTodo":"unnamedBug");
     const on = bugFocus && bugFocus.nodeId===item.node.id && (bugFocus.itemId||bugFocus.bugId)===item.item.id && (bugFocus.kind||"bug")===kind;
     const progress = kind==="todo"?todoProgress:bugProgress;
-    const state = progress(item.item);
+    const state = progress(item.item,item.node.id);
     const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-${kind}="${escAttr(item.item.id)}">
-      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${kind==="todo"?todoProgressHtml(item.item):bugProgressHtml(item.item)}</span>
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${kind==="todo"?todoProgressHtml(item.item,item.node.id):bugProgressHtml(item.item,item.node.id)}</span>
       <span class="bug-row">${dot}</span>
     </li>`;
   }).join("");
@@ -3425,7 +3441,7 @@ function renderDetail(){
     const sessions = bugSessionsOf(bug);
     const dots = sessions.map(s=>`<i class="sess-dot" style="background:${sessionColor(s)}"></i>`).join("");
     el.innerHTML = `
-      <h2>${esc(bug && bug.title ? bug.title : (kind==="todo"?"TODO":"Bug"))}${kind==="todo"?todoProgressHtml(bug):bugProgressHtml(bug)}</h2>
+      <h2>${esc(bug && bug.title ? bug.title : (kind==="todo"?"TODO":"Bug"))}${kind==="todo"?todoProgressHtml(bug,bugFocus.nodeId):bugProgressHtml(bug,bugFocus.nodeId)}</h2>
       <p class="lead">${esc(node.title)}</p>
       <div class="actions">
         ${dots}
@@ -3491,10 +3507,10 @@ function renderDetail(){
     ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
         const done = todo.status==="done";
         return `<li class="${done?"todo-done":""}">
-          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo).label)}">${done?"✓":""}</button>`}
+          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo,node.id).label)}">${done?"✓":""}</button>`}
           <div class="todo-main">
             <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${linkifyText(todo.desc||todo.title||"")}</div>
-            ${todo.draft?"":todoProgressHtml(todo)}
+            ${todo.draft?"":todoProgressHtml(todo,node.id)}
             ${taskSummaryHtml(todo)}
             ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(todo.id)}" data-coordinator-node="${escAttr(node.id)}" data-coordinator-kind="todo">对话</button>`:""}
           </div>
@@ -3515,7 +3531,7 @@ function renderDetail(){
           ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(row.from,"bug",b) : `<div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>`}
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
-            ${bugProgressHtml(b)}
+            ${bugProgressHtml(b,row.from)}
             ${taskSummaryHtml(b)}
             ${workbenchSync?.config?.interfaceCapabilities?.coordinator?`<button type="button" data-coordinator-item="${escAttr(b.id)}" data-coordinator-node="${escAttr(row.from)}" data-coordinator-kind="bug">对话</button>`:""}
             ${attach}

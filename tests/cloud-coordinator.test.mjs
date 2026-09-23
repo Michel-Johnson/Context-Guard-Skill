@@ -60,6 +60,29 @@ test('Project requirements survive restart, reserve capacity atomically and disp
   assert.notEqual(creation.sessionId, 'fresh');
 });
 
+test('Human task status projects the execution stage onto a Main item without rewriting Main', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-project-task-status-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = new ProtocolStore(directory);
+  const human = { repositoryId: 'repo', deviceId: 'browser', agentId: 'human', role: 'human' };
+  const coordinator = { ...human, agentId: 'coordinator', role: 'coordinator' };
+  const item = { taskId: 'map-todo-1', itemId: 'TD1', nodeId: 'N1', kind: 'todo', text: 'Add regression coverage',
+    acceptance: 'Tests pass', nodeIds: ['N1'], mainVersion: 'main-1' };
+  await store.prepareProjectTask(coordinator, item, 'prepare-status', 'conversation-1');
+  assert.deepEqual((await store.projectTaskStatuses(human)).map(({ itemId, nodeId, state }) => [itemId, nodeId, state]), [['TD1', 'N1', 'brief']]);
+  await store.transaction(state => {
+    const projectTask = Object.values(state.projectTasks)[0];
+    projectTask.stage = 'dispatched'; projectTask.sessionId = 'fresh-session';
+    state.tasks.execution = { id: item.taskId, repositoryId: 'repo', session: { id: 'fresh-session', generation: 1 }, stage: 'accepted' };
+  });
+  const [status] = await store.projectTaskStatuses(human);
+  assert.deepEqual({ taskId: status.taskId, itemId: status.itemId, nodeId: status.nodeId, sessionId: status.sessionId,
+    state: status.state, projectStage: status.projectStage },
+  { taskId: item.taskId, itemId: item.itemId, nodeId: item.nodeId, sessionId: 'fresh-session', state: 'accepted', projectStage: 'dispatched' });
+  assert.equal((await store.projectTasks(human))[0].stage, 'dispatched', 'status projection does not mutate task or Main data');
+  await assert.rejects(store.projectTaskStatuses({ ...human, role: 'executor' }), { code: 'FORBIDDEN' });
+});
+
 test('Cloud project approval dispatches once as soon as the fresh Session is registered', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-fresh-http-'));
   let server;
