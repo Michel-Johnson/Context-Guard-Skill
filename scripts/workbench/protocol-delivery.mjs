@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.mjs';
 import { canonical, fail, validateMessage } from '../shared/protocol.mjs';
 
