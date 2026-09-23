@@ -129,7 +129,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
     const legacy = path.join(env.HOME, "legacy-claude");
     invoke(["install"], true, { ...env, CLAUDE_CONFIG_DIR: directory, CLAUDE_HOME: legacy });
     assert.ok(fs.existsSync(path.join(directory, "settings.json")));
-    for (const role of ["Coordinator.md", "Executor.md", "Developer.md", "Tester.md", "roles.md"]) {
+    for (const role of ["Coordinator.md", "Executor.md", "Tester.md", "roles.md"]) {
       assert.equal(fs.readFileSync(path.join(directory, "skills", "context-guard", role), "utf8"), fs.readFileSync(path.join(packageDirectory, role), "utf8"));
     }
     assert.ok(!fs.existsSync(legacy));
@@ -154,6 +154,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
       write(config(client), settings);
       write(path.join(env.HOME, "project", ".codex", "context", "preferences.json"), { record_language: "zh" });
       write(path.join(env.HOME, "project", ".codex", "context", "user-messages.md"), "keep user memory");
+      write(path.join(skill(client), "Developer.md"), "stale compatibility file");
       const memory = snapshot(path.join(env.HOME, "project"));
       for (let attempt = 0; attempt < 2; attempt++) {
         invoke();
@@ -169,6 +170,7 @@ export function checkInstallBoundaries({ packageDirectory, root }) {
         if (client !== "cursor") assert.equal(groups.find(group => group.hooks.some(h => h.command === thirdParty.command)).matcher, "user-matcher");
         assert.deepEqual(snapshot(path.join(env.HOME, "project")), memory);
         for (const file of installedFiles) assert.ok(fs.existsSync(path.join(skill(client), file)));
+        assert.ok(!fs.existsSync(path.join(skill(client), "Developer.md")));
         assertNoPythonCache(skill(client));
       }
       const backups = fs.readdirSync(home(client)).filter(file => file.startsWith(configName(client) + ".bak-"));
