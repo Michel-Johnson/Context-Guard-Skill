@@ -223,6 +223,36 @@ test('IF-045: source preparation can retain a pending memory transport without b
   assert.equal(result.status, 0, result.stderr);
 });
 
+test('legacy browser deliveries remain exportable and are never replayed during interface migration', t => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const values = new Map([
+    ['cg-delivery:project:{"todoId":"TD1"}', '{"operationId":"old-op","todoId":"TD1"}'],
+    ['cg-delivery:project:{"bugId":"B1"}', '{invalid legacy JSON'],
+    ['cg-delivery:other:{"todoId":"TD2"}', '{"operationId":"other-op"}'],
+  ]);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return values.size; }, key: index => [...values.keys()][index] || null,
+    getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key),
+  } });
+  t.after(() => { if (descriptor) Object.defineProperty(globalThis, 'localStorage', descriptor); else delete globalThis.localStorage; });
+  const sync = Object.assign(Object.create(WorkbenchSync.prototype), { config: { root: 'project' }, ready: false, captureKey: null, inputDraft: null, doc: { project: 'project' } });
+  assert.equal(sync.loadRecovery(), true);
+  assert.equal(sync.legacyDeliveryRecovery.length, 2);
+  assert.match(sync.recoveryNotice('草稿已保留'), /2 项旧派发记录/);
+  const status = { textContent: '' }, version = { textContent: '', dataset: {} };
+  sync.panel = { dataset: {}, querySelector: selector => selector === '#cg-sync-status' ? status : version };
+  sync.notice = { hidden: true, textContent: '', title: '' };
+  sync.setStatus('synced', sync.recoveryNotice(''));
+  assert.equal(sync.notice.hidden, false, 'a closed recovery panel still exposes the pending legacy delivery');
+  assert.match(sync.notice.textContent, /旧交付待核对/);
+  let exported;
+  sync.download = value => { exported = value; };
+  sync.export();
+  assert.deepEqual(exported.legacyDeliveries, sync.legacyDeliveryRecovery);
+  assert.equal(exported.legacyDeliveries[1].raw, '{invalid legacy JSON');
+  assert.equal(values.size, 3, 'export and recovery scan must not delete or replay old requests');
+});
+
 test('IF-030: browser retries and reloads retain the delivery ID and refuse an old backend', async t => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const values = new Map();
