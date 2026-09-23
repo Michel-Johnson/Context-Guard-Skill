@@ -1,5 +1,59 @@
 import { lexer } from './vendor/marked.mjs';
 
+// Ready-style reveal: wait for a complete Markdown block before painting it.
+// The returned offset follows a paragraph, heading, list item, or fence boundary.
+export function nextRevealSegmentEnd(source, shown, done = false) {
+  const text = String(source || '');
+  if (shown >= text.length) return shown;
+  const openFence = (text.slice(0, shown).match(/```/g) || []).length % 2;
+  if (openFence) return shown;
+  let start = shown;
+  while (text[start] === '\n') start++;
+  if (start >= text.length) return done ? text.length : shown;
+  const firstNewline = text.indexOf('\n', start);
+  const firstLine = text.slice(start, firstNewline < 0 ? undefined : firstNewline);
+  const nextLineEnd = from => text.indexOf('\n', from);
+  if (/^\s*```/.test(firstLine)) {
+    const close = text.indexOf('```', start + firstLine.indexOf('```') + 3);
+    if (close < 0) return done ? text.length : shown;
+    const end = close + 3;
+    return text[end] === '\n' ? end + 1 : done ? end : shown;
+  }
+  if (/^#{1,6}\s/.test(firstLine)) return firstNewline < 0 ? done ? text.length : shown : firstNewline + 1;
+  const listIndent = line => {
+    const match = /^( *)(?:[-*+]|\d+[.)])\s/.exec(line);
+    return match && match[1].length < 4 ? match[1].length : null;
+  };
+  const indent = listIndent(firstLine);
+  if (indent !== null) {
+    if (firstNewline < 0) return done ? text.length : shown;
+    let cursor = firstNewline + 1;
+    while (cursor < text.length) {
+      const newline = nextLineEnd(cursor);
+      const line = text.slice(cursor, newline < 0 ? undefined : newline);
+      if (!line.trim()) return newline < 0 ? done ? text.length : shown : newline + 1;
+      const nextIndent = listIndent(line);
+      if ((nextIndent !== null && nextIndent <= indent) || /^#{1,6}\s|^\s*```/.test(line)) return cursor;
+      if (newline < 0) return done ? text.length : shown;
+      cursor = newline + 1;
+    }
+    return done ? text.length : shown;
+  }
+  let cursor = start;
+  while (cursor < text.length) {
+    const newline = nextLineEnd(cursor);
+    if (newline < 0) return done ? text.length : shown;
+    const after = newline + 1;
+    if (text[after] === '\n') return after + 1;
+    if (after >= text.length) return done ? text.length : shown;
+    const nextNewline = nextLineEnd(after);
+    const nextLine = text.slice(after, nextNewline < 0 ? undefined : nextNewline);
+    if (/^#{1,6}\s|^\s*```/.test(nextLine) || listIndent(nextLine) !== null) return after;
+    cursor = after;
+  }
+  return done ? text.length : shown;
+}
+
 // Keep long plain-language replies readable even when the model returns one
 // giant paragraph.  Split at sentence punctuation (or a bounded fallback),
 // while leaving Markdown blocks and fenced code untouched.

@@ -381,6 +381,11 @@ try {
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON());
+      if (submissions.at(-1).text === 'Ready 一次性回复') {
+        coordinatorState = { ...coordinatorState, status: 'waiting-for-user', streamingText: '', error: null,
+          messages: [...coordinatorState.messages,{role:'user',text:'Ready 一次性回复'},{role:'assistant',text:'完整段落一次返回。\n\n第二段保持稳定。'}] };
+        return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
+      }
       if (submissions.at(-1).text === '立即显示测试') {
         await new Promise(resolve => { releaseDelayedSubmission = resolve; });
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false,
@@ -402,7 +407,7 @@ try {
     }
     const readConversation=new URL(route.request().url()).searchParams.get('conversation');coordinatorReads.push(readConversation);
     if(coordinatorReadFailure){coordinatorReadFailure=false;return route.abort();}
-    const responseState=readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:runningPreview?{...coordinatorState,status:'running',streamingText:'第一段回复。\n第二段回复。\n第三段回复。'}:coordinatorState;
+    const responseState=readConversation==='chat-created'?{...coordinatorState,messages:[],approvals:[],acceptances:[],status:'idle'}:runningPreview?{...coordinatorState,status:'running',streamingText:'第一段回复。\n\n第二段回复。\n\n第三段回复。\n\n'}:coordinatorState;
     await route.fulfill({ json: responseState });
   });
   await page.reload(); await synchronized();
@@ -484,20 +489,39 @@ try {
   runningPreview=true;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
-  await coordinator.locator('.coordinator-streaming').waitFor();
+  await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
   assert.equal(await coordinator.locator('.coordinator-streaming').count(), 1, 'streaming response keeps a live visual state');
   assert.equal(await coordinator.locator('.coordinator-streaming-text').count(), 1, 'streaming response uses a buffered text surface');
+  await coordinator.locator('.coordinator-rise').first().waitFor();
   assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(), 0, 'planning state exits as soon as response text exists');
   assert.equal(await coordinator.locator('.coordinator-word-reveal').count(),0,'response chunks appear without per-word opacity animation');
   await coordinator.locator('.coordinator-streaming').evaluate(node => { node.dataset.motionProbe = 'stable'; });
-  await page.waitForFunction(() => {
-    const node=document.querySelector('.coordinator-streaming-text');
-    return node && node.textContent && node.textContent !== '第一段回复。\n第二段回复。\n第三段回复。' && node.textContent.includes('\n');
-  });
-  await page.waitForTimeout(650);
-  assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '第一段回复。\n第二段回复。\n第三段回复。', 'streaming text reveals complete lines without dropping content');
+  await coordinator.locator('.coordinator-rise').first().waitFor();
+  const firstRise=coordinator.locator('.coordinator-rise').first();
+  await firstRise.evaluate(node=>{node.dataset.stableBlock='kept';});
+  assert.equal(await firstRise.textContent(),'第一段回复。','Ready-style reveal waits for a complete paragraph');
+  assert.equal(await firstRise.locator('.coordinator-rise-body').evaluate(node=>getComputedStyle(node).transitionDuration),'1.05s, 1.05s','new block uses Ready rise timing');
+  const readsBeforeReconcile=coordinatorReads.length;
+  coordinatorState.nodeReferences=[{id:'T0',title:'定位节点'}];
+  for(let attempt=0;coordinatorReads.length===readsBeforeReconcile&&attempt<30;attempt++)await page.waitForTimeout(20);
+  assert.ok(coordinatorReads.length>readsBeforeReconcile,'streaming state was refreshed after metadata changed');
+  assert.equal(await firstRise.getAttribute('data-stable-block'),'kept','metadata refresh preserves already revealed blocks');
+  await page.waitForFunction(()=>document.querySelectorAll('.coordinator-streaming-text .coordinator-rise').length===3);
+  assert.equal(await coordinator.locator('.coordinator-streaming-text').textContent(), '第一段回复。第二段回复。第三段回复。', 'streaming response reveals whole paragraphs without dropping content');
+  assert.equal(await firstRise.getAttribute('data-stable-block'),'kept','earlier blocks stay mounted while later blocks enter');
   assert.equal(await coordinator.locator('.coordinator-streaming .coordinator-markdown').evaluate(node => getComputedStyle(node, '::after').content), 'none', 'streaming response has no blinking caret');
   assert.equal(await coordinator.locator('.coordinator-streaming').getAttribute('data-motion-probe'), 'stable', 'streaming updates preserve the message node instead of replaying the whole transcript');
+  const segmentBoundaries=await page.evaluate(async()=>{
+    const {nextRevealSegmentEnd}=await import('/prototype/coordinator-markdown.mjs');
+    return {
+      paragraph:nextRevealSegmentEnd('第一段。\n\n第二段未完',0,false),
+      openFence:nextRevealSegmentEnd('```js\nconst value = 1;',0,false),
+      closedFence:nextRevealSegmentEnd('```js\nconst value = 1;\n```\n后续',0,false),
+      brokenFence:nextRevealSegmentEnd('```js\nconst value = 1;',0,true),
+      final:nextRevealSegmentEnd('没有空行的一整段回复。',0,true),
+    };
+  });
+  assert.deepEqual(segmentBoundaries,{paragraph:'第一段。\n\n'.length,openFence:0,closedFence:'```js\nconst value = 1;\n```\n'.length,brokenFence:'```js\nconst value = 1;'.length,final:'没有空行的一整段回复。'.length},'reveal boundaries preserve Markdown blocks and drain the final paragraph');
   runningPreview=false;
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();
@@ -685,8 +709,9 @@ try {
   assert.match(planningPlacement.previous,/coordinator-message user/,'planning state follows the current user message');
   assert.notEqual(planningPlacement.beforeComposer,'coordinator-compose','planning state is not fixed above the composer');
   coordinatorState.streamingText='正在形成可见答案';
-  await coordinator.getByText('正在形成可见答案',{exact:true}).waitFor();
-  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),0,'planning shimmer disappears on the first visible response chunk');
+  await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
+  assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),1,'planning stays visible until a complete block is ready');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
   await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
@@ -702,34 +727,28 @@ try {
   coordinatorState.messages.push({role:'user',text:'检查流式完成态'});
   coordinatorState.status='running';coordinatorState.streamingText=seamlessText.slice(0,-10);
   await coordinator.locator('.coordinator-streaming').waitFor();
+  await coordinator.locator('.coordinator-streaming-text .coordinator-rise').first().waitFor();
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.finalizationProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__coordinatorBlockProbe='kept';
   });
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   coordinatorState.streamingText=seamlessText;
-  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text ol li:last-child')?.textContent==='检查窄屏换行。');
+  await coordinator.locator('.coordinator-streaming-text .coordinator-rise').first().waitFor();
+  assert.equal(await coordinator.locator('.coordinator-streaming-text ol li:last-child').count(),0,'incomplete list stays buffered until its closing boundary');
   assert.equal(await coordinator.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream updates patch stable Markdown blocks instead of replacing them');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'stream updates do not steal scroll position while the user reads older messages');
-  const streamLayout=await coordinator.locator('.coordinator-streaming').evaluate(node=>{
-    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-streaming-text');
-    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
-  });
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';coordinatorState.messages.push({role:'assistant',text:seamlessText});
   const seamlessFinal=coordinator.locator('.coordinator-message.assistant').filter({hasText:'先检查页面层级与段落间距。'}).last();
   await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
   assert.equal(await seamlessFinal.getAttribute('data-finalization-probe'),'kept','stream completion keeps the existing assistant message node');
   assert.equal(await seamlessFinal.locator('.coordinator-markdown > :first-child').evaluate(node=>node.__coordinatorBlockProbe),'kept','stream completion unwraps the existing Markdown blocks without rebuilding them');
-  const finalLayout=await seamlessFinal.evaluate(node=>{
-    const root=node.getBoundingClientRect(),content=node.querySelector('.coordinator-markdown');
-    return {height:root.height,blocks:[...content.children].map(child=>({tag:child.tagName,y:child.getBoundingClientRect().top-root.top,height:child.getBoundingClientRect().height}))};
-  });
-  assert.deepEqual(finalLayout,streamLayout,'stream completion keeps the same Markdown block layout without a second reflow');
+  assert.equal(await seamlessFinal.locator('ol li').last().textContent(),'检查窄屏换行。','the final buffered list appears after completion');
   record('coordinator-streaming-text-is-visible-before-final-message');
   const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
   coordinatorState.status='running';coordinatorState.streamingText=structuredQuestionText;
   await coordinator.locator('.coordinator-streaming').waitFor();
-  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text')?.textContent==='当前有四个未完成事项。想先处理哪一项？');
+  await page.waitForFunction(()=>document.querySelector('.coordinator-streaming-text')?.textContent==='当前有四个未完成事项。');
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.questionTransitionProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
@@ -856,6 +875,13 @@ try {
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
   record('Coordinator sends with immediate optimistic message feedback');
+
+  await coordinator.getByLabel('发送给 Coordinator').fill('Ready 一次性回复');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  const oneShotLive=coordinator.locator('.coordinator-message.assistant').filter({hasText:'完整段落一次返回。'}).last();
+  await oneShotLive.waitFor();
+  assert.equal(await oneShotLive.locator('.coordinator-rise.is-entering').count(),1,'a live one-shot response uses one Ready-style entering group');
+  assert.equal(await oneShotLive.locator('.coordinator-rise-body p').count(),2,'the one-shot group keeps its final Markdown layout');
 
   const itemConversations=[];
   await page.route(/\/api\/coordinator\/conversations(?:\?|$)/,async route=>{
