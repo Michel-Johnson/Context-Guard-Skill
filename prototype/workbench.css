@@ -950,10 +950,10 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-history-list p{margin:2px 4px;color:#817660;font-size:12px}
 #coordinator-panel > [role=status] { color: #746e5e; font-size: 12px; margin: 8px 0 12px; }
 #coordinator-panel > [role=status]:empty { display: none; }
-#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 36px 6px;scroll-padding-bottom:36px;scrollbar-gutter:stable; }
+#coordinator-panel .coordinator-messages { flex:1;min-height:0;max-height:none;overflow:auto;overflow-anchor:none;overflow-wrap:anywhere;overscroll-behavior:contain;padding:0 16px 36px 6px;scroll-padding-bottom:36px;scrollbar-gutter:stable; }
+#coordinator-panel .coordinator-messages-tail{pointer-events:none}
 #coordinator-panel .coordinator-message { width:min(100%,880px);margin:0 0 16px; }
 #coordinator-panel .coordinator-message.user { width:fit-content;max-width:min(82%,760px);margin-left:auto; }
-#coordinator-panel .coordinator-message.user:has(+ .coordinator-typing.is-visible){margin-bottom:8px}
 #coordinator-panel .coordinator-question { margin: 12px 0; padding: 14px; background: #faf3dc; border-radius: 12px; border: 1px solid #dccfaa; }
 #coordinator-panel .coordinator-answer-compose { position: relative; margin-top: 12px; }
 #coordinator-panel .coordinator-answer-compose textarea { min-height: 64px; padding: 10px 74px 44px 12px; }
@@ -963,9 +963,8 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-actions p { flex-basis: 100%; margin: 0; color: #746e5e; font-size: 13px; }
 #coordinator-panel .coordinator-answer { white-space: pre-wrap; background: #fff0a9; padding: 10px; border-radius: 8px; }
 #coordinator-panel .coordinator-typing,#coordinator-panel .coordinator-question-status { color: #817660; font-size: 13px; }
-#coordinator-panel .coordinator-typing{display:none;margin:0 0 18px;padding:0 2px;min-height:36px}
-#coordinator-panel .coordinator-typing.is-visible{display:flex;align-items:center}
-#coordinator-panel .coordinator-working-blot{display:block;width:36px;height:36px}
+#coordinator-panel .coordinator-typing{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#coordinator-panel .coordinator-working-blot{display:none;width:36px;height:36px;pointer-events:none}
 #coordinator-panel .coordinator-streaming-text{display:block}
 #coordinator-panel .coordinator-rise+.coordinator-rise{margin-top:.55em}
 #coordinator-panel .coordinator-rise-body{opacity:1;transform:translate3d(0,0,0);-webkit-font-smoothing:antialiased;transition:opacity 1.05s cubic-bezier(.22,.7,.2,1),transform 1.05s cubic-bezier(.22,.7,.2,1)}
@@ -1030,6 +1029,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:not(:disabled):active{transform:translateY(-50%) scale(.94)}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:focus-visible{outline:2px solid #2f6fd6;outline-offset:2px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:disabled{background:#deddd9;color:#8e8d89;opacity:1}
+#coordinator-panel .coordinator-input-shell > .coordinator-send.is-working:disabled{background:transparent;color:#746e5e;overflow:visible}
+#coordinator-panel .coordinator-send.is-working:not(.is-working-fallback) svg{display:none}
+#coordinator-panel .coordinator-send.is-working:not(.is-working-fallback) .coordinator-working-blot{display:block}
 #coordinator-panel button[type=submit] { background: #ffe87e; font-weight: 600; }
 #coordinator-panel button:disabled { opacity: .5; cursor: default; }
 #coordinator-panel .coordinator-node-link { display: inline; margin: 0; padding: 2px 7px; color: #27624b; background: #fff2ad; font-weight: 650; vertical-align: baseline; }
