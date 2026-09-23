@@ -57,6 +57,7 @@ export function translateChanges(document, changes, actor, grants, version) {
   const add = operation => { doc = applyOperations(doc, [operation], actor, grants).doc; operations.push(operation); };
   for (const change of changes) {
     const index = entries(doc.root), f = change.fields || {};
+    if (change.kind === 'idea' && !['human', 'coordinator'].includes(actor.kind)) fail('FORBIDDEN', 'Idea changes require Coordinator authorization');
     if (change.kind === 'relation') {
       const legacyIndex = flowIds.indexOf(change.id);
       add({ type: 'relation', action: change.op, id: change.id,

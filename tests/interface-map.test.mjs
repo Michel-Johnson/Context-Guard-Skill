@@ -77,6 +77,28 @@ test('coordinator actor can apply full Main structure and work-item changes with
   assert.throws(() => applyOperations(created, [{ type: 'update', id: 'C1', fields: { access: [] } }], actor), { code: 'FORBIDDEN' });
 });
 
+test('ordinary Agents cannot create or rewrite Ideas through record or node operations', () => {
+  const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', kind: 'module', state: 'dirty', ideas: [
+    { id: 'I1', text: 'Coordinator idea', state: 'dirty' },
+  ], children: [] } };
+  const agent = { kind: 'agent', sessionId: 's' };
+  const changes = [{ op: 'create', kind: 'idea', id: 'I2', fields: { nodeId: 'R', text: 'unauthorized' } }];
+  assert.throws(() => translateChanges(doc, changes, agent, ['R'], 'v1'), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(doc, [{ type: 'update', id: 'R', fields: { ideas: [] } }], agent, ['R']), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations({ v: 1, project: '', root: null, bootstrap: 'pending', flows: [] }, [{
+    type: 'initialize', project: 'test', node: { title: 'root', ideas: [{ id: 'I2', text: 'unauthorized' }] },
+  }], agent), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(doc, [{ type: 'create', parentId: 'R', node: {
+    id: 'N1', title: 'new', purpose: 'new', owns: ['src/'], ideas: [{ id: 'I2', text: 'unauthorized' }],
+    memories: [{ proposalEvidence: { parentId: 'R', basis: 'new-module', reason: 'new', files: ['src/a.mjs'] } }],
+  } }], agent, ['R']), { code: 'FORBIDDEN' });
+  const coordinator = { kind: 'coordinator', sessionId: 'coordinator' };
+  const operations = translateChanges(doc, changes, coordinator, ['R'], 'v1');
+  const updated = applyOperations(doc, operations, coordinator).doc;
+  assert.deepEqual(updated.root.ideas.map(item => item.id), ['I1', 'I2']);
+  assert.deepEqual(applyOperations(doc, [{ type: 'update', id: 'R', fields: { ideas: [] } }], { kind: 'human' }).doc.root.ideas, []);
+});
+
 test('IF-047: relation receipts retain old and new endpoint grants after deletion or retargeting', () => {
   const doc = { flows: [{ id: 'relation', from: 'A', to: 'B' }] };
   assert.deepEqual(operationGrants(doc, [

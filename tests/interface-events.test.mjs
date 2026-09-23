@@ -410,7 +410,7 @@ test('IF-046: real local backend shares Cloud sync across Sessions, delivers rev
 
 test('IF-037: the project heartbeat reconciles actual private Cloud Map edits without a per-Session event connection', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-map-feed-'));
-  const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', purpose: 'initial', children: [] } };
+  const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', purpose: 'initial', ideas: [{ id: 'I1', text: 'Coordinator idea' }], children: [] } };
   const memory = { dataDir: path.join(root, 'memory'), adminToken: 'test-admin', projects: { test: { token: 'test-project' } } };
   const memoryFile = path.join(memory.dataDir, hash('test'), 'memory.json');
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
@@ -441,6 +441,7 @@ test('IF-037: the project heartbeat reconciles actual private Cloud Map edits wi
   const page = await device.send({ v: 2, id: 'cloud-read', type: 'workbench.read', session, payload: { scope: 'session', cursor: '', limit: 10 } });
   assert.equal(page.version, coordinator.status.serverVersion);
   assert.equal(page.items[0].node.purpose, 'from cloud');
+  assert.equal(Object.hasOwn(page.items[0].node, 'ideas'), false);
   const patch = { v: 2, id: 'cloud-v2-patch', type: 'workbench.patch', session,
     payload: { baseVersion: page.version, changes: [{ op: 'update', kind: 'node', id: 'R', fields: { purpose: 'v2 transaction' } }] } };
   const written = await device.send(patch);
@@ -448,6 +449,10 @@ test('IF-037: the project heartbeat reconciles actual private Cloud Map edits wi
   assert.deepEqual(await device.send(patch), written);
   const changed = await device.send({ v: 2, id: 'read-v2-patch', type: 'workbench.read', session, payload: { scope: 'session', cursor: '', limit: 10 } });
   assert.equal(changed.items[0].node.purpose, 'v2 transaction');
+  const connection = JSON.parse(await fs.readFile(device.file, 'utf8'));
+  await assert.rejects(sendMessage(cloud.url, connection.credential, { ...patch, id: 'cannot-edit-idea', payload: { baseVersion: changed.version,
+    changes: [{ op: 'create', kind: 'idea', id: 'I2', fields: { nodeId: 'R', text: 'not allowed' } }] } }, { allowLoopback: true }), { code: 'FORBIDDEN' });
+  assert.deepEqual((await fs.readFile(memoryFile, 'utf8').then(JSON.parse)).sessions.s.memory.map.root.ideas, doc.root.ideas);
   await assert.rejects(device.send({ ...patch, id: 'cannot-confirm', payload: { baseVersion: changed.version,
     changes: [{ op: 'update', kind: 'node', id: 'R', fields: { proposal: 'accepted' } }] } }), { code: 'FORBIDDEN' });
   await assert.rejects(device.send({ v: 2, id: 'main-missing', type: 'workbench.read', session, payload: { scope: 'main', cursor: '', limit: 10 } }), { code: 'NOT_FOUND' });

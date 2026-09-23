@@ -13,6 +13,7 @@ export class WorkbenchSnapshots {
     const captured = p.recovery && !p.cursor ? await capture() : null;
     const allowed = [...new Set(await grants())].sort();
     const scope = { repositoryId: principal.repositoryId, agentId: principal.agentId, deviceId: principal.deviceId,
+      role: principal.role || 'agent',
       session: message.session, scope: p.scope, nodeIds: [...(p.nodeIds || [])].sort(), recovery: !!p.recovery };
     const owner = hash(canonical(scope)), acl = hash(canonical(allowed));
     let saved, offset = 0;
@@ -40,6 +41,7 @@ export class WorkbenchSnapshots {
           const entry = nodes.get(id);
           if (!entry) { if (p.nodeIds) fail('NOT_FOUND', 'Requested node is missing'); continue; }
           const node = nodeProjection(entry.node, source.mapVersion || source.version);
+          if (!['human', 'coordinator'].includes(principal.role)) delete node.ideas;
           // Keep legacy/user fields in each node; flatten only the tree topology.
           items.push({ node, parentId: entry.parent?.id || null, bucket: entry.bucket || 'root' });
         }
