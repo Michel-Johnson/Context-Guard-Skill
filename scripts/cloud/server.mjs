@@ -1735,6 +1735,11 @@ export async function startCloudServer({
           }
           if (req.method === 'POST') return send(res, 202, await coordinator.submit(await requestBody(req)));
         }
+        if (action === '/api/coordinator/cancel' && project && req.method === 'POST') {
+          const input = await requestBody(req);
+          if (!input || Object.keys(input).some(key => key !== 'id')) protocolFail('INVALID_ARGUMENT', 'Identify the current Coordinator turn');
+          return send(res, 202, await (await coordinatorFor(project, conversationId)).cancel(input));
+        }
         if (action === '/api/coordinator/mount-review' && project && req.method === 'POST') {
           const coordinator = await coordinatorFor(project, conversationId), input = await requestBody(req);
           const result = await coordinator.reviewMount(input, (proposals, operationId) => commitMainMemoryMap(configuredMemory, project.id, {

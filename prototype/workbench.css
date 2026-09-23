@@ -1032,6 +1032,9 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:focus-visible{outline:2px solid #2f6fd6;outline-offset:2px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:disabled{background:#deddd9;color:#8e8d89;opacity:1}
 #coordinator-panel .coordinator-input-shell > .coordinator-send.is-working-ready:disabled{background:transparent;color:#746e5e;overflow:visible}
+#coordinator-panel .coordinator-input-shell > .coordinator-send.is-cancellable{cursor:pointer;overflow:visible}
+#coordinator-panel .coordinator-input-shell > .coordinator-send.is-cancellable::after{content:"";grid-area:1/1;width:10px;height:10px;border-radius:2px;background:#37352e;z-index:2;pointer-events:none}
+#coordinator-panel .coordinator-input-shell > .coordinator-send.is-cancellable .coordinator-working-blot{opacity:.55}
 #coordinator-panel .coordinator-send.is-working-ready svg{opacity:0;transform:scale(.82)}
 #coordinator-panel .coordinator-send.is-working-ready .coordinator-working-blot{opacity:1;transform:scale(1)}
 @media (prefers-reduced-motion:reduce){#coordinator-panel .coordinator-input-shell > .coordinator-send,#coordinator-panel .coordinator-input-shell > .coordinator-send svg,#coordinator-panel .coordinator-working-blot{transition:none}}

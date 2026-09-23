@@ -147,11 +147,15 @@ export class CoordinatorModel {
     this.maxTokens = maxTokens; this.thinking = thinking ? { type: thinking.type } : null; this.fetch = fetchImpl;
   }
 
-  async next({ system, messages, tools = [], maxTokens = this.maxTokens, onText = null, onToolStart = null }) {
+  async next({ system, messages, tools = [], maxTokens = this.maxTokens, onText = null, onToolStart = null, signal = null }) {
+    if (signal?.aborted) throw problem('MODEL_CANCELLED', 'Coordinator turn was stopped');
     const body = JSON.stringify({ model: this.model, max_tokens: maxTokens, system, messages: messages.map(({ role, content }) => ({ role, content })),
       stream: true, ...(this.thinking ? { thinking: this.thinking } : {}), ...(tools.length ? { tools } : {}) });
     if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) throw problem('CONTEXT_TOO_LARGE', 'Coordinator request exceeds the transport safety limit');
     const abort = new AbortController();
+    const cancel = () => abort.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) abort.abort();
     const deadlineAt = Date.now() + this.timeoutMs;
     const timer = setTimeout(() => abort.abort(), this.timeoutMs);
     try {
@@ -177,21 +181,23 @@ export class CoordinatorModel {
       if ((result.stop_reason === 'tool_use') !== Boolean(calls.length)) throw problem('MODEL_INVALID_RESPONSE', 'Coordinator stop reason does not match its tool calls');
       return { content: result.content, stop: result.stop_reason, usage: result.usage || {}, model: result.model, requestId: response.headers.get('request-id') || '' };
     } catch (error) {
+      if (signal?.aborted) throw problem('MODEL_CANCELLED', 'Coordinator turn was stopped');
       if (abort.signal.aborted) throw problem('MODEL_TIMEOUT', 'Coordinator model timed out; no automatic retry was made');
       if (String(error.code || '').startsWith('MODEL_') || error.code === 'CONTEXT_TOO_LARGE') throw error;
       throw problem('MODEL_UNAVAILABLE', 'Coordinator model connection failed; no automatic retry was made');
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
   }
 }
 
 // Persist every assistant response and tool receipt through the caller. Stable
 // operation IDs let protocol-backed tools replay a lost response idempotently.
-export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, onText = null, onToolStart = null }) {
+export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, onText = null, onToolStart = null, signal = null }) {
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
   if (!state.pending) {
-    const next = await model.next({ system, messages: coordinatorModelMessages(state), tools, onText, onToolStart });
+    const next = await model.next({ system, messages: coordinatorModelMessages(state), tools, onText, onToolStart, signal });
+    if (signal?.aborted) throw problem('MODEL_CANCELLED', 'Coordinator turn was stopped');
     const inputTokens = coordinatorInputTokens(next.usage);
     if (inputTokens !== null) state.lastInputTokens = inputTokens;
     if (next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user')) await onToolStart?.('ask_user');
@@ -214,7 +220,7 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
     let receipt = state.toolReceipts[operationId];
     if (receipt && receipt.fingerprint !== fingerprint) throw problem('TOOL_ID_REUSED', 'Coordinator reused a tool identifier with different input');
     if (!receipt) {
-      if (failed || transferred) receipt = { fingerprint, ...failedTool('NOT_EXECUTED') };
+      if (failed || transferred || signal?.aborted) receipt = { fingerprint, ...failedTool(signal?.aborted ? 'MODEL_CANCELLED' : 'NOT_EXECUTED') };
       else {
         try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
         catch (error) {

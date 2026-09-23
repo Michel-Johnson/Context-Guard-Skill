@@ -378,6 +378,13 @@ try {
     coordinatorState.approvals[0].pending = false;
     return route.fulfill({ json: { receiptId: 'human-receipt' } });
   });
+  const cancellations = [];
+  await page.route(/\/api\/coordinator\/cancel(?:\?|$)/, async route => {
+    const request = route.request().postDataJSON(); cancellations.push(request);
+    coordinatorState = { ...coordinatorState, status: 'waiting-for-user', activeTurnId: null, streamingText: '', cancelledTurnId: request.id,
+      messages: [...coordinatorState.messages, { role: 'assistant', text: '已停止生成。' }] };
+    return route.fulfill({ status: 202, json: { accepted: true, id: request.id } });
+  });
   const conversationCreationRequests = [];
   await page.route(/\/api\/coordinator\/conversations\/new(?:\?|$)/, async route => {
     const request = route.request().postDataJSON();conversationCreationRequests.push(request);
@@ -764,6 +771,13 @@ try {
   assert.match(planningPlacement.parent,/coordinator-send/,'working state replaces the send arrow');
   assert.equal(planningPlacement.insideComposer,true,'Ready ink stays in the composer');
   assert.equal(planningPlacement.messageInk,false,'the message timeline contains no working ink');
+  coordinatorState.activeTurnId='browser-stop-turn';
+  await coordinator.getByRole('button',{name:'停止当前回复'}).click();
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel .coordinator-message.assistant:last-of-type')?.textContent?.includes('已停止生成。'));
+  assert.deepEqual(cancellations,[{id:'browser-stop-turn'}],'clicking the working mark stops only the active Coordinator turn');
+  assert.equal(await coordinator.locator('.coordinator-send.is-cancellable').count(),0,'the stop control returns to the send state');
+  coordinatorState.status='running';coordinatorState.activeTurnId=null;coordinatorState.cancelledTurnId=null;
+  await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
@@ -920,7 +934,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel .coordinator-send')?.disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -932,7 +946,7 @@ try {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
-      panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
+      panel.querySelector('.coordinator-send').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');

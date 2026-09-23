@@ -216,16 +216,18 @@ export class CoordinatorService {
   constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, maxModelRetries = 2, retryDelayMs = 250,
     compactAtTokens = COORDINATOR_COMPACT_AT_TOKENS, simulated = false, namespace = '' }) {
     this.file = path.join(directory, 'conversation.json');
+    this.cancelFile = path.join(directory, 'cancel.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
     this.model = model; this.system = system; this.tools = tools; this.execute = execute; this.context = context;
     this.maxSteps = maxSteps; this.maxModelRetries = maxModelRetries; this.retryDelayMs = retryDelayMs; this.simulated = simulated; this.running = null;
     this.compactAtTokens = compactAtTokens; this.compacting = null; this.compactionRequested = false;
-    this.namespace = namespace;
+    this.namespace = namespace; this.activeAbort = null;
   }
   async state() {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
     const mounts = await readJSON(this.mountFile, { receipts: {}, byProposal: {} });
     return { status: state.status, error: state.error || null, activeTurnId: state.activeTurnId || null,
+      cancelledTurnId: state.cancelledTurnId || null,
       acceptedRequestIds: Object.keys(state.requests || {}).slice(-100),
       streamingText: state.streaming?.text || '', contextVersion: state.activeContext?.version || null,
       activity: state.status === 'running' && state.activity?.turnId && state.activity.turnId === state.activeTurnId ? state.activity.kind : null,
@@ -348,11 +350,25 @@ export class CoordinatorService {
         state.activeTiming = { receivedAt: new Date(receivedAt).toISOString(), contextMs: contextCompletedAt - contextStartedAt };
         state.activeTurnId = id; state.steps = 0; state.modelRetries = 0;
       }
-      state.status = 'running'; state.error = null; state.activity = null;
+      state.status = 'running'; state.error = null; state.activity = null; state.cancelledTurnId = null;
       await atomicWrite(this.file, encode(state));
     });
     this.kick();
     return { accepted: true, id };
+  }
+  async cancel({ id } = {}) {
+    if (typeof id !== 'string' || !id || id.length > 128) throw error('INVALID_INPUT', 'Identify the current Coordinator turn');
+    const result = await withFileLock(this.file + '.submit.lock', async () => {
+      const state = await readJSON(this.file, null);
+      if (state?.cancelledTurnId === id) return { accepted: true, id, cancelled: true };
+      if (state?.activeTurnId !== id) throw error('CONFLICT', 'Coordinator turn is no longer active');
+      if (state.status !== 'running') return { accepted: false, id, completed: true };
+      await atomicWrite(this.cancelFile, encode({ id, requestedAt: new Date().toISOString() }));
+      if (this.activeAbort?.id === id) this.activeAbort.controller.abort();
+      return { accepted: true, id };
+    });
+    if (result.accepted && !result.cancelled) this.kick();
+    return result;
   }
   async compactCompleted() {
     const source = await readJSON(this.file, null);
@@ -434,16 +450,39 @@ export class CoordinatorService {
         await atomicWrite(this.file, encode(state));
       }
       const save = async value => atomicWrite(this.file, encode(value));
+      const cancelled = async id => (await readJSON(this.cancelFile, null))?.id === id;
+      const finishCancelled = async () => {
+        if (state.status === 'waiting-for-user') {
+          state.activeTurnId = null; state.streaming = null; state.activity = null;
+          await save(state);
+          return;
+        }
+        const id = state.activeTurnId;
+        const partial = state.streaming?.turnId === id ? String(state.streaming.text || '').trim() : '';
+        const alreadySaved = state.messages.slice(-2).some(message => message.role === 'assistant' &&
+          Array.isArray(message.content) && message.content.some(block => block.type === 'text' && block.text === partial));
+        state.messages.push({ role: 'assistant', content: [{ type: 'text', text: partial && !alreadySaved
+          ? `${partial}\n\n（已停止生成）` : '已停止生成。' }] });
+        state.cancelledTurnId = id; state.activeTurnId = null; state.activeInput = null;
+        state.pending = null; state.streaming = null; state.activity = null; state.error = null;
+        state.status = 'waiting-for-user';
+        state.activeTiming ||= {}; state.activeTiming.completedAt = new Date().toISOString();
+        await save(state);
+      };
       try {
         while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
+          if (await cancelled(state.activeTurnId)) { await finishCancelled(); break; }
           state.steps++;
           state.activeTiming ||= {};
           state.activeTiming.modelStartedAt ||= new Date().toISOString();
           await save(state);
           const runtimeSystem = this.system + (state.activeContext?.text || '');
+          const controller = new AbortController();
+          this.activeAbort = { id: state.activeTurnId, controller };
+          if (await cancelled(state.activeTurnId)) controller.abort();
           try {
             state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model: this.model,
-              system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
+              system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute, signal: controller.signal,
               onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
                 state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); },
               onToolStart: async name => {
@@ -454,6 +493,7 @@ export class CoordinatorService {
             state.modelRetries = 0;
             if (Number.isSafeInteger(state.lastInputTokens) && state.lastInputTokens < this.compactAtTokens) delete state.compactionError;
           } catch (cause) {
+            if (cause.code === 'MODEL_CANCELLED' && await cancelled(state.activeTurnId)) { await finishCancelled(); break; }
             if (['MODEL_TIMEOUT', 'MODEL_UNAVAILABLE'].includes(cause.code) && (state.modelRetries || 0) < this.maxModelRetries && !state.pending) {
               state.modelRetries = (state.modelRetries || 0) + 1;
               state.steps--; state.streaming = null; state.activity = null;
@@ -463,7 +503,8 @@ export class CoordinatorService {
               continue;
             }
             throw cause;
-          }
+          } finally { if (this.activeAbort?.controller === controller) this.activeAbort = null; }
+          if (await cancelled(state.activeTurnId)) { await finishCancelled(); break; }
           if (state.status === 'waiting-for-user') state.activeTurnId = null;
           state.streaming = null; state.activity = null;
           state.activeTiming.completedAt = new Date().toISOString();

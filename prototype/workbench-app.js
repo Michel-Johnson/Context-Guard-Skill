@@ -4475,9 +4475,9 @@ async function installCoordinatorPanel(sync){
       typingVisible=true;typingStartedAt=performance.now();
       typing.classList.add('is-visible');typing.setAttribute('aria-hidden','false');
       send.classList.add('is-working');send.classList.toggle('is-working-fallback',!workingBlot);
-      send.setAttribute('aria-label','正在处理');send.title='正在处理';
       if(inkReady)send.classList.add('is-working-ready');
       workingBlot?.start(()=>{if(!typingVisible)return;inkReady=true;send.classList.add('is-working-ready');});
+      syncSendState();
       return;
     }
     if(!typingVisible||typingExitTimer)return;
@@ -4485,9 +4485,14 @@ async function installCoordinatorPanel(sync){
       typingExitTimer=0;typingVisible=false;
       typing.classList.remove('is-visible');typing.setAttribute('aria-hidden','true');
       send.classList.remove('is-working','is-working-ready','is-working-fallback');
-      send.setAttribute('aria-label','发送');send.title='发送';
+      syncSendState();
       typingStopTimer=setTimeout(()=>{workingBlot?.stop();inkReady=false;typingStopTimer=0;},180);
     },Math.max(0,300-(performance.now()-typingStartedAt)));
+  };
+  const stopTypingNow=()=>{
+    clearTimeout(typingExitTimer);clearTimeout(typingStopTimer);typingExitTimer=0;typingStopTimer=0;
+    typingVisible=false;inkReady=false;typing.classList.remove('is-visible');typing.setAttribute('aria-hidden','true');
+    send.classList.remove('is-working','is-working-ready','is-working-fallback');workingBlot?.stop();syncSendState();
   };
   const activity=document.createElement('p');activity.className='coordinator-tool-activity';activity.setAttribute('role','status');
   activity.textContent='Working · 正在整理选项';
@@ -4610,7 +4615,7 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null,stopBusy=false,stoppingTurnId=null,acceptedTurnId=null,submitInFlight=null;
   const rowKeys=new WeakMap();
   const handledNavigationActions=new Set();
   let navigationRun=0;
@@ -4643,7 +4648,15 @@ async function installCoordinatorPanel(sync){
       .filter((id,index,list)=>index===0||id!==list[index-1]);
     void tourMapNodes(ids).catch(error=>{status.textContent='无法定位节点：'+error.message;});
   };
-  const syncSendState=()=>{send.disabled=sendBlocked||!input.value.trim();};
+  const canStopReply=()=>typingVisible&&Boolean(busy&&pending?.id||acceptedTurnId||latestConversationState?.status==='running'&&latestConversationState.activeTurnId||streamTimer||revealSettling);
+  const syncSendState=()=>{
+    const stoppable=canStopReply();
+    send.type=stoppable?'button':'submit';
+    send.classList.toggle('is-cancellable',stoppable);
+    send.disabled=stoppable?stopBusy||Boolean(stoppingTurnId):sendBlocked||!input.value.trim();
+    const label=stoppable?(stopBusy||stoppingTurnId?'正在停止':'停止当前回复'):'发送';
+    send.setAttribute('aria-label',label);send.title=label;
+  };
   const setSendBlocked=blocked=>{sendBlocked=blocked;syncSendState();};
   const optimisticRequests=new Map();
   let liveReplyAwaiting=false,liveReplyAssistantCount=0;
@@ -4673,7 +4686,7 @@ async function installCoordinatorPanel(sync){
     liveReplyAwaiting=false;
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
-    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;acceptedTurnId=null;stoppingTurnId=null;
     pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
@@ -4758,13 +4771,16 @@ async function installCoordinatorPanel(sync){
   };
   const render=(state,forceFinal=false)=>{
     const renderedConversation=selected;
+    if(state.cancelledTurnId&&state.status!=='running')forceFinal=true;
     latestConversationState=state;
+    if(state.status!=='running'||state.activeTurnId!==stoppingTurnId)stoppingTurnId=null;
+    if(acceptedTurnId&&state.status!=='running'&&!busy)acceptedTurnId=null;
     // A lost HTTP response is not a lost turn. Reconcile the original request
     // against the server's durable receipt; model retries remain explicit.
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
     consumeNavigationActions(state);
-    status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
+    status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:stoppingTurnId?'正在停止当前回复…':'';
     const streamingText=String(state.streamingText||'');
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
@@ -4805,7 +4821,7 @@ async function installCoordinatorPanel(sync){
         if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry))pending={...state.retryInput,retry:true};
         canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
         if(canCorrect)status.textContent+=' · 可补充纠正意见';
-        settleTypingAfterPaint(renderedConversation);
+        if(state.cancelledTurnId)stopTypingNow();else settleTypingAfterPaint(renderedConversation);
         setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
         setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';
         queueMicrotask(()=>{if(renderedConversation===selected)render(latestConversationState||state,true);});
@@ -4853,7 +4869,7 @@ async function installCoordinatorPanel(sync){
         if(content?.childNodes.length){
           const rise=document.createElement('div'),body=document.createElement('div');
           rise.className='coordinator-rise';body.className='coordinator-rise-body';
-          if(!prefersReducedMotion())rise.classList.add('is-entering');
+          if(!prefersReducedMotion()&&!state.cancelledTurnId)rise.classList.add('is-entering');
           body.append(...content.childNodes);rise.append(body);content.append(rise);
           if(stickToTurn)releaseTurnPin();
           settleTypingAfterPaint(renderedConversation);
@@ -4963,6 +4979,7 @@ async function installCoordinatorPanel(sync){
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
     setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
     setRetryMode(pending?'request':null); retry.disabled=busy||state.status==='running';
+    if(state.cancelledTurnId&&state.status!=='running')stopTypingNow();
     pinTurn();
   };
   const refresh=async()=>{
@@ -4975,6 +4992,25 @@ async function installCoordinatorPanel(sync){
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
     catch(error){setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
+  };
+  const stopCurrentReply=async()=>{
+    if(stopBusy||stoppingTurnId)return;
+    const id=selected,state=latestConversationState;
+    const turnId=state?.status==='running'?state.activeTurnId:busy?pending?.id:acceptedTurnId;
+    if(!turnId){
+      stopStreamingAnimation();lastStableContent=null;revealSettling=false;
+      if(state)render(state,true);
+      stopTypingNow();
+      return;
+    }
+    stopBusy=true;syncSendState();status.textContent='正在停止当前回复…';
+    try{
+      await submitInFlight?.catch(()=>{});
+      const result=await sync.call(conversationUrl('/api/coordinator/cancel',id),{id:turnId},'POST','main');
+      if(result.accepted&&id===selected)stoppingTurnId=turnId;
+      await refresh();
+    }catch(error){status.textContent='停止未确认：'+error.message;}
+    finally{stopBusy=false;syncSendState();}
   };
   const submit=async request=>{
     if(busy) return;
@@ -4990,22 +5026,25 @@ async function installCoordinatorPanel(sync){
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
-      await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
+      submitInFlight=sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
+      await submitInFlight;
+      if(id===selected)acceptedTurnId=request.id;
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
       if(id===selected){pendingError=message;setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
-    finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
+    finally{submitInFlight=null;busy=false;retry.disabled=false;setSendBlocked(!!pending);}
     await refresh();
   };
   const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
   input.addEventListener('input',()=>{resizeInput();syncSendState();});
   resizeInput();
   syncSendState();
+  send.addEventListener('click',event=>{if(!canStopReply())return;event.preventDefault();void stopCurrentReply();});
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
-  input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
+  input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled&&!canStopReply())form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});
   window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);setTyping(false);});
   window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
