@@ -488,42 +488,8 @@ export async function startCloudServer({
   const projectById = id => registry.projects.find(project => project.id === id);
   const coordinators = new Map();
   const conversationsFor = project => new CoordinatorConversations(path.join(dataDir, 'coordinators', project.id));
-  // A mounted TODO/Bug owns its execution Session from the moment the
-  // Coordinator is attached. Brief approval still gates dispatch.
   const normalizedSessions = item => (Array.isArray(item?.sessions) ? item.sessions : [])
     .map(value => String(value || '').trim()).filter(Boolean);
-  const openWorkItem = (kind, item) => kind === 'todo'
-    ? item?.status !== 'done'
-    : kind === 'bug' && !isClosedBugStatus(item?.status);
-  const mountedSessionOperationId = (project, nodeId, kind, itemId) => `mount-session:${digest(`${project.id}:${nodeId}:${kind}:${itemId}`)}`;
-  const schedulerPrincipal = (project, human) => {
-    const config = configuredMemory.projects[project.id].coordinator;
-    return { ...human, role: 'coordinator', deviceId: 'cloud-scheduler', agentId: `scheduler:${project.id}`,
-      bindings: { ...config.bindings }, creationTemplates: config.sessionTemplates || [] };
-  };
-  const developerTemplateIds = project => {
-    const config = configuredMemory?.projects?.[project.id]?.coordinator || {};
-    return (config.sessionTemplates || []).filter(id => Object.hasOwn(config.bindings || {}, id) && !config.ciReceivers?.[id]);
-  };
-  const requestMountedExecutionSession = async (project, { operationId, name }) => {
-    const { store, principal: human } = interfaceProject(project);
-    const existing = (await store.sessionCreations(human)).find(item => item.operationId === operationId);
-    if (existing) return existing;
-    const templates = developerTemplateIds(project);
-    let templateSessionId = '';
-    for (const id of templates) {
-      const presence = interfacePresence.get(presenceKey(human.repositoryId, id));
-      if (presence && cloudSessionPresence(presence.lastHeartbeatAt) !== 'offline' && await store.registeredBinding(human, id)) {
-        templateSessionId = id; break;
-      }
-    }
-    if (!templateSessionId) {
-      for (const id of templates) if (await store.registeredBinding(human, id)) { templateSessionId = id; break; }
-    }
-    if (!templateSessionId) protocolFail('UNAVAILABLE', 'No developer template is registered; cannot create an execution Session');
-    const label = String(name || '执行任务').trim().slice(0, 200) || '执行任务';
-    return store.requestSessionCreation(schedulerPrincipal(project, human), { operationId, templateSessionId, name: label });
-  };
   const mapItem = async (project, nodeId, kind, itemId) => {
     const memory = await readMemoryProject(configuredMemory, project.id);
     const root = memory.main?.memory?.map?.root;
@@ -537,11 +503,6 @@ export async function startCloudServer({
       if (!item || !memory.main?.version) return null;
       const sessions = normalizedSessions(item);
       if (sessions[0] === sessionId) return sessionId;
-      if (sessions[0]) {
-        const { store, principal } = interfaceProject(project);
-        const existing = (await store.sessionCreations(principal)).find(creation => creation.sessionId === sessions[0]);
-        if (!existing || existing.state !== 'failed') return sessions[0];
-      }
       const list = node[key].map(value => value?.id === itemId
         ? { ...value, sessions: [sessionId, ...normalizedSessions(value).filter(id => id !== sessionId)] }
         : value);
@@ -558,32 +519,6 @@ export async function startCloudServer({
     }
     protocolFail('VERSION_CONFLICT', 'Main changed while binding the execution Session');
   };
-  const bindMountedExecutionSession = async (project, { nodeId, kind, itemId, title }) => {
-    if (!['todo', 'bug'].includes(kind)) return null;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const { item } = await mapItem(project, nodeId, kind, itemId);
-      if (!item) protocolFail('NOT_FOUND', 'Map TODO/Bug is no longer available');
-      if (!openWorkItem(kind, item)) return normalizedSessions(item)[0] || null;
-      const sessions = normalizedSessions(item);
-      if (sessions[0]) return sessions[0];
-      if (typeof item.dispatch?.session_id === 'string' && item.dispatch.session_id) return item.dispatch.session_id;
-      const creation = await requestMountedExecutionSession(project, {
-        operationId: mountedSessionOperationId(project, nodeId, kind, itemId),
-        name: title || item.title || itemId,
-      });
-      const bound = await writeItemSessions(project, { nodeId, kind, itemId }, creation.sessionId);
-      if (bound) return bound;
-    }
-    protocolFail('VERSION_CONFLICT', 'Main changed while binding the execution Session');
-  };
-  const boundExecutionCreation = async (project, task) => {
-    if (!task?.itemId || !task.nodeId || !['todo', 'bug'].includes(task.kind)) return null;
-    const { item } = await mapItem(project, task.nodeId, task.kind, task.itemId);
-    const sessionId = normalizedSessions(item)[0];
-    if (!sessionId) return null;
-    const { store, principal } = interfaceProject(project);
-    return (await store.sessionCreations(principal)).find(creation => creation.sessionId === sessionId) || null;
-  };
   const itemConversation = async (project, { nodeId, kind, itemId }) => {
     const config = configuredMemory?.projects?.[project.id]?.coordinator;
     if (!config?.enabled) protocolFail('FORBIDDEN', 'Coordinator is not enabled');
@@ -591,15 +526,11 @@ export async function startCloudServer({
     const node = entries(snapshot.main.memory.map.root).get(nodeId)?.node;
     const item = node?.[kind === 'todo' ? 'todos' : kind === 'bug' ? 'bugs' : kind === 'idea' ? 'ideas' : '']?.find(item => item.id === itemId);
     if (!item || config.nodeIds && !config.nodeIds.includes(nodeId)) protocolFail('FORBIDDEN', 'Map item is not available');
-    if (kind === 'todo' || kind === 'bug') await bindMountedExecutionSession(project, { nodeId, kind, itemId, title: item.title || item.desc || itemId });
     return conversationsFor(project).ensure({ nodeId, kind, item });
   };
   const mapIntakeFor = (project, service) => new CoordinatorMapIntake({
     directory: path.join(dataDir, 'coordinators', project.id), service,
     onItem: async entry => {
-      if (entry.kind === 'todo' || entry.kind === 'bug') await bindMountedExecutionSession(project, {
-        nodeId: entry.nodeId, kind: entry.kind, itemId: entry.item.id, title: entry.item.title || entry.item.desc || entry.item.id,
-      });
       const conversations = conversationsFor(project), id = await conversations.ensure(entry);
       const dispatch = entry.item.dispatch;
       if (dispatch?.session_id && dispatch.task_id) await conversations.bind(id, dispatch.session_id, dispatch.task_id);
@@ -662,13 +593,9 @@ export async function startCloudServer({
             const snapshot = await readMemoryProject(configuredMemory, project.id);
             const root = snapshot.main?.memory?.map?.root;
             const index = root ? entries(root) : new Map();
-            const boundSessionId = (nodeId, kind, itemId) => {
-              const item = index.get(nodeId)?.node?.[`${kind}s`]?.find(value => value?.id === itemId);
-              return normalizedSessions(item)[0] || item?.dispatch?.session_id || null;
-            };
             const projectTasks = (await store.projectTasks(principal)).filter(task => task.conversationId === conversationId);
             const tasks = projectTasks.map(task => ({ taskId: task.taskId, stage: task.stage,
-              executionSessionId: task.sessionId || (task.itemId ? boundSessionId(task.nodeId, task.kind, task.itemId) : null), error: task.error }));
+              executionSessionId: task.sessionId || null, error: task.error }));
             const knownItems = new Set(projectTasks.map(task => task.itemId).filter(Boolean));
             if (root) {
               const allowed = Array.isArray(config.nodeIds) ? new Set(config.nodeIds) : null;
@@ -685,13 +612,12 @@ export async function startCloudServer({
                   if (!item?.id || knownItems.has(item.id)) continue;
                   const closed = kind === 'todo' ? item.status === 'done' : isClosedBugStatus(item.status);
                   if (closed) continue;
-                  const dispatch = item.dispatch || {};
-                  tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '', stage: dispatch.status || item.status || 'pending',
-                    executionSessionId: dispatch.session_id || normalizedSessions(item)[0] || null,
+                  tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '', stage: item.status || 'pending',
+                    executionSessionId: null,
                     // A stable task identity lets the Coordinator prepare a
                     // Map item from the legacy/Main conversation without
                     // inventing a second random task on retry.
-                    taskId: dispatch.task_id || mapWorkTaskId(project.id, node.id, kind, item.id), nodeId: node.id });
+                    taskId: mapWorkTaskId(project.id, node.id, kind, item.id), nodeId: node.id });
                 }
               }
             }
@@ -707,7 +633,7 @@ export async function startCloudServer({
               const entry = root && entries(root).get(requirements.nodeId)?.node;
               const item = entry?.[`${requirements.kind}s`]?.find(value => value?.id === requirements.itemId);
               if (!item) protocolFail('NOT_FOUND', 'Map TODO/Bug is no longer available');
-              const expectedTaskId = item.dispatch?.task_id || mapWorkTaskId(project.id, requirements.nodeId, requirements.kind, requirements.itemId);
+              const expectedTaskId = mapWorkTaskId(project.id, requirements.nodeId, requirements.kind, requirements.itemId);
               if (requirements.taskId !== expectedTaskId) protocolFail('CONFLICT', 'Task identity does not match the Map TODO/Bug');
               if (!requirements.nodeIds.includes(requirements.nodeId)) {
                 const routedNodes = [...new Set([...requirements.nodeIds, requirements.nodeId])];
@@ -761,15 +687,8 @@ export async function startCloudServer({
             const key = input.kind === 'todo' ? 'todos' : input.kind === 'bug' ? 'bugs' : 'ideas';
             const short = digest(operationId).slice(0, 16);
             const itemId = input.kind === 'todo' ? `TD-${short}` : input.kind === 'bug' ? `B${parseInt(short.slice(0, 10), 16)}` : `I-${short}`;
-            let executionSessionId = '';
-            if (input.kind === 'todo' || input.kind === 'bug') {
-              const creation = await requestMountedExecutionSession(project, {
-                operationId: mountedSessionOperationId(project, input.nodeId, input.kind, itemId), name: input.title,
-              });
-              executionSessionId = creation.sessionId;
-            }
-            const item = input.kind === 'todo' ? { id: itemId, title: input.title, desc: input.description, status: 'pending', sessions: [executionSessionId] }
-              : input.kind === 'bug' ? { id: itemId, title: input.title, desc: input.description, status: 'open', sessions: [executionSessionId] }
+            const item = input.kind === 'todo' ? { id: itemId, title: input.title, desc: input.description, status: 'pending', sessions: [] }
+              : input.kind === 'bug' ? { id: itemId, title: input.title, desc: input.description, status: 'open', sessions: [] }
               : { id: itemId, text: input.title, desc: input.description, state: 'dirty' };
             const list = [...(node[key] || []), item];
             const result = await commitMainMemoryMap(configuredMemory, project.id, { operationId: `coordinator-mount:${operationId}`,
@@ -780,10 +699,9 @@ export async function startCloudServer({
             const target = await coordinatorFor(project, id);
             await target.submit({ id: `mount-continue:${digest(operationId)}`, text: input.kind === 'idea'
               ? '此想法已成功挂载。沿用上面的用户需求，读取该节点的最新 Main 版本。不要再次挂载，也不要为想法创建执行 Session。'
-              : '此事项已成功挂载。干活的执行 Session 已新建并写入该 TODO/Bug 的 sessions。沿用上面的用户需求，读取该节点的最新 Main 版本；业务目标明确时直接调用 prepare_task 准备项目级需求。不要再次挂载、读取旧任务或另建执行 Session。需求批准前不要派发；批准后后台把工作派到已绑定的 Session。' }, { source: 'workflow' });
+              : '此事项已成功挂载，尚未创建执行 Session。沿用上面的用户需求，读取该节点的最新 Main 版本；业务目标明确时直接调用 prepare_task 准备项目级需求。不要再次挂载、读取旧任务或选择执行端。用户批准 brief 后，后台为该任务创建新的执行 Session 并派发。' }, { source: 'workflow' });
             return { kind: 'conversation-mounted', message: '已挂载到 Map', conversationId: id,
-              node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version,
-              ...(executionSessionId ? { executionSessionId } : {}) };
+              node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version };
           },
           // Conversation ownership is a UI routing hint, not an authorization
           // boundary. Every Coordinator conversation uses the same project
@@ -882,13 +800,6 @@ export async function startCloudServer({
           continue;
         }
         if (task.stage === 'queued') {
-          const bound = await boundExecutionCreation(project, task);
-          if (bound && bound.state !== 'failed') {
-            task = await store.updateProjectTask(principal, task.taskId, {
-              stage: 'creating', templateSessionId: bound.templateSessionId, sessionId: bound.sessionId, creationId: bound.id, error: null,
-            }, { reserveLimit: limit });
-            if (task.stage === 'queued') continue;
-          } else {
             const templates = principal.creationTemplates.filter(id => Object.hasOwn(config.bindings || {}, id) && !config.ciReceivers?.[id]);
             const templateSessionId = templates.find(id => {
               const presence = interfacePresence.get(presenceKey(principal.repositoryId, id));
@@ -897,7 +808,6 @@ export async function startCloudServer({
             if (!templateSessionId) { await store.updateProjectTask(principal, task.taskId, { error: 'WAITING_DEVICE' }); continue; }
             task = await store.updateProjectTask(principal, task.taskId, { stage: 'creating', templateSessionId, error: null }, { reserveLimit: limit });
             if (task.stage === 'queued') continue;
-          }
         }
         if (task.stage === 'creating') {
           if (task.creationId && task.sessionId) task = await store.updateProjectTask(principal, task.taskId, { stage: 'starting' });
