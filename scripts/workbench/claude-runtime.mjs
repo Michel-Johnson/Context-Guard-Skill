@@ -281,7 +281,7 @@ async function runWorker(file, jobFile) {
   // Written before spawning Claude. A crash after this point is uncertain, not
   // permission to submit the same prompt again.
   await update({ workerPid: process.pid, state: 'dispatching' });
-  let child, timedOut = false;
+  let child, stopReason = null;
   try {
     const credentials = await readJSON(config.environmentFile);
     if (Object.keys(credentials).some(key => !providerKeys.has(key)) || Object.values(credentials).some(value => typeof value !== 'string')) fail('INVALID_ENVIRONMENT', 'Only provider settings are accepted in the private environment file');
@@ -295,13 +295,22 @@ async function runWorker(file, jobFile) {
     const decoder = new StringDecoder('utf8');
     const output = await fs.open(jobFile + '.jsonl', 'a', 0o600);
     let writes = Promise.resolve();
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, config.timeoutMs || 600000);
-    const killTimer = setTimeout(() => child.kill('SIGKILL'), (config.timeoutMs || 600000) + 5000);
-    const interrupted = () => { timedOut = true; child.kill('SIGTERM'); };
+    const idleMs = config.timeoutMs || 600000;
+    let idleTimer, killTimer;
+    const terminate = (reason = 'CLAUDE_TIMEOUT_OR_INTERRUPTED') => {
+      if (stopReason) return;
+      stopReason = reason; child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
+    };
+    const active = () => { clearTimeout(idleTimer); idleTimer = setTimeout(terminate, idleMs); };
+    active();
+    const hardTimer = setTimeout(terminate, Math.max(idleMs, 3600000));
+    const interrupted = () => terminate();
     process.once('SIGTERM', interrupted); process.once('SIGINT', interrupted);
     child.stdout.on('data', chunk => {
       bytes += chunk.length;
-      if (bytes > 8 * 1024 * 1024) { timedOut = true; child.kill('SIGTERM'); return; }
+      if (bytes > (config.outputLimitBytes || 64 * 1024 * 1024)) { terminate('CLAUDE_OUTPUT_LIMIT'); return; }
+      active();
       writes = writes.then(() => output.write(chunk));
       buffer += decoder.write(chunk);
       for (;;) {
@@ -309,27 +318,27 @@ async function runWorker(file, jobFile) {
         const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
         try {
           const event = JSON.parse(line);
-          if (event.session_id && event.session_id !== session.sessionId) { timedOut = true; child.kill('SIGTERM'); break; }
+          if (event.session_id && event.session_id !== session.sessionId) { terminate('CLAUDE_SESSION_MISMATCH'); break; }
           if (event.type === 'system' && event.subtype === 'init') initialized = true;
           if (event.type === 'result') result = event;
         } catch { /* Native diagnostic text is not a protocol receipt. */ }
       }
     });
-    child.stderr.resume(); // Do not publish provider stderr or credentials.
+    child.stderr.on('data', active); // Activity only; never publish provider stderr or credentials.
     child.stdin.on('error', () => {});
     child.stdin.end(job.message);
     try {
       await update({ state: 'running', childPid: child.pid });
       const code = await exit;
       await writes; await output.sync();
-      await update({ state: timedOut || !result ? 'interrupted' : code === 0 && !result.is_error ? 'finished' : 'failed',
-        error: timedOut ? 'CLAUDE_TIMEOUT_OR_INTERRUPTED' : !result ? 'CLAUDE_NO_RESULT' : result.is_error ? 'CLAUDE_FAILED' : null });
+      await update({ state: stopReason || !result ? 'interrupted' : code === 0 && !result.is_error ? 'finished' : 'failed',
+        error: stopReason || (!result ? 'CLAUDE_NO_RESULT' : result.is_error ? 'CLAUDE_FAILED' : null) });
       await withFileLock(file + '.lock', async () => {
         const latest = await readJSON(file);
         await atomicWrite(file, encode({ ...latest, initialized: latest.initialized || initialized,
           ...(['finished', 'failed'].includes(job.state) ? { active: null } : {}), updatedAt: job.updatedAt }));
       });
-    } finally { clearTimeout(timer); clearTimeout(killTimer); await output.close(); }
+    } finally { clearTimeout(idleTimer); clearTimeout(hardTimer); clearTimeout(killTimer); await output.close(); }
   } catch (error) { await update({ state: 'interrupted', error: String(error.code || 'CLAUDE_LAUNCH_FAILED').slice(0, 100) }); }
 }
 

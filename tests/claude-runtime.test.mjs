@@ -175,6 +175,48 @@ test('Claude keeps a single native turn, resumes its Session, and deduplicates a
   await assert.rejects(runtime.deliver({ ...delivery, message: 'Different input' }), { code: 'ID_REUSED' });
 });
 
+test('Claude runtime allows a long active turn but interrupts a silent native process', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-idle-timeout-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
+  const script = path.join(directory, 'native.cjs');
+  await fs.writeFile(script, `let input=''; process.stdin.on('data',chunk=>input+=chunk).on('end',()=>{
+    const args=process.argv.slice(2), index=Math.max(args.indexOf('--session-id'),args.indexOf('--resume')), session_id=args[index+1];
+    console.log(JSON.stringify({type:'system',subtype:'init',session_id}));
+    if(input==='silent') { setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),1200); return; }
+    if(input==='flood') { console.log(JSON.stringify({type:'assistant',session_id,payload:'x'.repeat(2048)})); setTimeout(()=>console.log(JSON.stringify({type:'result',session_id,is_error:false})),1200); return; }
+    let count=0; const interval=setInterval(()=>{
+      console.log(JSON.stringify({type:'assistant',session_id,progress:++count}));
+      if(count===12){clearInterval(interval);console.log(JSON.stringify({type:'result',session_id,is_error:false}));}
+    },100);
+  });`);
+  const environmentFile = path.join(directory, 'provider.json'); await fs.writeFile(environmentFile, '{}');
+  const runtime = new ClaudeRuntime(path.join(directory, 'runtime')), sessionId = randomUUID();
+  const config = { command: process.execPath, args: [script], root: directory, configDir: path.join(directory, 'config'),
+    environmentFile, name: 'Idle watchdog', model: 'fixture', role: 'executor', timeoutMs: 400 };
+  await runtime.configure(sessionId, config);
+  const wait = async (id, targetSessionId = sessionId) => {
+    const deadline = Date.now() + 6000;
+    for (;;) {
+      const job = await readJSON(runtime.jobFile(targetSessionId, id), null);
+      if (['interrupted', 'failed'].includes(job?.state) || job?.state === 'finished' && (await runtime.status(targetSessionId)).status === 'stopped') return job;
+      if (Date.now() > deadline) throw new Error(`Native fixture stalled: ${job?.state}`);
+      await pause(40);
+    }
+  };
+  await runtime.deliver({ id: 'active', platform: 'claude', sessionId, root: directory, message: 'active' });
+  assert.equal((await wait('active')).state, 'finished', 'progress must extend the idle deadline');
+  await runtime.deliver({ id: 'silent', platform: 'claude', sessionId, root: directory, message: 'silent' });
+  const interrupted = await wait('silent');
+  assert.equal(interrupted.state, 'interrupted');
+  assert.equal(interrupted.error, 'CLAUDE_TIMEOUT_OR_INTERRUPTED');
+  const floodSessionId = randomUUID();
+  await runtime.configure(floodSessionId, { ...config, outputLimitBytes: 1024 });
+  await runtime.deliver({ id: 'flood', platform: 'claude', sessionId: floodSessionId, root: directory, message: 'flood' });
+  const flooded = await wait('flood', floodSessionId);
+  assert.equal(flooded.state, 'interrupted');
+  assert.equal(flooded.error, 'CLAUDE_OUTPUT_LIMIT', 'a bounded output stop must not be mislabeled as a timeout');
+});
+
 test('Explicit Claude recovery retains old intent, refuses live processes and replays one continuation after restart', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-claude-recovery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true, maxRetries: 3 }));
