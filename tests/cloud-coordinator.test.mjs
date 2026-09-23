@@ -637,6 +637,8 @@ test('Stopping a Coordinator reply aborts only the current model turn and preser
   assert.deepEqual(await service.cancel({ id: 'first' }), { accepted: true, id: 'first', cancelled: true });
   await service.submit({ id: 'second', text: '继续' }); await service.close();
   assert.equal((await service.state()).messages.at(-1).text, '下一轮正常回复');
+  assert.deepEqual(await service.cancel({ id: 'second' }), { accepted: false, id: 'second', completed: true },
+    'a stop arriving after completion must not report an uncertain failure');
 });
 
 test('Stopping during a tool preserves its receipt and skips unstarted tools', async t => {

@@ -361,7 +361,10 @@ export class CoordinatorService {
     const result = await withFileLock(this.file + '.submit.lock', async () => {
       const state = await readJSON(this.file, null);
       if (state?.cancelledTurnId === id) return { accepted: true, id, cancelled: true };
-      if (state?.activeTurnId !== id) throw error('CONFLICT', 'Coordinator turn is no longer active');
+      if (state?.activeTurnId !== id) {
+        if (!state?.activeTurnId && state?.status === 'waiting-for-user' && state.requests?.[id]) return { accepted: false, id, completed: true };
+        throw error('CONFLICT', 'Coordinator turn is no longer active');
+      }
       if (state.status !== 'running') return { accepted: false, id, completed: true };
       await atomicWrite(this.cancelFile, encode({ id, requestedAt: new Date().toISOString() }));
       if (this.activeAbort?.id === id) this.activeAbort.controller.abort();
