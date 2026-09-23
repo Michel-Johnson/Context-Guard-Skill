@@ -751,6 +751,7 @@ try {
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await historicalMessage.evaluate(node=>{node.dataset.historyProbe='kept-after-reload';});
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
+  await coordinator.getByText('Working · 正在处理',{exact:true}).waitFor();
   await page.waitForFunction(()=>{
     const canvas=document.querySelector('.coordinator-send.is-working canvas');
     if(!canvas)return false;
@@ -760,6 +761,10 @@ try {
   });
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').textContent(),'Working · 正在处理','mobile composer keeps the working stage visible');
+  await coordinator.screenshot({path:path.join(output,'coordinator-ready-working-mobile.png')});
+  await page.setViewportSize({width:1440,height:1000});
   const blotCanvas=coordinator.locator('.coordinator-send.is-working canvas');
   const inkFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
   await page.waitForTimeout(150);
@@ -790,6 +795,7 @@ try {
   assert.equal(planningPlacement.messageInk,false,'the message timeline contains no working ink');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
+  await coordinator.getByText('Working · 正在生成回复',{exact:true}).waitFor();
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
   assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'planning stays visible until a complete block is ready');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
@@ -857,7 +863,8 @@ try {
   assert.equal(await structuredQuestion.locator('.coordinator-streaming-text > :first-child').evaluate(node=>node.__questionLeadProbe),'kept','structured questions keep the already visible lead text node');
   assert.equal(await structuredQuestion.getByText('当前有四个未完成事项。',{exact:true}).count(),1,'structured questions retain the non-duplicate lead text');
   assert.equal(await structuredQuestion.getByText('想先处理哪一项？',{exact:true}).count(),1,'the question prompt appears once instead of duplicating the streamed suffix');
-  assert.equal(await coordinator.getByText('Working · 正在整理选项',{exact:true}).count(),0,'committed card replaces the transient tool status');
+  await page.waitForFunction(()=>document.querySelector('.coordinator-typing')?.getAttribute('aria-hidden')==='true');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').count(),0,'committed card clears the transient working status');
   assert.equal(await coordinator.locator('.coordinator-messages').evaluate(node=>node.scrollTop),0,'appending a question card does not jump the conversation to the card');
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','question-card insertion does not remount older messages');
   coordinatorState.messages.pop();
@@ -976,6 +983,7 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
+  await coordinator.getByText('Working · 正在连接',{exact:true}).waitFor();
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
