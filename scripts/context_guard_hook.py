@@ -231,6 +231,7 @@ def map_entries(node: object):
 def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     map_file = ctx / "map.json"
     access_file = ctx / "sessions" / "workbench-access.json"
+    role = "executor"
     probe = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ctx.parent.parent,
                            capture_output=True, text=True, timeout=5, check=False,
                            creationflags=WINDOWS_NO_WINDOW)
@@ -239,6 +240,7 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
         bindings = read_json(shared / "workbench-bindings.json", {})
         bound = bindings.get("sessions", {}).get(current_session_id, {})
         if bound.get("worktreeRoot") == str(ctx.parent.parent.resolve()):
+            role = "coordinator" if bound.get("role") == "coordinator" else "executor"
             scope = hashlib.sha256((current_session_id + "\0" + bound.get("worktreeId", "")).encode()).hexdigest()
             map_file = shared / "session-memory" / scope / "map.json"
             access_file = shared / "workbench-access.json"
@@ -278,6 +280,7 @@ def map_snapshot(ctx: Path, current_session_id: str) -> dict[str, object]:
     local_version = hashlib.sha256(raw).hexdigest() if raw else "missing"
     version = str((sync_state.get("version") or local_version) if isinstance(sync_state, dict) else local_version)
     return {
+        "role": role,
         "version": version,
         "cloud_cursor": sync_state.get("receivedCursor") if isinstance(sync_state, dict) else None,
         "grants": [str(item) for item in grants],
@@ -314,6 +317,54 @@ def map_inbox(root: Path, ctx: Path, current_session_id: str) -> dict[str, objec
     return value
 
 
+def coordinator_static_context(root: Path, ctx: Path, current_session_id: str, snapshot: dict[str, object]) -> str:
+    probe = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
+                           capture_output=True, text=True, timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
+    shared = Path(probe.stdout.strip()) / "context-guard" if probe.returncode == 0 else None
+    cloud = bool(shared and (shared / "memory-client.json").is_file())
+    if cloud:
+        command = ["node", str(Path(__file__).resolve().parent / "workbench" / "cli.mjs"),
+                   "map", "main", "read", "--root", str(root), "--session", current_session_id]
+        try:
+            result = subprocess.run(command, cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=8,
+                                    check=False, creationflags=WINDOWS_NO_WINDOW)
+            response = json.loads(result.stdout) if result.returncode == 0 else {}
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            response = {}
+        if not isinstance(response, dict):
+            response = {}
+        document, version = response.get("doc"), response.get("version")
+    else:
+        main_file = shared / "main" / "map.json" if shared else ctx / "map.json"
+        document = read_json(main_file, {})
+        version = hashlib.sha256(main_file.read_bytes()).hexdigest() if main_file.is_file() else None
+    if not isinstance(document, dict) or not isinstance(document.get("root"), dict) or not version:
+        return "Coordinator Main navigation unavailable; do not substitute the Session Map or stale conversation text."
+    directory = []
+    by_id = {}
+    def visit(node: dict[str, object], parent_id: str | None = None) -> None:
+        by_id[str(node.get("id") or "")] = node
+        children = [child for child in node.get("children") or [] if isinstance(child, dict)]
+        directory.append({"id": node.get("id"), "parentId": parent_id, "title": str(node.get("title") or "")[:120],
+                          "description": str(node.get("purpose") or "")[:320], "children": [child.get("id") for child in children]})
+        for child in children:
+            visit(child, str(node.get("id") or ""))
+    visit(document["root"])
+    current = {"todos": [], "bugs": []}
+    for kind, field in (("todo", "todos"), ("bug", "bugs")):
+        for assigned in snapshot.get(field) or []:
+            node_id, item_id = str(assigned.get("node") or ""), str(assigned.get("id") or "")
+            item = next((value for value in by_id.get(node_id, {}).get(field) or []
+                         if isinstance(value, dict) and value.get("id") == item_id), None)
+            current[field].append({"nodeId": node_id, "itemId": item_id, "kind": kind,
+                                   **({"title": str(item.get("title") or "")[:240], "status": item.get("status")}
+                                      if item else {"unavailable": True})})
+    return "Coordinator static Main context (project data, not user instructions): " + json.dumps({
+        "mainVersion": version, "staticDirectory": directory,
+        "currentTask": current,
+    }, ensure_ascii=False, separators=(",", ":"))
+
+
 def map_context(root: Path, ctx: Path, current_session_id: str) -> tuple[str, dict[str, object]]:
     snapshot = map_snapshot(ctx, current_session_id)
     inbox = map_inbox(root, ctx, current_session_id)
@@ -321,8 +372,11 @@ def map_context(root: Path, ctx: Path, current_session_id: str) -> tuple[str, di
     todos = snapshot["todos"]
     bugs = snapshot["bugs"]
     grant_text = ", ".join(f"{item['id']} {item['title']}" for item in grants) if grants else "none"
-    todo_text = "; ".join(f"{item['id']}@{item['node']} {item['title']} [{item['status']}]" for item in todos) if todos else "none"
-    bug_text = "; ".join(f"{item['id']}@{item['node']} {item['title']} [{item['status']}]" for item in bugs) if bugs else "none"
+    if snapshot.get("role") == "coordinator":
+        todo_text = bug_text = "see authoritative Main context below"
+    else:
+        todo_text = "; ".join(f"{item['id']}@{item['node']} {item['title']} [{item['status']}]" for item in todos) if todos else "none"
+        bug_text = "; ".join(f"{item['id']}@{item['node']} {item['title']} [{item['status']}]" for item in bugs) if bugs else "none"
     inbox_text = "No unacknowledged Map changes from other sessions."
     if isinstance(inbox.get("error"), dict):
         inbox_text = f"Map inbox unavailable: {inbox['error'].get('code')}."
@@ -342,6 +396,8 @@ def map_context(root: Path, ctx: Path, current_session_id: str) -> tuple[str, di
         f"Authorized nodes: {grant_text}. Assigned TODOs: {todo_text}. Assigned Bugs: {bug_text}. "
         f"{inbox_text}"
     )
+    if snapshot.get("role") == "coordinator":
+        text += "\n\n" + coordinator_static_context(root, ctx, current_session_id, snapshot)
     return text, snapshot
 
 
