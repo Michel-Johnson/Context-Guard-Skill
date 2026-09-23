@@ -405,6 +405,13 @@ try {
           messages: [...coordinatorState.messages, { role: 'user', text: '立即显示测试', tools: [] }] };
         return route.fulfill({ json: { accepted: true, id: submissions.at(-1).id }, status: 202 });
       }
+      if (submissions.at(-1).answerTo === 'ordering-question') {
+        const answer = submissions.at(-1);
+        coordinatorState.messages.at(-1).questions[0].answer = { text: answer.text, requestId: answer.id };
+        coordinatorState.messages.push({ role: 'user', text: answer.text, answerTo: answer.answerTo, requestId: answer.id },
+          { role: 'assistant', text: '后续回复应排在回答之后。' });
+        return route.fulfill({ json: { accepted: true, id: answer.id }, status: 202 });
+      }
       if (submissions.at(-1).text === '已持久化但响应丢失') {
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false,
           acceptedRequestIds: [submissions.at(-1).id] };
@@ -872,6 +879,18 @@ try {
   await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
   // Reload clears the deliberately uncertain local request; this mock has not persisted it.
   submissions.length=0;coordinatorState.messages.pop();
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  coordinatorState.messages.push({role:'assistant',text:'请先回答顺序问题。',questions:[{id:'ordering-question',text:'具体是什么问题？'}]});
+  await coordinator.getByLabel('回答：具体是什么问题？').fill('这条回答必须位于后续回复之前');
+  await coordinator.getByRole('button',{name:'发送“具体是什么问题？”'}).click();
+  await coordinator.getByText('后续回复应排在回答之后。',{exact:true}).waitFor();
+  const orderedRows=await coordinator.locator('.coordinator-messages > .coordinator-message').allTextContents();
+  const answerIndex=orderedRows.findIndex(text=>text.trim()==='这条回答必须位于后续回复之前');
+  const replyIndex=orderedRows.findIndex(text=>text.includes('后续回复应排在回答之后。'));
+  assert.ok(answerIndex>=0&&answerIndex<replyIndex,'a persisted answer replaces its optimistic row in chronological order');
+  assert.equal(await coordinator.locator('.coordinator-optimistic').count(),0,'the acknowledged answer does not linger at the bottom');
+  coordinatorState.messages.splice(-3);
+  submissions.length=0;
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
