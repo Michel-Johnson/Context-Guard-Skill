@@ -1,6 +1,6 @@
 # 计划审核
 
-开发 Agent 把 Plan 交给 Coordinator 时适用。开发 Agent 提交前按同一四项自检。
+Executor 把 Plan 交给 Coordinator 时适用。Executor 提交前按同一四项自检。
 
 只检查以下四项，全部成立才可通过：
 

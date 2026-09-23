@@ -3,7 +3,7 @@
 ## Status
 
 - `Open`: recorded, not started.
-- `InProgress`: the Developer and Tester workflow is not complete.
+- `InProgress`: the Executor and Tester workflow is not complete.
 - `Done`: the current requirement has passed acceptance.
 
 Solution attempts use `Confirmed` and `Refuted`. When later requirements or evidence invalidate an earlier solution, update that attempt with `RefutedBy` and the reason.
@@ -74,7 +74,7 @@ Show an explicit state during feedback submission and prevent duplicate executio
 
 - A1 / Human: disabling the button removes cancellation; cancellation must remain available.
 - A2 / Human: multiple windows still duplicate submissions; scope expands to cross-window consistency.
-- A3 / Developer B: use a server request key and define conflicts for different content using the same key.
+- A3 / Executor B: use a server request key and define conflicts for different content using the same key.
 
 ## 3. Acceptance criteria
 

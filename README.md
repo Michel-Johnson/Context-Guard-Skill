@@ -31,7 +31,7 @@ It installs as a skill for **Codex**, **Cursor**, and **Claude**. New Hooks are 
 
 This is not another prompt pack, RAG folder, or “remember this” plugin. It is a **human–agent operating loop** for software work: locate the node, confirm the intent, execute in a Session, verify, then publish.
 
-Role prompts for Coordinator / Developer / Tester exist so a project can split planning, implementation, and checks. Role text does not grant protocol permissions. Automatic multi-agent orchestration is still advancing; the collaboration contract (Map, Session, grant, human confirmation, Main) is the product.
+Role prompts for Coordinator / Executor / Tester exist so a project can split planning, execution, and checks. Role text does not grant protocol permissions. Automatic multi-agent orchestration is still advancing; the collaboration contract (Map, Session, grant, human confirmation, Main) is the product.
 
 ## See the workbench
 
@@ -159,7 +159,7 @@ Server install, project credentials, and host moves: [Cloud deployment](referenc
 | Skill (one page, for the agent) | [SKILL.md](SKILL.md) |
 | Docs index | [docs/README.md](docs/README.md) |
 | Workbench / map CLI | [workbench interface](references/workbench-interface.md) |
-| Roles (Coordinator / Developer / Tester) | [roles.md](roles.md) |
+| Roles (Coordinator / Executor / Tester) | [roles.md](roles.md) |
 | npm publish | [release runbook](docs/npm-release-runbook.md) |
 
 This repository keeps **source** on GitHub `main` and **development memory** on the user-designated private server. The entire `.codex/` tree stays out of Git and npm. Other projects do not inherit this repo’s server config. See [RULE.md](RULE.md).

@@ -3,7 +3,7 @@
 ## 状态
 
 - `Open`：已记录，尚未开始。
-- `InProgress`：Developer 与 Tester 的流程尚未结束。
+- `InProgress`：Executor 与 Tester 的流程尚未结束。
 - `Done`：当前需求已经验收完成。
 
 方案轮次使用 `Confirmed` 和 `Refuted`。后续需求或证据推翻旧方案时，更新旧轮次并写明 `RefutedBy` 与原因。
@@ -74,7 +74,7 @@ CurrentAttempt: A3
 
 - A1 / Human：按钮禁用后无法取消，要求保留取消操作。
 - A2 / Human：多个窗口仍会重复提交，范围扩展到跨窗口一致性。
-- A3 / Developer B：采用服务端请求键，补充同键不同内容的冲突规则。
+- A3 / Executor B：采用服务端请求键，补充同键不同内容的冲突规则。
 
 ## 3. 验收标准
 

@@ -1,4 +1,4 @@
-# Bug Developer
+# Bug Executor
 
 Bug 模式下负责当前轮次：
 

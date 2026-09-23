@@ -38,8 +38,8 @@ filesystem-v2/
 - [Bug](Bug.md) · [English](Bug.en.md)
 - [Todo](Todo.md) · [English](Todo.en.md)
 - [Idea](Idea.md) · [English](Idea.en.md)
-- Bug 模式：[Coordinator](Bug_Coordinater.md) · [Developer](Bug_Developer.md) · [Tester](Bug_Tester.md)
-- Todo 模式：[Coordinator](Todo_Coordinater.md) · [Developer](Todo_Developer.md) · [Tester](Todo_Tester.md)
+- Bug 模式：[Coordinator](Bug_Coordinater.md) · [Executor](Bug_Executor.md) · [Tester](Bug_Tester.md)
+- Todo 模式：[Coordinator](Todo_Coordinater.md) · [Executor](Todo_Executor.md) · [Tester](Todo_Tester.md)
 
 ## 代码生成职责
 

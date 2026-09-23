@@ -3,7 +3,7 @@
 ## 状态
 
 - `Open`：已记录，尚未开始处理。
-- `InProgress`：Developer 与 Tester 的处理流程尚未结束。
+- `InProgress`：Executor 与 Tester 的处理流程尚未结束。
 - `Pending`：测试已完成，等待人类验收。
 - `Resolved`：人类验收通过。
 - `Unfixable`：修不好，流程结束，保留这条记录。不是延期，也不是「以后再做」。
