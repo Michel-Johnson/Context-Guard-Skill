@@ -4445,7 +4445,7 @@ async function installCoordinatorPanel(sync){
   const messages=document.createElement('div'); messages.className='coordinator-messages';
   const extrasHost=document.createElement('div');extrasHost.className='coordinator-extras';
   const tailSpace=document.createElement('div');tailSpace.className='coordinator-messages-tail';messages.append(extrasHost,tailSpace);
-  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.setAttribute('aria-label','正在处理');typing.textContent='正在处理…';
+  const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.setAttribute('aria-label','正在处理');typing.textContent='Working · 正在处理';
   const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
@@ -4489,12 +4489,12 @@ async function installCoordinatorPanel(sync){
       typingStopTimer=setTimeout(()=>{workingBlot?.stop();inkReady=false;typingStopTimer=0;},180);
     },Math.max(0,300-(performance.now()-typingStartedAt)));
   };
-  const activity=document.createElement('p');activity.className='coordinator-tool-activity';activity.setAttribute('role','status');
-  activity.textContent='Working · 正在整理选项';
   const syncActivity=(state,finishing=false)=>{
-    if(state.activity!=='preparing-question'&&!finishing){activity.remove();return;}
-    const target=messages.querySelector('.coordinator-streaming .coordinator-markdown');
-    if(target)target.append(activity);else messages.insertBefore(activity,extrasHost);
+    if(finishing||!busy&&state.status!=='running')return;
+    const label=state.activity==='preparing-question'?'Working · 正在整理选项':
+      state.status==='running'&&state.streamingText?'Working · 正在生成回复':
+      state.status==='running'?'Working · 正在处理':'Working · 正在连接';
+    typing.textContent=label;typing.setAttribute('aria-label',label);
   };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;
   const pinnedScrollTop=()=>{
@@ -4986,6 +4986,7 @@ async function installCoordinatorPanel(sync){
     appendOptimisticMessage(request);
     busy=true; pending=request; pendingError=''; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
+    typing.textContent='Working · 正在连接';typing.setAttribute('aria-label','Working · 正在连接');
     setTyping(!answeringCard);
     pinTurn();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
