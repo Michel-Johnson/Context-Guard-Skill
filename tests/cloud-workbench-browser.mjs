@@ -794,6 +794,18 @@ try {
   assert.equal(await seamlessFinal.locator('ol li').last().textContent(),'检查窄屏换行。','the final buffered list appears after completion');
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','finalization preserves older transcript rows');
   record('coordinator-streaming-text-is-visible-before-final-message');
+  const rapidRevealText=Array.from({length:8},(_,index)=>`第 ${index+1} 段已经完整。`).join('\n\n');
+  coordinatorState.messages.push({role:'user',text:'检查已完成文本的显示速度'});
+  coordinatorState.status='running';coordinatorState.streamingText='第 1 段已经完整。\n\n';
+  await coordinator.locator('.coordinator-streaming .coordinator-rise').last().waitFor();
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'working mark stays visible while a streamed block is being revealed');
+  const revealStarted=Date.now();
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:rapidRevealText});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#coordinator-panel .coordinator-messages > .coordinator-message.assistant')].at(-1)?.textContent?.includes('第 8 段已经完整。'),null,{timeout:1800});
+  assert.ok(Date.now()-revealStarted<1800,'completed text drains promptly instead of waiting 1.1 seconds per block');
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
+  assert.equal(await coordinator.locator('.coordinator-messages > .coordinator-message.assistant').last().getByText('第 8 段已经完整。',{exact:true}).count(),1,'rapid drain renders the final block only once');
   const structuredQuestionText='当前有四个未完成事项。\n\n想先处理哪一项？';
   coordinatorState.status='running';coordinatorState.activity='preparing-question';coordinatorState.streamingText=structuredQuestionText;
   await coordinator.locator('.coordinator-streaming').waitFor();
