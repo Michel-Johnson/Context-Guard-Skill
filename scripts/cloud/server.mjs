@@ -595,6 +595,7 @@ export async function startCloudServer({
             const index = root ? entries(root) : new Map();
             const projectTasks = (await store.projectTasks(principal)).filter(task => task.conversationId === conversationId);
             const tasks = projectTasks.map(task => ({ taskId: task.taskId, stage: task.stage,
+              itemId: task.itemId || null, nodeId: task.nodeId || null, kind: task.kind || null,
               executionSessionId: task.sessionId || null, error: task.error }));
             const knownItems = new Set(projectTasks.map(task => task.itemId).filter(Boolean));
             if (root) {
@@ -612,8 +613,11 @@ export async function startCloudServer({
                   if (!item?.id || knownItems.has(item.id)) continue;
                   const closed = kind === 'todo' ? item.status === 'done' : isClosedBugStatus(item.status);
                   if (closed) continue;
-                  tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '', stage: item.status || 'pending',
+                  const legacyDispatch = item.dispatch?.task_id && item.dispatch?.session_id;
+                  tasks.push({ itemId: item.id, kind, title: item.title || item.desc || '',
+                    stage: legacyDispatch ? 'legacy-dispatch-review' : item.status || 'pending',
                     executionSessionId: null,
+                    ...(legacyDispatch ? { error: 'LEGACY_DISPATCH_REQUIRES_RECONCILIATION' } : {}),
                     // A stable task identity lets the Coordinator prepare a
                     // Map item from the legacy/Main conversation without
                     // inventing a second random task on retry.
@@ -633,6 +637,9 @@ export async function startCloudServer({
               const entry = root && entries(root).get(requirements.nodeId)?.node;
               const item = entry?.[`${requirements.kind}s`]?.find(value => value?.id === requirements.itemId);
               if (!item) protocolFail('NOT_FOUND', 'Map TODO/Bug is no longer available');
+              if (item.dispatch?.task_id && item.dispatch?.session_id) {
+                protocolFail('CONFLICT', 'Legacy task dispatch needs reconciliation before a new Session can be created');
+              }
               const expectedTaskId = mapWorkTaskId(project.id, requirements.nodeId, requirements.kind, requirements.itemId);
               if (requirements.taskId !== expectedTaskId) protocolFail('CONFLICT', 'Task identity does not match the Map TODO/Bug');
               if (!requirements.nodeIds.includes(requirements.nodeId)) {

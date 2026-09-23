@@ -1032,6 +1032,8 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   await fs.mkdir(path.dirname(memoryFile), { recursive: true });
   const root = { id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [
     { id: 'TD-local', title: '本地事项', desc: '从工作台挂上 Coordinator', status: 'pending', sessions: ['legacy-session'] },
+    { id: 'TD-legacy', title: '旧派单', desc: '需要先核对原任务', status: 'pending', sessions: ['legacy-session'],
+      dispatch: { task_id: 'legacy-task', session_id: 'legacy-session', status: 'received' } },
     { id: 'TD-done', title: '已完成', desc: '不再开工', status: 'done', sessions: [] },
   ], bugs: [
     { id: 'B900', title: '暂缓缺陷', desc: '延期记录仍在', status: 'deferred', sessions: [] },
@@ -1057,6 +1059,7 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
       // Leftover item-conversation review.result turns must not consume idea/bug mounts.
       const consume = (current === 'prepare' && itemId === 'TD-local')
         || (current === 'prepare-bug' && itemId === bugItemId)
+        || (current === 'prepare-legacy' && itemId === 'TD-legacy')
         || ((current === 'idea' || current === 'bug') && unscoped);
       if (consume) mode = 'idle';
       const used = consume ? current : 'idle';
@@ -1065,6 +1068,10 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
       } }] };
       if (used === 'prepare-bug') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-bug', name: 'prepare_task', input: {
         taskId: bugTaskId, text: '修复审批后绑定的缺陷', acceptance: '修复完成并通过测试', nodeIds: ['T0'], mainVersion,
+      } }] };
+      if (used === 'prepare-legacy') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-legacy', name: 'prepare_task', input: {
+        taskId: `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-legacy`).digest('hex').slice(0, 24)}`,
+        text: '不要重复派发旧任务', acceptance: '原任务状态已核对', nodeIds: ['T0'], mainVersion,
       } }] };
       if (used === 'idea') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount-idea', name: 'mount_conversation', input: {
         mainVersion, nodeId: 'T0', kind: 'idea', title: '先记一笔', description: '想法不需要执行 Session',
@@ -1199,6 +1206,14 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).stage, 'failed');
   assert.equal(failed.sessionCreations.length, 2, 'creation failure must retain the first Session identity');
   assert.equal(failed.projectTasks.find(task => task.taskId === bugTaskId).sessionId, failureCreation.sessionId);
+  const legacyConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'todo', itemId: 'TD-legacy' });
+  const legacyEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(legacyConversation.id)}`;
+  mode = 'prepare-legacy'; mainVersion = (await readMemoryView(memoryConfig, projectId)).main.version;
+  await post(legacyEndpoint, { id: 'prepare-legacy', text: '继续这个旧事项' });
+  const legacyState = await poll(state => state.status === 'waiting-for-user' && !state.activeTurnId,
+    async () => (await fetch(legacyEndpoint, { headers })).json());
+  assert.equal(legacyState.projectTasks.length, 0, 'a pre-existing legacy dispatch cannot silently become a new task');
+  assert.equal(legacyState.sessionCreations.length, 2);
 });
 
 test('Coordinator advertises reference names and accepts existing extensionless calls without allowing other paths', async () => {
