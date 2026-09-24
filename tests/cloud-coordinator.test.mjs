@@ -160,7 +160,7 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /部署、发布、启动服务/);
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
   assert.match(prompt, /每个澄清问题都必须调用一次 `ask_user`/);
-  assert.match(prompt, /只能由页面的「确认需求／拒绝需求」卡片提交/);
+  assert.match(prompt, /「确认需求／拒绝需求」和「验收通过／验收不通过」卡片提交/);
   assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
   assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
@@ -456,6 +456,14 @@ test('A prepared brief cannot solicit a duplicate ask_user approval', async () =
   await assert.rejects(
     execute('ask_user', { question: '是否批准该 brief 并派发执行？', options: ['批准，派发执行', '需要修改'] }, { operationId: 'approval-question' }),
     error => error.code === 'INVALID_ARGUMENT' && /dedicated human approval card/.test(error.toolHint),
+  );
+});
+
+test('A tested task cannot solicit a duplicate ask_user acceptance', async () => {
+  const execute = createCoordinatorExecutor({ pendingBriefApproval: async () => false, pendingAcceptanceReview: async () => true });
+  await assert.rejects(
+    execute('ask_user', { question: '是否验收通过？', options: ['验收通过，收工', '不通过，退回返工'] }, { operationId: 'acceptance-question' }),
+    error => error.code === 'INVALID_ARGUMENT' && /dedicated human acceptance card/.test(error.toolHint),
   );
 });
 
