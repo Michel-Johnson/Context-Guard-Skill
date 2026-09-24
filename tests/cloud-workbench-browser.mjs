@@ -340,6 +340,7 @@ try {
   });
   const submissions = [];
   let releaseDelayedSubmission;
+  let releaseCardSubmission;
   let releaseLongSubmission;
   const oneShotLongText='完整长段落。'.repeat(240);
   const coordinatorReads = [];
@@ -427,6 +428,7 @@ try {
         return route.fulfill({json:{accepted:true,id:request.id},status:202});
       }
       if (submissions.length === 1 && submissions.at(-1).answerTo === 'choice') {
+        await new Promise(resolve=>{releaseCardSubmission=resolve;});
         coordinatorState.status='running';
         return route.abort(); // A separate running turn must not be retried automatically.
       }
@@ -918,7 +920,29 @@ try {
   assert.equal(submissions.length,0,'the first option click only selects it');
   assert.equal(await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await coordinator.getByRole('button',{name:'提交回答',exact:true}).count(),0,'questions have no separate submit-answer button');
+  const readsBeforeCardAnswer=coordinatorReads.length;
   await coordinator.getByRole('button',{name:'网站构建产物',exact:true}).click();
+  await coordinator.locator('.coordinator-planning').waitFor({state:'visible'});
+  assert.equal(await coordinator.locator('.coordinator-message.user').last().evaluate(node=>node.nextElementSibling?.className),'coordinator-planning','card-answer shimmer sits below the new user message');
+  assert.equal(await coordinator.locator('.coordinator-typing').getAttribute('aria-hidden'),'false','card answers start the same working state as free-form messages');
+  assert.equal(await coordinator.locator('.coordinator-planning').textContent(),'Planning next moves','card answers show M03 beneath the sent reply');
+  assert.equal(await coordinator.locator('.coordinator-typing-phase').evaluate(el=>getComputedStyle(el).animationName),'coordinator-text-shimmer','M03 shimmer runs for card answers');
+  await page.waitForFunction(()=>{
+    const send=document.querySelector('.coordinator-send.is-working-ready');
+    const canvas=send?.querySelector('canvas');
+    if(!canvas)return false;
+    if(Number(getComputedStyle(canvas).opacity)<.95||Number(getComputedStyle(send.querySelector('svg')).opacity)>.05)return false;
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
+    return false;
+  });
+  await coordinator.screenshot({path:path.join(output,'coordinator-card-answer-motion.png')});
+  await page.waitForTimeout(3300);
+  assert.ok(coordinatorReads.length>readsBeforeCardAnswer,'stale coordinator state is read while card submission remains in flight');
+  assert.equal(await coordinator.locator('.coordinator-typing').getAttribute('aria-hidden'),'false','stale polling does not hide card-answer working state');
+  assert.equal(await coordinator.locator('.coordinator-planning').count(),1,'stale polling does not remove card-answer shimmer');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working-ready').count(),1,'stale polling does not reset card-answer ink');
+  releaseCardSubmission();
   await coordinator.getByRole('button',{name:'重试原请求',exact:true}).waitFor();
   assert.equal(await coordinator.getByRole('button',{name:'重试原请求',exact:true}).textContent(),'↻','retry uses a symbol-only control');
   assert.equal(await coordinator.getByRole('button',{name:'重试原请求',exact:true}).evaluate(el=>el.parentElement===document.querySelector('#coordinator-panel .coordinator-toolbar')),true,'retry lives in the Coordinator toolbar');
@@ -948,6 +972,7 @@ try {
   await coordinator.getByLabel('回答：具体是什么问题？').fill('这条回答必须位于后续回复之前');
   await coordinator.getByRole('button',{name:'发送“具体是什么问题？”'}).click();
   await coordinator.getByText('后续回复应排在回答之后。',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').last().locator('.coordinator-rise.is-entering').count(),1,'a direct reply after a card answer uses the same text reveal');
   const orderedRows=await coordinator.locator('.coordinator-messages > .coordinator-message').allTextContents();
   const answerIndex=orderedRows.findIndex(text=>text.trim()==='这条回答必须位于后续回复之前');
   const replyIndex=orderedRows.findIndex(text=>text.includes('后续回复应排在回答之后。'));
