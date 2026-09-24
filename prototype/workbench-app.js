@@ -4446,6 +4446,8 @@ async function installCoordinatorPanel(sync){
   const extrasHost=document.createElement('div');extrasHost.className='coordinator-extras';
   const tailSpace=document.createElement('div');tailSpace.className='coordinator-messages-tail';messages.append(extrasHost,tailSpace);
   const typing=document.createElement('p');typing.className='coordinator-typing';typing.setAttribute('role','status');typing.setAttribute('aria-hidden','true');typing.setAttribute('aria-label','正在处理');typing.textContent='Working · 正在处理';
+  const planning=document.createElement('p');planning.className='coordinator-planning';planning.setAttribute('aria-hidden','true');
+  const planningText=document.createElement('span');planningText.className='coordinator-typing-phase';planningText.textContent='Planning next moves';planning.append(planningText);
   const form=document.createElement('form');form.className='coordinator-compose';
   const input=document.createElement('textarea'); input.maxLength=8000; input.rows=1;
   input.setAttribute('aria-label','发送给 Coordinator');
@@ -4496,6 +4498,19 @@ async function installCoordinatorPanel(sync){
       state.status==='running'?'Working · 正在处理':'Working · 正在连接';
     typing.textContent=label;typing.setAttribute('aria-label',label);
   };
+  const setPlanningVisible=visible=>{
+    const users=messages.querySelectorAll(':scope > .coordinator-message.user');
+    const anchor=users[users.length-1];
+    if(!visible||!anchor){planning.remove();return;}
+    if(anchor.nextElementSibling!==planning)anchor.after(planning);
+  };
+  const syncPlanning=state=>{
+    const rows=[...messages.children].filter(node=>node.classList?.contains('coordinator-message'));
+    const last=rows.at(-1);
+    const awaitingText=last?.classList.contains('user')||last?.classList.contains('coordinator-streaming')&&
+      !last.querySelector('.coordinator-streaming-text')?.textContent.trim();
+    setPlanningVisible(state.status==='running'&&awaitingText);
+  };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;
   const pinnedScrollTop=()=>{
     if(!pinnedTurn?.isConnected)return null;
@@ -4539,6 +4554,7 @@ async function installCoordinatorPanel(sync){
         rise.className='coordinator-rise';body.className='coordinator-rise-body';
         if(!prefersReducedMotion())rise.classList.add('is-entering');
         body.append(markdownFragment(piece,document));rise.append(body);output.append(rise);
+        setPlanningVisible(false);
         // The sent bubble stays centered only until the reply starts. Follow
         // the visible reply edge, not the spacer below the conversation.
         if(stickToTurn)releaseTurnPin();
@@ -4675,7 +4691,7 @@ async function installCoordinatorPanel(sync){
     drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
     lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;
-    pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setTyping(false);setSendBlocked(true);
+    pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setPlanningVisible(false);setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
   let lastHistoryKey=null;
@@ -4959,6 +4975,7 @@ async function installCoordinatorPanel(sync){
     lastStreamingText=hasStreaming?streamingText:'';
     }
     syncActivity(state);
+    syncPlanning(state);
     if(state.retryInput&&!busy&&(!pending||pending.id===state.retryInput.id||pending.retry)) pending={...state.retryInput,retry:true};
     canCorrect=state.canCorrect===true&&(!pending||pending.id===state.retryInput?.id);
     if(canCorrect)status.textContent+=' · 可补充纠正意见';
@@ -4974,7 +4991,7 @@ async function installCoordinatorPanel(sync){
     refreshing=true;
     const id=selected;let delay=3000;
     try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
-    catch(error){setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
+    catch(error){setPlanningVisible(false);setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
   const submit=async request=>{
@@ -4988,6 +5005,7 @@ async function installCoordinatorPanel(sync){
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     typing.textContent='Working · 正在连接';typing.setAttribute('aria-label','Working · 正在连接');
     setTyping(!answeringCard);
+    setPlanningVisible(!answeringCard);
     pinTurn();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
@@ -4996,7 +5014,7 @@ async function installCoordinatorPanel(sync){
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
+      if(id===selected){pendingError=message;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft)draft.error=message;}
     }
     finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
@@ -5009,7 +5027,7 @@ async function installCoordinatorPanel(sync){
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();if(!send.disabled)form.requestSubmit();}});
   retry.addEventListener('click',()=>{if(pending) void submit(pending);else void refresh();});
-  window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);setTyping(false);});
+  window.addEventListener('pagehide',()=>{stopped=true;clearTimeout(timer);setPlanningVisible(false);setTyping(false);});
   window.addEventListener('pageshow',()=>{stopped=false;if(panel.open) void refresh();});
 }
 async function boot(){
