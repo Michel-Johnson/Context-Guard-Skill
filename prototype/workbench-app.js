@@ -4488,7 +4488,7 @@ async function installCoordinatorPanel(sync){
       typing.classList.remove('is-visible');typing.setAttribute('aria-hidden','true');
       send.classList.remove('is-working','is-working-ready','is-working-fallback');
       send.setAttribute('aria-label','发送');send.title='发送';
-      typingStopTimer=setTimeout(()=>{workingBlot?.stop();inkReady=false;typingStopTimer=0;},180);
+      typingStopTimer=setTimeout(()=>{workingBlot?.stop();inkReady=false;typingStopTimer=0;},1000);
     },Math.max(0,300-(performance.now()-typingStartedAt)));
   };
   const syncActivity=(state,finishing=false)=>{

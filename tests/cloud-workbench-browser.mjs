@@ -493,6 +493,10 @@ try {
       sendDisabled:send.disabled,
       workingLabelVisuallyHidden:getComputedStyle(typing).clipPath==='inset(50%)',
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
+      sendTransition:getComputedStyle(send).transitionDuration,
+      arrowTransition:getComputedStyle(arrow).transitionDuration,
+      blotTransition:getComputedStyle(blot).transitionDuration,
+      blotClipPath:getComputedStyle(blot).clipPath,
       blotParent:blot.parentElement===send,
       blotPixels:[blot?.width,blot?.height],typingDots:typing.querySelectorAll('i').length };
   });
@@ -504,6 +508,10 @@ try {
   assert.ok(coordinatorLayout.sendCenterDelta <= 0.5, `send arrow stays vertically centered in the composer: ${JSON.stringify(coordinatorLayout)}`);
   assert.ok(coordinatorLayout.arrowCenterDelta.every(delta=>delta<=0.25),`desktop send arrow is centered in its circle: ${JSON.stringify(coordinatorLayout)}`);
   assert.ok(coordinatorLayout.blotCenterDelta.every(delta=>delta<=0.25),`desktop working ink shares the arrow center: ${JSON.stringify(coordinatorLayout)}`);
+  assert.ok(coordinatorLayout.sendTransition.startsWith('1s, 1s'),`button background and icon color hand off over one second: ${JSON.stringify(coordinatorLayout)}`);
+  assert.equal(coordinatorLayout.arrowTransition,'1s','the arrow fades over one second without shrinking');
+  assert.equal(coordinatorLayout.blotTransition,'1s, 1s','Ready ink opacity and center reveal share the one-second handoff');
+  assert.match(coordinatorLayout.blotClipPath,/circle\(0% at 50% 50%\)/,'the hidden ink starts at the arrow center');
   await coordinator.locator('.coordinator-input-shell').screenshot({path:path.join(output,'coordinator-send-desktop.png')});
   await page.setViewportSize({width:390,height:844});
   const mobileArrowCenterDelta=await coordinator.locator('.coordinator-send').evaluate(send=>{
@@ -765,6 +773,11 @@ try {
     for(let index=3;index<pixels.length;index+=4)if(pixels[index]>0)return true;
     return false;
   });
+  await page.waitForFunction(()=>{
+    const send=document.querySelector('.coordinator-send.is-working-ready');
+    const canvas=send?.querySelector('.coordinator-working-blot');
+    return canvas&&getComputedStyle(canvas).opacity==='1'&&getComputedStyle(send.querySelector('svg')).opacity==='0';
+  });
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
   await page.setViewportSize({width:390,height:844});
@@ -776,9 +789,10 @@ try {
   const inkFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
   await page.waitForTimeout(150);
   assert.notEqual(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),inkFrame,'working mark advances through Ready ink frames');
-  await page.emulateMedia({reducedMotion:'reduce'});
   coordinatorState.status='waiting-for-user';
   await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
+  await page.waitForTimeout(1050);
+  await page.emulateMedia({reducedMotion:'reduce'});
   coordinatorState.status='running';
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   await page.waitForFunction(()=>{
@@ -792,6 +806,7 @@ try {
   await page.waitForTimeout(150);
   assert.equal(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),stillFrame,'reduced motion freezes the Ready mark');
   assert.equal(await coordinator.locator('.coordinator-typing-phase').evaluate(node=>getComputedStyle(node).animationName),'none','reduced motion makes the message shimmer static');
+  assert.equal(await blotCanvas.evaluate(node=>getComputedStyle(node).transitionDuration),'0s','reduced motion removes the one-second ink transition');
   await page.emulateMedia({reducedMotion:'no-preference'});
   const planningPlacement=await blotCanvas.evaluate(node=>({
     parent:node.parentElement?.className,
