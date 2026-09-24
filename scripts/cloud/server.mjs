@@ -1735,13 +1735,18 @@ export async function startCloudServer({
               if (binding) state.sessionTemplates.push({ id, name: binding.name || 'Claude 开发环境' });
             }
             state.acceptances = [];
+            // Main is the human's general conversation. Keep item cards in their
+            // owner conversation, but let an explicit chat verdict find a unique
+            // pending review without making the human hunt for that conversation.
+            if (conversationId === 'main') state.reviewCandidates = [];
             for (const sessionId of Object.keys(coordinator.bindings)) {
               const binding = await store.registeredBinding(principal, sessionId);
               if (!binding) continue;
               const session = { id: sessionId, generation: binding.generation };
               for (const task of await store.workflowTasks(principal, session)) {
-                if (await conversationsFor(project).owner(sessionId, task.id) !== conversationId) continue;
                 if (task.stage !== 'awaiting-merge' || task.ci?.verdict !== 'passed') continue;
+                if (conversationId === 'main') state.reviewCandidates.push({ taskId: task.id, sessionId, ci: task.ci });
+                if (await conversationsFor(project).owner(sessionId, task.id) !== conversationId) continue;
                 const read = async ref => (await store.handle(principal, { v: 2, id: randomUUID(), type: 'object.read', session, payload: ref })).data.content;
                 state.acceptances.push({ taskId: task.id, sessionId, sourceSha: task.sourceSha, ci: task.ci,
                   brief: await read(task.brief), result: await read({ ref: task.ci.ref, version: task.ci.version }) });
@@ -1801,7 +1806,8 @@ export async function startCloudServer({
           const { store, principal } = interfaceProject(project), binding = await store.registeredBinding(principal, input.sessionId);
           if (!binding) protocolFail('NOT_FOUND', 'Session is not registered');
           const session = { id: input.sessionId, generation: binding.generation }, task = await store.taskRecord(principal, session, input.taskId);
-          if (await conversationsFor(project).owner(input.sessionId, input.taskId) !== conversationId) protocolFail('FORBIDDEN', 'Task belongs to another conversation');
+          if (conversationId !== 'main' && await conversationsFor(project).owner(input.sessionId, input.taskId) !== conversationId)
+            protocolFail('FORBIDDEN', 'Task belongs to another conversation');
           if (task.ci?.ref !== input.ref || task.ci?.version !== input.version || task.ci?.verdict !== 'passed') protocolFail('CONFLICT', 'Acceptance must reference the current passed CI result');
           if (typeof input.reason !== 'string' || !input.reason.trim()) protocolFail('INVALID_ARGUMENT', 'Record the human acceptance result or rejection reason');
           const message = validateMessage({ v: 2, id: input.id, type: 'review.result', session, payload: { kind: 'acceptance', ref: input.ref, version: input.version,

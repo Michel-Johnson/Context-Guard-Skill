@@ -1192,7 +1192,8 @@ try {
   await page.route(/\/api\/coordinator\/acceptance(?:\?|$)/, async route => {
     acceptanceRequests.push(route.request().postDataJSON());
     if(rejectStaleReview){rejectStaleReview=false;return route.fulfill({status:409,json:{error:{code:'CONFLICT',message:'验收版本已变化'}}});}
-    coordinatorState = { ...coordinatorState, acceptances: [] };
+    coordinatorState = { ...coordinatorState, acceptances: [],
+      ...(Array.isArray(coordinatorState.reviewCandidates) ? { reviewCandidates: [] } : {}) };
     if(loseReviewResponse){loseReviewResponse=false;return route.abort();}
     await route.fulfill({ json: { accepted: true } });
   });
@@ -1275,6 +1276,39 @@ try {
   await questionPost;
   assert.equal(acceptanceRequests.length,5,'a question mentioning acceptance never signs a review');
   assert.equal(submissions.length,submissionsBeforeQuestion+1,'ordinary chat still reaches the Coordinator model');
+
+  coordinatorState = { ...coordinatorState, status:'waiting-for-user', error:null, retryInput:null, canCorrect:false,
+    acceptances: [], reviewCandidates: [acceptanceFixture] };
+  await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
+  await coordinator.getByRole('button', { name: '历史 Session' }).click();
+  await coordinator.locator('.coordinator-history-list button').first().click();
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation==='main');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('无需找验收卡'));
+  assert.equal(await coordinator.getByRole('button', { name: '验收不通过', exact: true }).count(),0,
+    'Main does not need the owner conversation acceptance card');
+  const modelRequestsBeforeMainReview=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('无法打开，验收不通过');
+  await page.waitForFunction(() => !document.querySelector('#coordinator-panel .coordinator-send')?.disabled);
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(() => document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value==='');
+  assert.equal(acceptanceRequests.length,6,'Main sends the unique cross-conversation human review');
+  assert.equal(acceptanceRequests[5].taskId,acceptanceFixture.taskId);
+  assert.equal(acceptanceRequests[5].reason,'无法打开');
+  assert.equal(submissions.length,modelRequestsBeforeMainReview,'Main review bypasses the model');
+  coordinatorState.reviewCandidates=[acceptanceFixture,{...acceptanceFixture,taskId:'another-task'}];
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：还有问题');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('多项待验收'));
+  assert.equal(acceptanceRequests.length,6,'Main never guesses among multiple pending reviews');
+  coordinatorState.reviewCandidates=[acceptanceFixture];
+  const modelRequestsBeforeExample=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('这是个例子，验收不通过');
+  const examplePost=page.waitForResponse(response=>response.url().includes('/api/coordinator?')&&response.request().method()==='POST');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await examplePost;
+  assert.equal(acceptanceRequests.length,6,'an example is not a human rejection decision');
+  assert.equal(submissions.length,modelRequestsBeforeExample+1,'an example remains ordinary chat');
+  record('Coordinator Main chat routes only a unique explicit human acceptance decision without a card');
 
   const attachmentMap = structuredClone(sessionMap);
   attachmentMap.root.memories = [{ text: 'Attachment fixture', state: 'dirty', files: [] }];

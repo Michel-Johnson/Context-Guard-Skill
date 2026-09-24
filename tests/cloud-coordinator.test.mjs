@@ -161,8 +161,9 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
   assert.match(prompt, /每个澄清问题都必须调用一次 `ask_user`/);
   assert.match(prompt, /brief 审批只能由页面的「确认需求／拒绝需求」卡片提交/);
-  assert.match(prompt, /用户对当前唯一待验收任务明确发送「验收通过」或「验收不通过：具体原因」/);
+  assert.match(prompt, /事项对话只有一项待验收，或 Main 对话的当前项目只有一项待验收时，用户明确发送「验收通过」或「验收不通过：具体原因」/);
   assert.match(prompt, /页面代用户提交同一人工验收回执/);
+  assert.match(prompt, /不要再要求用户寻找或点击卡片/);
   assert.match(prompt, /不得自行裁决/);
   assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
@@ -1818,13 +1819,28 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
   await protocol(device, 'task.report', { taskId: 'task', stage: 'handoff', data: { sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'], experienceRefs: [] } });
   await protocol(coordinator, 'ci.request', { taskId: 'task', sourceSha, ciTodoRef: 'ci-todo', unitTestRefs: ['test-evidence'] });
   await protocol({ ...coordinator, role: 'ci', agentId: 'ci' }, 'ci.result', { taskId: 'task', sourceSha, verdict: 'passed', checks: [{ testId: 'test', todoId: 'check', status: 'passed', evidenceRef: 'test-evidence' }] });
-  const pending = (await (await fetch(endpoint, { headers })).json()).acceptances[0];
+  const conversations = new CoordinatorConversations(conversation);
+  const ownerId = await conversations.createChat('separate-review-owner');
+  await conversations.bind(ownerId, session.id, 'task');
+  const ownerEndpoint = endpoint + '?conversation=' + encodeURIComponent(ownerId);
+  const pending = (await (await fetch(ownerEndpoint, { headers })).json()).acceptances[0];
   assert.equal(pending.sourceSha, sourceSha);
+  const mainEndpoint = endpoint + '?conversation=main';
+  const mainReview = await (await fetch(mainEndpoint, { headers })).json();
+  assert.deepEqual(mainReview.acceptances, [], 'the owner conversation keeps the visible acceptance card');
+  assert.deepEqual(mainReview.reviewCandidates, [{ taskId: 'task', sessionId: session.id, ci: pending.ci }],
+    'Main can route an explicit human decision to the single pending review');
   const review = { id: 'human-reject', sessionId: session.id, taskId: 'task', ref: pending.ci.ref, version: pending.ci.version, decision: 'rejected', reason: 'The requested interaction is still wrong' };
-  const accept = body => fetch(endpoint + '/acceptance', { method: 'POST', headers, body: JSON.stringify(body) });
+  const accept = body => fetch(endpoint + '/acceptance?conversation=main', { method: 'POST', headers, body: JSON.stringify(body) });
+  assert.equal((await fetch(endpoint + '/acceptance?conversation=main', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(review) })).status, 401,
+    'Main cannot submit a human review without browser authentication');
+  assert.equal((await fetch(endpoint + '/acceptance', { method: 'POST', headers, body: JSON.stringify(review) })).status, 403,
+    'an unrelated conversation still cannot submit the review');
   assert.equal((await accept({ ...review, version: 'stale' })).status, 409);
   const rejection = await accept(review); assert.equal(rejection.status, 200);
   assert.deepEqual(await (await accept(review)).json(), await rejection.json());
+  assert.deepEqual((await (await fetch(mainEndpoint, { headers })).json()).reviewCandidates, [], 'the submitted review disappears from Main');
   let rejected = await store.taskRecord(coordinator, session, 'task');
   for (let attempt = 0; rejected.stage !== 'rework' && attempt < 100; attempt++) {
     await new Promise(resolve => setTimeout(resolve, 10));

@@ -4424,7 +4424,11 @@ function renderAll(){
   persist();
 }
 function coordinatorReviewDirective(text){
-  const match=String(text||'').trim().match(/^(?:请(?:代我|帮我)?(?:提交|确认)?\s*)?(?:这项|该项|当前任务)?\s*验收(不通过|通过)(?:\s*[，,:：]\s*(?:原因是\s*)?([\s\S]*))?$/);
+  const message=String(text||'').trim();
+  const trailing=message.match(/^([^，,。.!！?？\n:：]{1,80})[，,]\s*验收不通过[。.!！]?$/);
+  if(trailing&&!/(?:如果|假设|比如|例如|举例|例子|是否|是不是|为什么|怎么|不要|不用|引用|转述|听说|你说|他说|建议|应该|[“"'`])/.test(trailing[1]))
+    return {decision:'rejected',reason:trailing[1].trim()};
+  const match=message.match(/^(?:请(?:代我|帮我)?(?:提交|确认)?\s*)?(?:这项|该项|当前任务)?\s*验收(不通过|通过)(?:\s*[，,:：]\s*(?:原因是\s*)?([\s\S]*))?$/);
   if(!match)return null;
   return {decision:match[1]==='通过'?'approved':'rejected',reason:match[2]?.trim()||''};
 }
@@ -4788,7 +4792,10 @@ async function installCoordinatorPanel(sync){
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
     consumeNavigationActions(state);
-    status.textContent=state.error?'处理暂停：'+state.error.code:reviewFeedback||(pendingError&&pending?'尚未确认提交：'+pendingError:'');
+    const availableReviews=selected==='main'?state.reviewCandidates??state.acceptances??[]:state.acceptances??[];
+    const reviewHint=availableReviews.length===1?'无需找验收卡；在这里发送「验收通过」或「验收不通过：具体原因」，页面会代你提交。':
+      availableReviews.length>1?'有多项待验收；请进入对应事项对话并发送明确验收结论。':'';
+    status.textContent=state.error?'处理暂停：'+state.error.code:reviewFeedback||(pendingError&&pending?'尚未确认提交：'+pendingError:reviewHint);
     const streamingText=String(state.streamingText||'');
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
@@ -5028,8 +5035,9 @@ async function installCoordinatorPanel(sync){
     try{
       const current=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');
       if(id!==selected)throw localReviewError('对话已切换，请在对应事项中重新提交');
-      if(current.acceptances?.length!==1)throw localReviewError(current.acceptances?.length?'当前对话有多项待验收；请在对应事项对话中提交':'当前对话没有待验收任务');
-      const acceptance=current.acceptances[0];
+      const reviews=id==='main'?current.reviewCandidates??current.acceptances??[]:current.acceptances??[];
+      if(reviews.length!==1)throw localReviewError(reviews.length?'当前项目有多项待验收；请在对应事项对话中提交':'当前对话没有待验收任务');
+      const acceptance=reviews[0];
       posting=true;
       await sync.call(conversationUrl('/api/coordinator/acceptance',id),{
         id:'acceptance-chat:'+request.id,sessionId:acceptance.sessionId,taskId:acceptance.taskId,
