@@ -417,6 +417,19 @@ try {
           acceptedRequestIds: [submissions.at(-1).id] };
         return route.abort(); // The server accepted the turn, but the acknowledgement was lost.
       }
+      if (submissions.at(-1).text === '短暂断线后成功') {
+        const attempt=submissions.filter(item=>item.text==='短暂断线后成功');
+        if(attempt.length===1)return route.abort(); // No server receipt exists yet.
+        const request=submissions.at(-1);
+        coordinatorState={...coordinatorState,status:'waiting-for-user',error:null,retryInput:null,canCorrect:false,
+          acceptedRequestIds:[request.id],messages:[...coordinatorState.messages,
+            {role:'user',text:request.text,requestId:request.id},{role:'assistant',text:'已收到原请求。'}]};
+        return route.fulfill({json:{accepted:true,id:request.id},status:202});
+      }
+      if (submissions.length === 1 && submissions.at(-1).answerTo === 'choice') {
+        coordinatorState.status='running';
+        return route.abort(); // A separate running turn must not be retried automatically.
+      }
       if (submissions.length === 1) return route.abort(); // Delivery is uncertain: preserve the ID.
       if (submissions.at(-1).text === '更正审批 ID，先核对当前 Plan') {
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', error: null, retryInput: null, canCorrect: false };
@@ -439,6 +452,7 @@ try {
   assert.equal(await page.locator('#cloud-sync-status').isVisible(), false, 'synced state does not render a checkmark button');
   await page.locator('#btn-coordinator').click();
   assert.equal(await page.locator('#btn-coordinator').getAttribute('aria-expanded'), 'true');
+  assert.equal(await coordinator.locator(':scope > [role=status]').evaluate(el=>el.nextElementSibling?.className),'coordinator-compose','submission failures remain visible beside the composer after the chat scrolls');
   assert.equal(await coordinator.evaluate(el => el.parentElement?.id), 'detail', 'Coordinator reuses the existing inspector');
   assert.equal(await coordinator.evaluate(el => getComputedStyle(el).position), 'static', 'Coordinator is not a floating overlay');
   assert.equal(await page.locator('#detail').evaluate(el => el.classList.contains('coordinator-open')), true);
@@ -969,12 +983,10 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').type('补充一行');
   assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'模拟需求\n补充一行');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
-  await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('尚未确认提交'));
-  assert.match(await coordinator.locator(':scope > [role=status]').first().textContent(), /尚未确认提交/);
-  await coordinator.getByRole('button', { name: '重试原请求' }).click();
   await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
-  assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
+  assert.equal(submissions[0].id, submissions[1].id, 'a healthy read retries an unaccepted transport failure with the exact request ID');
+  assert.equal(submissions.length,2,'automatic recovery sends only one safe transport retry');
+  await coordinator.screenshot({path:path.join(output,'coordinator-submit-error-near-composer.png')});
   await page.reload(); await synchronized();
   await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
@@ -1005,6 +1017,16 @@ try {
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
   record('Coordinator reconciles a lost HTTP acknowledgement without manual retry or duplicate submission');
+
+  const beforeOfflineRecovery=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('短暂断线后成功');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await coordinator.getByText('已收到原请求。',{exact:true}).waitFor();
+  assert.equal(submissions.length,beforeOfflineRecovery+2,'a request absent from the server is automatically recovered once');
+  assert.equal(submissions.at(-1).id,submissions.at(-2).id,'transport recovery reuses the same durable request identity');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'','acknowledged recovery clears the preserved draft');
+  assert.equal(await coordinator.locator('.coordinator-optimistic').count(),0,'the recovered request replaces its optimistic bubble');
+  record('Coordinator retries an unaccepted request after reconnecting and clears the duplicate draft');
 
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
