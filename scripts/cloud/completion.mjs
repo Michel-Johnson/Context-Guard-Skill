@@ -13,6 +13,13 @@ export const taskSessionPublicationReady = (tasks, sourceCommit) => tasks.every(
   ['closed', 'cancelled'].includes(task.stage) ||
   task.stage === 'accepted' && task.sourceSha === sourceCommit);
 
+const completionBranch = project => {
+  const ref = String(project?.ref || '');
+  if (ref.startsWith('refs/heads/')) return ref.slice('refs/heads/'.length);
+  const remote = /^refs\/remotes\/([^/]+)\/(.+)$/.exec(ref);
+  return remote && (!project.remote || project.remote === remote[1]) ? remote[2] : '';
+};
+
 // Read-only GitHub verification. Repository, branch and check identities come
 // from server configuration, never from model-provided URLs or success claims.
 export async function verifyTaskCompletion({ project, repositoryId, memory, task, receipts, fetch: request = globalThis.fetch }) {
@@ -22,10 +29,11 @@ export async function verifyTaskCompletion({ project, repositoryId, memory, task
     return { verificationOnly: true, sourceSha: task.sourceSha, ciRef: task.ci.ref };
   }
   if (!policy) return false;
+  const branch = completionBranch(project);
   const billingWaiver = policy.checksWaiver?.reason === 'github-actions-billing' &&
     Number.isFinite(Date.parse(policy.checksWaiver.expiresAt)) && Date.now() < Date.parse(policy.checksWaiver.expiresAt) &&
     Array.isArray(policy.requiredChecks) && policy.requiredChecks.length === 0;
-  if (!/^[\w.-]+\/[\w.-]+$/.test(project.repository || '') || !/^refs\/heads\/.+/.test(project.ref || '') ||
+  if (!/^[\w.-]+\/[\w.-]+$/.test(project.repository || '') || !branch ||
       !Array.isArray(policy.requiredChecks) || (!policy.requiredChecks.length && !billingWaiver) ||
       policy.requiredChecks.some(check => !check.name || !Number.isSafeInteger(check.appId))) return false;
   const match = /^github-pr:([1-9]\d{0,9})$/.exec(receipts.gitReceiptRef || '');
@@ -70,7 +78,7 @@ export async function verifyTaskCompletion({ project, repositoryId, memory, task
   try {
     const pr = await get(`pulls/${match[1]}`);
     if (!pr.merged || !pr.merged_at || String(pr.base?.repo?.id) !== repositoryId || String(pr.head?.repo?.id) !== repositoryId ||
-        pr.base.ref !== project.ref.slice('refs/heads/'.length) || pr.head.sha !== task.sourceSha) return false;
+        pr.base.ref !== branch || pr.head.sha !== task.sourceSha) return false;
     if (pr.merge_commit_sha !== archive.mainSha) {
       const comparison = await get(`compare/${pr.merge_commit_sha}...${archive.mainSha}`);
       if (!['ahead', 'identical'].includes(comparison.status) ||
