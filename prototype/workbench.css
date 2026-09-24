@@ -967,7 +967,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-planning{margin:0 0 18px;padding:0 2px;color:#817660;font-size:13px}
 #coordinator-panel .coordinator-typing-phase{display:inline-block;color:#9a9287;background-image:linear-gradient(90deg,var(--coordinator-shimmer-base) 0%,var(--coordinator-shimmer-base) 25%,var(--coordinator-shimmer-highlight) 60%,var(--coordinator-shimmer-base) 75%,var(--coordinator-shimmer-base) 100%);background-size:200% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;--coordinator-shimmer-base:color-mix(in srgb,#817660 60%,transparent);--coordinator-shimmer-highlight:#302d26;animation:coordinator-text-shimmer 1s linear infinite}
 @keyframes coordinator-text-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
-#coordinator-panel .coordinator-working-blot{width:36px;height:36px;pointer-events:none;opacity:0;clip-path:circle(0% at 50% 50%);filter:brightness(0) saturate(100%) invert(49%) sepia(98%) saturate(696%) hue-rotate(8deg) brightness(94%) contrast(88%);transition:opacity 1s cubic-bezier(.42,0,.2,1),clip-path 1s cubic-bezier(.42,0,.2,1)}
+#coordinator-panel .coordinator-working-blot{width:36px;height:36px;pointer-events:none;opacity:0;clip-path:circle(0% at 50% 50%);transition:opacity 1s cubic-bezier(.42,0,.2,1),clip-path 1s cubic-bezier(.42,0,.2,1)}
 #coordinator-panel .coordinator-streaming-text{display:block}
 #coordinator-panel .coordinator-rise+.coordinator-rise{margin-top:.55em}
 #coordinator-panel .coordinator-rise-body{opacity:1;transform:translate3d(0,0,0);-webkit-font-smoothing:antialiased;transition:opacity 1.05s cubic-bezier(.22,.7,.2,1),transform 1.05s cubic-bezier(.22,.7,.2,1)}

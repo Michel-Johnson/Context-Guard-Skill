@@ -802,9 +802,22 @@ try {
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working-mobile.png')});
   await page.setViewportSize({width:1440,height:1000});
   const blotCanvas=coordinator.locator('.coordinator-send.is-working canvas');
+  assert.equal(await blotCanvas.evaluate(canvas=>getComputedStyle(canvas).filter),'none','Ready ink colors are not flattened by a fixed CSS tint');
+  assert.match(await blotCanvas.evaluate(canvas=>getComputedStyle(canvas).transitionDuration),/1s/,'the one-second arrow-to-ink transition remains');
+  const inkColor=await blotCanvas.evaluate(canvas=>{
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let index=0;index<pixels.length;index+=4)if(pixels[index+3]>32)return [...pixels.slice(index,index+3)];
+    return null;
+  });
+  assert.ok(inkColor,'Ready ink has visible color pixels');
   const inkFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
   await page.waitForTimeout(150);
   assert.notEqual(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),inkFrame,'working mark advances through Ready ink frames');
+  assert.notDeepEqual(await blotCanvas.evaluate(canvas=>{
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let index=0;index<pixels.length;index+=4)if(pixels[index+3]>32)return [...pixels.slice(index,index+3)];
+    return null;
+  }),inkColor,'Ready ink hue changes while working');
   coordinatorState.status='waiting-for-user';
   await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
   await page.waitForTimeout(1050);
