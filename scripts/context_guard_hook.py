@@ -1284,6 +1284,16 @@ def post_plan_delivery_command(payload: object, root: Path) -> bool:
     return False
 
 
+def gh_pr_merge_command(payload: object) -> bool:
+    """Recognize PR merges even when wrapped in shell chaining or redirection."""
+    command = tool_command(payload)
+    segments = shell_segments(command)
+    if segments and any(len(words) >= 3 and Path(words[0]).name == "gh" and words[1:3] == ["pr", "merge"]
+                        for words in segments):
+        return True
+    return bool(re.search(r"(?:^|[\s;&|()])(?:\S*/)?gh\s+pr\s+merge(?:\s|$)", command))
+
+
 def post_plan_merge_target(payload: object) -> str | None:
     segments = shell_segments(tool_command(payload))
     words = segments[0] if segments and len(segments) == 1 else []
@@ -1826,6 +1836,9 @@ def main() -> int:
                     )))
                     return hook_response(platform, event)
                 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "CI may run only its assigned test commands; business source edits are forbidden."}}, ensure_ascii=False))
+                return 0
+            if gh_pr_merge_command(payload) and not post_plan_delivery_command(payload, root):
+                print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "Merge only with one standalone gh pr merge NUMBER command after accepted, archived work; shell chaining and --admin are not permitted."}}, ensure_ascii=False))
                 return 0
             if post_plan_delivery_command(payload, root):
                 reason = ""

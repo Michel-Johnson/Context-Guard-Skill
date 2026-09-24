@@ -88,8 +88,13 @@ command=lambda value:{"tool_name":"Bash","tool_input":{"command":value}}
 assert h.post_plan_delivery_command(command('git -C /tmp/context-guard-post-plan push -u origin HEAD'),root)
 assert h.post_plan_delivery_command(command('gh pr create --base main --title "verified work"'),root)
 assert h.post_plan_delivery_command(command('gh pr merge 123 --squash'),root)
+assert h.gh_pr_merge_command(command('gh pr merge 123 --squash'))
+assert h.gh_pr_merge_command(command('cd /tmp/context-guard-post-plan && gh pr merge 123 --merge --admin 2>&1'))
+assert h.gh_pr_merge_command(command('cd /tmp/context-guard-post-plan; /usr/bin/gh pr merge 123 --merge'))
+assert not h.gh_pr_merge_command(command('gh pr view 123'))
 for value in ['git -C /tmp/other push origin HEAD','git push --force origin HEAD','gh pr merge 123 --admin','gh pr create --repo other/repo','git commit -am changed','git push origin HEAD && rm -f file']:
     assert not h.post_plan_delivery_command(command(value),root),value
+assert not h.post_plan_delivery_command(command('cd /tmp/context-guard-post-plan && gh pr merge 123 --merge --admin 2>&1'),root)
 assert h.read_only_shell('git -C /tmp/context-guard-post-plan remote -v')
 assert h.read_only_shell('gh pr checks 123')
 execution={"active":{"mode":"reviewed","acceptanceReview":{"decision":"approved"}}}
