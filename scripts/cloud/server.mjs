@@ -582,6 +582,17 @@ export async function startCloudServer({
           listConversations: async () => ({ conversations: (await conversations.list()).map(({ id, ...item }) => ({ conversationId: id, ...item })) }),
           pendingBriefApproval: async () => (await store.projectTasks(principal)).some(task =>
             task.conversationId === conversationId && task.stage === 'brief'),
+          pendingAcceptanceReview: async () => {
+            for (const id of await refreshBindings()) {
+              const binding = await store.registeredBinding(principal, id);
+              if (!binding) continue;
+              for (const task of await store.workflowTasks(principal, { id, generation: binding.generation })) {
+                if (task.stage === 'awaiting-merge' && task.ci?.verdict === 'passed' &&
+                    await conversations.owner(id, task.id) === conversationId) return true;
+              }
+            }
+            return false;
+          },
           listTasks: async () => {
             const snapshot = await readMemoryProject(configuredMemory, project.id);
             const root = snapshot.main?.memory?.map?.root;
