@@ -4423,6 +4423,11 @@ function renderAll(){
   syncLinkRepoBtn();
   persist();
 }
+function coordinatorReviewDirective(text){
+  const match=String(text||'').trim().match(/^(?:请(?:代我|帮我)?(?:提交|确认)?\s*)?(?:这项|该项|当前任务)?\s*验收(不通过|通过)(?:\s*[，,:：]\s*(?:原因是\s*)?([\s\S]*))?$/);
+  if(!match)return null;
+  return {decision:match[1]==='通过'?'approved':'rejected',reason:match[2]?.trim()||''};
+}
 async function installCoordinatorPanel(sync){
   const launcher=document.getElementById('btn-coordinator');
   if(!sync.config?.interfaceCapabilities?.coordinator){if(launcher)launcher.hidden=true;return;}
@@ -4626,7 +4631,8 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', pendingTransportUnknown=false, busy=false, busyConversation=null, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  let timer=null, pending=null, pendingError='', pendingTransportUnknown=false, reviewFeedback='', busy=false, busyConversation=null, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  const uncertainReviews=new Set();
   const transportRecoveryAttempted=new Set();
   const rowKeys=new WeakMap();
   const handledNavigationActions=new Set();
@@ -4691,7 +4697,7 @@ async function installCoordinatorPanel(sync){
     liveReplyAwaiting=false;
     drafts.set(selected,{text:input.value,pending,error:pendingError,transportUnknown:pendingTransportUnknown});selected=id;panel.dataset.conversation=id;
     input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';pendingTransportUnknown=drafts.get(id)?.transportUnknown||false;
-    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;
+    lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;reviewFeedback='';
     pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setPlanningVisible(false);setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
   };
@@ -4782,7 +4788,7 @@ async function installCoordinatorPanel(sync){
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
     consumeNavigationActions(state);
-    status.textContent=state.error?'处理暂停：'+state.error.code:pendingError&&pending?'尚未确认提交：'+pendingError:'';
+    status.textContent=state.error?'处理暂停：'+state.error.code:reviewFeedback||(pendingError&&pending?'尚未确认提交：'+pendingError:'');
     const streamingText=String(state.streamingText||'');
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
@@ -5010,8 +5016,40 @@ async function installCoordinatorPanel(sync){
     catch(error){setPlanningVisible(false);setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
+  const submitReviewDirective=async(request,directive)=>{
+    if(busy)return;
+    if(uncertainReviews.has(selected)){reviewFeedback='前次验收结果尚未确认，请刷新核对；不会再次提交';status.textContent=reviewFeedback;return;}
+    if(directive.decision==='rejected'&&!directive.reason){reviewFeedback='验收不通过请写明原因，例如：验收不通过：页面无法访问';status.textContent=reviewFeedback;return;}
+    if(directive.reason.length>2000){reviewFeedback='验收理由不能超过 2000 字';status.textContent=reviewFeedback;return;}
+    const id=selected;
+    const localReviewError=message=>Object.assign(new Error(message),{localReview:true});
+    busy=true;busyConversation=id;setSendBlocked(true);reviewFeedback='正在提交你的验收决定…';status.textContent=reviewFeedback;
+    let posting=false;
+    try{
+      const current=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');
+      if(id!==selected)throw localReviewError('对话已切换，请在对应事项中重新提交');
+      if(current.acceptances?.length!==1)throw localReviewError(current.acceptances?.length?'当前对话有多项待验收；请在对应事项对话中提交':'当前对话没有待验收任务');
+      const acceptance=current.acceptances[0];
+      posting=true;
+      await sync.call(conversationUrl('/api/coordinator/acceptance',id),{
+        id:'acceptance-chat:'+request.id,sessionId:acceptance.sessionId,taskId:acceptance.taskId,
+        ref:acceptance.ci.ref,version:acceptance.ci.version,decision:directive.decision,
+        reason:directive.reason||request.text,
+      },'POST','main');
+      uncertainReviews.delete(id);
+      if(id===selected){input.value='';resizeInput();reviewFeedback='验收决定已提交，Coordinator 正在跟进';status.textContent=reviewFeedback;}
+    }catch(error){
+      if(posting&&!error.localReview&&!error.serverResponse)uncertainReviews.add(id);
+      if(id===selected){reviewFeedback=error.localReview||error.serverResponse||!posting?'验收未提交：'+error.message:'验收结果尚未确认；请刷新核对，不要重复提交';status.textContent=reviewFeedback;}
+      return;
+    }finally{busy=false;busyConversation=null;setSendBlocked(false);}
+    await refresh();
+  };
   const submit=async request=>{
     if(busy) return;
+    const review=request.answerTo?null:coordinatorReviewDirective(request.text);
+    if(review)return submitReviewDirective(request,review);
+    reviewFeedback='';
     const id=selected;
     liveReplyAwaiting=true;
     liveReplyAssistantCount=messages.querySelectorAll('.coordinator-message.assistant').length;
@@ -5037,7 +5075,7 @@ async function installCoordinatorPanel(sync){
     await refresh();
   };
   const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
-  input.addEventListener('input',()=>{resizeInput();syncSendState();});
+  input.addEventListener('input',()=>{if(reviewFeedback){reviewFeedback='';status.textContent='';}resizeInput();syncSendState();});
   resizeInput();
   syncSendState();
   form.addEventListener('submit',event=>{event.preventDefault();if(input.value.trim()&&(!pending||canCorrect)) void submit({id:crypto.randomUUID(),text:input.value.trim()});});

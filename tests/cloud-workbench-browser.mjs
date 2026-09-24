@@ -1188,16 +1188,75 @@ try {
   record('Coordinator hides removed controls while per-item conversation entry remains usable');
 
   const acceptanceRequests = [];
+  let rejectStaleReview=false,loseReviewResponse=false;
   await page.route(/\/api\/coordinator\/acceptance(?:\?|$)/, async route => {
     acceptanceRequests.push(route.request().postDataJSON());
+    if(rejectStaleReview){rejectStaleReview=false;return route.fulfill({status:409,json:{error:{code:'CONFLICT',message:'验收版本已变化'}}});}
     coordinatorState = { ...coordinatorState, acceptances: [] };
+    if(loseReviewResponse){loseReviewResponse=false;return route.abort();}
     await route.fulfill({ json: { accepted: true } });
   });
-  coordinatorState = { ...coordinatorState, acceptances: [{
+  const acceptanceFixture={
     taskId: 'task-review-ui', sessionId: 'session-one', sourceSha: 'sha-review-ui',
     brief: { text: '这是一个超过六十个字符的验收说明，用于确认任务信息会自动按句子分段并以 Markdown 结构显示。' },
     result: { verdict: 'passed' }, ci: { ref: 'ci-review-ui', version: 'ci-version-review-ui' },
-  }] };
+  };
+  coordinatorState = { ...coordinatorState, status:'waiting-for-user', error:null, retryInput:null, canCorrect:false, acceptances: [acceptanceFixture] };
+  await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
+  await coordinator.getByRole('button',{name:'验收不通过',exact:true}).waitFor();
+  const submissionsBeforeReview=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过');
+  assert.equal(await coordinator.locator('.coordinator-send').isEnabled(),true,'an explicit review command can be sent while awaiting human acceptance');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  assert.match(await coordinator.locator(':scope > [role=status]').textContent(),/请写明原因/);
+  assert.equal(acceptanceRequests.length,0,'rejection without a reason is not submitted');
+  assert.equal(submissions.length,submissionsBeforeReview,'review directives do not become model requests');
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：'+'需核对'.repeat(668));
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  assert.match(await coordinator.locator(':scope > [role=status]').textContent(),/不能超过 2000 字/);
+  assert.equal(acceptanceRequests.length,0,'oversized human review reasons are rejected before a POST');
+  coordinatorState.acceptances=[acceptanceFixture,{...acceptanceFixture,taskId:'another-task',ci:{ref:'another-ci',version:'another-version'}}];
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：页面无法访问');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('多项待验收'));
+  assert.equal(acceptanceRequests.length,0,'ambiguous reviews fail closed without guessing the task');
+  coordinatorState.acceptances=[acceptanceFixture];
+  await coordinator.getByLabel('发送给 Coordinator').fill('这项验收不通过，原因是页面无法访问');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value==='');
+  assert.equal(acceptanceRequests.length,1);
+  assert.equal(acceptanceRequests[0].decision,'rejected');
+  assert.equal(acceptanceRequests[0].reason,'页面无法访问');
+  assert.equal(acceptanceRequests[0].taskId,acceptanceFixture.taskId);
+  assert.equal(acceptanceRequests[0].version,acceptanceFixture.ci.version);
+  assert.equal(submissions.length,submissionsBeforeReview,'delegated review uses the authenticated human review route, not a model tool');
+  coordinatorState.acceptances=[acceptanceFixture];
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收通过');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value==='');
+  assert.equal(acceptanceRequests.length,2);
+  assert.equal(acceptanceRequests[1].decision,'approved');
+  assert.equal(acceptanceRequests[1].reason,'验收通过');
+  assert.equal(submissions.length,submissionsBeforeReview);
+  coordinatorState.acceptances=[acceptanceFixture];
+  rejectStaleReview=true;
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：版本冲突');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('验收未提交'));
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'验收不通过：版本冲突','stale review preserves the explicit human decision');
+  assert.equal(acceptanceRequests.length,3);
+  loseReviewResponse=true;
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：连接中断');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('验收结果尚未确认'));
+  assert.equal(acceptanceRequests.length,4,'an unknown review outcome is sent only once');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'验收不通过：连接中断');
+  await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过：再次尝试');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  assert.match(await coordinator.locator(':scope > [role=status]').textContent(),/不会再次提交/);
+  assert.equal(acceptanceRequests.length,4,'a repeated command after an unknown outcome cannot mint another review ID');
+  record('Coordinator chat delegates only explicit human acceptance decisions to the existing review endpoint');
+  coordinatorState.acceptances=[acceptanceFixture];
   await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '验收不通过', exact: true }).click();
   const reviewForm = coordinator.locator('.coordinator-review-inline');
@@ -1205,10 +1264,17 @@ try {
   await reviewForm.locator('textarea').fill('需要补充部署路径和回滚验证。');
   await reviewForm.getByRole('button', { name: '提交反馈', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.coordinator-review-inline'));
-  assert.equal(acceptanceRequests.length, 1);
-  assert.equal(acceptanceRequests[0].decision, 'rejected');
-  assert.equal(acceptanceRequests[0].reason, '需要补充部署路径和回滚验证。');
+  assert.equal(acceptanceRequests.length, 5);
+  assert.equal(acceptanceRequests[4].decision, 'rejected');
+  assert.equal(acceptanceRequests[4].reason, '需要补充部署路径和回滚验证。');
   record('Coordinator acceptance rejection opens an inline feedback form');
+  const submissionsBeforeQuestion=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('为什么验收不通过还要我点？');
+  const questionPost=page.waitForResponse(response=>response.url().includes('/api/coordinator?')&&response.request().method()==='POST');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await questionPost;
+  assert.equal(acceptanceRequests.length,5,'a question mentioning acceptance never signs a review');
+  assert.equal(submissions.length,submissionsBeforeQuestion+1,'ordinary chat still reaches the Coordinator model');
 
   const attachmentMap = structuredClone(sessionMap);
   attachmentMap.root.memories = [{ text: 'Attachment fixture', state: 'dirty', files: [] }];
