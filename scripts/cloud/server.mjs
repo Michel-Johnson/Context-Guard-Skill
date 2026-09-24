@@ -580,6 +580,8 @@ export async function startCloudServer({
             return { sessions };
           },
           listConversations: async () => ({ conversations: (await conversations.list()).map(({ id, ...item }) => ({ conversationId: id, ...item })) }),
+          pendingBriefApproval: async () => (await store.projectTasks(principal)).some(task =>
+            task.conversationId === conversationId && task.stage === 'brief'),
           listTasks: async () => {
             const snapshot = await readMemoryProject(configuredMemory, project.id);
             const root = snapshot.main?.memory?.map?.root;

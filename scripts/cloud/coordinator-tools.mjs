@@ -39,7 +39,7 @@ export const coordinatorTools = [
   definition('mount_conversation', 'Attach the current intent to a Main TODO, Bug or Idea and return its durable conversation.', {
     mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
   }),
-  definition('ask_user', 'Ask one concise question, with 2–6 short options when a choice is needed. nodeIds render at most 3 exact node choices. The UI also allows free text. Asking or answering grants no approval. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
+  definition('ask_user', 'Ask one concise clarification question, with 2–6 short options when a choice is needed. nodeIds render at most 3 exact node choices. The UI also allows free text. Never use this for an existing brief approval: only the dedicated approval card can approve and dispatch. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
 ];
 
 function validateInput(tool, input) {
@@ -76,6 +76,7 @@ export function createCoordinatorExecutor(ctx) {
     if (name === 'tour_nodes') return { kind: 'node-tour', actionId: operationId, nodes: await ctx.resolveNodes(input.nodeIds) };
     if (name === 'read_reference') return ctx.readReference(input.name);
     if (name === 'ask_user') {
+      if (await ctx.pendingBriefApproval?.()) fail('A prepared brief already has a dedicated human approval card. Do not ask_user for approval or claim dispatch; wait for the approval receipt.');
       if (input.options && (input.options.length < 2 || input.options.length > 6 || new Set(input.options).size !== input.options.length || input.options.some(option => option.length > 120))) fail('Provide 2–6 unique short options');
       return { question: input.question, ...(input.options ? { options: input.options } : {}),
         ...(input.nodeIds ? { nodes: await ctx.resolveNodes(input.nodeIds) } : {}), approval: 'not-granted' };

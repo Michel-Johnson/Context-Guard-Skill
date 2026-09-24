@@ -159,7 +159,8 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /不要复述用户原话、重复已知上下文/);
   assert.match(prompt, /部署、发布、启动服务/);
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
-  assert.match(prompt, /每个问题都必须调用一次 `ask_user`/);
+  assert.match(prompt, /每个澄清问题都必须调用一次 `ask_user`/);
+  assert.match(prompt, /只能由页面的「确认需求／拒绝需求」卡片提交/);
   assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
   assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
@@ -448,6 +449,14 @@ test('Choice questions persist and stop before a redundant model summary; answer
     { text: '网站构建产物', requestId: 'answer' }, 'the public answer is user-readable and matches its optimistic request');
   assert.equal(restored.approvals.length, 0);
   await assert.rejects(service.submit({ id: 'second-answer', text: 'Changed', answerTo: questionId }), { code: 'ALREADY_ANSWERED' });
+});
+
+test('A prepared brief cannot solicit a duplicate ask_user approval', async () => {
+  const execute = createCoordinatorExecutor({ pendingBriefApproval: async () => true });
+  await assert.rejects(
+    execute('ask_user', { question: '是否批准该 brief 并派发执行？', options: ['批准，派发执行', '需要修改'] }, { operationId: 'approval-question' }),
+    error => error.code === 'INVALID_ARGUMENT' && /dedicated human approval card/.test(error.toolHint),
+  );
 });
 
 test('ask_user activity appears while arguments are pending and clears when the card commits', async t => {
