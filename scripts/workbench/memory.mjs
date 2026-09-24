@@ -6,6 +6,7 @@ import { bindingStatus, resolveProject } from './project.mjs';
 import { MapError } from '../shared/map-model.mjs';
 import { validateMemory } from '../shared/memory-schema.mjs';
 import { Access } from './access.mjs';
+import { mergeSessionDocuments } from './memory-merge.mjs';
 export const sessionMemoryDir = (project, sessionId) => path.join(project.sharedDir, 'session-memory', hash(`${sessionId}\0${project.worktreeId}`));
 export const memoryConfigPath = project => path.join(project.sharedDir, 'memory-client.json');
 const sessionRecordName = sessionId => String(sessionId || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 120) || 'session';
@@ -64,20 +65,7 @@ export async function prepareMemory(project, sessionId) {
   await atomicWrite(path.join(dir, 'server-read.json'), encode({ ...status, checkedAt: new Date().toISOString() }));
   return { status: 'ready', current: true, sessionVersion: remote?.version || null, mainVersion: status.main?.version || null, cache: path.join(dir, 'server-read.json') };
 }
-export function mergeMemory(base, local, remote, at = 'map') {
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  if (same(local, remote) || same(base, local)) return remote;
-  if (same(base, remote)) return local;
-  if ([base, local, remote].every(value => value && typeof value === 'object' && !Array.isArray(value))) {
-    const value = {};
-    for (const key of new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)])) {
-      const merged = mergeMemory(base[key], local[key], remote[key], `${at}.${key}`);
-      if (merged !== undefined) value[key] = merged;
-    }
-    return value;
-  }
-  throw new MapError('MEMORY_CONFLICT', `Both Session and main changed ${at}; preserve drafts and reconcile explicitly`, 409);
-}
+export const mergeMemory = mergeSessionDocuments;
 
 export function reconcileSessionMap(previousSnapshot, localMap, remoteSnapshot) {
   if (!remoteSnapshot?.memory?.map) return localMap;
@@ -86,6 +74,13 @@ export function reconcileSessionMap(previousSnapshot, localMap, remoteSnapshot) 
   const baseMap = previousSnapshot?.memory?.map;
   if (!baseMap) throw new MapError('MEMORY_CONFLICT', 'Cloud Session changed without a confirmed common base; preserve both drafts and reconcile explicitly', 409);
   return mergeMemory(baseMap, localMap, remoteMap);
+}
+export function reconcileMainBaseline(baseline, localMap, mainSnapshot) {
+  if (!mainSnapshot || baseline?.version === mainSnapshot.version) return { map: localMap, baseline, changed: false };
+  if (!baseline?.map) throw new MapError('SESSION_BASELINE_REQUIRED', 'Main advanced without a confirmed Session ancestor; preserve the draft and review its baseline', 409);
+  const map = mergeMemory(baseline.map, localMap, mainSnapshot.memory.map);
+  validateMemory({ map, records: {} });
+  return { map, baseline: { version: mainSnapshot.version, map: mainSnapshot.memory.map }, changed: true };
 }
 export async function rebaseMemory(project, sessionId, { adoptMain = false } = {}) {
   const dir = sessionMemoryDir(project, sessionId);
@@ -173,6 +168,30 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
       }));
       throw error;
     }
+    let baseline = await readJSON(path.join(dir, 'base-main.json'), { version: null });
+    try {
+      const rebased = reconcileMainBaseline(baseline, map, current.main);
+      if (rebased.changed) {
+        const backup = path.join(dir, `before-auto-rebase-${randomUUID()}.json`);
+        await atomicWrite(backup, encode(map));
+        map = rebased.map;
+        baseline = rebased.baseline;
+        await atomicWrite(mapFile, encode(map));
+        await atomicWrite(path.join(dir, 'base-main.json'), encode(baseline));
+      }
+    } catch (error) {
+      if (!['MEMORY_CONFLICT', 'SESSION_BASELINE_REQUIRED'].includes(error?.code)) throw error;
+      await atomicWrite(conflictFile, encode({
+        v: 1,
+        code: error.code,
+        sessionId,
+        detectedAt: new Date().toISOString(),
+        base: baseline,
+        local: { map },
+        remote: current.main || null,
+      }));
+      throw error;
+    }
     if (encode(map) !== encode(await readJSON(mapFile))) await atomicWrite(mapFile, encode(map));
     const ctx = path.join(root, '.codex/context'), records = {};
     for (const folder of ['', 'sessions', 'bugs', 'fixes', 'tasks', 'cards']) {
@@ -187,7 +206,6 @@ export async function synchronizeMemory(root, sessionId, client = {}) {
         records[file] = content;
       }
     }
-    const baseline = await readJSON(path.join(dir, 'base-main.json'), { version: null });
     const access = await new Access(root, project.kind === 'git' ? {
       file: path.join(project.sharedDir, 'workbench-access.json'),
       bindingsFile: path.join(project.sharedDir, 'workbench-bindings.json'),

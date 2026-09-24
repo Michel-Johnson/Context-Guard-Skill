@@ -12,6 +12,7 @@ export const installedFiles = [
   "scripts/workbench/hook-status.mjs",
   "scripts/workbench/project.mjs",
   "scripts/workbench/memory.mjs",
+  "scripts/workbench/memory-merge.mjs",
   "scripts/shared/memory-schema.mjs",
   "references/named-workbench.md",
   "THIRD_PARTY_NOTICES.md",
