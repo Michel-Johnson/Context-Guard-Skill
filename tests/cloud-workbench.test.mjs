@@ -10,7 +10,7 @@ import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnecti
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { compactMainHistorySnapshots } from '../scripts/cloud/memory.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
-import { reconcileSessionMap } from '../scripts/workbench/memory.mjs';
+import { reconcileMainBaseline, reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
@@ -94,6 +94,29 @@ test('Session upload reconciles Cloud edits from the last acknowledged snapshot'
   const overlapping = structuredClone(base); overlapping.root.title = 'Cloud title';
   assert.throws(() => reconcileSessionMap(previous, local, { version: 'v3', memory: { map: overlapping } }), error => error.code === 'MEMORY_CONFLICT');
   assert.throws(() => reconcileSessionMap(null, local, remote), error => error.code === 'MEMORY_CONFLICT');
+});
+
+test('Session upload automatically rebases disjoint Main advances but preserves conflicts', () => {
+  const base = { v: 1, root: { id: 'T0', title: 'Project', children: [
+    { id: 'N1', title: 'One', todos: [], children: [] },
+    { id: 'N2', title: 'Two', bugs: [], children: [] },
+  ] } };
+  const local = structuredClone(base), mainMap = structuredClone(base);
+  local.root.children[0].todos.push({ id: 'TD1', title: 'Local task' });
+  mainMap.root.children[1].bugs.push({ id: 'B1', title: 'Main bug' });
+  const baseline = { version: 'main-v1', map: base };
+  const advanced = { version: 'main-v2', memory: { map: mainMap } };
+  const rebased = reconcileMainBaseline(baseline, local, advanced);
+  assert.equal(rebased.changed, true);
+  assert.equal(rebased.baseline.version, 'main-v2');
+  assert.equal(rebased.map.root.children[0].todos[0].id, 'TD1');
+  assert.equal(rebased.map.root.children[1].bugs[0].id, 'B1');
+  assert.deepEqual(reconcileMainBaseline(rebased.baseline, rebased.map, advanced), { map: rebased.map, baseline: rebased.baseline, changed: false });
+  const changedLocal = structuredClone(local), changedMain = structuredClone(mainMap);
+  changedLocal.root.children[0].title = 'Local title';
+  changedMain.root.children[0].title = 'Main title';
+  assert.throws(() => reconcileMainBaseline(baseline, changedLocal, { version: 'main-v3', memory: { map: changedMain } }), { code: 'MEMORY_CONFLICT' });
+  assert.throws(() => reconcileMainBaseline({ version: 'main-v1' }, local, advanced), { code: 'SESSION_BASELINE_REQUIRED' });
 });
 
 test('memory read views share cold reads, invalidate replaces, and preserve complete history on disk', async t => {
