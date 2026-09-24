@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep the five newest complete Context Guard Cloud backups
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /usr/local/libexec/context-guard-cloud-prune.mjs --apply
+User=root
+Group=root
+Environment=PATH=/usr/bin:/bin
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/backups
+RuntimeMaxSec=5min

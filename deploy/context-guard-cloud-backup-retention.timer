@@ -1,0 +1,12 @@
+[Unit]
+Description=Rotate Context Guard Cloud backups every 15 minutes
+
+[Timer]
+OnActiveSec=30s
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=1min
+Unit=context-guard-cloud-backup-retention.service
+
+[Install]
+WantedBy=timers.target

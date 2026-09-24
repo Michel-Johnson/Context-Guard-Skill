@@ -214,6 +214,41 @@ systemctl --user restart context-guard-cloud.service
 curl --fail http://127.0.0.1:8788/api/health
 ```
 
+For the dedicated system-service installation that stores complete Cloud
+snapshots under `/var/backups`, keep only the five newest **complete snapshots**.
+`deploy/prune-cloud-backups.mjs` recognizes the two established layouts:
+`/var/backups/context-guard-cloud-pre-*.tar[.zst]` and
+`/var/backups/context-guard-cloud/pre-*` (archives or legacy directories).
+It does not touch package-manager backups, small diagnostic records, live data,
+or other applications. It defaults to a dry run. It verifies all five retained
+snapshots before deleting anything, aborts when a snapshot is being written or
+the inventory changes, and waits ten minutes after the last backup change.
+Therefore six may exist briefly during an upgrade, but the timer removes the
+oldest after the new snapshot is complete and quiet.
+
+Install the reviewed script as a **root-owned copy**, never execute the
+service account's writable checkout as root:
+
+```sh
+sudo install -D -o root -g root -m 0755 deploy/prune-cloud-backups.mjs \
+  /usr/local/libexec/context-guard-cloud-prune.mjs
+sudo install -D -o root -g root -m 0644 deploy/context-guard-cloud-backup-retention.service \
+  /etc/systemd/system/context-guard-cloud-backup-retention.service
+sudo install -D -o root -g root -m 0644 deploy/context-guard-cloud-backup-retention.timer \
+  /etc/systemd/system/context-guard-cloud-backup-retention.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now context-guard-cloud-backup-retention.timer
+sudo node /usr/local/libexec/context-guard-cloud-prune.mjs
+sudo systemctl start context-guard-cloud-backup-retention.service
+sudo systemctl status context-guard-cloud-backup-retention.timer --no-pager
+```
+
+Create future archives with mode `0600` as a `.part` file, verify them, then
+atomically rename to their final `pre-*.tar.zst` name. The timer never recognizes
+`.part` files. Reinstall the root-owned script and units from reviewed `main`
+when their tracked sources change. A failed verification stops pruning; inspect
+the failing archive instead of deleting more backups to force a count of five.
+
 To move hosts, stop writes, copy the complete data directory and the protected
 environment file to the new server, start the same version there, verify health,
 then change each client's `sync connect --url`. Never reconstruct state from

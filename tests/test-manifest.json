@@ -62,6 +62,7 @@
   "productFiles": [
     "tests/attachments.test.mjs",
     "tests/cloud-attachments.test.mjs",
+    "tests/cloud-backup-retention.test.mjs",
     "tests/quark-provider.test.mjs",
     "tests/claude-runtime.test.mjs",
     "tests/cloud-coordinator.test.mjs",
