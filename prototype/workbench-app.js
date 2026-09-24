@@ -4467,7 +4467,7 @@ async function installCoordinatorPanel(sync){
   const historyTitle=document.createElement('h3');historyTitle.textContent='历史 Session';
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
-  panel.append(toolbar,history,status,messages,form);document.body.append(panel);
+  panel.append(toolbar,history,messages,status,form);document.body.append(panel);
   let typingVisible=false,typingStartedAt=0,typingExitTimer=0,typingStopTimer=0,inkReady=false;
   const setTyping=visible=>{
     if(visible){
@@ -4626,7 +4626,8 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  let timer=null, pending=null, pendingError='', pendingTransportUnknown=false, busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  const transportRecoveryAttempted=new Set();
   const rowKeys=new WeakMap();
   const handledNavigationActions=new Set();
   let navigationRun=0;
@@ -4688,8 +4689,8 @@ async function installCoordinatorPanel(sync){
   const selectConversation=(id,load=true,historyMode=false)=>{
     browsingHistory=historyMode;
     liveReplyAwaiting=false;
-    drafts.set(selected,{text:input.value,pending,error:pendingError});selected=id;panel.dataset.conversation=id;
-    input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';
+    drafts.set(selected,{text:input.value,pending,error:pendingError,transportUnknown:pendingTransportUnknown});selected=id;panel.dataset.conversation=id;
+    input.value=drafts.get(id)?.text||'';pending=drafts.get(id)?.pending||null;pendingError=drafts.get(id)?.error||'';pendingTransportUnknown=drafts.get(id)?.transportUnknown||false;
     lastStableContent=null;lastRenderedExtras=null;lastStreamingText='';latestConversationState=null;stopStreamingAnimation();canCorrect=false;
     pinnedTurn=null;pinnedRequest=null;stickToTurn=false;tailSpace.style.height='';messages.replaceChildren(extrasHost,tailSpace);setPlanningVisible(false);setTyping(false);setSendBlocked(true);
     setPanelOpen(true);if(load)void refresh();
@@ -4732,8 +4733,8 @@ async function installCoordinatorPanel(sync){
   });
   window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
   const confirmSubmitted=(id,request)=>{
-    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
-    else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';if(draft.text.trim()===request.text)draft.text='';}}
+    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';pendingTransportUnknown=false;transportRecoveryAttempted.delete(request.id);if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
+    else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';draft.transportUnknown=false;transportRecoveryAttempted.delete(request.id);if(draft.text.trim()===request.text)draft.text='';}}
   };
   const visibleConversationMessage=message=>(message?.text||message?.questions?.length||message?.actions?.some(action=>!['node-navigation','node-tour','node-read'].includes(action.kind)))&&
     !(message.role==='user'&&message.text.startsWith('[服务器工作流事件，不是新的用户授权]\n'));
@@ -4990,7 +4991,22 @@ async function installCoordinatorPanel(sync){
     if(!browsingHistory&&isScopeConversation(selected)&&selected!==desired)selectConversation(desired,false);
     refreshing=true;
     const id=selected;let delay=3000;
-    try{const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');delay=state.status==='running'?250:3000;if(id===selected)render(state);}
+    try{
+      const state=await sync.call(conversationUrl('/api/coordinator',id),undefined,'GET','main');
+      delay=state.status==='running'?250:3000;
+      if(id===selected){
+        render(state);
+        // A successful read may have no receipt for a transport-failed POST.
+        // Retry its original ID once; a late acknowledgement remains safe
+        // because the server deduplicates that durable request identity.
+        if(pending&&pendingTransportUnknown&&!busy&&['idle','waiting-for-user'].includes(state.status)&&
+          !state.acceptedRequestIds?.includes(pending.id)&&!transportRecoveryAttempted.has(pending.id)){
+          const request=pending;
+          transportRecoveryAttempted.add(request.id);
+          queueMicrotask(()=>{if(id===selected&&!busy&&pending?.id===request.id)void submit(request);});
+        }
+      }
+    }
     catch(error){setPlanningVisible(false);setTyping(false);status.textContent='读取失败：'+error.message;setRetryMode(pending?'request':'read');retry.disabled=false;}
     finally{refreshing=false;if(!stopped&&panel.open) timer=setTimeout(refresh,id===selected?delay:0);}
   };
@@ -5001,7 +5017,7 @@ async function installCoordinatorPanel(sync){
     liveReplyAssistantCount=messages.querySelectorAll('.coordinator-message.assistant').length;
     optimisticRequests.set(request.id,{conversationId:id,request});
     appendOptimisticMessage(request);
-    busy=true; pending=request; pendingError=''; setSendBlocked(true); retry.disabled=true; status.textContent='';
+    busy=true; pending=request; pendingError=''; pendingTransportUnknown=false; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     typing.textContent='Working · 正在连接';typing.setAttribute('aria-label','Working · 正在连接');
     setTyping(!answeringCard);
@@ -5014,8 +5030,8 @@ async function installCoordinatorPanel(sync){
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
-      if(id===selected){pendingError=message;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
-      else{const draft=drafts.get(id);if(draft)draft.error=message;}
+      if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
+      else{const draft=drafts.get(id);if(draft){draft.error=message;draft.transportUnknown=!error.serverResponse;}}
     }
     finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
     await refresh();
