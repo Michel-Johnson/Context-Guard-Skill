@@ -151,6 +151,25 @@ function appendHistory(state, { scope, action, snapshot, previousVersion = null,
   return entry;
 }
 
+// The history already owns the recoverable snapshot. A receipt needs only its
+// stable identity and result metadata; storing two more copies of every
+// Session snapshot makes the hot memory file grow until publication stalls.
+function compactReceiptResult(result) {
+  if (!result?.history?.id) return result;
+  const compact = { ...result, history: { ...result.history } };
+  delete compact.snapshot;
+  delete compact.history.snapshot;
+  return compact;
+}
+
+function receiptResult(state, receipt) {
+  const result = receipt.result;
+  if (!result?.history?.id || result.historyExpired || result.snapshot) return result;
+  const history = (state.history || []).find(entry => entry.id === result.history.id);
+  if (!history?.snapshot) throw new MapError('HISTORY_NOT_FOUND', 'Receipt history is unavailable', 409);
+  return { ...result, snapshot: structuredClone(history.snapshot), history: structuredClone(history) };
+}
+
 export function compactMainHistorySnapshots(state) {
   const retained = new Set((state.history || []).filter(entry => entry.scope === 'main').slice(-MAIN_HISTORY_LIMIT).map(entry => entry.version));
   let changed = false;
@@ -161,10 +180,12 @@ export function compactMainHistorySnapshots(state) {
   }
   for (const receipt of Object.values(state.receipts || {})) {
     const result = receipt?.result;
-    if (result?.history?.scope !== 'main' || retained.has(result.history.version)) continue;
+    if (!result?.history) continue;
     if (Object.hasOwn(result, 'snapshot')) { delete result.snapshot; changed = true; }
     if (Object.hasOwn(result.history, 'snapshot')) { delete result.history.snapshot; changed = true; }
-    if (!result.historyExpired) { result.historyExpired = true; changed = true; }
+    if (result.history.scope === 'main' && !retained.has(result.history.version) && !result.historyExpired) {
+      result.historyExpired = true; changed = true;
+    }
   }
   return changed;
 }
@@ -267,7 +288,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     const key = hash(`publish:${input.operationId}`), fingerprint = hash(encode(input));
     if (state.receipts[key]) {
       if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-      return { result: state.receipts[key].result, event: null };
+      return { result: receiptResult(state, state.receipts[key]), event: null };
     }
     if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
     if (!project.root || !project.ref) throw new MapError('MAIN_BINDING_REQUIRED', 'Configure the server repository mirror and authoritative ref', 409);
@@ -301,7 +322,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     state.revision++;
     const history = appendHistory(state, { scope: 'main', action: 'publish', snapshot, previousVersion, actor, at: publishedAt });
     const result = { committed: true, projectId, snapshot, revision: state.revision, history, closedSession: state.closedSessions[input.sessionId] };
-    state.receipts[key] = { fingerprint, result };
+    state.receipts[key] = { fingerprint, result: compactReceiptResult(result) };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.published', operationId: input.operationId, baseVersion: previousVersion, version: snapshot.version, actor, at: publishedAt });
     await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };
@@ -320,7 +341,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-      return { result: state.receipts[receiptKey].result, event: null };
+      return { result: receiptResult(state, state.receipts[receiptKey]), event: null };
     }
     const current = state.main;
     if (!current) throw new MapError('MAIN_UNAVAILABLE', 'Published Main memory is not available', 409);
@@ -364,7 +385,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
       if (policy && actor.kind !== 'human' && (state.receipts[receiptKey].requiredGrants || []).some(id => !grants.includes(id))) throw new MapError('FORBIDDEN', 'A node grant was revoked', 403);
-      return { result: state.receipts[receiptKey].result, event: null };
+      return { result: receiptResult(state, state.receipts[receiptKey]), event: null };
     }
     if (!current && state.closedSessions[sessionId]) throw new MapError('SESSION_REOPEN_REQUIRED', 'Publish closed this Session generation; reopen it from the latest main snapshot before editing', 409);
     if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
@@ -520,7 +541,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         if (scope === 'restore' && ['main', 'preferences'].includes(input.scope) && !admin) throw new MapError('FORBIDDEN', 'Main and preference restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
           if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-          return { result: state.receipts[key].result, event: null };
+          return { result: receiptResult(state, state.receipts[key]), event: null };
         }
         let snapshot;
         let historyScope = scope;
@@ -590,7 +611,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         const requestActor = { kind: admin ? 'admin' : 'agent', ...(rawSession ? { sessionId } : {}) };
         const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: requestActor, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
         const result = { committed: true, projectId, snapshot, revision: state.revision, history };
-        state.receipts[key] = { fingerprint, result };
+        state.receipts[key] = { fingerprint, result: compactReceiptResult(result) };
         const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
           projectId,
           scope: historyScope,
