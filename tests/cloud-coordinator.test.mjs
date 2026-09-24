@@ -688,6 +688,11 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
     return Response.json(url.includes('/pulls/') ? currentPr : currentChecks);
   } };
   assert.equal((await verifyTaskCompletion(options)).mergeSha, mergeSha);
+  assert.equal((await verifyTaskCompletion({ ...options, project: { ...project, ref: 'refs/remotes/origin/main', remote: 'origin' } })).mergeSha,
+    mergeSha, 'configured remote-tracking Main is the same authoritative branch');
+  assert.equal((await verifyTaskCompletion({ ...options, project: { ...project, ref: 'refs/remotes/origin/main' } })).mergeSha,
+    mergeSha, 'read-only mirror may omit a fetch remote');
+  assert.equal(await verifyTaskCompletion({ ...options, project: { ...project, ref: 'refs/remotes/other/main', remote: 'origin' } }), false);
   const newerMainSha = 'c'.repeat(40);
   const newerMemory = { closedSessions: { developer: { publications: [{ ...publication, mainSha: newerMainSha }] } } };
   let ancestry = { status: 'ahead', base_commit: { sha: mergeSha }, merge_base_commit: { sha: mergeSha } };
