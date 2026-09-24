@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, coordinatorAssignmentKey, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
 import { compactMainHistorySnapshots } from '../scripts/cloud/memory.mjs';
+import { projectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileMainBaseline, reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
@@ -158,7 +159,7 @@ test('Main keeps five recoverable snapshots while startup compacts old content a
   } }, records: {} } });
   const history = Array.from({ length: 7 }, (_, index) => ({ revision: index + 1, scope: 'main', action: 'workbench.commit',
     version: `main-${index + 1}`, at: '2026-09-23T00:00:00.000Z', snapshot: snapshot(index + 1) }));
-  history.splice(3, 0, { revision: 8, scope: 'session:dev', action: 'write', version: 'session-1', snapshot: { version: 'session-1' } });
+  history.splice(3, 0, { id: 'session-history-1', revision: 8, scope: 'session:dev', action: 'write', version: 'session-1', snapshot: { version: 'session-1' } });
   const originalHistory = structuredClone(history);
   const state = { revision: 8, main: snapshot(7), preferences: null, sessions: {}, closedSessions: {},
     receipts: { old: { fingerprint: 'original', result: { history: structuredClone(history[0]), snapshot: snapshot(1) } } },
@@ -171,6 +172,12 @@ test('Main keeps five recoverable snapshots while startup compacts old content a
   assert.equal(state.receipts.old.result.snapshot, undefined);
   assert.equal(state.receipts.old.result.history.snapshot, undefined);
   assert.equal(state.receipts.old.result.historyExpired, true);
+  state.receipts.session = { fingerprint: 'session-write', result: { history: structuredClone(state.history.find(entry => entry.scope === 'session:dev')),
+    snapshot: structuredClone(state.history.find(entry => entry.scope === 'session:dev').snapshot) } };
+  assert.equal(compactMainHistorySnapshots(state), true);
+  assert.equal(state.receipts.session.result.snapshot, undefined);
+  assert.equal(state.receipts.session.result.history.snapshot, undefined);
+  assert.equal(state.history.find(entry => entry.scope === 'session:dev').snapshot.version, 'session-1');
   await fs.writeFile(file, JSON.stringify({ ...state, history: originalHistory,
     receipts: { old: { fingerprint: 'original', result: { history: structuredClone(originalHistory[0]), snapshot: snapshot(1) } } } }));
   let service = await startCloudServer({ host: '127.0.0.1', port: 0, dataDir, adminToken: 'cloud-admin', memoryConfig });
@@ -354,13 +361,25 @@ test('one cloud process serves the private Main and Session memory API', async t
   const initial = await request(service.url, '/v1/projects/context-guard/main', { headers: memoryHeaders });
   assert.equal(initial.response.status, 200); assert.equal(initial.body.snapshot, null);
   const map = { v: 1, project: 'Context Guard', bootstrap: 'ready', flows: [], root: { id: 'T0', title: 'Session map', kind: 'module', state: 'dirty', children: [] } };
+  const firstWrite = { operationId: 'session-write-one', baseVersion: null, baseMainVersion: null,
+    sourceCommit: 'a'.repeat(40), memory: { map, records: {} } };
   const saved = await request(service.url, '/v1/projects/context-guard/sessions/session-one', {
     method: 'POST', headers: memoryHeaders,
-    body: JSON.stringify({ operationId: 'session-write-one', baseVersion: null, baseMainVersion: null, sourceCommit: 'a'.repeat(40), memory: { map, records: {} } }),
+    body: JSON.stringify(firstWrite),
   });
   assert.equal(saved.response.status, 200);
   assert.equal(saved.body.snapshot.sessionId, 'session-one');
   assert.equal(saved.body.snapshot.updatedAt, new Date(saved.body.snapshot.updatedAt).toISOString());
+  const repeated = await request(service.url, '/v1/projects/context-guard/sessions/session-one', {
+    method: 'POST', headers: memoryHeaders, body: JSON.stringify(firstWrite),
+  });
+  assert.equal(repeated.response.status, 200);
+  assert.deepEqual(repeated.body, saved.body, 'a compact receipt replays the original full response');
+  const stored = await readJSON(projectMemoryFile(path.join(dataDir, 'memory'), 'context-guard'));
+  const receipt = Object.values(stored.receipts).find(item => item.result?.history?.scope === 'session:session-one');
+  assert.equal(receipt.result.snapshot, undefined);
+  assert.equal(receipt.result.history.snapshot, undefined);
+  assert.equal(stored.history[0].snapshot.version, saved.body.snapshot.version);
   const read = await request(service.url, '/v1/projects/context-guard/sessions/session-one', { headers: memoryHeaders });
   assert.equal(read.body.snapshot.memory.map.root.title, 'Session map');
   const browserHeaders = { Authorization: 'Bearer cloud-admin', 'Content-Type': 'application/json' };
