@@ -126,6 +126,35 @@ print('PR_MERGE_GATE_OK')`]);
   assert.equal(result.stdout.trim(), 'PR_MERGE_GATE_OK');
 });
 
+test('post-plan PR merge waiver is scoped, expires, and requires GitHub billing annotations', () => {
+  const result = run(python, ['-c', `import os,sys,json,types; from pathlib import Path; sys.path.insert(0,${JSON.stringify(path.join(repository, 'scripts'))}); import context_guard_hook as h
+root=Path('/tmp/lab'); sha='a'*40
+pr={'state':'OPEN','mergeStateStatus':'UNSTABLE','headRefOid':sha,'statusCheckRollup':[{'__typename':'CheckRun','status':'COMPLETED','conclusion':'FAILURE'}]}
+os.environ['CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO']='example/lab'
+os.environ['CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL']='2100-01-01T00:00:00Z'
+message='The job was not started because recent account payments have failed or your spending limit needs to be increased.'
+original=h.subprocess.run
+def run_gh(args,**kwargs):
+    if args[1:3]==['repo','view']: value={'nameWithOwner':'example/lab'}
+    elif 'check-runs?' in args[-1]: value={'total_count':1,'check_runs':[{'id':17,'status':'completed','conclusion':'failure','head_sha':sha}]}
+    else: value=[{'message':message}]
+    return types.SimpleNamespace(returncode=0,stdout=json.dumps(value))
+h.subprocess.run=run_gh
+assert h.billing_waiver_checks(root,pr,sha)
+assert not h.billing_waiver_checks(root,{**pr,'statusCheckRollup':[{'__typename':'StatusContext','state':'FAILURE'}]},sha)
+message='A real test assertion failed'
+assert not h.billing_waiver_checks(root,pr,sha)
+message='The job was not started because recent account payments have failed or your spending limit needs to be increased.'
+os.environ['CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL']='2020-01-01T00:00:00Z'
+assert not h.billing_waiver_checks(root,pr,sha)
+os.environ['CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL']='2100-01-01T00:00:00Z'
+os.environ['CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO']='other/lab'
+assert not h.billing_waiver_checks(root,pr,sha)
+h.subprocess.run=original
+print('BILLING_WAIVER_OK')`]);
+  assert.equal(result.stdout.trim(), 'BILLING_WAIVER_OK');
+});
+
 test('Claude display name uses only the bounded own-session transcript metadata', async t => {
   const project = await fixture();
   t.after(() => fs.rm(project, { recursive: true, force: true }));

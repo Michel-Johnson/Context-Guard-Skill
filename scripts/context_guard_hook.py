@@ -1303,6 +1303,54 @@ def merge_checks_green(pr: dict, source_sha: str) -> bool:
         check.get("conclusion") == "SUCCESS" or check.get("state") == "SUCCESS" for check in checks)
 
 
+def billing_waiver_checks(root: Path, pr: dict, source_sha: str) -> bool:
+    """An expiring, repository-scoped waiver for GitHub jobs blocked before startup."""
+    repository = os.environ.get("CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO", "")
+    expires_at = os.environ.get("CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL", "")
+    try:
+        deadline = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", repository) or deadline.tzinfo is None or datetime.now(timezone.utc) >= deadline:
+            return False
+        if pr.get("state") != "OPEN" or pr.get("mergeStateStatus") != "UNSTABLE" or pr.get("headRefOid") != source_sha:
+            return False
+        rollup = pr.get("statusCheckRollup")
+        if not isinstance(rollup, list) or not rollup or any(not isinstance(item, dict) or
+            (item.get("__typename") == "StatusContext" and item.get("state") != "SUCCESS") or
+            (item.get("__typename") == "CheckRun" and (item.get("status") != "COMPLETED" or
+                item.get("conclusion") not in {"SUCCESS", "SKIPPED", "FAILURE"})) or
+            item.get("__typename") not in {"StatusContext", "CheckRun"} for item in rollup):
+            return False
+        repo_result = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root,
+                                     capture_output=True, text=True, timeout=15, check=False, creationflags=WINDOWS_NO_WINDOW)
+        if repo_result.returncode or json.loads(repo_result.stdout).get("nameWithOwner") != repository:
+            return False
+        runs_result = subprocess.run(["gh", "api", f"repos/{repository}/commits/{source_sha}/check-runs?filter=latest&per_page=100"],
+                                     cwd=root, capture_output=True, text=True, timeout=15, check=False, creationflags=WINDOWS_NO_WINDOW)
+        if runs_result.returncode:
+            return False
+        result = json.loads(runs_result.stdout)
+        checks = result.get("check_runs")
+        if not isinstance(checks, list) or not checks or len(checks) > 100 or result.get("total_count") != len(checks):
+            return False
+        failed = [check for check in checks if check.get("conclusion") == "failure"]
+        if not failed or any(not isinstance(check, dict) or check.get("head_sha") != source_sha or check.get("status") != "completed" or
+                             check.get("conclusion") not in {"success", "skipped", "failure"} for check in checks):
+            return False
+        for check in failed:
+            if not isinstance(check.get("id"), int) or check["id"] <= 0:
+                return False
+            annotations = subprocess.run(["gh", "api", f"repos/{repository}/check-runs/{check['id']}/annotations?per_page=100"],
+                                         cwd=root, capture_output=True, text=True, timeout=15, check=False,
+                                         creationflags=WINDOWS_NO_WINDOW)
+            if annotations.returncode or not any(isinstance(item, dict) and
+                "The job was not started because recent account payments have failed or your spending limit needs to be increased." in item.get("message", "")
+                for item in json.loads(annotations.stdout)):
+                return False
+        return True
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return False
+
+
 def verified_merge_checks(root: Path, number: str) -> bool:
     try:
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
@@ -1310,7 +1358,10 @@ def verified_merge_checks(root: Path, number: str) -> bool:
         pr = subprocess.run(["gh", "pr", "view", number, "--json", "state,mergeStateStatus,statusCheckRollup,headRefOid"],
                             cwd=root, capture_output=True, text=True, timeout=15, check=False,
                             creationflags=WINDOWS_NO_WINDOW)
-        return head.returncode == 0 and pr.returncode == 0 and merge_checks_green(json.loads(pr.stdout), head.stdout.strip())
+        if head.returncode or pr.returncode:
+            return False
+        details = json.loads(pr.stdout)
+        return merge_checks_green(details, head.stdout.strip()) or billing_waiver_checks(root, details, head.stdout.strip())
     except (OSError, ValueError, subprocess.SubprocessError):
         return False
 

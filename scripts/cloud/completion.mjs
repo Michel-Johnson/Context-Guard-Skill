@@ -18,8 +18,11 @@ export async function verifyTaskCompletion({ project, repositoryId, memory, task
     return { verificationOnly: true, sourceSha: task.sourceSha, ciRef: task.ci.ref };
   }
   if (!policy) return false;
+  const billingWaiver = policy.checksWaiver?.reason === 'github-actions-billing' &&
+    Number.isFinite(Date.parse(policy.checksWaiver.expiresAt)) && Date.now() < Date.parse(policy.checksWaiver.expiresAt) &&
+    Array.isArray(policy.requiredChecks) && policy.requiredChecks.length === 0;
   if (!/^[\w.-]+\/[\w.-]+$/.test(project.repository || '') || !/^refs\/heads\/.+/.test(project.ref || '') ||
-      !Array.isArray(policy.requiredChecks) || !policy.requiredChecks.length ||
+      !Array.isArray(policy.requiredChecks) || (!policy.requiredChecks.length && !billingWaiver) ||
       policy.requiredChecks.some(check => !check.name || !Number.isSafeInteger(check.appId))) return false;
   const match = /^github-pr:([1-9]\d{0,9})$/.exec(receipts.gitReceiptRef || '');
   if (!match) return false;
@@ -68,12 +71,27 @@ export async function verifyTaskCompletion({ project, repositoryId, memory, task
     const checks = await get(`commits/${task.sourceSha}/check-runs?filter=latest&per_page=100`);
     // A truncated page cannot prove all latest results; do not silently pass it.
     if (!Array.isArray(checks.check_runs) || checks.total_count !== checks.check_runs.length || checks.total_count > 100) return false;
+    if (billingWaiver) {
+      const contexts = await get(`commits/${task.sourceSha}/status`);
+      if (!Array.isArray(contexts.statuses) || contexts.statuses.length > 100 ||
+          contexts.statuses.some(item => item.state !== 'success')) return false;
+      if (!checks.check_runs.length || !checks.check_runs.every(check => check.head_sha === task.sourceSha &&
+        check.status === 'completed' && ['success', 'skipped', 'failure'].includes(check.conclusion) &&
+        Date.parse(check.completed_at) <= Date.parse(pr.merged_at))) return false;
+      for (const check of checks.check_runs.filter(item => item.conclusion === 'failure')) {
+        if (!Number.isSafeInteger(check.id)) return false;
+        const annotations = await get(`check-runs/${check.id}/annotations?per_page=100`);
+        if (!Array.isArray(annotations) || !annotations.some(item =>
+          typeof item.message === 'string' && item.message.includes('The job was not started because recent account payments have failed or your spending limit needs to be increased.'))) return false;
+      }
+    }
     if (!policy.requiredChecks.every(required => {
       const matching = checks.check_runs.filter(check => check.name === required.name && check.app?.id === required.appId);
       return matching.length > 0 && matching.every(check => check.head_sha === task.sourceSha && check.status === 'completed' && check.conclusion === 'success' &&
         Date.parse(check.completed_at) <= Date.parse(pr.merged_at));
     })) return false;
     return { repositoryId, sourceSha: task.sourceSha, mergeSha: pr.merge_commit_sha,
+      ...(billingWaiver ? { githubChecksWaiver: { reason: policy.checksWaiver.reason, expiresAt: policy.checksWaiver.expiresAt } } : {}),
       pullRequest: Number(match[1]), archiveVersion: archive.sessionVersion, mainVersion: archive.mainVersion };
   } finally { clearTimeout(timer); }
 }

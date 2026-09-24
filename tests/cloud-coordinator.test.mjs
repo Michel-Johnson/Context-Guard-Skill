@@ -702,6 +702,39 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
   { controlId: 'verification-control', closeReceiptId: 'verification-control' }), true);
 });
 
+test('Explicit temporary billing waiver accepts only GitHub jobs that never started', async () => {
+  const sourceSha = 'a'.repeat(40), mergeSha = 'b'.repeat(40);
+  const project = { repository: 'example/lab', ref: 'refs/heads/main', completion: {
+    requiredChecks: [], checksWaiver: { reason: 'github-actions-billing', expiresAt: '2100-01-01T00:00:00Z' },
+  } };
+  const task = { stage: 'accepted', session: { id: 'developer' }, sourceSha,
+    ci: { verdict: 'passed' }, acceptanceReview: { decision: 'approved' }, acceptanceAt: '2026-09-08T01:00:00Z' };
+  const memory = { closedSessions: { developer: { publications: [{ sessionVersion: 'session-v2', sourceCommit: sourceSha,
+    mainSha: mergeSha, mainVersion: 'main-v2', publishedAt: '2026-09-08T01:02:00Z' }] } } };
+  const receipts = { gitReceiptRef: 'github-pr:7', archiveReceiptRef: 'session-v2' };
+  const pr = { merged: true, merged_at: '2026-09-08T01:01:00Z', merge_commit_sha: mergeSha,
+    base: { ref: 'main', repo: { id: 123 } }, head: { sha: sourceSha, repo: { id: 123 } } };
+  const checks = { total_count: 1, check_runs: [{ id: 17, name: 'test', app: { id: 15368 }, head_sha: sourceSha,
+    status: 'completed', conclusion: 'failure', completed_at: '2026-09-08T01:00:30Z' }] };
+  let annotation = 'The job was not started because recent account payments have failed or your spending limit needs to be increased.';
+  let contexts = { statuses: [] };
+  const options = { project, repositoryId: '123', task, memory, receipts, fetch: async url => Response.json(
+    url.includes('/pulls/') ? pr : url.includes('/annotations') ? [{ message: annotation }] :
+      url.endsWith('/status') ? contexts : checks) };
+  const proof = await verifyTaskCompletion(options);
+  assert.equal(proof.mergeSha, mergeSha);
+  assert.equal(proof.githubChecksWaiver.reason, 'github-actions-billing');
+  contexts = { statuses: [{ state: 'failure' }] };
+  assert.equal(await verifyTaskCompletion(options), false);
+  contexts = { statuses: [] };
+  annotation = 'A test assertion failed';
+  assert.equal(await verifyTaskCompletion(options), false);
+  assert.equal(await verifyTaskCompletion({ ...options, project: { ...project, completion: {
+    ...project.completion, checksWaiver: { ...project.completion.checksWaiver, expiresAt: '2020-01-01T00:00:00Z' },
+  } } }), false);
+  assert.equal(await verifyTaskCompletion({ ...options, task: { ...task, ci: { verdict: 'failed' } } }), false);
+});
+
 const text = { model: 'test-model', stop_reason: 'end_turn', content: [{ type: 'text', text: 'ready' }] };
 const config = { baseUrl: 'https://provider.example/api/anthropic', model: 'test-model', token: 'synthetic-private-value' };
 test('Coordinator context carries the full static directory and only the mounted ancestry memories', () => {
