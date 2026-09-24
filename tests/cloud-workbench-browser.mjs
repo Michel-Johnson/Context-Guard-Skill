@@ -1218,6 +1218,7 @@ try {
   coordinatorState = { ...coordinatorState, status:'waiting-for-user', error:null, retryInput:null, canCorrect:false, acceptances: [acceptanceFixture] };
   await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button',{name:'验收不通过',exact:true}).waitFor();
+  assert.equal(await coordinator.locator(':scope > [role=status]').isVisible(),false,'an acceptance card does not add a persistent review instruction');
   const submissionsBeforeReview=submissions.length;
   await coordinator.getByLabel('发送给 Coordinator').fill('验收不通过');
   assert.equal(await coordinator.locator('.coordinator-send').isEnabled(),true,'an explicit review command can be sent while awaiting human acceptance');
@@ -1294,9 +1295,13 @@ try {
     acceptances: [], reviewCandidates: [acceptanceFixture] };
   await page.reload(); await synchronized(); await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '历史 Session' }).click();
+  const mainRead=page.waitForResponse(response=>response.request().method()==='GET'&&
+    new URL(response.url()).pathname.endsWith('/api/coordinator')&&new URL(response.url()).searchParams.get('conversation')==='main');
   await coordinator.locator('.coordinator-history-list button').first().click();
+  await mainRead;
   await page.waitForFunction(() => document.querySelector('#coordinator-panel')?.dataset.conversation==='main');
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('无需找验收卡'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent==='');
+  assert.equal(await coordinator.locator(':scope > [role=status]').isVisible(),false,'Main does not show a persistent acceptance instruction');
   assert.equal(await coordinator.getByRole('button', { name: '验收不通过', exact: true }).count(),0,
     'Main does not need the owner conversation acceptance card');
   const modelRequestsBeforeMainReview=submissions.length;
