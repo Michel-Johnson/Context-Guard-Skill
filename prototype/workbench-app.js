@@ -4460,12 +4460,12 @@ async function installCoordinatorPanel(sync){
   retry.setAttribute('aria-label','重试原请求');retry.title='重试原请求';
   const historyToggle=document.createElement('button');historyToggle.type='button';historyToggle.className='coordinator-toolbar-action';historyToggle.textContent='◷';historyToggle.setAttribute('aria-label','历史 Session');historyToggle.title='历史 Session';historyToggle.setAttribute('aria-expanded','false');historyToggle.setAttribute('aria-controls','coordinator-history');
   const creationToggle=document.createElement('button');creationToggle.type='button';creationToggle.className='coordinator-toolbar-action';creationToggle.textContent='＋';creationToggle.setAttribute('aria-label','新建 Coordinator Session');creationToggle.title='新建 Coordinator Session';
-  toolbar.append(heading,historyToggle,retry,creationToggle);form.append(inputShell);
+  toolbar.append(heading,historyToggle,retry,creationToggle,typing);form.append(inputShell);
   const history=document.createElement('section');history.id='coordinator-history';history.className='coordinator-history';history.hidden=true;
   const historyTitle=document.createElement('h3');historyTitle.textContent='历史 Session';
   const historyList=document.createElement('div');historyList.className='coordinator-history-list';
   history.append(historyTitle,historyList);
-  panel.append(toolbar,history,status,messages,typing,form);document.body.append(panel);
+  panel.append(toolbar,history,status,messages,form);document.body.append(panel);
   let typingVisible=false,typingStartedAt=0,typingExitTimer=0,typingStopTimer=0,inkReady=false;
   const setTyping=visible=>{
     if(visible){
