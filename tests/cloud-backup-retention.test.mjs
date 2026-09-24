@@ -66,6 +66,15 @@ test('a changed backup invalidates the deletion plan', async t => {
   assert.equal((await listCloudBackups(root)).length, 6);
 });
 
+test('a backup-shaped entry with an unexpected type blocks pruning', async t => {
+  const root = await fixture(t);
+  for (let number = 1; number <= 6; number++) await createCandidate(root, number);
+  await fs.mkdir(path.join(root, archiveName(7)));
+  await assert.rejects(pruneCloudBackups({ root, apply: true, now: Date.UTC(2026, 8, 24), minQuietMs: 0,
+    verify: async () => {} }), /Unexpected backup entry type/);
+  assert.equal((await fs.readdir(root)).filter(name => name.endsWith('.tar')).length, 7);
+});
+
 test('legacy snapshot directories require data and config and can be pruned precisely', async t => {
   const root = await fixture(t);
   const legacy = path.join(root, 'context-guard-cloud', 'pre-v1-20260924');
