@@ -69,21 +69,22 @@ CLI 负责写和状态变化。
 | map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | map | 提议 Main 节点 | | 人同意前不写入。唯一的提议 |
 | map | 任务复查 | | 不写入 Main 节点 |
-| map | 挂载 | | 为该节点创建 Session。不写入 Main 节点 |
-| task | `createTask` `updateTask` | C / E / T | 创建、更新 Todo/任务 |
-| task | 派发 | 人批准 brief 之后 | 系统派发给该任务自动创建的执行 Session；人不选择 Session，也不能跳过 brief 审批 |
-| task | 任务与 Session | | 一个任务使用一个 Session。新任务新建 Session |
-| task | `closeTask` | Coordinator | 完成任务。做没做完由 Coordinator 判断 |
-| task | 取消任务 | Coordinator | 可以取消任务 |
-| task | `task.control` complete | Coordinator | 需要已核验的合并回执和归档回执 |
-| task | `task.report` | executor 或 device | 进度回报 |
-| task | `task.message` | Coordinator | 向原任务绑定的执行 Session 发送指导；不改变任务阶段、Plan 或 Session；忙碌时保留投递并幂等重试 |
-| task | 失败退回 | | 测试或验收失败时，同一任务回到同一执行者。不新开任务 |
-| task | 发布之后继续 | Coordinator | 这一轮发布之后结束。还要做，按最新 Main 重新发起任务 |
+| map | 挂载 | | 将 Coordinator 挂载到节点；执行 Session 仍须等该事项的 brief 获批后创建，不写入 Main 节点 |
+| todo | `createTodo` `updateTodo` | C / E / T | 创建、更新 TODO 事项记录 |
+| task | 共用流程 | | 以 `kind`（todo 或 bug）、`nodeId`、`itemId` 定位事项；流程附着于 TODO/Bug，不创建独立 Task 实体；各动作仍按本表 Caller 授权 |
+| task | 派发 | 人批准指定 brief 版本之后 | 系统为该事项创建新的执行 Session 并派发；人不选择 Session，也不能跳过 brief 审批 |
+| task | 事项与 Session | | 每轮执行创建一个新 Session；同轮重试与返工沿用原 Session，不靠独立 Task 实体区分轮次 |
+| task | `closeTask` | Coordinator | Coordinator 判断是否请求完成；请求本身不代表事项已关闭 |
+| task | 取消事项 | Coordinator | 可以取消 TODO/Bug 的执行流程 |
+| task | `task.control` complete | Coordinator | 服务端核验合并与归档回执后进入 `closing`；收到引用原控制 ID 的关闭回报才进入 `closed` |
+| task | `task.report` | Executor 或 device | 回报进度；`resumed`、`closed` 引用原控制 ID，传输确认不算执行完成 |
+| task | `task.message` | Coordinator | 向原事项绑定的执行 Session 发指导；带稳定消息 ID 与 Session 代次，不改变阶段或 Plan；忙碌时保留并幂等重试 |
+| task | 失败退回 | | 测试或验收失败时，同一事项回到原执行 Session，不新建事项或 Session |
+| task | 发布之后继续 | Coordinator | 本轮发布后结束；继续处理时读取最新 Main 并新建执行 Session，同一 Bug 保留原记录 |
 | bug | `createBug` `updateBug` `resolveBug` | C / E / T | 创建、更新、修复。Bug 只有一份记录 |
 | bug | 写文件 | | 不因缺少 Plan 或缺少节点授权而阻止写入。另一任务可以更新同一份 Bug 记录 |
 | idea | `createIdea` `updateIdea` | human 或 coordinator | 创建、更新 Idea |
-| brief | 签发 brief | human | 人签 brief |
+| brief | 签发 brief | human | 人对指定 brief 版本批准或拒绝并取得服务端回执；对话回答不是签发 |
 | plan | `submitPlan` | C / E | 提交 Plan |
 | plan | `approvePlan` `rejectPlan` | Coordinator | Coordinator 签发 Plan。不能在本地自行批准 |
 | ask | 向人提问 | Coordinator | 提问不是批准，也不是签发 |
@@ -104,9 +105,10 @@ Workbench Frontend 对 Backend。
 | map | `getMap` `getNode` | | 读 |
 | map | `createNode` `updateNode` `moveNode` `deleteNode` | human | Cloud 路径改 Main。页面上的修改自动保存。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | map | 本地 Main | | 只读 |
-| task | `listTasks` `getTask` `updateTask` | | |
-| task | `acceptTask` | | |
-| bug | `listBugs` `getBug` `updateBug` `acceptBug` | | |
+| todo | `listTodos` `getTodo` `updateTodo` | human | 查看、更新 TODO 事项记录 |
+| task | `listTasks` `getTask` | human | 查看 TODO/Bug 共用流程及投递状态；以事项类型、节点 ID、事项 ID 定位，不另建 Task 记录 |
+| task | `acceptTask` | human | 对指定 TODO/Bug 的当前 brief 版本批准或拒绝，取得服务端审核回执；普通对话回答不能代替签发 |
+| bug | `listBugs` `getBug` `updateBug` | human | 查看、更新 Bug 事项记录 |
 | idea | `listIdeas` `getIdea` `updateIdea` | | |
 | plan | `getPlan` | | 读 |
 | result | `getResult` | | 读 |
@@ -124,8 +126,8 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 
 | Domain | 接口 | 动作 |
 | --- | --- | --- |
-| session | `sessionStart` `sessionStop` | 做没做完由 Coordinator 判断 |
-| session | `interrupt` | 同一任务在同一 Session 和同一 Plan 上继续。不新开任务 |
+| session | `sessionStart` `sessionStop` | Session 停止不代表事项完成；完成由 Coordinator 依据回执判断 |
+| session | `interrupt` | 同一事项在同一 Session 和同一 Plan 上继续，不新建事项或 Session |
 | prompt | `userPromptSubmit` | |
 | tool | `preToolUse` `postToolUse` `toolFailure` | |
 | permission | `permissionRequest` | |
@@ -133,7 +135,7 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | subagent | `subagentStart` `subagentStop` | 不限制它改哪些文件 |
 | identity | `getSessionId` `getWorktree` `getPlatform` | |
 | context | `injectContext` `refreshContext` | |
-| runtime | `heartbeat` `getRuntimeState` | |
+| runtime | `heartbeat` `getRuntimeState` | 宿主持久保存投递；明确未启动或忙碌失败时按原消息 ID、事项与 Session 代次恢复，结果未知时先核对而不重复唤起 Agent；过期投递明确拒绝 |
 | adapter | `normalizeEvent` | |
 
 ## Cloud Interface
@@ -145,12 +147,12 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | project | `connectProject` `disconnectProject` `getProjectState` | |
 | sync | `pullState` `pushOperation` `syncStatus` `checkpoint` | 同步只走 Session。旧的项目地图同步不是接口 |
 | session | `openSession` `syncSession` `reopenSession` | |
-| session | `publishSession` | 不写入 Main 节点。发布之后这一轮结束。还要做，按最新 Main 重新发起任务 |
-| events | `subscribeEvents` `getEvents` `ackEvent` | |
+| session | `publishSession` | 不写入 Main 节点。发布之后这一轮结束；后续执行从最新 Main 开始并新建 Session |
+| events | `subscribeEvents` `getEvents` `ackEvent` | 区分 Cloud 入队、宿主持久接收和实际处理；`ackEvent` 只确认接收，不代表 Agent 已执行；重连重送原 ID，宿主去重，业务完成须有匹配回报 |
 | conflict | `getConflict` `resolveConflict` | 能识别人当前是否正在改，并提醒人 |
 | auth | `login` `refreshToken` `logout` | 登录只有这一套 |
 | memory | `getMainMemory` `getSessionMemory` `updateMemory` | |
 | memory | `getMemoryFile` | 按 Main/Session 和版本读取单个文件；版本变化时返回冲突 |
 | memory | 恢复 Main | 只保留最近 5 个 Main 版本。更早的版本自动删除 |
-| recovery | `retrySync` `recoverSession` | |
+| recovery | `retrySync` `recoverSession` | 保留原事项、Session 与消息 ID；明确未执行的失败可重试，结果未知先核对；失败可见，不把排队或接收显示为完成 |
 | heartbeat | `heartbeat` `getPresence` | |
