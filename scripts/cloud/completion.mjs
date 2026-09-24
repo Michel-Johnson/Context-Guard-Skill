@@ -9,6 +9,10 @@ export const verifyTaskClose = (_identity, task, data) => {
   return !!proof.mergeSha && proof.sourceSha === task.sourceSha;
 };
 
+export const taskSessionPublicationReady = (tasks, sourceCommit) => tasks.every(task =>
+  ['closed', 'cancelled'].includes(task.stage) ||
+  task.stage === 'accepted' && task.sourceSha === sourceCommit);
+
 // Read-only GitHub verification. Repository, branch and check identities come
 // from server configuration, never from model-provided URLs or success claims.
 export async function verifyTaskCompletion({ project, repositoryId, memory, task, receipts, fetch: request = globalThis.fetch }) {
@@ -66,7 +70,12 @@ export async function verifyTaskCompletion({ project, repositoryId, memory, task
   try {
     const pr = await get(`pulls/${match[1]}`);
     if (!pr.merged || !pr.merged_at || String(pr.base?.repo?.id) !== repositoryId || String(pr.head?.repo?.id) !== repositoryId ||
-        pr.base.ref !== project.ref.slice('refs/heads/'.length) || pr.head.sha !== task.sourceSha || pr.merge_commit_sha !== archive.mainSha) return false;
+        pr.base.ref !== project.ref.slice('refs/heads/'.length) || pr.head.sha !== task.sourceSha) return false;
+    if (pr.merge_commit_sha !== archive.mainSha) {
+      const comparison = await get(`compare/${pr.merge_commit_sha}...${archive.mainSha}`);
+      if (!['ahead', 'identical'].includes(comparison.status) ||
+          comparison.base_commit?.sha !== pr.merge_commit_sha || comparison.merge_base_commit?.sha !== pr.merge_commit_sha) return false;
+    }
     if (!(Date.parse(task.acceptanceAt) <= Date.parse(pr.merged_at) && Date.parse(pr.merged_at) <= Date.parse(archive.publishedAt))) return false;
     const checks = await get(`commits/${task.sourceSha}/check-runs?filter=latest&per_page=100`);
     // A truncated page cannot prove all latest results; do not silently pass it.

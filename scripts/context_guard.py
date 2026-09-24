@@ -789,15 +789,37 @@ def archive_session(
         ])
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines).rstrip() + "\n")
+    memory = run_node_workbench(["memory", "status", "--root", str(root), "--session", session_id])
+    memory_version = None
+    if memory.get("current"):
+        for attempt in range(3):
+            try:
+                receipt = run_node_workbench(["memory", "sync", "--root", str(root), "--session", session_id])
+                break
+            except RuntimeError as exc:
+                try:
+                    code = json.loads(str(exc)).get("error", {}).get("code")
+                except ValueError:
+                    code = None
+                if code != "VERSION_CONFLICT" or attempt == 2:
+                    raise
+        snapshot = receipt.get("snapshot") or {}
+        memory_version = snapshot.get("version")
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
+                              timeout=5, check=False, creationflags=WINDOWS_NO_WINDOW)
+        if head.returncode or snapshot.get("sourceCommit") != head.stdout.strip():
+            raise ValueError("Server Session memory does not match the current Git commit")
+        print(f"[context-guard] server archive acknowledged: {receipt.get('snapshot', {}).get('version')}")
+    else:
+        print("[context-guard] server memory not configured; local archive remains unsynced")
     if isinstance(plan, dict):
-        # A successful Map write plus local archive is the receipt; a reminder or
-        # an attempted write can never stand in for it.
         latest = read_hook_runtime(root, session_id)
         active = latest.get("active_plan") or {}
         if active.get("id") != plan["id"] or active.get("revision") != plan.get("revision"):
             raise ValueError("plan changed during archive; Map write succeeded but completion receipt needs revalidation")
         plan["archive"] = {"at": utc_now(), "revision": plan.get("revision"), "snapshot": current_snapshot,
-                           "map_version": map_result.get("version"), "node_ids": node_ids, **closure}
+                           "map_version": map_result.get("version"), "node_ids": node_ids,
+                           **({"server_memory_version": memory_version} if memory_version else {}), **closure}
         latest["active_plan"] = plan
         write_hook_runtime(root, session_id, latest)
     print(f"[context-guard] archived session: {session_id} ({path})")
@@ -808,12 +830,6 @@ def archive_session(
             f"{len(reconciliation.get('unclassified') or reconciliation.get('uncovered') or [])} unclassified file(s), "
             f"{'1 proposed node' if proposed_id else 'no node proposal'}"
         )
-    memory = run_node_workbench(["memory", "status", "--root", str(root), "--session", session_id])
-    if memory.get("current"):
-        receipt = run_node_workbench(["memory", "sync", "--root", str(root), "--session", session_id])
-        print(f"[context-guard] server archive acknowledged: {receipt.get('snapshot', {}).get('version')}")
-    else:
-        print("[context-guard] server memory not configured; local archive remains unsynced")
     return path
 
 
