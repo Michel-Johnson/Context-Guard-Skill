@@ -453,7 +453,7 @@ try {
     const action=toolbar.querySelector('.coordinator-toolbar-action'),style=getComputedStyle(action),toolbarStyle=getComputedStyle(toolbar);
     return{width:style.width,height:style.height,fontSize:style.fontSize,borderWidth:style.borderTopWidth,borderRadius:style.borderRadius,background:style.backgroundColor,color:style.color,boxShadow:style.boxShadow,gap:toolbarStyle.gap};
   });
-  assert.deepEqual(toolbarAppearance,{width:'28px',height:'28px',fontSize:'16px',borderWidth:'1px',borderRadius:'8px',background:'rgba(0, 0, 0, 0)',color:'rgb(116, 108, 96)',boxShadow:'none',gap:'12px'},'Coordinator icon actions use the compact neutral button system');
+  assert.deepEqual(toolbarAppearance,{width:'28px',height:'28px',fontSize:'16px',borderWidth:'1px',borderRadius:'8px',background:'rgba(0, 0, 0, 0)',color:'rgb(116, 108, 96)',boxShadow:'none',gap:'0px 12px'},'Coordinator icon actions use the compact neutral button system');
   await coordinator.getByLabel('发送给 Coordinator').fill('Main 草稿');await historyAction.click();
   await coordinator.getByRole('button',{name:'历史开发 Session',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#coordinator-panel')?.dataset.conversation==='session:history-one');
@@ -491,6 +491,8 @@ try {
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
       arrowCenterDelta:centerDelta(arrowRect),blotCenterDelta:centerDelta(blotRect),
       sendDisabled:send.disabled,
+      workingLabelInToolbar:typing.parentElement===el.querySelector('.coordinator-toolbar'),
+      workingLabelAboveMessages:typing.getBoundingClientRect().bottom<=el.querySelector('.coordinator-messages').getBoundingClientRect().top+1,
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
       blotParent:blot.parentElement===send,
       blotPixels:[blot?.width,blot?.height],typingDots:typing.querySelectorAll('i').length };
@@ -517,6 +519,8 @@ try {
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
   assert.equal(coordinatorLayout.workingLabel,'正在处理','Ready working mark retains an accessible status');
+  assert.equal(coordinatorLayout.workingLabelInToolbar,true,'Working label is an auxiliary toolbar status, not a replacement for the message animation');
+  assert.equal(coordinatorLayout.workingLabelAboveMessages,true,'Working label stays above the message timeline');
   assert.equal(coordinatorLayout.blotParent,true,'Ready ink mark lives in the composer send control');
   assert.deepEqual([coordinatorLayout.blotWidth,coordinatorLayout.blotPixels],[36,[160,160]],'Ready ink atlas renders in a 36px canvas');
   assert.equal(coordinatorLayout.typingDots,0,'the old dots are removed');
@@ -762,7 +766,8 @@ try {
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
   await page.setViewportSize({width:390,height:844});
-  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').textContent(),'Working · 正在处理','mobile composer keeps the working stage visible');
+  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').textContent(),'Working · 正在处理','mobile toolbar keeps the working stage visible');
+  assert.equal(await coordinator.locator('.coordinator-typing').evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.coordinator-messages').getBoundingClientRect().top+1),true,'mobile Working label stays above the message timeline');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working-mobile.png')});
   await page.setViewportSize({width:1440,height:1000});
   const blotCanvas=coordinator.locator('.coordinator-send.is-working canvas');
@@ -919,7 +924,7 @@ try {
   await coordinator.locator('.coordinator-messages').evaluate(node=>{node.scrollTop=0;});
   await coordinator.screenshot({ path: path.join(output, 'coordinator-chat.png') });
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('节点审核尚未成功'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('节点审核尚未成功'));
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).click();
   await coordinator.getByRole('button', { name: '确认这些节点', exact: true }).waitFor({ state: 'detached' });
   assert.deepEqual(mountReviews[0].proposalIds, ['frontend', 'build']);
@@ -933,7 +938,7 @@ try {
   assert.equal(mountReviews[2].decision, 'rejected');
   assert.equal(mountReviews[2].reason, '拒绝所示节点，请重新提案');
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('确认尚未成功'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('确认尚未成功'));
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).click();
   await coordinator.getByRole('button', { name: '确认需求', exact: true }).waitFor({ state: 'detached' });
   assert.equal(approvals[0].id, approvals[1].id);
@@ -947,23 +952,23 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('尚未确认提交'));
   assert.match(await coordinator.locator(':scope > [role=status]').first().textContent(), /尚未确认提交/);
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[0].id, submissions[1].id, 'uncertain transport must reuse the exact request');
   await page.reload(); await synchronized();
   await page.locator('#btn-coordinator').click();
   await coordinator.getByRole('button', { name: '重试原请求' }).waitFor();
   await coordinator.locator('textarea').fill('未提交的纠正意见');
   await coordinator.getByRole('button', { name: '重试原请求' }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('MODEL_TIMEOUT'));
   assert.equal(submissions[2].id, submissions[0].id);
   assert.equal(submissions[2].retry, true, 'provider retry survives reload and remains explicit');
   assert.equal(await coordinator.locator('textarea').inputValue(), '未提交的纠正意见', 'retrying another request must not erase an unsent draft');
   assert.equal(await coordinator.getByRole('button', { name: '发送', exact: true }).isEnabled(), false, 'unknown transport failure still preserves the original intent');
   coordinatorState = { ...coordinatorState, canCorrect: true, error: { code: 'NOT_FOUND' } };
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent.includes('可补充纠正意见'));
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -974,7 +979,7 @@ try {
   await page.waitForFunction(() => {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
-    return panel.querySelector('[role=status]').textContent === '' && retry.hidden &&
+    return panel.querySelector(':scope > [role=status]').textContent === '' && retry.hidden &&
       panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');

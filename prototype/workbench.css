@@ -935,7 +935,7 @@ html.cg-phone .drawer h2{font-size:18px}
 }
 #coordinator-panel[open]{display:flex;flex:1;flex-direction:column}
 #coordinator-panel:not([open]) { display: none; }
-#coordinator-panel > .coordinator-toolbar{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+#coordinator-panel > .coordinator-toolbar{display:flex;flex-wrap:wrap;align-items:center;column-gap:12px;row-gap:0;margin:0 0 12px}
 #coordinator-panel .coordinator-heading{margin:0 auto 0 0;padding:0;border:0;background:transparent;box-shadow:none;font-size:18px;font-weight:700;cursor:pointer}
 #coordinator-panel .coordinator-heading:hover,#coordinator-panel .coordinator-heading:focus{background:transparent;box-shadow:none;transform:none;text-decoration:underline}
 #coordinator-panel .coordinator-toolbar-action{display:grid;place-items:center;width:28px;height:28px;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;background:transparent;box-shadow:none;color:var(--muted);font-size:16px;font-weight:700;line-height:1}
@@ -963,7 +963,7 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-actions p { flex-basis: 100%; margin: 0; color: #746e5e; font-size: 13px; }
 #coordinator-panel .coordinator-answer { white-space: pre-wrap; background: #fff0a9; padding: 10px; border-radius: 8px; }
 #coordinator-panel .coordinator-typing,#coordinator-panel .coordinator-question-status { color: #817660; font-size: 13px; }
-#coordinator-panel .coordinator-typing{min-height:20px;margin:0 0 4px;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:20px;opacity:0;transition:opacity .18s ease}
+#coordinator-panel .coordinator-typing{flex:0 0 100%;box-sizing:border-box;min-height:20px;margin:0;padding:0 2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:right;line-height:20px;opacity:0;transition:opacity .18s ease}
 #coordinator-panel .coordinator-typing.is-visible{opacity:1}
 #coordinator-panel .coordinator-working-blot{width:36px;height:36px;pointer-events:none;opacity:0;transform:scale(.86);transition:opacity .18s ease,transform .18s ease}
 #coordinator-panel .coordinator-streaming-text{display:block}
