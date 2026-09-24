@@ -91,6 +91,7 @@ assert h.post_plan_delivery_command(command('gh pr merge 123 --squash'),root)
 assert h.gh_pr_merge_command(command('gh pr merge 123 --squash'))
 assert h.gh_pr_merge_command(command('cd /tmp/context-guard-post-plan && gh pr merge 123 --merge --admin 2>&1'))
 assert h.gh_pr_merge_command(command('cd /tmp/context-guard-post-plan; /usr/bin/gh pr merge 123 --merge'))
+assert h.gh_pr_merge_command(command('bash -c "gh pr merge 123 --admin"'))
 assert not h.gh_pr_merge_command(command('gh pr view 123'))
 for value in ['git -C /tmp/other push origin HEAD','git push --force origin HEAD','gh pr merge 123 --admin','gh pr create --repo other/repo','git commit -am changed','git push origin HEAD && rm -f file']:
     assert not h.post_plan_delivery_command(command(value),root),value

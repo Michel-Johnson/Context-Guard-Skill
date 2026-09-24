@@ -1291,7 +1291,7 @@ def gh_pr_merge_command(payload: object) -> bool:
     if segments and any(len(words) >= 3 and Path(words[0]).name == "gh" and words[1:3] == ["pr", "merge"]
                         for words in segments):
         return True
-    return bool(re.search(r"(?:^|[\s;&|()])(?:\S*/)?gh\s+pr\s+merge(?:\s|$)", command))
+    return bool(re.search(r"\bgh\s+pr\s+merge\b", command))
 
 
 def post_plan_merge_target(payload: object) -> str | None:
