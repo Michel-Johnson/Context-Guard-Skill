@@ -16,13 +16,27 @@ test('Claude native environment preserves Windows shell discovery without unrela
     Path: '', SystemRoot: 'C:\\Windows', ComSpec: 'C:\\Windows\\System32\\cmd.exe',
     USERPROFILE: 'C:\\Users\\example', TEMP: 'C:\\Temp', PATHEXT: '.EXE;.CMD',
     CLAUDE_CODE_GIT_BASH_PATH: 'D:\\Git\\bin\\bash.exe', OPENAI_API_KEY: 'unrelated', ANTHROPIC_API_KEY: 'parent-secret',
+    CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO: 'example/lab', CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL: '2100-01-01T00:00:00Z',
   }, 'win32');
   assert.equal(env.ComSpec, 'C:\\Windows\\System32\\cmd.exe');
   assert.equal(env.USERPROFILE, 'C:\\Users\\example');
   assert.equal(env.CLAUDE_CODE_GIT_BASH_PATH, 'D:\\Git\\bin\\bash.exe');
   assert.equal(env.ANTHROPIC_API_KEY, 'scoped');
   assert.equal(env.OPENAI_API_KEY, undefined);
+  assert.equal(env.CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO, 'example/lab');
+  assert.equal(env.CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL, '2100-01-01T00:00:00Z');
   assert.equal(env.CLAUDE_CONFIG_DIR, '/private/profile');
+});
+
+test('Claude headless worker inherits only the scoped billing waiver, not unrelated credentials', async () => {
+  const env = await claudeEnvironment({ configDir: '/private/profile' }, {}, {
+    HOME: '/private/home', OPENAI_API_KEY: 'unrelated',
+    CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO: 'example/lab',
+    CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL: '2100-01-01T00:00:00Z',
+  }, 'darwin');
+  assert.equal(env.CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO, 'example/lab');
+  assert.equal(env.CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL, '2100-01-01T00:00:00Z');
+  assert.equal(env.OPENAI_API_KEY, undefined);
 });
 
 test('Claude Windows environment discovers Git Bash beside Git, not WSL', { skip: process.platform !== 'win32' }, async t => {

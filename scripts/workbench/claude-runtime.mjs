@@ -34,6 +34,7 @@ function verifyRecovery(active, deliveryId) {
 export async function claudeEnvironment(config, credentials, parent = process.env, platform = process.platform) {
   // Keep native shell/profile discovery without inheriting unrelated credentials.
   const keep = new Set(['PATH', 'SYSTEMROOT', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HOME', 'CONTEXT_GUARD_NAMED_STATE_DIR',
+    'CONTEXT_GUARD_GITHUB_BILLING_WAIVER_REPO', 'CONTEXT_GUARD_GITHUB_BILLING_WAIVER_UNTIL',
     ...(platform === 'win32' ? ['COMSPEC', 'PATHEXT', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'PROGRAMFILES', 'PROGRAMFILES(X86)', 'CLAUDE_CODE_GIT_BASH_PATH'] : [])]);
   const env = Object.fromEntries(Object.entries(parent).filter(([key, value]) => keep.has(key.toUpperCase()) && typeof value === 'string'));
   if (platform === 'win32' && !Object.keys(env).some(key => key.toUpperCase() === 'CLAUDE_CODE_GIT_BASH_PATH')) {
