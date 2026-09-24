@@ -159,7 +159,7 @@ test('Main keeps five recoverable snapshots while startup compacts old content a
   } }, records: {} } });
   const history = Array.from({ length: 7 }, (_, index) => ({ revision: index + 1, scope: 'main', action: 'workbench.commit',
     version: `main-${index + 1}`, at: '2026-09-23T00:00:00.000Z', snapshot: snapshot(index + 1) }));
-  history.splice(3, 0, { revision: 8, scope: 'session:dev', action: 'write', version: 'session-1', snapshot: { version: 'session-1' } });
+  history.splice(3, 0, { id: 'session-history-1', revision: 8, scope: 'session:dev', action: 'write', version: 'session-1', snapshot: { version: 'session-1' } });
   const originalHistory = structuredClone(history);
   const state = { revision: 8, main: snapshot(7), preferences: null, sessions: {}, closedSessions: {},
     receipts: { old: { fingerprint: 'original', result: { history: structuredClone(history[0]), snapshot: snapshot(1) } } },

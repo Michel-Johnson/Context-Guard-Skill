@@ -181,9 +181,11 @@ export function compactMainHistorySnapshots(state) {
   for (const receipt of Object.values(state.receipts || {})) {
     const result = receipt?.result;
     if (!result?.history) continue;
+    const expiredMain = result.history.scope === 'main' && !retained.has(result.history.version);
+    if (!result.history.id && !expiredMain) continue;
     if (Object.hasOwn(result, 'snapshot')) { delete result.snapshot; changed = true; }
     if (Object.hasOwn(result.history, 'snapshot')) { delete result.history.snapshot; changed = true; }
-    if (result.history.scope === 'main' && !retained.has(result.history.version) && !result.historyExpired) {
+    if (expiredMain && !result.historyExpired) {
       result.historyExpired = true; changed = true;
     }
   }
