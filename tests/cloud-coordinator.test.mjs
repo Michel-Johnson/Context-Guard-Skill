@@ -160,7 +160,10 @@ test('Coordinator routing prompt assigns node discovery to the agent while prese
   assert.match(prompt, /部署、发布、启动服务/);
   assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
   assert.match(prompt, /每个澄清问题都必须调用一次 `ask_user`/);
-  assert.match(prompt, /「确认需求／拒绝需求」和「验收通过／验收不通过」卡片提交/);
+  assert.match(prompt, /brief 审批只能由页面的「确认需求／拒绝需求」卡片提交/);
+  assert.match(prompt, /用户对当前唯一待验收任务明确发送「验收通过」或「验收不通过：具体原因」/);
+  assert.match(prompt, /页面代用户提交同一人工验收回执/);
+  assert.match(prompt, /不得自行裁决/);
   assert.match(prompt, /完整节点标题/);
   assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
   assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
@@ -1748,7 +1751,8 @@ test('Coordinator discovers only server-assigned Sessions and can read the Main 
 
 test('Cloud requirement confirmation uses browser authority, exact prepared version and durable replay', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-coordinator-http-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let server;
+  t.after(async () => { try { await server?.close(); } finally { await fs.rm(directory, { recursive: true, force: true }); } });
   const providerFile = path.join(directory, 'provider.json');
   await fs.writeFile(providerFile, JSON.stringify(config));
   const repositoryId = '123', projectId = 'context-guard';
@@ -1764,14 +1768,13 @@ test('Cloud requirement confirmation uses browser authority, exact prepared vers
   await fs.writeFile(path.join(conversation, 'conversation.json'), JSON.stringify({ messages: [], status: 'idle', toolReceipts: {
     proposal: { result: { sessionId: session.id, taskId: 'task', brief, requiresHumanApproval: true } },
   } }));
-  const server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser',
+  server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser',
     coordinatorModelFactory: () => ({ next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Workflow event received' }] }) }),
     protocolConfig: { repositories: [{ repositoryId, projectId, slug: 'example/lab' }] },
     memoryConfig: { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic-admin', projects: {
       [projectId]: { root: directory, ref: 'refs/heads/main', token: 'synthetic-memory', coordinator: { enabled: true, providerFile, bindings: { session: 'worktree' }, simulated: true } },
     } },
   });
-  t.after(() => server.close());
   const endpoint = `${server.url}/api/workbench/projects/${projectId}/api/coordinator`;
   const headers = { Authorization: 'Bearer test-browser', 'Content-Type': 'application/json' };
   const scopedEndpoint = endpoint + '?conversation=' + encodeURIComponent('session:session');
