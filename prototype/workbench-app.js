@@ -4509,7 +4509,7 @@ async function installCoordinatorPanel(sync){
     const last=rows.at(-1);
     const awaitingText=last?.classList.contains('user')||last?.classList.contains('coordinator-streaming')&&
       !last.querySelector('.coordinator-streaming-text')?.textContent.trim();
-    setPlanningVisible(state.status==='running'&&awaitingText);
+    setPlanningVisible(((busy&&busyConversation===selected)||state.status==='running')&&awaitingText);
   };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;
   const pinnedScrollTop=()=>{
@@ -4626,7 +4626,7 @@ async function installCoordinatorPanel(sync){
     wrap.querySelector('[data-review-cancel]').addEventListener('click',()=>finish(null));
     card.append(wrap); textarea.focus();
   });
-  let timer=null, pending=null, pendingError='', pendingTransportUnknown=false, busy=false, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
+  let timer=null, pending=null, pendingError='', pendingTransportUnknown=false, busy=false, busyConversation=null, stopped=false, refreshing=false, canCorrect=false, lastStableContent=null, lastRenderedExtras=null,lastStreamingText='',sendBlocked=true,latestConversationState=null;
   const transportRecoveryAttempted=new Set();
   const rowKeys=new WeakMap();
   const handledNavigationActions=new Set();
@@ -4797,7 +4797,7 @@ async function installCoordinatorPanel(sync){
         void submit({id:crypto.randomUUID(),text,...(question.legacy?{}:{answerTo:question.id})});
       },onNode:id=>{navigationRun++;void openMapNode(id).catch(error=>{status.textContent='无法定位节点：'+error.message;});}});
     const streamingMessage=messages.querySelector('.coordinator-streaming');
-    setTyping(state.status==='running'||!!streamingMessage||revealSettling);
+    setTyping((busy&&busyConversation===selected)||state.status==='running'||!!streamingMessage||revealSettling);
     const stableKey=JSON.stringify([state.messages,state.approvals,state.acceptances,state.nodeReferences,state.status,!!pending,busy]);
     const extrasKey=JSON.stringify([state.approvals,state.acceptances,state.projectTasks]);
     const canFinalizeStreamingInPlace=!forceFinal&&!hasStreaming&&streamingMessage&&lastTextMessage?.role==='assistant'&&lastTextMessage.text.startsWith(streamShown);
@@ -5017,11 +5017,11 @@ async function installCoordinatorPanel(sync){
     liveReplyAssistantCount=messages.querySelectorAll('.coordinator-message.assistant').length;
     optimisticRequests.set(request.id,{conversationId:id,request});
     appendOptimisticMessage(request);
-    busy=true; pending=request; pendingError=''; pendingTransportUnknown=false; setSendBlocked(true); retry.disabled=true; status.textContent='';
+    busy=true; busyConversation=id; pending=request; pendingError=''; pendingTransportUnknown=false; setSendBlocked(true); retry.disabled=true; status.textContent='';
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     typing.textContent='Working · 正在连接';typing.setAttribute('aria-label','Working · 正在连接');
-    setTyping(!answeringCard);
-    setPlanningVisible(!answeringCard);
+    setTyping(true);
+    setPlanningVisible(true);
     pinTurn();
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
@@ -5033,7 +5033,7 @@ async function installCoordinatorPanel(sync){
       if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft){draft.error=message;draft.transportUnknown=!error.serverResponse;}}
     }
-    finally{busy=false;retry.disabled=false;setSendBlocked(!!pending);}
+    finally{busy=false;busyConversation=null;retry.disabled=false;setSendBlocked(!!pending);}
     await refresh();
   };
   const resizeInput=()=>{input.style.height='auto';input.style.height=Math.min(Math.max(input.scrollHeight,48),140)+'px';};
