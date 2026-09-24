@@ -4792,10 +4792,7 @@ async function installCoordinatorPanel(sync){
     if(pending&&!pending.retry&&state.acceptedRequestIds?.includes(pending.id))confirmSubmitted(selected,pending);
     renderHistory(state);
     consumeNavigationActions(state);
-    const availableReviews=selected==='main'?state.reviewCandidates??state.acceptances??[]:state.acceptances??[];
-    const reviewHint=availableReviews.length===1?'无需找验收卡；在这里发送「验收通过」或「验收不通过：具体原因」，页面会代你提交。':
-      availableReviews.length>1?'有多项待验收；请进入对应事项对话并发送明确验收结论。':'';
-    status.textContent=state.error?'处理暂停：'+state.error.code:reviewFeedback||(pendingError&&pending?'尚未确认提交：'+pendingError:reviewHint);
+    status.textContent=state.error?'处理暂停：'+state.error.code:reviewFeedback||(pendingError&&pending?'尚未确认提交：'+pendingError:'');
     const streamingText=String(state.streamingText||'');
     const lastTextMessage=[...(state.messages||[])].reverse().find(message=>message?.text);
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
