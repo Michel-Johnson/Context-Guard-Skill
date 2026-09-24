@@ -4830,7 +4830,6 @@ async function installCoordinatorPanel(sync){
       const finalRevealText=lastTextMessage.text;
       if(streamShown!==finalRevealText){lastStreamingText=finalRevealText;updateStreamingText(streamingMessage,finalRevealText,false,finalize);}else finalize();
       syncActivity(state,true);
-      setPlanningVisible(false);
       setSendBlocked(busy||!!pending&&!canCorrect||state.status==='running'||state.status==='error'&&!canCorrect);
       setRetryMode(pending?'request':null);retry.disabled=busy||state.status==='running';pinTurn();
       return;
