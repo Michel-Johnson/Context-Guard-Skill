@@ -1,7 +1,7 @@
 import { hash } from '../shared/io.mjs';
 
 const problem = (code, message) => Object.assign(new Error(message), { code });
-export const correctableToolError = code => ['INVALID_ARGUMENT', 'INVALID_INPUT', 'NOT_FOUND', 'FORBIDDEN', 'CONFLICT', 'VERSION_CONFLICT'].includes(code);
+export const correctableToolError = code => ['INVALID_ARGUMENT', 'INVALID_INPUT', 'NOT_FOUND', 'FORBIDDEN', 'TOOL_FORBIDDEN', 'CONFLICT', 'VERSION_CONFLICT'].includes(code);
 export function coordinatorInputTokens(usage) {
   const input = usage?.input_tokens;
   if (Number.isSafeInteger(input) && input >= 0) {
@@ -208,13 +208,14 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
   const responses = []; let failed = false, transferred = false;
   const visible = [];
   for (const call of next.content.filter(block => block.type === 'tool_use')) {
-    if (!tools.some(tool => tool.name === call.name)) throw problem('TOOL_FORBIDDEN', 'Coordinator requested an unavailable tool');
     const operationId = `coordinator:${hash(`${turnId}:${call.id}`)}`;
     const fingerprint = hash(JSON.stringify({ name: call.name, input: call.input }));
     let receipt = state.toolReceipts[operationId];
     if (receipt && receipt.fingerprint !== fingerprint) throw problem('TOOL_ID_REUSED', 'Coordinator reused a tool identifier with different input');
     if (!receipt) {
       if (failed || transferred) receipt = { fingerprint, ...failedTool('NOT_EXECUTED') };
+      else if (!tools.some(tool => tool.name === call.name)) receipt = { fingerprint,
+        ...failedTool('TOOL_FORBIDDEN', '工具名未注册；只能使用本轮提供的工具，不得猜测接口。') };
       else {
         try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
         catch (error) {

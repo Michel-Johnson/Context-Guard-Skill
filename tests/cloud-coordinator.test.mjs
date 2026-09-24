@@ -1377,13 +1377,35 @@ test('Coordinator restarts from a saved tool intent with the same operation iden
   await assert.rejects(coordinatorStep({ ...options, state: structuredClone(disk), system: 'changed prompt' }), { code: 'PROMPT_CHANGED' });
 });
 
-test('Coordinator cannot call an unregistered tool such as shell or human approval', async () => {
+test('Coordinator returns no-effect receipts for unregistered tools', async () => {
   let executed = false;
   for (const name of ['shell', 'human_approve']) {
-    await assert.rejects(coordinatorStep({ turnId: 'turn-1', system: 'Coordinator', state: { pending: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'call-1', name, input: {} }] } },
-      tools: [{ name: 'read_map' }], save: async () => {}, execute: async () => { executed = true; } }), { code: 'TOOL_FORBIDDEN' });
+    const state = { pending: { stop: 'tool_use', content: [{ type: 'tool_use', id: 'call-1', name, input: {} }] } };
+    await coordinatorStep({ turnId: 'turn-1', system: 'Coordinator', state,
+      tools: [{ name: 'read_map' }], save: async () => {}, execute: async () => { executed = true; } });
+    assert.equal(JSON.parse(state.messages.at(-1).content[0].content).error.code, 'TOOL_FORBIDDEN');
+    assert.equal(state.status, 'running');
   }
   assert.equal(executed, false);
+});
+
+test('A hallucinated reference tool preserves the earlier read receipt and lets Coordinator self-correct', async () => {
+  const calls = [];
+  const pending = { stop: 'tool_use', content: [
+    { type: 'tool_use', id: 'read', name: 'read_map', input: { nodeId: 'T0' } },
+    { type: 'tool_use', id: 'invented', name: 'read_write_reference_check', input: { nodeId: 'N1' } },
+    { type: 'tool_use', id: 'later-write', name: 'edit_map', input: {} },
+  ] };
+  const state = { pending, messages: [{ role: 'assistant', content: pending.content }] };
+  const options = { turnId: 'original', system: 'Coordinator', state, tools: [{ name: 'read_map' }, { name: 'edit_map' }],
+    save: async () => {}, execute: async name => { calls.push(name); return { kind: 'map-read', node: { id: 'T0' }, actionId: 'read-action' }; } };
+  await coordinatorStep(options);
+  assert.deepEqual(calls, ['read_map']);
+  assert.deepEqual(state.messages.at(-1).content.map(item => item.is_error ? JSON.parse(item.content).error.code : 'ok'),
+    ['ok', 'TOOL_FORBIDDEN', 'NOT_EXECUTED']);
+  state.pending = pending;
+  await coordinatorStep(options);
+  assert.deepEqual(calls, ['read_map'], 'durable receipts prevent repeating the original read');
 });
 
 test('Definite tool rejection is returned to the model; later effects are skipped and replayed without execution', async () => {
