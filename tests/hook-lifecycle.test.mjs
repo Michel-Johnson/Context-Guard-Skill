@@ -1159,6 +1159,8 @@ test('record-todo upgrades a task-resolved bootstrap signal on empty-graph first
   });
   assert.equal(blocked.json.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, /Classify pending user signals/);
+  assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, /resolve-signal --root/);
+  assert.match(blocked.json.hookSpecificOutput.permissionDecisionReason, new RegExp(`--signal ${signalId} --kind task`));
 
   run(python, [contextScript, 'resolve-signal', '--root', project, '--session', session, '--signal', signalId, '--kind', 'task']);
 
