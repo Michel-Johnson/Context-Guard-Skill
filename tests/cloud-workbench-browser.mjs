@@ -491,8 +491,7 @@ try {
       sendCenterDelta: Math.abs((sendRect.top + sendRect.bottom - inputRect.top - inputRect.bottom) / 2),
       arrowCenterDelta:centerDelta(arrowRect),blotCenterDelta:centerDelta(blotRect),
       sendDisabled:send.disabled,
-      workingLabelInToolbar:typing.parentElement===el.querySelector('.coordinator-toolbar'),
-      workingLabelAboveMessages:typing.getBoundingClientRect().bottom<=el.querySelector('.coordinator-messages').getBoundingClientRect().top+1,
+      workingLabelVisuallyHidden:getComputedStyle(typing).clipPath==='inset(50%)',
       workingLabel:typing.getAttribute('aria-label'),blotWidth:parseFloat(getComputedStyle(blot).width),
       blotParent:blot.parentElement===send,
       blotPixels:[blot?.width,blot?.height],typingDots:typing.querySelectorAll('i').length };
@@ -519,8 +518,7 @@ try {
   assert.equal(await coordinator.getByRole('button',{name:'发送',exact:true}).isEnabled(),true,'typing enables the send arrow immediately');
   await coordinator.getByLabel('发送给 Coordinator').fill('');
   assert.equal(coordinatorLayout.workingLabel,'正在处理','Ready working mark retains an accessible status');
-  assert.equal(coordinatorLayout.workingLabelInToolbar,true,'Working label is an auxiliary toolbar status, not a replacement for the message animation');
-  assert.equal(coordinatorLayout.workingLabelAboveMessages,true,'Working label stays above the message timeline');
+  assert.equal(coordinatorLayout.workingLabelVisuallyHidden,true,'the auxiliary Working status does not replace the selected message shimmer');
   assert.equal(coordinatorLayout.blotParent,true,'Ready ink mark lives in the composer send control');
   assert.deepEqual([coordinatorLayout.blotWidth,coordinatorLayout.blotPixels],[36,[160,160]],'Ready ink atlas renders in a 36px canvas');
   assert.equal(coordinatorLayout.typingDots,0,'the old dots are removed');
@@ -751,11 +749,15 @@ try {
   await page.waitForFunction(id=>sessionStorage.getItem('cg-coordinator-navigation:'+id)==='1',readActionId);
   assert.equal(await page.locator('.node.selected[data-id="T0"]').count(),1,'read_map action visibly focuses the node');
   assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'读取完成。'}).last().locator('button').count(),0,'read_map focus needs no manual node button');
+  coordinatorState.messages.push({role:'user',text:'查看组合动效'});
   coordinatorState.status='running';coordinatorState.streamingText='';
   await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
   await historicalMessage.evaluate(node=>{node.dataset.historyProbe='kept-after-reload';});
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
-  await coordinator.getByText('Working · 正在处理',{exact:true}).waitFor();
+  await coordinator.locator('.coordinator-planning').waitFor({state:'visible'});
+  assert.equal(await coordinator.locator('.coordinator-message.user').last().evaluate(node=>node.nextElementSibling?.className),'coordinator-planning','M03 shimmer sits directly below the newest user message');
+  assert.equal(await coordinator.locator('.coordinator-planning').textContent(),'Planning next moves','M03 keeps the selected wording');
+  assert.equal(await coordinator.locator('.coordinator-typing-phase').evaluate(node=>getComputedStyle(node).animationName),'coordinator-text-shimmer','M03 shimmer animates during planning');
   await page.waitForFunction(()=>{
     const canvas=document.querySelector('.coordinator-send.is-working canvas');
     if(!canvas)return false;
@@ -766,8 +768,8 @@ try {
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
   await page.setViewportSize({width:390,height:844});
-  assert.equal(await coordinator.locator('.coordinator-typing.is-visible').textContent(),'Working · 正在处理','mobile toolbar keeps the working stage visible');
-  assert.equal(await coordinator.locator('.coordinator-typing').evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.coordinator-messages').getBoundingClientRect().top+1),true,'mobile Working label stays above the message timeline');
+  assert.equal(await coordinator.locator('.coordinator-message.user').last().evaluate(node=>node.nextElementSibling?.className),'coordinator-planning','mobile M03 shimmer stays below the user message');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working canvas').isVisible(),true,'mobile M04 ink stays inside the send control');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working-mobile.png')});
   await page.setViewportSize({width:1440,height:1000});
   const blotCanvas=coordinator.locator('.coordinator-send.is-working canvas');
@@ -789,6 +791,7 @@ try {
   const stillFrame=await blotCanvas.evaluate(canvas=>canvas.toDataURL());
   await page.waitForTimeout(150);
   assert.equal(await blotCanvas.evaluate(canvas=>canvas.toDataURL()),stillFrame,'reduced motion freezes the Ready mark');
+  assert.equal(await coordinator.locator('.coordinator-typing-phase').evaluate(node=>getComputedStyle(node).animationName),'none','reduced motion makes the message shimmer static');
   await page.emulateMedia({reducedMotion:'no-preference'});
   const planningPlacement=await blotCanvas.evaluate(node=>({
     parent:node.parentElement?.className,
@@ -800,9 +803,10 @@ try {
   assert.equal(planningPlacement.messageInk,false,'the message timeline contains no working ink');
   coordinatorState.streamingText='正在形成可见答案';
   await coordinator.locator('.coordinator-streaming').waitFor({state:'attached'});
-  await coordinator.getByText('Working · 正在生成回复',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-typing').textContent(),'Working · 正在生成回复','screen-reader activity updates without a visible toolbar label');
   assert.equal(await coordinator.getByText('正在形成可见答案',{exact:true}).count(),0,'an unfinished paragraph stays buffered');
-  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'planning stays visible until a complete block is ready');
+  assert.equal(await coordinator.locator('.coordinator-planning').count(),1,'M03 remains while the first paragraph is buffered');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'M04 ink continues while the reply is buffered');
   coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
   coordinatorState.messages.push({role:'assistant',text:'最终答案'});
   await coordinator.locator('.coordinator-message.assistant').filter({hasText:'最终答案'}).last().waitFor();
@@ -853,7 +857,9 @@ try {
   coordinatorState.status='running';coordinatorState.activity='preparing-question';coordinatorState.streamingText=structuredQuestionText;
   await coordinator.locator('.coordinator-streaming').waitFor();
   await page.waitForFunction(()=>document.querySelector('.coordinator-streaming .coordinator-streaming-text')?.textContent==='当前有四个未完成事项。');
-  await coordinator.getByText('Working · 正在整理选项',{exact:true}).waitFor();
+  assert.equal(await coordinator.locator('.coordinator-typing').textContent(),'Working · 正在整理选项','question-stage activity remains accessible');
+  assert.equal(await coordinator.locator('.coordinator-planning').count(),0,'M03 exits when visible reply text arrives');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'M04 continues after M03 exits');
   assert.equal(await coordinator.locator('.coordinator-send.is-working-ready svg').count(),1,'arrow and ink remain mounted during the working transition');
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.questionTransitionProbe='kept';
@@ -988,7 +994,7 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).waitFor({ state: 'visible' });
-  await coordinator.getByText('Working · 正在连接',{exact:true}).waitFor();
+  await coordinator.locator('.coordinator-planning').waitFor({state:'visible'});
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
@@ -999,7 +1005,7 @@ try {
   });
   assert.ok(sentTurnPlacement.bottomRatio>.38&&sentTurnPlacement.bottomRatio<.7,`Ready-style send pins the new turn near the middle: ${JSON.stringify(sentTurnPlacement)}`);
   assert.ok(sentTurnPlacement.tailHeight>0,'the message list reserves scroll room below the new turn');
-  assert.equal(sentTurnPlacement.inkInComposer,true,'planning motion appears in the composer, not under the new message');
+  assert.equal(sentTurnPlacement.inkInComposer,true,'M04 ink appears in the composer while M03 shimmers under the new message');
   releaseDelayedSubmission();
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
