@@ -4425,8 +4425,8 @@ function renderAll(){
 }
 function coordinatorReviewDirective(text){
   const message=String(text||'').trim();
-  const trailing=message.match(/^([\s\S]+?)\s*[，,]\s*验收不通过[。.!！]?$/);
-  if(trailing&&!/[?？]/.test(trailing[1])&&!/^(?:如果|假设|比如|举例|为什么|怎么|是否|是不是|你说|[“"'`])/.test(trailing[1]))
+  const trailing=message.match(/^([^，,。.!！?？\n:：]{1,80})[，,]\s*验收不通过[。.!！]?$/);
+  if(trailing&&!/(?:如果|假设|比如|例如|举例|例子|是否|是不是|为什么|怎么|不要|不用|引用|转述|听说|你说|他说|建议|应该|[“"'`])/.test(trailing[1]))
     return {decision:'rejected',reason:trailing[1].trim()};
   const match=message.match(/^(?:请(?:代我|帮我)?(?:提交|确认)?\s*)?(?:这项|该项|当前任务)?\s*验收(不通过|通过)(?:\s*[，,:：]\s*(?:原因是\s*)?([\s\S]*))?$/);
   if(!match)return null;

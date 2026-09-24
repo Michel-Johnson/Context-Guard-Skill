@@ -1300,6 +1300,14 @@ try {
   await coordinator.getByLabel('发送给 Coordinator').press('Enter');
   await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('多项待验收'));
   assert.equal(acceptanceRequests.length,6,'Main never guesses among multiple pending reviews');
+  coordinatorState.reviewCandidates=[acceptanceFixture];
+  const modelRequestsBeforeExample=submissions.length;
+  await coordinator.getByLabel('发送给 Coordinator').fill('这是个例子，验收不通过');
+  const examplePost=page.waitForResponse(response=>response.url().includes('/api/coordinator?')&&response.request().method()==='POST');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await examplePost;
+  assert.equal(acceptanceRequests.length,6,'an example is not a human rejection decision');
+  assert.equal(submissions.length,modelRequestsBeforeExample+1,'an example remains ordinary chat');
   record('Coordinator Main chat routes only a unique explicit human acceptance decision without a card');
 
   const attachmentMap = structuredClone(sessionMap);
