@@ -1382,6 +1382,15 @@ def pending_signals(runtime: dict) -> list[str]:
             if isinstance(item, dict) and item.get("status") == "pending"]
 
 
+def pending_signal_guidance(root: Path, session_id: str, runtime: dict) -> str:
+    ids = pending_signals(runtime)
+    command = (f"{context_guard_cli()} resolve-signal --root {json.dumps(str(root))} "
+               f"--session {json.dumps(session_id)} --signal {ids[0]} --kind task")
+    return ("Classify pending user signals before implementation: " + ", ".join(ids)
+            + ". If this is the already-mounted Cloud task, run " + command
+            + ". For a new request, record the appropriate TODO or Bug instead. Do not try another write tool.")
+
+
 def scope_paths(root: Path, values: object) -> list[str]:
     if not isinstance(values, list) or not values:
         raise ValueError("plan needs non-empty paths")
@@ -1450,7 +1459,7 @@ def _plan_command_locked(root: Path, session: str, command: str, data: dict) -> 
     if session not in {str(item.get("session_id")) for item in session_records(root)}:
         raise ValueError("plan needs an actual lifecycle session")
     if pending_signals(runtime):
-        raise ValueError("Classify pending user signals first: " + ", ".join(pending_signals(runtime)))
+        raise ValueError(pending_signal_guidance(root, session, runtime))
     ctx = context_folder(root)
     plan = runtime.get("active_plan")
     if command == "plan-start":
@@ -1846,7 +1855,7 @@ def main() -> int:
         plan = runtime.get("active_plan") if isinstance(runtime.get("active_plan"), dict) else None
         reason = ""
         if pending_signals(runtime):
-            reason = "Classify pending user signals before implementation: " + ", ".join(pending_signals(runtime))
+            reason = pending_signal_guidance(root, current_session_id, runtime)
         elif not plan or plan.get("status") != "working":
             reason = "No active plan. Pipe authorized plan JSON to plan-start --input -."
         elif any(not in_scope(file, plan["paths"]) for file in paths) or set(owners.values()) - set(plan["node_ids"]):
