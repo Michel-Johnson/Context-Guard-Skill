@@ -19,7 +19,7 @@ import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { buildCoordinatorContext } from './coordinator-context.mjs';
-import { verifyTaskCompletion, verifyTaskClose } from './completion.mjs';
+import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady } from './completion.mjs';
 import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
 import { createQuarkProvider } from './quark-provider.mjs';
 
@@ -719,10 +719,14 @@ export async function startCloudServer({
           // identity and may operate on tasks in explicitly assigned Sessions.
           readTask: async (id, taskId) => {
             const session = await sessionFor(id);
-            const [task, delivery] = await Promise.all([
+            const [task, delivery, publication] = await Promise.all([
               store.taskRecord(principal, session, taskId), store.taskStatus(principal, session, taskId),
+              publicationState(project, `session:${id}`),
             ]);
-            return { ...task, deliveryState: delivery.state, ...(delivery.queue ? { queue: delivery.queue } : {}) };
+            const { status, reason, sessionVersion, sourceCommit, mainSha, publishedAt } = publication;
+            return { ...task, deliveryState: delivery.state,
+              publication: { status, ...(reason ? { reason } : {}), sessionVersion, sourceCommit, mainSha, publishedAt },
+              ...(delivery.queue ? { queue: delivery.queue } : {}) };
           },
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
@@ -1230,6 +1234,14 @@ export async function startCloudServer({
     }
     return sessions.sort((a, b) => String(b.lastSeen).localeCompare(String(a.lastSeen)));
   };
+  const taskPublicationReady = async (project, sessionId, sourceCommit) => {
+    if (!interfaceConfig?.repositories?.some(item => item.projectId === project.id && /^\d+$/.test(item.repositoryId))) return true;
+    const { principal, store } = interfaceProject(project);
+    const binding = await store.registeredBinding(principal, sessionId);
+    if (!binding) return true;
+    const tasks = await store.workflowTasks(principal, { id: sessionId, generation: binding.generation });
+    return taskSessionPublicationReady(tasks, sourceCommit);
+  };
   const publicationState = async (project, viewId, options = {}) => {
     if (!project || !configuredMemory?.projects?.[project.id]) return { status: 'unavailable', reason: 'MEMORY_NOT_CONFIGURED' };
     if (viewId === 'main') {
@@ -1238,7 +1250,9 @@ export async function startCloudServer({
         ? { projectId: project.id, status: 'published', mainVersion: state.main.version, mainSha: state.main.mainSha || null, publishedAt: state.main.publishedAt || null }
         : { projectId: project.id, status: 'empty', mainVersion: null };
     }
-    return memoryPublicationStatus(configuredMemory, project.id, viewId.slice('session:'.length), options);
+    const status = await memoryPublicationStatus(configuredMemory, project.id, viewId.slice('session:'.length), options);
+    return status.status === 'ready' && !await taskPublicationReady(project, status.sessionId, status.sourceCommit)
+      ? { ...status, status: 'waiting', reason: 'TASK_SOURCE_PENDING' } : status;
   };
   const broadcastWorkbench = async (scope, project, viewId = 'main') => {
     const state = await scopedWorkbenchState(scope, project, viewId);
@@ -1287,7 +1301,7 @@ export async function startCloudServer({
           const sessions = Object.values(state.sessions || {})
             .sort((left, right) => String(left.updatedAt || '').localeCompare(String(right.updatedAt || '')));
           for (const session of sessions) {
-            const status = await memoryPublicationStatus(configuredMemory, project.id, session.sessionId, { refresh: true });
+            const status = await publicationState(project, `session:${session.sessionId}`, { refresh: true });
             if (status.status !== 'ready') continue;
             await publishSessionMemory(configuredMemory, project.id, {
               operationId: `automatic-main:${status.sessionId}:${status.generation}:${status.mainSha}`,

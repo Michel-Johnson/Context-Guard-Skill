@@ -12,7 +12,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { startCloudServer, createWorkbenchPasswordHash, authorizeCiReceiver, coordinatorStructureOperations, coordinatorTaskOwnerRequired } from '../scripts/cloud/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
-import { verifyTaskCompletion, verifyTaskClose } from '../scripts/cloud/completion.mjs';
+import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 
 test('Project requirements survive restart, reserve capacity atomically and dispatch only the approved fresh Session', async t => {
@@ -688,6 +688,15 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
     return Response.json(url.includes('/pulls/') ? currentPr : currentChecks);
   } };
   assert.equal((await verifyTaskCompletion(options)).mergeSha, mergeSha);
+  const newerMainSha = 'c'.repeat(40);
+  const newerMemory = { closedSessions: { developer: { publications: [{ ...publication, mainSha: newerMainSha }] } } };
+  let ancestry = { status: 'ahead', base_commit: { sha: mergeSha }, merge_base_commit: { sha: mergeSha } };
+  const concurrent = { ...options, memory: newerMemory, fetch: (url, init) =>
+    url.includes('/compare/') ? Promise.resolve(Response.json(ancestry)) : options.fetch(url, init) };
+  assert.equal((await verifyTaskCompletion(concurrent)).mergeSha, mergeSha,
+    'later Main commits may follow this task merge before its Session publication');
+  ancestry = { ...ancestry, merge_base_commit: { sha: sourceSha } };
+  assert.equal(await verifyTaskCompletion(concurrent), false, 'unrelated Main history cannot prove this PR was included');
   for (const changed of [{ merged: false }, { head: { ...pr.head, sha: 'c'.repeat(40) } }, { base: { ...pr.base, ref: 'other' } },
     { base: { ...pr.base, repo: { id: 999 } } }, { merged_at: '2026-09-08T00:59:00Z' }, { merge_commit_sha: 'c'.repeat(40) }]) {
     currentPr = { ...pr, ...changed }; assert.equal(await verifyTaskCompletion(options), false);
@@ -717,6 +726,14 @@ test('Completion verifies GitHub repository, tested SHA, required check issuer a
   assert.equal(verifyTaskClose(null, { ...verificationTask, control: { id: 'verification-control' },
     completion: { proof: verification, closeReceiptId: 'verification-control' } },
   { controlId: 'verification-control', closeReceiptId: 'verification-control' }), true);
+});
+
+test('active reviewed task cannot publish stale Session memory before acceptance', () => {
+  const sha = 'a'.repeat(40);
+  assert.equal(taskSessionPublicationReady([], sha), true);
+  assert.equal(taskSessionPublicationReady([{ stage: 'executing', sourceSha: sha }], sha), false);
+  assert.equal(taskSessionPublicationReady([{ stage: 'accepted', sourceSha: 'b'.repeat(40) }], sha), false);
+  assert.equal(taskSessionPublicationReady([{ stage: 'accepted', sourceSha: sha }], sha), true);
 });
 
 test('Explicit temporary billing waiver accepts only GitHub jobs that never started', async () => {
