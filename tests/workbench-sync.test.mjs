@@ -18,9 +18,25 @@ import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
-import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
+import { WorkbenchSync, workbenchTimeoutMs } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+test('Workbench uses a longer read budget without extending write uncertainty', async () => {
+  assert.equal(workbenchTimeoutMs('GET'), 30000);
+  assert.equal(workbenchTimeoutMs('POST'), 10000);
+  const originalFetch = globalThis.fetch, originalTimeout = AbortSignal.timeout;
+  const budgets = [];
+  globalThis.fetch = async (_url, options) => ({ ok: true, status: 200,
+    headers: { get: () => 'application/json' }, json: async () => ({ method: options.method }) });
+  AbortSignal.timeout = milliseconds => { budgets.push(milliseconds); return new AbortController().signal; };
+  try {
+    const client = { config: { token: '' }, viewId: 'main', endpoint: route => route };
+    assert.equal((await WorkbenchSync.prototype.call.call(client, '/api/state')).method, 'GET');
+    assert.equal((await WorkbenchSync.prototype.call.call(client, '/api/commit', { operationId: 'same-id' })).method, 'POST');
+    assert.deepEqual(budgets, [30000, 10000]);
+  } finally { globalThis.fetch = originalFetch; AbortSignal.timeout = originalTimeout; }
+});
 
 test('only definitive memory rejections may release a retry identity', () => {
   assert.equal(definitiveMemoryRejection({ status: 409, code: 'SESSION_BASELINE_CONFLICT' }), true);
