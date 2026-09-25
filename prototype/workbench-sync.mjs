@@ -1,5 +1,6 @@
 import { copy, diffTrees, entries, same } from '../scripts/shared/map-model.mjs';
 export const ALL_SESSIONS = '__all__';
+export const workbenchTimeoutMs = method => ['GET', 'HEAD'].includes(String(method).toUpperCase()) ? 30000 : 10000;
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
 function stored(key) { try { const raw = localStorage.getItem(key); if (!raw) return null; try { return JSON.parse(raw); } catch { return { invalidJSON: true, raw }; } } catch { return null; } }
 function diagnostic(error, fallback = '服务暂不可用') {
@@ -76,7 +77,7 @@ export class WorkbenchSync {
   }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST', viewId = this.viewId) {
-    const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method)) });
     if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
     if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
     let result;
@@ -323,7 +324,7 @@ export class WorkbenchSync {
     try {
       if (this.dirty()) this.saveDraft();
       this.setStatus('offline', '正在自动重连');
-      const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
+      const response = await fetch(this.bootstrapEndpoint(), { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(workbenchTimeoutMs('GET')) });
       if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), {code:'UNAUTHORIZED'});
       if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用');
       const config = await response.json();
@@ -391,7 +392,12 @@ export class WorkbenchSync {
         this.version = result.version; this.baseTree = sentTree; this.revision++;
         this.doc = { ...this.doc, root: copy(sentTree) }; this.pendingRequest = null;
         this.setStatus('persisted');
-      } catch (e) { this.saveDraft(); this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : e.serverResponse ? 'error' : 'offline', e.message); }
+      } catch (e) {
+        this.saveDraft();
+        const uncertain = ['TimeoutError', 'AbortError'].includes(e.name);
+        this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : e.serverResponse ? 'error' : 'offline',
+          uncertain ? '请求结果待确认；草稿与原操作编号已保留，重试会核对同一请求' : e.message);
+      }
     })();
     await this.inflight; this.inflight = null;
     if (['conflict', 'offline', 'error'].includes(this.status)) return;
@@ -433,7 +439,12 @@ export class WorkbenchSync {
         if (current.version !== this.version) { await this.receive(current); return; }
       }
       this.setStatus('draft'); await this.flush(); if (!this.dirty()) this.setStatus('synced');
-    } catch (e) { this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : 'error', e.message); }
+    } catch (e) {
+      const uncertain = ['TimeoutError', 'AbortError'].includes(e.name);
+      if (uncertain) this.saveDraft();
+      this.setStatus(e.code === 'VERSION_CONFLICT' ? 'conflict' : uncertain ? 'offline' : 'error',
+        uncertain ? '请求结果待确认；草稿与原操作编号已保留，重试会核对同一请求' : e.message);
+    }
   }
   async initializeCurrent() {
     if (!this.config || !this.initializationRequired) return;
