@@ -1154,7 +1154,7 @@ def apply_bad_case_transaction(root: Path, transaction: dict[str, object], journ
     map_bug = transaction.get("map_bug")
     if operation == "occurrence" and isinstance(map_bug, dict):
         attach_bug_to_map(ctx, map_bug, str(transaction.get("node") or ""), session_id)
-    elif operation == "fix":
+    elif operation == "fix" and isinstance(transaction.get("index_entry"), dict) and transaction["index_entry"].get("card"):
         update_bug_on_map(ctx, bug_id, str(transaction.get("status") or "fixed"), session_id)
     bad_case_failpoint("after-map")
 
