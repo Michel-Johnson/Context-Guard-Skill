@@ -77,17 +77,27 @@ export class WorkbenchSync {
   }
   bootstrapEndpoint() { return this.config?.apiBase ? this.endpoint('/bootstrap') : '/__context_guard/bootstrap'; }
   async call(route, body, method = body === undefined ? 'GET' : 'POST', viewId = this.viewId) {
-    const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method)) });
-    if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
-    if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
-    let result;
-    try { result = await response.json(); } catch { throw new Error('响应不完整；保留原请求等待重试'); }
-    if (!response.ok) {
-      const { message: _message, ...details } = result.error || {};
-      const e = new Error(diagnostic(result.error, '请求失败'));
-      Object.assign(e, details, { serverResponse: true }); throw e;
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(this.endpoint(route, viewId), { method, headers: { ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, credentials: 'same-origin', body: payload, cache: 'no-store', signal: AbortSignal.timeout(workbenchTimeoutMs(method)) });
+      if (response.status === 401) throw Object.assign(new Error('登录已失效，请重新登录；草稿已保留'), { code: 'UNAUTHORIZED', serverResponse: true });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('服务暂不可用，未收到有效响应；草稿已保留');
+      let result;
+      try { result = await response.json(); } catch { throw new Error('响应不完整；保留原请求等待重试'); }
+      if (!response.ok) {
+        // The lock rejected this exact commit before applying it. Replaying its
+        // stable operation ID is safe; a dead-owner recovery guard is not.
+        if (route === '/api/commit' && method === 'POST' && body?.operationId && attempt < 2 &&
+          result.error?.code === 'STATE_BUSY' && result.error.message === 'Shared state is busy; preserve lock and retry') {
+          await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+          continue;
+        }
+        const { message: _message, ...details } = result.error || {};
+        const e = new Error(diagnostic(result.error, '请求失败'));
+        Object.assign(e, details, { serverResponse: true }); throw e;
+      }
+      return result;
     }
-    return result;
   }
   operations() {
     if (!this.ready) return [];
