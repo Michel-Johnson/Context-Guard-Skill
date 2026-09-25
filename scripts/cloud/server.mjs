@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomUUID, scrypt as cryptoScrypt, timingSafe
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { applyOperations, entries, validate, MapError, scopeDocumentToSession, filterNodeAccess, isClosedBugStatus } from '../shared/map-model.mjs';
-import { atomicWrite } from '../shared/io.mjs';
+import { atomicWrite, readJSON } from '../shared/io.mjs';
 import { commitMainMemoryMap, commitSessionMap, createMemoryHandler, enforceMainHistoryRetention, memoryPublicationStatus, publishSessionMemory, readMemoryView as readMemoryProject, memoryHeads, memoryHub } from './memory.mjs';
 import { projectMemoryFile } from './memory-filesystem.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
@@ -650,6 +650,19 @@ export async function startCloudServer({
                 const routedNodes = [...new Set([...requirements.nodeIds, requirements.nodeId])];
                 if (routedNodes.length > 3) protocolFail('INVALID_ARGUMENT', 'Map TODO/Bug routing exceeds three nodes');
                 requirements.nodeIds = routedNodes;
+              }
+              const ownerId = await conversations.ensure({ nodeId: requirements.nodeId, kind: requirements.kind, item });
+              if (conversationId !== ownerId) {
+                if (!await readJSON(conversations.conversationFile(ownerId), null)) {
+                  await conversations.continueIn(conversationId, ownerId);
+                  const target = await coordinatorFor(project, ownerId);
+                  await target.submit({ id: `item-continue:${digest(ownerId)}`,
+                    text: '此事项已转到专属 Coordinator 对话。读取当前 Main 和任务状态，尚未准备 brief 时继续 prepare_task；不要重新挂载或选择旧执行 Session。' },
+                  { source: 'workflow' });
+                }
+                return { kind: 'conversation-mounted', message: '此事项由专属 Coordinator 对话继续；请在那里查看 brief 并审批，不要在当前对话重复提交。',
+                  conversationId: ownerId, node: { id: entry.id, title: entry.title },
+                  item: { id: item.id, kind: requirements.kind, title: item.title || item.desc || item.id }, version: snapshot.main.version };
               }
             }
             if (JSON.stringify(requirements).length > 2000) protocolFail('INVALID_ARGUMENT', 'Keep requirements within 2000 characters');
