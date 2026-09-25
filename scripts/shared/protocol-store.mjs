@@ -146,16 +146,38 @@ export class ProtocolStore extends EventEmitter {
     });
   }
   async resumeControlApplied(principal, message) {
-    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the receiving device can inspect delivery receipts');
     if (message.type !== 'task.control' || message.payload.action !== 'resume') return false;
+    return this.controlReportApplied(principal, message);
+  }
+  async controlReportApplied(principal, message) {
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the receiving device can inspect delivery receipts');
+    if (message.type !== 'task.control' || !['resume', 'complete'].includes(message.payload.action)) return false;
     await this.authorizeSession(principal, message.session);
     return this.transaction(state => {
       requireBinding(state, principal, message.session);
       // Reuse the durable downlink journal, including receipts written before
       // this guard existed. Do not require a second index or a data migration.
       return queueFor(state, principal, message.session).items.some(({ message: received }) =>
-        received.type === 'task.report' && received.payload.stage === 'resumed' &&
+        received.type === 'task.report' && received.payload.stage === (message.payload.action === 'resume' ? 'resumed' : 'closed') &&
         received.payload.taskId === message.payload.taskId && received.payload.data.controlId === message.id);
+    }, { readOnly: true });
+  }
+  async pendingControls(principal, session, action) {
+    if (principal.role !== 'device') fail('FORBIDDEN', 'Only the receiving device can inspect controls');
+    if (!['resume', 'complete'].includes(action)) fail('INVALID_ARGUMENT', 'Unsupported control action');
+    await this.authorizeSession(principal, session);
+    return this.transaction(state => {
+      requireBinding(state, principal, session);
+      const items = queueFor(state, principal, session).items;
+      const stage = action === 'resume' ? 'resumed' : 'closed';
+      const reports = new Set(items.filter(({ message }) => message.type === 'task.report' && message.payload.stage === stage)
+        .map(({ message }) => `${message.payload.taskId}:${message.payload.data.controlId}`));
+      const pending = items.filter(({ message }) => message.type === 'task.control' && message.payload.action === action &&
+        !reports.has(`${message.payload.taskId}:${message.id}`)).map(({ message }) => message);
+      if (action === 'complete') return pending;
+      const latest = new Map();
+      for (const message of pending) latest.set(message.payload.taskId, message);
+      return [...latest.values()];
     }, { readOnly: true });
   }
   async requestSessionCreation(principal, input) {
