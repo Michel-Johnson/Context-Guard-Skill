@@ -8,12 +8,43 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, coordinatorAssignmentKey, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
-import { compactMainHistorySnapshots } from '../scripts/cloud/memory.mjs';
+import { compactMainHistorySnapshots, memoryPublicationStatus } from '../scripts/cloud/memory.mjs';
+import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileMainBaseline, reconcileSessionMap } from '../scripts/workbench/memory.mjs';
 
 const execFileAsync = promisify(execFile);
 const git = async (root, ...args) => (await execFileAsync('git', args, { cwd: root, windowsHide: true })).stdout.trim();
+
+test('Local-only Session source waits for publication without masking a broken remote', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-unpublished-source-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const mirror = path.join(directory, 'mirror'), remote = path.join(directory, 'remote.git');
+  await fs.mkdir(mirror);
+  await git(directory, 'init', '--bare', remote);
+  await git(mirror, 'init', '-b', 'main');
+  await git(mirror, 'config', 'user.email', 'fixture@example.invalid');
+  await git(mirror, 'config', 'user.name', 'Fixture');
+  await fs.writeFile(path.join(mirror, 'source.txt'), 'baseline');
+  await git(mirror, 'add', 'source.txt');
+  await git(mirror, 'commit', '-m', 'baseline');
+  await git(mirror, 'remote', 'add', 'origin', remote);
+  await git(mirror, 'push', 'origin', 'main');
+  const dataDir = path.join(directory, 'memory'), file = legacyProjectMemoryFile(dataDir, 'project');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'm1' }, preferences: null,
+    sessions: { developer: { sessionId: 'developer', version: 's1', baseMainVersion: 'm1', sourceCommit: 'a'.repeat(40) } },
+    closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const configuration = { dataDir, adminToken: 'fixture', projects: { project: { root: mirror, ref: 'refs/heads/main', remote: 'origin' } } };
+  const waiting = await memoryPublicationStatus(configuration, 'project', 'developer');
+  assert.equal(waiting.status, 'waiting');
+  assert.equal(waiting.reason, 'SOURCE_COMMIT_UNAVAILABLE');
+  assert.equal(waiting.sourceCommit, 'a'.repeat(40));
+  assert.equal((await memoryPublicationStatus({ ...configuration, projects: { project: { root: mirror, ref: 'refs/heads/main' } } }, 'project', 'developer')).status, 'waiting');
+  await git(mirror, 'remote', 'set-url', 'origin', path.join(directory, 'missing-remote'));
+  await assert.rejects(memoryPublicationStatus(configuration, 'project', 'developer'), error => error.code === 128,
+    'a broken remote is not silently recast as an unmerged source');
+});
 
 test('readJSON streams UTF-8 files above the direct-read threshold', async (t) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-large-json-'));
