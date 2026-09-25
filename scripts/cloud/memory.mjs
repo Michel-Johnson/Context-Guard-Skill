@@ -234,26 +234,33 @@ export async function readMemoryView({ dataDir, adminToken, projects = {} }, pro
 }
 
 const gitCommand = async (root, args) => (await exec('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024 })).stdout.trim();
-async function mergedIntoMain(project, sourceCommit, targetCommit) {
+async function mergeStatus(project, sourceCommit, targetCommit) {
   try { await gitCommand(project.root, ['cat-file', '-e', `${sourceCommit}^{commit}`]); }
   catch (error) {
-    if (!project.remote) throw error;
-    await gitCommand(project.root, ['fetch', '--quiet', project.remote, sourceCommit]);
+    if (error?.code !== 1 && !(error?.code === 128 &&
+        String(error.stderr || '').includes(`Not a valid object name ${sourceCommit}^{commit}`))) throw error;
+    if (!project.remote) return { ready: false, reason: 'SOURCE_COMMIT_UNAVAILABLE' };
+    try { await gitCommand(project.root, ['fetch', '--quiet', project.remote, sourceCommit]); }
+    catch (fetchError) {
+      if (/not our ref|couldn.t find remote ref/i.test(fetchError.stderr || ''))
+        return { ready: false, reason: 'SOURCE_COMMIT_UNAVAILABLE' };
+      throw fetchError;
+    }
   }
-  try { await gitCommand(project.root, ['merge-base', '--is-ancestor', sourceCommit, targetCommit]); return true; }
+  try { await gitCommand(project.root, ['merge-base', '--is-ancestor', sourceCommit, targetCommit]); return { ready: true, reason: null }; }
   catch (error) { if (error?.code !== 1) throw error; }
   const base = await gitCommand(project.root, ['merge-base', sourceCommit, targetCommit]);
   const changed = (await gitCommand(project.root, ['diff', '--name-only', '--no-renames', '-z', base, sourceCommit]))
     .split('\0').filter(Boolean);
-  if (!changed.length) return true;
+  if (!changed.length) return { ready: true, reason: null };
   try {
     // A squash merge does not retain sourceCommit as an ancestor. It is still a
     // valid publication gate when every path changed by the Session has exactly
     // the Session's resulting content on authoritative Main. Any later overlap
     // fails closed and waits for explicit reconciliation.
     await gitCommand(project.root, ['diff', '--quiet', sourceCommit, targetCommit, '--', ...changed]);
-    return true;
-  } catch (error) { if (error?.code === 1) return false; throw error; }
+    return { ready: true, reason: null };
+  } catch (error) { if (error?.code === 1) return { ready: false, reason: 'SOURCE_NOT_MERGED' }; throw error; }
 }
 
 export async function memoryPublicationStatus(configuration, projectId, sessionId, { refresh = false } = {}) {
@@ -272,7 +279,8 @@ export async function memoryPublicationStatus(configuration, projectId, sessionI
   const baseVersion = state.main?.version || null;
   const common = { projectId, sessionId, generation: session.generation || 1, sessionVersion: session.version, baseVersion, baseMainVersion: session.baseMainVersion ?? null, sourceCommit: session.sourceCommit, mainSha };
   if (session.baseMainVersion !== baseVersion) return { ...common, status: 'conflict', reason: 'MAIN_MEMORY_ADVANCED' };
-  return { ...common, status: await mergedIntoMain(project, session.sourceCommit, mainSha) ? 'ready' : 'waiting', reason: null };
+  const merge = await mergeStatus(project, session.sourceCommit, mainSha);
+  return { ...common, status: merge.ready ? 'ready' : 'waiting', reason: merge.reason };
 }
 
 export async function publishSessionMemory(configuration, projectId, input, actor = { kind: 'agent', sessionId: input?.sessionId || '' }) {
@@ -296,7 +304,8 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     if (project.remote) await gitCommand(project.root, ['fetch', '--quiet', project.remote]);
     const mainSha = await gitCommand(project.root, ['rev-parse', '--verify', `${project.ref}^{commit}`]);
     if (mainSha !== input.expectedMainSha) throw new MapError('MAIN_ADVANCED', 'Main changed; review the new commit before publication', 409);
-    if (!await mergedIntoMain(project, session.sourceCommit, mainSha)) throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409);
+    const merge = await mergeStatus(project, session.sourceCommit, mainSha);
+    if (!merge.ready) throw new MapError('NOT_MERGED', 'Session source has not been merged into the authoritative branch', 409, { reason: merge.reason });
     const previousVersion = state.main?.version || null;
     const publishedAt = new Date().toISOString();
     const deletedRecordKeys = [...new Set([...(state.main?.deletedRecordKeys || []), ...(session.deletedRecordKeys || [])])].sort();
