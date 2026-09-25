@@ -808,6 +808,25 @@ test('permission, TODO, bad-case and durable cross-session inbox use the real Ma
   recoveredEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
   assert.equal(recoveredEvents.filter(item => item.case === recovered.id && item.event === 'fix').length, 1);
 
+  const unassignedOutput = run(python, [contextScript, 'record-bad-case', '--root', project, '--session', session,
+    '--title', '未挂载的坏例', '--phenomenon', '仅保存私有坏例']).stdout;
+  const unassignedId = unassignedOutput.match(/recorded bad case: (B\d+)/)?.[1];
+  assert.ok(unassignedId);
+  const unassignedFix = [contextScript, 'record-bad-case-fix', '--root', project, '--session', session,
+    '--case', unassignedId, '--method', '保留未挂载记录', '--evidence', '未创建 Map 附件', '--status', 'fixed'];
+  const interruptedUnassignedFix = spawnSync(python, unassignedFix, {
+    cwd: project, encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, CONTEXT_GUARD_TESTING: '1', CONTEXT_GUARD_BAD_CASE_FAILPOINT: 'after-map' },
+  });
+  assert.equal(interruptedUnassignedFix.status, 91);
+  run(python, [contextScript, 'record-bad-case', '--root', project, '--session', session,
+    '--title', '后续坏例', '--phenomenon', '旧事务不应阻塞新登记']);
+  assert.deepEqual(await fs.readdir(transactionDir), []);
+  map = JSON.parse(await fs.readFile(path.join(ctx, 'map.json'), 'utf8'));
+  assert.equal(map.root.children[0].bugs.some(item => item.id === unassignedId), false);
+  recoveredEvents = JSON.parse(await fs.readFile(path.join(ctx, 'bad-case-events.json'), 'utf8'));
+  assert.equal(recoveredEvents.filter(item => item.case === unassignedId && item.event === 'fix').length, 1);
+
   const beforeConflict = await fs.readFile(path.join(ctx, 'map.json'), 'utf8');
   assert.throws(() => run(python, [contextScript, 'record-todo', '--root', project, '--session', session,
     '--signal', badSignal, '--node', 'N1', '--title', 'must not write']), /already resolved as bad-case/);
