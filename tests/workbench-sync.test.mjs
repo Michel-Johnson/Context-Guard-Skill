@@ -38,6 +38,31 @@ test('Workbench uses a longer read budget without extending write uncertainty', 
   } finally { globalThis.fetch = originalFetch; AbortSignal.timeout = originalTimeout; }
 });
 
+test('Workbench retries only a definitive busy commit with the same operation ID', async () => {
+  const originalFetch = globalThis.fetch, calls = [];
+  const client = { config: { token: '' }, viewId: 'main', endpoint: route => route };
+  const request = { operationId: 'busy-replay', baseVersion: 'v1', operations: [] };
+  try {
+    globalThis.fetch = async (_url, options) => {
+      calls.push(options.body);
+      return { ok: calls.length > 1, status: calls.length > 1 ? 200 : 503,
+        headers: { get: () => 'application/json' }, json: async () => calls.length > 1 ? { committed: true }
+          : { error: { code: 'STATE_BUSY', message: 'Shared state is busy; preserve lock and retry' } } };
+    };
+    assert.deepEqual(await WorkbenchSync.prototype.call.call(client, '/api/commit', request), { committed: true });
+    assert.deepEqual(calls, [JSON.stringify(request), JSON.stringify(request)]);
+
+    calls.length = 0;
+    globalThis.fetch = async (_url, options) => {
+      calls.push(options.body);
+      return { ok: false, status: 503, headers: { get: () => 'application/json' },
+        json: async () => ({ error: { code: 'STATE_BUSY', message: 'Interrupted lock recovery needs explicit repair; preserve the recovery guard' } }) };
+    };
+    await assert.rejects(WorkbenchSync.prototype.call.call(client, '/api/commit', request), { code: 'STATE_BUSY' });
+    assert.equal(calls.length, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('only definitive memory rejections may release a retry identity', () => {
   assert.equal(definitiveMemoryRejection({ status: 409, code: 'SESSION_BASELINE_CONFLICT' }), true);
   assert.equal(definitiveMemoryRejection({ status: 400, code: 'INVALID_ARGUMENT' }), true);
