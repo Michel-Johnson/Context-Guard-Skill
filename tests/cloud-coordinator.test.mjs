@@ -1055,6 +1055,10 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
       if (phase === 'mount') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {
         mainVersion: latestVersion, nodeId: 'T0', kind: 'todo', title: '提升阅读体验', description: '页面更快且更清楚',
       } }] };
+      if (phase === 'chat-prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-from-chat', name: 'prepare_task', input: {
+        taskId: mapWorkTaskId, itemId: todoId, nodeId: 'T0', kind: 'todo', nodeIds: ['T0'], mainVersion: latestVersion,
+        text: '页面更快且更清楚', acceptance: '阅读体验改善',
+      } }] };
       return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'cleanup', name: 'edit_map', input: {
         mainVersion: latestVersion, actions: [
           { op: 'delete', kind: 'todo', id: todoId, nodeId: 'T0' },
@@ -1112,8 +1116,14 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   assert.ok(continuedResponse.ok);
   assert.match(JSON.stringify((await continuedResponse.json()).messages), /挂载这个需求/);
   todoId = memory.main.memory.map.root.todos[0].id;
+  const mapWorkTaskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:${todoId}`).digest('hex').slice(0, 24)}`;
+  latestVersion = memory.main.version; phase = 'chat-prepare'; step = 0;
+  await submit({ id: 'chat-prepare-turn', text: '继续为刚挂载的 TODO 提交 brief' }); state = await wait();
+  assert.equal(state.error, null);
+  assert.equal(state.messages.findLast(message => message.actions)?.actions[0].conversationId, mounted.conversationId);
+  assert.equal((await call('GET')).projectTasks.length, 0);
   childId = memory.main.memory.map.root.children[0].id;
-  latestVersion = memory.main.version; phase = 'cleanup';
+  latestVersion = memory.main.version; phase = 'cleanup'; step = 0;
   await submit({ id: 'cleanup-turn', text: '删除这个 TODO 和阅读模块' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
   assert.deepEqual(memory.main.memory.map.root.todos, []);
   assert.deepEqual(memory.main.memory.map.root.children, []);
