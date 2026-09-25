@@ -18,7 +18,7 @@ import { Attachments } from './attachments.mjs';
 import { ProtocolStore } from '../shared/protocol-store.mjs';
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { workflowTypes } from '../shared/protocol-workflow.mjs';
-import { ProtocolDelivery, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
+import { ProtocolDelivery, controlReport, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { ensureNamedProxy } from './named.mjs';
 import { registeredProject, rememberProject } from './registry.mjs';
@@ -33,6 +33,17 @@ export const statePath = root => path.join(root, '.codex/context/private/workben
 export const projectStatePath = project => project.kind === 'git' ? path.join(project.sharedDir, 'workbench.json') : statePath(project.worktreeRoot);
 export const projectLockPath = project => project.kind === 'git' ? path.join(project.sharedDir, 'node-workbench.lock') : path.join(project.worktreeRoot, '.codex/context/private/node-workbench.lock');
 const execFileAsync = promisify(execFile);
+
+export async function reportVerifiedControl(store, principal, send, message) {
+  const execution = await store.activeExecution(principal, message.session);
+  const alreadyApplied = await store.controlReportApplied(principal, message);
+  if ((!alreadyApplied && execution?.taskId !== message.payload.taskId) ||
+      (message.payload.action === 'resume' && execution?.closed)) protocolFail('CONFLICT', 'Control does not match the current task');
+  const report = controlReport(message);
+  await send(report);
+  await store.receiveNotification(principal, report);
+  return report;
+}
 
 function missingCommitFields(input) {
   const missing = [];
@@ -169,6 +180,30 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     codex: input => messageQueue({ sessionId: input.sessionId, message: input.message, root: input.root }),
     claude: { deliver: input => claudeRuntime.deliverGuidance(input), received: input => claudeRuntime.receivedGuidance(input) },
   });
+  const reportControl = message => reportVerifiedControl(protocolStore, backendPrincipal, report => device.send(report), message);
+  const resumeAcceptedByHost = async message => {
+    const recovery = await readJSON(claudeRuntime.jobFile(message.session.id, `recovery:cloud-${hash(message.id)}`), null);
+    if (recovery && recovery.state !== 'failed') return true;
+    const delivery = await readJSON(path.join(taskDelivery.directory,
+      `${hash(`${message.session.generation}:${message.id}:resume`)}.json`), null);
+    return delivery?.state === 'received';
+  };
+  const acceptResumeControl = async (message, session) => {
+    if (await protocolStore.resumeControlApplied(backendPrincipal, message)) return true;
+    if (!await resumeAcceptedByHost(message)) {
+      const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
+      const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
+      const native = await claudeRuntime.status(session.id);
+      if (native.status === 'interrupted' && native.deliveryId) {
+        await claudeRuntime.recover(session.id, { operationId: `cloud-${hash(message.id)}`, deliveryId: native.deliveryId, message: prompt }, session.worktreeRoot || root);
+      } else if (native.status === 'stopped') {
+        await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}:resume`, platform: 'claude', sessionId: session.id,
+          root: session.worktreeRoot || root, message: prompt });
+      } else return false;
+    }
+    await reportControl(message);
+    return true;
+  };
   let taskDeliveryRetry = null;
   const ciChannel = (sessionId, connection) => {
     if (!ciConnections.has(sessionId) || ciConnections.get(sessionId).origin !== connection.origin) {
@@ -250,8 +285,21 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
               const native = identity?.platform === 'claude' ? await claudeRuntime.status(head.session.id) : null;
               if (native?.role === 'ci') ciChannel(head.session.id, device);
               if (native?.name) heartbeat.name = native.name;
-              if (native?.role === 'executor' && native.status === 'interrupted') {
-                const execution = await protocolStore.activeExecution(backendPrincipal, head.session).catch(() => null);
+              const execution = await protocolStore.activeExecution(backendPrincipal, head.session).catch(() => null);
+              for (const control of await protocolStore.pendingControls(backendPrincipal, head.session, 'complete')) {
+                if (execution?.taskId !== control.payload.taskId) continue;
+                await reportControl(control).catch(error => { device.lastError = error.code || 'CLOSE_REPORT_FAILED'; });
+              }
+              let resumed = false;
+              if (native?.role === 'executor' && execution && !execution.closed) {
+                for (const control of await protocolStore.pendingControls(backendPrincipal, head.session, 'resume')) {
+                  if (control.payload.taskId !== execution.taskId) continue;
+                  resumed = await acceptResumeControl(control, identity).catch(error => {
+                    device.lastError = error.code || 'RESUME_REPORT_FAILED'; return false;
+                  });
+                }
+              }
+              if (native?.role === 'executor' && native.status === 'interrupted' && !resumed) {
                 const report = interruptedTaskReport(head.session, execution, native);
                 if (report) await device.send(report).catch(error => { device.lastError = error.code || 'INTERRUPTION_REPORT_FAILED'; });
               }
@@ -276,25 +324,20 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
           if (!['codex', 'claude'].includes(session.platform)) return result;
           const target = await storeFor(project.kind === 'git' ? `session:${session.id}` : 'main');
           if (message.type === 'task.assign' && message.payload.nodeIds.some(id => !access.grants(session.id, target.doc, 'read').includes(id))) protocolFail('FORBIDDEN', 'Assigned node access was revoked');
-          const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
-          const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
           try {
-            if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
-              const native = await claudeRuntime.status(session.id);
-              if (native.status === 'interrupted' && native.deliveryId) {
-                await claudeRuntime.recover(session.id, { operationId: `cloud-${hash(message.id)}`, deliveryId: native.deliveryId, message: prompt }, session.worktreeRoot || root);
-              } else if (native.status === 'stopped') {
-                // A resumed-only turn may have already finished and cleared
-                // `active` before Cloud sends the next continuation control.
-                // Re-deliver to the same bound Session; never create a new
-                // Session or reinterpret this as a new task.
-                await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}:resume`, platform: 'claude', sessionId: session.id,
-                  root: session.worktreeRoot || root, message: prompt });
-              } else {
-                protocolFail('RECOVERY_NOT_AVAILABLE', 'Claude has no matching interrupted turn');
-              }
+            if (message.type === 'task.control' && message.payload.action === 'complete') {
+              await reportControl(message);
               return { ...result, deliveryState: 'received' };
             }
+            if (session.platform === 'claude' && message.type === 'task.control' && message.payload.action === 'resume') {
+              const execution = await protocolStore.activeExecution(backendPrincipal, message.session);
+              if (execution?.taskId !== message.payload.taskId || execution.closed) protocolFail('CONFLICT', 'Resume control does not match an active task');
+              return await acceptResumeControl(message, session)
+                ? { ...result, deliveryState: 'received' }
+                : { ...result, deliveryState: 'stored', reason: 'Native turn is busy; resume control is queued' };
+            }
+            const taskPrompt = await executionPrompt(message, (ref, version) => device.send({ v: 2, id: randomUUID(), type: 'object.read', session: message.session, payload: { ref, version } }));
+            const prompt = `${taskPrompt}\n宿主绑定的当前工作树：${session.worktreeRoot || root}\n所有 Context Guard 命令的 --root 使用这个工作树，不使用模板或主仓库目录。mainVersion 是记忆版本，不是 Git SHA。`;
             const ci = message.type === 'ci.request' ? await claudeRuntime.ciReceiver(session.id) : null;
             if (ci && (!access.binding(ci.sessionId) || access.binding(ci.sessionId).worktreeRoot !== ci.root || ci.root === session.worktreeRoot)) protocolFail('FORBIDDEN', 'CI receiver binding is not independent');
             await taskDelivery.deliver({ id: `${message.session.generation}:${message.id}`, platform: ci ? 'claude' : session.platform, sessionId: ci?.sessionId || session.id, root: ci?.root || session.worktreeRoot || root, message: prompt,

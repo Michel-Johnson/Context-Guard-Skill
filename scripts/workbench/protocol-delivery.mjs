@@ -4,6 +4,14 @@ import { atomicWrite, encode, hash, readJSON, withFileLock } from '../shared/io.
 import { canonical, fail, validateMessage } from '../shared/protocol.mjs';
 
 export const executionNotifications = new Set(['task.assign', 'task.message', 'task.rework', 'task.control', 'ci.request']);
+export function controlReport(message) {
+  validateMessage(message);
+  if (message.type !== 'task.control' || !['resume', 'complete'].includes(message.payload.action)) fail('INVALID_ARGUMENT', 'A resume or complete control is required');
+  const closed = message.payload.action === 'complete';
+  return { v: 2, id: hash(`${closed ? 'close' : 'resume'}:${message.id}`), type: 'task.report', session: message.session,
+    payload: { taskId: message.payload.taskId, stage: closed ? 'closed' : 'resumed',
+      data: { controlId: message.id, ...(closed ? { closeReceiptId: message.id } : {}) } } };
+}
 const reviewedRetry = 'reviewed 任务不使用 map task start/finish。回复未知时保留原 operationId；收到明确 CONFLICT 后先核对状态，条件已恢复时用新的 operationId 提交 Plan，旧编号会重放旧拒绝。不得因报错跳过审核或报告完成。';
 export async function executionPrompt(message, readObject) {
   validateMessage(message);
@@ -51,16 +59,14 @@ export async function executionPrompt(message, readObject) {
       ? ['上一轮因执行时限或输出量中断。不要重跑同一批探索性检查；先盘点已有改动和验证证据，优先完成已批准范围内的交付。若仍不能满足验收，明确回报阻塞与未验证项，不要声称测试通过。'] : []),
     '如果原任务是链路验证或明确要求不修改业务文件：只读核对 Session、任务、回执和 git status；不得读取或改写 Main、map.json 或业务文件，也不得自行创建/分配 Session。回报 resumed 后，使用只读证据提交 map task handoff（--input - 通过 stdin），让流程进入 CI/验收；不要再次等待或触发自动恢复。',
     '确认可以继续后，用 map exchange --input -（stdin）回报 resumed；消息必须保留原控制编号：',
-    JSON.stringify({ v: 2, id: hash(`resume:${message.id}`), type: 'task.report', session: message.session,
-      payload: { taskId: p.taskId, stage: 'resumed', data: { controlId: message.id } } }),
+    JSON.stringify(controlReport(message)),
     '回报后按已批准 Plan 继续；若 Plan 未批准或范围仍不清楚，保持只读并通过 ask_user 请求确认。',
     reviewedRetry,
   ].join('\n');
   if (message.type === 'task.control' && p.action === 'complete') return [
     `Context Guard：任务 ${p.taskId} 已通过服务端合并与归档校验。保留证据，结束该任务。`,
     '使用 map exchange --input <JSON文件> 回报关闭；不要重新执行开发或再次合并。',
-    JSON.stringify({ v: 2, id: hash(`close:${message.id}`), type: 'task.report', session: message.session,
-      payload: { taskId: p.taskId, stage: 'closed', data: { controlId: message.id, closeReceiptId: message.id } } }),
+    JSON.stringify(controlReport(message)),
   ].join('\n');
   if (message.type === 'task.control') return `Context Guard：任务 ${p.taskId} 控制请求 ${p.action}。完成对应操作后，使用原控制编号回报；收到不等于完成，不得擅自删除记录。\n${JSON.stringify(p.data)}\n控制编号：${message.id}`;
   return null;

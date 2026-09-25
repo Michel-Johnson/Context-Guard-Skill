@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ProtocolDelivery, executionPrompt } from '../scripts/workbench/protocol-delivery.mjs';
+import { ProtocolDelivery, controlReport, executionPrompt } from '../scripts/workbench/protocol-delivery.mjs';
 import { spawnSync } from 'node:child_process';
 import { WorkbenchSync } from '../prototype/workbench-sync.mjs';
-import { queueCodexMessage } from '../scripts/workbench/server.mjs';
+import { queueCodexMessage, reportVerifiedControl } from '../scripts/workbench/server.mjs';
 import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 
 test('Authenticated Cloud acceptance reaches the original local execution for archive review', async t => {
@@ -67,6 +67,44 @@ test('Applied resume receipts suppress replayed native delivery across restart w
   assert.equal(await store.resumeControlApplied(device, { ...control, payload: { ...control.payload, taskId: 'another-task' } }), false);
   await assert.rejects(store.resumeControlApplied(device, { ...control, session: { ...session, generation: 2 } }), { code: 'STALE_SESSION' });
   await assert.rejects(store.resumeControlApplied({ ...device, role: 'executor' }, control), { code: 'FORBIDDEN' });
+});
+
+test('Durable controls remain pending until a matching host report and survive restart', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-pending-controls-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let store = new ProtocolStore(directory);
+  const device = { repositoryId: 'repo', deviceId: 'device', agentId: 'backend', role: 'device' };
+  const session = { id: 'developer', generation: 1 };
+  await store.handle(device, { v: 2, id: 'bind', type: 'session.bind', payload: {
+    sessionId: session.id, worktreeId: 'tree', agentId: 'executor', expectedBindingVersion: '',
+  } }, { verifyBinding: () => true });
+  await store.receiveNotification(device, { v: 2, id: 'assign', type: 'task.assign', session, payload: {
+    taskId: 'task', briefRef: 'brief', briefVersion: 'v1', sessionId: session.id, nodeIds: ['M1'], mainVersion: 'm1',
+  } });
+  const resume = { v: 2, id: 'resume-control', type: 'task.control', session,
+    payload: { taskId: 'task', action: 'resume', expectedVersion: 'v1', data: { reason: 'continue' } } };
+  await store.receiveNotification(device, resume);
+  assert.deepEqual(await store.pendingControls(device, session, 'resume'), [resume]);
+  await store.receiveNotification(device, { ...controlReport(resume), id: 'wrong-task-report',
+    payload: { ...controlReport(resume).payload, taskId: 'other' } });
+  assert.deepEqual(await store.pendingControls(device, session, 'resume'), [resume]);
+  await store.receiveNotification(device, controlReport(resume));
+  assert.deepEqual(await store.pendingControls(device, session, 'resume'), []);
+  const close = { ...resume, id: 'close-control', payload: { ...resume.payload, action: 'complete',
+    data: { gitReceiptRef: 'github-pr:7', archiveReceiptRef: 'published-session' } } };
+  await store.receiveNotification(device, close);
+  store = new ProtocolStore(directory);
+  assert.deepEqual(await store.pendingControls(device, session, 'complete'), [close]);
+  const sent = [];
+  await reportVerifiedControl(store, device, async report => { sent.push(report); }, close);
+  assert.deepEqual(await store.pendingControls(device, session, 'complete'), []);
+  await reportVerifiedControl(store, device, async report => { sent.push(report); }, close);
+  assert.equal(sent[0].id, sent[1].id, 'replayed host closure uses the original report identity');
+  await assert.rejects(reportVerifiedControl(store, device, async report => { sent.push(report); },
+    { ...close, payload: { ...close.payload, taskId: 'other' } }), { code: 'CONFLICT' });
+  assert.equal(sent.length, 2, 'a foreign task cannot send a closure report');
+  await assert.rejects(store.pendingControls({ ...device, role: 'executor' }, session, 'complete'), { code: 'FORBIDDEN' });
+  await assert.rejects(store.pendingControls(device, { ...session, generation: 2 }, 'complete'), { code: 'STALE_SESSION' });
 });
 
 test('Verified closure prompt preserves the server control receipt and does not repeat development', async () => {
