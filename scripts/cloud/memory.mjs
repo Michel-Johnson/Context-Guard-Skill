@@ -25,6 +25,7 @@ function validateOptions({ dataDir, adminToken }) {
 
 const initialMemoryState = () => ({ revision: 0, main: null, preferences: null, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} });
 const MAIN_HISTORY_LIMIT = 5;
+const RETENTION_MIGRATION_MAX_BYTES = 512 * 1024 * 1024;
 const memoryHubs = new WeakMap();
 const headCaches = new WeakMap();
 
@@ -151,6 +152,22 @@ function appendHistory(state, { scope, action, snapshot, previousVersion = null,
   return entry;
 }
 
+function compactReceiptResult(result) {
+  if (!result?.history?.id) return result;
+  const compact = { ...result, history: { ...result.history } };
+  delete compact.snapshot;
+  delete compact.history.snapshot;
+  return compact;
+}
+
+function receiptResult(state, receipt) {
+  const result = receipt.result;
+  if (!result?.history?.id || result.historyExpired || result.snapshot) return result;
+  const history = (state.history || []).find(entry => entry.id === result.history.id);
+  if (!history?.snapshot) throw new MapError('HISTORY_NOT_FOUND', 'Receipt history is unavailable', 409);
+  return { ...result, snapshot: structuredClone(history.snapshot), history: structuredClone(history) };
+}
+
 export function compactMainHistorySnapshots(state) {
   const retained = new Set((state.history || []).filter(entry => entry.scope === 'main').slice(-MAIN_HISTORY_LIMIT).map(entry => entry.version));
   let changed = false;
@@ -161,10 +178,12 @@ export function compactMainHistorySnapshots(state) {
   }
   for (const receipt of Object.values(state.receipts || {})) {
     const result = receipt?.result;
-    if (result?.history?.scope !== 'main' || retained.has(result.history.version)) continue;
+    if (!result?.history) continue;
+    const expiredMain = result.history.scope === 'main' && !retained.has(result.history.version);
+    if (!result.history.id && !expiredMain) continue;
     if (Object.hasOwn(result, 'snapshot')) { delete result.snapshot; changed = true; }
     if (Object.hasOwn(result.history, 'snapshot')) { delete result.history.snapshot; changed = true; }
-    if (!result.historyExpired) { result.historyExpired = true; changed = true; }
+    if (expiredMain && !result.historyExpired) { result.historyExpired = true; changed = true; }
   }
   return changed;
 }
@@ -174,7 +193,7 @@ export async function enforceMainHistoryRetention(configuration) {
   for (const projectId of Object.keys(configuration.projects || {})) {
     await withFileLock(projectMemoryLockFile(configuration.dataDir, projectId), async () => {
       const file = projectMemoryFile(configuration.dataDir, projectId);
-      const state = await readJSON(file, null);
+      const state = await readJSON(file, null, { maxReadFileBytes: RETENTION_MIGRATION_MAX_BYTES });
       if (state && compactMainHistorySnapshots(state)) await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     });
   }
@@ -267,7 +286,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     const key = hash(`publish:${input.operationId}`), fingerprint = hash(encode(input));
     if (state.receipts[key]) {
       if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-      return { result: state.receipts[key].result, event: null };
+      return { result: receiptResult(state, state.receipts[key]), event: null };
     }
     if (!validSessionId(input.sessionId) || typeof input.sessionVersion !== 'string' || !/^[a-f0-9]{40,64}$/.test(input.expectedMainSha || '')) throw new MapError('INVALID_PUBLICATION', 'Valid Session version and expected main commit are required', 400);
     if (!project.root || !project.ref) throw new MapError('MAIN_BINDING_REQUIRED', 'Configure the server repository mirror and authoritative ref', 409);
@@ -301,7 +320,7 @@ export async function publishSessionMemory(configuration, projectId, input, acto
     state.revision++;
     const history = appendHistory(state, { scope: 'main', action: 'publish', snapshot, previousVersion, actor, at: publishedAt });
     const result = { committed: true, projectId, snapshot, revision: state.revision, history, closedSession: state.closedSessions[input.sessionId] };
-    state.receipts[key] = { fingerprint, result };
+    state.receipts[key] = { fingerprint, result: compactReceiptResult(result) };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.published', operationId: input.operationId, baseVersion: previousVersion, version: snapshot.version, actor, at: publishedAt });
     await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
     return { result, event };
@@ -320,7 +339,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     const fingerprint = hash(encode({ baseVersion: input.baseVersion ?? null, operations: input.operations, actor }));
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-      return { result: state.receipts[receiptKey].result, event: null };
+      return { result: receiptResult(state, state.receipts[receiptKey]), event: null };
     }
     const current = state.main;
     if (!current) throw new MapError('MAIN_UNAVAILABLE', 'Published Main memory is not available', 409);
@@ -340,7 +359,7 @@ export async function commitMainMemoryMap(configuration, projectId, input, actor
     state.revision++;
     appendHistory(state, { scope: 'main', action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, operationId: input.operationId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
-    state.receipts[receiptKey] = { fingerprint, result };
+    state.receipts[receiptKey] = { fingerprint, result: compactReceiptResult(result) };
     const event = appendMemoryEvent(state, { projectId, scope: 'main', type: 'main.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations: input.operations, actor, at: updatedAt });
     result.cursor = event.cursor;
     await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
@@ -364,7 +383,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     if (state.receipts[receiptKey]) {
       if (state.receipts[receiptKey].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
       if (policy && actor.kind !== 'human' && (state.receipts[receiptKey].requiredGrants || []).some(id => !grants.includes(id))) throw new MapError('FORBIDDEN', 'A node grant was revoked', 403);
-      return { result: state.receipts[receiptKey].result, event: null };
+      return { result: receiptResult(state, state.receipts[receiptKey]), event: null };
     }
     if (!current && state.closedSessions[sessionId]) throw new MapError('SESSION_REOPEN_REQUIRED', 'Publish closed this Session generation; reopen it from the latest main snapshot before editing', 409);
     if (!current) throw new MapError('NOT_FOUND', 'Session memory is not available', 404);
@@ -383,7 +402,7 @@ export async function commitSessionMap(configuration, projectId, sessionId, inpu
     state.revision++;
     appendHistory(state, { scope: `session:${sessionId}`, action: 'workbench.commit', snapshot, previousVersion: current.version, actor, at: updatedAt });
     const result = { committed: true, projectId, sessionId, version: snapshot.version, revision: state.revision, nodeIds: applied.resultIds, persistedAt: updatedAt };
-    state.receipts[receiptKey] = { fingerprint, result, ...(policy ? { requiredGrants: operationGrants(current.memory.map, operations, grants) } : {}) };
+    state.receipts[receiptKey] = { fingerprint, result: compactReceiptResult(result), ...(policy ? { requiredGrants: operationGrants(current.memory.map, operations, grants) } : {}) };
     const event = appendMemoryEvent(state, { projectId, scope: `session:${sessionId}`, type: 'session.map.committed', operationId: input.operationId, baseVersion: current.version, version: snapshot.version, operations, actor, at: updatedAt });
     result.cursor = event.cursor;
     await writeProjectMemory(memoryReadViews, configuration.dataDir, projectId, state);
@@ -520,7 +539,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         if (scope === 'restore' && ['main', 'preferences'].includes(input.scope) && !admin) throw new MapError('FORBIDDEN', 'Main and preference restoration require publisher/admin authorization', 403);
         if (state.receipts[key]) {
           if (state.receipts[key].fingerprint !== fingerprint) throw new MapError('ID_REUSED', 'Operation ID reused for different content', 409);
-          return { result: state.receipts[key].result, event: null };
+          return { result: receiptResult(state, state.receipts[key]), event: null };
         }
         let snapshot;
         let historyScope = scope;
@@ -590,7 +609,7 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         const requestActor = { kind: admin ? 'admin' : 'agent', ...(rawSession ? { sessionId } : {}) };
         const history = appendHistory(state, { scope: historyScope, action: historyAction, snapshot, previousVersion, actor: requestActor, at: snapshot.updatedAt || snapshot.publishedAt || new Date().toISOString() });
         const result = { committed: true, projectId, snapshot, revision: state.revision, history };
-        state.receipts[key] = { fingerprint, result };
+        state.receipts[key] = { fingerprint, result: compactReceiptResult(result) };
         const event = historyScope.startsWith('session:') ? appendMemoryEvent(state, {
           projectId,
           scope: historyScope,
