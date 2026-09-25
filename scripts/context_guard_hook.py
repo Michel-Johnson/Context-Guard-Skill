@@ -797,7 +797,46 @@ def tool_paths(payload: object, root: Path) -> list[str]:
     command = tool_command(payload)
     for match in re.finditer(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE):
         add(match.group(1).strip())
+    for target in shell_output_targets(command):
+        add(target)
     return sorted(found)
+
+
+def shell_output_targets(command: str) -> list[str]:
+    """Find literal shell write targets without treating heredoc content as commands."""
+    first_line = command.split("\n", 1)[0]
+    if not first_line:
+        return []
+    try:
+        lexer = shlex.shlex(first_line, posix=os.name != "nt", punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return []
+    targets: list[str] = []
+    for index, token in enumerate(tokens[:-1]):
+        if token in {">", ">>", ">|", "&>"}:
+            target = tokens[index + 1]
+            if target not in {"/dev/null", "&1", "&2"} and not target.isdigit():
+                targets.append(target)
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token not in {";", "&&", "||", "|"}:
+            segment.append(token)
+            continue
+        words = segment
+        segment = []
+        if not words:
+            continue
+        command_name = Path(words[0]).name
+        args = words[1:]
+        if command_name == "git" and args and args[0] in {"mv", "rm"}:
+            command_name, args = args[0], args[1:]
+        if command_name in {"mv", "cp", "rm", "touch", "mkdir"}:
+            targets.extend(value for value in args if value != "--" and
+                           not value.startswith("-") and value not in {">", ">>", ">|", "&>", "<", "<<"})
+    return targets
 
 
 def tool_target_strings(payload: object) -> list[str]:
@@ -826,6 +865,8 @@ def tool_target_strings(payload: object) -> list[str]:
     command = tool_command(payload)
     for match in re.finditer(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", command, re.MULTILINE):
         add(match.group(1).strip())
+    for target in shell_output_targets(command):
+        add(target)
     return found
 
 

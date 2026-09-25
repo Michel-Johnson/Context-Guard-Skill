@@ -1233,6 +1233,11 @@ test('completion receipts require evidence, scope review, all files and fresh co
   assert.deepEqual(script.json, {});
   const outside = hook('PreToolUse', project, session, { tool_name: 'apply_patch', tool_input: '*** Add File: outside.txt\n+x' });
   assert.equal(outside.json.hookSpecificOutput.permissionDecision, 'deny');
+  for (const command of ['cat > outside.txt <<EOF\nx\nEOF', 'mv src/dirty.txt outside.txt',
+    'cp src/dirty.txt outside.txt', 'touch outside.txt', 'mkdir outside-dir']) {
+    const shellOutside = hook('PreToolUse', project, session, { tool_name: 'Bash', tool_input: { command } });
+    assert.equal(shellOutside.json.hookSpecificOutput.permissionDecision, 'deny', command);
+  }
   await fs.writeFile(path.join(project, 'src/dirty.txt'), 'modified again');
   hook('PostToolUse', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' }, tool_response: { exit_code: 1 } });
   hook('PostToolUseFailure', project, session, { tool_name: 'exec_command', tool_input: { cmd: 'python3 fix.py' }, error: 'failed' });
@@ -1376,6 +1381,9 @@ with tempfile.TemporaryDirectory() as directory:
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'curl --data x http://127.0.0.1/'}})
     assert hook.mutating_tool({'tool_name':'exec_command','tool_input':{'cmd':'rm context-guard plan-start'}})
     assert hook.tool_paths({'tool_name':'apply_patch','tool_input':'*** Update File: src/a\\n*** Move to: src/b'}, root) == ['src/a', 'src/b']
+    assert hook.tool_paths({'tool_name':'Bash','tool_input':{'command':'cat > scripts/generate-search-index.mjs <<EOF\\nx\\nEOF'}}, root) == ['scripts/generate-search-index.mjs']
+    assert hook.tool_paths({'tool_name':'Bash','tool_input':{'command':'mv src/a scripts/generate-search-index.mjs'}}, root) == ['scripts/generate-search-index.mjs', 'src/a']
+    assert 'scripts/generate-search-index.mjs' in hook.tool_target_strings({'tool_name':'Bash','tool_input':{'command':'cp src/a scripts/generate-search-index.mjs'}})
 print('verified')
 `]);
   assert.match(result.stdout, /verified/);
