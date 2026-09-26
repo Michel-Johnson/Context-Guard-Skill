@@ -745,6 +745,45 @@ test('active reviewed task cannot publish stale Session memory before acceptance
   assert.equal(taskSessionPublicationReady([{ stage: 'accepted', sourceSha: sha }], sha), true);
 });
 
+test('Interface 1.2 experiment closure pins the human-designated run and evidence without GitHub or Main publication', async () => {
+  const sourceSha = 'a'.repeat(40);
+  const task = { id: 'experiment', stage: 'accepted', session: { id: 'executor', generation: 2 }, sourceSha,
+    ci: { ref: 'ci:experiment', version: 'ci-v1', verdict: 'passed' },
+    acceptanceReview: { ref: 'human-receipt', version: 'human-v1', decision: 'approved' } };
+  const designation = { taskId: task.id, sessionId: task.session.id, generation: 2, sourceSha };
+  const project = { completion: { experiments: [designation] } };
+  const memory = { main: { version: 'unchanged' }, sessions: { executor: { sourceCommit: sourceSha } } };
+  const before = structuredClone(memory);
+  const receipts = { gitReceiptRef: 'experiment-only', archiveReceiptRef: task.ci.ref };
+  const options = { project, memory, task, receipts, fetch: () => { throw new Error('Experiments must not call GitHub'); } };
+  const proof = await verifyTaskCompletion(options);
+  assert.deepEqual(proof, { experimentOnly: true, taskId: task.id, sessionId: 'executor', generation: 2, sourceSha,
+    ciRef: 'ci:experiment', ciVersion: 'ci-v1', acceptanceRef: 'human-receipt', acceptanceVersion: 'human-v1' });
+  assert.deepEqual(memory, before, 'completion cannot publish or discard Session evidence');
+  for (const changed of [{ taskId: 'other' }, { sessionId: 'other' }, { generation: 1 }, { generation: undefined }, { sourceSha: 'b'.repeat(40) }]) {
+    assert.equal(await verifyTaskCompletion({ ...options, project: { completion: { experiments: [{ ...designation, ...changed }] } } }), false);
+  }
+  assert.equal(await verifyTaskCompletion({ ...options, project: {} }), false, 'model-provided marker is not human designation');
+  assert.equal(await verifyTaskCompletion({ ...options, receipts: { ...receipts, archiveReceiptRef: 'old-ci' } }), false);
+  for (const changed of [{ stage: 'awaiting-merge' }, { ci: { ...task.ci, verdict: 'failed' } },
+    { ci: { ...task.ci, version: '' } }, { acceptanceReview: { ...task.acceptanceReview, decision: 'rejected' } },
+    { acceptanceReview: { decision: 'approved' } }]) {
+    assert.equal(await verifyTaskCompletion({ ...options, task: { ...task, ...changed } }), false);
+  }
+  const closing = { ...task, stage: 'closing', control: { id: 'close-1' }, completion: { proof, closeReceiptId: 'close-1' } };
+  const report = { controlId: 'close-1', closeReceiptId: 'close-1' };
+  assert.equal(verifyTaskClose(null, closing, report), true);
+  assert.equal(verifyTaskClose(null, closing, { ...report, controlId: 'old' }), false);
+  assert.equal(verifyTaskClose(null, closing, { ...report, closeReceiptId: 'fake' }), false);
+  for (const changed of [{ id: 'other' }, { sourceSha: 'b'.repeat(40) }, { session: { ...task.session, generation: 3 } },
+    { ci: { ...task.ci, version: 'ci-v2' } }, { acceptanceReview: { ...task.acceptanceReview, version: 'human-v2' } }]) {
+    assert.equal(verifyTaskClose(null, { ...closing, ...changed }, report), false);
+  }
+  assert.equal(taskSessionPublicationReady([task], sourceSha, project), false);
+  assert.equal(taskSessionPublicationReady([{ ...closing, stage: 'closed' }], sourceSha), false,
+    'persisted experiment proof still prevents automatic publication after configuration changes');
+});
+
 test('Explicit temporary billing waiver accepts only GitHub jobs that never started', async () => {
   const sourceSha = 'a'.repeat(40), mergeSha = 'b'.repeat(40);
   const project = { repository: 'example/lab', ref: 'refs/heads/main', completion: {
@@ -1710,7 +1749,7 @@ test('Coordinator inbox automatically resumes an interrupted notification withou
   assert.equal(resumed, 1); assert.equal(submitted, 1); assert.equal(acknowledged, 1);
 });
 
-test('Coordinator acceptance event guides archive and PR before completion', async () => {
+test('Coordinator acceptance event reads completion policy before archive and formal PR or experimental closure', async () => {
   const session = { id: 'session-1', generation: 1 }, acceptance = { v: 2, id: 'acceptance-1', type: 'review.result', session,
     payload: { kind: 'acceptance', ref: 'ci-1', version: 'v1', decision: 'approved', reason: 'Verified' } };
   const submitted = [], acknowledged = [];
@@ -1725,7 +1764,10 @@ test('Coordinator acceptance event guides archive and PR before completion', asy
   await inbox.pump(); await inbox.close();
   assert.equal(submitted.length, 1);
   assert.match(submitted[0].instruction, /guide_task/);
-  assert.match(submitted[0].instruction, /归档、结束计划并创建 PR/);
+  assert.match(submitted[0].instruction, /completionPolicy/);
+  assert.match(submitted[0].instruction, /归档、结束计划/);
+  assert.match(submitted[0].instruction, /experiment-only.*不创建 PR、不发布 Main/);
+  assert.match(submitted[0].instruction, /正式任务创建 PR/);
   assert.match(submitted[0].instruction, /发布后.*complete_task/);
   assert.deepEqual(acknowledged, [1]);
 });

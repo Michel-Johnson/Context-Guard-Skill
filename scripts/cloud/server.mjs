@@ -19,7 +19,7 @@ import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { buildCoordinatorContext } from './coordinator-context.mjs';
-import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady } from './completion.mjs';
+import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady, isExperimentTask } from './completion.mjs';
 import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
 import { createQuarkProvider } from './quark-provider.mjs';
 
@@ -738,6 +738,10 @@ export async function startCloudServer({
             ]);
             const { status, reason, sessionVersion, sourceCommit, mainSha, publishedAt } = publication;
             return { ...task, deliveryState: delivery.state,
+              completionPolicy: isExperimentTask(configuredMemory.projects[project.id], task) || task.completion?.proof?.experimentOnly
+                ? { mode: 'experiment-only', gitReceiptRef: 'experiment-only', archiveReceiptRef: task.ci?.ref,
+                  instruction: '仅实验关闭：保留准确提交、独立 CI 和人审证据；通知原 Executor 归档、结束计划，不创建 PR、不发布 Main。调用 complete_task 后等待宿主 closed 回执。' }
+                : { mode: 'merged' },
               publication: { status, ...(reason ? { reason } : {}), sessionVersion, sourceCommit, mainSha, publishedAt },
               ...(delivery.queue ? { queue: delivery.queue } : {}) };
           },
@@ -1253,7 +1257,7 @@ export async function startCloudServer({
     const binding = await store.registeredBinding(principal, sessionId);
     if (!binding) return true;
     const tasks = await store.workflowTasks(principal, { id: sessionId, generation: binding.generation });
-    return taskSessionPublicationReady(tasks, sourceCommit);
+    return taskSessionPublicationReady(tasks, sourceCommit, configuredMemory.projects[project.id]);
   };
   const publicationState = async (project, viewId, options = {}) => {
     if (!project || !configuredMemory?.projects?.[project.id]) return { status: 'unavailable', reason: 'MEMORY_NOT_CONFIGURED' };

@@ -59,6 +59,11 @@ optional `remote` to fetch on publication, and public repository identifier.
 Use a TLS reverse proxy or SSH loopback tunnel; the client rejects non-loopback
 plain HTTP, URL credentials, redirects, and credentials in query parameters.
 
+| Completion configuration | Contract |
+| --- | --- |
+| `completion.experiments` | Optional server-admin list of human-designated experimental runs: `{taskId, sessionId, generation, sourceSha}`. All four must match; omitted or mismatched entries retain the normal merge gate. |
+| Experimental closure | Coordinator reads `read_task.completionPolicy`, then submits `gitReceiptRef: "experiment-only"` and the current CI ref as `archiveReceiptRef`. The server retains versioned CI/human review evidence and requires the matching host close report. No GitHub merge or Main publication; existing Session history remains. |
+
 The service user must be able to read the protected configuration and repository
 mirror and read/write `dataDir`. If the checkout is intentionally read-only (for
 example under systemd `ProtectSystem=strict`), omit `remote`: deployment updates

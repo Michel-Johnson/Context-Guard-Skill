@@ -7,7 +7,7 @@ import { ProtocolStore, hasCiReceiver } from '../scripts/shared/protocol-store.m
 import { hash } from '../scripts/shared/io.mjs';
 import { canonical } from '../scripts/shared/protocol.mjs';
 import { scopedObjectKey } from '../scripts/shared/protocol-workflow.mjs';
-import { verifyTaskClose } from '../scripts/cloud/completion.mjs';
+import { verifyTaskClose, verifyTaskCompletion } from '../scripts/cloud/completion.mjs';
 import { reduceWorkflow } from '../scripts/shared/protocol-workflow.mjs';
 
 test('Coordinator guidance is idempotent, bound to the same Plan and does not advance the task', async t => {
@@ -154,7 +154,7 @@ test('four approved Session tasks finish in durable FIFO order across success, f
   assert.equal((await messages()).some(task => task.busy), false);
 });
 
-test('IF-027: acceptance releases execution while verified closure remains independent and cannot release another task', async t => {
+for (const completionMode of ['merged', 'experiment']) test(`IF-027: ${completionMode} closure requires acceptance and host receipt without releasing another task`, async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-workflow-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let store = new ProtocolStore(directory), counter = 0;
@@ -221,18 +221,35 @@ test('IF-027: acceptance releases execution while verified closure remains indep
   assert.equal((await store.taskStatus(human, session, 'task-3')).state, 'queued');
   await assert.rejects(send(executor, 'task.report', { taskId: 'task', stage: 'progress', data: { seq: 2, summary: 'Late execution cannot resume' } }), { code: 'CONFLICT' });
   const task = Object.values((await store.transaction(state => state)).tasks)[0];
-  const complete = { taskId: 'task', action: 'complete', expectedVersion: task.version, data: { archiveReceiptRef: 'archive', gitReceiptRef: 'merge' } };
+  const complete = { taskId: 'task', action: 'complete', expectedVersion: task.version, data: completionMode === 'experiment'
+    ? { archiveReceiptRef: task.ci.ref, gitReceiptRef: 'experiment-only' }
+    : { archiveReceiptRef: 'archive', gitReceiptRef: 'merge' } };
   await assert.rejects(send(coordinator, 'task.control', complete), { code: 'FORBIDDEN' });
-  await send(coordinator, 'task.control', complete, { workflow: { verifyCompletion: (_p, current, receipts) => receipts.gitReceiptRef === 'merge' && receipts.archiveReceiptRef === 'archive' && { sourceSha: current.sourceSha, mergeSha: 'b'.repeat(40) } } });
+  const workflow = { verifyCompletion: (_p, current, receipts) => completionMode === 'experiment'
+    ? verifyTaskCompletion({ project: { completion: { experiments: [{ taskId: current.id, sessionId: session.id,
+      generation: session.generation, sourceSha }] } }, task: current, receipts,
+      fetch: () => { throw new Error('No GitHub call for experiments'); } })
+    : receipts.gitReceiptRef === 'merge' && receipts.archiveReceiptRef === 'archive' && { sourceSha: current.sourceSha, mergeSha: 'b'.repeat(40) } };
+  await send(coordinator, 'task.control', complete, { workflow });
   const controlId = `request-${counter}`;
+  const controlRequest = { v: 2, id: controlId, type: 'task.control', session, payload: complete };
+  const originalReceipt = await store.handle(coordinator, controlRequest, { workflow });
   store = new ProtocolStore(directory);
+  assert.deepEqual(await store.handle(coordinator, controlRequest, { workflow }), originalReceipt);
   const savedTask = await store.taskRecord(coordinator, session, 'task');
+  assert.equal(savedTask.stage, 'closing', 'receiving a control is not host completion');
   assert.equal(savedTask.completion.closeReceiptId, controlId);
   assert.equal(savedTask.completion.proof.sourceSha, savedTask.sourceSha);
+  if (completionMode === 'experiment') {
+    assert.equal(savedTask.completion.proof.experimentOnly, true);
+    assert.equal(savedTask.completion.proof.ciVersion, savedTask.ci.version);
+    assert.equal(savedTask.completion.proof.acceptanceRef, savedTask.acceptanceReview.ref);
+  }
   const closed = { taskId: 'task', stage: 'closed', data: { controlId, closeReceiptId: controlId } };
   await assert.rejects(send(executor, 'task.report', closed), { code: 'FORBIDDEN' });
   await assert.rejects(send(executor, 'task.report', { ...closed, data: { controlId, closeReceiptId: 'fabricated' } }, { workflow: { verifyClose: verifyTaskClose } }), { code: 'FORBIDDEN' });
   const closure = await send(executor, 'task.report', closed, { workflow: { verifyClose: verifyTaskClose } });
+  assert.equal((await store.taskRecord(coordinator, session, 'task')).stage, 'closed');
   assert.equal(closure.activatedTaskId, undefined);
   assert.equal((await store.taskStatus(human, session, 'task-3')).state, 'queued');
   assert.equal((await store.taskStatus(human, session, 'task-2')).state, 'cloud_queued');

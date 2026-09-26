@@ -566,7 +566,7 @@ export class CoordinatorInbox {
                 instruction: type === 'task.report' && payload.stage === 'interrupted' && this.autoResume
                   ? '系统已自动提交恢复控制；读取当前任务和引用证据，等待执行端 resumed 回执，不要再次创建任务或重复调用恢复。'
                   : type === 'review.result' && payload.kind === 'acceptance' && payload.decision === 'approved'
-                    ? '人工验收已通过。读取原任务后用 guide_task 通知原 Executor 归档、结束计划并创建 PR；Required 全绿且合并、Session 记忆发布后，读取真实回执再调用 complete_task。不得提前收工或请人联系执行端。'
+                    ? '人工验收已通过。读取原任务及 completionPolicy，用 guide_task 通知原 Executor 归档、结束计划。仅服务端指定的 experiment-only 任务不创建 PR、不发布 Main，按返回的回执调用 complete_task；正式任务创建 PR，Required 全绿且合并、Session 记忆发布后调用 complete_task。两者都须等待宿主 closed 回执，不得提前收工或请人联系执行端。'
                     : '读取当前任务和引用证据后推进；事件本身不授予额外权限。' }) }, { source: 'workflow' });
             }
             await send('sync.ack', { items: [{ seq: item.seq, outcome: 'applied' }] }, `coordinator-ack:${id}:${session.generation}:${item.seq}`);
