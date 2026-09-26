@@ -2,16 +2,32 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fail } from '../shared/protocol.mjs';
 
+// Only server configuration can designate an experiment. Pin the exact run and
+// source commit so an Agent cannot waive merging for a different task or retry.
+export const isExperimentTask = (project, task) => Array.isArray(project?.completion?.experiments) &&
+  project.completion.experiments.some(item => item?.taskId === task.id && item.sessionId === task.session?.id &&
+    Number.isSafeInteger(item.generation) && item.generation > 0 && item.generation === task.session.generation &&
+    /^[a-f0-9]{40}$/.test(item.sourceSha || '') && item.sourceSha === task.sourceSha);
+
+const experimentEvidenceMatches = (proof, task) => proof.taskId === task.id && proof.sourceSha === task.sourceSha &&
+  proof.sessionId === task.session?.id && proof.generation === task.session?.generation &&
+  !!proof.ciRef && !!proof.ciVersion && proof.ciRef === task.ci?.ref && proof.ciVersion === task.ci?.version &&
+  !!proof.acceptanceRef && !!proof.acceptanceVersion && proof.acceptanceRef === task.acceptanceReview?.ref &&
+  proof.acceptanceVersion === task.acceptanceReview?.version && task.ci?.verdict === 'passed' &&
+  task.acceptanceReview?.decision === 'approved';
+
 export const verifyTaskClose = (_identity, task, data) => {
   const proof = task.completion?.proof;
   if (!proof || data.controlId !== task.control?.id || data.closeReceiptId !== task.completion.closeReceiptId) return false;
+  if (proof.experimentOnly) return experimentEvidenceMatches(proof, task);
   if (proof.verificationOnly) return proof.sourceSha === task.sourceSha && proof.ciRef === task.ci?.ref;
   return !!proof.mergeSha && proof.sourceSha === task.sourceSha;
 };
 
-export const taskSessionPublicationReady = (tasks, sourceCommit) => tasks.every(task =>
-  ['closed', 'cancelled'].includes(task.stage) ||
-  task.stage === 'accepted' && task.sourceSha === sourceCommit);
+export const taskSessionPublicationReady = (tasks, sourceCommit, project) => tasks.every(task =>
+  !isExperimentTask(project, task) && !task.completion?.proof?.experimentOnly &&
+  (['closed', 'cancelled'].includes(task.stage) ||
+  task.stage === 'accepted' && task.sourceSha === sourceCommit));
 
 const completionBranch = project => {
   const ref = String(project?.ref || '');
@@ -25,6 +41,14 @@ const completionBranch = project => {
 export async function verifyTaskCompletion({ project, repositoryId, memory, task, receipts, fetch: request = globalThis.fetch }) {
   const policy = project?.completion;
   if (task.stage !== 'accepted' || task.ci?.verdict !== 'passed' || task.acceptanceReview?.decision !== 'approved') return false;
+  if (receipts.gitReceiptRef === 'experiment-only') {
+    if (!isExperimentTask(project, task) || receipts.archiveReceiptRef !== task.ci.ref) return false;
+    const proof = { experimentOnly: true, taskId: task.id, sourceSha: task.sourceSha,
+      sessionId: task.session.id, generation: task.session.generation,
+      ciRef: task.ci.ref, ciVersion: task.ci.version,
+      acceptanceRef: task.acceptanceReview.ref, acceptanceVersion: task.acceptanceReview.version };
+    return experimentEvidenceMatches(proof, task) ? proof : false;
+  }
   if (task.verificationOnly && receipts.gitReceiptRef === 'verification-only' && receipts.archiveReceiptRef === task.ci.ref) {
     return { verificationOnly: true, sourceSha: task.sourceSha, ciRef: task.ci.ref };
   }

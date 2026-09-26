@@ -215,7 +215,7 @@ export async function reduceWorkflow(state, principal, message, emit, policy = {
     if (p.action === 'complete') {
       at('accepted', 'cancelled');
       const verified = await policy.verifyCompletion?.(principal, task, p.data);
-      if (!verified) fail('FORBIDDEN', 'Merge and archive receipts are not verified');
+      if (!verified) fail('FORBIDDEN', 'Completion policy and receipts are not verified');
       task.completion = { proof: structuredClone(verified), closeReceiptId: message.id };
       task.stage = 'closing';
     } else if (p.action === 'resume') { at('interrupted', 'cancelled'); task.stage = 'resuming'; }

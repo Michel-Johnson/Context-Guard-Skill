@@ -76,7 +76,7 @@ CLI 负责写和状态变化。
 | task | 事项与 Session | | 每轮执行创建一个新 Session；同轮重试与返工沿用原 Session，不靠独立 Task 实体区分轮次 |
 | task | `closeTask` | Coordinator | Coordinator 判断是否请求完成；请求本身不代表事项已关闭 |
 | task | 取消事项 | Coordinator | 可以取消 TODO/Bug 的执行流程 |
-| task | `task.control` complete | Coordinator | 服务端核验合并与归档回执后进入 `closing`；收到引用原控制 ID 的关闭回报才进入 `closed` |
+| task | `task.control` complete | Coordinator | 正式任务核验合并与归档回执；人明确指定的实验任务核验同一提交的独立测试与人审回执，保留证据，不要求合并或发布 Main。核验后进入 `closing`，收到引用原控制 ID 的关闭回报才进入 `closed` |
 | task | `task.report` | Executor 或 device | 回报进度；`resumed`、`closed` 引用原控制 ID，传输确认不算执行完成 |
 | task | `task.message` | Coordinator | 向原事项绑定的执行 Session 发指导；带稳定消息 ID 与 Session 代次，不改变阶段或 Plan；忙碌时保留并幂等重试 |
 | task | 失败退回 | | 测试或验收失败时，同一事项回到原执行 Session，不新建事项或 Session |
