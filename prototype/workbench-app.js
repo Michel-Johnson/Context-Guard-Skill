@@ -838,7 +838,6 @@ function attachHtml(kind, key, owner, readonly, showAdd=true){
     return `<span class="file-chip" title="${p}">${img}<button type="button" class="file-name quiet" data-open-file="${p}" data-file-name="${escAttr(f.name || fileBase(f.path))}">${name}</button>${rm}</span>`;
   }).join("");
   if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
-  if(!showAdd) return files.length ? `<div class="files">${chips}</div>` : "";
   const activeJob=pendingWrite?.target && pendingWrite.target.nodeId===selectedId && pendingWrite.target.kind===kind && (kind==="node" || (kind==="bug" ? owner.id===pendingWrite.target.ownerId : owner._attachmentId===pendingWrite.target.ownerId));
   if(!files.length && !isAttaching(kind, key) && !activeJob) return "";
   const add = activeJob
@@ -849,7 +848,7 @@ function attachHtml(kind, key, owner, readonly, showAdd=true){
          <button type="button" class="quiet" data-act="save-file" data-fk="${fk}" data-fi="${fi}">${t("add")}</button>
          <button type="button" class="quiet" data-act="cancel-file">${t("cancel")}</button>
        </span>`
-    : `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>`;
+    : showAdd ? `<button type="button" class="clip-btn quiet" data-act="ask-file" data-fk="${fk}" data-fi="${fi}" title="${escAttr(t("attachTitle"))}">${t("attach")}</button>` : "";
   return `<div class="files" data-drop-files data-fk="${fk}" data-fi="${fi}">${chips}${add}</div>`;
 }
 function bindFileUi(el, node){
@@ -3552,9 +3551,10 @@ function renderDetail(){
       ? `<span class="state-chip ${workSt}">${states[workSt]}</span>`
       : "";
   const nodeFiles = fileList(node);
+  const nodeFilesDetail = attachHtml("node", node.id, node, false, false);
   const filesHtml = `<section class="sec-block" data-fold="files" data-drop-files data-fk="node" data-fi="${escAttr(node.id)}">
       <button type="button" class="sec-add" data-act="ask-file" data-fk="node" data-fi="${escAttr(node.id)}" title="${escAttr(t("attachTitle"))}">${t("attachments")}${nodeFiles.length?" "+nodeFiles.length:""} ＋</button>
-      ${nodeFiles.length?`<div class="files-row">${attachHtml("node", node.id, node, false, false)}</div>`:""}
+      ${nodeFilesDetail?`<div class="files-row">${nodeFilesDetail}</div>`:""}
     </section>`;
   const trashBtn = canDelete && !composing && deleteAskId!==node.id
     ? `<button type="button" class="trash" data-act="delete" title="${t("delete")}" aria-label="${t("delete")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="lid"><rect x="9" y="3.2" width="6" height="1.7" rx=".7" fill="currentColor" stroke="none"/><path d="M4.5 7.1h15"/></g><g class="can"><path d="M7 7.1v12.3a1.7 1.7 0 0 0 1.7 1.7h6.6a1.7 1.7 0 0 0 1.7-1.7V7.1"/></g><g class="rib"><path d="M10 11.2v6"/><path d="M14 11.2v6"/></g></svg></button>`

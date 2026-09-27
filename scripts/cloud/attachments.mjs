@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { atomicWrite, readJSON, withFileLock, hash, encode } from '../shared/io.mjs';
 import { MapError, entries } from '../shared/map-model.mjs';
@@ -7,14 +8,11 @@ import { quarkShare } from './quark-provider.mjs';
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
 const fail = (code, message, status = 400) => { throw new MapError(code, message, status); };
 export function attachmentInput(input) {
-  if (!input || Object.keys(input).some(key => !['uploadId', 'target', 'name', 'base64'].includes(key)) || !validId(input.uploadId)) fail('INVALID_ATTACHMENT', 'Invalid attachment request');
+  if (!input || Object.keys(input).some(key => !['uploadId', 'target', 'name'].includes(key)) || !validId(input.uploadId)) fail('INVALID_ATTACHMENT', 'Invalid attachment request');
   const t = input.target;
   if (!t || Object.keys(t).some(key => !['nodeId', 'kind', 'ownerId'].includes(key)) || !validId(t.nodeId) || !validId(t.ownerId) || !['node', 'bug', 'mem', 'idea', 'dorm'].includes(t.kind)) fail('INVALID_ATTACHMENT', 'Select a stable attachment owner');
   if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 160 || /[\x00-\x1f<>:"/\\|?*]/.test(input.name) || /[. ]$/.test(input.name) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(input.name)) fail('INVALID_ATTACHMENT', 'Invalid file name');
-  if (typeof input.base64 !== 'string' || input.base64.length > 11184812) fail('INVALID_ATTACHMENT', 'Invalid or oversized file');
-  const bytes = Buffer.from(input.base64, 'base64');
-  if (!bytes.length || bytes.length > 8 * 1024 * 1024 || bytes.toString('base64') !== input.base64) fail('INVALID_ATTACHMENT', 'File must contain 1 byte to 8 MiB');
-  return { uploadId: input.uploadId, target: { ...t }, name: input.name, bytes };
+  return { uploadId: input.uploadId, target: { ...t }, name: input.name };
 }
 
 export function attachmentPatch(document, job, file, { create = false } = {}) {
@@ -33,9 +31,10 @@ export function attachmentPatch(document, job, file, { create = false } = {}) {
 }
 
 export class CloudAttachments {
-  constructor({ directory, provider, publish, maxStagedBytes = 512 * 1024 * 1024 }) {
-    this.directory = directory; this.provider = provider; this.publish = publish; this.maxStagedBytes = maxStagedBytes;
+  constructor({ directory, provider, publish, maxFileBytes = 256 * 1024 * 1024, maxStagedBytes = 512 * 1024 * 1024 }) {
+    this.directory = directory; this.provider = provider; this.publish = publish; this.maxFileBytes = maxFileBytes; this.maxStagedBytes = maxStagedBytes;
     this.pending = new Set(); this.closed = false; this.running = null;
+    this.receiving = 0;
   }
   file(id) { if (!/^[a-f0-9]{64}$/.test(id)) fail('INVALID_ATTACHMENT', 'Invalid attachment ID'); return path.join(this.directory, `${id}.json`); }
   stageFile(job) { return path.join(this.directory, 'staged', job.id, job.name); }
@@ -60,6 +59,9 @@ export class CloudAttachments {
     return job;
   }
   async start() {
+    const incomingDir = path.join(this.directory, 'incoming');
+    const incoming = await fs.readdir(incomingDir).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+    for (const name of incoming.filter(name => /^[a-f0-9-]{36}\.part$/.test(name))) await fs.unlink(path.join(incomingDir, name));
     for (const job of await this.all()) {
       if (job.status === 'uploading') {
         job.status = 'error'; job.uncertain = true; job.error = '上传结果不确定，需管理员核对夸克文件；暂存文件已保留'; await this.save(job);
@@ -68,26 +70,64 @@ export class CloudAttachments {
     }
     this.kick();
   }
-  async stage(projectId, viewId, input, generation = null) {
+  async receive(readable) {
+    if (this.receiving >= 4) fail('UPLOAD_BUSY', '正在接收其他附件，请稍后重试', 503);
+    this.receiving++;
+    const incoming = path.join(this.directory, 'incoming', `${randomUUID()}.part`);
+    let size = 0;
+    let handle;
+    const digest = createHash('sha256');
+    try {
+      await fs.mkdir(path.dirname(incoming), { recursive: true });
+      handle = await fs.open(incoming, 'wx', 0o600);
+      // Keep HTTP sockets writable so rejected bodies receive a structured error.
+      for await (const chunk of readable.iterator({ destroyOnReturn: false })) {
+        size += chunk.length;
+        if (size > this.maxFileBytes) fail('ATTACHMENT_TOO_LARGE', '附件超过服务器单文件大小限制', 413);
+        digest.update(chunk);
+        await handle.writeFile(chunk);
+      }
+      if (!size) fail('INVALID_ATTACHMENT', 'Attachment must not be empty');
+      await handle.sync(); await handle.close(); handle = null;
+      return { incoming, size, contentHash: digest.digest('hex') };
+    } catch (error) {
+      await handle?.close(); handle = null;
+      await fs.unlink(incoming).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError; });
+      throw error;
+    } finally {
+      this.receiving--;
+    }
+  }
+  async stage(projectId, viewId, input, readable, generation = null) {
     if (this.closed) fail('STOPPING', 'Server is stopping', 503);
     const value = attachmentInput(input), id = hash(JSON.stringify([projectId, viewId, generation, value.uploadId]));
-    const fingerprint = hash(JSON.stringify([value.target, value.name, hash(value.bytes)]));
-    const job = await withFileLock(path.join(this.directory, 'stage.lock'), async () => {
-      const previous = await readJSON(this.file(id), null);
-      if (previous) { if (previous.fingerprint !== fingerprint) fail('ID_REUSED', 'Upload ID belongs to another file or owner', 409); return previous; }
-      const jobs = await this.all();
-      if (jobs.length >= 10000 || jobs.filter(item => item.status !== 'ready').reduce((sum, item) => sum + item.size, 0) + value.bytes.length > this.maxStagedBytes) fail('STAGING_FULL', 'Attachment staging quota exceeded; resolve pending jobs', 507);
-      const next = { id, fingerprint, projectId, viewId, generation, target: value.target, name: value.name, size: value.bytes.length, status: 'staged', createdAt: new Date().toISOString() };
-      await atomicWrite(this.stageFile(next), value.bytes); await this.save(next); return next;
-    });
-    await withFileLock(`${this.file(job.id)}.lock`, async () => {
-      const current = await readJSON(this.file(job.id));
-      if (current.status === 'staged') {
-        await this.publish(current, this.card(current), { create: true });
-        current.status = 'queued'; await this.save(current);
-      }
-    });
-    this.pending.add(job.id); this.kick(); return this.public(await this.get(projectId, viewId, job.id));
+    const received = await this.receive(readable);
+    try {
+      const fingerprint = hash(JSON.stringify([value.target, value.name, received.contentHash]));
+      const job = await withFileLock(path.join(this.directory, 'stage.lock'), async () => {
+        const previous = await readJSON(this.file(id), null);
+        if (previous) { if (previous.fingerprint !== fingerprint) fail('ID_REUSED', 'Upload ID belongs to another file or owner', 409); return previous; }
+        const jobs = await this.all();
+        if (jobs.length >= 10000 || jobs.filter(item => item.status !== 'ready').reduce((sum, item) => sum + item.size, 0) + received.size > this.maxStagedBytes) fail('STAGING_FULL', 'Attachment staging quota exceeded; resolve pending jobs', 507);
+        const next = { id, fingerprint, projectId, viewId, generation, target: value.target, name: value.name, size: received.size, status: 'staged', createdAt: new Date().toISOString() };
+        const destination = this.stageFile(next);
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        await fs.rename(received.incoming, destination);
+        try { await this.save(next); }
+        catch (error) { await fs.unlink(destination); throw error; }
+        return next;
+      });
+      await withFileLock(`${this.file(job.id)}.lock`, async () => {
+        const current = await readJSON(this.file(job.id));
+        if (current.status === 'staged') {
+          await this.publish(current, this.card(current), { create: true });
+          current.status = 'queued'; await this.save(current);
+        }
+      });
+      this.pending.add(job.id); this.kick(); return this.public(await this.get(projectId, viewId, job.id));
+    } finally {
+      await fs.unlink(received.incoming).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    }
   }
   async retry(projectId, viewId, id) {
     if (this.closed) fail('STOPPING', 'Server is stopping', 503);

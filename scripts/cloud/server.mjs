@@ -1696,11 +1696,19 @@ export async function startCloudServer({
           if (!attachments) throw new MapError('QUARK_NOT_CONFIGURED', '服务器尚未配置夸克网盘，请管理员完成授权', 503);
           if (req.headers.origin && req.headers.origin !== (allowedOrigin || `http://${req.headers.host}`)) throw new MapError('ORIGIN_REJECTED', 'Cross-origin attachment request rejected', 403);
           if (action === '/api/attachments' && req.method === 'POST') {
-            const input = await requestBody(req), parsed = attachmentInput(input);
+            if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/octet-stream') throw new MapError('CONTENT_TYPE', 'Send the raw attachment as application/octet-stream', 415);
+            if (Number(req.headers['content-length']) > attachments.maxFileBytes) throw new MapError('ATTACHMENT_TOO_LARGE', '附件最大为 256 MiB', 413);
+            const header = key => typeof req.headers[key] === 'string' ? req.headers[key] : '';
+            let name;
+            try { name = decodeURIComponent(header('x-context-guard-file-name')); } catch { throw new MapError('INVALID_ATTACHMENT', 'Invalid encoded file name', 400); }
+            const input = { uploadId: header('x-context-guard-upload-id'), name, target: {
+              nodeId: header('x-context-guard-node-id'), kind: header('x-context-guard-owner-kind'), ownerId: header('x-context-guard-owner-id'),
+            } };
+            const parsed = attachmentInput(input);
             const state = await scopedWorkbenchState(scope, project, viewId);
             attachmentPatch(state.doc, { id: 'validate', target: parsed.target }, {}, { create: true });
             const generation = viewId === 'main' ? null : (await readMemoryProject(configuredMemory, project.id)).sessions[viewId.slice(8)]?.generation || 1;
-            return send(res, 202, await attachments.stage(project.id, viewId, input, generation));
+            return send(res, 202, await attachments.stage(project.id, viewId, input, req, generation));
           }
           const match = action.match(/^\/api\/attachments\/([a-f0-9]{64})(\/retry)?$/);
           if (match && !match[2] && req.method === 'GET') return send(res, 200, attachments.public(await attachments.get(project.id, viewId, match[1])));
@@ -2117,10 +2125,14 @@ export async function startCloudServer({
       }
       throw new MapError('NOT_FOUND', 'Unknown route', 404);
     } catch (error) {
-      if (!res.headersSent) send(res, error.status || 500, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message, ...(error.details || {}) } }); else res.end();
+      if (!res.headersSent) send(res, error.status || 500, { error: { code: error.code || 'INTERNAL_ERROR', message: error.message, ...(error.details || {}) } }, req.complete ? {} : { Connection: 'close' }); else res.end();
     }
   };
   const server = http.createServer((req, res) => {
+    if (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) {
+      req.setTimeout(15_000, () => req.destroy());
+      req.once('end', () => req.setTimeout(0));
+    }
     if (stopping) return send(res, 503, { error: { code: 'SERVER_CLOSING', message: 'Server is shutting down' } });
     const pending = handleRequest(req, res);
     activeRequests.add(pending);
@@ -2130,7 +2142,8 @@ export async function startCloudServer({
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
   });
-  server.requestTimeout = 15_000;
+  server.requestTimeout = 10 * 60_000;
+  server.headersTimeout = 15_000;
   const heartbeat = setInterval(() => {
     for (const client of workbenchClients) if (!client.res.destroyed) client.res.write(': heartbeat\n\n');
     for (const set of projectClients.values()) for (const res of set) if (!res.destroyed) res.write(': heartbeat\n\n');
@@ -2154,8 +2167,8 @@ export async function startCloudServer({
     for (const project of registry.projects) kickTaskScheduler(project);
   }, 5000); taskScheduler.unref();
   const initialPublication = setTimeout(publishMergedSessions, 0); initialPublication.unref();
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   await attachments?.start();
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   for (const project of registry.projects) {
     if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) {
       void recoverInterruptedTasks(project).catch(cause => console.error(`[context-guard] interrupted-task recovery deferred: ${cause.message}`));
