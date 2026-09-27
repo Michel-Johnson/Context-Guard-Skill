@@ -529,6 +529,8 @@ let pendingWrite = null;
 let attachmentModule = null;
 window.addEventListener("beforeunload", e=>{ if(pendingWrite){ e.preventDefault(); e.returnValue=""; } });
 function attachmentApi(){ if(!attachmentModule) throw new Error("附件模块尚未就绪"); return attachmentModule; }
+function canUploadAttachment(){ return attachmentModule?.canUploadAttachment(workbenchSync?.config) !== false; }
+const attachmentRetries = new Map();
 const filePreviewUrl = Object.create(null);
 const SHOT_DIR = "docs/shots";
 const FS_DB = "cg-workbench-fs";
@@ -686,6 +688,7 @@ function hydrateThumbs(root){
 }
 async function saveBlobToOwner(node, kind, key, blob, fileName){
   if(!blob) return false;
+  if(!canUploadAttachment()) return false;
   const name = fileName || blob.name || "paste.bin";
   if(workbenchSync?.ready && workbenchSync.config){
     clearAttach();
@@ -728,7 +731,12 @@ async function resumeAttachment(job){
       job.saved=await api.uploadAttachment(workbenchSync.config,job);
     }
     if(job.saved.serverManaged){
-      if(valid()){ pendingWrite=null; attaching=null; attachDraft=""; renderAll(); }
+      if(valid()){
+        pendingWrite=null; attaching=null; attachDraft=""; renderAll();
+        const sync=workbenchSync, root=sync.config.root;
+        const state=await sync.call('/api/state',undefined,'GET',job.viewId);
+        if(workbenchSync===sync && sync.config.root===root && sync.viewId===job.viewId) await sync.receive(state);
+      }
       return true;
     }
     const owner=valid();
@@ -819,15 +827,17 @@ async function pickLocalFile(){
   });
 }
 function attachHtml(kind, key, owner, readonly, showAdd=true){
+  const uploadEnabled=canUploadAttachment();
   const files = fileList(owner);
   const fk = escAttr(kind), fi = escAttr(String(key));
   const chips = files.map((f,i)=>{
     const p = escAttr(f.path);
     const name = esc(f.name || fileBase(f.path));
     if(f.provider==="quark"){
+      const retry=attachmentRetries.get(f.attachmentId);
       const ready=f.status==="ready" && /^https:\/\/pan\.quark\.cn\/s\/[a-zA-Z0-9]+$/.test(f.path);
       const label=ready?`<a class="file-name quiet" href="${p}" target="_blank" rel="noopener noreferrer">${name}</a><span>提取码：${esc(f.passcode||"")}</span>`
-        : `<span class="file-name">${name}</span><span role="status">${esc(f.error || "转存中")}</span>${!readonly&&f.retryable?`<button type="button" data-quark-retry="${escAttr(f.attachmentId)}">重试</button>`:""}`;
+        : `<span class="file-name">${name}</span><span class="file-status" role="status">${esc(retry?.running?"正在重试":retry?.error || f.error || "转存中")}</span>${!readonly&&uploadEnabled&&f.retryable?`<button type="button" class="file-retry" data-quark-retry="${escAttr(f.attachmentId)}" ${retry?.running?"disabled":""}>重试</button>`:""}`;
       const remove=readonly?"":`<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
       return `<span class="file-chip">${label}${remove}</span>`;
     }
@@ -837,7 +847,7 @@ function attachHtml(kind, key, owner, readonly, showAdd=true){
     const rm = readonly ? "" : `<button type="button" class="file-x" data-act="rm-file" data-fk="${fk}" data-fi="${fi}" data-i="${i}" title="${escAttr(t("remove"))}">×</button>`;
     return `<span class="file-chip" title="${p}">${img}<button type="button" class="file-name quiet" data-open-file="${p}" data-file-name="${escAttr(f.name || fileBase(f.path))}">${name}</button>${rm}</span>`;
   }).join("");
-  if(readonly) return files.length ? `<div class="files">${chips}</div>` : "";
+  if(readonly || !uploadEnabled) return files.length ? `<div class="files">${chips}</div>` : "";
   const activeJob=pendingWrite?.target && pendingWrite.target.nodeId===selectedId && pendingWrite.target.kind===kind && (kind==="node" || (kind==="bug" ? owner.id===pendingWrite.target.ownerId : owner._attachmentId===pendingWrite.target.ownerId));
   if(!files.length && !isAttaching(kind, key) && !activeJob) return "";
   const add = activeJob
@@ -854,10 +864,18 @@ function attachHtml(kind, key, owner, readonly, showAdd=true){
 function bindFileUi(el, node){
   el.querySelectorAll('[data-quark-retry]').forEach(button=>{
     button.onclick=async()=>{
-      button.disabled=true;
-      try { await workbenchSync.call(`/api/attachments/${encodeURIComponent(button.dataset.quarkRetry)}/retry`,{}); }
-      catch(error){ workbenchSync.setStatus(workbenchSync.status,error.message); }
-      finally { button.disabled=false; }
+      const id=button.dataset.quarkRetry, sync=workbenchSync, viewId=sync.viewId, root=sync.config.root;
+      if(attachmentRetries.get(id)?.running) return;
+      attachmentRetries.set(id,{running:true}); renderAll();
+      try {
+        await sync.call(`/api/attachments/${encodeURIComponent(id)}/retry`,{},'POST',viewId);
+        if(workbenchSync!==sync || sync.config.root!==root || sync.viewId!==viewId) { attachmentRetries.delete(id); return; }
+        const state=await sync.call('/api/state',undefined,'GET',viewId);
+        if(workbenchSync===sync && sync.config.root===root && sync.viewId===viewId) await sync.receive(state);
+        attachmentRetries.delete(id);
+      }
+      catch(error){ attachmentRetries.set(id,{error:error.message}); }
+      finally { if(workbenchSync===sync && sync.config.root===root && sync.viewId===viewId) renderAll(); }
     };
   });
   el.querySelectorAll('[data-open-file]').forEach(b=>{
@@ -875,6 +893,7 @@ function bindFileUi(el, node){
   };
   el.querySelectorAll('[data-act="ask-file"]').forEach(b=>{
     b.onclick = async ()=>{
+      if(!canUploadAttachment()) return;
       if(workbenchSync?.ready && workbenchSync.config){
         const f=await pickLocalFile();
         if(f) await saveBlobToOwner(node,b.dataset.fk,b.dataset.fi,f,f.name);
@@ -3553,7 +3572,7 @@ function renderDetail(){
   const nodeFiles = fileList(node);
   const nodeFilesDetail = attachHtml("node", node.id, node, false, false);
   const filesHtml = `<section class="sec-block" data-fold="files" data-drop-files data-fk="node" data-fi="${escAttr(node.id)}">
-      <button type="button" class="sec-add" data-act="ask-file" data-fk="node" data-fi="${escAttr(node.id)}" title="${escAttr(t("attachTitle"))}">${t("attachments")}${nodeFiles.length?" "+nodeFiles.length:""} ＋</button>
+      ${canUploadAttachment()?`<button type="button" class="sec-add" data-act="ask-file" data-fk="node" data-fi="${escAttr(node.id)}" title="${escAttr(t("attachTitle"))}">${t("attachments")}${nodeFiles.length?" "+nodeFiles.length:""} ＋</button>`:nodeFiles.length?`<span>${t("attachments")} ${nodeFiles.length}</span>`:""}
       ${nodeFilesDetail?`<div class="files-row">${nodeFilesDetail}</div>`:""}
     </section>`;
   const trashBtn = canDelete && !composing && deleteAskId!==node.id
