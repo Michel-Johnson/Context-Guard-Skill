@@ -2129,8 +2129,10 @@ export async function startCloudServer({
     }
   };
   const server = http.createServer((req, res) => {
-    req.setTimeout(15_000, () => req.destroy());
-    req.once('end', () => req.setTimeout(0));
+    if (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) {
+      req.setTimeout(15_000, () => req.destroy());
+      req.once('end', () => req.setTimeout(0));
+    }
     if (stopping) return send(res, 503, { error: { code: 'SERVER_CLOSING', message: 'Server is shutting down' } });
     const pending = handleRequest(req, res);
     activeRequests.add(pending);
