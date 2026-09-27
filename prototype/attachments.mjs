@@ -1,4 +1,8 @@
 // Attachment jobs are bound to a project and stable owner, never to an array index.
+export function canUploadAttachment(config) {
+  return config?.root !== 'cloud:overview' && config?.interfaceCapabilities?.attachments !== false;
+}
+
 export function attachmentTarget(node, kind, key, root) {
   const owner = kind === 'node' ? node : kind === 'bug' ? node.bugs?.find(b => b.id === key) : node[{ mem: 'memories', idea: 'ideas', dorm: 'dormant' }[kind]]?.[Number(key)];
   if (!owner) throw new Error('附件目标已不存在');
@@ -23,6 +27,7 @@ export function attachmentOwner(tree, target) {
 }
 
 export async function uploadAttachment(config, job) {
+  if (!canUploadAttachment(config)) throw new Error('当前页面不支持上传附件，请进入已配置云盘的项目');
   const cloud = String(config.root || '').startsWith('cloud:');
   if (!job.blob.size) throw new Error('附件不能为空');
   if (job.cancelled) throw new DOMException('Cancelled', 'AbortError');

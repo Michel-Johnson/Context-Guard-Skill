@@ -37,6 +37,8 @@ let browser;
 let context;
 let page;
 let passed = false;
+let failAttachmentShare = true;
+let attachmentUploads = 0;
 const checks = [];
 const record = name => { checks.push(name); console.log(`Cloud browser check passed: ${name}`); };
 const synchronized = () => page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
@@ -81,8 +83,11 @@ try {
     privateAccess: true,
     memoryConfig,
     attachmentProvider: {
-      upload: async file => { assert.ok((await fs.stat(file)).size > 9 * 1024 * 1024); return 'browser-fixture-file'; },
-      share: async () => ({ url: 'https://pan.quark.cn/s/browserfixture', passcode: 'Ab12' }),
+      upload: async file => { attachmentUploads++; assert.ok((await fs.stat(file)).size > 9 * 1024 * 1024); return 'browser-fixture-file'; },
+      share: async () => {
+        if (failAttachmentShare) { failAttachmentShare = false; throw new Error('Synthetic share failure'); }
+        return { url: 'https://pan.quark.cn/s/browserfixture', passcode: 'Ab12' };
+      },
     },
   });
   const baselineSession = await request(`${service.url}/v1/projects/context-guard/sessions/baseline-session`, {
@@ -1337,6 +1342,9 @@ try {
   });
   assert.equal(attachmentSeed.response.status, 200, JSON.stringify(attachmentSeed.body));
   const attachmentPage = await context.newPage();
+  await attachmentPage.goto(service.url);
+  await attachmentPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+  assert.equal(await attachmentPage.locator('[data-act="ask-file"]').count(), 0, 'overview must not offer an unusable upload action');
   await attachmentPage.goto(`${service.url}/projects/context-guard?session=attachment-session`);
   await attachmentPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced'
     && document.querySelector('.node[data-id="T0"]')?.textContent?.includes('Session map'));
@@ -1355,14 +1363,24 @@ try {
     mimeType: 'application/pdf',
     buffer: Buffer.concat([Buffer.from('%PDF-1.4\nSynthetic browser fixture\n'), Buffer.alloc(9 * 1024 * 1024, 32), Buffer.from('\n%%EOF')]),
   });
+  const retry = attachmentPage.locator('[data-quark-retry]');
+  await retry.waitFor();
+  await attachmentPage.setViewportSize({ width: 390, height: 844 });
+  const retryStyle = await retry.evaluate(el => ({ wrap: getComputedStyle(el).whiteSpace, width: el.getBoundingClientRect().width }));
+  assert.equal(retryStyle.wrap, 'nowrap');
+  assert.ok(retryStyle.width >= 52);
+  await attachmentPage.screenshot({ path: path.join(output, 'quark-retry-mobile.png'), fullPage: true });
+  await retry.click();
   const quarkLink = attachmentPage.getByRole('link', { name: 'browser-fixture.pdf', exact: true });
   await quarkLink.waitFor();
   assert.equal(await quarkLink.getAttribute('href'), 'https://pan.quark.cn/s/browserfixture');
+  assert.equal(attachmentUploads, 1, 'GUI retry must reuse the uploaded remote file');
   assert.match(await attachmentPage.locator('.file-chip').first().textContent(), /Ab12/);
   assert.equal(await attachmentPage.getByRole('button', { name: '附件 1 ＋', exact: true }).count(), 1);
   await attachmentPage.reload();
   await attachmentPage.locator('.node[data-id="T0"]').click();
   await quarkLink.waitFor();
+  await attachmentPage.setViewportSize({ width: 1280, height: 900 });
   await attachmentPage.screenshot({ path: path.join(output, 'quark-desktop.png'), fullPage: true });
   await attachmentPage.setViewportSize({ width: 390, height: 844 });
   await attachmentPage.screenshot({ path: path.join(output, 'quark-mobile.png'), fullPage: true });

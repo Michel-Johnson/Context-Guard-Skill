@@ -87,11 +87,15 @@ test('share failure keeps bytes and FID; retry does not upload again', async t =
   const staged = await stage(f.service);
   const error = await waitFor(async () => { const j = await f.service.get('project', 'main', staged.id); return j.status === 'error' && j; });
   assert.equal(error.fid, 'remote-file'); assert.equal(error.uncertain, false);
+  assert.equal(error.lastFailure.phase, 'share');
+  assert.equal(error.lastFailure.code, 'ATTACHMENT_FAILED');
+  assert.equal(JSON.stringify(error).includes('private provider error'), false);
   assert.deepEqual(await fs.readFile(f.service.stageFile(error)), bytes);
   assert.equal(JSON.stringify(f.service.public(error)).includes('private provider error'), false);
   fail = false; await f.service.retry('project', 'main', staged.id);
   await waitFor(async () => (await f.service.get('project', 'main', staged.id)).status === 'ready');
   assert.equal(f.uploads(), 1);
+  assert.equal((await f.service.get('project', 'main', staged.id)).lastFailure.phase, 'share', 'success must retain sanitized failure evidence');
 });
 
 test('native CLI remote path and file identity survive restart without duplicate upload', async t => {
@@ -195,11 +199,17 @@ test('Map write failure retains bytes and confirmed link; restart resumes withou
 
 test('Cloud HTTP upload uses authenticated project/view, persists card and rejects cross-origin requests', async t => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-quark-http-'));
-  let loseCreation = false, uploads = 0;
+  let loseCreation = false, uploads = 0, busy = 2, guarded = false;
   const service = await startCloudServer({ port: 0, dataDir, adminToken: 'test-admin',
     memoryConfig: { dataDir: path.join(dataDir, 'memory'), adminToken: 'test-memory', projects: { 'context-guard': { token: 'test-project' } } },
     attachmentProvider: { upload: async () => { uploads++; return 'http-file'; }, share: async () => share },
-    faultInjector: async (point, job) => { if (point === 'attachment-map-committed' && job.status === 'staged' && loseCreation) { loseCreation = false; throw new Error('Lost creation result'); } },
+    faultInjector: async (point, job) => {
+      if (point === 'attachment-map-commit' && job.status === 'queued' && (busy > 0 || guarded)) {
+        if (!guarded) busy--;
+        throw Object.assign(new Error(guarded ? 'Interrupted lock recovery needs explicit repair; preserve the recovery guard' : 'Shared state is busy; preserve lock and retry'), { code: 'STATE_BUSY' });
+      }
+      if (point === 'attachment-map-committed' && job.status === 'staged' && loseCreation) { loseCreation = false; throw new Error('Lost creation result'); }
+    },
   });
   t.after(async () => { await service.close(); await fs.rm(dataDir, { recursive: true, force: true }); });
   const seed = await fetch(`${service.url}/v1/projects/context-guard/sessions/example`, { method: 'POST', headers: { Authorization: 'Bearer test-project', 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -209,6 +219,9 @@ test('Cloud HTTP upload uses authenticated project/view, persists card and rejec
   assert.equal(seed.status, 200, await seed.text());
   const base = `${service.url}/api/workbench/projects/context-guard/api/attachments`, view = '?view=session%3Aexample';
   const auth = { Authorization: 'Bearer test-admin' };
+  const bootstrap = scope => fetch(`${service.url}/api/workbench/${scope}/bootstrap`, { headers: auth }).then(r => r.json());
+  assert.equal((await bootstrap('overview')).interfaceCapabilities.attachments, false);
+  assert.equal((await bootstrap('projects/context-guard')).interfaceCapabilities.attachments, true);
   const uploadOptions = (uploadId = 'one', extraHeaders = {}) => ({ method: 'POST', headers: { ...auth,
     'Content-Type': 'application/octet-stream', 'X-Context-Guard-Upload-Id': uploadId, 'X-Context-Guard-Node-Id': 'T0',
     'X-Context-Guard-Owner-Kind': 'node', 'X-Context-Guard-Owner-Id': 'T0',
@@ -223,6 +236,8 @@ test('Cloud HTTP upload uses authenticated project/view, persists card and rejec
   const state = await fetch(`${service.url}/api/workbench/projects/context-guard/api/state${view}`, { headers: auth }).then(r => r.json());
   assert.equal(state.doc.root.files[0].path, share.url);
   assert.equal(state.doc.root.files[0].status, 'ready');
+  assert.equal(busy, 0, 'transient Map contention is retried before any upload');
+  assert.equal(uploads, 1);
   assert.equal((await fetch(`${base}/${receipt.id}?view=main`, { headers: auth })).status, 404);
   loseCreation = true;
   const lostRequest = uploadOptions('lost-creation');
@@ -239,4 +254,12 @@ test('Cloud HTTP upload uses authenticated project/view, persists card and rejec
   const afterRemoval = await fetch(`${service.url}/api/workbench/projects/context-guard/api/state${view}`, { headers: auth }).then(r => r.json());
   assert.equal(afterRemoval.doc.root.files.length, 1, 'lost creation receipt must not resurrect a removed attachment');
   assert.equal(uploads, 1, 'removed attachment must not reach Quark');
+  guarded = true;
+  const guardedReceipt = await fetch(base + view, uploadOptions('guarded')).then(r => r.json());
+  await waitFor(async () => (await fetch(`${base}/${guardedReceipt.id}${view}`, { headers: auth }).then(r => r.json())).status === 'error');
+  const failed = await readJSON(path.join(dataDir, 'attachments', `${guardedReceipt.id}.json`));
+  assert.equal(failed.lastFailure.phase, 'owner-check');
+  assert.equal(failed.lastFailure.code, 'STATE_BUSY');
+  assert.equal(failed.uncertain, false);
+  assert.equal(uploads, 1, 'lock recovery guards never allow disclosure');
 });

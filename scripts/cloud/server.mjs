@@ -1149,24 +1149,27 @@ export async function startCloudServer({
       if (!project || !configuredMemory?.projects?.[project.id]) throw new MapError('NOT_FOUND', 'Attachment project is unavailable', 404);
       const scope = `project:${project.id}`;
       for (let attempt = 0; attempt < 4; attempt++) {
-        const state = await scopedWorkbenchState(scope, project, job.viewId);
-        if (job.viewId !== 'main') {
-          const snapshot = (await readMemoryProject(configuredMemory, project.id)).sessions[job.viewId.slice(8)];
-          if ((snapshot?.generation || 1) !== job.generation) throw new MapError('ATTACHMENT_OWNER_GONE', 'Attachment belongs to an earlier Session generation', 409);
-        }
-        const input = options?.create && job.creationRequest || { operationId: randomUUID(), baseVersion: state.version,
-          operations: attachmentPatch(state.doc, job, file, options) };
-        // Persist the exact request before creating a card. After a lost result,
-        // replay its receipt rather than recreating a subsequently removed card.
-        if (options?.create && !job.creationRequest) { job.creationRequest = input; await attachments.save(job); }
         try {
+          const state = await scopedWorkbenchState(scope, project, job.viewId);
+          if (job.viewId !== 'main') {
+            const snapshot = (await readMemoryProject(configuredMemory, project.id)).sessions[job.viewId.slice(8)];
+            if ((snapshot?.generation || 1) !== job.generation) throw new MapError('ATTACHMENT_OWNER_GONE', 'Attachment belongs to an earlier Session generation', 409);
+          }
+          const input = options?.create && job.creationRequest || { operationId: randomUUID(), baseVersion: state.version,
+            operations: attachmentPatch(state.doc, job, file, options) };
+          // Persist the exact request before creating a card. After a lost result,
+          // replay its receipt rather than recreating a subsequently removed card.
+          if (options?.create && !job.creationRequest) { job.creationRequest = input; await attachments.save(job); }
+          await faultInjector('attachment-map-commit', job);
           if (job.viewId === 'main') await commitMainMemoryMap(configuredMemory, project.id, input);
           else await commitSessionMap(configuredMemory, project.id, job.viewId.slice(8), input);
           await faultInjector('attachment-map-committed', job);
           await broadcastWorkbench(scope, project, job.viewId); return;
         } catch (error) {
-          if (error.code !== 'VERSION_CONFLICT' || attempt === 3) throw error;
-          if (options?.create) { delete job.creationRequest; await attachments.save(job); }
+          const busy = error.code === 'STATE_BUSY' && error.message === 'Shared state is busy; preserve lock and retry';
+          if ((!busy && error.code !== 'VERSION_CONFLICT') || attempt === 3) throw error;
+          if (!busy && options?.create) { delete job.creationRequest; await attachments.save(job); }
+          if (busy) await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
         }
       }
     },
@@ -1690,7 +1693,7 @@ export async function startCloudServer({
         const conversationId = url.searchParams.get('conversation') || 'legacy';
         if (viewId !== 'main' && (!project || !viewId.startsWith('session:'))) throw new MapError('UNKNOWN_VIEW', 'Select Main or a project Session', 404);
         const action = workbench[3];
-        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { taskDispatch: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
+        if (action === '/bootstrap' && req.method === 'GET') { requirePrivateRead(req, url); return send(res, 200, { root: project ? `cloud:${project.id}` : 'cloud:overview', protocol: 3, apiBase: route.slice(0, -'/bootstrap'.length), authenticated: !!cookieValue(req), interfaceCapabilities: { attachments: !!project && !!configuredMemory?.projects?.[project.id] && !!attachments, taskDispatch: !!project && !!interfaceConfig, humanReview: !!project && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[project?.id]?.coordinator?.enabled } }); }
         requireWorkbench(req, url);
         if (action === '/api/attachments' || action.startsWith('/api/attachments/')) {
           if (!project || !configuredMemory?.projects?.[project.id]) throw new MapError('PROJECT_REQUIRED', 'Select a configured project', 409);
@@ -2118,7 +2121,7 @@ export async function startCloudServer({
         if (/^\/projects\//.test(route) && !projectById(decodeURIComponent(route.slice('/projects/'.length)))) throw new MapError('NOT_FOUND', 'Project is missing', 404);
         const projectId = /^\/projects\//.test(route) ? decodeURIComponent(route.slice('/projects/'.length)) : null;
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';
-        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { taskDispatch: !!projectId && !!interfaceConfig, humanReview: !!projectId && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[projectId]?.coordinator?.enabled } }).replace(/</g, '\\u003c');
+        const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { attachments: !!projectId && !!configuredMemory?.projects?.[projectId] && !!attachments, taskDispatch: !!projectId && !!interfaceConfig, humanReview: !!projectId && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[projectId]?.coordinator?.enabled } }).replace(/</g, '\\u003c');
         const marker = `<script>window.__CG_SERVER=${config};</script>`;
         const html = (await fs.readFile(htmlPath, 'utf8')).replace('<!-- CG_SERVER_BOOT -->', marker);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });

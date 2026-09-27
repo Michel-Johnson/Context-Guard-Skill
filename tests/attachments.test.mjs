@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { uploadAttachment } from '../prototype/attachments.mjs';
+import { canUploadAttachment, uploadAttachment } from '../prototype/attachments.mjs';
+
+test('overview and unconfigured Cloud projects reject uploads before reading or sending files', async t => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('must not upload'));
+  assert.equal(canUploadAttachment({ root: '/local' }), true);
+  assert.equal(canUploadAttachment({ root: 'cloud:project', interfaceCapabilities: { attachments: true } }), true);
+  for (const config of [{ root: 'cloud:overview' }, { root: 'cloud:project', interfaceCapabilities: { attachments: false } }]) {
+    assert.equal(canUploadAttachment(config), false);
+    await assert.rejects(uploadAttachment(config, {}), /当前页面不支持上传附件/);
+  }
+});
 
 test('Cloud browser upload includes stable owner and captured view, uses cookie not undefined bearer', async t => {
   let request;

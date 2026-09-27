@@ -157,6 +157,7 @@ export class CloudAttachments {
   async process(id) {
     const job = await readJSON(this.file(id));
     if (['ready', 'error'].includes(job.status)) return;
+    let phase = 'owner-check';
     try {
       if (job.status === 'staged') {
         await this.publish(job, this.card(job), { create: true });
@@ -165,6 +166,7 @@ export class CloudAttachments {
       // Check the current owner before any external disclosure or retry.
       await this.publish(job, this.card(job));
       if (!job.fid) {
+        phase = 'upload';
         job.status = 'uploading'; await this.save(job);
         const uploaded = await this.provider.upload(this.stageFile(job));
         job.fid = typeof uploaded === 'string' ? uploaded : uploaded.fileId;
@@ -172,20 +174,29 @@ export class CloudAttachments {
         job.status = 'uploaded'; await this.save(job);
       }
       if (!job.share) {
+        phase = 'share';
         const received = await this.provider.share(job.fid, job.remotePath);
         job.share = quarkShare({ share_url: received.url, passcode: received.passcode });
         job.status = 'linked'; await this.save(job);
       }
       // Map persistence is the cleanup boundary, not provider success alone.
+      phase = 'map-link';
       await this.publish(job, { ...this.card(job), status: 'ready' });
+      phase = 'cleanup';
       await fs.unlink(this.stageFile(job)).catch(error => { if (error.code !== 'ENOENT') throw error; });
       job.status = 'ready'; delete job.error; await this.save(job);
     } catch (error) {
+      // Keep actionable evidence without persisting provider messages or credentials.
+      const code = ['STATE_BUSY', 'VERSION_CONFLICT', 'ATTACHMENT_OWNER_GONE', 'ATTACHMENT_REMOVED', 'ENOENT', 'ENOSPC', 'EACCES'].includes(error.code) ? error.code : 'ATTACHMENT_FAILED';
+      job.lastFailure = { phase, code, at: new Date().toISOString() };
+      console.error(`[context-guard] attachment ${id} failed in ${phase}: ${code}`);
       job.uncertain = job.status === 'uploading' && !job.fid;
       job.status = 'error';
       job.error = job.uncertain ? '上传结果不确定，需管理员核对夸克文件；暂存文件已保留'
         : ['ATTACHMENT_OWNER_GONE', 'ATTACHMENT_REMOVED'].includes(error.code) ? '原附件或节点已删除；已停止转存并保留记录'
-          : '转存未完成；暂存文件及已取得的网盘引用已保留，可重试';
+          : ['STATE_BUSY', 'VERSION_CONFLICT'].includes(code) ? '地图正在更新，附件已保留；请稍后重试'
+            : phase === 'owner-check' ? '附件目标核验失败，文件已保留；请重试或联系管理员'
+              : '转存未完成；暂存文件及已取得的网盘引用已保留，可重试';
       await this.save(job); await this.publish(job, this.card(job)).catch(() => {});
     }
   }
