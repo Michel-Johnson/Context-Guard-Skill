@@ -43,6 +43,29 @@ test('CLI timeout is bounded and never returns private stderr', async t => {
   await assert.rejects(provider.upload('fixture.pdf'), error => error.code === 'QUARK_FAILED' && !error.message.includes('PRIVATE_ACCOUNT'));
 });
 
+test('upload has its own bounded timeout without extending metadata operations', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'quark-upload-timeout-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const cliPath = path.join(directory, 'fake.cjs'), source = 'synthetic delayed CLI';
+  await fs.writeFile(cliPath, source);
+  const spawnProcess = (_command, args) => {
+    const action = args[1], child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    const timer = setTimeout(() => {
+      child.stdout.end(JSON.stringify({ code: 0, action, type: 'result', data: { successCount: 1, fids: ['fid'] } }));
+      child.emit('close', 0);
+    }, 200);
+    child.kill = () => { clearTimeout(timer); queueMicrotask(() => child.emit('close', 1)); };
+    return child;
+  };
+  const options = { cliPath, sha256: createHash('sha256').update(source).digest('hex'), timeoutMs: 50, spawnProcess };
+  const provider = await createQuarkProvider({ ...options, uploadTimeoutMs: 1000 });
+  assert.equal(await provider.upload('large.pdf'), 'fid');
+  await assert.rejects(provider.share('fid'), { code: 'QUARK_FAILED' });
+  const bounded = await createQuarkProvider({ ...options, uploadTimeoutMs: 50 });
+  await assert.rejects(bounded.upload('large.pdf'), { code: 'QUARK_FAILED' });
+});
+
 test('kuake uses private cookie, unique remote paths, bounded visibility retries and protected shares', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'kuake-provider-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

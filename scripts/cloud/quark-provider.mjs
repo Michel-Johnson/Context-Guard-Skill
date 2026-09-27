@@ -12,7 +12,7 @@ export function quarkShare(value) {
 }
 
 // CLI/config are provisioned by the server administrator, never by an HTTP caller.
-export async function createQuarkProvider({ cliPath, sha256, timeoutMs = 120000, backend = 'skill', cookieFile, workDir, spawnProcess = spawn, visibilityDelayMs = 2000 } = {}) {
+export async function createQuarkProvider({ cliPath, sha256, timeoutMs = 120000, uploadTimeoutMs = timeoutMs, backend = 'skill', cookieFile, workDir, spawnProcess = spawn, visibilityDelayMs = 2000 } = {}) {
   if (!['skill', 'kuake'].includes(backend)) throw new MapError('QUARK_CONFIG', 'Unsupported Quark backend', 503);
   if (!path.isAbsolute(cliPath || '') || !/^[a-f0-9]{64}$/.test(sha256 || '')) throw new MapError('QUARK_CONFIG', 'Configure an absolute pinned Quark CLI path and SHA-256', 503);
   const actual = createHash('sha256').update(await fs.readFile(cliPath)).digest('hex');
@@ -50,7 +50,7 @@ export async function createQuarkProvider({ cliPath, sha256, timeoutMs = 120000,
     });
     let output = '', size = 0, failed = false;
     const stop = () => { failed = true; child.kill('SIGKILL'); };
-    const timer = setTimeout(stop, timeoutMs);
+    const timer = setTimeout(stop, action === 'upload' ? uploadTimeoutMs : timeoutMs);
     child.stdout.on('data', chunk => { size += chunk.length; if (size > 1024 * 1024) stop(); else output += chunk.toString(); });
     child.stderr.on('data', chunk => { size += chunk.length; if (size > 1024 * 1024) stop(); });
     child.on('error', () => { clearTimeout(timer); reject(new MapError('QUARK_UNAVAILABLE', 'Quark CLI could not start', 503)); });
