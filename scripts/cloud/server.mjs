@@ -1139,6 +1139,7 @@ export async function startCloudServer({
   const quark = attachmentProvider || (process.env.CONTEXT_GUARD_QUARK_CLI ? await createQuarkProvider({
     cliPath: process.env.CONTEXT_GUARD_QUARK_CLI, sha256: process.env.CONTEXT_GUARD_QUARK_SHA256,
     backend: process.env.CONTEXT_GUARD_QUARK_BACKEND || 'skill',
+    uploadTimeoutMs: 30 * 60_000,
     cookieFile: process.env.CONTEXT_GUARD_QUARK_COOKIE_FILE,
     workDir: path.join(dataDir, 'quark-cli'),
   }) : null);
