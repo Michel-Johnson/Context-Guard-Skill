@@ -81,7 +81,7 @@ try {
     privateAccess: true,
     memoryConfig,
     attachmentProvider: {
-      upload: async () => 'browser-fixture-file',
+      upload: async file => { assert.ok((await fs.stat(file)).size > 9 * 1024 * 1024); return 'browser-fixture-file'; },
       share: async () => ({ url: 'https://pan.quark.cn/s/browserfixture', passcode: 'Ab12' }),
     },
   });
@@ -1343,12 +1343,17 @@ try {
   await attachmentPage.locator('.node[data-id="T0"]').click();
   const attachmentButton = attachmentPage.getByRole('button', { name: '附件 ＋', exact: true });
   await attachmentButton.waitFor();
+  const emptyChooser = attachmentPage.waitForEvent('filechooser');
+  await attachmentButton.click();
+  await (await emptyChooser).setFiles({ name: 'empty.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(0) });
+  await attachmentPage.getByRole('status').filter({ hasText: '附件不能为空' }).waitFor();
+  await attachmentPage.locator('[data-fold="files"]').getByRole('button', { name: '取消', exact: true }).click();
   const chooser = attachmentPage.waitForEvent('filechooser');
   await attachmentButton.click();
   await (await chooser).setFiles({
     name: 'browser-fixture.pdf',
     mimeType: 'application/pdf',
-    buffer: Buffer.from('%PDF-1.4\nSynthetic browser fixture\n%%EOF'),
+    buffer: Buffer.concat([Buffer.from('%PDF-1.4\nSynthetic browser fixture\n'), Buffer.alloc(9 * 1024 * 1024, 32), Buffer.from('\n%%EOF')]),
   });
   const quarkLink = attachmentPage.getByRole('link', { name: 'browser-fixture.pdf', exact: true });
   await quarkLink.waitFor();
