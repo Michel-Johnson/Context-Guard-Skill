@@ -34,7 +34,7 @@
 草案不是当前设计版本，禁止当存储、权限或发布协议。要升格必须按 [设计版本管理](../references/design-current.md) 开下一版。
 
 - [工作台设计画廊](design/workbench-gallery/index.html)：浏览器测试仍加载的静态资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
-- [可靠性 Review](reliability-review.md)、[消融 Review](ablation-review.md)、[Hook 验收记录](hook-closure-validation.md)：历史证据，当前限制查 CI_todo。
+- 历史审查和实验记录保留在 Git 历史中；当前限制与待验收事项查 [CI_todo.md](../CI_todo.md)。
 - [检查怎样算通过](ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。
 
 开发私有记忆、真实数据与凭据不进入本目录；项目记忆仍由配置的私有服务器管理。
