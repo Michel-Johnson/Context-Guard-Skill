@@ -18,9 +18,61 @@ import { generateProjections } from '../scripts/workbench/projections.mjs';
 import { applyOperations, assignmentScope, diffTrees, restoreSessionWorkItemOperations, scopeChangesToSession, scopeDocumentToSession, validate, isClosedBugStatus } from '../scripts/shared/map-model.mjs';
 import { atomicWrite, encode, hash, pause, readJSON } from '../scripts/shared/io.mjs';
 import { buildArchiveReconciliation, ownerForPath } from '../scripts/workbench/reconcile.mjs';
-import { WorkbenchSync, workbenchTimeoutMs } from '../prototype/workbench-sync.mjs';
+import { WorkbenchSync, reconcileRecoveryDraft, workbenchTimeoutMs } from '../prototype/workbench-sync.mjs';
 const human = { kind: 'human', sessionId: 'workbench' }, agent = { kind: 'agent', sessionId: 'test-session' };
 const fixtureRoots = [];
+
+test('stale browser drafts are cleared only without pending input or meaningful changes', () => {
+  const base = { id: 'T0', title: 'Map', purpose: 'before', children: [] };
+  const remote = { ...base, purpose: 'updated on Cloud' };
+  const draft = { baseVersion: 'old', baseTree: structuredClone(base), doc: { root: structuredClone(base) } };
+  assert.deepEqual(reconcileRecoveryDraft(draft, remote, 'new'), { kind: 'stale' });
+  assert.deepEqual(reconcileRecoveryDraft({ ...draft, doc: { root: structuredClone(remote) } }, remote, 'new'), { kind: 'stale' });
+  assert.deepEqual(reconcileRecoveryDraft({ ...draft, pendingRequest: { operationId: 'uncertain', operations: [] } }, remote, 'new'), { kind: 'conflict' });
+  assert.deepEqual(reconcileRecoveryDraft({ ...draft, inputDraft: { text: 'unfinished' } }, remote, 'new'), { kind: 'conflict' });
+});
+
+test('stale browser drafts merge disjoint fields and keep overlapping edits for review', () => {
+  const base = { id: 'T0', title: 'Map', purpose: 'before', children: [
+    { id: 'N1', title: 'First', children: [] }, { id: 'N2', title: 'Second', children: [] },
+  ] };
+  const local = structuredClone(base), remote = structuredClone(base);
+  local.title = 'Local title'; local.children[0].title = 'Local first';
+  remote.purpose = 'Remote purpose'; remote.children[1].title = 'Remote second';
+  const draft = { baseVersion: 'old', baseTree: base, doc: { root: local } };
+  const result = reconcileRecoveryDraft(draft, remote, 'new');
+  assert.equal(result.kind, 'merged');
+  assert.equal(result.root.title, 'Local title');
+  assert.equal(result.root.purpose, 'Remote purpose');
+  assert.equal(result.root.children[0].title, 'Local first');
+  assert.equal(result.root.children[1].title, 'Remote second');
+  const overlap = structuredClone(remote); overlap.title = 'Different remote title';
+  assert.deepEqual(reconcileRecoveryDraft(draft, overlap, 'new'), { kind: 'conflict' });
+  assert.equal(local.title, 'Local title', 'the saved draft stays unchanged after a conflict');
+});
+
+test('stale browser drafts do not guess identities for simultaneous list edits', () => {
+  const base = { id: 'T0', title: 'Map', children: [], memories: [{ text: 'one' }] };
+  const local = structuredClone(base), remote = structuredClone(base);
+  local.memories[0].text = 'local'; remote.memories[0].text = 'remote';
+  assert.deepEqual(reconcileRecoveryDraft({ baseVersion: 'old', baseTree: base, doc: { root: local } }, remote, 'new'), { kind: 'conflict' });
+});
+
+test('stale browser draft merge preserves a one-sided reorder and rejects competing reorders', () => {
+  const base = { id: 'T0', title: 'Map', children: [
+    { id: 'N1', title: 'One', children: [] }, { id: 'N2', title: 'Two', children: [] }, { id: 'N3', title: 'Three', children: [] },
+  ] };
+  const local = structuredClone(base), remote = structuredClone(base);
+  local.children = [local.children[1], local.children[0], local.children[2]];
+  remote.children[2].title = 'Cloud three';
+  const draft = { baseVersion: 'old', baseTree: base, doc: { root: local } };
+  const result = reconcileRecoveryDraft(draft, remote, 'new');
+  assert.equal(result.kind, 'merged');
+  assert.deepEqual(result.root.children.map(node => node.id), ['N2', 'N1', 'N3']);
+  assert.equal(result.root.children[2].title, 'Cloud three');
+  remote.children = [remote.children[0], remote.children[2], remote.children[1]];
+  assert.deepEqual(reconcileRecoveryDraft(draft, remote, 'new'), { kind: 'conflict' });
+});
 
 test('Workbench uses a longer read budget without extending write uncertainty', async () => {
   assert.equal(workbenchTimeoutMs('GET'), 30000);
