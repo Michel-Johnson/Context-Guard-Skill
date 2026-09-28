@@ -88,8 +88,6 @@ export const installedFiles = [
   "README.zh-CN.md",
   "agents/openai.yaml",
   "prototype/workbench.html",
-  "references/bug-record-template.md",
-  "references/context-template.md",
   "scripts/context_guard.py",
   "scripts/context_guard_hook.py",
   "scripts/map_owns.py",

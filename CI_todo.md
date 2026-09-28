@@ -42,7 +42,7 @@
 
 - [ ] GATE-01：清单校验与 Node runner 统一发现/排除逻辑，防止嵌套测试仅被登记却未执行。
 - [ ] GATE-02：完善聚焦与跳过测试检查；当前文本检测不等于完整语义校验。两项验收定义见 [检查怎样算通过](docs/ci.md#明确待实现)。本次规范交付不表示工具已实现。
-- [ ] GATE-05：Windows 全量测试已修复并通过（见下方证据）；隔离浏览器 Hook 的 20 秒 bootstrap 超时仍需专项验收，不能用 Node/CD 通过替代浏览器结果。[验证记录](docs/engineering/validation.md) 保留原失败。
+- [ ] GATE-05：Windows 全量测试已修复并通过（见下方证据）；隔离浏览器 Hook 的 20 秒 bootstrap 超时仍需专项验收，不能用 Node/CD 通过替代浏览器结果。[历史验证记录](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/c708dce44794f16edcdf5c53a51d0dcd7e0b2578/docs/engineering/validation.md) 保留原失败。
 
 ## CD 发布门禁与安装运行验收
 
@@ -296,7 +296,7 @@
 - [x] Coordinator 默认回复由服务端出口强制限制为 3 句、120 字；历史消息、流式预览、开放问题、直答与工具调用后回答共用同一契约，显式要求详细时放宽。正式测试覆盖模拟调用全链，另提供使用服务器私有 provider 文件的真实 DeepSeek 直答与工具调用烟测（`tests/cloud-coordinator.test.mjs`）。
 - [x] 明确开发请求不重复索要计划确认；Context Guard 控制命令可经 Node/Python 正式入口和字面量 stdin 安全通道自举；PR 合入 main 后强制从合并版本更新本机 Skill，并通过安装入口执行真实功能验收（`tests/hook-lifecycle.test.mjs`）
 - [x] 将 `prototype/workbench.html` 的样式、演示数据和交互逻辑分层，并同时覆盖本地 CSP、Cloud 静态路由和官网演示构建（`prototype/workbench.css`、`prototype/workbench-fixtures.js`、`prototype/workbench-app.js`）
-- [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（`docs/ablation-review.md`、`tests/workbench-browser.mjs`）
+- [x] 消融删除硬编码的伪用户记忆，并补充旧缓存迁移提示断言（[历史消融记录](https://github.com/Michel-Johnson/Context-Guard-Skill/blob/c708dce44794f16edcdf5c53a51d0dcd7e0b2578/docs/ablation-review.md)、`tests/workbench-browser.mjs`）
 - [x] Session 下拉框按 ID 去重且不展示原始 ID，URL 固定当前会话，发布/关闭项移除、失效项禁用；关系模式默认关闭并在 Session 切换时退出（`tests/workbench-browser.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] Coordinator TODO/Bug 自动路由：删除手动 Session 选择与认领入口，新事项保留 `itemId/nodeId/kind` 和稳定 `taskId`，后台按项目任务为每项创建独立执行 Session；定向协议 84 项通过、两套浏览器回归通过。生产 E2E 待线上部署恢复后复跑；本轮线上 502 记录为 B108。
 - [x] 用统一清单约束自动测试、独立套件与 helper，禁止遗漏和 `.only`，并明确开发/Review/E2E 的责任边界（`tests/test-manifest.json`、`docs/test-governance.md`）
