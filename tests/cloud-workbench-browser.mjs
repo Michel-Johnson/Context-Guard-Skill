@@ -135,6 +135,12 @@ try {
   assert.ok(authCookie?.expires > Date.now() / 1000 + 29 * 24 * 60 * 60);
   await page.reload();
   assert.equal(new URL(page.url()).pathname, '/projects/context-guard');
+  const warmedAssets = await page.evaluate(() => performance.getEntriesByType('resource')
+    .filter(entry => new URL(entry.name).pathname.startsWith('/assets/'))
+    .map(entry => ({ path: new URL(entry.name).pathname, transferSize: entry.transferSize })));
+  assert.ok(warmedAssets.some(entry => entry.path.endsWith('/workbench-app.js')), 'browser loads the versioned entry script');
+  assert.ok(warmedAssets.some(entry => entry.path.endsWith('/workbench.css')), 'browser loads the versioned stylesheet');
+  assert.ok(warmedAssets.every(entry => entry.transferSize === 0), 'repeat visit uses the private browser cache for versioned assets');
   const reopened = await page.context().newPage();
   await reopened.goto(`${service.url}/projects/context-guard`);
   assert.equal(new URL(reopened.url()).pathname, '/projects/context-guard');
