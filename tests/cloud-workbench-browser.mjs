@@ -308,12 +308,87 @@ try {
   record('Concurrent edit shows conflict and preserves the losing browser draft');
 
   await page.reload();
-  await page.waitForFunction(() => ['synced', 'conflict'].includes(document.querySelector('#cg-sync')?.dataset.status), undefined, { timeout: 35000 });
-  assert.equal(await page.locator('#cg-sync').getAttribute('data-status'), 'conflict');
-  assert.match(await page.locator('#cg-sync-status').textContent(), /草稿与服务器版本冲突/);
+  await synchronized();
+  const reconciled = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') });
+  assert.equal(reconciled.body.snapshot.memory.map.root.title, 'Unsaved browser conflict draft');
+  assert.equal(reconciled.body.snapshot.memory.map.root.purpose, 'concurrent server edit');
+  assert.equal(await page.evaluate(() => localStorage.getItem('cg-sync-draft:cloud:context-guard:session:session-one')), null);
+  record('Refresh safely merges disjoint browser draft and Cloud changes');
+
+  const overlapBase = await syncVersion();
+  let overlapInterceptedResolve, overlapReleaseResolve;
+  const overlapIntercepted = new Promise(resolve => { overlapInterceptedResolve = resolve; });
+  const overlapRelease = new Promise(resolve => { overlapReleaseResolve = resolve; });
+  await page.route(commitRoute, async route => {
+    overlapInterceptedResolve();
+    await overlapRelease;
+    await route.continue();
+  });
+  await page.locator('.node[data-id="T0"]').click();
+  await page.locator('#detail [data-ed="title"]').fill('Overlapping local title');
+  await overlapIntercepted;
+  const overlapWinner = await request(`${service.url}/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one`, {
+    method: 'POST', headers: headers('browser-token'),
+    body: JSON.stringify({ baseVersion: overlapBase, operationId: 'browser-overlap-winner', operations: [{ type: 'update', id: 'T0', fields: { title: 'Overlapping remote title' } }] }),
+  });
+  assert.equal(overlapWinner.response.status, 200, JSON.stringify(overlapWinner.body));
+  overlapReleaseResolve();
+  await page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'conflict');
+  await page.unroute(commitRoute);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'conflict');
+  assert.equal((await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') })).body.snapshot.memory.map.root.title, 'Overlapping remote title');
+  assert.match(await page.evaluate(() => localStorage.getItem('cg-sync-draft:cloud:context-guard:session:session-one')), /Overlapping local title/);
+  record('Overlapping browser draft remains preserved without overwriting Cloud');
+
   await page.evaluate(() => localStorage.removeItem('cg-sync-draft:cloud:context-guard:session:session-one'));
   await page.reload();
   await synchronized();
+  const restoreTitleBase = await syncVersion();
+  const restoredTitle = await request(`${service.url}/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one`, {
+    method: 'POST', headers: headers('browser-token'),
+    body: JSON.stringify({ baseVersion: restoreTitleBase, operationId: 'browser-overlap-fixture-restore', operations: [{ type: 'update', id: 'T0', fields: { title: 'Session map edited in browser' } }] }),
+  });
+  assert.equal(restoredTitle.response.status, 200, JSON.stringify(restoredTitle.body));
+  await synchronizedAfter(restoreTitleBase);
+  await page.evaluate(() => {
+    const key = 'cg-sync-draft:cloud:context-guard:session:session-one';
+    localStorage.setItem(key, JSON.stringify({ baseVersion: 'stale-browser-version', baseTree: structuredClone(workbenchSync.baseTree),
+      doc: { ...workbenchSync.doc, root: structuredClone(workbenchSync.baseTree) } }));
+  });
+  await page.reload();
+  await synchronized();
+  assert.equal(await page.evaluate(() => localStorage.getItem('cg-sync-draft:cloud:context-guard:session:session-one')), null);
+  record('Stale browser cache with no unsaved changes is cleared on open');
+
+  const replayBase = await syncVersion();
+  const replayBaseTree = await page.evaluate(() => structuredClone(workbenchSync.baseTree));
+  const replayRequest = { baseVersion: replayBase, operationId: 'browser-lost-ack-replay',
+    operations: [{ type: 'update', id: 'N1', fields: { purpose: 'saved despite lost acknowledgement' } }] };
+  const replayFirst = await request(`${service.url}/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one`, {
+    method: 'POST', headers: headers('browser-token'), body: JSON.stringify(replayRequest),
+  });
+  assert.equal(replayFirst.response.status, 200, JSON.stringify(replayFirst.body));
+  const replayFirstVersion = (await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') })).body.snapshot.version;
+  const replaySecond = await request(`${service.url}/api/workbench/projects/context-guard/api/commit?view=session%3Asession-one`, {
+    method: 'POST', headers: headers('browser-token'),
+    body: JSON.stringify({ baseVersion: replayFirstVersion, operationId: 'browser-lost-ack-followup',
+      operations: [{ type: 'update', id: 'N2', fields: { purpose: 'separate later Cloud update' } }] }),
+  });
+  assert.equal(replaySecond.response.status, 200, JSON.stringify(replaySecond.body));
+  const replayDraftRoot = structuredClone(replayBaseTree);
+  replayDraftRoot.children[0].purpose = 'saved despite lost acknowledgement';
+  await page.evaluate(({ baseVersion, baseTree, root, pendingRequest }) => {
+    localStorage.setItem('cg-sync-draft:cloud:context-guard:session:session-one', JSON.stringify({ baseVersion, baseTree, doc: { root }, pendingRequest }));
+  }, { baseVersion: replayBase, baseTree: replayBaseTree, root: replayDraftRoot, pendingRequest: replayRequest });
+  await page.reload();
+  await synchronized();
+  const replayed = await request(`${service.url}/v1/projects/context-guard/sessions/session-one`, { headers: headers('project-memory-token') });
+  assert.equal(replayed.body.snapshot.memory.map.root.children[0].purpose, 'saved despite lost acknowledgement');
+  assert.equal(replayed.body.snapshot.memory.map.root.children[1].purpose, 'separate later Cloud update');
+  assert.equal(await page.evaluate(() => localStorage.getItem('cg-sync-draft:cloud:context-guard:session:session-one')), null);
+  record('Lost acknowledgement replays its original request before clearing stale browser cache');
+
   await page.locator('#session-chip').click();
   await page.locator('#session-menu [data-session="session-one"]').click();
   await page.waitForFunction(() => document.querySelector('#cg-sync-session')?.value === 'session-one');
