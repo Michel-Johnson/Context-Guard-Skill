@@ -1194,6 +1194,12 @@ try {
     await page.waitForFunction(id=>document.querySelector('#coordinator-panel')?.dataset.conversation===id,kind+'-'+item.id);
   }
   assert.notEqual(itemConversations[0].id,itemConversations[1].id);
+  await page.locator('#btn-coordinator').click();
+  assert.equal(await page.locator('#detail .todo-list li').count()>0,true);
+  assert.equal(await page.locator('#detail .bug-list li').count()>0,true);
+  assert.equal(await page.locator('#detail [data-task-review], #detail .task-review-actions').count(),0,
+    'work item details no longer expose the redundant approve/reject shortcut buttons');
+  await page.locator('#btn-coordinator').click();
   const openItem=async item=>{
     if(await coordinator.getAttribute('open')!==null) await page.locator('#btn-coordinator').click();
     await page.locator(`[data-coordinator-item="${item.itemId}"][data-coordinator-kind="${item.kind}"]`).click();
