@@ -25,6 +25,18 @@ import { createQuarkProvider } from './quark-provider.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
+const workbenchAssetTypes = new Map([
+  ['prototype/workbench.css', 'text/css; charset=utf-8'],
+  ['prototype/workbench-app.js', 'text/javascript; charset=utf-8'],
+  ['prototype/workbench-data.js', 'text/javascript; charset=utf-8'],
+  ['prototype/workbench-sync.mjs', 'text/javascript; charset=utf-8'],
+  ['prototype/attachments.mjs', 'text/javascript; charset=utf-8'],
+  ['prototype/coordinator-markdown.mjs', 'text/javascript; charset=utf-8'],
+  ['prototype/coordinator-working-blot.mjs', 'text/javascript; charset=utf-8'],
+  ['prototype/vendor/marked.mjs', 'text/javascript; charset=utf-8'],
+  ['prototype/working-blot-atlas.png', 'image/png'],
+  ['scripts/shared/map-model.mjs', 'text/javascript; charset=utf-8'],
+]);
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const idPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const now = () => new Date().toISOString();
@@ -374,6 +386,20 @@ export async function startCloudServer({
   attachmentProvider,
   faultInjector = async () => {},
 } = {}) {
+  // Version the entire import graph, not only the entry scripts. A deployment
+  // changes the URL of every asset while private Map/API responses stay fresh.
+  const workbenchAssets = new Map();
+  const assetHash = createHash('sha256');
+  for (const [file, contentType] of workbenchAssetTypes) {
+    const body = await fs.readFile(path.join(root, file));
+    assetHash.update(file).update(body);
+    workbenchAssets.set(file, { body, contentType });
+  }
+  const assetVersion = assetHash.digest('hex').slice(0, 16);
+  const workbenchHtml = (await fs.readFile(htmlPath, 'utf8')).replace(
+    /(href|src)="\.\/(workbench\.css|workbench-(?:app|data)\.js)(?:\?[^\"]*)?"/g,
+    (_match, attribute, file) => `${attribute}="/assets/${assetVersion}/prototype/${file}"`,
+  );
   const registryFile = path.join(dataDir, 'projects.json');
   const mapsDir = path.join(dataDir, 'maps');
   const eventsDir = path.join(dataDir, 'events');
@@ -2095,6 +2121,14 @@ export async function startCloudServer({
           return send(res, 200, result);
         }
       }
+      const assetMatch = req.method === 'GET' && /^\/assets\/([a-f0-9]{16})\/(.+)$/.exec(route);
+      if (assetMatch) {
+        requirePrivateRead(req, url);
+        const asset = assetMatch[1] === assetVersion && workbenchAssets.get(assetMatch[2]);
+        if (!asset) throw new MapError('NOT_FOUND', 'Unknown asset version or path', 404);
+        res.writeHead(200, { 'Content-Type': asset.contentType, 'Cache-Control': 'private, max-age=31536000, immutable', Vary: 'Cookie', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(asset.body);
+      }
       if (req.method === 'GET' && /\/(map-model|workbench-sync|attachments|coordinator-markdown|coordinator-working-blot|marked)\.mjs$/.test(route)) {
         requirePrivateRead(req, url);
         const source = await fs.readFile(path.join(root, path.basename(route) === 'map-model.mjs' ? 'scripts/shared' : path.basename(route) === 'marked.mjs' ? 'prototype/vendor' : 'prototype', path.basename(route)));
@@ -2123,7 +2157,7 @@ export async function startCloudServer({
         const scope = projectId ? `projects/${encodeURIComponent(projectId)}` : 'overview';
         const config = JSON.stringify({ root: `cloud:${projectId || 'overview'}`, protocol: 3, apiBase: `/api/workbench/${scope}`, interfaceCapabilities: { attachments: !!projectId && !!configuredMemory?.projects?.[projectId] && !!attachments, taskDispatch: !!projectId && !!interfaceConfig, humanReview: !!projectId && !!interfaceConfig, coordinator: !!configuredMemory?.projects?.[projectId]?.coordinator?.enabled } }).replace(/</g, '\\u003c');
         const marker = `<script>window.__CG_SERVER=${config};</script>`;
-        const html = (await fs.readFile(htmlPath, 'utf8')).replace('<!-- CG_SERVER_BOOT -->', marker);
+        const html = workbenchHtml.replace('<!-- CG_SERVER_BOOT -->', marker);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' });
         return res.end(html);
       }
