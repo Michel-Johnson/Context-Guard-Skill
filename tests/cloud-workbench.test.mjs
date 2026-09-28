@@ -379,6 +379,29 @@ test('private mode protects reads and uses secure cookies without leaking projec
   assert.equal(opaqueOriginLogin.status, 302);
   const passwordCookie = passwordLogin.headers.get('set-cookie').split(';')[0];
   assert.equal((await fetch(service.url + '/api/projects', { headers: { Cookie: passwordCookie } })).status, 200);
+  const workbenchPage = await fetch(service.url + '/', { headers: { Cookie: passwordCookie } });
+  assert.equal(workbenchPage.headers.get('cache-control'), 'no-store');
+  const workbenchHtml = await workbenchPage.text();
+  const assetVersion = workbenchHtml.match(/href="\/assets\/([a-f0-9]{16})\/prototype\/workbench\.css"/)?.[1];
+  assert.ok(assetVersion, 'Cloud page references content-versioned styles');
+  assert.match(workbenchHtml, new RegExp(`src="/assets/${assetVersion}/prototype/workbench-app\\.js"`));
+  assert.match(workbenchHtml, new RegExp(`src="/assets/${assetVersion}/prototype/workbench-data\\.js"`));
+  for (const asset of [
+    'prototype/workbench.css', 'prototype/workbench-app.js', 'prototype/workbench-sync.mjs',
+    'prototype/coordinator-markdown.mjs', 'prototype/vendor/marked.mjs',
+    'prototype/working-blot-atlas.png', 'scripts/shared/map-model.mjs',
+  ]) {
+    const route = `/assets/${assetVersion}/${asset}`;
+    assert.equal((await fetch(service.url + route)).status, 401, `${asset} stays private`);
+    const response = await fetch(service.url + route, { headers: { Cookie: passwordCookie } });
+    assert.equal(response.status, 200, asset);
+    assert.equal(response.headers.get('cache-control'), 'private, max-age=31536000, immutable', asset);
+    assert.equal(response.headers.get('vary'), 'Cookie', asset);
+    assert.ok((await response.arrayBuffer()).byteLength > 0, asset);
+  }
+  const invalidVersion = `${assetVersion[0] === 'a' ? 'b' : 'a'}${assetVersion.slice(1)}`;
+  assert.equal((await fetch(service.url + `/assets/${invalidVersion}/prototype/workbench.css`, { headers: { Cookie: passwordCookie } })).status, 404);
+  assert.equal((await fetch(service.url + '/workbench.css', { headers: { Cookie: passwordCookie } })).headers.get('cache-control'), 'no-store', 'unversioned fallback cannot go stale');
   const logout = await fetch(service.url + '/auth/logout', { method: 'POST', redirect: 'manual', headers: { Cookie: passwordCookie, Origin: 'https://map.example.test' } });
   assert.equal(logout.status, 302); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 
