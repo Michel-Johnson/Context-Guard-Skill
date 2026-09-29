@@ -1,6 +1,6 @@
 # 接口规范 v2（精简草案）
 
-读者：**仓库开发 Agent**。本文在未随包的 `docs/` 里，安装后的产品角色默认拿不到。现行工作项**文件**格式以 [`fs-v2`](../references/design-current.md) 为准。传输层短枚举这次不改 JSON 行为。
+读者：**仓库开发 Agent**。本文在未随包的 `docs/` 里，安装后的产品角色默认拿不到。现行工作项**文件**格式以 [`fs-v2.1`](../references/design-current.md) 为准。传输层短枚举这次不改 JSON 行为。
 
 完整目标待验收，部分基础能力已实现（见下）。本版替代 draft-1 的消息分类；现有运行 API 保留。本地-cloud、云端agent-cloud、agent-本地及上下行模块保留。
 

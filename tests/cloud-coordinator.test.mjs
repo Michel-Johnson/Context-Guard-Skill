@@ -865,6 +865,25 @@ test('Coordinator context carries the full static directory and only the mounted
   assert.doesNotMatch(limited.text, /reader memory|article memory/);
 });
 
+test('Coordinator loads project memory before dialogue and one relevant node document on focus', () => {
+  const snapshot = { version: 'main-memory-1', memory: { map: { root: {
+    id: 'T0', title: '实验博客', purpose: '验证博客', memoryDocument: '# 实验博客 · 项目记忆\n\n## 目标\n\n实验不得发布生产。',
+    memories: [{ text: '旧项目流水' }], children: [
+      { id: 'N1', title: '阅读', purpose: '公开页面', memoryDocument: '# 阅读 · 节点记忆\n\n## 能力\n\n键盘可跳转正文。',
+        memories: [{ text: '旧阅读流水' }], children: [{ id: 'N2', title: '列表', purpose: '文章入口', children: [] }] },
+      { id: 'N3', title: '管理', purpose: '后台', memoryDocument: '# 管理 · 节点记忆\n\n## 约束\n\n不公开私有数据。', children: [] },
+    ],
+  } } } };
+  const project = buildCoordinatorContext(snapshot);
+  assert.match(project.text, /## 项目记忆\n# 实验博客 · 项目记忆/);
+  assert.match(project.text, /实验不得发布生产/);
+  assert.doesNotMatch(project.text, /旧项目流水|键盘可跳转正文|不公开私有数据/);
+  const focused = buildCoordinatorContext(snapshot, { conversation: { id: 'item-1', nodeId: 'N2' } });
+  assert.match(focused.text, /## 当前节点记忆 \[N1\]\n# 阅读 · 节点记忆/);
+  assert.match(focused.text, /键盘可跳转正文/);
+  assert.doesNotMatch(focused.text, /旧项目流水|旧阅读流水|不公开私有数据/);
+});
+
 test('Coordinator streams text deltas while retaining one complete assistant message', async () => {
   const events = [
     { type: 'message_start', message: { model: config.model, usage: { input_tokens: 3 } } },
@@ -1114,6 +1133,11 @@ test('Coordinator Map actions compile structural and destructive Main changes', 
   assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'N1', kind: 'node' }], 'turn:delete'), [{ type: 'delete', id: 'N1' }]);
   assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'todo', nodeId: 'N1' }], 'turn:todo'), [{ type: 'delete-work-item', nodeId: 'N1', kind: 'todo', itemId: 'TD1' }]);
   assert.deepEqual(coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'todo' }], 'turn:todo-global'), [{ type: 'delete-work-item', kind: 'todo', itemId: 'TD1' }]);
+  const memoryDocument = '# Lab · 项目记忆\n\n## 目标\n\n验证工作流。';
+  assert.deepEqual(coordinatorStructureOperations([{ op: 'update', id: 'T0', memoryDocument }], 'turn:memory'),
+    [{ type: 'update', id: 'T0', fields: { memoryDocument } }]);
+  assert.throws(() => coordinatorStructureOperations([{ op: 'update', id: 'T0', memoryDocument: 'x'.repeat(12001) }], 'turn:large-memory'),
+    { code: 'INVALID_ARGUMENT' });
   assert.throws(() => coordinatorStructureOperations([{ op: 'delete', id: 'TD1', kind: 'memory' }], 'turn:invalid-kind'), { code: 'INVALID_ARGUMENT' });
   assert.throws(() => coordinatorStructureOperations([{ op: 'update', id: 'N1', todos: [] }], 'turn:records'), { code: 'FORBIDDEN' });
 });

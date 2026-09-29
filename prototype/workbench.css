@@ -774,6 +774,8 @@ details.fold>summary::-webkit-details-marker{display:none}
 details.fold>summary:hover{color:var(--ink)}
 details.fold .mem-list,details.fold .bug-list,details.fold .dormant-list{margin-top:2px}
 details.fold .mem-list li,details.fold .bug-list li,details.fold .dormant-list li{padding:10px 0 8px}
+.memory-document-editor{display:block;width:100%;min-height:160px;box-sizing:border-box;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}
+.memory-document-editor:focus{outline:2px solid var(--green);outline-offset:1px}
 
 .bug-list{list-style:none;margin:0;padding:0}
 .bug-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}

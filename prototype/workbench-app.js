@@ -378,6 +378,7 @@ let activeWorkPanelKind = "bug";
 let foldInherited = false;
 let foldDormant = false;
 let foldMem = false;
+let foldMemoryDoc = false;
 let foldIdea = false;
 let foldTodo = false;
 let foldBug = false;
@@ -3594,6 +3595,11 @@ function renderDetail(){
         <button type="button" data-act="compose-cancel" class="quiet">${t("cancel")}</button>
       </div>`:""}
     ${filesHtml}
+    <details class="fold" data-fold="memory-doc" ${foldMemoryDoc?"open":""}>
+      <summary>${node.id===data.id?"项目记忆文档":"节点记忆文档"}</summary>
+      <textarea class="memory-document-editor" data-memory-document maxlength="12000" aria-label="${node.id===data.id?"项目记忆文档":"节点记忆文档"}">${esc(node.memoryDocument||"")}</textarea>
+      <button type="button" data-act="save-memory-document">保存记忆</button>
+    </details>
     <details class="fold" data-fold="mem" ${foldMem?"open":""}>
       <summary><span>${labels.memory}${node.memories.length?" "+node.memories.length:""}</span><button type="button" class="plus-btn" data-act="add-mem" title="${escAttr(t("addMem"))}">＋</button></summary>
       ${memHtml}
@@ -3664,6 +3670,12 @@ function renderDetail(){
     const last = el.querySelector('[data-fold="todo"] .todo-list li:last-child .todo-text');
     if(last) last.focus();
   };
+  if(q('[data-act="save-memory-document"]')) q('[data-act="save-memory-document"]').onclick = ()=>{
+    const value = q('[data-memory-document]').value.trim();
+    if(value===String(node.memoryDocument||'').trim()) return;
+    node.memoryDocument = value;
+    persist(); renderAll();
+  };
   if(q('[data-act="add-bug"]')) q('[data-act="add-bug"]').onclick = async (e)=>{
     e.preventDefault(); e.stopPropagation();
     foldBug = true;
@@ -3694,6 +3706,7 @@ function renderDetail(){
       if(d.dataset.fold==="inherited") foldInherited = next;
       if(d.dataset.fold==="dormant") foldDormant = next;
       if(d.dataset.fold==="mem") foldMem = next;
+      if(d.dataset.fold==="memory-doc") foldMemoryDoc = next;
       if(d.dataset.fold==="idea") foldIdea = next;
       if(d.dataset.fold==="todo") foldTodo = next;
       if(d.dataset.fold==="bug") foldBug = next;
@@ -3702,6 +3715,7 @@ function renderDetail(){
       if(d.dataset.fold==="inherited") foldInherited = d.open;
       if(d.dataset.fold==="dormant") foldDormant = d.open;
       if(d.dataset.fold==="mem") foldMem = d.open;
+      if(d.dataset.fold==="memory-doc") foldMemoryDoc = d.open;
       if(d.dataset.fold==="idea") foldIdea = d.open;
       if(d.dataset.fold==="todo") foldTodo = d.open;
       if(d.dataset.fold==="bug") foldBug = d.open;

@@ -1546,6 +1546,34 @@ try {
   await attachmentPage.close();
   record('Visible Cloud attachment picker uploads a PDF, persists a protected Quark link and survives refresh');
 
+  await page.goto(`${service.url}/projects/context-guard`);
+  await synchronized();
+  await page.locator('.node[data-id="T0"]').click();
+  const memoryPanel = page.locator('#detail [data-fold="memory-doc"]');
+  if (await memoryPanel.getAttribute('open') === null) await memoryPanel.locator('summary').click();
+  const projectMemory = '# Main map · 项目记忆\n\n## 目标\n\n记住项目边界。';
+  let memoryVersion = await syncVersion();
+  await page.locator('#detail [data-memory-document]').fill(projectMemory);
+  await page.locator('#detail [data-act="save-memory-document"]').click();
+  await synchronizedAfter(memoryVersion);
+  await page.locator('.node[data-id="N1"]').click();
+  if (await memoryPanel.getAttribute('open') === null) await memoryPanel.locator('summary').click();
+  const nodeMemory = '# Tour one · 节点记忆\n\n## 能力\n\n保留节点职责。';
+  memoryVersion = await syncVersion();
+  await page.locator('#detail [data-memory-document]').fill(nodeMemory);
+  await page.locator('#detail [data-act="save-memory-document"]').click();
+  await synchronizedAfter(memoryVersion);
+  const savedMemory = await request(`${service.url}/v1/projects/context-guard/main`, { headers: headers('project-memory-token') });
+  assert.equal(savedMemory.response.status, 200);
+  assert.equal(savedMemory.body.snapshot.memory.map.root.memoryDocument, projectMemory);
+  assert.equal(savedMemory.body.snapshot.memory.map.root.children[0].memoryDocument, nodeMemory);
+  await page.reload();
+  await synchronized();
+  await page.locator('.node[data-id="T0"]').click();
+  if (await memoryPanel.getAttribute('open') === null) await memoryPanel.locator('summary').click();
+  assert.equal(await page.locator('#detail [data-memory-document]').inputValue(), projectMemory);
+  record('Human edits project and node memory documents through the versioned Main workbench');
+
   await page.screenshot({ path: path.join(output, 'cloud-session-edit.png'), fullPage: true });
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;

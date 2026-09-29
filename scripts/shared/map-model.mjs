@@ -1,5 +1,5 @@
 // Shared by the workbench and Node service. Unknown stored fields are retained.
-export const editableFields = ['title', 'purpose', 'kind', 'state', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
+export const editableFields = ['title', 'purpose', 'kind', 'state', 'memoryDocument', 'memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns', 'proposal', 'isNew'];
 // Transport JSON stays open/fixed/resolved plus Unfixable as an end state.
 // `fixed` is agent-complete and still reviewable. Do not add deferred/wontfix as
 // live write values; leftover stored ones stay closed.
@@ -81,6 +81,9 @@ export function validate(doc) {
   for (const { node } of index.values()) {
     if (typeof node.title !== 'string' || node.title.length > 10000) throw new MapError('INVALID_MAP', `${node.id}: invalid title`);
     if (node.purpose !== undefined && typeof node.purpose !== 'string') throw new MapError('INVALID_MAP', 'purpose must be text');
+    if (node.memoryDocument !== undefined && (typeof node.memoryDocument !== 'string' || node.memoryDocument.length > 12000)) {
+      throw new MapError('INVALID_MAP', `${node.id}: memory document must be text within 12000 characters`);
+    }
     for (const key of ['memories', 'ideas', 'todos', 'bugs', 'messages', 'access', 'dormant', 'files', 'owns']) {
       if (node[key] !== undefined && !Array.isArray(node[key])) throw new MapError('INVALID_MAP', `${key} must be an array`);
     }
@@ -301,6 +304,7 @@ export function applyOperations(document, operations, actor, grants = []) {
     if (op.type === 'initialize') {
       if (doc.root !== null || typeof op.project !== 'string' || !op.project.trim()) throw new MapError('INVALID_INITIALIZATION', 'Only an empty legacy pending map can be initialized');
       checkFields(op.node, ['id', ...editableFields, 'children', '_inbox']);
+      if (!ideaWriter && Object.hasOwn(op.node, 'memoryDocument')) throw new MapError('FORBIDDEN', 'Only the workbench or Coordinator can write memory documents', 403);
       if (!ideaWriter && op.node.ideas?.length) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
       if (!human && op.node.access?.length) throw new MapError('FORBIDDEN', 'Agent cannot set node access', 403);
       if (!human && (op.node.children?.length || op.node._inbox?.length)) throw new MapError('FORBIDDEN', 'Only the workbench can initialize a complete map', 403);
@@ -315,6 +319,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       const parent = index.get(op.parentId)?.node;
       if (!parent) throw new MapError('NOT_FOUND', 'Parent is missing', 404);
       checkFields(op.node, ['id', ...editableFields]);
+      if (!ideaWriter && Object.hasOwn(op.node, 'memoryDocument')) throw new MapError('FORBIDDEN', 'Only the workbench or Coordinator can write memory documents', 403);
       if (!ideaWriter && op.node.ideas?.length) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
       const id = op.node.id;
       if (!id || index.has(id)) throw new MapError('DUPLICATE_ID', 'Node ID already exists or is empty', 409);
@@ -421,6 +426,7 @@ export function applyOperations(document, operations, actor, grants = []) {
       if (!allowed(target.node)) throw new MapError('FORBIDDEN', `Session is not authorized for ${op.id}`, 403);
       if (op.type === 'update') {
         checkFields(op.fields);
+        if (!ideaWriter && Object.hasOwn(op.fields, 'memoryDocument')) throw new MapError('FORBIDDEN', 'Only the workbench or Coordinator can write memory documents', 403);
         if (!ideaWriter && Object.hasOwn(op.fields, 'ideas')) throw new MapError('FORBIDDEN', 'Only Coordinator can write Ideas', 403);
         if (!human && ['proposal', 'isNew', 'access'].some(key => Object.hasOwn(op.fields, key))) throw new MapError('FORBIDDEN', 'Agent cannot confirm proposals or change node access', 403);
         Object.assign(target.node, copy(op.fields));

@@ -456,7 +456,8 @@ export function createMemoryHandler(configuration = {}, { authorizeDevice } = {}
         let name;
         try { name = decodeURIComponent(rawName); } catch { throw new MapError('INVALID_PATH', 'Invalid encoded document path', 400); }
         const segments = name.split('/');
-        if (!admin && (segments.includes('ideas') || segments[0] !== 'nodes' && name !== 'map.json' || name !== 'map.json' && !name.endsWith('.md'))) {
+        if (!admin && (segments.includes('ideas') || segments[0] !== 'nodes' && name !== 'map.json' && name !== 'memory.md'
+            || name !== 'map.json' && !name.endsWith('.md'))) {
           throw new MapError('FORBIDDEN', 'This document is outside the Agent reading surface', 403);
         }
         const state = await readMemoryView(configuration, projectId);

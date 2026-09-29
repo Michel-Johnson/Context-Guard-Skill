@@ -39,9 +39,13 @@ Status: <Open|InProgress|Done>
 <Idea 正文原文>
 
 Status: <Proposed|Accepted>
+
+## 记忆
+
+[阅读记忆](memory.md)
 ```
 
-没有内容时写 `NULL`。Related 只放相关节点，Sub 只放直接下级。Bug/Todo/Idea 区块全部由代码生成。
+没有内容时写 `NULL`。Related 只放相关节点，Sub 只放直接下级。Bug/Todo/Idea 区块全部由代码生成。`## 记忆` 仅在该节点有记忆文档时生成；项目根节点的链接指向项目根目录 `memory.md`。
 
 ## 完整示例
 
