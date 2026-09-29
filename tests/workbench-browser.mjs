@@ -373,7 +373,7 @@ try {
   const bugRow = page.locator('#bug-panel-list li').filter({ hasText: '处理状态测试' });
   await bugRow.waitFor();
   await until(async () => (await read()).root.children[0].bugs.some(bug => bug.title === '处理状态测试'));
-  assert.equal(await bugRow.locator('.bug-dot.waiting').count(), 1);
+  assert.equal(await bugRow.locator('.bug-row .bug-status.waiting').count(), 1);
   assert.equal((await read()).root.children[0].bugs.find(bug => bug.title === '处理状态测试').sessions.length, 0);
   assert.deepEqual(running.access.grants(session), [], 'saving an item cannot auto-grant the selected Session');
   assert.equal(queuedMessages.length, 0, 'saving an item cannot dispatch to the selected Session');
@@ -382,7 +382,7 @@ try {
   resolvedBug.root.children[0].bugs.find(bug => bug.title === '处理状态测试').status = 'resolved';
   await fs.writeFile(mapPath, encode(resolvedBug));
   await page.waitForFunction(() => document.querySelector('#bug-panel-list li')?.textContent?.includes('已解决'));
-  assert.equal(await bugRow.locator('.bug-dot.resolved').count(), 1);
+  assert.equal(await bugRow.locator('.bug-row .bug-status.resolved').count(), 1);
   assert.equal(await page.locator('#bug-count').textContent(), '0', 'resolved Bugs remain readable but are not counted as unresolved');
   const cleanBug = await read(); cleanBug.root.children[0].bugs = [];
   await fs.writeFile(mapPath, encode(cleanBug));
@@ -1105,26 +1105,26 @@ try {
     await preview.locator('#btn-rel').click();
     recordCheck('relation-flow-labels');
     await clickWorkbenchTool(preview, '#btn-bugs');
-    const panelDots = await preview.evaluate(() => [...document.querySelectorAll('#bug-panel-list li[data-bug]')].map(li => {
-      const badge = li.querySelector('.bug-status');
-      const dot = li.querySelector('.bug-dot');
-      const kindOf = el => [...(el?.classList || [])].find(c => c !== 'bug-status' && c !== 'bug-dot') || '';
+    const panelStatuses = await preview.evaluate(() => [...document.querySelectorAll('#bug-panel-list li[data-bug]')].map(li => {
+      const badge = li.querySelector('.bug-row .bug-status');
       return {
-        badge: kindOf(badge),
-        dot: kindOf(dot),
-        bg: dot ? getComputedStyle(dot).backgroundColor : ''
+        badge: [...(badge?.classList || [])].find(c => c !== 'bug-status') || '',
+        label: badge?.textContent?.trim() || '',
+        dot: li.querySelector('.bug-dot') !== null,
+        bg: badge ? getComputedStyle(badge).backgroundColor : ''
       };
     }));
-    assert.ok(panelDots.length >= 8, `preview should show a status board, got ${panelDots.length}`);
-    panelDots.forEach(row => {
-      assert.equal(row.dot, row.badge, `right-side dot must follow status ${JSON.stringify(row)}`);
+    assert.ok(panelStatuses.length >= 8, `preview should show a status board, got ${panelStatuses.length}`);
+    panelStatuses.forEach(row => {
+      assert.ok(row.label, `right-side status must be readable ${JSON.stringify(row)}`);
+      assert.equal(row.dot, false, `colored dots are replaced by status labels ${JSON.stringify(row)}`);
     });
-    const kinds = new Set(panelDots.map(row => row.badge));
-    const colors = new Set(panelDots.map(row => row.bg));
+    const kinds = new Set(panelStatuses.map(row => row.badge));
+    const colors = new Set(panelStatuses.map(row => row.bg));
     ["waiting","processing","handoff","resolved","unfixable"].forEach(kind => {
       assert.ok(kinds.has(kind), `missing ${kind} in ${[...kinds].join(",")}`);
     });
-    assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelDots)}`);
+    assert.ok(colors.size > 1, `different statuses must not share one color ${JSON.stringify(panelStatuses)}`);
     await preview.locator('#bug-panel-list li[data-bug="B20"]').click();
     await preview.waitForSelector('body.bug-path-mode');
     assert.ok(await preview.locator('#links path.current-flow').count(), 'bug path keeps the moving dashes');
@@ -1142,6 +1142,14 @@ try {
     assert.equal(previewClaims.buttons, 0);
     assert.equal(previewClaims.inspector, '');
     assert.match(previewClaims.selected, /处理中|In progress/);
+    await preview.evaluate(() => {
+      const item = getNode('M1').bugs.find(bug => bug.id === 'B20');
+      item.dispatch = { status: 'accepted', session_id: 'S-live' };
+      renderAll();
+    });
+    assert.match(await preview.locator('#bug-panel-list li[data-bug="B20"] .bug-row .bug-status').textContent(), /已验收 · 待合并/);
+    assert.equal(await preview.locator('#links path.current-flow').count(), 0,
+      'accepted work keeps its Session history but must not animate map paths');
     await preview.locator('#bug-panel-list li[data-bug="B40"]').click();
     const waitingClaim = await preview.evaluate(() => ({
       buttons: document.querySelectorAll('#bug-panel-list [data-claim]').length,
@@ -1149,6 +1157,7 @@ try {
     }));
     assert.equal(waitingClaim.buttons, 0);
     assert.match(waitingClaim.badge, /待处理|Waiting/);
+    assert.equal(await preview.locator('#links path.current-flow').count(), 0, 'waiting items must not show moving map paths');
     await preview.locator('#btn-bug-exit').click();
     if (await preview.evaluate(() => document.body.classList.contains('bugs-open'))) {
       await clickWorkbenchTool(preview, '#btn-bugs');

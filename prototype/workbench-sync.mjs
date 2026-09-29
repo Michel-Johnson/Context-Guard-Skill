@@ -1,4 +1,4 @@
-import { copy, diffTrees, entries, same } from '../scripts/shared/map-model.mjs';
+import { copy, diffTrees, entries, same, validate } from '../scripts/shared/map-model.mjs';
 export const ALL_SESSIONS = '__all__';
 export const workbenchTimeoutMs = method => ['GET', 'HEAD'].includes(String(method).toUpperCase()) ? 30000 : 10000;
 const labels = { loading: '连接中', readonly: '只读预览 · 请启动本地 Node 工作台', draft: '有未保存草稿', saving: '保存中', persisted: '已落盘 · 等待页面核对', synced: '已同步', conflict: '冲突 · 草稿已保留', offline: '连接中断 · 草稿已保留', error: '保存失败 · 草稿已保留' };
@@ -19,6 +19,80 @@ function uniqueId() {
   bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+const cloneValue = value => value === undefined ? undefined : copy(value);
+function draftSequenceKey(value) {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return `value:${JSON.stringify(value)}`;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (typeof value.id === 'string' && value.id) return `id:${value.id}`;
+  if (typeof value.archiveKey === 'string' && value.archiveKey) return `archive:${value.archiveKey}`;
+  if (typeof value.operationId === 'string' && value.operationId) return `operation:${value.operationId}`;
+  if (typeof value.from === 'string' && typeof value.to === 'string') return `flow:${value.from}\0${value.to}\0${value.label || ''}`;
+  return null;
+}
+function indexedDraftSequence(values) {
+  const index = new Map();
+  for (const value of values) {
+    const key = draftSequenceKey(value);
+    if (!key || index.has(key)) throw new Error('无法确认列表项的唯一身份');
+    index.set(key, value);
+  }
+  return index;
+}
+function mergeDraftValue(base, local, remote) {
+  if (same(local, remote) || same(base, local)) return cloneValue(remote);
+  if (same(base, remote)) return cloneValue(local);
+  if ((base === undefined || Array.isArray(base)) && Array.isArray(local) && Array.isArray(remote)) {
+    const before = indexedDraftSequence(base || []), left = indexedDraftSequence(local), right = indexedDraftSequence(remote);
+    const shared = [...before.keys()].filter(key => left.has(key) && right.has(key));
+    const sharedSet = new Set(shared);
+    const sharedOrder = index => [...index.keys()].filter(key => sharedSet.has(key));
+    const localOrder = sharedOrder(left), remoteOrder = sharedOrder(right);
+    const localReordered = !same(shared, localOrder), remoteReordered = !same(shared, remoteOrder);
+    if (localReordered && remoteReordered && !same(localOrder, remoteOrder)) throw new Error('草稿和云端分别调整了同一列表顺序');
+    const preferred = localReordered && !remoteReordered ? left : right;
+    const other = preferred === left ? right : left;
+    const order = [...preferred.keys(), ...[...other.keys()].filter(key => !preferred.has(key))];
+    const result = [];
+    for (const key of order) {
+      const prior = before.get(key), mine = left.get(key), theirs = right.get(key);
+      if (mine === undefined && theirs === undefined) continue;
+      if (mine === undefined) {
+        if (prior === undefined) result.push(cloneValue(theirs));
+        else if (!same(prior, theirs)) throw new Error('删除与修改发生重叠');
+      } else if (theirs === undefined) {
+        if (prior === undefined) result.push(cloneValue(mine));
+        else if (!same(prior, mine)) throw new Error('修改与删除发生重叠');
+      } else result.push(mergeDraftValue(prior, mine, theirs));
+    }
+    return result;
+  }
+  const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
+  if ((base === undefined || isObject(base)) && isObject(local) && isObject(remote)) {
+    const before = base || {};
+    return Object.fromEntries([...new Set([...Object.keys(before), ...Object.keys(local), ...Object.keys(remote)])]
+      .map(key => [key, mergeDraftValue(before[key], local[key], remote[key])])
+      .filter(([, value]) => value !== undefined));
+  }
+  throw new Error('草稿和云端修改了同一内容');
+}
+function draftTreeChanges(before, after) {
+  return diffTrees(before, after).length > 0 || !same(before.flows || [], after.flows || []);
+}
+export function reconcileRecoveryDraft(draft, remoteTree, remoteVersion) {
+  if (!draft?.doc?.root?.id || !remoteTree?.id) return { kind: 'conflict' };
+  // A request with an uncertain acknowledgement or an unfinished editor input
+  // must retain its original identity and content for explicit recovery.
+  if (draft.pendingRequest || draft.inputDraft) return { kind: draft.baseVersion === remoteVersion ? 'current' : 'conflict' };
+  try {
+    if (!draftTreeChanges(remoteTree, draft.doc.root)) return { kind: 'stale' };
+    if (!draft.baseTree?.id) return { kind: 'conflict' };
+    if (!draftTreeChanges(draft.baseTree, draft.doc.root)) return { kind: 'stale' };
+    if (draft.baseVersion === remoteVersion) return { kind: 'current' };
+    const root = mergeDraftValue(draft.baseTree, draft.doc.root, remoteTree);
+    validate({ root, flows: root.flows || [] });
+    return draftTreeChanges(remoteTree, root) ? { kind: 'merged', root } : { kind: 'stale' };
+  } catch { return { kind: 'conflict' }; }
 }
 export class WorkbenchSync {
   constructor(adapter) {
@@ -135,27 +209,57 @@ export class WorkbenchSync {
   async restoreRecoveryDraft() {
     const draft = this.recovery;
     if (!draft || draft.invalidJSON || !draft.doc?.root?.id) return 'none';
-    // A draft is safe to replay only when the server is still at the exact
-    // version from which it was captured. Otherwise keep it out of the live
-    // tree and make the conflict explicit instead of silently overwriting a
-    // newer human/Agent edit on the next flush.
-    if (draft.baseVersion !== this.version) { this.recoveryBlocked = true; return 'conflict'; }
+    let candidate = draft;
+    if (draft.pendingRequest && draft.baseVersion !== this.version) {
+      if (!draft.pendingRequest.operationId || !Array.isArray(draft.pendingRequest.operations)) {
+        this.recoveryBlocked = true; return 'conflict';
+      }
+      // A lost response may mean this exact request committed. Replay its
+      // original identity before treating the browser copy as an unsent draft.
+      try {
+        const receipt = await this.call('/api/commit', draft.pendingRequest);
+        if (!receipt.committed) { this.recoveryBlocked = true; return 'conflict'; }
+      } catch (error) {
+        if (error.code !== 'VERSION_CONFLICT') { this.recoveryBlocked = true; return 'conflict'; }
+      }
+      candidate = { ...draft, pendingRequest: null };
+      try {
+        const latest = await this.call('/api/state');
+        if (latest.error || latest.recovery || !latest.doc?.root) { this.recoveryBlocked = true; return 'conflict'; }
+        if (this.dirty()) { this.recoveryBlocked = true; return 'conflict'; }
+        this.doc = latest.doc; this.version = latest.version; this.source = latest.source || null;
+        this.a.apply(this.doc); this.watchDocument(this.a.getRoot()); this.baseTree = copy(this.a.getRoot()); this.revision++;
+      } catch { this.recoveryBlocked = true; return 'conflict'; }
+    }
+    const reconciliation = reconcileRecoveryDraft(candidate, this.baseTree, this.version);
+    if (reconciliation.kind === 'stale') {
+      try { localStorage.removeItem(this.captureKey); }
+      catch { this.recoveryBlocked = true; return 'conflict'; }
+      this.recovery = null; this.recoveryBlocked = false;
+      return 'stale';
+    }
+    if (reconciliation.kind === 'conflict') { this.recoveryBlocked = true; return 'conflict'; }
     this.recoveryBlocked = false;
-    const draftTree = copy(draft.doc.root);
-    this.doc = { ...draft.doc, root: draftTree };
+    const draftTree = reconciliation.kind === 'merged' ? reconciliation.root : copy(candidate.doc.root);
+    const draftFlows = Array.isArray(draftTree.flows) ? draftTree.flows
+      : reconciliation.kind === 'current' && Array.isArray(candidate.doc.flows) ? candidate.doc.flows : this.doc.flows || [];
+    this.doc = { ...this.doc, root: draftTree, flows: copy(draftFlows) };
     this.a.apply(this.doc); this.watchDocument(this.a.getRoot());
-    this.baseTree = draft.baseTree?.id ? copy(draft.baseTree) : copy(this.doc.root);
-    this.pendingRequest = draft.pendingRequest && Array.isArray(draft.pendingRequest.operations)
-      ? copy(draft.pendingRequest) : null;
-    this.inputDraft = draft.inputDraft || null;
+    this.baseTree = reconciliation.kind === 'merged' ? copy(this.baseTree)
+      : candidate.baseTree?.id ? copy(candidate.baseTree) : copy(this.doc.root);
+    this.pendingRequest = reconciliation.kind === 'merged' ? null : candidate.pendingRequest && Array.isArray(candidate.pendingRequest.operations)
+      ? copy(candidate.pendingRequest) : null;
+    this.inputDraft = candidate.inputDraft || null;
     this.revision++;
-    this.setStatus('draft', '正在恢复草稿');
+    this.setStatus('draft', reconciliation.kind === 'merged' ? '正在合并旧草稿与云端更新' : '正在恢复草稿');
     // Flush directly during startup. Calling retry() here can race the freshly
     // opened EventSource and re-enter start(); flush has the same idempotent
     // request semantics without that connection-startup cycle.
     await this.flush();
     if (['conflict', 'offline', 'error'].includes(this.status)) this.recoveryBlocked = true;
-    return ['conflict', 'offline', 'error'].includes(this.status) ? 'failed' : 'restored';
+    if (this.recoveryBlocked) return this.status === 'conflict' ? 'conflict' : 'failed';
+    if (this.dirty() || this.status !== 'synced') return 'pending';
+    return reconciliation.kind === 'merged' ? 'merged' : 'restored';
   }
   setStatus(status, message = '') {
     if (this.serverRecovery && status === 'synced') { status = 'error'; message = this.serverRecovery.message || '服务只读，需要恢复'; }
@@ -258,8 +362,8 @@ export class WorkbenchSync {
       await this.refreshTaskStatuses().catch(() => {});
       const recovery = hasRecovery ? await this.restoreRecoveryDraft().catch(() => 'failed') : 'none';
       const sourceNotice = this.source?.status === 'binding-required' ? '需要绑定 GitHub 主仓库' : this.source?.needsReconcile ? 'main 已更新，等待地图校准' : '';
-      this.setStatus(recovery === 'conflict' ? 'conflict' : recovery === 'failed' ? 'error' : 'synced',
-        this.recoveryNotice(recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice));
+      this.setStatus(recovery === 'conflict' ? 'conflict' : recovery === 'failed' ? 'error' : recovery === 'pending' ? 'draft' : 'synced',
+        this.recoveryNotice(recovery === 'conflict' ? '发现草稿与服务器版本冲突，请导出或导入比较' : recovery === 'failed' ? '草稿恢复失败，已保留副本' : recovery === 'pending' ? '草稿提交尚待页面核对' : recovery === 'stale' ? '旧草稿无未提交差异，已更新本地缓存' : recovery === 'merged' ? '旧草稿与云端的不同修改已合并' : recovery === 'restored' ? '已恢复并确认草稿' : hasRecovery ? '发现旧缓存，请导出或导入比较' : sourceNotice));
       this.startingRecovery = false;
       return true;
     } catch (e) {

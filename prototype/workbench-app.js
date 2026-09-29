@@ -2168,13 +2168,6 @@ function humanReviewProgress(item){
     ? {kind:"resolved",label:uiLang==="en"?"Verified":"验收通过",detail:""}
     : {kind:"waiting",label:uiLang==="en"?"Rejected · awaiting clarification":"验收未通过 · 待澄清",detail:item.review.reason||""};
 }
-function taskReviewButtons(nodeId, kind, item){
-  const state = workbenchSync?.taskStates.get(item.dispatch?.task_id);
-  const reviewed = item.review?.taskId===item.dispatch?.task_id && item.review?.resultVersion===state?.version;
-  const busy = reviewingItems.has(`${nodeId}:${kind}:${item.id}`);
-  const ready = workbenchSync?.viewId==="main" && state?.result && !reviewed && !busy;
-  return `<div class="task-review-actions"><button type="button" data-task-review="approved" data-review-node="${escAttr(nodeId)}" data-review-kind="${kind}" data-review-item="${escAttr(item.id)}" aria-label="验收通过" title="验收通过：发布已有经验" ${!ready||state.result.outcome!=="success"?'disabled':''}>✓</button><button type="button" data-task-review="rejected" data-review-node="${escAttr(nodeId)}" data-review-kind="${kind}" data-review-item="${escAttr(item.id)}" aria-label="验收不通过" title="验收不通过：记录反馈，等待主 Agent" ${!ready?'disabled':''}>✕</button></div>`;
-}
 function taskSummaryHtml(item){
   const result = workbenchSync?.taskResult(item.dispatch?.task_id) || workbenchSync?.taskResult(item.resolution?.dispatch?.task_id);
   return result?.summary ? `<details><summary>${uiLang==="en"?"Agent result":"Agent 结果与经验"}</summary><p style="white-space:pre-wrap">${esc(result.summary)}</p></details>` : "";
@@ -2476,10 +2469,9 @@ function renderBugPanel(){
     const on = bugFocus && bugFocus.nodeId===item.node.id && (bugFocus.itemId||bugFocus.bugId)===item.item.id && (bugFocus.kind||"bug")===kind;
     const progress = kind==="todo"?todoProgress:bugProgress;
     const state = progress(item.item,item.node.id);
-    const dot = `<i class="bug-dot ${state.kind}" title="${escAttr(state.label)}"></i>`;
     return `<li class="${on?"on":""}" data-node="${escAttr(item.node.id)}" data-${kind}="${escAttr(item.item.id)}">
-      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span>${kind==="todo"?todoProgressHtml(item.item,item.node.id):bugProgressHtml(item.item,item.node.id)}</span>
-      <span class="bug-row">${dot}</span>
+      <span class="bug-copy"><span class="bug-title">${esc(title)}${item.unassigned?" · 未挂节点":""}</span></span>
+      <span class="bug-row"><span class="bug-status ${state.kind}"${state.detail?` title="${escAttr(state.detail)}"`:""}>${esc(state.label)}</span></span>
     </li>`;
   }).join("");
   ul.querySelectorAll("li[data-node]").forEach((li,index)=>{
@@ -3073,7 +3065,8 @@ function renderMap(){
   });
   if(bugPathMode){
     const hit = focusedWorkItem();
-    const sessions = hit ? bugSessionsOf(hit.item) : [];
+    const active = hit && (hit.kind==="todo"?todoProgress(hit.item,hit.node?.id):bugProgress(hit.item,hit.node?.id)).kind==="processing";
+    const sessions = active ? bugSessionsOf(hit.item) : [];
     if(sessions.length && pathSegs.length){
       if(currentsEl){
         currentsEl.style.width = (maxX+140)+"px";
@@ -3464,8 +3457,7 @@ function renderDetail(){
       <div class="actions">
         ${dots}
       </div>
-      ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(hit.node.id,kind,bug)+taskSummaryHtml(bug) : ""}`;
-    el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
+      ${bug && hit.node && workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskSummaryHtml(bug) : ""}`;
     return;
   }
 
@@ -3525,7 +3517,7 @@ function renderDetail(){
     ? `<ul class="todo-list">`+nodeTodos.map(todo=>{
         const done = todo.status==="done";
         return `<li class="${done?"todo-done":""}">
-          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(node.id,"todo",todo) : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo,node.id).label)}">${done?"✓":""}</button>`}
+          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? "" : `<button type="button" class="todo-check ${done?"done":""}" data-todo="${escAttr(todo.id)}" title="${escAttr(todoProgress(todo,node.id).label)}">${done?"✓":""}</button>`}
           <div class="todo-main">
             <div class="todo-text ed" data-ed="todo-text" data-todo="${escAttr(todo.id)}">${linkifyText(todo.desc||todo.title||"")}</div>
             ${todo.draft?"":todoProgressHtml(todo,node.id)}
@@ -3546,7 +3538,7 @@ function renderDetail(){
         const attach = row.home ? attachHtml("bug", b.id, b) : "";
         return `
         <li class="${settled?'bug-pending':''}">
-          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? taskReviewButtons(row.from,"bug",b) : `<div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>`}
+          ${workbenchSync?.config?.interfaceCapabilities?.humanReview ? "" : `<div class="bug-check ${settled?'done':''}" data-bug="${b.id}">${settled?"✓":""}</div>`}
           <div class="bug-main" ${row.home ? `data-drop-files data-fk="bug" data-fi="${escAttr(b.id)}"` : ""}>
             ${title}
             ${bugProgressHtml(b,row.from)}
@@ -3634,7 +3626,6 @@ function renderDetail(){
     </details>`:""}`;
 
   el.querySelectorAll(".bug-check").forEach(c=>c.onclick=()=>crossBug(node, c.dataset.bug));
-  el.querySelectorAll("[data-task-review]").forEach(button=>button.onclick=()=>reviewWorkItem(button.dataset.reviewNode,button.dataset.reviewKind,button.dataset.reviewItem,button.dataset.taskReview));
   el.querySelectorAll('[data-coordinator-item]').forEach(button=>button.onclick=()=>window.dispatchEvent(new CustomEvent('coordinator-open-item',{detail:{nodeId:button.dataset.coordinatorNode,itemId:button.dataset.coordinatorItem,kind:button.dataset.coordinatorKind}})));
   el.querySelectorAll(".todo-check").forEach(c=>c.onclick=()=>advanceTodo(node,node.todos.find(todo=>todo.id===c.dataset.todo)));
   const q = s=>el.querySelector(s);
@@ -4527,16 +4518,16 @@ async function installCoordinatorPanel(sync){
     typing.textContent=label;typing.setAttribute('aria-label',label);
   };
   const setPlanningVisible=visible=>{
-    const users=messages.querySelectorAll(':scope > .coordinator-message.user');
-    const anchor=users[users.length-1];
+    const rows=messages.querySelectorAll(':scope > .coordinator-message');
+    const anchor=rows[rows.length-1];
     if(!visible||!anchor){planning.remove();return;}
     if(anchor.nextElementSibling!==planning)anchor.after(planning);
   };
   const syncPlanning=state=>{
     const rows=[...messages.children].filter(node=>node.classList?.contains('coordinator-message'));
     const last=rows.at(-1);
-    const awaitingText=last?.classList.contains('user')||last?.classList.contains('coordinator-streaming')&&
-      !last.querySelector('.coordinator-streaming-text')?.textContent.trim();
+    const awaitingText=Boolean(last)&&(!last.classList.contains('coordinator-streaming')||
+      !last.querySelector('.coordinator-streaming-text')?.textContent.trim());
     setPlanningVisible(((busy&&busyConversation===selected)||state.status==='running')&&awaitingText);
   };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;

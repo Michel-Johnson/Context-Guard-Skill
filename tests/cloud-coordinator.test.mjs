@@ -1050,7 +1050,7 @@ test('Successful read_map exposes only a visible node-read action', async t => {
   assert.doesNotMatch(JSON.stringify(action), /private|memories|v1/);
 });
 
-test('Completed tool turns expose one final answer with the structured action', async t => {
+test('Completed tool turns retain previously shown text and structured actions', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-concise-actions-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   let calls = 0;
@@ -1061,9 +1061,42 @@ test('Completed tool turns expose one final answer with the structured action', 
   } : { stop: 'end_turn', content: [{ type: 'text', text: '推荐阅读节点。' }] } } });
   await service.submit({ id: 'turn', text: '推荐一个节点' }); await service.close();
   const assistant = (await service.state()).messages.filter(message => message.role === 'assistant');
-  assert.equal(assistant.length, 1);
-  assert.equal(assistant[0].text, '推荐阅读节点。');
+  assert.equal(assistant.length, 2);
+  assert.equal(assistant[0].text, '我先找到了节点。');
   assert.deepEqual(assistant[0].actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
+  assert.equal(assistant[1].text, '推荐阅读节点。');
+});
+
+test('Coordinator keeps streamed text visible while its next model call is pending', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-multistep-text-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let startSecond, finishSecond;
+  const secondStarted = new Promise(resolve => { startSecond = resolve; });
+  const secondGate = new Promise(resolve => { finishSecond = resolve; });
+  let calls = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'probe' }],
+    execute: async () => ({ ok: true }), model: { next: async ({ onText }) => {
+      if (++calls === 1) {
+        await onText('已向用户显示的进度。');
+        return { stop: 'tool_use', content: [{ type: 'text', text: '已向用户显示的进度。' },
+          { type: 'tool_use', id: 'probe', name: 'probe', input: {} }] };
+      }
+      startSecond();
+      await secondGate;
+      return { stop: 'end_turn', content: [{ type: 'text', text: '最终结论。' }] };
+    } } });
+  try {
+    await service.submit({ id: 'turn', text: '检查并回复' });
+    await secondStarted;
+    const during = await service.state();
+    assert.equal(during.status, 'running');
+    assert.equal(during.streamingText, '');
+    assert.deepEqual(during.messages.filter(message => message.role === 'assistant').map(message => message.text),
+      ['已向用户显示的进度。']);
+  } finally { finishSecond(); await service.close(); }
+  const complete = await service.state();
+  assert.deepEqual(complete.messages.filter(message => message.role === 'assistant').map(message => message.text),
+    ['已向用户显示的进度。', '最终结论。']);
 });
 
 test('Coordinator Map actions compile structural and destructive Main changes', () => {
