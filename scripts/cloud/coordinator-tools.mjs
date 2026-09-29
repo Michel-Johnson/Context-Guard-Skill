@@ -5,41 +5,41 @@ const tourNodeIds = { type: 'array', items: string, minItems: 2, maxItems: 6, un
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
 const executionSessionId = { type: 'string', minLength: 1,
-  description: 'Exact executionSessionId returned by list_sessions. Never use main, legacy, session:* or item-* Coordinator conversation IDs.' };
+  description: 'Copy from list_sessions; never use a Coordinator conversation ID.' };
 const task = { executionSessionId, taskId: string };
 export const coordinatorReferences = ['map-read.md', 'map-mount.md', 'user-reply.md', 'agent-handoff.md', 'plan-review.md', 'test-check.md', 'memory-definition.md'];
 const fail = (message) => { throw Object.assign(new Error(message), { code: 'INVALID_ARGUMENT', toolHint: message }); };
 
 export const coordinatorTools = [
-  definition('list_tasks', 'List project requirements plus unfinished TODO/Bug items from Main Map. An empty executionSessionId means no approved task Session exists yet. Human brief approval precedes Session creation and dispatch.', {}),
-  definition('list_sessions', 'List execution Sessions assigned to this Coordinator. Use only sessions[].executionSessionId in task tools. Registration is not proof of liveness.', {}),
-  definition('list_conversations', 'List saved Coordinator conversations for topic continuity. conversationId is never an executionSessionId and cannot be used in task tools.', {}),
-  definition('read_map', 'Read one published Main node and its direct children, not a Session draft. Omit nodeId for the root.', { nodeId: string }, []),
-  definition('show_nodes', 'Show 1–3 exact Main node buttons only when they are direct recommendations or requested actions.', { message: string, nodeIds }),
-  definition('open_node', 'Immediately open one exact Main node in the human workbench. Use for explicit open, enter, jump or locate requests; do not ask what open means after the node is unambiguous.', { nodeId: string }),
-  definition('tour_nodes', 'Visibly tour 2–6 exact Main nodes in order. Use when the human asks to demonstrate, show or walk through Map operation; prefer representative nodes and do not replace the tour with a textual read-only explanation.', { nodeIds: tourNodeIds }),
-  definition('read_reference', 'Read an installed Coordinator reference when this workflow step requires it.', { name: { type: 'string', enum: coordinatorReferences } }),
-  definition('read_task', 'Read the authoritative task stage, Plan, handoff and CI references.', task),
-  definition('read_object', 'Read a versioned task, Plan, evidence or CI object in an assigned Session.', { executionSessionId, ref: string, version: string }),
-  definition('propose_mount', 'Propose a Main node; this does not write Main or approve it. Wait for a human.', { mainVersion: string, parentId: string, title: string, purpose: string, owns: strings }),
-  definition('prepare_task', 'Prepare requirements for human approval. After approval the scheduler creates one fresh execution Session for this task and dispatches it. Never select or reuse a prior Session. For a Main TODO/Bug, copy itemId, nodeId and kind from list_tasks.', { taskId: string, text: string, acceptance: string, nodeIds: strings, mainVersion: string, itemId: string, nodeId: string, kind: { enum: ['todo', 'bug'] } }, ['taskId', 'text', 'acceptance', 'nodeIds', 'mainVersion']),
-  definition('dispatch_task', 'Dispatch a human-approved brief in reviewed mode. Routing is copied from the approved brief.', { ...task, briefRef: string, briefVersion: string }),
-  definition('review_plan', 'Review the exact submitted Plan; cannot approve a brief or human acceptance.', { ...task, planRef: string, planVersion: string, decision: { enum: ['approved', 'rejected'] }, reason: string }),
-  definition('request_ci', 'Request CI using the exact SHA and evidence refs from the developer handoff.', task),
-  definition('request_rework', 'Return failed CI to its original task and developer, preserving failure evidence.', task),
-  definition('resume_task', 'Resume an interrupted, incomplete task with its original Session, Plan and evidence; the system may invoke this automatically and never creates a new task.', { ...task, reason: string }),
-  definition('guide_task', 'Send guidance to the existing task execution Session, including after human acceptance for archive. Does not change task stage, Plan or Session. For an active task use this, not resume_task; a busy receiver queues delivery.', { ...task, message: { ...string, maxLength: 2000 } }),
-  definition('complete_task', 'After human acceptance, request closure and wait for the host closed receipt. Read completionPolicy from read_task first. Only server-designated experiment-only tasks use gitReceiptRef="experiment-only" and their CI ref as archiveReceiptRef; retain evidence, do not create a PR or publish Main. Normal tasks require a merged GitHub PR and published Session memory version. Read-only verification tasks use gitReceiptRef="verification-only" and their CI ref.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
-  definition('edit_map', 'Create, rename, update, move or delete Main nodes and TODO/Bug records through the configured Coordinator identity. Use the current Main version; changes are atomic, idempotent and audited.', {
+  definition('list_tasks', 'List project requirements and unfinished Main TODO/Bug items.', {}),
+  definition('list_sessions', 'List assigned execution Sessions and their exact executionSessionId.', {}),
+  definition('list_conversations', 'List saved Coordinator conversations; their IDs are not executionSessionId.', {}),
+  definition('read_map', 'Read one published Main node and its direct children; omit nodeId for root.', { nodeId: string }, []),
+  definition('show_nodes', 'Show 1–3 Main node recommendation buttons.', { message: string, nodeIds }),
+  definition('open_node', 'Open one Main node in the workbench.', { nodeId: string }),
+  definition('tour_nodes', 'Show a visible tour of 2–6 Main nodes in order.', { nodeIds: tourNodeIds }),
+  definition('read_reference', 'Read a workflow reference when needed.', { name: { type: 'string', enum: coordinatorReferences } }),
+  definition('read_task', 'Read the authoritative task stage and evidence refs.', task),
+  definition('read_object', 'Read a versioned object in an assigned Session.', { executionSessionId, ref: string, version: string }),
+  definition('propose_mount', 'Propose a Main node for human approval; does not write Main.', { mainVersion: string, parentId: string, title: string, purpose: string, owns: strings }),
+  definition('prepare_task', 'Prepare a brief for human approval. New tasks get a fresh execution Session automatically; never select or reuse one.', { taskId: string, text: string, acceptance: string, nodeIds: strings, mainVersion: string, itemId: string, nodeId: string, kind: { enum: ['todo', 'bug'] } }, ['taskId', 'text', 'acceptance', 'nodeIds', 'mainVersion']),
+  definition('dispatch_task', 'Dispatch an existing approved brief; new tasks dispatch automatically.', { ...task, briefRef: string, briefVersion: string }),
+  definition('review_plan', 'Approve or reject the exact submitted Plan.', { ...task, planRef: string, planVersion: string, decision: { enum: ['approved', 'rejected'] }, reason: string }),
+  definition('request_ci', 'Request CI for the developer handoff and exact source SHA.', task),
+  definition('request_rework', 'Return failed CI to the original task and developer.', task),
+  definition('resume_task', 'Resume an interrupted task in its original execution Session.', { ...task, reason: string }),
+  definition('guide_task', 'Send guidance to the existing execution Session without changing task stage.', { ...task, message: { ...string, maxLength: 2000 } }),
+  definition('complete_task', 'Request closure after human acceptance; first read completionPolicy via read_task.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
+  definition('edit_map', 'Create, update, move or delete Main nodes and TODO/Bug records at mainVersion.', {
     mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
       op: { enum: ['create', 'update', 'move', 'delete'] }, id: string, parentId: string, nodeId: string, order: { type: 'integer', minimum: 0 },
       title: string, purpose: string, kind: { enum: ['module', 'work', 'node', 'todo', 'bug'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
     }, required: ['op'], additionalProperties: false } },
   }),
-  definition('mount_conversation', 'Attach the current intent to a Main TODO, Bug or Idea and return its durable conversation.', {
+  definition('mount_conversation', 'Attach an intent to a Main TODO, Bug or Idea conversation.', {
     mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
   }),
-  definition('ask_user', 'Ask one concise clarification question, with 2–6 short options when a choice is needed. nodeIds render at most 3 exact node choices. The UI also allows free text. Never use this for an existing brief approval or final acceptance: only the dedicated review card commits those decisions. Wait after this call.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
+  definition('ask_user', 'Ask one clarification; not for brief approval or final acceptance.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
 ];
 
 function validateInput(tool, input) {
