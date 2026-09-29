@@ -56,7 +56,9 @@ function publicMessages(state) {
   const visible = []; let carriedActions = [];
   for (let index = 0; index < raw.length; index++) {
     const message = raw[index];
-    const fold = message.role === 'assistant' && message.tools.length && !message.questions?.length && raw[index + 1]?.role === 'assistant';
+    // Tool-only blocks are internal progress; text already streamed to the
+    // browser is part of the conversation and must survive later model calls.
+    const fold = message.role === 'assistant' && !message.text && message.tools.length && !message.questions?.length && raw[index + 1]?.role === 'assistant';
     if (fold) { carriedActions.push(...(message.actions || [])); continue; }
     if (message.role === 'assistant' && carriedActions.length) {
       message.actions = [...carriedActions, ...(message.actions || [])]; carriedActions = [];
@@ -240,8 +242,8 @@ export class CoordinatorService {
       approvals: Object.entries(state.toolReceipts || {}).filter(([, receipt]) => receipt.result?.requiresHumanApproval)
         .map(([id, receipt]) => ({ id, ...receipt.result, ...(receipt.result.kind === 'mount-proposal' ? { pending: !mounts.byProposal[id] } : {}) })),
       promptVersion: state.promptVersion || hash(this.system), simulated: this.simulated,
-      // Tool-call narration is temporary. Once the same turn has a final
-      // answer, expose one concise assistant message and carry its actions.
+      // Preserve every visible text block across tool calls and model steps.
+      // Tool-only progress can still fold into the next assistant response.
       messages: publicMessages(state),
     };
   }

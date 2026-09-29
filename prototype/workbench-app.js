@@ -4518,16 +4518,16 @@ async function installCoordinatorPanel(sync){
     typing.textContent=label;typing.setAttribute('aria-label',label);
   };
   const setPlanningVisible=visible=>{
-    const users=messages.querySelectorAll(':scope > .coordinator-message.user');
-    const anchor=users[users.length-1];
+    const rows=messages.querySelectorAll(':scope > .coordinator-message');
+    const anchor=rows[rows.length-1];
     if(!visible||!anchor){planning.remove();return;}
     if(anchor.nextElementSibling!==planning)anchor.after(planning);
   };
   const syncPlanning=state=>{
     const rows=[...messages.children].filter(node=>node.classList?.contains('coordinator-message'));
     const last=rows.at(-1);
-    const awaitingText=last?.classList.contains('user')||last?.classList.contains('coordinator-streaming')&&
-      !last.querySelector('.coordinator-streaming-text')?.textContent.trim();
+    const awaitingText=Boolean(last)&&(!last.classList.contains('coordinator-streaming')||
+      !last.querySelector('.coordinator-streaming-text')?.textContent.trim());
     setPlanningVisible(((busy&&busyConversation===selected)||state.status==='running')&&awaitingText);
   };
   let pinnedTurn=null,pinnedRequest=null,stickToTurn=false;

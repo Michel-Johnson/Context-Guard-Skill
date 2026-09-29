@@ -973,6 +973,36 @@ try {
   assert.equal(await seamlessFinal.locator('ol li').last().textContent(),'检查窄屏换行。','the final buffered list appears after completion');
   assert.equal(await historicalMessage.getAttribute('data-history-probe'),'kept-after-reload','finalization preserves older transcript rows');
   record('coordinator-streaming-text-is-visible-before-final-message');
+  const intermediateText='已经展示的第一步。\n\n';
+  const nextStepText='接着展示的第二步。\n\n';
+  coordinatorState.messages.push({role:'user',text:'检查多轮模型调用'});
+  coordinatorState.status='running';coordinatorState.streamingText=intermediateText;
+  await coordinator.locator('.coordinator-streaming .coordinator-rise').last().waitFor();
+  coordinatorState.messages.push({role:'assistant',text:intermediateText,tools:[{name:'read_map'}]});
+  coordinatorState.streamingText='';
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
+  const intermediateRow=coordinator.locator('.coordinator-message.assistant').filter({hasText:'已经展示的第一步。'}).last();
+  await intermediateRow.evaluate(node=>{node.dataset.multistepProbe='kept';});
+  await coordinator.locator('.coordinator-planning').waitFor({state:'visible'});
+  assert.equal(await intermediateRow.evaluate(node=>node.nextElementSibling?.className),'coordinator-planning',
+    'the planning animation moves below retained assistant text between model calls');
+  const beforeMultistepScreenshot=await coordinator.locator('.coordinator-messages').evaluate(node=>{
+    const previous=node.scrollTop;node.scrollTop=node.scrollHeight;return previous;
+  });
+  await coordinator.screenshot({path:path.join(output,'coordinator-multistep-planning.png')});
+  await coordinator.locator('.coordinator-messages').evaluate((node,previous)=>{node.scrollTop=previous;},beforeMultistepScreenshot);
+  coordinatorState.streamingText=nextStepText;
+  await coordinator.locator('.coordinator-streaming .coordinator-rise').last().waitFor();
+  assert.equal(await intermediateRow.getAttribute('data-multistep-probe'),'kept','new model output does not remove the previous assistant row');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'已经展示的第一步。'}).count(),1,
+    'the first model call remains visible while the second call streams');
+  coordinatorState.streamingText='';coordinatorState.status='waiting-for-user';
+  coordinatorState.messages.push({role:'assistant',text:nextStepText,tools:[]});
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-streaming'));
+  assert.equal(await intermediateRow.getAttribute('data-multistep-probe'),'kept','completion retains the earlier assistant DOM row');
+  assert.equal(await coordinator.locator('.coordinator-message.assistant').filter({hasText:'接着展示的第二步。'}).count(),1,
+    'the final model call appears once after the earlier text');
+  record('Coordinator retains intermediate text and places planning below it across model calls');
   const rapidRevealText=Array.from({length:8},(_,index)=>`第 ${index+1} 段已经完整。`).join('\n\n');
   coordinatorState.messages.push({role:'user',text:'检查已完成文本的显示速度'});
   coordinatorState.status='running';coordinatorState.streamingText='第 1 段已经完整。\n\n';
