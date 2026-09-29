@@ -1462,7 +1462,8 @@ try {
   assert.equal(attachmentSeed.response.status, 200, JSON.stringify(attachmentSeed.body));
   const attachmentPage = await context.newPage();
   await attachmentPage.goto(service.url);
-  await attachmentPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced');
+  await attachmentPage.waitForFunction(() => window.__CG_SERVER?.root === 'cloud:overview'
+    && document.querySelector('.node[data-id="T0"]')?.textContent?.includes('项目地图'));
   assert.equal(await attachmentPage.locator('[data-act="ask-file"]').count(), 0, 'overview must not offer an unusable upload action');
   await attachmentPage.goto(`${service.url}/projects/context-guard?session=attachment-session`);
   await attachmentPage.waitForFunction(() => document.querySelector('#cg-sync')?.dataset.status === 'synced'
