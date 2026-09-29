@@ -785,7 +785,7 @@ export async function startCloudServer({
         });
         const itemScoped = conversationId.startsWith('item-');
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (!itemScoped ? '' :
-          `\n本对话仅负责这一 Map 事项：${JSON.stringify(conversation)}。先读取该节点的最新原文；不要处理其他事项。`);
+          '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。');
         const directory = conversations.conversationDirectory(conversationId);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: coordinatorTools, execute,

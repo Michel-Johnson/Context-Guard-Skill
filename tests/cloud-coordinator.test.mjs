@@ -843,24 +843,26 @@ test('Coordinator context carries the full static directory and only the mounted
   ] } } } };
   const conversation = { id: 'item-x', nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article' };
   const context = buildCoordinatorContext(snapshot, { conversation });
-  const details = result => JSON.parse(result.text.split('当前对话、事项与挂载记忆：\n')[1]);
-  const payload = details(context);
   assert.equal(context.version, 'main-v2');
   assert.match(context.text, /Main 版本：main-v2/);
   assert.match(context.text, /节点导航：\n- Root \[T0\]：Whole project\n  - Reader \[N1\]：Public reading\n    - Article \[N2\]：Article page\n  - Admin \[N3\]：Private admin/);
   assert.doesNotMatch(context.text, /staticDirectory|parentId|children/);
-  assert.deepEqual(payload.mountedChain.map(node => node.id), ['T0', 'N1', 'N2']);
-  assert.deepEqual(payload.currentTask, { nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article',
-    summary: 'Make the published article readable', status: 'pending' });
-  assert.doesNotMatch(JSON.stringify(payload.mountedChain), /private unrelated memory/);
+  assert.match(context.text, /## 当前事项\n- 类型：TODO\n- 事项 ID：TD1\n- 所在节点：Article \[N2\]\n- 标题：Improve article\n- 要求：Make the published article readable\n- 状态：pending/);
+  assert.match(context.text, /## 当前节点及祖先记忆\n- Root \[T0\]\n  - 记忆：root memory\n- Reader \[N1\]\n  - 记忆：reader memory\n- Article \[N2\]\n  - 记忆：article memory/);
+  assert.doesNotMatch(context.text, /private unrelated memory|"conversation"|"currentTask"/);
   snapshot.memory.map.root.children[0].children[0].todos[0].status = 'processing';
   const refreshed = buildCoordinatorContext(snapshot, { conversation });
-  assert.equal(details(refreshed).currentTask.status, 'processing', 'a new turn reads the latest Main item');
+  assert.match(refreshed.text, /- 状态：processing/, 'a new turn reads the latest Main item');
   const missing = buildCoordinatorContext(snapshot, { conversation: { ...conversation, itemId: 'TD-missing' } });
-  assert.equal(details(missing).currentTask.unavailable, true, 'a deleted item cannot inherit stale conversation text');
+  assert.match(missing.text, /- 事项 ID：TD-missing/);
+  assert.match(missing.text, /当前 Main 中找不到该事项/);
+  assert.doesNotMatch(missing.text, /- 标题：Improve article/, 'a deleted item cannot inherit stale conversation text');
   const scoped = buildCoordinatorContext(snapshot, { nodeIds: ['N2'], conversation: { id: 'item-x', nodeId: 'N2' } });
   assert.match(scoped.text, /    - Article \[N2\]：Article page/);
   assert.doesNotMatch(scoped.text, /Admin \[N3\]/);
+  const limited = buildCoordinatorContext(snapshot, { conversation, memoryLimit: 1 });
+  assert.match(limited.text, /另有 1 条记忆未加载/);
+  assert.doesNotMatch(limited.text, /reader memory|article memory/);
 });
 
 test('Coordinator streams text deltas while retaining one complete assistant message', async () => {
@@ -1247,11 +1249,9 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   let mode = 'idle', mainVersion = 'v1', bugItemId = '', bugTaskId = '';
   const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
   const scoped = (request = {}) => {
-    const system = String(request.system || ''), marker = '本对话仅负责这一 Map 事项：';
-    const at = system.indexOf(marker);
-    if (at < 0) return { itemId: null, unscoped: true };
-    try { return { itemId: JSON.parse((system.slice(at + marker.length).match(/\{[\s\S]*?\}/) || ['null'])[0])?.itemId || null, unscoped: false }; }
-    catch { return { itemId: null, unscoped: false }; }
+    const system = String(request.system || '');
+    if (!system.includes('本对话仅负责下方「当前事项」')) return { itemId: null, unscoped: true };
+    return { itemId: system.match(/^- 事项 ID：([^\n]+)$/m)?.[1] || null, unscoped: false };
   };
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
@@ -1679,10 +1679,10 @@ test('Coordinator task tools cannot mistake conversation IDs for execution Sessi
   assert.ok(readObject.input_schema.properties.executionSessionId);
   assert.equal(readObject.input_schema.properties.sessionId, undefined);
   assert.equal(prepare.input_schema.properties.sessionId, undefined);
-  assert.match(prepare.description, /After approval the scheduler creates one fresh execution Session/);
-  assert.match(prepare.description, /Never select or reuse a prior Session/);
+  assert.match(prepare.description, /fresh execution Session automatically/);
+  assert.match(prepare.description, /never select or reuse one/);
   assert.match(sessions.description, /executionSessionId/);
-  assert.match(conversations.description, /conversationId is never an executionSessionId/);
+  assert.match(conversations.description, /IDs are not executionSessionId/);
 
   let readSession = '';
   const exchanges = [];
