@@ -58,6 +58,7 @@ export const installedFiles = [
   "references/agent-handoff.md",
   "references/plan-review.md",
   "references/test-check.md",
+  "references/memory-definition.md",
   "scripts/workbench/runtime.mjs",
   "scripts/workbench/registry.mjs",
   "scripts/sync/client.mjs",

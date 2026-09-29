@@ -146,37 +146,51 @@ test('Cloud project approval dispatches once as soon as the fresh Session is reg
   assert.equal(queue.data.messages.filter(item => item.message.type === 'task.assign').length, 1);
 });
 
-test('Coordinator routing prompt assigns node discovery to the agent while preserving human approval', async () => {
+test('Coordinator guide references are callable and loaded only after an explicit tool call', async t => {
   const prompt = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');
-  const mount = await fs.readFile(new URL('../references/map-mount.md', import.meta.url), 'utf8');
-  const read = await fs.readFile(new URL('../references/map-read.md', import.meta.url), 'utf8');
-  assert.match(prompt, /节点定位由你负责/);
-  assert.match(prompt, /意图必须保真/);
-  assert.match(prompt, /回复语言要足够精简/);
-  assert.match(prompt, /默认目标为 3 句、约 120 个汉字/);
-  assert.match(prompt, /服务端不得按字符裁切/);
-  assert.match(prompt, /默认 1 个、最多 3 个/);
-  assert.match(prompt, /不要复述用户原话、重复已知上下文/);
-  assert.match(prompt, /部署、发布、启动服务/);
-  assert.match(prompt, /不得用源码路径或 CI 通过替代部署结果/);
-  assert.match(prompt, /每个澄清问题都必须调用一次 `ask_user`/);
-  assert.match(prompt, /brief 审批只能由页面的「确认需求／拒绝需求」卡片提交/);
-  assert.match(prompt, /事项对话只有一项待验收，或 Main 对话的当前项目只有一项待验收时，用户明确发送「验收通过」或「验收不通过：具体原因」/);
-  assert.match(prompt, /页面代用户提交同一人工验收回执/);
-  assert.match(prompt, /不要再要求用户寻找或点击卡片/);
-  assert.match(prompt, /不得自行裁决/);
-  assert.match(prompt, /完整节点标题/);
-  assert.match(prompt, /`conversationId` 与 `executionSessionId` 是两类身份/);
-  assert.match(prompt, /必须逐字复制自本轮 `list_sessions` 返回值/);
-  assert.match(prompt, /用户问“你能否创建 Session”或同义问题时，明确回答“可以”/);
-  assert.match(prompt, /人批准 brief 后后台为任务自动创建执行 Session/);
-  assert.match(prompt, /不要求用户提供节点名称、ID 或路径/);
-  assert.match(prompt, /推荐不等于批准或派单/);
-  assert.match(mount, /只问缺失的业务信息/);
-  assert.match(mount, /没有匹配节点时说明已查范围并提出新节点建议/);
-  assert.match(mount, /不要求用户找出正确节点/);
-  assert.match(read, /不自动等于最终执行节点/);
-  assert.doesNotMatch(prompt + mount, /没有对应节点就问用户|问清正确节点后改挂/);
+  const linkedReferences = [...prompt.matchAll(/\]\(references\/([^/)]+)\)/g)]
+    .map(match => match[1]).filter(name => name !== 'design-current.md');
+  assert.deepEqual([...linkedReferences].sort(), [...coordinatorReferences].sort());
+  const referenceReads = [];
+  const execute = createCoordinatorExecutor({ readReference: async name => {
+    referenceReads.push(name);
+    return { text: await fs.readFile(new URL(`../references/${name}`, import.meta.url), 'utf8') };
+  } });
+  for (const name of linkedReferences) {
+    const result = await execute('read_reference', { name }, { operationId: `prompt-ref:${name}` });
+    assert.ok(result.text.trim(), `${name} must be readable through the Coordinator tool`);
+  }
+  assert.deepEqual(referenceReads, linkedReferences);
+  referenceReads.length = 0;
+
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-prompt-references-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const calls = [], context = { version: 'main-1', text: '\\nSynthetic project navigation.' };
+  const service = new CoordinatorService({ directory, system: prompt, tools: coordinatorTools, execute,
+    context: async () => context,
+    model: { next: async ({ system, messages, tools }) => {
+      calls.push(structuredClone({ system, messages, tools }));
+      if (calls.length === 1) {
+        assert.deepEqual(referenceReads, [], 'no reference is loaded before the first model call');
+        return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'read-memory-rules', name: 'read_reference',
+          input: { name: 'memory-definition.md' } }] };
+      }
+      return { stop: 'end_turn', content: [{ type: 'text', text: 'Memory writing rules are available.' }] };
+    } } });
+  t.after(() => service.close());
+  await service.submit({ id: 'memory-rules', text: 'Read the memory writing rules.' });
+  await service.close();
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].system, prompt + context.text);
+  assert.deepEqual(calls[0].tools, coordinatorTools);
+  assert.deepEqual(calls[0].messages, [{ role: 'user', content: 'Read the memory writing rules.' }]);
+  assert.deepEqual(referenceReads, ['memory-definition.md']);
+  const reply = calls[1].messages.at(-1).content.find(block => block.type === 'tool_result');
+  assert.equal(reply.tool_use_id, 'read-memory-rules');
+  assert.equal(reply.is_error, undefined);
+  assert.equal(JSON.parse(reply.content).text,
+    await fs.readFile(new URL('../references/memory-definition.md', import.meta.url), 'utf8'));
 });
 
 test('Mount handoff ends the source turn and stale requirements expose a static correction hint', async () => {
@@ -829,20 +843,24 @@ test('Coordinator context carries the full static directory and only the mounted
   ] } } } };
   const conversation = { id: 'item-x', nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article' };
   const context = buildCoordinatorContext(snapshot, { conversation });
-  const payload = JSON.parse(context.text.slice(context.text.indexOf('{')));
+  const details = result => JSON.parse(result.text.split('当前对话、事项与挂载记忆：\n')[1]);
+  const payload = details(context);
   assert.equal(context.version, 'main-v2');
-  assert.deepEqual(payload.staticDirectory.map(node => node.id), ['T0', 'N1', 'N2', 'N3']);
+  assert.match(context.text, /Main 版本：main-v2/);
+  assert.match(context.text, /节点导航：\n- Root \[T0\]：Whole project\n  - Reader \[N1\]：Public reading\n    - Article \[N2\]：Article page\n  - Admin \[N3\]：Private admin/);
+  assert.doesNotMatch(context.text, /staticDirectory|parentId|children/);
   assert.deepEqual(payload.mountedChain.map(node => node.id), ['T0', 'N1', 'N2']);
   assert.deepEqual(payload.currentTask, { nodeId: 'N2', itemId: 'TD1', kind: 'todo', title: 'Improve article',
     summary: 'Make the published article readable', status: 'pending' });
   assert.doesNotMatch(JSON.stringify(payload.mountedChain), /private unrelated memory/);
   snapshot.memory.map.root.children[0].children[0].todos[0].status = 'processing';
   const refreshed = buildCoordinatorContext(snapshot, { conversation });
-  assert.equal(JSON.parse(refreshed.text.slice(refreshed.text.indexOf('{'))).currentTask.status, 'processing', 'a new turn reads the latest Main item');
+  assert.equal(details(refreshed).currentTask.status, 'processing', 'a new turn reads the latest Main item');
   const missing = buildCoordinatorContext(snapshot, { conversation: { ...conversation, itemId: 'TD-missing' } });
-  assert.equal(JSON.parse(missing.text.slice(missing.text.indexOf('{'))).currentTask.unavailable, true, 'a deleted item cannot inherit stale conversation text');
+  assert.equal(details(missing).currentTask.unavailable, true, 'a deleted item cannot inherit stale conversation text');
   const scoped = buildCoordinatorContext(snapshot, { nodeIds: ['N2'], conversation: { id: 'item-x', nodeId: 'N2' } });
-  assert.deepEqual(JSON.parse(scoped.text.slice(scoped.text.indexOf('{'))).staticDirectory.map(node => node.id), ['T0', 'N1', 'N2']);
+  assert.match(scoped.text, /    - Article \[N2\]：Article page/);
+  assert.doesNotMatch(scoped.text, /Admin \[N3\]/);
 });
 
 test('Coordinator streams text deltas while retaining one complete assistant message', async () => {

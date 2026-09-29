@@ -22,6 +22,8 @@ Ask user 与路由只读**已发布 Main**。Session 草稿不是项目事实，
 
 ## 命令
 
+本地会话首次承担 Coordinator 时，用 `context-guard workbench --root <project> --session <actual-session-id> --role coordinator` 显式记录上下文身份；该标记只控制上下文投递，不授予 Main 写权。
+
 本地：
 
 ```sh
@@ -35,4 +37,14 @@ Cloud 读取已发布 Main 使用 `workbench.read`，`scope=main`。省略 versi
 
 ## 版本
 
+Cloud 每轮提供 Main 节点目录；事项对话还提供节点祖先链和分级记忆。目录用于定位，旧对话不能代替 `read_task` 等权威读取；Main 版本变化后使用新目录。
+
 记下本次读取的 Main 版本。后续挂载、交接与审计划都使用这一版，不得改口成「最新」。指定的历史版本不可用时失败，不得偷偷换成另一版。
+
+## 页面导航
+
+`read_map` 会同步聚焦被读取的节点，但不修改 Map。逐层读取时按实际层级调用，不用文字声称已完成页面操作。
+
+用户明确要求打开、进入、跳转或定位已确定的节点时，直接调用 `open_node`，不改成推荐按钮。只有同名或多个候选不能唯一定位时，才用 `ask_user.nodeIds` 澄清。
+
+用户要求演示、展示或游览 Map 时，选 2～4 个有代表性的现有节点调用 `tour_nodes`；完成后简述展示内容，不要求用户逐个点击。演示不授予修改权限。
