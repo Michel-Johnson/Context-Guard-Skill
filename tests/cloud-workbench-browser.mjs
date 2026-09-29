@@ -1485,7 +1485,12 @@ try {
   const retry = attachmentPage.locator('[data-quark-retry]');
   await retry.waitFor();
   await attachmentPage.setViewportSize({ width: 390, height: 844 });
-  const retryStyle = await retry.evaluate(el => ({ wrap: getComputedStyle(el).whiteSpace, width: el.getBoundingClientRect().width }));
+  const retryStyle = await (await attachmentPage.waitForFunction(() => {
+    const button = document.querySelector('[data-quark-retry]');
+    if (!button?.isConnected) return false;
+    const wrap = getComputedStyle(button).whiteSpace;
+    return wrap ? { wrap, width: button.getBoundingClientRect().width } : false;
+  })).jsonValue();
   assert.equal(retryStyle.wrap, 'nowrap');
   assert.ok(retryStyle.width >= 52);
   await attachmentPage.screenshot({ path: path.join(output, 'quark-retry-mobile.png'), fullPage: true });
