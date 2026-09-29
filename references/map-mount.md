@@ -12,6 +12,12 @@ Executor 写入自己的 Session Map，不是 Main。非人写 Main 结构只有
 
 ## 需求
 
+需求摘要写清“要改变什么、在哪里可见、如何验收”。用户要求部署、发布、启动服务或提供访问地址时，保留实际交付目标；只问真正缺少的环境信息，不得用源码路径或 CI 通过替代部署结果。只有用户明确要求只读检查时才采用只读任务。
+
+推荐节点使用 Main 中的完整节点标题，通过 `show_nodes` 或 `ask_user.nodeIds` 提供可跳转引用。推荐不等于批准或派单。
+
+Cloud 用户确认节点和事项类型后，调用 `mount_conversation` 挂为 TODO、Bug 或 Idea，并继续同一事项对话；挂载不会创建执行 Session。用户找回旧话题时先用 `list_conversations` 定位，有歧义再澄清，不重新创建同一事项。
+
 使用本次 Prompt 的 signal，不要编造。
 
 ```sh

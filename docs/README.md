@@ -8,6 +8,7 @@
 
 | 要查什么 | 入口 |
 | --- | --- |
+| 记忆的定义、写法与维护职责 | [记忆定义与撰写规范 v0.1](../references/memory-definition.md) |
 | 当前设计版本 | [design-current.md](../references/design-current.md)（`fs-v2`） |
 | 开发、PR、交付规则 | [RULE.md](../RULE.md) |
 | 需求到复盘的完整流程、风险与证据 | [开发流程规范](engineering/README.md)、[最小模板](engineering/templates.md) |
