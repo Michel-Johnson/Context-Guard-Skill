@@ -1,13 +1,13 @@
-# Memory Filesystem v2
+# Memory Filesystem v2.1
 
 读者：产品角色 Agent（格式与阅读面）；仓库开发 Agent（生成器与迁移缺口）。
 
-**版本：`fs-v2`（当前设计版本）**  
+**版本：`fs-v2.1`（当前设计版本；底层事务格式仍为 v2）**
 从何而来：已评审的 Cloud Main / Session 记忆文件结构。  
 确认：现行存储法只认这一版。下一版必须另开版本号。入口见 [当前设计版本](../design-current.md)。  
 未升格设计草案不是本版本，不得当存储法。
 
-这是 Cloud Main 与 Session 记忆的已评审目标文件结构。启用 fs-v2 的服务器提供按版本读取单份 Markdown 的显式 API，Agent 可通过 `context-guard memory file` 读取获授权的文档；这不是本地私有 `content/` 磁盘路径。未启用 fs-v2 的项目不能使用该入口，旧记录仍只作兼容传输。Agent 打开模块时默认读哪套目录（FIND.md / snapshot 与本投影如何切换）尚未拍板，不得在本文里选边。
+这是 Cloud Main 与 Session 记忆的已评审目标文件结构。启用 filesystem v2 的服务器提供按版本读取单份 Markdown 的显式 API，Agent 可通过 `context-guard memory file` 读取获授权的文档；这不是本地私有 `content/` 磁盘路径。未启用该投影的项目不能使用此入口，旧记录仍只作兼容传输。Agent 打开模块时默认读哪套目录（FIND.md / snapshot 与本投影如何切换）尚未拍板，不得在本文里选边。
 
 ## 目录
 
@@ -19,9 +19,11 @@ filesystem-v2/
     |-- storage.json
     |-- main/
     |   |-- map.json                   # 代码导航表
+    |   |-- memory.md                  # 项目记忆；有内容时生成
     |   |-- nodes/
     |   |   `-- <name>-module|node/
     |   |       |-- index.md
+    |   |       |-- memory.md          # 节点记忆；有内容时生成
     |   |       |-- bugs/<id>.md
     |   |       |-- todos/<id>.md
     |   |       `-- ideas/<id>.md
@@ -31,6 +33,7 @@ filesystem-v2/
 ```
 
 节点的 Bug、Todo、Idea 索引直接生成在该节点的 `index.md` 中，不再创建 `bugs-index.json`、`tasks-index.json` 或 Idea JSON 索引。
+项目和节点的记忆正文存于 Main Map 对应节点的 `memoryDocument`，随版本写入并投影为上述 `memory.md`。只有人和 Coordinator 能修改；Executor、Tester 可按已有单文件读取权限查看。项目记忆是 Coordinator 首轮静态上下文，进入节点时只加载最近的相关节点记忆，历史条目仍按需读。文档格式见 [记忆定义](../memory-definition.md)。
 
 ## 文档
 

@@ -1,6 +1,6 @@
 # Workbench / Agent interface (local Node protocol 2)
 
-读者：产品角色 Agent（本机工作台 / Session 协议）。仓库开发 Agent 改实现时也读本文。当前设计版本 [`fs-v2`](design-current.md)。
+读者：产品角色 Agent（本机工作台 / Session 协议）。仓库开发 Agent 改实现时也读本文。当前设计版本 [`fs-v2.1`](design-current.md)。
 
 This reference describes the local workbench and isolated Git Session caches.
 `references/server-memory.md` defines the private memory service, publication and

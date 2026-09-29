@@ -6,11 +6,11 @@ Use this contract only when a project's explicit policy selects a private memory
 server. The Context Guard development repository selects this mode in `RULE.md`;
 other projects do not inherit its server address or binding.
 
-Current design version: [`fs-v2`](design-current.md).
+Current design version: [`fs-v2.1`](design-current.md).
 
 **Status: private service/client implementation, automated acceptance, and the
 production filesystem v2 migration have been verified.** The node/module and
-work-item document contract is [Memory Filesystem v2](memory-filesystem-v2/README.md).
+work-item document contract is [Memory Filesystem v2.1](memory-filesystem-v2/README.md).
 Runtime compatibility still retains legacy records; default API/context exclusion
 of those records remains an explicit acceptance item in `CI_todo.md` and must not
 be inferred from the documentation alone. Which catalog an Agent opens first

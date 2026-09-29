@@ -7,7 +7,7 @@ description: "Keep folder-scoped project memory: sessions, bugs, tasks, and the 
 
 读者：产品角色 Agent（任意项目里的 Skill / Coordinator / Executor / Tester）。本仓库合并后如何装 Skill 见仓库根目录 `RULE.md`，不要写进本文。
 
-当前设计版本：[`fs-v2`](references/design-current.md)。
+当前设计版本：[`fs-v2.1`](references/design-current.md)。
 
 Human–agent project memory for Codex, Cursor, and Claude. The human talks to a **Coordinator** (Cloud Coordinator, the local workbench Coordinator, or a Codex Session acting as Coordinator). Execution Sessions do not talk to the human. When the user mounts the Coordinator onto a TODO or Bug, the product automatically creates an execution Session and binds it to that item. Approving the brief still gates dispatch. Confirmation and “go implement this” happen in any Coordinator-identity conversation. Do not develop new Hooks in this round (including `SessionEnd`).
 
@@ -37,7 +37,7 @@ and pending drafts, not a second product format.
 3. **Tasks** — playbook in `.codex/context/tasks/{id}.md`
 4. **Map** — live tree in `.codex/context/map.json`; short memories and ideas stay on the node
 
-[Memory Filesystem v2](references/memory-filesystem-v2/README.md) (`fs-v2`) is
+[Memory Filesystem v2.1](references/memory-filesystem-v2/README.md) (`fs-v2.1`) is
 the current work-item file contract. When the active Cloud API or Hook
 **explicitly** supplies that projection, follow Markdown links from
 node/module `index.md` to the linked Bug, Todo, Idea, test, or Session
@@ -163,7 +163,7 @@ any project.
 
 ### Bugs — record fast
 
-When you find a bug: next `B` id, follow the `fs-v2` Bug file contract. Prefer `context-guard record-bad-case` when that command is available. Tell the Coordinator the id. Follow the configured memory authority when archiving; recording a bug never authorizes publishing private records to GitHub. Bugs must not be deferred. If the work does not need a fix, **delete** the Bug file. If it cannot be fixed, close it as unfixable (an end state, not a parking lot). Images and other binaries live outside the Bug file; the Markdown only holds a reference link. Do not create `bad-cases.md`.
+When you find a bug: next `B` id, follow the `fs-v2.1` Bug file contract. Prefer `context-guard record-bad-case` when that command is available. Tell the Coordinator the id. Follow the configured memory authority when archiving; recording a bug never authorizes publishing private records to GitHub. Bugs must not be deferred. If the work does not need a fix, **delete** the Bug file. If it cannot be fixed, close it as unfixable (an end state, not a parking lot). Images and other binaries live outside the Bug file; the Markdown only holds a reference link. Do not create `bad-cases.md`.
 
 Project language: read `context-guard preferences --root <project>`. Confirmed language is shared across linked worktrees (and comes from the private server when configured). Consistent existing settings migrate automatically; unset never overrides a confirmed language. Ask 中文 or English only when the shared value is unset, or ask which confirmed value to retain when migration reports a conflict. Persist with `context-guard set-language --root <project> --language <zh-or-en>` and verify the returned value. Read/network failures must not trigger first-use questions. Do not ask again after a successful confirmation.
 

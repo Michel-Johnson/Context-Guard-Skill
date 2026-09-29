@@ -41,6 +41,18 @@ test('IF-038: positional node edits remain ordered through the existing synchron
   assert.deepEqual(documentOperations(after, after), []);
 });
 
+test('only human and Coordinator may version project and node memory documents', () => {
+  const doc = { v: 1, project: 'test', root: { id: 'T0', title: 'test', children: [{ id: 'N1', title: 'module', children: [] }] } };
+  const operation = { type: 'update', id: 'T0', fields: { memoryDocument: '# test · 项目记忆\n\n## 目标\n\n实验。' } };
+  assert.throws(() => applyOperations(doc, [operation], { kind: 'agent', sessionId: 's1' }, ['T0']), { code: 'FORBIDDEN' });
+  assert.throws(() => applyOperations(doc, [operation], { kind: 'developer', sessionId: 's1' }), { code: 'FORBIDDEN' });
+  const written = applyOperations(doc, [operation], { kind: 'coordinator', sessionId: '' }).doc;
+  assert.equal(written.root.memoryDocument, operation.fields.memoryDocument);
+  assert.equal(applyOperations(doc, [operation], { kind: 'human', sessionId: '' }).doc.root.memoryDocument, operation.fields.memoryDocument);
+  assert.throws(() => applyOperations(doc, [{ ...operation, fields: { memoryDocument: 'x'.repeat(12001) } }],
+    { kind: 'human', sessionId: '' }), { code: 'INVALID_MAP' });
+});
+
 test('developer actor directly maintains node structure without gaining human-only powers', () => {
   const doc = { v: 1, project: 'test', root: { id: 'R', title: 'root', kind: 'module', state: 'dirty', children: [
     { id: 'A', title: 'Long title (src/)', kind: 'module', state: 'untested', children: [] },

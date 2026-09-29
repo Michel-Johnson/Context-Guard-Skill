@@ -109,6 +109,22 @@ test('reads and writes the active runtime state while refreshing Markdown', asyn
   assert.equal(JSON.parse(await fs.readFile(value.legacy, 'utf8')).revision, 7);
 });
 
+test('projects versioned project and node memory documents from the same Main commit', async t => {
+  const value = await fixture(t);
+  const next = state();
+  next.main.memory.map.root.memoryDocument = '# 项目 · 项目记忆\n\n## 目标\n\n验证流程。';
+  next.main.memory.map.root.children[0].memoryDocument = '# 提交 · 节点记忆\n\n## 约束\n\n不得重复。';
+  await fs.writeFile(value.legacy, JSON.stringify(next));
+  await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
+  const mainRoot = path.join(filesystemProjectDirectory(value.dataDir, value.projectId), 'content/main');
+  assert.match(await fs.readFile(path.join(mainRoot, 'memory.md'), 'utf8'), /验证流程/);
+  assert.match(await fs.readFile(path.join(mainRoot, 'nodes/项目-module/提交-node/memory.md'), 'utf8'), /不得重复/);
+  assert.match(await fs.readFile(path.join(mainRoot, 'nodes/项目-module/提交-node/index.md'), 'utf8'), /\[阅读记忆\]\(memory\.md\)/);
+  const manifest = JSON.parse(await fs.readFile(path.join(mainRoot, 'manifest.json'), 'utf8'));
+  assert(manifest.files.some(file => file.path === 'memory.md'));
+  assert(manifest.files.some(file => file.path === 'nodes/项目-module/提交-node/memory.md'));
+});
+
 test('later Todo attempts survive committed updates, restart and projection repair', async t => {
   const value = await fixture(t);
   await migrateProjectMemoryToFilesystemV2(value.dataDir, value.projectId);
@@ -141,6 +157,8 @@ test('versioned filesystem reads expose scoped Markdown without legacy records o
   const value = await fixture(t);
   const seeded = state();
   seeded.main.memory.map.root.ideas = [{ id: 'I1', text: 'Coordinator-only idea text', state: 'pending' }];
+  seeded.main.memory.map.root.memoryDocument = '# 项目记忆\n\n公开边界。';
+  seeded.main.memory.map.root.children[0].memoryDocument = '# 提交记忆\n\n避免重复提交。';
   await fs.writeFile(value.legacy, JSON.stringify(seeded));
   const configuration = { dataDir: value.dataDir, adminToken: 'admin', projects: { project: { token: 'project-token' } } };
   const service = await startMemoryServer({ ...configuration, port: 0 });
@@ -158,6 +176,14 @@ test('versioned filesystem reads expose scoped Markdown without legacy records o
     assert.equal(mapBody.version, 'main-v1');
     assert.equal(JSON.parse(mapBody.content).root, 'M1');
     assert.equal(Object.hasOwn(mapBody, 'records'), false);
+    const projectMemory = await get('main/memory.md?version=main-v1');
+    assert.equal(projectMemory.status, 200);
+    assert.match((await projectMemory.json()).content, /公开边界/);
+    const nodeMemoryPath = 'nodes/项目-module/提交-node/memory.md'.split('/').map(encodeURIComponent).join('/');
+    const nodeMemory = await get(`main/${nodeMemoryPath}?version=main-v1`);
+    assert.equal(nodeMemory.status, 200);
+    assert.match((await nodeMemory.json()).content, /避免重复提交/);
+    assert.equal((await get('main/memory.md?version=old')).status, 409);
     assert.equal((await get('main/map.json', 'wrong-token')).status, 401);
     const indexPath = 'nodes/项目-module/index.md'.split('/').map(encodeURIComponent).join('/');
     const agentIndex = await get(`main/${indexPath}?version=main-v1`);

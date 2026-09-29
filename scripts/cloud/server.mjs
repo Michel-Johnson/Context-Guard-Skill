@@ -89,16 +89,20 @@ export function coordinatorStructureOperations(actions, operationId) {
   if (!Array.isArray(actions) || !actions.length || actions.length > 30) protocolFail('INVALID_ARGUMENT', 'Provide 1–30 Map actions');
   return actions.map((action, index) => {
     if (!action || typeof action !== 'object' || Array.isArray(action)) protocolFail('INVALID_ARGUMENT', 'Map action must be an object');
-    const allowed = action.op === 'create' ? ['op', 'id', 'parentId', 'order', 'title', 'purpose', 'kind', 'state', 'owns']
-      : action.op === 'update' ? ['op', 'id', 'title', 'purpose', 'kind', 'state', 'owns']
+    const allowed = action.op === 'create' ? ['op', 'id', 'parentId', 'order', 'title', 'purpose', 'memoryDocument', 'kind', 'state', 'owns']
+      : action.op === 'update' ? ['op', 'id', 'title', 'purpose', 'memoryDocument', 'kind', 'state', 'owns']
       : action.op === 'move' ? ['op', 'id', 'parentId', 'order', 'kind']
       : action.op === 'delete' ? ['op', 'id', 'kind', 'nodeId'] : [];
     if (!allowed.length || Object.keys(action).some(key => !allowed.includes(key))) protocolFail('FORBIDDEN', 'Invalid Coordinator Map action');
+    if (Object.hasOwn(action, 'memoryDocument') && (typeof action.memoryDocument !== 'string' || action.memoryDocument.length > 12000)) {
+      protocolFail('INVALID_ARGUMENT', 'Memory document must be Markdown within 12000 characters');
+    }
     const id = action.id || `NCC${digest(`${operationId}:${index}`).slice(0, 20)}`;
     if (action.op === 'create') {
       if (typeof action.parentId !== 'string' || !action.parentId || typeof action.title !== 'string' || !action.title.trim()) protocolFail('INVALID_ARGUMENT', 'Create needs parentId and title');
       return { type: 'create', parentId: action.parentId, ...(action.order === undefined ? {} : { order: action.order }), node: {
-        id, title: action.title, purpose: action.purpose || '', kind: action.kind || 'module', state: action.state || 'untested', owns: action.owns || [],
+        id, title: action.title, purpose: action.purpose || '', ...(action.memoryDocument === undefined ? {} : { memoryDocument: action.memoryDocument }),
+        kind: action.kind || 'module', state: action.state || 'untested', owns: action.owns || [],
       } };
     }
     if (action.op === 'delete') {
@@ -114,7 +118,7 @@ export function coordinatorStructureOperations(actions, operationId) {
       if (typeof action.parentId !== 'string' || !action.parentId) protocolFail('INVALID_ARGUMENT', 'Move needs parentId');
       return { type: 'move', id, parentId: action.parentId, ...(action.order === undefined ? {} : { order: action.order }) };
     }
-    const fields = Object.fromEntries(Object.entries(action).filter(([key]) => ['title', 'purpose', 'kind', 'state', 'owns'].includes(key)));
+    const fields = Object.fromEntries(Object.entries(action).filter(([key]) => ['title', 'purpose', 'memoryDocument', 'kind', 'state', 'owns'].includes(key)));
     if (!Object.keys(fields).length) protocolFail('INVALID_ARGUMENT', 'Update needs at least one structural field');
     return { type: 'update', id, fields };
   });

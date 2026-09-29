@@ -31,6 +31,7 @@ Context Guard
 | 文件类型 | C | E | T |
 | --- | --- | --- | --- |
 | 全局导航 / Map 摘要 | ✅ | 🔴 | 🔴 |
+| 项目记忆 `memory.md` | ✅ | 🔴 | 🔴 |
 | 当前任务摘要 | ✅ | ✅ | ✅ |
 | 节点详情 / 历史上下文 | 🔴 | 🔴 | 🔴 |
 | 执行规范 | 🔴 | ✅ | 🔴 |
@@ -66,7 +67,7 @@ CLI 负责写和状态变化。
 
 | Domain | 接口 | Caller | 动作 |
 | --- | --- | --- | --- |
-| map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
+| map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点，也可按 Main 版本更新项目或节点记忆文档。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | map | 提议 Main 节点 | | 人同意前不写入。唯一的提议 |
 | map | 任务复查 | | 不写入 Main 节点 |
 | map | 挂载 | | 将 Coordinator 挂载到节点；执行 Session 仍须等该事项的 brief 获批后创建，不写入 Main 节点 |
@@ -152,7 +153,7 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | conflict | `getConflict` `resolveConflict` | 能识别人当前是否正在改，并提醒人 |
 | auth | `login` `refreshToken` `logout` | 登录只有这一套 |
 | memory | `getMainMemory` `getSessionMemory` `updateMemory` | |
-| memory | `getMemoryFile` | 按 Main/Session 和版本读取单个文件；版本变化时返回冲突 |
+| memory | `getMemoryFile` | 按 Main/Session 和版本读取单个文件，包括项目或节点 `memory.md`；版本变化时返回冲突 |
 | memory | 恢复 Main | 只保留最近 5 个 Main 版本。更早的版本自动删除 |
 | recovery | `retrySync` `recoverSession` | 保留原事项、Session 与消息 ID；明确未执行的失败可重试，结果未知先核对；失败可见，不把排队或接收显示为完成 |
 | heartbeat | `heartbeat` `getPresence` | |

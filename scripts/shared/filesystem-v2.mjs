@@ -127,6 +127,12 @@ export function buildFilesystemV2(snapshot) {
   }
   assign(byId.get(document.root.id));
 
+  for (const { node } of nodeEntries) {
+    if (!String(node.memoryDocument || '').trim()) continue;
+    const file = node.id === document.root.id ? 'memory.md' : `${nodeDir.get(node.id)}/memory.md`;
+    put(file, node.memoryDocument);
+  }
+
   const related = new Map(nodeEntries.map(({ node }) => [node.id, new Set()]));
   for (const flow of [...(document.flows || []), ...(document.root.flows || [])]) {
     if (!byId.has(flow.from) || !byId.has(flow.to)) {
@@ -337,6 +343,8 @@ ${rounds.map((attempt, roundIndex) => `- [A${roundIndex + 1}](${link(file, `${no
 
   for (const { node } of nodeEntries) {
     const file = `${nodeDir.get(node.id)}/index.md`;
+    const memoryFile = node.id === document.root.id ? 'memory.md' : `${nodeDir.get(node.id)}/memory.md`;
+    const memoryLink = files.has(memoryFile) ? `\n\n## 记忆\n\n[阅读记忆](${link(file, memoryFile)})` : '';
     const children = [...(node.children || []), ...(node._inbox || [])].map((child) => child.id);
     const bugs = bugsByNode.get(node.id) || [];
     const todos = todosByNode.get(node.id) || [];
@@ -368,7 +376,7 @@ ${todoBlock}
 
 ## Idea
 
-${ideaBlock}`);
+${ideaBlock}${memoryLink}`);
   }
 
   const map = {

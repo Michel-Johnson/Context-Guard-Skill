@@ -30,10 +30,10 @@ export const coordinatorTools = [
   definition('resume_task', 'Resume an interrupted task in its original execution Session.', { ...task, reason: string }),
   definition('guide_task', 'Send guidance to the existing execution Session without changing task stage.', { ...task, message: { ...string, maxLength: 2000 } }),
   definition('complete_task', 'Request closure after human acceptance; first read completionPolicy via read_task.', { ...task, gitReceiptRef: string, archiveReceiptRef: string }),
-  definition('edit_map', 'Create, update, move or delete Main nodes and TODO/Bug records at mainVersion.', {
+  definition('edit_map', 'Create, update, move or delete Main nodes and TODO/Bug records; update project or node memoryDocument at mainVersion.', {
     mainVersion: string, actions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: {
       op: { enum: ['create', 'update', 'move', 'delete'] }, id: string, parentId: string, nodeId: string, order: { type: 'integer', minimum: 0 },
-      title: string, purpose: string, kind: { enum: ['module', 'work', 'node', 'todo', 'bug'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
+      title: string, purpose: string, memoryDocument: { type: 'string', maxLength: 12000 }, kind: { enum: ['module', 'work', 'node', 'todo', 'bug'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
     }, required: ['op'], additionalProperties: false } },
   }),
   definition('mount_conversation', 'Attach an intent to a Main TODO, Bug or Idea conversation.', {
