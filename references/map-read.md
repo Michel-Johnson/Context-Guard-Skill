@@ -33,7 +33,7 @@ context-guard map changes --root "<project>" --session "<session-id>" --cursor "
 
 `map read` 返回该时刻的权威内容与 `version`。缺少 cursor 表示读取当前状态，不是「没有变化」。错误码与页面草稿门禁见 [workbench-interface.md](workbench-interface.md)。
 
-Cloud 读取已发布 Main 使用 `workbench.read`，`scope=main`。省略 version 时取当前已发布版本，随后分页与路由必须固定该版本。字段与拒绝条件见 [interface-contract-v2.md](../docs/interface-contract-v2.md)。
+Cloud 读取已发布 Main 使用 `workbench.read`，`scope=main`。省略 version 时取当前已发布版本，随后分页与路由必须固定该版本。见 [interface.md](../docs/interface.md)。
 
 ## 版本
 
