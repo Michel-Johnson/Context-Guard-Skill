@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
 import { DeviceConnection } from '../scripts/workbench/protocol-device.mjs';
 import { sendMessage } from '../scripts/workbench/protocol-client.mjs';
@@ -41,15 +42,15 @@ test('developer Main CLI still reads Main; apply is forbidden even when allowlis
     repository: 'https://github.com/example/repo', password: 'test-only', clientId: 'ignored-by-device-identity',
   } }, { repositoryId: '123' });
   await fs.writeFile(path.join(shared, 'memory-client.json'), JSON.stringify({ url: cloud.url, projectId }));
-  const cli = new URL('../scripts/workbench/cli.mjs', import.meta.url);
-  const read = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
+  const cli = fileURLToPath(new URL('../scripts/workbench/cli.mjs', import.meta.url));
+  const read = JSON.parse((await execFileAsync(process.execPath, [cli, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
   assert.equal(read.version, 'main-v1'); assert.equal(read.doc.root.title, 'Blog');
   const requestFile = path.join(directory, 'request.json');
   await fs.writeFile(requestFile, JSON.stringify({ operationId: 'cli-create-content', baseVersion: read.version, changes: [{
     op: 'create', kind: 'node', id: 'content', fields: { parentId: 'T0', title: '内容', purpose: '内容', kind: 'module', state: 'untested', owns: ['source/'] },
   }] }));
   await assert.rejects(
-    () => execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'apply', '--root', project, '--input', requestFile], { windowsHide: true }),
+    () => execFileAsync(process.execPath, [cli, 'map', 'main', 'apply', '--root', project, '--input', requestFile], { windowsHide: true }),
     error => {
       const applied = JSON.parse(error.stdout);
       assert.equal(applied.error.code, 'FORBIDDEN');
@@ -57,7 +58,7 @@ test('developer Main CLI still reads Main; apply is forbidden even when allowlis
       return true;
     },
   );
-  const after = JSON.parse((await execFileAsync(process.execPath, [cli.pathname, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
+  const after = JSON.parse((await execFileAsync(process.execPath, [cli, 'map', 'main', 'read', '--root', project], { windowsHide: true })).stdout);
   assert.equal(after.doc.root.children?.length || 0, 0);
 });
 

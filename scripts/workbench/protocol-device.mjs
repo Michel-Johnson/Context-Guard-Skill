@@ -18,17 +18,23 @@ export class DeviceConnection {
   async connect(message, { repositoryId } = {}) {
     validateMessage(message);
     if (message.type !== 'auth.open') fail('INVALID_ARGUMENT', 'Expected auth.open');
+    const identity = await this.identity();
+    message = { ...message, payload: { ...message.payload, clientId: identity.clientId } };
+    let credential;
+    const result = await this.transport(this.origin, '', message, { allowLoopback: this.allowLoopback, receiveCredential: value => { credential = value; } });
+    return this.saveConnection(result, credential, { repositoryId });
+  }
+  async identity() {
     const identityFile = path.join(this.directory, 'device-identity.json');
-    const identity = await withFileLock(`${identityFile}.lock`, async () => {
+    return withFileLock(`${identityFile}.lock`, async () => {
       const prior = await readJSON(identityFile, null);
       if (prior) return prior;
       const created = { clientId: randomUUID() };
       await atomicWrite(identityFile, encode(created));
       return created;
     });
-    message = { ...message, payload: { ...message.payload, clientId: identity.clientId } };
-    let credential;
-    const result = await this.transport(this.origin, '', message, { allowLoopback: this.allowLoopback, receiveCredential: value => { credential = value; } });
+  }
+  async saveConnection(result, credential, { repositoryId } = {}) {
     if (!credential) fail('UNAVAILABLE', 'Missing backend connection credential');
     if (repositoryId && result.repositoryId !== repositoryId) {
       await this.transport(this.origin, credential, { v: 2, id: randomUUID(), type: 'auth.close', payload: {} }, { allowLoopback: this.allowLoopback }).catch(() => {});

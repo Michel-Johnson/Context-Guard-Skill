@@ -30,7 +30,18 @@ export class ProtocolAuth {
       this.failures.set(remoteAddress, { count: recent && recent.until > time ? recent.count + 1 : 1, until: time + 300000 });
       fail('UNAUTHORIZED', 'Login failed');
     }
-    let principal = await this.resolveIdentity(slug, input.payload.clientId);
+    const result = await this.issue(slug, input.payload.clientId);
+    this.failures.delete(remoteAddress);
+    return result;
+  }
+  // Only the authenticated browser approval path may call this entry. A paired
+  // client always receives a device identity, never a configured privileged role.
+  async issueDevice(repository, clientId) {
+    return this.issue(repositorySlug(repository), clientId, true);
+  }
+  async issue(slug, clientId, deviceOnly = false) {
+    const time = this.now();
+    let principal = deviceOnly ? null : await this.resolveIdentity(slug, clientId);
     const repositoryId = !principal && await this.authorizeRepository?.(slug);
     if (!principal && !repositoryId) fail('FORBIDDEN', 'Repository is not authorized');
     const credential = randomBytes(32).toString('base64url'), connectionId = randomUUID(), expiresAt = time + this.lifetimeMs;
@@ -38,7 +49,7 @@ export class ProtocolAuth {
       const state = await readJSON(this.file, { connections: {} });
       if (!principal) {
         state.devices ||= {};
-        const deviceKey = hash(`${repositoryId}\0${input.payload.clientId}`);
+        const deviceKey = hash(`${repositoryId}\0${clientId}`);
         state.devices[deviceKey] ||= randomUUID();
         const deviceId = state.devices[deviceKey];
         principal = { repositoryId, deviceId, agentId: `device:${deviceId}`, role: 'device' };
@@ -46,10 +57,9 @@ export class ProtocolAuth {
       if (['repositoryId', 'deviceId', 'agentId'].some(k => typeof principal[k] !== 'string' || !principal[k])) fail('FORBIDDEN', 'Invalid registered identity');
       // Only runtime credentials expire; no development memory is pruned.
       for (const [key, entry] of Object.entries(state.connections)) if (entry.expiresAt + this.recoveryMs <= time) delete state.connections[key];
-      state.connections[hash(credential)] = { connectionId, expiresAt, principal: { ...principal, repositorySlug: slug, clientId: input.payload.clientId } };
+      state.connections[hash(credential)] = { connectionId, expiresAt, principal: { ...principal, repositorySlug: slug, clientId } };
       await atomicWrite(this.file, encode(state));
     });
-    this.failures.delete(remoteAddress);
     return { credential, data: { connectionId, repositoryId: principal.repositoryId, expiresAt: new Date(expiresAt).toISOString() } };
   }
   async authenticate(credential) {

@@ -73,6 +73,7 @@ export const installedFiles = [
   "scripts/shared/protocol.mjs",
   "scripts/shared/protocol-store.mjs",
   "scripts/workbench/protocol-client.mjs",
+  "scripts/workbench/browser-login.mjs",
   "scripts/workbench/protocol-device.mjs",
   "scripts/workbench/protocol-events.mjs",
   "scripts/shared/protocol-snapshots.mjs",
@@ -97,6 +98,7 @@ export const installedFiles = [
 ];
 
 export const packedFiles = [...installedFiles, ...[
+  "scripts/cloud/device-authorization.mjs",
   "scripts/shared/filesystem-v2.mjs",
   "scripts/cloud/migrate-memory-filesystem.mjs",
   "scripts/cloud/memory-filesystem.mjs",

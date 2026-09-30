@@ -110,9 +110,12 @@ registers the Session and returns its Cloud URL; do not ask for a token or proje
 ID. This explicit Skill entry also works with Hooks disabled. The shared backend,
 not the model or Hooks, sends heartbeats for registered Sessions. On a new machine
 or an unconnected project, use `workbench connect --url <cloud-origin> --root
-<project> --session <actual-session-id> --input <private-login-file>` once; the
-input contains only `password`. Git identity determines the Cloud project. Keep
-passwords out of command arguments and memory. See `references/server-memory.md`.
+<project> --session <actual-session-id> --wait`. Show the returned verification
+URL/code to the human; they sign in and approve in Cloud, and the waiting backend
+saves the credential automatically. Without `--wait`, rerun after approval.
+Do not request a password in chat or create a password file. Explicit private
+`--input <file|->` remains a compatibility option, not the default. Git identity
+determines the project. See `references/server-memory.md` for expiry/recovery.
 
 Node atomically saves valid operations and notifies pages after file/Agent changes. Browser cache is only for recovery drafts and UI preferences. Static/GitHack/file views are read-only.
 

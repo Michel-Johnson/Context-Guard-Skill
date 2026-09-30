@@ -71,8 +71,18 @@ the mirror and publication only verifies the configured `ref`. Never grant broad
 checkout write access just so the service can run `git fetch`.
 
 Connect once using `context-guard workbench connect --root <project> --url
-<cloud-origin> --session <actual-session-id> --input <private-file>`; the private
-JSON input contains only `password`. Cloud resolves the project from the verified
+<cloud-origin> --session <actual-session-id> --wait`. The CLI shows a verification
+URL and code; the human signs in to Cloud and confirms the project/device in the
+browser. The waiting backend saves the device credential without exposing it or
+the password to the Agent. Without `--wait`, the command returns the link at once;
+rerun the same command after approval to finish. Requests expire after ten minutes.
+Rejection/expiry requires a new request. A claimed reply lost before it was saved
+also requires new authorization; consumed grants are never replayed. This is a
+browser device-pairing flow, not a claim of full OAuth interoperability.
+Explicit `--input <private-file|->` remains a compatibility login; JSON contains
+only `password`, and `-` reads standard input. It is not a mandatory password file.
+Never ask an Agent to copy a chat password into commands or files.
+Cloud resolves the project from the verified
 GitHub repository and returns its project ID and `device-memory` capability.
 The backend stores one device credential for messages and private memory. Later
 Sessions invoke `workbench --session` without login, token or project ID. Hooks

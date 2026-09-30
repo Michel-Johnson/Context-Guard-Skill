@@ -21,6 +21,7 @@ import { globalWorkbenchDirectory, readProjectRegistry, registeredProject, remem
 import { RouteStore } from './portless-routes.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
+import { browserLogin } from './browser-login.mjs';
 const ownFile = fileURLToPath(import.meta.url);
 function documentHasBug(doc, bugId) {
   const pending = doc?.root ? [doc.root] : [];
@@ -83,6 +84,14 @@ export function wantsHelp(args) {
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
 function commandHelp(command, parts = []) {
+  if (command === 'workbench' && parts[0] === 'connect') return `Usage: context-guard workbench connect --root <project> --url <https-origin> --session <id> [--wait]
+
+Default: browser authorization. Show the verification URL/code to the human.
+With --wait, print that link to stderr and wait up to ten minutes; approval automatically saves the device connection.
+Without --wait, return the link immediately; rerun the same command after approval to finish.
+Existing project logins are reused. Passwords are not needed in chat or command arguments.
+Compatibility: --input <private-file|-> explicitly selects the private JSON password login.
+`;
   if (command === 'map' && parts[0] === 'ci') {
     return `Usage: context-guard map ci context --root <worktree> --session <native-ci-id>
        context-guard map ci exchange --root <worktree> --session <native-ci-id> --input <file|->
@@ -626,7 +635,7 @@ async function worktreeInputJSON(file, root) {
   }
   return inputJSON(file);
 }
-export async function connectCloudProject(root, { url, password, repositoryLookup = lookupRepository }) {
+export async function connectCloudProject(root, { url, password, browser = false, wait = false, onPending, repositoryLookup = lookupRepository }) {
   const project = await ensureProjectBinding(await resolveProject(root));
   const prior = await readJSON(memoryConfigPath(project), null);
   const origin = new URL(String(url || prior?.url || ''));
@@ -634,7 +643,10 @@ export async function connectCloudProject(root, { url, password, repositoryLooku
   if (!project.github || project.bindingRequired) throw new MapError('BINDING_REQUIRED', 'A GitHub project with a confirmed Main is required');
   const device = new DeviceConnection({ directory: path.join(project.sharedDir, 'interface-v2'), origin: origin.origin, allowLoopback: true });
   const identity = await repositoryLookup(project.github.slug);
-  const result = await device.connect({ v: 2, id: randomUUID(), type: 'auth.open', payload: { repository: `https://github.com/${project.github.slug}`, password, clientId: 'local' } }, identity);
+  const repository = `https://github.com/${project.github.slug}`;
+  const result = browser ? await browserLogin(device, { repository, repositoryId: identity.repositoryId, wait, onPending })
+    : await device.connect({ v: 2, id: randomUUID(), type: 'auth.open', payload: { repository, password, clientId: 'local' } }, identity);
+  if (browser && !result.connected) return result;
   if (!result.projectId || !result.capabilities?.includes('device-memory')) throw new MapError('UPGRADE_REQUIRED', 'Cloud must support project login for Map access');
   // Preserve legacy configuration for explicit recovery, not silent fallback.
   if (prior?.token) await atomicWrite(memoryConfigPath(project) + '.before-device-login', encode(prior));
@@ -656,8 +668,11 @@ async function main(args) {
     return bindProject(root, path.resolve(opt['project-root']), { keepLocal: !!opt['keep-local'] });
   }
   if (command === 'workbench' && opt._[0] === 'connect') {
-    const login = await inputJSON(opt.input || '-');
-    await connectCloudProject(root, { url: opt.url, password: login.password });
+    if (opt.browser && opt.input) throw new MapError('INVALID_ARGUMENT', 'Choose browser authorization or private input');
+    const login = opt.input ? await inputJSON(opt.input) : null;
+    const result = await connectCloudProject(root, { url: opt.url, password: login?.password, browser: !login, wait: !!opt.wait,
+      onPending: opt.wait ? value => process.stderr.write(JSON.stringify(value) + '\n') : undefined });
+    if (!result.connected) return result;
     return main(['workbench', '--root', root, '--session', String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '')]);
   }
   if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
