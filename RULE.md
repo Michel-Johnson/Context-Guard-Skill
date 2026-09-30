@@ -4,6 +4,8 @@
 
 各平台（Cursor、Codex 等）开发都遵守本文。
 
+开始任务先读 [当前开发方向](docs/current-focus.md)：现阶段只投入 Map/fs-v2.1、本机对话型 Coordinator、跨客户端 Skill + hooks；Cloud 自动派发等条目已暂缓。本文的安全、分支与交付门禁仍适用，历史待办不自动恢复投入。
+
 需求、设计、编码、测试、Review、交付与复盘的顺序和证据见 [开发流程规范](docs/engineering/README.md)。专项契约仍在对应文档维护；风险分级不降低本文的安全、测试或合并要求。当前设计版本是 **`fs-v2.1`**。
 
 ## 1. 分支
