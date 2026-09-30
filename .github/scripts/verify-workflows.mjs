@@ -160,8 +160,11 @@ const realPackageJob = realClients.slice(realClients.indexOf("  package:"), real
 forbidMatch(realPackageJob, /secrets\.|CLIENT_API_KEY|OPENAI_API_KEY|CURSOR_API_KEY|ANTHROPIC_API_KEY/,
   "Package creation and assertions must not receive model credentials.");
 for (const client of ["codex", "cursor", "claude"]) requireMatch(ci, new RegExp(`client: ${client}\\b`), `Missing real client: ${client}`);
-requireMatch(site, /^\s*push:\s*$/m, "Site deployment must run after main changes.");
-forbidMatch(site, /^\s*pull_request:\s*$/m, "Site deployment must not duplicate pull-request CI.");
+requireMatch(site, /^\s*push:\s*$/m, "Site build must run after website changes.");
+requireMatch(site, /branches: \[website\]/, "Site build must target website.");
+requireMatch(site, /default: false/, "Deployment must default to disabled.");
+requireMatch(site, /inputs\.deploy == true/, "Deployment requires an explicit manual choice.");
+requireMatch(site, /^\s*pull_request:\s*$/m, "Website PRs must build and test before delivery.");
 requireMatch(ci, /^  site:\s*$/m, "Required CI must build and test the site.");
 requireMatch(dependabot, /update-type == 'version-update:semver-patch'/, "Dependabot patch updates may be eligible for auto-merge.");
 forbidMatch(dependabot, /update-type == 'version-update:semver-(?:minor|major)'/, "Dependabot minor and major updates require manual review.");

@@ -4,6 +4,12 @@
 
 演示使用预设数据。光标移动、点击、逐字输入和镜头取景连续展示操作过程，不启动 Agent，不调用模型 API，不读写本机项目，也不执行安装、代码修复或测试。
 
+## 分支与部署
+
+宣传站在 `website` 分支独立维护，main 保留产品工作台及测试画廊。此分支保留站点读取的 `prototype/workbench.html`、`workbench.css`、`workbench-data.js` 与 `workbench-app.js`，产品更新后须选择性同步这些依赖并重新验证；不要合入 main 的站点删除提交。
+
+`Promotion site` 在 website push/PR 时只构建与测试。GitHub Pages 迁移尚未完成；核对 `github-pages` 环境的 website 分支权限并获得部署授权后，才能在 website 手动运行 workflow，显式选择 `deploy=true`。默认 false，不自动部署。当前线上来源仍为 main 的 workflow，本次不修改外部设置或发布。
+
 ## 本地开发
 
 站点需要 Node.js 22.12+；Actions 使用 Node.js 24。Skill 本身的 Node.js 18+ 要求不变。
