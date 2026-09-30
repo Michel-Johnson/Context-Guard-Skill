@@ -151,7 +151,7 @@ upload a deliberately unsafe test package.
 The `CI` workflow runs on branch/tag pushes and pull requests targeting `main`.
 Pull requests always run security and deterministic impact selection; the selector
 uses the merge-base diff and `.github/ci-impact.json` to run only relevant
-functional, package, installation, minimum-runtime, browser, client and site jobs.
+functional, package, installation, minimum-runtime, browser and client jobs.
 Unknown paths, CI config, this file, and `docs/test-governance.md` fail closed to the complete workflow.
 Pushes to `main` and tags always run every job as the result listener/canary.
 
@@ -267,8 +267,8 @@ npm run test:clients -- --client codex --tools output/client-tools/codex --evide
 | P01–P02 需求/设计/风险 | [模板](engineering/templates.md) 与 PR Review | 人工判断，无自动风险分级或 ADR 完整性门禁 |
 | P03 层次与过程约束 | 既有模块回归、`verify-hidden-processes.mjs` | 指定模式检查，不证明全部进程/资源生命周期正确；Review 补充 |
 | P04 测试归属 | `tests/test-manifest.json`、`verify-test-governance.mjs`、暂存区分支守卫 | 清单不证明测试实际执行或断言正确，见 GATE-01/02 |
-| P05 总回归 | `npm test` | 不含完整 Browser E2E、site 包测试、所有真实宿主和付费对话 |
-| P05 附加验收 | `npm run test:browser`、site 的 `npm test`、客户端与 CD 专项脚本 | 明确隔离环境；无对话客户端检查不是原生真实对话验收 |
+| P05 总回归 | `npm test` | 不含完整 Browser E2E、website 分支的宣传站包测试、所有真实宿主和付费对话 |
+| P05 附加验收 | `npm run test:browser`、website 分支 `site/` 的 `npm test`、客户端与 CD 专项脚本 | 明确隔离环境；无对话客户端检查不是原生真实对话验收 |
 | P06 Review | PR 审查与本地自检 | 没有通用语义审查器；独立性和范围需诚实记录 |
 | P07 安全 | staged/history/package 扫描与 `.githooks` | [安全](#安全) 说明边界；未检出不等于绝无密钥 |
 | P07 CI | `.github/workflows/ci.yml` 的 Required | 不允许按 R0–R3 跳过现有 needs；核对准确提交的远端结果 |

@@ -27,6 +27,10 @@ temp/
 
 # Product branch does not carry test trees. Use cursor/test-layout-f54e.
 fixtures/
+# Approved synthetic fixture required by the product browser suite.
+!tests/fixtures/
+tests/fixtures/*
+!tests/fixtures/workbench-fixtures.js
 tests/local/
 workbench-global.png
 

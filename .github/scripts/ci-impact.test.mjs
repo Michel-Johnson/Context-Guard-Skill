@@ -31,20 +31,18 @@ test("workbench UI changes select tests, package and browser jobs", () => {
     "minimum-runtime": false,
     browser: true,
     clients: false,
-    site: false,
   });
 });
 
-test("site-only changes select only the site job", () => {
-  const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["site/src/App.tsx"] });
-  assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), ["site"]);
+test("browser fixture changes select the browser job", () => {
+  const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["tests/fixtures/workbench-fixtures.js"] });
+  assert.deepEqual(Object.entries(plan.jobs).filter(([, enabled]) => enabled).map(([job]) => job), ["browser"]);
 });
 
 test("client installation changes include package, compatibility and minimum runtime", () => {
   const plan = selectImpact({ config, eventName: "pull_request", changedPaths: ["bin/context-guard-skill.js"] });
   for (const job of ["test", "package", "install", "minimum-runtime", "clients"]) assert.equal(plan.jobs[job], true);
   assert.equal(plan.jobs.browser, false);
-  assert.equal(plan.jobs.site, false);
 });
 
 test("CI selector and governance changes force the complete CI", () => {

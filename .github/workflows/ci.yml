@@ -33,7 +33,6 @@ jobs:
       minimum_runtime: ${{ steps.select.outputs.minimum_runtime }}
       browser: ${{ steps.select.outputs.browser }}
       clients: ${{ steps.select.outputs.clients }}
-      site: ${{ steps.select.outputs.site }}
     steps:
       - name: Checkout complete history for merge-base diff
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -328,30 +327,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-  site:
-    name: CI 7 | 官网构建与行为测试
-    needs: [impact, security]
-    if: needs.impact.outputs.site == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - name: Install site dependencies
-        working-directory: site
-        run: npm ci --ignore-scripts
-      - name: Typecheck and build
-        working-directory: site
-        run: npm run build
-      - name: Check demo timing and camera
-        working-directory: site
-        run: node --experimental-strip-types --test scripts/client-timing.test.mjs scripts/native-camera.test.mjs
 
   required:
     # Keep this check name stable: main branch protection requires Required.
@@ -366,7 +341,6 @@ jobs:
       - minimum-runtime
       - browser
       - clients
-      - site
     runs-on: ubuntu-latest
     steps:
       - name: CI 8 | 核对选择计划与实际结果，决定是否允许合并
@@ -386,8 +360,6 @@ jobs:
           BROWSER_RESULT: ${{ needs.browser.result }}
           CLIENTS_EXPECTED: ${{ needs.impact.outputs.clients }}
           CLIENTS_RESULT: ${{ needs.clients.result }}
-          SITE_EXPECTED: ${{ needs.impact.outputs.site }}
-          SITE_RESULT: ${{ needs.site.result }}
         run: |
           set -euo pipefail
           check_selected() {
@@ -414,4 +386,3 @@ jobs:
           check_selected minimum-runtime "$MINIMUM_RUNTIME_EXPECTED" "$MINIMUM_RUNTIME_RESULT"
           check_selected browser "$BROWSER_EXPECTED" "$BROWSER_RESULT"
           check_selected clients "$CLIENTS_EXPECTED" "$CLIENTS_RESULT"
-          check_selected site "$SITE_EXPECTED" "$SITE_RESULT"

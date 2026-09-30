@@ -40,7 +40,7 @@ async function servePrototype() {
       const design = url.pathname.startsWith('/design/');
       const demo = url.pathname.startsWith('/demo/');
       const shared = url.pathname === '/scripts/shared/map-model.mjs';
-      const baseDir = design ? path.join(workspace, 'docs/design') : demo ? path.join(workspace, 'site/demo') : shared ? path.join(workspace, 'scripts/shared') : protoDir;
+      const baseDir = design ? path.join(workspace, 'docs/design') : demo ? path.join(workspace, 'tests/fixtures') : shared ? path.join(workspace, 'scripts/shared') : protoDir;
       const rel = shared ? 'map-model.mjs' : decodeURIComponent(url.pathname).replace(design ? /^\/design\// : demo ? /^\/demo\// : /^\/(?:prototype\/)?/, '') || 'workbench.html';
       const file = path.normalize(path.join(baseDir, rel));
       if (!file.startsWith(baseDir + path.sep)) { res.writeHead(403); res.end(); return; }
