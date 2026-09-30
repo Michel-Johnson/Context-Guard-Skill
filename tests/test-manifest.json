@@ -50,15 +50,13 @@
     {
       "path": "tests/win-file-lock.py",
       "usedBy": "tests/workbench-sync.test.mjs"
-    }
-  ],
-  "separatePackages": [
+    },
     {
-      "root": "site",
-      "command": "npm --prefix site test",
-      "pattern": "site/**/*.test.mjs"
+      "path": "tests/fixtures/workbench-fixtures.js",
+      "usedBy": "tests/workbench-browser.mjs"
     }
   ],
+  "separatePackages": [],
   "productFiles": [
     "tests/attachments.test.mjs",
     "tests/cloud-attachments.test.mjs",
@@ -98,6 +96,7 @@
     "tests/workbench-journal-recovery-browser.mjs",
     "tests/workbench-attachments.test.mjs",
     "tests/crash-worker.mjs",
-    "tests/win-file-lock.py"
+    "tests/win-file-lock.py",
+    "tests/fixtures/workbench-fixtures.js"
   ]
 }

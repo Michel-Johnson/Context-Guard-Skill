@@ -6,8 +6,7 @@
     "install",
     "minimum-runtime",
     "browser",
-    "clients",
-    "site"
+    "clients"
   ],
   "fullRunPatterns": [
     ".github/**",
@@ -50,16 +49,6 @@
         "licenses/**"
       ],
       "jobs": ["package"]
-    },
-    {
-      "id": "site",
-      "patterns": ["site/**"],
-      "jobs": ["site"]
-    },
-    {
-      "id": "site-shared-inputs",
-      "patterns": ["prototype/workbench.html", "SKILL.md"],
-      "jobs": ["site"]
     },
     {
       "id": "workbench-ui",
@@ -110,6 +99,11 @@
       "id": "node-tests",
       "patterns": ["tests/*.test.mjs"],
       "jobs": ["test"]
+    },
+    {
+      "id": "browser-fixtures",
+      "patterns": ["tests/fixtures/**"],
+      "jobs": ["browser"]
     },
     {
       "id": "browser-tests",

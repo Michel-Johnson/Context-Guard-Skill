@@ -14,7 +14,6 @@ const ci = workflows["ci.yml"];
 const publish = workflows["npm-publish.yml"];
 const clients = workflows["client-compatibility.yml"];
 const realClients = workflows["real-client-acceptance.yml"];
-const site = workflows["site-pages.yml"];
 const dependabot = workflows["dependabot-auto-merge.yml"];
 const testRunner = fs.readFileSync(".github/scripts/run-node-tests.mjs", "utf8");
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
@@ -90,10 +89,10 @@ requireMatch(ci, /^  browser:\s*$/m, "CI must execute the approved browser flow.
 requireMatch(ci, /run: npm ci --ignore-scripts/, "Browser dependencies must be locked and must not run the Skill installer.");
 requireMatch(ci, /run: npm run test:browser/, "Browser CI must run the real test entry.");
 const aggregate = ci.slice(ci.indexOf("  required:"));
-for (const job of ["impact", "test", "package", "install", "minimum-runtime", "browser", "clients", "site"]) {
+for (const job of ["impact", "test", "package", "install", "minimum-runtime", "browser", "clients"]) {
   requireMatch(aggregate, new RegExp(`^      - ${job}\\s*$`, "m"), `Required must wait for ${job}.`);
 }
-for (const result of ["TEST", "PACKAGE", "INSTALL", "MINIMUM_RUNTIME", "BROWSER", "CLIENTS", "SITE"]) {
+for (const result of ["TEST", "PACKAGE", "INSTALL", "MINIMUM_RUNTIME", "BROWSER", "CLIENTS"]) {
   requireMatch(
     aggregate,
     new RegExp(`^\\s+${result}_EXPECTED:\\s+\\$\\{\\{ needs\\.impact\\.outputs\\.[^}]+ \\}\\}$`, "m"),
@@ -160,18 +159,14 @@ const realPackageJob = realClients.slice(realClients.indexOf("  package:"), real
 forbidMatch(realPackageJob, /secrets\.|CLIENT_API_KEY|OPENAI_API_KEY|CURSOR_API_KEY|ANTHROPIC_API_KEY/,
   "Package creation and assertions must not receive model credentials.");
 for (const client of ["codex", "cursor", "claude"]) requireMatch(ci, new RegExp(`client: ${client}\\b`), `Missing real client: ${client}`);
-requireMatch(site, /^\s*push:\s*$/m, "Site deployment must run after main changes.");
-forbidMatch(site, /^\s*pull_request:\s*$/m, "Site deployment must not duplicate pull-request CI.");
-requireMatch(ci, /^  site:\s*$/m, "Required CI must build and test the site.");
 requireMatch(dependabot, /update-type == 'version-update:semver-patch'/, "Dependabot patch updates may be eligible for auto-merge.");
 forbidMatch(dependabot, /update-type == 'version-update:semver-(?:minor|major)'/, "Dependabot minor and major updates require manual review.");
 
 for (const [name, content] of Object.entries(workflows)) {
-  if (name === "npm-publish.yml" || name === "site-pages.yml") continue;
+  if (name === "npm-publish.yml") continue;
   forbidMatch(content, /^\s*id-token:\s*write\s*$/m, `${name} must not receive an OIDC write token.`);
 }
-const siteOidcGrants = site.match(/^\s*id-token:\s*write\s*$/gm) || [];
-if (siteOidcGrants.length !== 1 || site.indexOf("id-token: write") < site.indexOf("  deploy:")) {
-  throw new Error("Only the site deploy job may receive id-token: write.");
+if (workflows["site-pages.yml"] || /^  site:\s*$/m.test(ci)) {
+  throw new Error("Promotion site build and deployment belong on the website branch.");
 }
 console.log("Verified CI/CD/client triggers, no-dialogue and manual real-client scope, permissions, and Action SHA pins.");

@@ -16,11 +16,13 @@
 | `scripts/legacy/` | 隔离的 Map-only 兼容实现，复用共享 I/O；保留现有调用者，不再作为新连接默认入口 |
 | `scripts/*.py` | Agent / Hook / Map 工具及开发分支检查；本轮不改 Hook |
 | `prototype/` | 实际生产工作台，名称及 URL 为兼容保留；只带空白初始数据，共享地图模型在 `scripts/shared/` |
-| `site/` | 官网与交互演示；`site/demo/` 保存演示地图及记录，构建时注入同一生产前端，不复制业务实现 |
+| `tests/fixtures/` | 产品浏览器测试所需的合成地图与记录；不进入 npm 包 |
 | `tests/` | 产品正式回归及显式 helper |
 | `.github/`、`.githooks/` | CI/CD 与开发安全；其中产品测试的归位需要同步调整发现和过滤规则 |
 | `deploy/` | 服务部署模板，不放凭据与生产数据 |
 | `.codex/`、`output/`、`temp/`、依赖目录 | 私有状态、生成物、临时实验及依赖；不进入产品源码和分发包 |
+
+宣传站源码与独立依赖维护在 [`website` 分支](https://github.com/Michel-Johnson/Context-Guard-Skill/tree/website/site)，不在 main。部署切换边界见 [宣传站分支](website.md)。
 
 ## 第二阶段审查结论
 
