@@ -76,6 +76,8 @@ URL and code; the human signs in to Cloud and confirms the project/device in the
 browser. The waiting backend saves the device credential without exposing it or
 the password to the Agent. Without `--wait`, the command returns the link at once;
 rerun the same command after approval to finish. Requests expire after ten minutes.
+The backend counts the returned `expiresIn` seconds locally; Cloud's absolute
+`expiresAt` must not require the computer and server clocks to agree.
 Rejection/expiry requires a new request. A claimed reply lost before it was saved
 also requires new authorization; consumed grants are never replayed. This is a
 browser device-pairing flow, not a claim of full OAuth interoperability.

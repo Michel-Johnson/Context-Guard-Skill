@@ -6,6 +6,8 @@
 - [x] Tester：独立验收 `tests/browser-device-login.test.mjs` BDA-001～015（14 项通过、浏览器项单独执行）；`node tests/browser-device-login-runner.mjs` 真 Chromium 登录、允许连接、读取 Main 通过。覆盖跨站/CSRF、拒绝/过期/撤权、重启、并发一次领取、回复丢失后重新授权、Session 隔离。先复现后修复浏览器 Origin:null 误拒和撤销缓存假连接；证据基于 ef112a5 上本次代码，生产仍待下项验收。
 - [ ] 真实 Cloud：备份后部署，通过授权页和安装入口完成连接、读取 Main；不以模拟测试代替生产验收。
 
+生产联调发现服务器比本地快约 33 秒：绝对过期时间的 610 秒校验误拒首次授权。改用 `expiresIn`（1～600 秒）本地计时，保留 Cloud 的最终过期判断；独立回归见 BDA-016。生产条目在该修复重新部署并验收后关闭。Windows 完整 Node 回归的三项既有失败已在 ef112a5 原始代码复现；GitHub #432 最终 Required、完整功能及浏览器检查通过。
+
 读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
 
 ## 当前唯一开发队列（2026-09-30）

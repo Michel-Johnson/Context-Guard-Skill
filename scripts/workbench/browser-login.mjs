@@ -52,8 +52,8 @@ export async function browserLogin(device, { repository, repositoryId, wait = fa
         const identity = await device.identity();
         const { data } = await request(device.origin, '/api/auth/device/start', { repository, clientId: identity.clientId, deviceCode: pending.deviceCode, label: pending.label }, fetcher);
         const verification = new URL(data.verificationPath, device.origin);
-        if (verification.origin !== device.origin || verification.pathname !== '/connect' || !/^[A-F0-9]{4}-[A-F0-9]{4}$/.test(data.userCode) || verification.searchParams.get('code') !== data.userCode || !Number.isFinite(Date.parse(data.expiresAt)) || Date.parse(data.expiresAt) > Date.now() + 610000) fail('UNAVAILABLE', 'Cloud returned an invalid authorization link');
-        pending = { ...pending, verificationUrl: verification.href, userCode: data.userCode, expiresAt: data.expiresAt };
+        if (verification.origin !== device.origin || verification.pathname !== '/connect' || !/^[A-F0-9]{4}-[A-F0-9]{4}$/.test(data.userCode) || verification.searchParams.get('code') !== data.userCode || !Number.isFinite(Date.parse(data.expiresAt)) || !Number.isInteger(data.expiresIn) || data.expiresIn <= 0 || data.expiresIn > 600) fail('UNAVAILABLE', 'Cloud returned an invalid authorization link');
+        pending = { ...pending, verificationUrl: verification.href, userCode: data.userCode, expiresAt: new Date(Date.now() + data.expiresIn * 1000).toISOString() };
         await atomicWrite(file, encode(pending));
       }
       const safe = { connected: false, authorizationRequired: true, verificationUrl: pending.verificationUrl, userCode: pending.userCode, expiresAt: pending.expiresAt };

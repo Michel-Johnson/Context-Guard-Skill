@@ -295,7 +295,7 @@ test('BDA-011: an older Cloud or an unsafe verification link gives an explicit f
   const device = new DeviceConnection({ directory, origin: 'https://cloud.example.invalid' });
   await assert.rejects(browserLogin(device, { repository, repositoryId, fetcher: async () => new Response('Not supported', { status: 404 }) }), { code: 'UPGRADE_REQUIRED' });
   await assert.rejects(browserLogin(device, { repository, repositoryId, fetcher: async () => new Response(JSON.stringify({ ok: true,
-    data: { verificationPath: 'https://attacker.invalid/connect?code=ABCD-1234', userCode: 'ABCD-1234', expiresAt: new Date(Date.now() + 60000).toISOString() } }),
+    data: { verificationPath: 'https://attacker.invalid/connect?code=ABCD-1234', userCode: 'ABCD-1234', expiresAt: new Date(Date.now() + 60000).toISOString(), expiresIn: 60 } }),
     { headers: { 'Content-Type': 'application/json' } }) }), { code: 'UNAVAILABLE' });
   assert.equal(await device.connected(), false);
 });
@@ -340,6 +340,45 @@ test('BDA-015: simultaneous local invocations share approval and persist only on
   const state = JSON.parse(await fs.readFile(path.join(f.options.dataDir, 'interface-v2', 'connections.json'), 'utf8'));
   assert.equal(Object.keys(state.connections).length, 1);
   assert.equal((await deviceFor(f).transmit({ v: 2, id: 'verify-concurrent-login', type: 'sync.heartbeat', payload: { sessions: [] } })).sessions.length, 0);
+});
+
+test('BDA-016: server clock skew does not change the local approval window or prevent Main access', async t => {
+  for (const offsetMs of [-3600000, 3600000]) {
+    await t.test(`server clock offset ${offsetMs / 60000} minutes`, async sub => {
+      const f = await fixture(sub), device = deviceFor(f);
+      let expiresIn;
+      const fetcher = async (url, options) => {
+        const response = await fetch(url, options);
+        if (new URL(url).pathname !== '/api/auth/device/start') return response;
+        const body = await response.json();
+        assert.equal(body.ok, true);
+        expiresIn = body.data.expiresIn;
+        assert.ok(Number.isInteger(expiresIn) && expiresIn >= 1 && expiresIn <= 600);
+        body.data.expiresAt = new Date(Date.now() + expiresIn * 1000 + offsetMs).toISOString();
+        const headers = new Headers(response.headers); headers.delete('content-length');
+        return new Response(JSON.stringify(body), { status: response.status, headers });
+      };
+      const before = Date.now(), pending = await browserLogin(device, { repository, repositoryId, fetcher }), after = Date.now();
+      const deadline = Date.parse(pending.expiresAt);
+      assert.ok(deadline >= before + expiresIn * 1000 && deadline <= after + expiresIn * 1000,
+        'the local deadline is derived from the relative TTL, not the server wall clock');
+      await approve(f, pending);
+      assert.equal((await browserLogin(deviceFor(f), { repository, repositoryId })).connected, true);
+      await assertReadAndIsolation(f, deviceFor(f));
+    });
+  }
+});
+
+test('BDA-017: oversized or non-integer relative authorization TTLs are rejected without saving credentials', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-browser-invalid-ttl-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  for (const [index, expiresIn] of [601, 0, -1, '600', 1.5, null, undefined].entries()) {
+    const device = new DeviceConnection({ directory: path.join(directory, String(index)), origin: 'https://cloud.example.invalid' });
+    await assert.rejects(browserLogin(device, { repository, repositoryId, fetcher: async () => new Response(JSON.stringify({ ok: true,
+      data: { verificationPath: '/connect?code=ABCD-1234', userCode: 'ABCD-1234', expiresAt: new Date(Date.now() + 60000).toISOString(), expiresIn } }),
+      { headers: { 'Content-Type': 'application/json' } }) }), { code: 'UNAVAILABLE' });
+    assert.equal(await device.connected(), false);
+  }
 });
 
 test('BDA-012: real browser password entry and approval buttons complete pairing without exposing backend credentials', {
