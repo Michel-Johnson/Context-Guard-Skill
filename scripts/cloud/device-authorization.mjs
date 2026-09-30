@@ -52,7 +52,7 @@ export class DeviceAuthorization {
         grant = state.grants[key] = { repository: slug, repositoryId, clientId: input.clientId, label: input.label,
           userCode, csrf: randomBytes(32).toString('base64url'), expiresAt: time + this.lifetimeMs, status: 'pending' };
       }
-      return { userCode: grant.userCode, expiresAt: new Date(grant.expiresAt).toISOString(), interval: 5 };
+      return { userCode: grant.userCode, expiresAt: new Date(grant.expiresAt).toISOString(), expiresIn: Math.ceil((grant.expiresAt - time) / 1000), interval: 5 };
     });
   }
   async view(code, address) {
