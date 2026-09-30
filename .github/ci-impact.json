@@ -107,7 +107,7 @@
     },
     {
       "id": "browser-tests",
-      "patterns": ["tests/*-browser.mjs", "tests/workbench-browser.mjs"],
+      "patterns": ["tests/*-browser.mjs", "tests/workbench-browser.mjs", "tests/browser-device-login-runner.mjs"],
       "jobs": ["browser"]
     },
     {
