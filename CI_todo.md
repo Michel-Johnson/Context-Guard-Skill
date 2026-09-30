@@ -4,9 +4,9 @@
 
 - [x] Executor：实现 Cloud 设备授权、网页登录确认、CLI 凭证保存与旧私有输入兼容；单模块测试见 `tests/interface-auth.test.mjs` 的 AUTH-001～003，认证套件通过。
 - [x] Tester：独立验收 `tests/browser-device-login.test.mjs` BDA-001～015（14 项通过、浏览器项单独执行）；`node tests/browser-device-login-runner.mjs` 真 Chromium 登录、允许连接、读取 Main 通过。覆盖跨站/CSRF、拒绝/过期/撤权、重启、并发一次领取、回复丢失后重新授权、Session 隔离。先复现后修复浏览器 Origin:null 误拒和撤销缓存假连接；证据基于 ef112a5 上本次代码，生产仍待下项验收。
-- [ ] 真实 Cloud：备份后部署，通过授权页和安装入口完成连接、读取 Main；不以模拟测试代替生产验收。
+- [x] 真实 Cloud（2026-09-30）：#432/#433 Required 全绿后合并并部署业务版本 `eb00c8f7a9f99139e065f583065f16c4a43f44d6`，本地 Codex Skill 同源安装（保留用户关闭的 Hooks）。完整备份 `/var/backups/context-guard-cloud/pre-browser-auth-20260930T122852Z.tar.zst` 已校验。真实 HTTPS Chromium 授权页点击允许 → 安装入口保存凭证 → `map main read` 返回同一 Main 版本 → 复用连接鉴权通过；仅使用已授权浏览器身份模拟点击，密码输入在隔离浏览器用例覆盖，不冒称第三方模型宿主完成验收。测试凭证随后撤销，Main/Session 地图未改动。
 
-生产联调发现服务器比本地快约 33 秒：绝对过期时间的 610 秒校验误拒首次授权。改用 `expiresIn`（1～600 秒）本地计时，保留 Cloud 的最终过期判断；独立回归见 BDA-016。生产条目在该修复重新部署并验收后关闭。Windows 完整 Node 回归的三项既有失败已在 ef112a5 原始代码复现；GitHub #432 最终 Required、完整功能及浏览器检查通过。
+生产联调发现服务器比本地快约 33 秒：绝对过期时间的 610 秒校验误拒首次授权。已改用 `expiresIn`（1～600 秒）本地计时，保留 Cloud 的最终过期判断；独立回归 BDA-016/017 通过并完成重新部署验收。Windows 完整 Node 回归的三项既有失败已在 ef112a5 原始代码复现；GitHub #432/#433 最终 Required、完整功能及浏览器检查通过。安装 doctor 的 Hook trust/execution 和隔离开发目录 Map 项仍不满足，不将认证验收写成所有 Hooks 或真实模型已就绪。
 
 读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
 
