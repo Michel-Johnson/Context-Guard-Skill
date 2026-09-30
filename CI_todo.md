@@ -2,7 +2,7 @@
 
 读者：**仓库开发 Agent**。这是本仓库验收台账，不是产品角色的操作手册。历史条目不覆盖后面的替代说明，也不覆盖 [当前设计版本](references/design-current.md)。
 
-- [ ] 宣传站分支迁移（2026-09-30）：website 保留完整站点和工作台构建依赖；main 清理站点专属源码及 CI，产品前端、docs/design 画廊不动。站点构建及 21 项测试、影响选择器 11 项、工作流与测试治理检查通过；产品本地浏览器 55 项通过。全量测试和其余浏览器结果待收口。Pages 环境当前仅允许 main；未授权切换，迁移 PR 保持 Draft，部署步骤见 [宣传站分支](docs/website.md)。
+- [ ] 宣传站分支迁移（2026-09-30）：website 保留完整站点和工作台构建依赖；main 清理站点专属源码及 CI，产品前端、docs/design 画廊不动。站点构建及 21 项测试、影响选择器 11 项、工作流与测试治理检查通过；产品本地浏览器 55 项通过。Cloud 工作台与日志恢复浏览器、npm 打包及 CLI smoke（29 项安装边界）通过。双向 Cloud 同步浏览器在 `tests/cloud-sync-browser.mjs:94` 初始 Session 选择等待 12 秒超时。完整 Node 产品回归已发现既有 Claude CI 精确 handoff SHA 校验和 filesystem scoped Markdown 用例失败；最终全量结论待收口，不宣称全绿。首次 `npm test` 因默认缓存 EPERM 停止，隔离缓存重跑的安全套件通过；首次 Cloud 浏览器 vendor 字节断言受 Windows checkout 换行影响，仅恢复工作区为原 Git blob 后通过。日志保留在本任务 `temp/`。Pages 环境当前仅允许 main；未授权切换，迁移 PR 保持 Draft，部署步骤见 [宣传站分支](docs/website.md)。
 
 - [ ] Filesystem v2 运行时闭环仍待验收：已新增受限、按版本的单文档 API/CLI，但尚未裁定或切换 Hook 的默认阅读入口；旧 Todo 缺少方案证据时仍为未判定 A1，报告标记 `TODO_ATTEMPT_UNCLASSIFIED`，待审核补齐，不能臆造 `Confirmed`。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。
 
