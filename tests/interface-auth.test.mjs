@@ -7,6 +7,63 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { ProtocolAuth } from '../scripts/cloud/protocol-auth.mjs';
 import { startCloudServer, createWorkbenchPasswordHash } from '../scripts/cloud/server.mjs';
+import { randomBytes } from 'node:crypto';
+import { DeviceAuthorization } from '../scripts/cloud/device-authorization.mjs';
+
+test('AUTH-001: approval survives restart, claims once and stores no claim secret or credential', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-approval-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let issued = 0;
+  const options = { directory, authorizeRepository: async slug => slug === 'example/repo' ? '123' : null,
+    issueDevice: async () => { issued++; return { credential: 'test-issued-credential', data: { repositoryId: '123' } }; } };
+  const grants = new DeviceAuthorization(options);
+  const input = { repository: 'https://github.com/example/repo', clientId: 'device', label: 'test computer', deviceCode: randomBytes(32).toString('base64url') };
+  const started = await grants.start(input, 'test');
+  assert.deepEqual(await grants.start(input, 'test'), started);
+  assert.equal((await grants.poll({ deviceCode: input.deviceCode })).data.status, 'pending');
+  assert.equal(issued, 0);
+  const view = await grants.view(started.userCode, 'test');
+  await assert.rejects(grants.decide({ userCode: started.userCode, csrf: 'bad', decision: 'approve' }, 'test'), { code: 'FORBIDDEN' });
+  await grants.decide({ userCode: started.userCode, csrf: view.csrf, decision: 'approve' }, 'test');
+  const restarted = new DeviceAuthorization(options);
+  const claims = await Promise.allSettled([restarted.poll({ deviceCode: input.deviceCode }), grants.poll({ deviceCode: input.deviceCode })]);
+  assert.equal(claims.filter(value => value.status === 'fulfilled').length, 1);
+  assert.equal(issued, 1);
+  assert.equal(claims.find(value => value.status === 'rejected').reason.code, 'UNAUTHORIZED');
+  const disk = await fs.readFile(grants.file, 'utf8');
+  assert.equal(disk.includes(input.deviceCode), false);
+  assert.equal(disk.includes('test-issued-credential'), false);
+  await assert.rejects(grants.start({ ...input, role: 'coordinator' }, 'test'), { code: 'INVALID_ARGUMENT' });
+});
+
+test('AUTH-002: denied, expired and revoked authorization cannot issue a credential', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-denial-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let time = 1000, authorized = true, issued = 0;
+  const grants = new DeviceAuthorization({ directory, now: () => time, lifetimeMs: 1000,
+    authorizeRepository: async () => authorized ? '123' : null, issueDevice: async () => { issued++; } });
+  const input = () => ({ repository: 'https://github.com/example/repo', clientId: 'device', label: 'test', deviceCode: randomBytes(32).toString('base64url') });
+  const denied = input(), first = await grants.start(denied, 'test'), view = await grants.view(first.userCode, 'test');
+  await grants.decide({ userCode: first.userCode, csrf: view.csrf, decision: 'deny' }, 'test');
+  await assert.rejects(grants.poll({ deviceCode: denied.deviceCode }), { code: 'FORBIDDEN' });
+  const expired = input(); await grants.start(expired, 'test'); time = 2001;
+  await assert.rejects(grants.poll({ deviceCode: expired.deviceCode }), { code: 'UNAUTHORIZED' });
+  const revoked = input(), next = await grants.start(revoked, 'test'), nextView = await grants.view(next.userCode, 'test');
+  await grants.decide({ userCode: next.userCode, csrf: nextView.csrf, decision: 'approve' }, 'test'); authorized = false;
+  await assert.rejects(grants.poll({ deviceCode: revoked.deviceCode }), { code: 'FORBIDDEN' });
+  assert.equal(issued, 0);
+});
+
+test('AUTH-003: browser pairing never selects a privileged registered client identity', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-device-role-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const auth = new ProtocolAuth({ directory, authorizeRepository: async () => '123', verifyPassword: async () => false,
+    resolveIdentity: async () => ({ repositoryId: '123', deviceId: 'privileged', agentId: 'coordinator', role: 'coordinator' }) });
+  const opened = await auth.issueDevice('https://github.com/example/repo', 'registered-coordinator');
+  const principal = await auth.authenticate(opened.credential);
+  assert.equal(principal.role, 'device');
+  assert.notEqual(principal.deviceId, 'privileged');
+});
 
 test('IF-020: credentials expire, revoke and survive restart without storing plaintext', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-v2-auth-'));

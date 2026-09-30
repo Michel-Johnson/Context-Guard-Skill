@@ -181,8 +181,12 @@ shared URLs after authentication.
 
 For Cloud with private memory and interface v2 configured, log in once per Git
 project/machine using `workbench connect --root <project-path> --url
-https://<cloud-host> --session <actual-session-id> --input <private-login-file>`.
-The JSON input contains only `password`; Git identity resolves the project ID.
+https://<cloud-host> --session <actual-session-id> --wait`.
+Show the verification URL/code to the human, who signs in and approves in Cloud.
+The waiting backend stores the device credential; the Agent needs no password.
+Without `--wait`, rerun the command after approval. Explicit `--input <file|->`
+is the compatible private JSON password login, not a required password file.
+Git identity resolves the project ID; browser authorization confirms access.
 Subsequent Sessions use `workbench --root <project-path> --session
 <actual-session-id>` and share the existing backend login. No per-Session token
 setup or second frontend is needed. See `references/server-memory.md`.

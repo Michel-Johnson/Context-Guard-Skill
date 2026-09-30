@@ -11,6 +11,7 @@ import { projectMemoryFile } from './memory-filesystem.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { ProtocolAuth } from './protocol-auth.mjs';
+import { DeviceAuthorization } from './device-authorization.mjs';
 import { ProtocolStore, hasCiReceiver } from '../shared/protocol-store.mjs';
 import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-review.mjs';
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
@@ -190,6 +191,16 @@ button{width:100%;height:48px;margin-top:18px;border:2px solid #302f2d;border-ra
 .error{color:#b42318;margin:-10px 0 16px;font-weight:700}
 </style></head><body><main><h1>Context Guard</h1><p>输入密码进入项目地图</p>${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ''}
 <form method="post" action="/auth/login"><input type="hidden" name="next" value="${escapeHtml(next)}"><label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required autofocus><button type="submit">登录</button></form></main></body></html>`;
+}
+
+function deviceAuthorizationPage(grant) {
+  const pending = grant.status === 'pending' && !grant.claimed;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接设备 · Context Guard</title>
+<style>body{font:18px system-ui,sans-serif;background:#f7f2e8;color:#2d2b28;margin:0;padding:24px}main{max-width:620px;margin:8vh auto;padding:28px;background:#fffdf8;border:2px solid;border-radius:8px}h1{font-size:28px}dt{margin-top:16px;font-weight:700}dd{margin:8px 0;overflow-wrap:anywhere}button{font:inherit;padding:12px 20px;margin:12px 12px 0 0;border:2px solid;border-radius:6px;background:#f7cf55}button[value=deny]{background:#fff}</style></head><body><main><h1>连接设备</h1>
+<p>只确认你刚刚发起的连接，并核对验证码。</p><dl><dt>项目</dt><dd>${escapeHtml(grant.repository)}</dd><dt>设备</dt><dd>${escapeHtml(grant.label)}</dd><dt>验证码</dt><dd>${escapeHtml(grant.userCode)}</dd></dl>
+<p>允许设备读取本项目 Main，并读写绑定到该设备的 Session；不授予管理或 Main 发布权限。</p>
+${pending ? `<form method="post" action="/auth/device/decision"><input type="hidden" name="userCode" value="${escapeHtml(grant.userCode)}"><input type="hidden" name="csrf" value="${escapeHtml(grant.csrf)}"><button name="decision" value="approve">允许连接</button><button name="decision" value="deny">拒绝</button></form>` : `<p role="status">${grant.status === 'denied' ? '已拒绝连接。' : '已授权，请返回 Agent；等待中的连接会自动完成。'}</p>`}
+</main></body></html>`;
 }
 
 async function readJson(file, fallback) {
@@ -499,6 +510,20 @@ export async function startCloudServer({
       if (!client || client.disabled || client.role === 'human' || !/^\d+$/.test(repository.repositoryId)) return null;
       return { repositoryId: repository.repositoryId, repositorySlug: slug, clientId, deviceId: client.deviceId, agentId: client.agentId, role: client.role || 'executor', bindings: client.bindings || {}, nodeIds: client.nodeIds || null };
     },
+  }) : null;
+  const loginResult = opened => {
+    const repository = interfaceConfig.repositories.find(item => item.repositoryId === opened.data.repositoryId);
+    opened.data.capabilities = repository?.projectId && configuredMemory?.projects?.[repository.projectId] ? ['private-map-heads', 'device-memory'] : [];
+    if (opened.data.capabilities.length) opened.data.projectId = repository.projectId;
+    return opened;
+  };
+  const deviceAuthorization = interfaceAuth ? new DeviceAuthorization({
+    directory: path.join(dataDir, 'interface-v2'),
+    authorizeRepository: slug => {
+      const repository = interfaceConfig.repositories?.find(item => item.slug === slug);
+      return repository && /^\d+$/.test(repository.repositoryId) && configuredMemory?.projects?.[repository.projectId] ? repository.repositoryId : null;
+    },
+    issueDevice: async (repository, clientId) => loginResult(await interfaceAuth.issueDevice(repository, clientId)),
   }) : null;
   let registry = await readJson(registryFile, null);
   if (!registry) {
@@ -981,10 +1006,10 @@ export async function startCloudServer({
   const redirect = (res, location, headers = {}) => { res.writeHead(302, { Location: location, 'Cache-Control': 'no-store', ...headers }); res.end(); };
   const workbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=${encodeURIComponent(browserToken)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${workbenchCookieMaxAge}${secureCookies ? '; Secure' : ''}` });
   const clearWorkbenchCookie = () => ({ 'Set-Cookie': `cg_workbench=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookies ? '; Secure' : ''}` });
-  const requestBody = async req => {
+  const requestBody = async (req, limit = 16 * 1024 * 1024) => {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new MapError('CONTENT_TYPE', 'Use application/json', 415);
     const chunks = []; let size = 0;
-    for await (const chunk of req) { size += chunk.length; if (size > 16 * 1024 * 1024) throw new MapError('BODY_TOO_LARGE', 'Request exceeds 16 MiB', 413); chunks.push(chunk); }
+    for await (const chunk of req) { size += chunk.length; if (size > limit) throw new MapError('BODY_TOO_LARGE', 'Request exceeds the size limit', 413); chunks.push(chunk); }
     try { return JSON.parse(Buffer.concat(chunks)); } catch { throw new MapError('INVALID_JSON', 'Malformed JSON', 400); }
   };
   const requestForm = async req => {
@@ -1595,14 +1620,7 @@ export async function startCloudServer({
           if (typeof input?.id === 'string' && input.id.length <= 128) id = input.id;
           validateMessage(input);
           if (input.type === 'auth.open') {
-            const opened = await interfaceAuth.open(input, String(req.socket.remoteAddress));
-            const repository = interfaceConfig.repositories.find(item => item.repositoryId === opened.data.repositoryId);
-            opened.data.capabilities = repository?.projectId && configuredMemory?.projects?.[repository.projectId] ? ['private-map-heads'] : [];
-            if (opened.data.capabilities.length) {
-              opened.data.projectId = repository.projectId;
-              opened.data.capabilities.push('device-memory');
-            }
-            const openedPrincipal = await interfaceAuth.authenticate(opened.credential);
+            const opened = loginResult(await interfaceAuth.open(input, String(req.socket.remoteAddress)));
             return send(res, 200, { id, ok: true, data: opened.data }, { 'X-Context-Guard-Credential': opened.credential });
           }
           const credential = bearer(req);
@@ -1688,6 +1706,30 @@ export async function startCloudServer({
       }
       const passwordLoginRequest = route === '/auth/login' && req.method === 'POST';
       if (!passwordLoginRequest && allowedOrigin && req.headers.origin && canonicalOrigin(req.headers.origin) !== allowedOrigin) throw new MapError('ORIGIN_REJECTED', 'Cross-origin request rejected', 403);
+      if (route === '/api/auth/device/start' || route === '/api/auth/device/poll') {
+        if (!deviceAuthorization) protocolFail('UNAVAILABLE', 'Browser device authorization requires an upgraded Cloud with private project memory');
+        if (req.method !== 'POST' || req.headers.origin || !String(req.headers['content-type'] || '').startsWith('application/json')) protocolFail('FORBIDDEN', 'Use the CLI device authorization flow');
+        const input = await requestBody(req, 4096);
+        if (route.endsWith('/start')) {
+          const data = await deviceAuthorization.start(input, String(req.socket.remoteAddress));
+          return send(res, 200, { ok: true, data: { ...data, verificationPath: `/connect?code=${encodeURIComponent(data.userCode)}` } });
+        }
+        const result = await deviceAuthorization.poll(input);
+        return send(res, 200, { ok: true, data: result.data }, result.credential ? { 'X-Context-Guard-Credential': result.credential } : {});
+      }
+      if (route === '/connect' && req.method === 'GET') {
+        if (!deviceAuthorization) protocolFail('UNAVAILABLE', 'Device authorization is not configured');
+        if (!hasWorkbenchAccess(req)) return redirect(res, `/login?next=${encodeURIComponent(route + url.search)}`);
+        return sendHtml(res, 200, deviceAuthorizationPage(await deviceAuthorization.view(url.searchParams.get('code'), String(req.socket.remoteAddress))), { 'Referrer-Policy': 'same-origin' });
+      }
+      if (route === '/auth/device/decision' && req.method === 'POST') {
+        requireWorkbench(req, url);
+        if (!deviceAuthorization) protocolFail('UNAVAILABLE', 'Device authorization is not configured');
+        if (req.headers.origin !== (allowedOrigin || `http://${req.headers.host}`)) protocolFail('FORBIDDEN', 'Submit the authorization form from Cloud');
+        const form = await requestForm(req);
+        await deviceAuthorization.decide({ userCode: form.get('userCode'), csrf: form.get('csrf'), decision: form.get('decision') }, String(req.socket.remoteAddress));
+        return redirect(res, `/connect?code=${encodeURIComponent(form.get('userCode'))}`);
+      }
       if (memoryHandler && await memoryHandler(req, res)) return;
       if (route === '/login' && req.method === 'GET') {
         if (!browserPasswordHash) throw new MapError('NOT_FOUND', 'Password login is not configured', 404);

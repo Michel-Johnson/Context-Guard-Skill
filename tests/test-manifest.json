@@ -22,6 +22,11 @@
       "purpose": "Exercises the packaged CLI and cross-runtime smoke contract."
     },
     {
+      "path": "tests/browser-device-login-runner.mjs",
+      "command": "npm run test:browser",
+      "purpose": "Runs real Chromium password login and device approval against an isolated Cloud, then verifies backend Main access."
+    },
+    {
       "path": "tests/workbench-browser.mjs",
       "command": "npm run test:browser",
       "purpose": "Runs the local workbench end-to-end browser acceptance suite."
@@ -58,6 +63,8 @@
   ],
   "separatePackages": [],
   "productFiles": [
+    "tests/browser-device-login.test.mjs",
+    "tests/browser-device-login-runner.mjs",
     "tests/attachments.test.mjs",
     "tests/cloud-attachments.test.mjs",
     "tests/cloud-backup-retention.test.mjs",
