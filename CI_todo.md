@@ -1,5 +1,12 @@
 # CI TODO
 
+## Slack 可插拔接入（用户专项授权）
+
+- [x] 隔离回归：独立 loopback 网关的工作区/项目/动作校验、幂等与 SSE 退出；Slack/工作台共用人工执行对话及版本审批，确认后只保存 Main TODO/Bug 和执行提示，不创建执行 Session。
+- [x] 隔离模型回归：图片轮次固定配置的视觉模型、重试不换模型；附件提交前校验 UTF-8/hash/总量及请求大小，历史只读摘要和受保护引用。Slack Web API 使用替身，不能代替真实工作区验收。
+- [ ] 真实 Jerry Family：App 安装及 Socket 凭据、Home、私聊、两并发线程、两端接续、TODO/Bug、brief 与执行提示导出、记忆编辑、附件/Flash 截图理解、Map 预览、通知、重启去重及停用后工作台正常运行。
+- [ ] 合并、安装入口核验及 Cloud/独立插件部署；仅开放实验项目。自动派发仍暂缓，本专项不恢复旧 Cloud 编排队列。
+
 ## CI-AUTH-001 · 浏览器授权连接
 
 - [x] Executor：实现 Cloud 设备授权、网页登录确认、CLI 凭证保存与旧私有输入兼容；单模块测试见 `tests/interface-auth.test.mjs` 的 AUTH-001～003，认证套件通过。

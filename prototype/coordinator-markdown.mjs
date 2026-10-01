@@ -159,7 +159,7 @@ export function markdownFragment(text, doc = document) {
   return root;
 }
 
-export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
+export function conversationFragments(messages, doc = document, { nodes = [], onNode, onConversation, onAnswer, attachmentUrl, questionDrafts = new Map(), canAnswer = false, activeTurnId, running = false } = {}) {
   const body = doc.createDocumentFragment();
   const answerComposer = (question, draft, answerValue) => {
     const compose = doc.createElement('div'); compose.className = 'coordinator-answer-compose';
@@ -179,13 +179,24 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
   for (const message of messages) {
     const workflow = message.role === 'user' && (message.text || '').startsWith('[服务器工作流事件，不是新的用户授权]\n');
     const visibleAction = message.actions?.some(action => !['node-navigation', 'node-tour', 'node-read'].includes(action.kind));
-    if (workflow || (!message.text && !message.questions?.length && !visibleAction)) continue;
+    if (workflow || (!message.text && !message.attachments?.length && !message.questions?.length && !visibleAction)) continue;
     const row = doc.createElement('article'); row.className = `coordinator-message ${message.role === 'assistant' ? 'assistant' : 'user'}`;
     const content = doc.createElement('div'); content.className = 'coordinator-markdown';
     const cleanText = String(message.text || '').replace(/^\[实验：模拟人工输入\]\n/, '');
     const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
     const lead = message.questionOnly ? '' : cleanText;
     if (lead && !legacy) content.append(markdownFragment(lead, doc));
+    for (const attachment of message.attachments || []) {
+      const url = attachmentUrl?.(attachment);
+      if (typeof url !== 'string' || !url.startsWith('/api/workbench/')) continue;
+      const link = doc.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.textContent = attachment.filename || '附件';
+      if (['image/png', 'image/jpeg', 'image/webp'].includes(attachment.mimeType)) {
+        const image = doc.createElement('img'); image.src = url; image.alt = attachment.filename || '截图';
+        image.style.maxWidth = '100%'; image.style.maxHeight = '320px'; image.loading = 'lazy'; link.append(image);
+      }
+      const line = doc.createElement('p'); line.append(link); content.append(line);
+    }
     if (legacy?.before) content.append(markdownFragment(legacy.before, doc));
     for (const question of legacy?.items || []) {
       const card = doc.createElement('section'); card.className = 'coordinator-question coordinator-legacy-question'; card.dataset.questionId = question.id;

@@ -1,0 +1,17 @@
+{
+  "display_information": { "name": "Context Guard", "description": "项目 Map、记忆与对话型 Coordinator", "background_color": "#233644" },
+  "features": {
+    "app_home": { "home_tab_enabled": true, "messages_tab_enabled": true, "messages_tab_read_only_enabled": false },
+    "bot_user": { "display_name": "Coordinator", "always_online": false },
+    "slash_commands": [{ "command": "/cg", "description": "关联项目或开始 Coordinator 对话", "usage_hint": "或 ask <问题>", "should_escape": false }],
+    "shortcuts": [
+      { "name": "新建 TODO", "type": "global", "callback_id": "cg_todo", "description": "向项目 Map 添加 TODO" },
+      { "name": "报告 Bug", "type": "global", "callback_id": "cg_bug", "description": "向项目 Map 添加 Bug" },
+      { "name": "保存为 TODO", "type": "message", "callback_id": "cg_todo_message", "description": "将这条讨论保存为 TODO" },
+      { "name": "保存为 Bug", "type": "message", "callback_id": "cg_bug_message", "description": "将这条讨论保存为 Bug" }
+    ],
+    "unfurl_domains": ["map.micheljohnson.top"]
+  },
+  "oauth_config": { "scopes": { "bot": ["app_mentions:read", "channels:history", "channels:read", "chat:write", "commands", "files:read", "files:write", "groups:history", "groups:read", "im:history", "im:read", "im:write", "links:read", "links:write", "mpim:history", "mpim:read", "reactions:write"] } },
+  "settings": { "socket_mode_enabled": true, "interactivity": { "is_enabled": true }, "event_subscriptions": { "bot_events": ["app_home_opened", "app_mention", "message.channels", "message.groups", "message.im", "message.mpim", "link_shared"] }, "org_deploy_enabled": false, "token_rotation_enabled": false }
+}

@@ -1,0 +1,26 @@
+[Unit]
+Description=Context Guard independent Slack Socket Mode plugin
+After=network-online.target context-guard-cloud.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=context-guard
+Group=context-guard
+WorkingDirectory=/opt/context-guard-cloud/repository/plugins/slack
+EnvironmentFile=/etc/context-guard-slack.env
+Environment=CONTEXT_GUARD_SLACK_STATE_DIR=/var/lib/context-guard-slack
+ExecStart=/opt/context-guard-slack/runtime/bin/node src/main.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+StateDirectory=context-guard-slack
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/context-guard-slack
+
+[Install]
+WantedBy=multi-user.target

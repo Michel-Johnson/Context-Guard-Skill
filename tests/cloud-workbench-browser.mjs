@@ -717,6 +717,22 @@ try {
   assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
+  const attachmentMarkup = await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div');
+    host.append(conversationFragments([{ role: 'user', attachments: [
+      { id: 'safe', filename: '<script>截图</script>.png', mimeType: 'image/png' },
+      { id: 'external', filename: '外链', mimeType: 'image/png' },
+      { id: 'text', filename: '需求.md', mimeType: 'text/markdown' },
+    ] }], document, { attachmentUrl: item => item.id === 'external' ? 'https://example.invalid/private.png'
+      : '/api/workbench/projects/fixture/api/coordinator/attachments/' + item.id }).body);
+    return { rows: host.querySelectorAll('article').length, images: [...host.querySelectorAll('img')].map(image => image.getAttribute('src')),
+      links: [...host.querySelectorAll('a')].map(link => ({ text: link.textContent, rel: link.rel })), scripts: host.querySelectorAll('script').length };
+  });
+  assert.equal(attachmentMarkup.rows, 1, 'attachment-only messages remain visible');
+  assert.deepEqual(attachmentMarkup.images, ['/api/workbench/projects/fixture/api/coordinator/attachments/safe']);
+  assert.deepEqual(attachmentMarkup.links.map(link => link.text), ['<script>截图</script>.png', '需求.md']);
+  assert.ok(attachmentMarkup.links.every(link => link.rel === 'noopener noreferrer')); assert.equal(attachmentMarkup.scripts, 0);
   const inlineCodeLayout=await page.evaluate(async()=>{
     const {markdownFragment}=await import('/prototype/coordinator-markdown.mjs');
     const host=document.createElement('div');

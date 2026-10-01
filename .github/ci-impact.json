@@ -19,6 +19,7 @@
     "package.json",
     "package-lock.json",
     "tests/test-manifest.json",
+    "plugins/**",
     "RULE.md",
     "docs/engineering/README.md",
     "docs/test-governance.md",

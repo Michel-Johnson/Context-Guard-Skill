@@ -4770,8 +4770,8 @@ async function installCoordinatorPanel(sync){
     if(id===selected&&pending?.id===request.id){pending=null;pendingError='';pendingTransportUnknown=false;transportRecoveryAttempted.delete(request.id);if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
     else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';draft.transportUnknown=false;transportRecoveryAttempted.delete(request.id);if(draft.text.trim()===request.text)draft.text='';}}
   };
-  const visibleConversationMessage=message=>(message?.text||message?.questions?.length||message?.actions?.some(action=>!['node-navigation','node-tour','node-read'].includes(action.kind)))&&
-    !(message.role==='user'&&message.text.startsWith('[服务器工作流事件，不是新的用户授权]\n'));
+  const visibleConversationMessage=message=>(message?.text||message?.attachments?.length||message?.questions?.length||message?.actions?.some(action=>!['node-navigation','node-tour','node-read'].includes(action.kind)))&&
+    !(message.role==='user'&&(message.text||'').startsWith('[服务器工作流事件，不是新的用户授权]\n'));
   const rowKey=(message,state)=>JSON.stringify([message,
     message.questions?.length||message.role==='assistant'&&legacyQuestionList(message.text)
       ? [!busy&&!pending&&state.status==='waiting-for-user',state.activeTurnId,state.status==='running'] : null]);
@@ -4822,6 +4822,7 @@ async function installCoordinatorPanel(sync){
     const streamingCommitted=Boolean(streamingText&&lastTextMessage?.role==='assistant'&&lastTextMessage.text===streamingText);
     const hasStreaming=Boolean(streamingText)&&!streamingCommitted;
     const renderConversation=items=>conversationFragments(items,document,{nodes:state.nodeReferences||[],
+      attachmentUrl:attachment=>(sync.config.apiBase||'')+'/api/coordinator/attachments/'+encodeURIComponent(attachment.id),
       canAnswer:!busy&&!pending&&state.status==='waiting-for-user',activeTurnId:state.activeTurnId,running:state.status==='running',
       questionDrafts:questionDrafts.get(selected)||questionDrafts.set(selected,new Map()).get(selected),
       onConversation:selectConversation,
@@ -4948,7 +4949,8 @@ async function installCoordinatorPanel(sync){
       metadata(card,'节点：'+(approval.nodeIds||[]).join('、')+'\nMain：'+approval.mainVersion);
       for(const [decision,label] of [['approved','确认需求'],['rejected','拒绝需求']]){
         const button=document.createElement('button'); button.type='button'; button.textContent=label;
-        const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label};
+        const request={id:`${approval.id}:${decision}`,proposalId:approval.id,decision,reason:label,
+          ...(approval.manual?{version:approval.version||approval.brief.version}:{})};
         button.addEventListener('click',async()=>{
           for(const other of card.querySelectorAll('button')) other.disabled=true;
           status.textContent='';
@@ -5093,7 +5095,8 @@ async function installCoordinatorPanel(sync){
     if(answeringCard)answeringCard.querySelector('.coordinator-question-status').hidden=false;
     for(const button of messages.querySelectorAll('.coordinator-question button'))button.disabled=true;
     try{
-      await sync.call(conversationUrl('/api/coordinator',id),request,'POST','main');
+      const payload=Object.fromEntries(Object.entries(request).filter(([key])=>['id','text','retry','answerTo','attachments'].includes(key)));
+      await sync.call(conversationUrl('/api/coordinator',id),payload,'POST','main');
       confirmSubmitted(id,request);
     }catch(error){
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
