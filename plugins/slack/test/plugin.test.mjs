@@ -10,6 +10,25 @@ import { Gateway } from '../src/gateway.mjs';
 import { homeView, formValues, messageBlocks, approvalBlocks } from '../src/views.mjs';
 
 const teamId = 'T0BRW7G4Q6P', user = 'U000001', channel = 'C000001', bot = 'U000BOT';
+
+test('plugin lockfile is portable outside the developer registry', async () => {
+  const lock = JSON.parse(await fs.readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(lock.version, manifest.version);
+  assert.equal(lock.packages[''].version, manifest.version);
+  assert.deepEqual(lock.packages[''].engines, manifest.engines);
+  assert.equal(manifest.engines.node, '>=22.19.0');
+  assert.equal(manifest.engines.npm, '>=9.6.4');
+  const dependencies = Object.entries(lock.packages).filter(([name]) => name);
+  assert.ok(dependencies.length > 0);
+  for (const [name, entry] of dependencies) {
+    const url = new URL(entry.resolved);
+    assert.equal(url.protocol, 'https:', name);
+    assert.equal(url.hostname, 'registry.npmjs.org', name);
+    assert.equal(url.username + url.password + url.search + url.hash, '', name);
+    assert.match(entry.integrity, /^sha512-[A-Za-z0-9+/]+=*$/, name);
+  }
+});
 const project = { id: 'lab', name: 'Lab', version: 'v1', map: { id: 'T0', title: 'Root', children: [{ id: 'login', title: '登录', todos: [{ id: 'TD1', title: 'refresh', status: 'pending' }], bugs: [], memories: [{ text: '现有记忆' }], children: [] }] }, sessions: [{ id: 'session-1', status: 'running' }] };
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-slack-'));
