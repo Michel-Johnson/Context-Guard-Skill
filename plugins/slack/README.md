@@ -4,7 +4,7 @@
 
 ## 安装
 
-要求 Node >= 22。在插件目录执行 `npm ci --ignore-scripts`；依赖和 lockfile 与根包分开。用 `app-manifest.json` 创建自建 Slack App，打开 Socket Mode，生成带 `connections:write` 的 App-level token，并将 App 安装到 Jerry Family。机器人只响应它能访问的频道，请把它邀请到使用的频道。
+要求 Node >= 22.19.0、npm >= 9.6.4。在插件目录执行 `npm ci --ignore-scripts`；依赖和 lockfile 与根包分开，下载地址固定为 npm 官方仓库。用 `app-manifest.json` 创建自建 Slack App，打开 Socket Mode，生成带 `connections:write` 的 App-level token，并将 App 安装到 Jerry Family。机器人只响应它能访问的频道，请把它邀请到使用的频道。
 
 复制 `.env.example` 的字段到 **checkout 外**的私有 EnvironmentFile，文件权限设为 0600；配置 bot token、app token、独立插件网关 token、Cloud origin 和独立状态目录。不要把凭据填入仓库模板。先启用 Cloud 的可选 loopback 网关，再执行 `npm start`。
 
