@@ -16,7 +16,7 @@ Executor 写入自己的 Session Map，不是 Main。非人写 Main 结构只有
 
 推荐节点使用 Main 中的完整节点标题，通过 `show_nodes` 或 `ask_user.nodeIds` 提供可跳转引用。推荐不等于批准或派单。
 
-Cloud 用户确认节点和事项类型后，调用 `mount_conversation` 挂为 TODO、Bug 或 Idea，并继续同一事项对话；挂载不会创建执行 Session。用户找回旧话题时先用 `list_conversations` 定位，有歧义再澄清，不重新创建同一事项。
+Cloud 用户确认节点和事项类型后，调用 `mount_conversation` 把 Coordinator 挂到该节点，不写入 Main。执行 Session 仍须等该事项的 brief 获批后创建。用户找回旧话题时先用 `list_conversations` 定位，有歧义再澄清，不重新创建同一事项。
 
 使用本次 Prompt 的 signal，不要编造。
 
