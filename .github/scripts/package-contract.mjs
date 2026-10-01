@@ -98,6 +98,7 @@ export const installedFiles = [
 ];
 
 export const packedFiles = [...installedFiles, ...[
+  "references/slack-integration.md",
   "scripts/cloud/device-authorization.mjs",
   "scripts/shared/filesystem-v2.mjs",
   "scripts/cloud/migrate-memory-filesystem.mjs",
@@ -108,6 +109,9 @@ export const packedFiles = [...installedFiles, ...[
   "scripts/cloud/coordinator-tools.mjs",
   "scripts/cloud/coordinator-service.mjs",
   "scripts/cloud/coordinator-model.mjs",
+  "scripts/cloud/coordinator-manual.mjs",
+  "scripts/cloud/integration-gateway.mjs",
+  "scripts/cloud/integration-attachments.mjs",
   "scripts/cloud/completion.mjs",
   "scripts/cloud/task-review.mjs",
   "scripts/cloud/protocol-auth.mjs",

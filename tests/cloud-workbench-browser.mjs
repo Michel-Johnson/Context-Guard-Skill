@@ -36,6 +36,7 @@ let service;
 let browser;
 let context;
 let page;
+let attachmentPage;
 let passed = false;
 let failAttachmentShare = true;
 let attachmentUploads = 0;
@@ -717,6 +718,22 @@ try {
   assert.equal(await coordinator.getByRole('link', { name: '规范', exact: true }).getAttribute('rel'), 'noopener noreferrer');
   assert.equal(await coordinator.locator('a[href^="javascript:"]').count(), 0);
   assert.equal(markdownImageRequests.length, 0, 'rendering must not disclose viewing activity through remote images');
+  const attachmentMarkup = await page.evaluate(async () => {
+    const { conversationFragments } = await import('/prototype/coordinator-markdown.mjs');
+    const host = document.createElement('div');
+    host.append(conversationFragments([{ role: 'user', attachments: [
+      { id: 'safe', filename: '<script>截图</script>.png', mimeType: 'image/png' },
+      { id: 'external', filename: '外链', mimeType: 'image/png' },
+      { id: 'text', filename: '需求.md', mimeType: 'text/markdown' },
+    ] }], document, { attachmentUrl: item => item.id === 'external' ? 'https://example.invalid/private.png'
+      : '/api/workbench/projects/fixture/api/coordinator/attachments/' + item.id }).body);
+    return { rows: host.querySelectorAll('article').length, images: [...host.querySelectorAll('img')].map(image => image.getAttribute('src')),
+      links: [...host.querySelectorAll('a')].map(link => ({ text: link.textContent, rel: link.rel })), scripts: host.querySelectorAll('script').length };
+  });
+  assert.equal(attachmentMarkup.rows, 1, 'attachment-only messages remain visible');
+  assert.deepEqual(attachmentMarkup.images, ['/api/workbench/projects/fixture/api/coordinator/attachments/safe']);
+  assert.deepEqual(attachmentMarkup.links.map(link => link.text), ['<script>截图</script>.png', '需求.md']);
+  assert.ok(attachmentMarkup.links.every(link => link.rel === 'noopener noreferrer')); assert.equal(attachmentMarkup.scripts, 0);
   const inlineCodeLayout=await page.evaluate(async()=>{
     const {markdownFragment}=await import('/prototype/coordinator-markdown.mjs');
     const host=document.createElement('div');
@@ -1460,7 +1477,7 @@ try {
       baseVersion: null, baseMainVersion: currentMain.body.snapshot.version, sourceCommit: featureSha, memory: { map: attachmentMap, records: {} } }),
   });
   assert.equal(attachmentSeed.response.status, 200, JSON.stringify(attachmentSeed.body));
-  const attachmentPage = await context.newPage();
+  attachmentPage = await context.newPage();
   await attachmentPage.goto(service.url);
   await attachmentPage.waitForFunction(() => window.__CG_SERVER?.root === 'cloud:overview'
     && document.querySelector('.node[data-id="T0"]')?.textContent?.includes('项目地图'));
@@ -1578,6 +1595,31 @@ try {
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify({ passed: true, checks }, null, 2)}\n`);
   passed = true;
 } finally {
+  if (attachmentPage && !attachmentPage.isClosed() && !passed) {
+    await attachmentPage.screenshot({ path: path.join(output, 'failure-attachment.png'), fullPage: true }).catch(() => {});
+    const diagnosis = await attachmentPage.evaluate(() => ({
+      url: location.pathname + location.search,
+      syncStatus: document.querySelector('#cg-sync')?.dataset.status,
+      detailHeading: document.querySelector('#detail h2')?.textContent,
+      fileNames: [...document.querySelectorAll('.file-name')].map(node => node.textContent),
+      fileStatuses: [...document.querySelectorAll('.file-status')].map(node => node.textContent),
+      retryButtons: [...document.querySelectorAll('[data-quark-retry]')].map(node => ({ disabled: node.disabled, visible: !!node.getClientRects().length })),
+      coordinatorVisible: !!document.querySelector('#coordinator-panel')?.getClientRects().length,
+    })).catch(() => null);
+    if (diagnosis) {
+      const snapshot = await request(`${service.url}/api/workbench/projects/context-guard/api/state?view=session%3Aattachment-session`,
+        { headers: headers('browser-token') }).catch(() => null);
+      const jobs = [];
+      for (const name of await fs.readdir(path.join(dataDir, 'attachments')).catch(() => [])) {
+        if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
+        const job = JSON.parse(await fs.readFile(path.join(dataDir, 'attachments', name), 'utf8'));
+        jobs.push({ id: job.id, status: job.status, uncertain: job.uncertain, lastFailure: job.lastFailure });
+      }
+      await fs.writeFile(path.join(output, 'failure.txt'), JSON.stringify({ ui: diagnosis, jobs,
+        persisted: snapshot ? { httpStatus: snapshot.response.status, version: snapshot.body.version,
+          files: snapshot.body.doc?.root?.files } : null }, null, 2));
+    }
+  }
   if (page && !passed) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
   await browser?.close().catch(() => {});
   await service?.close().catch(() => {});
