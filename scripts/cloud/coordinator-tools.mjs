@@ -36,7 +36,7 @@ export const coordinatorTools = [
       title: string, purpose: string, memoryDocument: { type: 'string', maxLength: 12000 }, kind: { enum: ['module', 'work', 'node', 'todo', 'bug'] }, state: { enum: ['dirty', 'untested', 'success'] }, owns: strings,
     }, required: ['op'], additionalProperties: false } },
   }),
-  definition('mount_conversation', 'Attach an intent to a Main TODO, Bug or Idea conversation.', {
+  definition('mount_conversation', 'Attach the Coordinator to a Main node. Does not write Main and does not create an execution Session; that Session is created after the brief is approved.', {
     mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
   }),
   definition('ask_user', 'Ask one clarification; not for brief approval or final acceptance.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),

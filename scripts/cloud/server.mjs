@@ -786,6 +786,7 @@ export async function startCloudServer({
               nodes: [...new Set(result.nodeIds)].map(id => index.get(id)?.node).filter(Boolean).map(node => ({ id: node.id, title: node.title, purpose: node.purpose || '' })) };
           },
           mountConversation: async (input, operationId) => {
+            if (!['todo', 'bug', 'idea'].includes(input.kind)) protocolFail('INVALID_ARGUMENT', 'Unsupported work item kind');
             if (manual) {
               if (config.mapWrite !== true) protocolFail('FORBIDDEN', 'Coordinator item mounting is not enabled for this project');
               const file = path.join(dataDir, 'coordinators', project.id, 'manual-mounts', digest(operationId) + '.json');
@@ -796,24 +797,16 @@ export async function startCloudServer({
                 if (!intent) {
                   const snapshot = await readMemoryProject(configuredMemory, project.id);
                   if (snapshot.main.version !== input.mainVersion) protocolFail('VERSION_CONFLICT', 'Main changed; read the node again');
-                  if (!['todo', 'bug', 'idea'].includes(input.kind)) protocolFail('INVALID_ARGUMENT', 'Unsupported work item kind');
                   const node = entries(snapshot.main.memory.map.root).get(input.nodeId)?.node;
                   if (!node || Array.isArray(config.nodeIds) && !config.nodeIds.includes(node.id)) protocolFail('NOT_FOUND', 'Node is unavailable');
-                  const key = `${input.kind}s`, id = `SL${digest(operationId).slice(0, 20)}`;
-                  const item = input.kind === 'idea' ? { id, text: input.title, desc: input.description, state: 'dirty' }
-                    : { id, title: input.title, desc: input.description, status: input.kind === 'bug' ? 'open' : 'pending', executionMode: 'manual' };
-                  intent = { fingerprint, item, node: { id: node.id, title: node.title },
-                    request: { operationId, baseVersion: input.mainVersion,
-                      operations: [{ type: 'update', id: node.id, fields: { [key]: [...(node[key] || []), item] } }] } };
+                  intent = { fingerprint, version: snapshot.main.version, node: { id: node.id, title: node.title }, kind: input.kind, title: input.title };
                   await atomicWrite(file, json(intent));
                 }
-                const committed = await commitMainMemoryMap(configuredMemory, project.id, intent.request,
-                  { kind: 'coordinator', sessionId: '', agentId: `coordinator:${conversationId}` });
-                const { node, item } = intent;
-                await conversations.setFocus(conversationId, { nodeId: node.id, kind: input.kind, itemId: item.id, title: input.title });
-                Object.assign(conversation, { nodeId: node.id, kind: input.kind, itemId: item.id });
-                return { kind: 'map-action', actionId: operationId, version: committed.version, node,
-                  item: { id: item.id, kind: input.kind, title: input.title }, message: '事项已保存；继续在当前对话澄清，不启动执行 Session。' };
+                await conversations.setFocus(conversationId, { nodeId: intent.node.id, kind: intent.kind, title: intent.title });
+                Object.assign(conversation, { nodeId: intent.node.id, kind: intent.kind });
+                delete conversation.itemId;
+                return { kind: 'map-action', actionId: operationId, version: intent.version, node: intent.node,
+                  message: '已挂载到节点；未写入 Main，也未创建执行 Session。' };
               });
             }
             if (conversationId.startsWith('item-')) protocolFail('INVALID_ARGUMENT', 'This item is already mounted; prepare its project requirements');
@@ -822,24 +815,8 @@ export async function startCloudServer({
             if (snapshot.version !== input.mainVersion) protocolFail('VERSION_CONFLICT', 'Main changed; read the target node again');
             const node = entries(snapshot.memory.map.root).get(input.nodeId)?.node;
             if (!node || Array.isArray(config.nodeIds) && !config.nodeIds.includes(input.nodeId)) protocolFail('NOT_FOUND', 'Mount target is unavailable');
-            const key = input.kind === 'todo' ? 'todos' : input.kind === 'bug' ? 'bugs' : 'ideas';
-            const short = digest(operationId).slice(0, 16);
-            const itemId = input.kind === 'todo' ? `TD-${short}` : input.kind === 'bug' ? `B${parseInt(short.slice(0, 10), 16)}` : `I-${short}`;
-            const item = input.kind === 'todo' ? { id: itemId, title: input.title, desc: input.description, status: 'pending', sessions: [] }
-              : input.kind === 'bug' ? { id: itemId, title: input.title, desc: input.description, status: 'open', sessions: [] }
-              : { id: itemId, text: input.title, desc: input.description, state: 'dirty' };
-            const list = [...(node[key] || []), item];
-            const result = await commitMainMemoryMap(configuredMemory, project.id, { operationId: `coordinator-mount:${operationId}`,
-              baseVersion: input.mainVersion, operations: [{ type: 'update', id: input.nodeId, fields: { [key]: list } }] },
-              { kind: 'coordinator', sessionId: '', agentId: principal.agentId });
-            const id = await conversations.ensure({ nodeId: input.nodeId, kind: input.kind, item });
-            await conversations.continueIn(conversationId, id);
-            const target = await coordinatorFor(project, id);
-            await target.submit({ id: `mount-continue:${digest(operationId)}`, text: input.kind === 'idea'
-              ? '此想法已成功挂载。沿用上面的用户需求，读取该节点的最新 Main 版本。不要再次挂载，也不要为想法创建执行 Session。'
-              : '此事项已成功挂载，尚未创建执行 Session。沿用上面的用户需求，读取该节点的最新 Main 版本；业务目标明确时直接调用 prepare_task 准备项目级需求。不要再次挂载、读取旧任务或选择执行端。用户批准 brief 后，后台为该任务创建新的执行 Session 并派发。' }, { source: 'workflow' });
-            return { kind: 'conversation-mounted', message: '已挂载到 Map', conversationId: id,
-              node: { id: node.id, title: node.title }, item: { id: item.id, kind: input.kind, title: input.title }, version: result.version };
+            return { kind: 'conversation-mounted', message: '已挂载到节点；未写入 Main，也未创建执行 Session。用户批准 brief 后，系统为该事项创建新的执行 Session 并派发。',
+              conversationId, node: { id: node.id, title: node.title }, version: snapshot.version };
           },
           // Conversation ownership is a UI routing hint, not an authorization
           // boundary. Every Coordinator conversation uses the same project
