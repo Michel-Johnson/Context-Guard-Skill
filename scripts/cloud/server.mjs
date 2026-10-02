@@ -1033,16 +1033,30 @@ export async function startCloudServer({
       const operations = payload.operations;
       if (!Array.isArray(operations)) protocolFail('INVALID_ARGUMENT', 'Provide Map operations');
       const memory = await readMemoryProject(configuredMemory, projectId);
-      const index = entries(memory.main.memory.map.root);
-      for (const operation of operations) {
-        for (const field of ['todos', 'bugs']) {
-          const list = operation.fields?.[field] || operation.node?.[field];
-          if (!Array.isArray(list)) continue;
-          const existing = index.get(operation.id || operation.node?.id)?.node?.[field] || [];
-          for (const item of list) if (!existing.some(old => old.id === item.id) && item.executionMode !== 'manual') {
-            protocolFail('INVALID_ARGUMENT', 'New integration work items require manual execution mode');
+      const document = memory.main.memory.map;
+      const index = document.root ? entries(document.root) : new Map();
+      const checkItems = (list, existing = []) => {
+        if (!Array.isArray(list)) return;
+        for (const item of list) {
+          if (!item || typeof item !== 'object') protocolFail('INVALID_ARGUMENT', 'Provide valid integration work items');
+          const previous = existing.find(old => old.id === item.id);
+          if ((!previous || previous.executionMode === 'manual') && item.executionMode !== 'manual') {
+            protocolFail('INVALID_ARGUMENT', 'New integration work items must retain manual execution mode');
           }
         }
+      };
+      for (const operation of operations) {
+        if (!operation || typeof operation !== 'object') protocolFail('INVALID_ARGUMENT', 'Provide valid Map operations');
+        for (const field of ['todos', 'bugs']) {
+          checkItems(operation.fields?.[field], index.get(operation.id)?.node?.[field]);
+          if (operation.node) for (const { node } of entries({ id: 'T0', ...operation.node }).values()) {
+            checkItems(node[field], index.get(node.id)?.node?.[field]);
+          }
+        }
+        if (operation.type === 'attach-bug' || operation.type === 'recover-bug') {
+          checkItems([operation.bug], index.get(operation.id)?.node?.bugs || document.unassigned_bugs);
+        }
+        checkItems(operation.fields?.unassigned_bugs, document.unassigned_bugs);
       }
       return commitMainMemoryMap(configuredMemory, projectId, { operationId, baseVersion: payload.baseVersion, operations }, actor);
     }

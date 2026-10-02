@@ -8,6 +8,7 @@ import { startCloudServer } from '../scripts/cloud/server.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
+import { CoordinatorMapIntake } from '../scripts/cloud/coordinator-service.mjs';
 
 // These exercise real Cloud and loopback HTTP with isolated persistence. Only
 // the paid model provider is replaced; no Slack SDK/account/network is involved.
@@ -383,6 +384,47 @@ test('Slack map array writes require explicit manual mode for new items, preserv
   assert.equal((await f.main()).revision, after.revision); assert.equal((await f.main()).main.memory.map.root.todos.length, 2);
   assert.equal((await f.gateway('map.write', { baseVersion: before.main.version,
     operations: [{ type: 'update', id: 'T0', fields: { todos: [] } }] }, { id: 'stale-array-map-write' })).body.error.code, 'VERSION_CONFLICT');
+});
+
+test('Slack validates direct Bug operations and retains manual markers before committing Main', async t => {
+  const f = await fixture(t), before = await f.main();
+  const bug = { id: 'B99999', title: 'Slack Bug', status: 'open' };
+  const invalid = [
+    { type: 'attach-bug', id: 'T0', bug },
+    { type: 'attach-bug', id: 'T0', bug: { ...bug, executionMode: 'automatic' } },
+    { type: 'attach-bug', bug },
+    { type: 'recover-bug', id: 'T0', bug },
+    { type: 'document', fields: { unassigned_bugs: [bug] } },
+    { type: 'create', parentId: 'T0', node: { id: 'N1', title: 'New node', kind: 'module', state: 'dirty', owns: [], bugs: [bug] } },
+  ];
+  for (const [index, operation] of invalid.entries()) {
+    const result = await f.gateway('map.write', { baseVersion: before.main.version, operations: [operation] }, { id: `invalid-direct-bug-${index}` });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, 'INVALID_ARGUMENT');
+    assert.deepEqual(await f.main(), before, 'Rejected operations must not change Main, receipts or events');
+  }
+  const manualBug = { ...bug, executionMode: 'manual' };
+  const payload = { baseVersion: before.main.version, operations: [{ type: 'attach-bug', id: 'T0', bug: manualBug }] };
+  const attached = await f.gateway('map.write', payload, { id: 'manual-direct-bug' });
+  assert.equal(attached.status, 200, JSON.stringify(attached.body));
+  const after = await f.main();
+  assert.deepEqual(after.main.memory.map.root.bugs.find(item => item.id === bug.id), manualBug);
+  assert.deepEqual((await f.gateway('map.write', payload, { id: 'manual-direct-bug' })).body, attached.body);
+  assert.deepEqual(await f.main(), after);
+  const intake = new CoordinatorMapIntake({ directory: path.join(f.directory, 'manual-bug-intake'), read: f.main,
+    service: { submit: async () => assert.fail('Slack work must not enter automatic intake') } });
+  assert.equal(intake.items(after.main.memory.map.root).some(entry => entry.item.id === bug.id), false);
+  for (const executionMode of [undefined, 'automatic']) {
+    const bugs = after.main.memory.map.root.bugs.map(item => item.id === bug.id ? { ...item, executionMode } : item);
+    const result = await f.gateway('map.write', { baseVersion: after.main.version,
+      operations: [{ type: 'update', id: 'T0', fields: { bugs } }] }, { id: `strip-marker-${executionMode || 'missing'}` });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.deepEqual(await f.main(), after);
+  }
+  const recovery = await f.gateway('map.write', { baseVersion: after.main.version,
+    operations: [{ type: 'recover-bug', id: 'T0', bug: manualBug }] }, { id: 'manual-recovery-still-forbidden' });
+  assert.equal(recovery.status, 403);
+  assert.equal(recovery.body.error.code, 'FORBIDDEN_RECOVERY');
 });
 
 test('Coordinator attachments are shared with authenticated browser and isolated by project without Quark', async t => {
