@@ -956,6 +956,47 @@ test('workflow source and legacy prefix are hidden while human, Coordinator and 
   assert.ok(posts.some(item => item.text?.startsWith('工作台用户：继续讨论'))); assert.ok(posts.some(item => item.text?.includes('正常的 Coordinator 回复')));
   assert.ok(posts.some(item => JSON.stringify(item.blocks).includes('approve_brief')));
 });
+for (const readKind of ['map-read', 'node-read']) for (const streaming of [false, true]) test(`map-read-only steps do not post placeholders or consume the final stream slot (${readKind}/${streaming ? 'stream' : 'direct'})`, async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.001');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['request-one'] });
+  if (streaming) await f.store.update(state => { state.threads[key].liveStream = { ts: '5.0', turnId: 'request-one' }; });
+  const state = { status: 'waiting-for-user', activeTurnId: null, messages: [
+    { id: 'user', role: 'user', requestId: 'request-one', text: '只读分析 Bug' },
+    { id: 'read-only', role: 'assistant', requestId: 'request-one', tools: ['read_map'], actions: [{ kind: readKind, node: { id: 'login', title: '登录' } }] },
+    { id: 'answer', role: 'assistant', requestId: 'request-one', text: '登录模块的刷新逻辑有问题，本轮只读。' },
+  ], approvals: [] };
+  const original = structuredClone(state);
+  f.gateway.command = async () => state;
+  await f.plugin.mirror(key);
+  assert.equal(f.sent.length, 1, 'Only the actual answer is sent/updated');
+  assert.equal(f.store.data.threads[key].mirrored['read-only'], undefined);
+  assert.ok(f.store.data.threads[key].mirrored.answer);
+  if (streaming) {
+    assert.equal(f.sent[0].update[1], '5.0');
+    assert.match(f.sent[0].update[2], /登录模块/);
+    assert.equal(f.store.data.threads[key].liveStream, undefined);
+  } else assert.match(f.sent[0].text, /登录模块/);
+  assert.deepEqual(state, original, 'Do not remove Cloud tool pairs or their public read actions');
+  f.plugin.store = await new Store(f.directory).open();
+  await f.plugin.mirror(key);
+  assert.equal(f.sent.length, 1, 'Restart preserves deduplication without replaying the hidden read step');
+});
+test('map-read metadata does not hide accompanying text, clarification, attachment or visible node links', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.001');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: [] });
+  const read = { kind: 'node-read', node: { id: 'login', title: '登录' } };
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, messages: [
+    { id: 'text', role: 'assistant', text: '这是实际说明。', actions: [read] },
+    { id: 'question', role: 'assistant', questions: [{ id: 'q', text: '是否只影响旧 token？' }], actions: [read] },
+    { id: 'attachment', role: 'assistant', attachments: [{ id: 'file', filename: 'result.txt' }], actions: [read] },
+    { id: 'links', role: 'assistant', actions: [read, { kind: 'node-navigation', node: { id: 'login', title: '登录' } }] },
+  ], approvals: [] });
+  await f.plugin.mirror(key);
+  assert.equal(f.sent.length, 4);
+  assert.ok(JSON.stringify(f.sent[1].blocks).includes('是否只影响旧 token'));
+  assert.ok(JSON.stringify(f.sent[2].blocks).includes('result.txt'));
+  assert.equal(f.sent[3].blocks.find(block => block.type === 'actions').elements[0].url, 'https://map.example.com/projects/lab?relation=login');
+});
 test('new Bug uses native status and manual mode, memory writes preserve legacy memories', async t => {
   const f = await fixture(t); await f.plugin.publishHome(user, 'E0'); await f.plugin.openForm('trigger', user, 'E1', 'item', { projectId: 'lab', nodeId: 'login', kind: 'bug' });
   const draftId = f.sent.find(call => call.method === 'views.open').input.view.private_metadata;

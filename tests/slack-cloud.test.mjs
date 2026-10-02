@@ -10,6 +10,11 @@ import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs'
 import { hash, readJSON } from '../scripts/shared/io.mjs';
 import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import { filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
+import { coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
+import { publicMessages } from '../scripts/cloud/coordinator-service.mjs';
+import { createCoordinatorExecutor } from '../scripts/cloud/coordinator-tools.mjs';
+import { SlackPlugin } from '../plugins/slack/src/plugin.mjs';
+import { Store, threadKey } from '../plugins/slack/src/store.mjs';
 
 // These exercise real Cloud and loopback HTTP with isolated persistence. Only
 // the paid model provider is replaced; no Slack SDK/account/network is involved.
@@ -19,6 +24,44 @@ const integrationCredential = 'fixture-independent-integration-credential';
 const browserCredential = 'fixture-browser-credential';
 const headers = { Authorization: `Bearer ${browserCredential}`, 'Content-Type': 'application/json' };
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';
+
+// Projection regression: real Coordinator execution/public messages and plugin,
+// with in-memory provider/state and fake Slack IO; not a real Slack E2E case.
+test('Native Coordinator read_map projection produces no empty Slack reply before the actual answer', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-native-read-mirror-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const store = await new Store(directory).open(), key = threadKey(teamId, 'CTESTCHANNEL', '100.001');
+  await store.bind(key, { channel: 'CTESTCHANNEL', threadTs: '100.001', projectId, conversationId: 'chat-native-read', userId,
+    ownRequests: ['native-read-turn'] });
+  const posts = [], raw = { status: 'running', activeTurnId: 'native-read-turn', activeInput: { id: 'native-read-turn' },
+    messages: [{ role: 'user', requestId: 'native-read-turn', content: '只读分析这个模块' }], toolReceipts: {} };
+  const execute = createCoordinatorExecutor({ readMap: async () => ({ version: 'main-native-read', node: { id: 'T0', title: 'Fixture' } }) });
+  let modelStep = 0;
+  const model = { next: async () => ++modelStep === 1
+    ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'native-read-tool', name: 'read_map', input: { nodeId: 'T0' } }] }
+    : { stop: 'end_turn', content: [{ type: 'text', text: '已读取真实模块信息，本轮只读。' }] } };
+  const step = () => coordinatorStep({ turnId: 'native-read-turn', state: raw, model, system: 'native read projection test',
+    tools: filterManualTools(coordinatorTools), execute, save: async () => {} });
+  const plugin = new SlackPlugin({ store, teamId, cloudOrigin: 'https://map.example.com', botUserId: 'UBOTTEST',
+    gateway: { command: async () => ({ status: raw.status, activeTurnId: raw.activeTurnId,
+      messages: publicMessages(raw), approvals: [], acceptedRequestIds: ['native-read-turn'] }) },
+    io: { post: async input => { posts.push(input); return '101.001'; }, update: async () => assert.fail('No retained stream in this case') },
+    logger: { error(){}, warn(){} } });
+  await step();
+  const readMessage = publicMessages(raw).find(message => message.role === 'assistant');
+  assert.equal(readMessage.actions[0].kind, 'node-read', 'Use the actual public projection, not a renamed fixture action');
+  assert.equal(readMessage.text, '');
+  assert.equal(Object.keys(raw.toolReceipts).length, 1);
+  assert.equal(raw.messages.at(-1).content[0].type, 'tool_result');
+  await plugin.mirror(key);
+  assert.equal(posts.length, 0, 'The real native read projection must not create a blank Slack message');
+  await step(); raw.activeTurnId = null;
+  await plugin.mirror(key); await plugin.mirror(key);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].text, /已读取真实模块信息/);
+  assert.ok(raw.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_result')),
+    'Cloud tool provenance remains complete');
+});
 
 async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes = [] } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-slack-cloud-'));

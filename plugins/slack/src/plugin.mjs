@@ -3,6 +3,10 @@ import { MAX_TOTAL_IMAGE_BYTES } from './slack-io.mjs';
 import { homeView, nodesOf, modal, formValues, messageBlocks, approvalBlocks, projectChoiceBlocks, section, escape } from './views.mjs';
 
 const operationId = (id, suffix) => `slack-${digest(`${id}:${suffix}`)}`;
+// A read action is retained by Cloud for provenance/focus, but has no Slack UI.
+// Preserve actual text, questions, attachments and other presentation actions.
+const hasSlackContent = message => !!(message.text || message.questions?.length || message.attachments?.length ||
+  message.actions?.some(action => action && !['map-read', 'node-read'].includes(action.kind)));
 const isMessage = event => ['message', 'app_mention'].includes(event?.type) && !event.bot_id && !event.bot_profile && !event.hidden && (!event.subtype || event.subtype === 'file_share');
 const indirectMessage = (event, botUserId) => isMessage(event) && event.user !== botUserId &&
   event.channel_type !== 'im' && !event.channel?.startsWith('D') && event.type !== 'app_mention' && !String(event.text || '').includes(`<@${botUserId}>`);
@@ -545,7 +549,7 @@ export class SlackPlugin {
       return { message, index, requestId, id };
     });
     for (const { message, index, requestId, id } of entries) {
-      if (!message.text && !message.questions?.length && !message.attachments?.length && !message.actions?.length) continue;
+      if (!hasSlackContent(message)) continue;
       if (message.role === 'user' && (message.source === 'workflow' || String(message.text || '').trimStart().startsWith('[服务器工作流事件'))) continue;
       if (message.role === 'user' && this.store.data.threads[key].ownRequests.includes(message.requestId)) continue;
       if (state.status === 'running' && state.streamingText && index === lastAssistant && requestId === state.activeTurnId) continue;
@@ -565,7 +569,7 @@ export class SlackPlugin {
       const moveEarlier = !!stream && settled && message.role === 'assistant' && stream.turnId === requestId &&
         !!prior && Number(prior.ts) > Number(stream.ts) && entries.some(entry =>
           entry.message.role === 'assistant' && entry.requestId === stream.turnId &&
-          (entry.message.text || entry.message.questions?.length || entry.message.attachments?.length || entry.message.actions?.length) &&
+          hasSlackContent(entry.message) &&
           !this.store.data.threads[key].mirrored[entry.id]);
       if (prior?.hash === content && !moveEarlier) continue;
       const text = `${message.role === 'user' ? '工作台用户' : 'Coordinator'}：${message.text || (message.actions?.length ? '节点入口' : '附件')}`;

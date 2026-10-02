@@ -4,8 +4,19 @@ import { entries, MapError } from '../shared/map-model.mjs';
 import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
 
 export const MANUAL_DISABLED_TOOLS = Object.freeze(['dispatch_task', 'review_plan', 'request_ci', 'request_rework', 'resume_task', 'guide_task', 'complete_task']);
-export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => tool.name === 'prepare_task'
-  ? { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' } : tool);
+export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => {
+  if (tool.name !== 'prepare_task') return tool;
+  const result = { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' };
+  if (tool.input_schema?.properties) {
+    const properties = { ...tool.input_schema.properties };
+    for (const [field, description] of [
+      ['taskId', 'Required task identifier; it does not set the saved Main item ID or title.'],
+      ['text', 'For a new TODO, the first line becomes the Main item title (up to 200 characters). Put the user-requested title there, followed by the complete requirements on subsequent lines. An existing TODO/Bug keeps its current title; do not claim this brief renames it.'],
+    ]) if (properties[field]) properties[field] = { ...properties[field], description };
+    result.input_schema = { ...tool.input_schema, properties };
+  }
+  return result;
+});
 export function coordinatorRolePrompt(source, { manual = false } = {}) {
   const markers = [...source.matchAll(/^## 人工对话模式[ \t]*(?=\r?$)/gm)];
   const heading = markers[0]?.index ?? -1;

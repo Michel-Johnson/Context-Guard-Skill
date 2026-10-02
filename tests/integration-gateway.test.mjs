@@ -6,6 +6,7 @@ import path from 'node:path';
 import { startIntegrationGateway, validateIntegrationConfig, classifyIntegrationMessage } from '../scripts/cloud/integration-gateway.mjs';
 import { IntegrationAttachmentStore } from '../scripts/cloud/integration-attachments.mjs';
 import { CoordinatorManualBriefs, filterManualTools, coordinatorRolePrompt } from '../scripts/cloud/coordinator-manual.mjs';
+import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import { applyOperations, MapError } from '../scripts/shared/map-model.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
 
@@ -33,6 +34,27 @@ test('Manual role is selected explicitly without changing legacy execution instr
     'guide\n## 人工对话模式\n## 人工对话模式\ncontent', 'guide\n## 人工对话模式\nfirst\n## 人工对话模式\nsecond']) {
     assert.throws(() => coordinatorRolePrompt(malformed, { manual: true }), { code: 'INVALID_COORDINATOR_PROFILE' });
   }
+});
+test('Manual brief native tool identifies the stored title field without changing validation or automatic tools', () => {
+  const before = structuredClone(coordinatorTools);
+  const tools = filterManualTools(coordinatorTools);
+  const prepared = tools.find(tool => tool.name === 'prepare_task');
+  const original = before.find(tool => tool.name === 'prepare_task');
+  assert.match(prepared.input_schema.properties.text.description || '', /first line.*Main.*title/i);
+  assert.match(prepared.input_schema.properties.text.description || '', /user.*requested title/i);
+  assert.match(prepared.input_schema.properties.text.description || '', /new TODO/);
+  assert.match(prepared.input_schema.properties.text.description || '', /existing TODO\/Bug keeps its current title/i);
+  assert.match(prepared.input_schema.properties.taskId.description || '', /not.*title/i);
+  assert.deepEqual(coordinatorTools, before, 'Manual descriptions cannot mutate automatic tools');
+  const stripDescriptions = value => Array.isArray(value) ? value.map(stripDescriptions) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'description').map(([key, entry]) => [key, stripDescriptions(entry)])) : value;
+  assert.deepEqual(stripDescriptions(prepared.input_schema), stripDescriptions(original.input_schema), 'Native validation contract stays identical');
+  for (const tool of tools.filter(tool => tool.name !== 'prepare_task')) assert.deepEqual(tool, before.find(item => item.name === tool.name));
+  assert.deepEqual(filterManualTools(coordinatorTools), tools, 'Repeated compilation keeps the same definitions');
+  const partial = [{ name: 'prepare_task' }, { name: 'prepare_task', input_schema: { type: 'object', properties: { acceptance: { type: 'string' } } } }];
+  const projected = filterManualTools(partial);
+  assert.equal(projected[0].input_schema, undefined, 'Name-only inventories remain supported');
+  assert.deepEqual(projected[1].input_schema, partial[1].input_schema, 'Do not invent missing native fields');
 });
 async function temporary(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-integration-'));
@@ -206,6 +228,36 @@ test('Manual brief creates one Main TODO and pasteable fs-v2.1 prompt without an
   assert.deepEqual(replay, result); assert.equal(fixture.commits, 1);
   await assert.rejects(service.review(review(proposal, 'rejected'), context('review-third')), error => error.code === 'CONFLICT');
   assert.equal((await service.approvals('chat-fixture'))[0].pending, false);
+});
+
+test('Manual brief preserves the explicitly requested first-line title through approval and export, not taskId', async t => {
+  const fixture = await manualFixture(t), { service } = fixture;
+  const title = 'SLACK-NL-TITLE：文章列表空态提示';
+  const text = `${title}\n无文章时显示“暂无文章”，aria-live=polite，不抢焦点；有文章时保持原样。`;
+  const proposal = await service.prepare({ ...brief((await fixture.readMain()).version), taskId: 'operation-id-not-a-title', text }, context('prepare-title'));
+  assert.equal(fixture.commits, 0);
+  assert.equal(proposal.text.split('\n')[0], title);
+  assert.equal((await service.approvals('chat-fixture'))[0].text, text);
+  const approved = await service.review(review(proposal), context('approve-title'));
+  const todo = (await fixture.readMain()).document.root.children[0].todos[0];
+  assert.equal(todo.title, title);
+  assert.equal(todo.description, text);
+  assert.equal(todo.executionMode, 'manual');
+  assert.notEqual(todo.id, 'operation-id-not-a-title');
+  assert.match((await service.prompt(proposal.id, 'chat-fixture')).text, /SLACK-NL-TITLE：文章列表空态提示/);
+  assert.equal(approved.executionSessionId, undefined);
+});
+
+test('A new brief for an existing Bug preserves its original title and records the new requirements only in its approval', async t => {
+  const fixture = await manualFixture(t), { service } = fixture;
+  const text = 'Not a rename of the existing Bug\nRefresh an expired token once.';
+  const proposal = await service.prepare({ ...brief((await fixture.readMain()).version), text,
+    nodeId: 'LOGIN', itemId: 'B1', kind: 'bug' }, context('prepare-existing-title'));
+  await service.review(review(proposal), context('approve-existing-title'));
+  const bug = (await fixture.readMain()).document.root.children[0].bugs[0];
+  assert.equal(bug.id, 'B1'); assert.equal(bug.title, 'Refresh fails');
+  assert.equal(bug.createdAt, 'original-item');
+  assert.equal(bug.approvedBrief.text, text);
 });
 
 test('Manual brief preserves original Bug/attempt identity and requires exact Main and proposal versions', async t => {
