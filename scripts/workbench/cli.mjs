@@ -145,6 +145,7 @@ Actions:
   task handoff        Deliver committed SHA and CI evidence; use map task handoff --help
   ci context          Read the CI assignment and exact source SHA
   ci exchange         Submit CI evidence/result via --input JSON
+  coordinator         Call one built-in Coordinator tool. JSON: {"operationId","name","input","conversationId"?}
 
 Options:
   --root <dir>        Project root (default: current directory)
@@ -822,6 +823,7 @@ async function main(args) {
   const registered = await request(state, '/api/session', { method: 'POST', body: { sessionId, worktreeRoot: root, allowRebind: false } });
   const call = (route, params = {}) => request(state, route, { ...params, token: registered.token });
   const action = command === 'map' ? opt._[0] || 'status' : command;
+  if (action === 'coordinator') return call('/api/v2/coordinator-tools', { method: 'POST', body: await inputJSON(opt.input) });
   if (action === 'execution') return call('/api/v2/execution');
   if (action === 'ci') {
     if (opt._[1] === 'context') return call('/api/v2/execution');
