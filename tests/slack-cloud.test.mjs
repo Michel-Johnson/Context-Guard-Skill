@@ -198,6 +198,8 @@ test('Slack vision configuration cannot silently select a different model', asyn
 test('Slack-created and browser-bound conversations retain manual mode and shared history across restart', async t => {
   const f = await fixture(t), conversation = await f.newConversation('create-shared');
   assert.equal((await f.browser(conversation)).body.executionMode, 'manual');
+  assert.equal((await f.browser(conversation)).body.compaction.thresholdTokens, 8192, 'Manual chat uses the early compact profile');
+  assert.equal((await f.browser('main')).body.compaction.thresholdTokens, 500000, 'Normal execution profile remains unchanged');
   const created = await f.browser('main', { suffix: '/conversations/new', body: { id: 'browser-original-chat' } });
   assert.equal(created.status, 201); const boundId = created.body.id;
   const bind = await f.gateway('conversation.bind', { conversationId: boundId }, { id: 'bind-original-chat' });

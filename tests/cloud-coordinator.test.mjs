@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { CoordinatorModel, coordinatorInputTokens, coordinatorModelMessages, coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
 import { buildCoordinatorContext } from '../scripts/cloud/coordinator-context.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume,
-  coordinatorCompactBoundary, COORDINATOR_COMPACT_AT_TOKENS } from '../scripts/cloud/coordinator-service.mjs';
+  coordinatorCompactBoundary, COORDINATOR_COMPACT_AT_TOKENS, COORDINATOR_MANUAL_COMPACT_AT_TOKENS } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor, coordinatorReferences, coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -979,6 +979,53 @@ test('Coordinator compacts at actual input-token usage without changing the save
   saved = JSON.parse(await fs.readFile(service.file, 'utf8'));
   assert.equal(saved.messages.length, 12);
   assert.deepEqual(coordinatorModelMessages(saved), sent.at(-1).slice(0, -1).concat({ role: 'user', content: '第 6 轮' }, { role: 'assistant', content: [{ type: 'text', text: '回复 6' }] }));
+});
+
+test('Manual chat compacts early in the background but only after enough human turns', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-early-compact-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let summaries = 0;
+  const sent = [];
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    compactAtTokens: COORDINATOR_MANUAL_COMPACT_AT_TOKENS, compactMinTurns: 8,
+    model: { next: async ({ system, messages }) => {
+      if (system.includes('历史对话')) {
+        summaries++;
+        return { stop: 'end_turn', content: [{ type: 'text', text: '用户仅讨论职责，未授权修改。' }] };
+      }
+      sent.push(messages);
+      return { stop: 'end_turn', content: [{ type: 'text', text: '已说明当前职责，不修改。' }],
+        usage: { input_tokens: 192, cache_read_input_tokens: 8000 } };
+    } } });
+  for (let turn = 1; turn <= 12; turn++) {
+    await service.submit({ id: `human-${turn}`, text: `第 ${turn} 轮：介绍职责，先不要修改。` }); await service.close();
+    if (turn < 8) assert.equal(summaries, 0, 'Large static prefix alone must not trigger a provider request');
+    if (turn === 8) {
+      const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+      assert.equal(summaries, 1);
+      assert.equal(raw.compaction.through, 8, 'Keep the latest four full human turns verbatim');
+      assert.equal(raw.messages.length, 16);
+      assert.deepEqual(coordinatorModelMessages(raw).slice(1), raw.messages.slice(8).map(({ role, content }) => ({ role, content })));
+    }
+    if (turn > 8 && turn < 12) assert.equal(summaries, 1, 'Wait four additional human turns before another compact');
+  }
+  const state = await service.state();
+  assert.equal(summaries, 2);
+  assert.equal(state.compaction.thresholdTokens, 8192);
+  assert.equal(state.messages.length, 24, 'Public history stays intact');
+  assert.match(sent[8][0].content, /历史对话摘要/);
+  assert.equal(COORDINATOR_COMPACT_AT_TOKENS, 500000, 'Legacy execution mode retains its prior threshold');
+});
+
+test('Workflow data cannot consume the recent human-turn window or early compact interval', async () => {
+  const messages = Array.from({ length: 8 }, (_, i) => [
+    { role: 'user', source: 'human', content: `human ${i}` },
+    { role: 'assistant', content: [{ type: 'text', text: 'reply' }] },
+    { role: 'user', source: 'workflow', content: 'Server data is not another human turn' },
+  ]).flat();
+  assert.equal(coordinatorCompactBoundary(messages, 0, { humanOnly: true }), 12);
+  assert.equal(coordinatorCompactBoundary(messages), 18, 'Legacy execution-window behavior is unchanged');
+  assert.throws(() => new CoordinatorService({ directory: '/unused', compactMinTurns: 0 }), { code: 'INVALID_ARGUMENT' });
 });
 
 test('Coordinator keeps tool pairs and raw history when compaction fails', async t => {

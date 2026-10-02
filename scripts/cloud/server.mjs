@@ -17,7 +17,8 @@ import { reviewInput, reviewOperations, pendingReviewFeedback } from './task-rev
 import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
-import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from './coordinator-service.mjs';
+import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume,
+  COORDINATOR_MANUAL_COMPACT_AT_TOKENS } from './coordinator-service.mjs';
 import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
 import { buildCoordinatorContext } from './coordinator-context.mjs';
 import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady, isExperimentTask } from './completion.mjs';
@@ -880,6 +881,7 @@ export async function startCloudServer({
         if (visionProvider && visionProvider.model !== 'glm-5.3-flash') throw new MapError('INVALID_VISION_PROVIDER', 'Slack image turns require glm-5.3-flash', 503);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
           model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: manual ? filterManualTools(coordinatorTools) : coordinatorTools, execute,
+          ...(manual ? { compactAtTokens: COORDINATOR_MANUAL_COMPACT_AT_TOKENS, compactMinTurns: 8 } : {}),
           ...(visionProvider ? { visionModel: coordinatorModelFactory({ ...visionProvider, supportsImages: true }) } : {}),
           ...(integrationAttachments ? { resolveAttachment: (id, options) => integrationAttachments.resolve({ teamId: integrations.teamId, projectId: project.id, id, ...options }) } : {}),
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
