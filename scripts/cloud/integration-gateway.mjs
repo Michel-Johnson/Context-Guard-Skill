@@ -50,8 +50,12 @@ export async function classifyIntegrationMessage(model, { overview, input }) {
     messages: [{ role: 'user', content: JSON.stringify({ overview, message: input }) }] });
   let decision;
   try {
-    if (result.stop !== 'end_turn' || !Array.isArray(result.content) || result.content.some(block => block.type !== 'text')) throw new Error();
-    decision = JSON.parse(result.content.map(block => block.text).join(''));
+    // Providers may emit thinking metadata even when thinking is disabled.
+    // Only visible text carries the decision; never execute or store thoughts.
+    if (result.stop !== 'end_turn' || !Array.isArray(result.content) || result.content.some(block =>
+      !block || !['text', 'thinking', 'redacted_thinking'].includes(block.type) ||
+      block.type === 'text' && typeof block.text !== 'string')) throw new Error();
+    decision = JSON.parse(result.content.filter(block => block.type === 'text').map(block => block.text).join(''));
   } catch { fail('RELEVANCE_INVALID_RESPONSE', 'Message relevance was not determined; no reply was submitted', 502); }
   if (!object(decision) || Object.keys(decision).some(key => !['respond', 'reason'].includes(key)) ||
       typeof decision.respond !== 'boolean' || typeof decision.reason !== 'string' || decision.reason.length > 200) {

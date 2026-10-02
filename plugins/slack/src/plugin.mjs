@@ -520,10 +520,13 @@ export class SlackPlugin {
     const state = await this.command('conversation.state', binding, binding.userId, operationId(`${key}:${Date.now()}`, 'state'));
     const messages = state.messages || [], lastAssistant = messages.findLastIndex(message => message.role === 'assistant');
     let currentRequest = null;
-    for (const [index, message] of messages.entries()) {
+    const entries = messages.map((message, index) => {
       if (message.role === 'user') currentRequest = message.requestId;
       const requestId = message.requestId || (message.role === 'assistant' ? currentRequest : null);
       const id = message.id || digest(message);
+      return { message, index, requestId, id };
+    });
+    for (const { message, index, requestId, id } of entries) {
       if (!message.text && !message.questions?.length && !message.attachments?.length) continue;
       if (message.role === 'user' && (message.source === 'workflow' || String(message.text || '').trimStart().startsWith('[服务器工作流事件'))) continue;
       if (message.role === 'user' && this.store.data.threads[key].ownRequests.includes(message.requestId)) continue;
@@ -533,14 +536,28 @@ export class SlackPlugin {
       // A model step can save waiting-for-user before the service clears the
       // turn ID. Keep the existing partial message until that durable boundary
       // settles, rather than posting a second final and later updating both.
-      if (stream && index === lastAssistant && stream.turnId === requestId && !settled) continue;
+      if (stream && message.role === 'assistant' && stream.turnId === requestId && !settled) continue;
       const content = digest({ format: 'plain-text-v2', message }), prior = this.store.data.threads[key].mirrored[id];
-      if (prior?.hash === content) continue;
+      // Older versions could append an earlier model step after the stream.
+      // Rotate those occupied slots forward until a pending reply consumes the
+      // final slot, without deleting Slack history or duplicating the content.
+      const moveEarlier = !!stream && settled && message.role === 'assistant' && stream.turnId === requestId &&
+        !!prior && Number(prior.ts) > Number(stream.ts) && entries.some(entry =>
+          entry.message.role === 'assistant' && entry.requestId === stream.turnId &&
+          (entry.message.text || entry.message.questions?.length || entry.message.attachments?.length) &&
+          !this.store.data.threads[key].mirrored[entry.id]);
+      if (prior?.hash === content && !moveEarlier) continue;
       const text = `${message.role === 'user' ? '工作台用户' : 'Coordinator'}：${message.text || '附件'}`, blocks = messageBlocks(message, key);
-      const replaceStream = !!stream && index === lastAssistant && settled && stream.turnId === requestId;
-      const existingTs = prior?.ts || (replaceStream ? stream.ts : null);
+      // The retained placeholder has the earliest Slack timestamp. Finalize
+      // it with the first pending reply, then append later model steps in order.
+      const replaceStream = !!stream && (!prior || moveEarlier) && message.role === 'assistant' && settled && stream.turnId === requestId;
+      const existingTs = replaceStream ? stream.ts : prior?.ts;
       const ts = existingTs ? (await this.io.update(binding.channel, existingTs, text, blocks), existingTs) : await this.io.post({ id: operationId(`${key}:${id}`, 'mirror'), channel: binding.channel, threadTs: binding.threadTs, text, blocks });
-      await this.store.update(data => { data.threads[key].mirrored[id] = { ts, hash: content }; if (replaceStream) delete data.threads[key].liveStream; });
+      await this.store.update(data => {
+        data.threads[key].mirrored[id] = { ts, hash: content };
+        if (moveEarlier) data.threads[key].liveStream.ts = prior.ts;
+        else if (replaceStream) delete data.threads[key].liveStream;
+      });
     }
     if (state.streamingText && state.status === 'running') {
       const streamId = `stream:${state.activeTurnId}`, prior = this.store.data.threads[key].mirrored[streamId], content = digest({ format: 'plain-text-v2', text: state.streamingText });

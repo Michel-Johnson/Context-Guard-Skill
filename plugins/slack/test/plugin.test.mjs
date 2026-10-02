@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Store, threadKey } from '../src/store.mjs';
+import { Store, threadKey, digest } from '../src/store.mjs';
 import { SlackPlugin, envelopeId } from '../src/plugin.mjs';
 import { SlackIO, UncertainDelivery } from '../src/slack-io.mjs';
 import { Gateway } from '../src/gateway.mjs';
@@ -645,6 +645,79 @@ test('real waiting-for-user state finalizes streamed reply in place after restar
   f.plugin.store = await new Store(f.directory).open();
   f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, streamingText: '', messages: [{ id: 'u1', role: 'user', requestId: 'request-one', text: 'question' }, { id: 'a1', role: 'assistant', text: 'complete answer' }], approvals: [] });
   await f.plugin.mirror(key); assert.equal(f.sent.filter(call => call.channel).length, 1); assert.equal(f.sent.filter(call => call.update).length, 1); assert.equal(f.plugin.store.data.threads[key].liveStream, undefined);
+});
+test('a retained stream finalizes the first pending reply so multiple model steps remain chronological', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.ordered');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['request-one'] });
+  await f.store.update(state => { state.threads[key].liveStream = { ts: '5.0', turnId: 'request-one' }; });
+  const messages = [
+    { id: 'u1', role: 'user', requestId: 'request-one', text: 'question' },
+    { id: 'a1', role: 'assistant', requestId: 'request-one', text: 'First: module introduction' },
+    { id: 'a2', role: 'assistant', requestId: 'request-one', text: 'Second: follow-up invitation' },
+  ];
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: 'request-one', messages, approvals: [] });
+  await f.plugin.mirror(key);
+  assert.equal(f.sent.length, 0, 'intermediate snapshot cannot post a final before the retained stream');
+  f.plugin.store = await new Store(f.directory).open();
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, messages, approvals: [] });
+  await f.plugin.mirror(key); await f.plugin.mirror(key);
+  assert.equal(f.sent.length, 2);
+  assert.match(f.sent[0].update[2], /First: module introduction/);
+  assert.equal(f.sent[0].update[1], '5.0');
+  assert.match(f.sent[1].text, /Second: follow-up invitation/);
+  assert.equal(f.plugin.store.data.threads[key].liveStream, undefined);
+});
+test('legacy reply slots before or after a stream retain chronology without duplicate posts', async t => {
+  for (const priorTs of ['4.0', '6.0']) {
+    const f = await fixture(t), key = threadKey(teamId, channel, `123.legacy-${priorTs}`);
+    await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['request-one'] });
+    const first = { id: 'a1', role: 'assistant', requestId: 'request-one', text: 'First introduction' };
+    await f.store.update(state => {
+      state.threads[key].liveStream = { ts: '5.0', turnId: 'request-one' };
+      state.threads[key].mirrored.a1 = { ts: priorTs, hash: digest({ format: 'plain-text-v2', message: first }) };
+    });
+    f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, messages: [
+      { id: 'u1', role: 'user', requestId: 'request-one', text: 'question' }, first,
+      { id: 'a2', role: 'assistant', requestId: 'request-one', text: 'Second invitation' },
+    ], approvals: [] });
+    await f.plugin.mirror(key);
+    f.plugin.store = await new Store(f.directory).open();
+    await f.plugin.mirror(key);
+    const thread = f.plugin.store.data.threads[key];
+    assert.ok(Number(thread.mirrored.a1.ts) < Number(thread.mirrored.a2.ts));
+    assert.equal(f.sent.filter(x => x.channel).length, 0, 'existing slots are updated, not duplicated');
+    assert.equal(f.sent.filter(x => x.update).length, priorTs === '4.0' ? 1 : 2);
+    assert.equal(thread.liveStream, undefined);
+  }
+});
+test('interrupted legacy stream slot rotation resumes in order without affecting earlier turns', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.rotate-restart');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['previous', 'request-one'] });
+  const old = { id: 'old', role: 'assistant', requestId: 'previous', text: 'Previous turn' };
+  const first = { id: 'a1', role: 'assistant', requestId: 'request-one', text: 'First' };
+  const second = { id: 'a2', role: 'assistant', requestId: 'request-one', text: 'Second' };
+  await f.store.update(state => {
+    state.threads[key].liveStream = { ts: '5.0', turnId: 'request-one' };
+    for (const [message, ts] of [[old, '3.0'], [first, '6.0'], [second, '7.0']]) {
+      state.threads[key].mirrored[message.id] = { ts, hash: digest({ format: 'plain-text-v2', message }) };
+    }
+  });
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, messages: [old,
+    { id: 'u1', role: 'user', requestId: 'request-one', text: 'question' }, first, second,
+    { id: 'a3', role: 'assistant', requestId: 'request-one', text: 'Third' },
+  ], approvals: [] });
+  const update = f.io.update;
+  let count = 0;
+  f.io.update = async (...args) => { if (++count === 2) throw new Error('Interrupted second slot'); return update(...args); };
+  await assert.rejects(f.plugin.mirror(key), /Interrupted second slot/);
+  f.plugin.store = await new Store(f.directory).open();
+  f.io.update = update;
+  await f.plugin.mirror(key); await f.plugin.mirror(key);
+  const thread = f.plugin.store.data.threads[key];
+  assert.deepEqual(['old', 'a1', 'a2', 'a3'].map(id => thread.mirrored[id].ts), ['3.0', '5.0', '6.0', '7.0']);
+  assert.equal(f.sent.filter(x => x.channel).length, 0);
+  assert.equal(f.sent.filter(x => x.update).length, 3);
+  assert.equal(thread.liveStream, undefined);
 });
 test('active or different turn cannot overwrite a retained stream as a finalized reply', async t => {
   for (const [suffix, activeTurnId, requestId] of [['active', 'request-one', 'request-one'], ['different', null, 'request-two']]) {

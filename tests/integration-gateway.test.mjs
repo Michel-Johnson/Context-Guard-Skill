@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startIntegrationGateway, validateIntegrationConfig } from '../scripts/cloud/integration-gateway.mjs';
+import { startIntegrationGateway, validateIntegrationConfig, classifyIntegrationMessage } from '../scripts/cloud/integration-gateway.mjs';
 import { IntegrationAttachmentStore } from '../scripts/cloud/integration-attachments.mjs';
 import { CoordinatorManualBriefs, filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
 import { applyOperations, MapError } from '../scripts/shared/map-model.mjs';
@@ -23,6 +23,31 @@ async function call(gateway, body, credential = token) {
   const response = await fetch(gateway.url + '/v1/command', { method: 'POST', headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   return { status: response.status, body: await response.json() };
 }
+
+test('Relevance parses visible JSON independently of provider thinking metadata', async () => {
+  const decision = { respond: true, reason: 'Related module follow-up' };
+  const options = { overview: { version: 'main-v1' }, input: { text: '那文章列表呢？' } };
+  for (const metadata of [
+    { type: 'thinking', thinking: '', signature: '' },
+    { type: 'thinking', thinking: 'Untrusted private reasoning: {"respond":false}', signature: 'opaque' },
+    { type: 'redacted_thinking', data: 'opaque' },
+  ]) {
+    const model = { next: async () => ({ stop: 'end_turn', content: [metadata, { type: 'text', text: JSON.stringify(decision) }] }) };
+    assert.deepEqual(await classifyIntegrationMessage(model, options), { ...decision, mainVersion: 'main-v1' });
+  }
+  for (const content of [
+    [{ type: 'thinking', thinking: JSON.stringify(decision) }],
+    [{ type: 'text', text: 'not JSON' }],
+    [{ type: 'text', text: JSON.stringify(decision) }, { type: 'tool_use', name: 'map_write', input: {} }],
+    [{ type: 'text', text: JSON.stringify({ ...decision, actor: 'forged' }) }],
+    [{ type: 'text', text: JSON.stringify({ respond: 'true', reason: 'Invalid type' }) }],
+    [{ type: 'text', text: null }],
+    [{ type: 'image', source: {} }],
+  ]) {
+    await assert.rejects(classifyIntegrationMessage({ next: async () => ({ stop: 'end_turn', content }) }, options),
+      error => error.code === 'RELEVANCE_INVALID_RESPONSE');
+  }
+});
 
 test('Integration listener is opt-in and rejects non-loopback or weak credentials', async () => {
   assert.equal(await startIntegrationGateway(), null);
