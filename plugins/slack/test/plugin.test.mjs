@@ -494,6 +494,137 @@ test('slow overheard classifiers cannot block explicit messages or conversation 
   }
   assert.equal(f.plugin.classifying.size, 0); assert.equal(f.plugin.processing.size, 0);
 });
+test('dormant thread slots cannot postpone an already-due live conversation', async t => {
+  const f = await fixture(t), now = Date.now();
+  for (let index = 0; index < 20; index++) {
+    const key = threadKey(teamId, channel, `idle-${index}`);
+    await f.store.bind(key, { channel, threadTs: `idle-${index}`, projectId: 'lab', conversationId: `chat-idle-${index}`, userId: user, ownRequests: [] });
+    await f.store.update(state => { state.threads[key].nextPoll = now + 60000; });
+  }
+  const key = threadKey(teamId, channel, 'live');
+  await f.store.bind(key, { channel, threadTs: 'live', projectId: 'lab', conversationId: 'chat-live', userId: user, ownRequests: [] });
+  f.gateway.command = async (type, args) => {
+    f.calls.push({ type, ...args });
+    assert.equal(args.conversationId, 'chat-live', 'Dormant links must not consume a state request');
+    return { status: 'waiting-for-user', activeTurnId: null, messages: [{ id: 'answer-live', role: 'assistant', text: '已经生成的正文' }], approvals: [] };
+  };
+  f.plugin.stopped = false;
+  try {
+    await f.plugin.tick();
+    assert.equal(f.sent.filter(item => item.channel).length, 1);
+    assert.equal(f.calls.length, 1);
+    assert.match(f.sent.find(item => item.channel).text, /已经生成的正文/);
+  } finally { await f.plugin.stop(); }
+});
+test('an unrelated slow read-reaction cannot block a ready Coordinator answer', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const originalCommand = f.gateway.command, originalCall = f.io.call;
+  let release, entered;
+  const held = new Promise(resolve => { release = resolve; }), began = new Promise(resolve => { entered = resolve; });
+  f.io.call = async (method, input) => {
+    if (method === 'reactions.add') { entered(); await held; return {}; }
+    return originalCall(method, input);
+  };
+  f.gateway.command = async (type, args) => {
+    if (type === 'conversation.state') {
+      const submit = f.calls.find(call => call.type === 'conversation.submit');
+      return { status: 'waiting-for-user', activeTurnId: null, acceptedRequestIds: [submit.id],
+        messages: [{ id: 'ready-reply', requestId: submit.id, role: 'assistant', text: '准备好的实际答案' }], approvals: [] };
+    }
+    return originalCommand(type, args);
+  };
+  await f.store.receive('slow-reaction', { type: 'events_api', body: { event: event({ text: `<@${bot}> 当前问题` }) } });
+  f.plugin.stopped = false;
+  const tick = f.plugin.tick();
+  let timer;
+  try {
+    await began;
+    const finished = await Promise.race([tick.then(() => true), new Promise(resolve => { timer = setTimeout(() => resolve(false), 1000); })]);
+    assert.equal(finished, true, 'Message cycle must finish while the reaction remains held');
+    assert.match(f.sent.find(item => item.channel).text, /准备好的实际答案/);
+  } finally { clearTimeout(timer); release(); await tick; await f.plugin.stop(); }
+});
+test('live replies are prioritized with bounded state reads and fair dormant progress', async t => {
+  const f = await fixture(t);
+  for (let index = 0; index < 6; index++) await f.store.bind(`idle-${index}`, { channel, threadTs: `idle-${index}`, projectId: 'lab', conversationId: `chat-idle-${index}`, userId: user, ownRequests: [] });
+  for (let index = 0; index < 12; index++) {
+    const key = `hot-${index}`;
+    await f.store.bind(key, { channel, threadTs: key, projectId: 'lab', conversationId: `chat-hot-${index}`, userId: user, ownRequests: [] });
+    await f.store.update(state => { state.threads[key].awaitingReplyId = `pending-${index}`; });
+  }
+  const observed = [];
+  f.gateway.command = async (type, args) => {
+    observed.push(args.conversationId);
+    return { status: args.conversationId.includes('hot') ? 'running' : 'idle', messages: [], approvals: [] };
+  };
+  f.plugin.stopped = false;
+  try {
+    await f.plugin.tick();
+    assert.deepEqual(observed, ['chat-hot-0', 'chat-hot-1', 'chat-hot-2', 'chat-idle-0']);
+    for (let index = 0; index < 6; index++) {
+      const before = observed.length; await f.plugin.tick();
+      assert.ok(observed.length - before <= 4, 'The four-state-read budget is not enlarged');
+    }
+    assert.equal(new Set(observed).size, 18, 'Both hot and dormant links make progress');
+  } finally { await f.plugin.stop(); }
+});
+test('pending-reply priority survives restart and clears only after the accepted request settles', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, 'priority');
+  await f.store.bind(key, { channel, threadTs: 'priority', projectId: 'lab', conversationId: 'chat-priority', userId: user, ownRequests: ['new-request'] });
+  await f.store.update(state => { state.threads[key].awaitingReplyId = 'new-request'; });
+  f.plugin.store = await new Store(f.directory).open();
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, acceptedRequestIds: ['older-request'], messages: [], approvals: [] });
+  await f.plugin.mirror(key); assert.equal(f.plugin.store.data.threads[key].awaitingReplyId, 'new-request');
+  f.gateway.command = async () => ({ status: 'running', activeTurnId: 'new-request', acceptedRequestIds: ['new-request'], messages: [], approvals: [] });
+  await f.plugin.mirror(key); assert.equal(f.plugin.store.data.threads[key].live, true);
+  assert.equal(f.plugin.store.data.threads[key].awaitingReplyId, 'new-request');
+  f.gateway.command = async () => ({ status: 'waiting-for-user', activeTurnId: null, acceptedRequestIds: ['new-request'],
+    messages: [{ id: 'answered', requestId: 'new-request', role: 'assistant', text: '已完整回答' }], approvals: [] });
+  await f.plugin.mirror(key); assert.equal(f.plugin.store.data.threads[key].live, false);
+  assert.equal(f.plugin.store.data.threads[key].awaitingReplyId, undefined);
+  assert.ok(f.plugin.store.data.threads[key].nextPoll > Date.now() + 14000);
+});
+test('read reactions are bounded and stop waits for in-flight reactions without starting new ones', async t => {
+  const f = await fixture(t); let release, calls = 0;
+  const held = new Promise(resolve => { release = resolve; });
+  f.io.call = async method => { assert.equal(method, 'reactions.add'); calls++; await held; };
+  f.plugin.stopped = false;
+  for (let index = 0; index < 20; index++) f.plugin.readReaction(event({ ts: `${index}.001` }));
+  await Promise.resolve();
+  assert.equal(calls, 8); assert.equal(f.plugin.reactions.size, 8);
+  let stopped = false; const stop = f.plugin.stop().then(() => { stopped = true; });
+  f.plugin.readReaction(event({ ts: '21.001' }));
+  await Promise.resolve(); assert.equal(stopped, false); assert.equal(calls, 8);
+  release(); await stop; assert.equal(f.plugin.reactions.size, 0);
+});
+test('a submit ACK racing an older mirror snapshot resets its next poll atomically', async t => {
+  for (const mode of ['message', 'answer']) {
+    const f = await fixture(t), key = threadKey(teamId, channel, '120.001');
+    await f.store.update(state => { state.channels[channel] = 'lab'; });
+    await f.store.bind(key, { channel, threadTs: '120.001', projectId: 'lab', conversationId: 'chat-race', userId: user, ownRequests: [] });
+    const original = f.gateway.command; let release, entered, requestId, accepted = false, reads = 0;
+    const held = new Promise(resolve => { release = resolve; }), began = new Promise(resolve => { entered = resolve; });
+    f.gateway.command = async (type, args) => {
+      if (type === 'conversation.submit') { requestId = args.id; entered(); await held; accepted = true; return { accepted: true }; }
+      if (type === 'conversation.state') { reads++; return { status: 'waiting-for-user', activeTurnId: null,
+        acceptedRequestIds: accepted ? [requestId] : ['old-request'], messages: accepted
+          ? [{ id: 'new-answer', requestId, role: 'assistant', text: '新轮次答案' }] : [], approvals: [] }; }
+      return original(type, args);
+    };
+    f.plugin.stopped = false;
+    const submitting = mode === 'message' ? f.plugin.message('ack-race', event({ thread_ts: '120.001', text: '登录问题，请继续分析。' }))
+      : f.plugin.answer('ack-race', user, { key, text: '自然语言回答', questionId: 'question' });
+    try {
+      await began; await f.plugin.mirror(key);
+      assert.ok(f.store.data.threads[key].nextPoll > Date.now() + 14000);
+      release(); await submitting;
+      assert.equal(f.store.data.threads[key].nextPoll, 0, 'ACK must undo the older idle snapshot deadline');
+      assert.equal(f.store.data.threads[key].awaitingReplyId, requestId);
+      await f.plugin.tick();
+      assert.equal(reads, 2); assert.match(f.sent.find(item => item.channel).text, /新轮次答案/);
+    } finally { release(); await submitting; await f.plugin.stop(); }
+  }
+});
 test('same-thread corrections and explicit replies cannot overtake an earlier classification or BUSY retry', async t => {
   const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
   await f.plugin.message('seed', event());

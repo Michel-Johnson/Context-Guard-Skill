@@ -23,12 +23,13 @@ function safeEnvelope(type, body) {
 function contextFrom(binding, userId, id) { return { id, userId, projectId: binding.projectId, conversationId: binding.conversationId }; }
 
 export class SlackPlugin {
-  constructor({ store, gateway, io, teamId, cloudOrigin, botUserId, pollMs = 2000, logger = console }) {
+  constructor({ store, gateway, io, teamId, cloudOrigin, botUserId, pollMs = 1000, logger = console }) {
     this.store = store; this.gateway = gateway; this.io = io; this.teamId = teamId; this.cloudOrigin = new URL(cloudOrigin).origin; this.botUserId = botUserId;
-    this.pollMs = Math.max(1000, pollMs); this.logger = logger; this.projects = new Map(); this.maps = new Map(); this.stopped = true; this.active = null; this.cursor = 0;
+    this.pollMs = Math.max(1000, pollMs); this.logger = logger; this.projects = new Map(); this.maps = new Map(); this.stopped = true; this.active = null;
     this.processing = new Map();
     this.classifying = new Set();
     this.messageLanes = new Map();
+    this.reactions = new Set();
   }
   async receive({ type, body, envelope_id, ack }) {
     const team = body.team_id || body.team?.id || body.event?.team;
@@ -45,7 +46,15 @@ export class SlackPlugin {
     this.kick();
   }
   start() { this.stopped = false; this.kick(); }
-  async stop() { this.stopped = true; clearTimeout(this.timer); if (this.active) await this.active; await Promise.allSettled([...this.processing.values()]); await this.store.tail; }
+  async stop() { this.stopped = true; clearTimeout(this.timer); if (this.active) await this.active; await Promise.allSettled([...this.processing.values(), ...this.reactions]); await this.store.tail; }
+  readReaction(event) {
+    // The durable input/Cloud acknowledgement is the business receipt. An
+    // optional Slack reaction must never hold up mirroring a ready answer.
+    if (this.stopped || this.reactions.size >= 8) return;
+    const pending = Promise.resolve().then(() => this.io.call('reactions.add', { channel: event.channel, timestamp: event.ts, name: 'eyes' }))
+      .catch(() => {}).finally(() => this.reactions.delete(pending));
+    this.reactions.add(pending);
+  }
   kick() {
     if (this.stopped || this.active) return;
     clearTimeout(this.timer);
@@ -104,11 +113,18 @@ export class SlackPlugin {
     }
     const bindings = Object.entries(this.store.data.threads);
     if (!bindings.length || this.stopped) return;
-    // At most four linked conversations per cycle; dormant links are polled at
-    // most once a minute. No unlinked project conversation is ever broadcast.
-    for (let count = 0; count < Math.min(4, bindings.length); count++) {
-      const [key, binding] = bindings[(this.cursor++) % bindings.length];
-      if ((binding.nextPoll || 0) > Date.now()) continue;
+    // Only due links consume the four-request budget. Keep live replies ahead
+    // of dormant history, while reserving a slot for other due conversations.
+    // Oldest due deadlines win within each group; a completed poll advances its
+    // deadline, so sustained activity cannot starve another due thread.
+    const due = bindings.filter(([, binding]) => (binding.nextPoll || 0) <= Date.now())
+      .sort(([, a], [, b]) => (a.nextPoll || 0) - (b.nextPoll || 0));
+    const hot = due.filter(([, binding]) => binding.awaitingReplyId || binding.live);
+    const idle = due.filter(([, binding]) => !binding.awaitingReplyId && !binding.live);
+    const selected = hot.slice(0, idle.length ? 3 : 4);
+    selected.push(...idle.slice(0, 4 - selected.length));
+    for (const [key] of selected) {
+      if (this.stopped) return;
       try { await this.mirror(key); }
       catch (error) { this.logger.warn('Slack mirror failed', { code: error.code || 'MIRROR_ERROR' }); await this.store.update(state => { state.threads[key].nextPoll = Date.now() + 30000; state.threads[key].error = error.code || 'MIRROR_ERROR'; }); }
     }
@@ -386,8 +402,9 @@ export class SlackPlugin {
     }
     await this.store.update(state => { const item = state.threads[key]; if (!item.ownRequests.includes(requestId)) item.ownRequests.push(requestId); item.nextPoll = 0; });
     await this.command('conversation.submit', binding, event.user, requestId, { text: text || '请阅读附件。', ...(attachments.length ? { attachments } : {}), ...(replyContext?.answerTo ? { answerTo: replyContext.answerTo } : {}) });
+    await this.store.update(state => { state.threads[key].awaitingReplyId = requestId; state.threads[key].nextPoll = 0; });
     if (replyContext?.answerTo) await this.store.update(state => { if (state.threads[key].pendingQuestionId === replyContext.answerTo) delete state.threads[key].pendingQuestionId; });
-    if (!event.ts?.startsWith('command-')) await this.io.call('reactions.add', { channel: event.channel, timestamp: event.ts, name: 'eyes' }).catch(() => {});
+    if (!event.ts?.startsWith('command-')) this.readReaction(event);
   }
   async openForm(triggerId, userId, id, kind, context) {
     const draftId = `draft-${digest(id)}`, binding = context.key && this.store.data.threads[context.key];
@@ -497,6 +514,7 @@ export class SlackPlugin {
     const requestId = operationId(id, 'answer');
     await this.store.update(state => { if (!state.threads[value.key].ownRequests.includes(requestId)) state.threads[value.key].ownRequests.push(requestId); state.threads[value.key].nextPoll = 0; });
     await this.command('conversation.submit', binding, userId, requestId, { text: value.text, answerTo: value.questionId });
+    await this.store.update(state => { state.threads[value.key].awaitingReplyId = requestId; state.threads[value.key].nextPoll = 0; });
   }
   async review(id, userId, value, decision, reason) {
     const binding = this.store.data.threads[value.key]; if (!binding) throw new Error('Unknown Slack thread');
@@ -587,8 +605,13 @@ export class SlackPlugin {
     if (Object.keys(this.store.data.threads[key].watchedItems || {}).length && (this.store.data.threads[key].nextItemPoll || 0) <= Date.now()) await this.notifyItemChanges(key);
     if (state.status === 'error') await this.io.post({ id: operationId(`${key}:${state.activeTurnId}:${state.error?.code}`, 'error'), channel: binding.channel, threadTs: binding.threadTs, text: `Coordinator 当前失败：${state.error?.code || 'UNKNOWN'}。请在工作台查看并重试；不会显示假成功。` });
     const openQuestions = messages.flatMap(message => message.questions || []).filter(question => !question.answer);
-    await this.store.update(data => { data.threads[key].nextPoll = Date.now() + (state.status === 'running' || state.activeTurnId ? this.pollMs : 15000); data.threads[key].error = null;
-      data.threads[key].pendingQuestionId = openQuestions.length === 1 ? openQuestions[0].id : null; });
+    await this.store.update(data => {
+      const thread = data.threads[key];
+      thread.live = state.status === 'running' || !!state.activeTurnId && state.status !== 'error';
+      if (!thread.live && state.acceptedRequestIds?.includes(thread.awaitingReplyId)) delete thread.awaitingReplyId;
+      thread.nextPoll = Date.now() + (thread.live || thread.awaitingReplyId ? this.pollMs : 15000); thread.error = null;
+      thread.pendingQuestionId = openQuestions.length === 1 ? openQuestions[0].id : null;
+    });
   }
   async notifyItemChanges(key) {
     const thread = this.store.data.threads[key], project = await this.readProject(thread.projectId, thread.userId, `${key}:${Date.now()}`);

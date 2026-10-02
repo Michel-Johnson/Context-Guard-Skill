@@ -52,6 +52,8 @@
 
 ## 历史未完成项与暂缓范围
 
+- [ ] B135 Slack 插件额外等待：5662759 正式隔离复现 20 个休眠旧槽位使到期新答案在当轮不读取，以及已读表情请求悬挂阻塞已生成正文，2/2 FAIL；另独立审查复现后台提交与旧停止快照镜像竞态，使提交成功后再等约 15 秒。候选按到期/等待答复优先并保持四次预算、组内最旧截止时间和普通名额；成功 ACK 同事务重置 nextPoll，表情最多八个后台槽并纳入停机收拢，默认轮询 1 秒。插件隔离 80/80、网关/公开 Cloud 契约 29/29 通过，真实提速/停用验证待执行，未宣称 2 秒达标或替代原文字模型。
+
 - [ ] 暂缓｜宣传站分支迁移（2026-09-30）：website 保留完整站点和工作台构建依赖；main 清理站点专属源码及 CI，产品前端、docs/design 画廊不动。站点构建及 21 项测试、影响选择器 11 项、工作流与测试治理检查通过；产品本地浏览器 55 项通过。Cloud 工作台与日志恢复浏览器、npm 打包及 CLI smoke（29 项安装边界）通过。双向 Cloud 同步浏览器在 `tests/cloud-sync-browser.mjs:94` 初始 Session 选择等待 12 秒超时。完整 Node 产品回归已发现既有 Claude CI 精确 handoff SHA 校验和 filesystem scoped Markdown 用例失败；最终全量结论待收口，不宣称全绿。首次 `npm test` 因默认缓存 EPERM 停止，隔离缓存重跑的安全套件通过；首次 Cloud 浏览器 vendor 字节断言受 Windows checkout 换行影响，仅恢复工作区为原 Git blob 后通过。日志保留在本任务 `temp/`。Pages 环境当前仅允许 main；未授权切换，迁移 PR 保持 Draft，部署步骤见 [宣传站分支](docs/website.md)。
 
 - [ ] Filesystem v2 运行时闭环仍待验收：已新增受限、按版本的单文档 API/CLI，但尚未裁定或切换 Hook 的默认阅读入口；旧 Todo 缺少方案证据时仍为未判定 A1，报告标记 `TODO_ATTEMPT_UNCLASSIFIED`，待审核补齐，不能臆造 `Confirmed`。**Agent 打开模块时读哪套目录尚未拍板**，不得把「默认只暴露 Markdown」写成已经裁定的产品法。仍不得把 `legacy-records`、`bugs-index.json`、`tasks-index.json`、`jump-index.json`、`owns-index.json` 推荐成当前索引。现行 Bug 文件契约禁止延期：不需要修就删除文件；修不好用 `Unfixable` 结束。生成器把历史 `deferred` 投影为 `Unfixable`、把历史 `wontfix` 从投影中删除，二者都不得变成 `Open`。
