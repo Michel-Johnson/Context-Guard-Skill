@@ -26,7 +26,7 @@ import { CloudAttachments, attachmentInput, attachmentPatch } from './attachment
 import { createQuarkProvider } from './quark-provider.mjs';
 import { startIntegrationGateway, validateIntegrationConfig, relevanceInput, relevanceOverview, classifyIntegrationMessage } from './integration-gateway.mjs';
 import { IntegrationAttachmentStore } from './integration-attachments.mjs';
-import { CoordinatorManualBriefs, filterManualTools } from './coordinator-manual.mjs';
+import { CoordinatorManualBriefs, filterManualTools, coordinatorRolePrompt } from './coordinator-manual.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const htmlPath = path.join(root, 'prototype/workbench.html');
@@ -873,9 +873,8 @@ export async function startCloudServer({
           },
         });
         const itemScoped = conversationId.startsWith('item-');
-        const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (!itemScoped ? '' :
-          '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。') + (!manual ? '' :
-          '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。');
+        const system = coordinatorRolePrompt(await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8'), { manual }) + (!itemScoped ? '' :
+          '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。');
         const directory = conversations.conversationDirectory(conversationId);
         const visionProvider = integrations?.visionProviderFile ? await readJson(integrations.visionProviderFile) : null;
         if (visionProvider && visionProvider.model !== 'glm-5.3-flash') throw new MapError('INVALID_VISION_PROVIDER', 'Slack image turns require glm-5.3-flash', 503);

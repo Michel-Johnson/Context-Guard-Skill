@@ -6,6 +6,19 @@ import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
 export const MANUAL_DISABLED_TOOLS = Object.freeze(['dispatch_task', 'review_plan', 'request_ci', 'request_rework', 'resume_task', 'guide_task', 'complete_task']);
 export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => tool.name === 'prepare_task'
   ? { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' } : tool);
+export function coordinatorRolePrompt(source, { manual = false } = {}) {
+  const markers = [...source.matchAll(/^## 人工对话模式[ \t]*(?=\r?$)/gm)];
+  const heading = markers[0]?.index ?? -1;
+  // Older installations/custom role guides retain the existing compatibility
+  // behavior. A declared but empty/ambiguous profile is a configuration error.
+  if (heading < 0) return source + (manual ? '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。' : '');
+  const profile = source.slice(heading + markers[0][0].length).trim();
+  if (!profile || markers.length !== 1) {
+    throw new MapError('INVALID_COORDINATOR_PROFILE', 'Coordinator manual role profile is empty or ambiguous', 503);
+  }
+  const boundary = heading - (source.slice(0, heading).endsWith('\r\n') ? 2 : heading ? 1 : 0);
+  return manual ? `# Coordinator\n\n${profile}\n` : source.slice(0, boundary);
+}
 const fail = (code, message, status = 400) => { throw new MapError(code, message, status); };
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/.test(value);
 const workItemIdentity = item => item.instanceId || item.createdAt || item.id;

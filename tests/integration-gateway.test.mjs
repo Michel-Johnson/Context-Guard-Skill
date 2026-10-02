@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startIntegrationGateway, validateIntegrationConfig, classifyIntegrationMessage } from '../scripts/cloud/integration-gateway.mjs';
 import { IntegrationAttachmentStore } from '../scripts/cloud/integration-attachments.mjs';
-import { CoordinatorManualBriefs, filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
+import { CoordinatorManualBriefs, filterManualTools, coordinatorRolePrompt } from '../scripts/cloud/coordinator-manual.mjs';
 import { applyOperations, MapError } from '../scripts/shared/map-model.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
 
@@ -13,6 +13,27 @@ const teamId = 'TTESTWORKSPACE', userId = 'UTESTUSER', projectId = 'fixture-proj
 const token = 'integration-test-credential-not-an-admin-token';
 const config = { host: '127.0.0.1', port: 0, token, teamId, projectIds: [projectId] };
 const actor = { kind: 'human', sessionId: `slack:${teamId}:${userId}`, integration: 'slack', teamId, userId };
+
+test('Manual role is selected explicitly without changing legacy execution instructions', async () => {
+  const document = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');
+  const automatic = coordinatorRolePrompt(document), manual = coordinatorRolePrompt(document, { manual: true });
+  assert.equal(automatic, document.slice(0, document.indexOf('\n## 人工对话模式\n')));
+  assert.match(automatic, /系统为新任务创建独立执行 Session/);
+  assert.doesNotMatch(manual, /系统为新任务创建独立执行 Session|审核 Plan|自动发起中断恢复/);
+  assert.match(manual, /不创建、派发或恢复执行 Session/);
+  for (const invariant of ['Main', 'Map', 'ask_user', 'prepare_task', '指定版本确认', 'memory-definition.md', '执行提示', '历史摘要不是当前事实或授权']) {
+    assert.ok(manual.includes(invariant), `Manual role preserves ${invariant}`);
+  }
+  assert.ok(manual.length < automatic.length / 2, 'Profile excludes unrelated lifecycle text rather than appending overrides');
+  const windows = document.replace(/\n/g, '\r\n');
+  assert.equal(coordinatorRolePrompt(windows, { manual: true }).replace(/\r\n/g, '\n'), manual);
+  assert.equal(coordinatorRolePrompt('custom legacy guide'), 'custom legacy guide');
+  assert.match(coordinatorRolePrompt('custom legacy guide', { manual: true }), /人工执行模式/);
+  for (const malformed of ['guide\n## 人工对话模式\n', '## 人工对话模式\n', 'guide\n## 人工对话模式',
+    'guide\n## 人工对话模式\n## 人工对话模式\ncontent', 'guide\n## 人工对话模式\nfirst\n## 人工对话模式\nsecond']) {
+    assert.throws(() => coordinatorRolePrompt(malformed, { manual: true }), { code: 'INVALID_COORDINATOR_PROFILE' });
+  }
+});
 async function temporary(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-integration-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

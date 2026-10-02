@@ -8,6 +8,8 @@ import { startCloudServer } from '../scripts/cloud/server.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
+import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
+import { filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
 
 // These exercise real Cloud and loopback HTTP with isolated persistence. Only
 // the paid model provider is replaced; no Slack SDK/account/network is involved.
@@ -48,7 +50,7 @@ async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes 
     ...(enabled ? { integrationConfig: { host: '127.0.0.1', port: 0, token: integrationCredential, teamId, projectIds: [projectId, otherProjectId],
       ...(visionProvider ? { visionProviderFile } : {}) } } : {}),
     coordinatorModelFactory: () => ({ model: 'fixture-model', next: async request => {
-      modelCalls.push({ messages: request.messages, tools: request.tools, maxTokens: request.maxTokens });
+      modelCalls.push({ system: request.system, messages: request.messages, tools: request.tools, maxTokens: request.maxTokens });
       if (request.system?.startsWith('你仅判断 Slack 消息')) {
         const input = JSON.parse(request.messages[0].content);
         if (input.message.text === 'relevance-tool') return { stop: 'tool_use', content: [{ type: 'tool_use', name: 'edit_map', id: 'forbidden-relevance-tool', input: {} }] };
@@ -221,6 +223,29 @@ test('Slack-created and browser-bound conversations retain manual mode and share
   assert.ok(after.messages.some(message => message.id === slackMessage.id));
   const repeated = await f.newConversation('create-shared'); assert.equal(repeated, conversation);
   assert.ok(f.modelCalls.length >= 2, 'Requests actually exercised the controlled model provider');
+});
+
+test('Public manual conversation uses lean role and unchanged native schemas without weakening normal execution', async t => {
+  const f = await fixture(t), conversation = await f.newConversation('role-manual');
+  assert.equal((await f.gateway('conversation.submit', { text: 'role-first' }, { id: 'role-first', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const manualCall = f.modelCalls.at(-1);
+  assert.match(manualCall.system, /不创建、派发或恢复执行 Session/);
+  assert.doesNotMatch(manualCall.system, /系统为新任务创建独立执行 Session|自动发起中断恢复/);
+  assert.match(manualCall.system, /Current project facts/);
+  assert.match(manualCall.system, /本轮答复发往 Slack/);
+  assert.deepEqual(manualCall.tools, filterManualTools(coordinatorTools), 'Retain all manual native definitions, not a text-only substitute');
+  assert.equal((await f.browser('main', { body: { id: 'role-automatic', text: 'role-automatic' } })).status, 202);
+  await f.wait('main', value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const automaticCall = f.modelCalls.at(-1);
+  assert.match(automaticCall.system, /系统为新任务创建独立执行 Session/);
+  assert.doesNotMatch(automaticCall.system, /本轮答复发往 Slack|以下仅用于宿主已声明的人工执行对话/);
+  assert.deepEqual(automaticCall.tools, coordinatorTools);
+  await f.restart();
+  assert.equal((await f.gateway('conversation.submit', { text: 'role-after-restart' }, { id: 'role-after-restart', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  assert.doesNotMatch(f.modelCalls.at(-1).system, /系统为新任务创建独立执行 Session/);
+  assert.deepEqual(f.modelCalls.at(-1).tools, manualCall.tools);
 });
 
 test('Browser retries of a failed Slack turn retain verified Slack actor/source and reject caller-forged identity', async t => {
