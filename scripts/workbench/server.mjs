@@ -21,7 +21,7 @@ import { workflowTypes } from '../shared/protocol-workflow.mjs';
 import { ProtocolDelivery, controlReport, executionNotifications, executionPrompt } from './protocol-delivery.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { ensureNamedProxy } from './named.mjs';
-import { registeredProject, rememberProject } from './registry.mjs';
+import { defaultDirectoryAvailability, registeredProject, rememberProject } from './registry.mjs';
 import { WorkbenchSnapshots } from '../shared/protocol-snapshots.mjs';
 import { ProtocolMap, verifyChangeReferences } from '../shared/protocol-map.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
@@ -145,6 +145,11 @@ export async function health(state) {
 export { loopbackJSON };
 export async function startServer({ root, port = 8877, host = '127.0.0.1', fault, messageQueue = queueCodexMessage, repositoryLookup = lookupRepository } = {}) {
   if (!['127.0.0.1', 'localhost'].includes(host)) throw new MapError('INVALID_HOST', 'Workbench only listens on loopback');
+  const directory = await defaultDirectoryAvailability();
+  if (directory.unavailable) {
+    const which = directory.overridden ? 'configured directory' : 'default directory';
+    throw new MapError('START_FAILED', `The ${which} ${directory.path} is unavailable (${directory.code})`, 503);
+  }
   root = await fs.realpath(path.resolve(root));
   let project = await ensureProjectBinding(await resolveProject(root));
   const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'));
