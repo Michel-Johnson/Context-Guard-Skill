@@ -816,6 +816,9 @@ export async function startCloudServer({
             if (snapshot.version !== input.mainVersion) protocolFail('VERSION_CONFLICT', 'Main changed; read the target node again');
             const node = entries(snapshot.memory.map.root).get(input.nodeId)?.node;
             if (!node || Array.isArray(config.nodeIds) && !config.nodeIds.includes(input.nodeId)) protocolFail('NOT_FOUND', 'Mount target is unavailable');
+            await conversations.setFocus(conversationId, { nodeId: node.id, kind: input.kind, title: input.title });
+            Object.assign(conversation, { nodeId: node.id, kind: input.kind, title: input.title });
+            delete conversation.itemId;
             return { kind: 'conversation-mounted', message: '已挂载到节点；未写入 Main，也未创建执行 Session。用户批准 brief 后，系统为该事项创建新的执行 Session 并派发。',
               conversationId, node: { id: node.id, title: node.title }, version: snapshot.version };
           },

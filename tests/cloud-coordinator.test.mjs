@@ -15,6 +15,30 @@ import { ProtocolStore } from '../scripts/shared/protocol-store.mjs';
 import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady } from '../scripts/cloud/completion.mjs';
 import { readMemoryView } from '../scripts/cloud/memory.mjs';
 
+test('Conversation focus persists for automatic chats, Sessions and built-in conversations', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-conversation-focus-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const registry = new CoordinatorConversations(directory);
+  const automatic = await registry.createChat('automatic-focus');
+  const manual = await registry.createChat('manual-focus', { executionMode: 'manual' });
+  const session = await registry.ensureSession('executor');
+  for (const id of [automatic, manual, session, 'main', 'legacy']) {
+    await registry.setFocus(id, { nodeId: 'N1', kind: 'bug', title: 'Focused node', itemId: 'B1' });
+    await registry.setFocus(id, { nodeId: 'N2', kind: 'todo', title: 'New focus' });
+    const restored = new CoordinatorConversations(directory);
+    assert.equal((await restored.get(id)).nodeId, 'N2');
+    assert.equal((await restored.get(id)).kind, 'todo');
+    assert.equal((await restored.get(id)).itemId, undefined);
+    assert.equal((await restored.list()).find(item => item.id === id).nodeId, 'N2');
+  }
+  assert.equal((await registry.get(manual)).executionMode, 'manual');
+  assert.equal((await registry.get(automatic)).executionMode, undefined);
+  const before = await fs.readFile(registry.file, 'utf8');
+  await assert.rejects(registry.setFocus('unknown', { nodeId: 'N1', kind: 'todo' }), { code: 'FORBIDDEN' });
+  await assert.rejects(registry.setFocus(automatic, { nodeId: '', kind: 'todo' }), { code: 'INVALID_ARGUMENT' });
+  assert.equal(await fs.readFile(registry.file, 'utf8'), before);
+});
+
 test('Project requirements survive restart, reserve capacity atomically and dispatch only the approved fresh Session', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-project-task-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

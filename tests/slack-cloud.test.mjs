@@ -411,3 +411,43 @@ test('Closing Cloud closes integration subscriptions and listener with no surviv
   assert.equal((await reader.read()).done, true);
   await assert.rejects(fetch(listener + '/v1/command'), /fetch failed/);
 });
+
+test('Automatic mount persists node focus and loads its memory after restart', async t => {
+  const f = await fixture(t);
+  const before = await f.main();
+  const edit = await f.gateway('map.write', { baseVersion: before.main.version, operations: [{ type: 'create', parentId: 'T0', node: {
+    id: 'N1', title: 'Login', kind: 'module', state: 'dirty', owns: [], memoryDocument: 'LOGIN-FOCUS-UNIQUE-MEMORY',
+  } }] }, { id: 'review-create-node' });
+  assert.equal(edit.status, 200, JSON.stringify(edit.body));
+  f.options.coordinatorModelFactory = () => ({ next: async request => {
+    f.modelCalls.push(request);
+    const content = request.messages.at(-1)?.content;
+    if (content === 'review-mount') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'review-mount-tool', name: 'mount_conversation', input: {
+      mainVersion: edit.body.data.version, nodeId: 'N1', kind: 'todo', title: 'Review login', description: 'Keep this node focused',
+    } }] };
+    return { stop: 'end_turn', content: [{ type: 'text', text: 'done' }] };
+  } });
+  await f.restart();
+  const chat = await f.browser('main', { suffix: '/conversations/new', body: { id: 'review-auto-chat' } });
+  // The normal browser creation endpoint returns the automatic chat identity.
+  assert.equal(chat.status, 201, JSON.stringify(chat.body));
+  const id = chat.body.id;
+  assert.ok(id, JSON.stringify(chat.body));
+  await f.browser(id, { body: { id: 'review-auto-mount', text: 'review-mount' } });
+  const state = await f.wait(id, state => state.status === 'waiting-for-user' && !state.activeTurnId);
+  const action = state.messages.flatMap(m => m.actions || []).find(a => a.kind === 'conversation-mounted');
+  assert.equal(action.node.id, 'N1');
+  const conversation = state.conversations.find(c => c.id === id);
+  assert.equal(conversation.nodeId, 'N1');
+  assert.equal(conversation.kind, 'todo');
+  assert.equal((await f.main()).main.version, edit.body.data.version);
+  await f.browser(id, { body: { id: 'focus-before-restart', text: 'followup' } });
+  await f.wait(id, state => state.status === 'waiting-for-user' && !state.activeTurnId);
+  assert.ok(f.modelCalls.at(-1).system.includes('LOGIN-FOCUS-UNIQUE-MEMORY'));
+  await f.restart();
+  const restored = await f.browser(id);
+  assert.equal(restored.body.conversations.find(c => c.id === id).nodeId, 'N1');
+  await f.browser(id, { body: { id: 'review-followup', text: 'followup' } });
+  await f.wait(id, state => state.status === 'waiting-for-user' && !state.activeTurnId);
+  assert.ok(f.modelCalls.at(-1).system.includes('LOGIN-FOCUS-UNIQUE-MEMORY'));
+});

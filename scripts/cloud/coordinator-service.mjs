@@ -106,13 +106,13 @@ export class CoordinatorConversations {
   async state() { return readJSON(this.file, { items: {}, sessions: {}, chats: {}, tasks: {} }); }
   async list() {
     const state = await this.state();
-    return [{ id: 'main', title: 'Main 对话' }, { id: 'legacy', title: '历史总对话' },
+    return [{ id: 'main', title: 'Main 对话', ...state.focuses?.main }, { id: 'legacy', title: '历史总对话', ...state.focuses?.legacy },
       ...Object.values(state.chats || {}), ...Object.values(state.sessions || {}), ...Object.values(state.items || {})];
   }
   async get(id) {
-    if (id === 'legacy') return { id, title: '历史总对话' };
-    if (id === 'main') return { id, scope: 'main', title: 'Main 对话' };
     const state = await this.state();
+    if (id === 'legacy') return { id, title: '历史总对话', ...state.focuses?.legacy };
+    if (id === 'main') return { id, scope: 'main', title: 'Main 对话', ...state.focuses?.main };
     if (/^chat-[a-f0-9]{64}$/.test(id) && state.chats?.[id]) return state.chats[id];
     if (/^session:[a-zA-Z0-9_-]{1,128}$/.test(id) && state.sessions?.[id]) return state.sessions[id];
     if (/^item-[a-f0-9]{64}$/.test(id) && state.items?.[id]) return state.items[id];
@@ -153,8 +153,13 @@ export class CoordinatorConversations {
       throw error('INVALID_ARGUMENT', 'Provide a valid conversation item focus');
     }
     await withFileLock(this.file + '.lock', async () => {
-      const state = await this.state(), item = state.chats?.[id];
-      if (!item || item.executionMode !== 'manual') throw error('FORBIDDEN', 'Only a manual chat can keep its item focus');
+      const state = await this.state();
+      let item = state.chats?.[id] || state.sessions?.[id];
+      if (id === 'main' || id === 'legacy') {
+        state.focuses ||= {};
+        item = state.focuses[id] ||= {};
+      }
+      if (!item) throw error('FORBIDDEN', 'Only an independent conversation can change its focus');
       Object.assign(item, { nodeId, kind, ...(title ? { title: String(title).slice(0, 200) } : {}) });
       if (itemId) item.itemId = itemId;
       else delete item.itemId;
