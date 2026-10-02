@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { applyCoordinatorAssignments, cloudSessionActivity, cloudSessionConnection, cloudSessionPresence, coordinatorAssignmentKey, createWorkbenchPasswordHash, startCloudServer } from '../scripts/cloud/server.mjs';
 import { createMemoryReadViews } from '../scripts/cloud/memory-read-view.mjs';
-import { compactMainHistorySnapshots, memoryPublicationStatus } from '../scripts/cloud/memory.mjs';
+import { commitMainMemoryMap, compactMainHistorySnapshots, memoryPublicationStatus } from '../scripts/cloud/memory.mjs';
 import { legacyProjectMemoryFile } from '../scripts/cloud/memory-filesystem.mjs';
 import { atomicWrite, readJSON } from '../scripts/shared/io.mjs';
 import { reconcileMainBaseline, reconcileSessionMap } from '../scripts/workbench/memory.mjs';
@@ -93,6 +93,16 @@ test('Coordinator assignment projection marks the matching Main work item withou
   assert.equal(document.root.todos[0].dispatch, undefined);
 });
 
+test('Manual work items retain their stored history instead of receiving automatic assignment projections', () => {
+  const stale = {task_id:'old',session_id:'previous',status:'pending'};
+  const document = {root:{id:'T0',todos:[{id:'TD1',executionMode:'manual',status:'pending'}],bugs:[{id:'B1',executionMode:'manual',status:'open',dispatch:stale}],children:[]}};
+  const before = structuredClone(document), assignments = new Map([
+    ['T0:todo:TD1',{task_id:'old-todo',session_id:'previous',status:'closed'}],
+    ['T0:bug:B1',{task_id:'old',session_id:'previous',status:'closed'}],
+  ]);
+  assert.deepEqual(applyCoordinatorAssignments(document,assignments),before);
+  assert.deepEqual(document,before,'Stored manual status and historical receipts stay intact');
+});
 test('Coordinator assignment projection replaces a stale dispatch receipt', () => {
   const stale = { status: 'pending', task_id: 'task-1', session_id: 'session-1', at: 'old' };
   const document = { root: { id: 'T0', todos: [{ id: 'TD1', title: 'Deploy', dispatch: stale }], bugs: [], children: [] } };
@@ -110,6 +120,49 @@ test('Coordinator assignment projection falls back to one exact Map item when a 
   assert.equal(coordinatorAssignmentKey(document, { nodeId: 'N1', kind: 'bug', itemId: 'B1' }, 'other'), 'N1:bug:B1');
   document.root.children.push({ id: 'N2', todos: [{ id: 'TD1' }], bugs: [], children: [] });
   assert.equal(coordinatorAssignmentKey(document, undefined, 'TD1'), '');
+});
+
+test('Main workbench whole-list editing preserves stored dispatch instead of persisting presentation assignments', async t => {
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'context-guard-main-dispatch-projection-'));
+  const memoryConfig={dataDir:path.join(directory,'memory'),adminToken:'fixture-admin',projects:{'context-guard':{token:'fixture-project'}}};
+  const map={v:1,root:{id:'T0',title:'Mixed work items',todos:[{id:'TD1',title:'Task',status:'pending',dispatch:{task_id:'original',status:'queued'}}],bugs:[
+    {id:'B1',title:'Manual',status:'open',executionMode:'manual',desc:'before'},
+    {id:'B2',title:'Automatic',status:'open'},
+  ],children:[]}};
+  const file=legacyProjectMemoryFile(memoryConfig.dataDir,'context-guard');
+  await atomicWrite(file,JSON.stringify({revision:1,main:{version:'main-before',memory:{map,records:{}}},sessions:{},closedSessions:{},receipts:{},history:[],events:[],eventCursors:{}}));
+  const service=await startCloudServer({host:'127.0.0.1',port:0,dataDir:path.join(directory,'cloud'),adminToken:'cloud-admin',browserToken:'fixture-browser',memoryConfig});
+  t.after(async()=>{await service.close();await fs.rm(directory,{recursive:true,force:true});});
+  const incoming=applyCoordinatorAssignments(map,new Map([
+    ['T0:bug:B2',{task_id:'old-bug',session_id:'old-session',status:'closed'}],
+    ['T0:todo:TD1',{task_id:'original',status:'closed'}],
+  ]));
+  incoming.root.bugs[0].desc='user edit';
+  incoming.root.todos[0].title='user task edit';
+  const input={operationId:'browser-mixed-edit',baseVersion:'main-before',operations:[{type:'update',id:'T0',fields:{bugs:incoming.root.bugs,todos:incoming.root.todos}}]};
+  const browserHeaders={Authorization:'Bearer fixture-browser','Content-Type':'application/json'};
+  const saved=await request(service.url,'/api/workbench/projects/context-guard/api/commit?view=main',{method:'POST',headers:browserHeaders,body:JSON.stringify(input)});
+  assert.equal(saved.response.status,200,JSON.stringify(saved.body));
+  const read=()=>request(service.url,'/v1/projects/context-guard/main',{headers:{Authorization:'Bearer fixture-project'}});
+  const stored=(await read()).body.snapshot;
+  assert.equal(stored.memory.map.root.bugs[0].desc,'user edit');
+  assert.deepEqual(stored.memory.map.root.bugs[1],map.root.bugs[1],'Unedited automatic Bug does not gain presentation dispatch');
+  assert.deepEqual(stored.memory.map.root.todos[0],{...map.root.todos[0],title:'user task edit'},'Existing receipt is retained verbatim');
+  const replay=await request(service.url,'/api/workbench/projects/context-guard/api/commit?view=main',{method:'POST',headers:browserHeaders,body:JSON.stringify(input)});
+  assert.deepEqual(replay.body,saved.body,'Original request replays after Main advanced');
+  assert.deepEqual((await read()).body.snapshot,stored,'Replay is not another write');
+  const event=(await readJSON(file)).events.at(-1);
+  assert.deepEqual(event.operations[0].fields.bugs,stored.memory.map.root.bugs,'Events describe effective writes, not stripped presentation fields');
+  const forgedOption={operationId:'browser-option-is-not-public',baseVersion:stored.version,preserveStoredDispatch:false,
+    operations:[{type:'update',id:'T0',fields:{bugs:[{...stored.memory.map.root.bugs[0],desc:'second edit'},{...stored.memory.map.root.bugs[1],dispatch:{task_id:'fake',status:'closed'}}]}}]};
+  const protectedWrite=await request(service.url,'/api/workbench/projects/context-guard/api/commit?view=main',{method:'POST',headers:browserHeaders,body:JSON.stringify(forgedOption)});
+  assert.equal(protectedWrite.response.status,200,JSON.stringify(protectedWrite.body));
+  const protectedMain=(await read()).body.snapshot;
+  assert.equal(protectedMain.memory.map.root.bugs[0].desc,'second edit');
+  assert.equal(protectedMain.memory.map.root.bugs[1].dispatch,undefined,'Payload cannot disable the trusted browser write policy');
+  const trusted=await commitMainMemoryMap(memoryConfig,'context-guard',{operationId:'trusted-runtime',baseVersion:protectedMain.version,operations:[{type:'update',id:'T0',fields:{bugs:[...protectedMain.memory.map.root.bugs.slice(0,1),{...protectedMain.memory.map.root.bugs[1],dispatch:{task_id:'real-task',status:'executing'}}]}}]},{kind:'coordinator',sessionId:'trusted'});
+  assert.equal((await read()).body.snapshot.memory.map.root.bugs[1].dispatch.status,'executing','Trusted runtime path still writes real receipts');
+  assert.notEqual(trusted.version,stored.version);
 });
 
 test('Session upload reconciles Cloud edits from the last acknowledged snapshot', () => {

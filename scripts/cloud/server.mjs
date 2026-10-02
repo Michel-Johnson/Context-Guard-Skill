@@ -55,9 +55,9 @@ export function applyCoordinatorAssignments(document, assignments) {
     // so a stale `pending` receipt cannot mask an executing/awaiting-merge
     // task in the workbench.  This is a read-only projection; the source map
     // remains unchanged.
-    todos: (node.todos || []).map(item => assignments.has(`${node.id}:todo:${item.id}`)
+    todos: (node.todos || []).map(item => item.executionMode !== 'manual' && assignments.has(`${node.id}:todo:${item.id}`)
       ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:todo:${item.id}`) } } : item),
-    bugs: (node.bugs || []).map(item => assignments.has(`${node.id}:bug:${item.id}`)
+    bugs: (node.bugs || []).map(item => item.executionMode !== 'manual' && assignments.has(`${node.id}:bug:${item.id}`)
       ? { ...item, dispatch: { ...(item.dispatch || {}), ...assignments.get(`${node.id}:bug:${item.id}`) } } : item),
     children: (node.children || []).map(projectItems),
   });
@@ -2235,7 +2235,7 @@ export async function startCloudServer({
             // Persist intake's initial cursor without starting the model: a
             // provider failure must not prevent the human from saving work.
             if (configuredMemory?.projects?.[project.id]?.coordinator?.enabled) await mapIntakeFor(project).initialize();
-            const result = await commitMainMemoryMap(configuredMemory, project.id, input);
+            const result = await commitMainMemoryMap(configuredMemory, project.id, input, undefined, { preserveStoredDispatch: true });
             await broadcastWorkbench(scope, project, viewId);
             return send(res, 200, result);
           }

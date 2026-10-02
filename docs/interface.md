@@ -108,10 +108,10 @@ Workbench Frontend 对 Backend。
 | map | `getMap` `getNode` | | 读 |
 | map | `createNode` `updateNode` `moveNode` `deleteNode` | human | Cloud 路径改 Main。页面上的修改自动保存。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
 | map | 本地 Main | | 只读 |
-| todo | `listTodos` `getTodo` `updateTodo` | human | 查看、更新 TODO 事项记录 |
+| todo | `listTodos` `getTodo` `updateTodo` | human | 查看、更新 TODO 业务内容；普通工作台编辑既有事项时保留服务端 dispatch 回执，展示用任务投影不写回 Main。Coordinator 派发与验收入口不变 |
 | task | `listTasks` `getTask` | human | 查看 TODO/Bug 共用流程及投递状态；以事项类型、节点 ID、事项 ID 定位，不另建 Task 记录 |
 | task | `acceptTask` | human | 对指定 TODO/Bug 的当前 brief 版本批准或拒绝，取得服务端审核回执；普通对话回答不能代替签发 |
-| bug | `listBugs` `getBug` `updateBug` | human | 查看、更新 Bug 事项记录 |
+| bug | `listBugs` `getBug` `updateBug` | human | 查看、更新 Bug 业务内容；普通工作台编辑既有事项时保留服务端 dispatch 回执，展示用任务投影不写回 Main。Coordinator 派发与验收入口不变 |
 | idea | `listIdeas` `getIdea` `updateIdea` | | |
 | plan | `getPlan` | | 读 |
 | result | `getResult` | | 读 |

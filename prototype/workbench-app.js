@@ -461,9 +461,8 @@ function filePathOf(f){
 }
 function fileList(owner){
   if(!owner) return [];
-  if(!Array.isArray(owner.files)) owner.files = [];
-  owner.files = owner.files.map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
-  return owner.files;
+  // Rendering is a read: preserve absent fields and legacy stored paths.
+  return (Array.isArray(owner.files)?owner.files:[]).map(f=>typeof f==="string" ? {path:filePathOf(f)} : {...f,path:filePathOf(f)}).filter(f=>f.path);
 }
 function normRepoPath(p){
   return String(p||"").replace(/\\/g,"/").replace(/^\.\//,"").replace(/^\/+/,"").trim();
@@ -520,7 +519,7 @@ function addFilePath(node, kind, key, path){
   if(!owner) return false;
   const files = fileList(owner);
   if(files.some(f=>f.path===p)) return true;
-  files.push({path:p});
+  owner.files = [...files,{path:p}];
   return true;
 }
 function canFsAccess(){ return typeof window.showDirectoryPicker==="function"; }
@@ -742,7 +741,10 @@ async function resumeAttachment(job){
     }
     const owner=valid();
     if(!owner) throw new Error("文件已保存，但原条目已不存在；未挂到其他条目");
-    if(!fileList(owner).some(file=>file.path===job.saved.path)) owner.files.push({path:job.saved.path,name:job.name});
+    const files=fileList(owner);
+    // This is an explicit upload operation, so persist canonical references
+    // even when the path was already present in legacy whitespace form.
+    owner.files=files.some(file=>file.path===job.saved.path)?files:[...files,{path:job.saved.path,name:job.name}];
     rememberPreview(job.saved.path,job.blob);
     job.stage="文件已保存，引用提交中"; renderAll();
     if(["offline","error","conflict"].includes(workbenchSync.status)) await workbenchSync.retry();
@@ -919,7 +921,8 @@ function bindFileUi(el, node){
       e.preventDefault();
       const owner = ownerOf(node, b.dataset.fk, b.dataset.fi);
       if(!owner) return;
-      const [removed] = fileList(owner).splice(+b.dataset.i, 1);
+      const files=fileList(owner), [removed] = files.splice(+b.dataset.i, 1);
+      owner.files=files;
       if(pendingWrite?.saved?.path===removed?.path && pendingWrite?.target && attachmentApi().attachmentOwner(data,pendingWrite.target)===owner) clearAttach();
       renderAll();
     };
