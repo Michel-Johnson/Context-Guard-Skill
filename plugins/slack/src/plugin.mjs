@@ -167,7 +167,7 @@ export class SlackPlugin {
       }
       let value; try { value = JSON.parse(action.value || '{}'); } catch { throw new Error('Invalid interaction'); }
       if (/^connect_project:\d{1,3}$/.test(action.action_id)) await this.connectProject(id, body, userId, value);
-      else if (action.action_id === 'open_item' || action.action_id === 'start_chat') await this.startChat(id, body, userId, value);
+      else if (['open_item', 'open_item:todo', 'open_item:bug', 'start_chat'].includes(action.action_id)) await this.startChat(id, body, userId, value);
       else if (action.action_id === 'open_memory') await this.startChat(id, body, userId, { ...value, kind: 'memory' });
       else if (action.action_id === 'open_binding') await this.startChat(id, body, userId, { ...value, text: '你好，我想和你讨论项目。' });
       else if (action.action_id === 'open_answer') {
@@ -534,7 +534,7 @@ export class SlackPlugin {
       // turn ID. Keep the existing partial message until that durable boundary
       // settles, rather than posting a second final and later updating both.
       if (stream && index === lastAssistant && stream.turnId === requestId && !settled) continue;
-      const content = digest(message), prior = this.store.data.threads[key].mirrored[id];
+      const content = digest({ format: 'plain-text-v1', message }), prior = this.store.data.threads[key].mirrored[id];
       if (prior?.hash === content) continue;
       const text = `${message.role === 'user' ? '工作台用户' : 'Coordinator'}：${message.text || '附件'}`, blocks = messageBlocks(message, key);
       const replaceStream = !!stream && index === lastAssistant && settled && stream.turnId === requestId;
@@ -543,7 +543,7 @@ export class SlackPlugin {
       await this.store.update(data => { data.threads[key].mirrored[id] = { ts, hash: content }; if (replaceStream) delete data.threads[key].liveStream; });
     }
     if (state.streamingText && state.status === 'running') {
-      const streamId = `stream:${state.activeTurnId}`, prior = this.store.data.threads[key].mirrored[streamId], content = digest(state.streamingText);
+      const streamId = `stream:${state.activeTurnId}`, prior = this.store.data.threads[key].mirrored[streamId], content = digest({ format: 'plain-text-v1', text: state.streamingText });
       if (prior?.hash !== content) {
         const text = `Coordinator：${state.streamingText}`;
         const ts = prior?.ts ? (await this.io.update(binding.channel, prior.ts, text), prior.ts) : await this.io.post({ id: operationId(`${key}:${streamId}`, 'stream'), channel: binding.channel, threadTs: binding.threadTs, text });

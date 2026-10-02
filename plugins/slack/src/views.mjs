@@ -1,7 +1,10 @@
+import { plainText } from './plain-text.mjs';
+
 export const plain = (text, length = 2000) => ({ type: 'plain_text', text: String(text || '—').slice(0, length) });
 export const escape = text => String(text || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 export const section = text => ({ type: 'section', text: { type: 'mrkdwn', text: String(text || '—').slice(0, 2900) } });
 export const textSections = text => { const value = String(text || '—'); return Array.from({ length: Math.ceil(value.length / 2800) }, (_, index) => section(value.slice(index * 2800, (index + 1) * 2800))); };
+export const plainSections = text => { const value = plainText(text) || '—'; return Array.from({ length: Math.ceil(value.length / 2800) }, (_, index) => ({ type: 'section', text: plain(value.slice(index * 2800, (index + 1) * 2800), 2800) })); };
 export const button = (label, action, value, style) => ({ type: 'button', text: plain(label, 75), action_id: action, value: JSON.stringify(value), ...(style ? { style } : {}) });
 export function projectChoiceBlocks(projects, requestId, direct) {
   const blocks = [section('你好，我可以帮你讨论项目、分析 Bug 和整理任务。先选择这次要聊的项目，选好后我会继续处理刚才的问题。')];
@@ -29,7 +32,7 @@ export function homeView({ projects, project, cloudOrigin, userId }) {
   if (project) {
     const url = `${cloudOrigin}/projects/${encodeURIComponent(project.id)}`;
     blocks.push(section(`*${escape(project.name || project.id)}*\n<${url}|打开完整 Map>`));
-    blocks.push({ type: 'actions', elements: [button('开始对话', 'start_chat', { projectId: project.id, text: '你好，我想和你讨论项目。' }), button('讨论 TODO', 'open_item', { projectId: project.id, kind: 'todo' }), button('讨论 Bug', 'open_item', { projectId: project.id, kind: 'bug' }), button('修改记忆', 'open_memory', { projectId: project.id })] });
+    blocks.push({ type: 'actions', elements: [button('开始对话', 'start_chat', { projectId: project.id, text: '你好，我想和你讨论项目。' }), button('讨论 TODO', 'open_item:todo', { projectId: project.id, kind: 'todo' }), button('讨论 Bug', 'open_item:bug', { projectId: project.id, kind: 'bug' }), button('修改记忆', 'open_memory', { projectId: project.id })] });
     const nodes = nodesOf(project.map);
     blocks.push(section('*节点导航*\n' + nodes.slice(0, 22).map(node => `${'　'.repeat(Math.min(node.depth, 4))}• ${escape(node.title)} \`${escape(node.id)}\``).join('\n')));
     if (nodes.length > 22) blocks.push(section(`还有 ${nodes.length - 22} 个节点，请打开完整 Map。`));
@@ -49,17 +52,17 @@ export function modal({ callback, draftId, title, fields, initial = {} }) {
 }
 export function formValues(view) { return Object.fromEntries(Object.entries(view.state?.values || {}).map(([key, actions]) => [key, Object.values(actions)[0]?.value ?? Object.values(actions)[0]?.selected_option?.value ?? ''])); }
 export function messageBlocks(message, key) {
-  const blocks = textSections(escape(message.text || (message.attachments?.length ? '收到附件' : 'Coordinator 回复'))).slice(0, 35);
+  const blocks = plainSections(message.text || (message.attachments?.length ? '收到附件' : 'Coordinator 回复')).slice(0, 35);
   for (const attachment of message.attachments || []) blocks.push({ type: 'context', elements: [plain(`附件：${attachment.filename || attachment.id}`)] });
   for (const question of message.questions || []) if (!question.answer) {
-    blocks.push(section(escape(question.text)));
-    if (question.options?.length) blocks.push(section('可参考：\n' + question.options.map(option => `• ${escape(option)}`).join('\n')));
-    blocks.push(section('直接在这个线程回复即可，不需要填写表单。'));
+    blocks.push(...plainSections(question.text));
+    if (question.options?.length) blocks.push(...plainSections('可参考：\n' + question.options.map(option => `• ${option}`).join('\n')));
+    blocks.push(...plainSections('直接在这个线程回复即可，不需要填写表单。'));
   }
   return blocks.slice(0, 49);
 }
 export function approvalBlocks(approval, key) {
   const version = approval.version || approval.brief?.version;
-  return [...textSections(`*待确认 brief*\n${escape(approval.title || approval.text || approval.brief?.text || approval.brief?.summary || '请查看工作台中的 brief')}\n${escape(Array.isArray(approval.acceptance) ? approval.acceptance.join('\n') : approval.acceptance || '')}`),
+  return [...plainSections(`待确认 brief\n${approval.title || approval.text || approval.brief?.text || approval.brief?.summary || '请查看工作台中的 brief'}\n${Array.isArray(approval.acceptance) ? approval.acceptance.join('\n') : approval.acceptance || ''}`),
     { type: 'actions', elements: [button('确认并创建执行提示', 'approve_brief', { key, proposalId: approval.id, version }, 'primary'), button('退回修改', 'reject_brief', { key, proposalId: approval.id, version }, 'danger')] }];
 }

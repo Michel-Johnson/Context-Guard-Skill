@@ -8,8 +8,36 @@ import { SlackPlugin, envelopeId } from '../src/plugin.mjs';
 import { SlackIO, UncertainDelivery } from '../src/slack-io.mjs';
 import { Gateway } from '../src/gateway.mjs';
 import { homeView, formValues, messageBlocks, approvalBlocks } from '../src/views.mjs';
+import { plainText } from '../src/plain-text.mjs';
 
 const teamId = 'T0BRW7G4Q6P', user = 'U000001', channel = 'C000001', bot = 'U000BOT';
+
+test('Coordinator prose is plain text while links code and identifiers remain readable', () => {
+  const source = '# 首页\n\n**定位**：`BLOG-READ-HOME`，_公开首页_。\n\n- [完整 Map](https://map.example.com/a?q=1&x=2)\n- ~~旧描述~~\n\n```js\nconst value = 2 ** 3; // _literal_\n```\n\n| 字段 | 值 |\n| --- | --- |\n| 状态 | 正常 |';
+  const value = plainText(source);
+  assert.match(value, /首页\n\n定位：BLOG-READ-HOME，公开首页/);
+  assert.match(value, /完整 Map（https:\/\/map.example.com\/a\?q=1&x=2）/);
+  assert.match(value, /const value = 2 \*\* 3; \/\/ _literal_/);
+  assert.match(value, /字段：状态；值：正常/);
+  assert.doesNotMatch(value, /```|\*\*定位|~~|\[完整 Map\]|^#/m);
+  assert.equal(plainText('[不要打开](javascript:alert(1))'), '不要打开');
+  assert.equal(plainText('<https://map.example.com/a|查看 Map>'), '查看 Map（https://map.example.com/a）');
+  assert.equal(plainText('目录 foo_bar 和 2 * 3 保留'), '目录 foo_bar 和 2 * 3 保留');
+  const blocks = messageBlocks({ text: source }, 'thread');
+  assert.ok(blocks.every(block => block.type !== 'section' || block.text.type === 'plain_text'));
+  assert.equal(blocks.map(block => block.text?.text || '').join(''), value);
+});
+
+test('Slack post and update disable markdown in fallback text and streamed output', async t => {
+  const f = await fixture(t), calls = [];
+  const io = new SlackIO({ store: f.store, botUserId: bot, wait: async () => {}, client: { async apiCall(method, args) { calls.push({ method, args }); return { ts: '1.0' }; } } });
+  await io.post({ id: 'plain-message', channel, text: '**首页**：`BLOG-READ-HOME`' });
+  await io.update(channel, '1.0', '**首页**：`BLOG-READ-HOME`');
+  for (const call of calls) { assert.equal(call.args.mrkdwn, false); assert.equal(call.args.text, '首页：BLOG-READ-HOME'); }
+  await io.update(channel, '1.0', '<@U000001> & 普通文字');
+  assert.equal(calls.at(-1).args.text, '&lt;@U000001&gt; &amp; 普通文字');
+  assert.equal(calls.at(-1).args.parse, 'none'); assert.equal(calls.at(-1).args.link_names, false);
+});
 
 test('plugin lockfile is portable outside the developer registry', async () => {
   const lock = JSON.parse(await fs.readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
@@ -485,9 +513,13 @@ test('Home renders Map, work items and public session status using free native b
   const f = await fixture(t); await f.store.update(state => { state.preferences[user] = 'lab'; }); await f.plugin.publishHome(user, 'E1');
   const view = f.sent.find(call => call.method === 'views.publish').input.view;
   assert.equal(view.type, 'home'); assert.match(JSON.stringify(view), /登录/); assert.match(JSON.stringify(view), /session-1/); assert.ok(view.blocks.length < 100);
+  for (const block of view.blocks) {
+    const ids = [...(block.elements || []), ...(block.accessory ? [block.accessory] : [])].map(element => element.action_id).filter(Boolean);
+    assert.equal(new Set(ids).size, ids.length, 'Slack rejects duplicate action_id values in a block');
+  }
 });
 test('Home TODO Bug memory and existing-item entrypoints start natural conversations without forms or Map writes', async t => {
-  for (const [action, value] of [['open_item', { projectId: 'lab', kind: 'todo' }], ['open_item', { projectId: 'lab', kind: 'bug', nodeId: 'login', itemId: 'B1' }],
+  for (const [action, value] of [['open_item:todo', { projectId: 'lab', kind: 'todo' }], ['open_item:bug', { projectId: 'lab', kind: 'bug' }], ['open_item', { projectId: 'lab', kind: 'bug', nodeId: 'login', itemId: 'B1' }],
     ['open_memory', { projectId: 'lab' }], ['start_chat', { projectId: 'lab', text: '一起讨论项目' }]]) {
     const f = await fixture(t), body = { type: 'block_actions', user: { id: user }, actions: [{ action_id: action, value: JSON.stringify(value) }] };
     await f.store.update(state => { state.drafts.existing = { text: 'Existing unsent draft' }; });
@@ -735,8 +767,10 @@ test('unsupported attachment and redirects to a non-Slack host never forward bot
   await assert.rejects(io.download({ name: 'screen.png', mimetype: 'image/png', url_private: 'https://files.slack.com/file' }), /Untrusted/); assert.equal(requests, 1);
   await assert.rejects(io.download({ name: 'huge.txt', mimetype: 'text/plain', size: 300000, url_private: 'https://files.slack.com/file' }), /太大/);
 });
-test('Block Kit escapes user markup and emits versioned brief and question controls', () => {
-  const blocks = messageBlocks({ text: '<@everyone>', questions: [{ id: 'q', text: 'Choose', options: ['one'] }] }, 'thread'); assert.match(JSON.stringify(blocks), /&lt;@everyone&gt;/);
+test('Block Kit shows literal user text without mentions and emits versioned brief controls', () => {
+  const blocks = messageBlocks({ text: '<@everyone>', questions: [{ id: 'q', text: 'Choose', options: ['one'] }] }, 'thread');
+  assert.equal(blocks[0].text.type, 'plain_text');
+  assert.equal(blocks[0].text.text, '<@everyone>');
   assert.equal(JSON.parse(approvalBlocks({ id: 'a', brief: { version: 'v' } }, 'thread')[1].elements[0].value).version, 'v');
   assert.deepEqual(formValues({ state: { values: { p: { v: { selected_option: { value: 'lab' } } } } } }), { p: 'lab' });
 });
