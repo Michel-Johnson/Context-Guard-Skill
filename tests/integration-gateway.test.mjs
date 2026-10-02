@@ -9,6 +9,7 @@ import { CoordinatorManualBriefs, filterManualTools, coordinatorRolePrompt } fro
 import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import { applyOperations, MapError } from '../scripts/shared/map-model.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
+import { Gateway } from '../plugins/slack/src/gateway.mjs';
 
 const teamId = 'TTESTWORKSPACE', userId = 'UTESTUSER', projectId = 'fixture-project';
 const token = 'integration-test-credential-not-an-admin-token';
@@ -204,6 +205,65 @@ test('SSE subscription sends public snapshot and stops polling when disconnected
   await new Promise(resolve => setTimeout(resolve, 60));
   assert.equal(gateway.subscriberCount(), 0); const stoppedAt = calls;
   await new Promise(resolve => setTimeout(resolve, 280)); assert.equal(calls, stoppedAt);
+});
+
+test('SSE backpressure drains a long conversation and delivers its next snapshot without disconnecting', { timeout: 10000 }, async t => {
+  const stateDir = await temporary(t); let generation = 1;
+  const gateway = await startIntegrationGateway({ config, stateDir, pollIntervalMs: 250, command: async () => ({}),
+    state: async () => ({ conversationId: 'chat-fixture', status: 'running', generation,
+      messages: [{ id: 'long-history', role: 'assistant', text: '长对话'.repeat(50000) }] }) });
+  t.after(() => gateway.close());
+  const controller = new AbortController(); t.after(() => controller.abort());
+  const client = new Gateway({ url: gateway.url, token, teamId });
+  const iterator = client.events({ userId, projectId, conversationId: 'chat-fixture', signal: controller.signal });
+  try {
+    const first = await iterator.next();
+    assert.equal(first.done, false); assert.equal(first.value.generation, 1);
+    assert.ok(Buffer.byteLength(first.value.messages[0].text) > 256 * 1024);
+    generation = 2;
+    const next = await iterator.next();
+    assert.equal(next.done, false, 'Ordinary writable backpressure is not a broken connection');
+    assert.equal(next.value.generation, 2); assert.equal(gateway.subscriberCount(), 1);
+  } finally { controller.abort(); await iterator.return().catch(() => {}); }
+});
+
+test('Gateway shutdown closes an in-progress SSE handshake without waiting for its snapshot or admitting a late subscriber', { timeout: 10000 }, async t => {
+  const stateDir = await temporary(t); let started, release;
+  const entered = new Promise(resolve => { started = resolve; });
+  const blocked = new Promise(resolve => { release = resolve; });
+  const gateway = await startIntegrationGateway({ config, stateDir, command: async () => ({}),
+    state: async () => { started(); await blocked; return { conversationId: 'chat-fixture', status: 'running' }; } });
+  const controller = new AbortController(); let stopping, timer;
+  t.after(async () => { release(); controller.abort(); await (stopping || gateway.close()); });
+  const query = new URLSearchParams({ teamId, userId, projectId, conversationId: 'chat-fixture' });
+  const response = fetch(`${gateway.url}/v1/events?${query}`, { headers: { authorization: `Bearer ${token}` }, signal: controller.signal });
+  // Keep an explicit rejection handler until the pending request is observed.
+  response.catch(() => {});
+  await entered; assert.equal(gateway.subscriberCount(), 0);
+  stopping = gateway.close();
+  try {
+    await Promise.race([stopping, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('SSE handshake blocked gateway shutdown')), 1000); })]);
+    const stopped = await response; assert.equal(stopped.status, 503);
+    assert.equal((await stopped.json()).error.code, 'STOPPING');
+  } finally { clearTimeout(timer); release(); }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(gateway.subscriberCount(), 0, 'A snapshot released after shutdown cannot register a new client');
+});
+
+test('SSE capacity includes pending handshakes before any snapshot is available', { timeout: 10000 }, async t => {
+  const stateDir = await temporary(t); let started, release, reads = 0;
+  const entered = new Promise(resolve => { started = resolve; });
+  const blocked = new Promise(resolve => { release = resolve; });
+  const gateway = await startIntegrationGateway({ config, stateDir, maxSubscribers: 1, command: async () => ({}),
+    state: async () => { reads++; started(); await blocked; return { conversationId: 'chat-fixture', status: 'running' }; } });
+  const controller = new AbortController();
+  t.after(async () => { release(); controller.abort(); await gateway.close(); });
+  const query = new URLSearchParams({ teamId, userId, projectId, conversationId: 'chat-fixture' });
+  const first = fetch(`${gateway.url}/v1/events?${query}`, { headers: { authorization: `Bearer ${token}` }, signal: controller.signal });
+  first.catch(() => {}); await entered;
+  const second = await fetch(`${gateway.url}/v1/events?${query}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1000) });
+  assert.equal(second.status, 503); assert.equal((await second.json()).error.code, 'BUSY'); assert.equal(reads, 1);
+  release(); await first;
 });
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';

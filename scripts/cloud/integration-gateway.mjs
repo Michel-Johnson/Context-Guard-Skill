@@ -115,7 +115,7 @@ export async function startIntegrationGateway({ config, command, state, stateDir
   const verified = validateIntegrationConfig(config);
   if (typeof command !== 'function' || typeof state !== 'function') fail('INVALID_INTEGRATION_CONFIG', 'Integration callbacks are required');
   if (!stateDir || !path.isAbsolute(stateDir)) fail('INVALID_INTEGRATION_CONFIG', 'Private integration state directory is required');
-  const clients = new Set(), inflight = new Map();
+  const clients = new Set(), handshakes = new Set(), inflight = new Map();
   let closed = false, activeCommands = 0;
   const authenticated = req => {
     const actual = Buffer.from(String(req.headers.authorization || '')), expected = Buffer.from(`Bearer ${verified.token}`);
@@ -168,29 +168,49 @@ export async function startIntegrationGateway({ config, command, state, stateDir
         } finally { activeCommands--; }
       }
       if (req.method === 'GET' && url.pathname === '/v1/events') {
-        if (clients.size >= maxSubscribers) fail('BUSY', 'Integration subscription capacity reached', 503);
+        if (clients.size + handshakes.size >= maxSubscribers) fail('BUSY', 'Integration subscription capacity reached', 503);
         const scope = Object.fromEntries(url.searchParams);
         if (Object.keys(scope).some(key => !['teamId', 'userId', 'projectId', 'conversationId'].includes(key)) ||
             [...url.searchParams.keys()].length !== Object.keys(scope).length) fail('INVALID_ARGUMENT', 'Invalid event subscription');
         const { actor } = validateIntegrationCommand(verified, { id: 'events', ...scope, type: 'conversation.state', payload: {} });
-        const snapshot = await state(scope, { actor });
+        handshakes.add(res);
+        let snapshot;
+        try { snapshot = await state(scope, { actor }); }
+        finally { handshakes.delete(res); }
+        if (closed) fail('STOPPING', 'Integration listener is stopping', 503);
+        if (req.destroyed || res.destroyed || res.writableEnded) return;
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
         const client = { res, timer: null, fingerprint: null }; clients.add(client);
         const finish = () => { clearTimeout(client.timer); clients.delete(client); };
         res.once('close', finish); res.once('error', finish);
-        const write = value => {
+        const write = async value => {
           const serialized = JSON.stringify(value), fingerprint = hash(serialized);
           if (client.fingerprint === fingerprint) return true;
-          if (res.writableLength > 256 * 1024 || !res.write(`event: state\ndata: ${serialized}\n\n`)) { res.end(); finish(); return false; }
-          client.fingerprint = fingerprint; return true;
+          if (res.writableLength > 256 * 1024) { res.end(); finish(); return false; }
+          const ready = res.write(`event: state\ndata: ${serialized}\n\n`);
+          client.fingerprint = fingerprint;
+          if (ready) return true;
+          // write(false) is normal backpressure for a long conversation. Wait
+          // within this subscription only; never hold a model/Agent operation.
+          const drained = await new Promise(resolve => {
+            const complete = result => {
+              clearTimeout(timer); res.off('drain', onDrain); res.off('close', onClose); res.off('error', onClose); resolve(result);
+            };
+            const onDrain = () => complete(true), onClose = () => complete(false);
+            const timer = setTimeout(onClose, 15000); timer.unref();
+            res.once('drain', onDrain); res.once('close', onClose); res.once('error', onClose);
+            if (res.destroyed) onClose();
+          });
+          if (!drained) { res.end(); finish(); }
+          return drained;
         };
         const poll = async () => {
           if (closed || res.destroyed || !clients.has(client)) return;
-          try { if (!write({ type: 'state', data: await state(scope, { actor }) })) return; }
+          try { if (!await write({ type: 'state', data: await state(scope, { actor }) })) return; }
           catch (error) { logger({ code: errorBody(error).code }); res.end(); finish(); return; }
           if (clients.has(client)) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
         };
-        if (write({ type: 'state', data: snapshot })) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
+        if (await write({ type: 'state', data: snapshot })) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
         return;
       }
       fail('NOT_FOUND', 'Integration endpoint does not exist', 404);
@@ -208,8 +228,20 @@ export async function startIntegrationGateway({ config, command, state, stateDir
     subscriberCount: () => clients.size,
     async close() {
       closed = true;
+      // A request awaiting its initial snapshot is not in clients yet. End
+      // that handshake now and reject its late result before it can subscribe.
+      for (const res of handshakes) {
+        if (!res.destroyed && !res.writableEnded) {
+          res.setHeader('Connection', 'close');
+          send(res, 503, { id: null, ok: false, error: { code: 'STOPPING', message: 'Integration listener is stopping' } });
+        }
+      }
+      handshakes.clear();
       for (const client of clients) { clearTimeout(client.timer); client.res.end(); }
       clients.clear();
-      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      await new Promise((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve());
+        server.closeIdleConnections?.();
+      });
     } };
 }

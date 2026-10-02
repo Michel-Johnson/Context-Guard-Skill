@@ -34,6 +34,7 @@ export class SlackPlugin {
     this.classifying = new Set();
     this.messageLanes = new Map();
     this.reactions = new Set();
+    this.eventStreams = new Map(); this.eventRetry = new Map(); this.eventTasks = new Set(); this.kickRequested = false;
   }
   async receive({ type, body, envelope_id, ack }) {
     const team = body.team_id || body.team?.id || body.event?.team;
@@ -50,7 +51,14 @@ export class SlackPlugin {
     this.kick();
   }
   start() { this.stopped = false; this.kick(); }
-  async stop() { this.stopped = true; clearTimeout(this.timer); if (this.active) await this.active; await Promise.allSettled([...this.processing.values(), ...this.reactions]); await this.store.tail; }
+  async stop() {
+    this.stopped = true; clearTimeout(this.timer);
+    const streams = [...this.eventStreams.values()];
+    for (const stream of streams) stream.controller.abort();
+    if (this.active) await this.active;
+    await Promise.allSettled([...this.processing.values(), ...this.reactions, ...this.eventTasks]);
+    await this.store.tail;
+  }
   readReaction(event) {
     // The durable input/Cloud acknowledgement is the business receipt. An
     // optional Slack reaction must never hold up mirroring a ready answer.
@@ -60,11 +68,12 @@ export class SlackPlugin {
     this.reactions.add(pending);
   }
   kick() {
-    if (this.stopped || this.active) return;
+    if (this.stopped) return;
+    if (this.active) { this.kickRequested = true; return; }
     clearTimeout(this.timer);
     this.active = this.tick().catch(error => this.logger.error('Slack plugin cycle failed', { code: error.code || 'PLUGIN_ERROR' })).finally(() => {
       this.active = null;
-      if (!this.stopped) this.timer = setTimeout(() => this.kick(), this.pollMs);
+      if (!this.stopped) { const delay = this.kickRequested ? 0 : this.pollMs; this.kickRequested = false; this.timer = setTimeout(() => this.kick(), delay); }
     });
   }
   async tick() {
@@ -116,12 +125,25 @@ export class SlackPlugin {
       await run(id, entry);
     }
     const bindings = Object.entries(this.store.data.threads);
-    if (!bindings.length || this.stopped) return;
+    if (this.stopped) return;
+    for (const [key, stream] of this.eventStreams) {
+      const binding = this.store.data.threads[key];
+      if (!binding || !(binding.live || binding.awaitingReplyId || stream.latest) || binding.conversationId !== stream.conversationId || binding.projectId !== stream.projectId) {
+        stream.latest = null;
+        stream.controller.abort();
+        this.eventStreams.delete(key);
+      }
+    }
+    if (!bindings.length) return;
+    for (const [key, binding] of bindings) if (binding.live || binding.awaitingReplyId) this.watchEvents(key, binding);
     // Only due links consume the four-request budget. Keep live replies ahead
     // of dormant history, while reserving a slot for other due conversations.
     // Oldest due deadlines win within each group; a completed poll advances its
     // deadline, so sustained activity cannot starve another due thread.
-    const due = bindings.filter(([, binding]) => (binding.nextPoll || 0) <= Date.now())
+    const due = bindings.filter(([key, binding]) => {
+      const stream = this.eventStreams.get(key);
+      return (binding.nextPoll || 0) <= Date.now() && (!stream?.lastEventAt || stream.latest || Date.now() - stream.lastFallbackAt >= 15000);
+    })
       .sort(([, a], [, b]) => (a.nextPoll || 0) - (b.nextPoll || 0));
     const hot = due.filter(([, binding]) => binding.awaitingReplyId || binding.live);
     const idle = due.filter(([, binding]) => !binding.awaitingReplyId && !binding.live);
@@ -132,6 +154,35 @@ export class SlackPlugin {
       try { await this.mirror(key); }
       catch (error) { this.logger.warn('Slack mirror failed', { code: error.code || 'MIRROR_ERROR' }); await this.store.update(state => { state.threads[key].nextPoll = Date.now() + 30000; state.threads[key].error = error.code || 'MIRROR_ERROR'; }); }
     }
+  }
+  watchEvents(key, binding) {
+    if (this.stopped || typeof this.gateway.events !== 'function' || this.eventStreams.has(key) || this.eventStreams.size >= 4 || (this.eventRetry.get(key) || 0) > Date.now()) return;
+    const stream = { controller: new AbortController(), projectId: binding.projectId, conversationId: binding.conversationId, lastFallbackAt: Date.now(), latest: null };
+    this.eventStreams.set(key, stream);
+    stream.promise = (async () => {
+      try {
+        for await (const state of this.gateway.events({ userId: binding.userId, projectId: stream.projectId, conversationId: stream.conversationId, signal: stream.controller.signal })) {
+          const current = this.store.data.threads[key];
+          if (this.stopped || stream.controller.signal.aborted || current?.projectId !== stream.projectId || current?.conversationId !== stream.conversationId) break;
+          if (state?.conversationId !== stream.conversationId) throw Object.assign(new Error('Event scope mismatch'), { code: 'GATEWAY_EVENT_INVALID' });
+          stream.latest = state; stream.lastEventAt = Date.now();
+          await this.store.update(data => {
+            const thread = data.threads[key];
+            if (thread?.projectId === stream.projectId && thread?.conversationId === stream.conversationId) thread.nextPoll = 0;
+          });
+          this.kick();
+        }
+      } catch (error) {
+        if (!stream.controller.signal.aborted && !this.stopped) this.logger.warn('Slack event stream failed; polling retained', { code: error.code || 'GATEWAY_STREAM' });
+      } finally {
+        if (this.eventStreams.get(key) === stream) this.eventStreams.delete(key);
+        if (!stream.controller.signal.aborted) this.eventRetry.set(key, Date.now() + 30000);
+        if (!this.stopped) this.kick();
+      }
+    })();
+    this.eventTasks.add(stream.promise);
+    const released = () => this.eventTasks.delete(stream.promise);
+    stream.promise.then(released, released);
   }
   async runEntry(id, entry) {
     try {
@@ -539,7 +590,17 @@ export class SlackPlugin {
   }
   async mirror(key) {
     const binding = this.store.data.threads[key];
-    const state = await this.command('conversation.state', binding, binding.userId, operationId(`${key}:${Date.now()}`, 'state'));
+    if (!binding) return;
+    const stream = this.eventStreams.get(key);
+    const sameScope = stream && !stream.controller.signal.aborted && stream.projectId === binding.projectId && stream.conversationId === binding.conversationId;
+    const cached = sameScope ? stream.latest : null;
+    if (stream) { stream.latest = null; stream.lastFallbackAt = Date.now(); }
+    const state = cached || await this.command('conversation.state', binding, binding.userId, operationId(`${key}:${Date.now()}`, 'state'));
+    const receivedAt = Date.parse(state.timing?.receivedAt);
+    if (Number.isFinite(receivedAt) && receivedAt < (binding.lastStateReceivedAt || 0)) return;
+    // Polling and event snapshots may complete out of order. A turn that was
+    // durably settled cannot become a partial stream again (including restart).
+    if (state.activeTurnId && binding.settledRequestIds?.includes(state.activeTurnId)) return;
     const messages = state.messages || [], lastAssistant = messages.findLastIndex(message => message.role === 'assistant');
     let currentRequest = null;
     const entries = messages.map((message, index) => {
@@ -611,9 +672,16 @@ export class SlackPlugin {
     const openQuestions = messages.flatMap(message => message.questions || []).filter(question => !question.answer);
     await this.store.update(data => {
       const thread = data.threads[key];
+      if (Number.isFinite(receivedAt)) thread.lastStateReceivedAt = receivedAt;
       thread.live = state.status === 'running' || !!state.activeTurnId && state.status !== 'error';
+      if (!state.activeTurnId && ['waiting-for-user', 'idle'].includes(state.status)) {
+        const completed = state.acceptedRequestIds || [];
+        thread.settledRequestIds = [...new Set([...(thread.settledRequestIds || []), ...completed])].slice(-100);
+      }
       if (!thread.live && state.acceptedRequestIds?.includes(thread.awaitingReplyId)) delete thread.awaitingReplyId;
-      thread.nextPoll = Date.now() + (thread.live || thread.awaitingReplyId ? this.pollMs : 15000); thread.error = null;
+      const pending = this.eventStreams.get(key);
+      thread.nextPoll = pending?.latest && !pending.controller.signal.aborted && pending.projectId === thread.projectId && pending.conversationId === thread.conversationId
+        ? 0 : Date.now() + (thread.live || thread.awaitingReplyId ? this.pollMs : 15000); thread.error = null;
       thread.pendingQuestionId = openQuestions.length === 1 ? openQuestions[0].id : null;
     });
   }
