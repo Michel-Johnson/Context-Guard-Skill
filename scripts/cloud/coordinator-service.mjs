@@ -146,13 +146,18 @@ export class CoordinatorConversations {
     return this.get(id);
   }
   async setFocus(id, { nodeId, kind, itemId, title }) {
-    if (typeof nodeId !== 'string' || !nodeId || !['todo', 'bug', 'idea'].includes(kind) || typeof itemId !== 'string' || !itemId) {
+    if (typeof nodeId !== 'string' || !nodeId || !['todo', 'bug', 'idea'].includes(kind)) {
+      throw error('INVALID_ARGUMENT', 'Provide a valid conversation focus');
+    }
+    if (itemId !== undefined && (typeof itemId !== 'string' || !itemId)) {
       throw error('INVALID_ARGUMENT', 'Provide a valid conversation item focus');
     }
     await withFileLock(this.file + '.lock', async () => {
       const state = await this.state(), item = state.chats?.[id];
       if (!item || item.executionMode !== 'manual') throw error('FORBIDDEN', 'Only a manual chat can keep its item focus');
-      Object.assign(item, { nodeId, kind, itemId, ...(title ? { title: String(title).slice(0, 200) } : {}) });
+      Object.assign(item, { nodeId, kind, ...(title ? { title: String(title).slice(0, 200) } : {}) });
+      if (itemId) item.itemId = itemId;
+      else delete item.itemId;
       await atomicWrite(this.file, encode(state));
     });
     return this.get(id);

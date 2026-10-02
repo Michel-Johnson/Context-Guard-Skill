@@ -1158,7 +1158,7 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
     id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
-  let phase = 'edit', step = 0, latestVersion = 'v1', todoId = '', childId = '';
+  let phase = 'edit', step = 0, latestVersion = 'v1', childId = '';
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab' }] },
@@ -1171,15 +1171,8 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
       if (phase === 'mount') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'mount', name: 'mount_conversation', input: {
         mainVersion: latestVersion, nodeId: 'T0', kind: 'todo', title: '提升阅读体验', description: '页面更快且更清楚',
       } }] };
-      if (phase === 'chat-prepare') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'prepare-from-chat', name: 'prepare_task', input: {
-        taskId: mapWorkTaskId, itemId: todoId, nodeId: 'T0', kind: 'todo', nodeIds: ['T0'], mainVersion: latestVersion,
-        text: '页面更快且更清楚', acceptance: '阅读体验改善',
-      } }] };
       return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'cleanup', name: 'edit_map', input: {
-        mainVersion: latestVersion, actions: [
-          { op: 'delete', kind: 'todo', id: todoId, nodeId: 'T0' },
-          { op: 'delete', kind: 'node', id: childId },
-        ],
+        mainVersion: latestVersion, actions: [{ op: 'delete', kind: 'node', id: childId }],
       } }] };
     } }),
   });
@@ -1217,13 +1210,15 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   assert.equal(memory.main.memory.map.root.children[0].origin, 'coordinator');
   assert.equal(state.messages.find(message => message.actions)?.actions[0].kind, 'map-action');
   latestVersion = memory.main.version; phase = 'mount';
+  const mountedVersion = latestVersion;
   await submit({ id: 'mount-turn', text: '挂载这个需求' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
-  assert.equal(memory.main.memory.map.root.todos[0].title, '提升阅读体验');
-  assert.deepEqual(memory.main.memory.map.root.todos[0].sessions, []);
+  assert.equal(memory.main.version, mountedVersion);
+  assert.deepEqual(memory.main.memory.map.root.todos, []);
   const mounted = state.messages.findLast(message => message.actions)?.actions[0];
   assert.equal(mounted.kind, 'conversation-mounted');
+  assert.equal(mounted.item, undefined);
   assert.equal(mounted.executionSessionId, undefined);
-  assert.match(mounted.conversationId, /^item-/);
+  assert.equal(mounted.conversationId, 'legacy');
   assert.equal((await call('GET')).projectTasks.length, 0);
   assert.equal((await call('GET')).sessionCreations.length, 0);
   const continuedResponse = await fetch(`${server.url}/api/workbench/projects/${projectId}/api/coordinator?conversation=${mounted.conversationId}`, {
@@ -1231,16 +1226,9 @@ test('Cloud Coordinator edits Main and mounts a durable item through configured 
   });
   assert.ok(continuedResponse.ok);
   assert.match(JSON.stringify((await continuedResponse.json()).messages), /挂载这个需求/);
-  todoId = memory.main.memory.map.root.todos[0].id;
-  const mapWorkTaskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:${todoId}`).digest('hex').slice(0, 24)}`;
-  latestVersion = memory.main.version; phase = 'chat-prepare'; step = 0;
-  await submit({ id: 'chat-prepare-turn', text: '继续为刚挂载的 TODO 提交 brief' }); state = await wait();
-  assert.equal(state.error, null);
-  assert.equal(state.messages.findLast(message => message.actions)?.actions[0].conversationId, mounted.conversationId);
-  assert.equal((await call('GET')).projectTasks.length, 0);
   childId = memory.main.memory.map.root.children[0].id;
   latestVersion = memory.main.version; phase = 'cleanup'; step = 0;
-  await submit({ id: 'cleanup-turn', text: '删除这个 TODO 和阅读模块' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
+  await submit({ id: 'cleanup-turn', text: '删除阅读模块' }); state = await wait(); memory = await readMemoryView(memoryConfig, projectId);
   assert.deepEqual(memory.main.memory.map.root.todos, []);
   assert.deepEqual(memory.main.memory.map.root.children, []);
   assert.equal(state.messages.findLast(message => message.actions)?.actions[0].kind, 'map-action');
@@ -1266,11 +1254,14 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
     { id: 'TD-done', title: '已完成', desc: '不再开工', status: 'done', sessions: [] },
   ], bugs: [
     { id: 'B900', title: '暂缓缺陷', desc: '延期记录仍在', status: 'deferred', sessions: [] },
+    { id: 'B-approve', title: '审批后绑定', desc: '缺陷批准后才有执行 Session', status: 'open', sessions: [] },
   ], dormant: [], files: [], owns: [], children: [], proposal: 'accepted' };
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: {
     v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root,
   }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
-  let mode = 'idle', mainVersion = 'v1', bugItemId = '', bugTaskId = '';
+  let mode = 'idle', mainVersion = 'v1';
+  const bugItemId = 'B-approve';
+  const bugTaskId = `map-bug-${createHash('sha256').update(`${projectId}:T0:bug:${bugItemId}`).digest('hex').slice(0, 24)}`;
   const taskId = `map-todo-${createHash('sha256').update(`${projectId}:T0:todo:TD-local`).digest('hex').slice(0, 24)}`;
   const scoped = (request = {}) => {
     const system = String(request.system || '');
@@ -1391,21 +1382,16 @@ test('Mounting a TODO or Bug creates no execution Session before brief approval'
   };
   mode = 'idea';
   await post(legacy, { id: 'mount-idea', text: '记一个想法' });
-  memory = await waitMounted(current => current.main.memory.map.root.ideas?.[0]?.text === '先记一笔');
-  assert.equal(memory.main.memory.map.root.ideas[0].sessions, undefined);
+  memory = await waitMounted(current => current.main.version === mainVersion && !(current.main.memory.map.root.ideas || []).length);
   assert.equal((await itemState()).sessionCreations.length, 1);
-  mainVersion = memory.main.version;
   mode = 'bug';
   await post(legacy, { id: 'mount-bug', text: '挂一个缺陷' });
-  memory = await waitMounted(current => current.main.memory.map.root.bugs?.some(item => item.title === '审批后绑定'));
-  const mountedBug = memory.main.memory.map.root.bugs.find(item => item.title === '审批后绑定');
-  assert.deepEqual(mountedBug.sessions, []);
+  memory = await waitMounted(current => current.main.version === mainVersion && current.main.memory.map.root.bugs.filter(item => item.title === '审批后绑定').length === 1);
+  assert.deepEqual(memory.main.memory.map.root.bugs.find(item => item.id === bugItemId).sessions, []);
   assert.equal(memory.main.memory.map.root.bugs.find(item => item.id === 'B900').status, 'deferred');
   const afterBug = await itemState();
   assert.equal(afterBug.sessionCreations.length, 1);
   assert.equal(afterBug.sessionCreations[0].sessionId, executionSessionId);
-  bugItemId = mountedBug.id;
-  bugTaskId = `map-bug-${createHash('sha256').update(`${projectId}:T0:bug:${bugItemId}`).digest('hex').slice(0, 24)}`;
   const bugConversation = await post(`${workbench}/api/coordinator/conversations`, { nodeId: 'T0', kind: 'bug', itemId: bugItemId });
   const bugEndpoint = `${workbench}/api/coordinator?conversation=${encodeURIComponent(bugConversation.id)}`;
   mainVersion = memory.main.version; mode = 'prepare-bug';
