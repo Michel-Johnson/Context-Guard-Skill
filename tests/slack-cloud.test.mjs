@@ -19,7 +19,7 @@ const browserCredential = 'fixture-browser-credential';
 const headers = { Authorization: `Bearer ${browserCredential}`, 'Content-Type': 'application/json' };
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';
 
-async function fixture(t, { enabled = true, visionProvider } = {}) {
+async function fixture(t, { enabled = true, visionProvider, initialMap } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-slack-cloud-'));
   let cloud;
   const held = new Set();
@@ -36,7 +36,7 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
   for (const id of Object.keys(projects)) {
     const file = legacyProjectMemoryFile(memoryConfig.dataDir, id);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'main-initial', memory: { records: {}, map: {
+    await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'main-initial', memory: { records: {}, map: initialMap || {
       project: 'Fixture', root: { id: 'T0', title: 'Fixture', kind: 'module', state: 'dirty', owns: ['src/'], memoryDocument: 'Current project facts', children: [],
         todos: [{ id: 'TD-old', title: 'Existing original TODO', status: 'pending', createdAt: 'original-todo' }],
         bugs: [{ id: 'B1', title: 'Existing original Bug', status: 'open', createdAt: 'original-bug', attempts: [{ status: 'Confirmed', cause: 'Token expired' }] }] },
@@ -425,6 +425,22 @@ test('Slack validates direct Bug operations and retains manual markers before co
     operations: [{ type: 'recover-bug', id: 'T0', bug: manualBug }] }, { id: 'manual-recovery-still-forbidden' });
   assert.equal(recovery.status, 403);
   assert.equal(recovery.body.error.code, 'FORBIDDEN_RECOVERY');
+});
+
+test('A legacy unassigned Bug cannot bypass the marker check on a node without a Bug array', async t => {
+  const bug = { id: 'B7777', title: 'Existing unassigned Bug', status: 'open' };
+  const f = await fixture(t, { initialMap: { project: 'Fixture', root: {
+    id: 'T0', title: 'Legacy node', kind: 'module', state: 'dirty', owns: [], children: [],
+  }, unassigned_bugs: [bug] } });
+  const before = await f.main();
+  const rejected = await f.gateway('map.write', { baseVersion: before.main.version,
+    operations: [{ type: 'attach-bug', id: 'T0', bug }] }, { id: 'shadow-unassigned-bug' });
+  assert.equal(rejected.status, 400, JSON.stringify(rejected.body));
+  assert.deepEqual(await f.main(), before);
+  const unchanged = await f.gateway('map.write', { baseVersion: before.main.version,
+    operations: [{ type: 'attach-bug', bug }] }, { id: 'unchanged-unassigned-bug' });
+  assert.equal(unchanged.status, 200, JSON.stringify(unchanged.body));
+  assert.deepEqual((await f.main()).main.memory.map.unassigned_bugs, [bug]);
 });
 
 test('Coordinator attachments are shared with authenticated browser and isolated by project without Quark', async t => {

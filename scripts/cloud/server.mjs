@@ -1054,7 +1054,8 @@ export async function startCloudServer({
           }
         }
         if (operation.type === 'attach-bug' || operation.type === 'recover-bug') {
-          checkItems([operation.bug], index.get(operation.id)?.node?.bugs || document.unassigned_bugs);
+          const target = index.get(operation.id)?.node;
+          checkItems([operation.bug], target ? target.bugs : document.unassigned_bugs);
         }
         checkItems(operation.fields?.unassigned_bugs, document.unassigned_bugs);
       }
