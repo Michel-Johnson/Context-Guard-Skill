@@ -17,7 +17,7 @@ import { atomicWrite, encode } from '../shared/io.mjs';
 import { resolveProjectRoot, bindProject } from './project.mjs';
 import { namedWorkbench, readWorkbenchHealth, verifyWorkbenchUrl } from './named.mjs';
 import { compatibleRuntime, runtimeIdentity, upgradeableRuntime } from './runtime.mjs';
-import { globalWorkbenchDirectory, readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
+import { defaultDirectoryAvailability, globalWorkbenchDirectory, readProjectRegistry, registeredProject, rememberProject } from './registry.mjs';
 import { RouteStore } from './portless-routes.mjs';
 import { DeviceConnection } from './protocol-device.mjs';
 import { lookupRepository } from './protocol-repository.mjs';
@@ -541,6 +541,21 @@ async function stateForWorkbenchUrl(project, value) {
   return state;
 }
 
+const directoryFailureLog = /EACCES|EPERM|ENOTDIR|EROFS|EEXIST|permission denied|not a directory|read-only file system/i;
+export function logMentionsDirectoryFailure(log, directory) {
+  const text = String(log || '');
+  return !!directory && text.includes(directory) && directoryFailureLog.test(text);
+}
+export function startFailedMessage({ log = '', directory } = {}) {
+  const base = 'Node workbench did not become healthy; inspect private/node-workbench.log';
+  if (!directory || directory.overridden || !directory.unavailable || !logMentionsDirectoryFailure(log, directory.path)) return base;
+  return `${base} The default directory ${directory.path} is unavailable. Override it as described in references/named-workbench.md.`;
+}
+async function failStart(logPath) {
+  const log = await fs.readFile(logPath, 'utf8').catch(() => '');
+  const directory = await defaultDirectoryAvailability();
+  throw new MapError('START_FAILED', startFailedMessage({ log, directory }), 503);
+}
 export async function ensureServer(root, port = 8877) {
   root = await resolveProjectRoot(root);
   await initialize(root);
@@ -569,6 +584,7 @@ export async function ensureServer(root, port = 8877) {
   const log = await fs.open(path.join(root, '.codex/context/private/node-workbench.log'), 'a', 0o600);
   const child = spawn(process.execPath, [ownFile, 'serve', '--root', root, '--port', String(port)], { detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref(); await log.close();
+  const logPath = path.join(root, '.codex/context/private/node-workbench.log');
   const deadline = Date.now() + 12000;
   while (Date.now() < deadline) {
     await pause(60); state = await readJSON(sharedState, null).catch(() => null) || await readJSON(statePath(root), null).catch(() => null); live = state && await health(state);
@@ -576,8 +592,13 @@ export async function ensureServer(root, port = 8877) {
       await rememberProject(project, { state: { ...state, ...live } });
       return state;
     }
+    const log = await fs.readFile(logPath, 'utf8').catch(() => '');
+    if (logMentionsDirectoryFailure(log, globalWorkbenchDirectory())) {
+      const directory = await defaultDirectoryAvailability();
+      if (!directory.overridden && directory.unavailable) throw new MapError('START_FAILED', startFailedMessage({ log, directory }), 503);
+    }
   }
-  throw new MapError('START_FAILED', 'Node workbench did not become healthy; inspect private/node-workbench.log', 503);
+  await failStart(logPath);
 }
 export async function request(state, route, { token = state.adminToken, method = 'GET', body } = {}) {
   const encoded = body === undefined ? undefined : JSON.stringify(body);
