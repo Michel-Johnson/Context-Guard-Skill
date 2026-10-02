@@ -30,6 +30,8 @@ test('Coordinator prose is plain text while links code and identifiers remain re
   const code = '{"link":"<https://example.com|标题>"}\npayload="""a\n\n\nb"""';
   assert.equal(plainText('```python\n' + code + '\n```'), code);
   assert.equal(plainText('`<https://example.com|标题>`'), '<https://example.com|标题>');
+  assert.equal(plainText('| `字段` | 值 |\n| --- | --- |\n| a | 1 |\n| b | 2 |'), '字段：a；值：1\n字段：b；值：2');
+  assert.equal(plainText('[不要打开](java&#x09;script:alert(1))'), '不要打开');
   const blocks = messageBlocks({ text: source }, 'thread');
   assert.ok(blocks.every(block => block.type !== 'section' || block.text.type === 'plain_text'));
   assert.equal(blocks.map(block => block.text?.text || '').join(''), value);

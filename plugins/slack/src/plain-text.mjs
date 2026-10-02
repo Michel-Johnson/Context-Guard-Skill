@@ -7,7 +7,7 @@ const decode = value => String(value || '').replace(/&(#x[0-9a-f]+|#\d+|amp|lt|g
   }
   return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[entity.toLowerCase()] || match;
 });
-const safeLink = href => /^(?:javascript|data|vbscript):/i.test(decode(href).trim()) ? '' : decode(href);
+const safeLink = href => /^(?:javascript|data|vbscript):/i.test(decode(href).replace(/[\u0000-\u0020\u007f]/g, '')) ? '' : decode(href);
 
 // Parse formatting instead of deleting punctuation indiscriminately: code,
 // underscores in identifiers, URLs and ordinary arithmetic remain content.
@@ -47,6 +47,5 @@ export function plainText(source) {
     }
   }).join('');
   let output = slackLinks(render(lexer(input, { gfm: true }))).replace(/\n{3,}/g, '\n\n').trim();
-  for (const [index, value] of literals.entries()) output = output.replace(`${prefix}${index}\u0000`, () => value);
-  return output;
+  return output.replace(new RegExp(`${prefix}(\\d+)\u0000`, 'g'), (match, index) => literals[Number(index)] ?? match);
 }
