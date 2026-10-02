@@ -18,6 +18,8 @@ Executor 写入自己的 Session Map，不是 Main。非人写 Main 结构只有
 
 Cloud 用户确认节点和事项类型后，调用 `mount_conversation` 把 Coordinator 挂到该节点，不写入 Main。执行 Session 仍须等该事项的 brief 获批后创建。用户找回旧话题时先用 `list_conversations` 定位，有歧义再澄清，不重新创建同一事项。
 
+挂载成功会保存当前对话的节点焦点，后续轮次和服务重启后都加载该节点及祖先的相关记忆。独立聊天、Session 对话、Main 和历史总对话均可保存焦点；已有事项专属对话保留原事项归属。
+
 使用本次 Prompt 的 signal，不要编造。
 
 ```sh
