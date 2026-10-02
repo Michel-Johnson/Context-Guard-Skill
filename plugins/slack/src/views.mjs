@@ -3,6 +3,14 @@ export const escape = text => String(text || '').replaceAll('&', '&amp;').replac
 export const section = text => ({ type: 'section', text: { type: 'mrkdwn', text: String(text || '—').slice(0, 2900) } });
 export const textSections = text => { const value = String(text || '—'); return Array.from({ length: Math.ceil(value.length / 2800) }, (_, index) => section(value.slice(index * 2800, (index + 1) * 2800))); };
 export const button = (label, action, value, style) => ({ type: 'button', text: plain(label, 75), action_id: action, value: JSON.stringify(value), ...(style ? { style } : {}) });
+export function projectChoiceBlocks(projects, requestId, direct) {
+  const blocks = [section('你好，我可以帮你讨论项目、分析 Bug 和整理任务。先选择这次要聊的项目，选好后我会继续处理刚才的问题。')];
+  if (!projects.length) return [...blocks, section('目前没有开放的项目，请管理员在插件配置中开放项目后再试。')];
+  blocks.push(section(direct ? '选择后，这个项目将用于你的私聊。' : '选择后，当前频道将关联这个项目；已有关联的线程保持不变。'));
+  for (let index = 0; index < projects.length; index += 5) blocks.push({ type: 'actions', elements: projects.slice(index, index + 5).map((project, offset) =>
+    button(project.name || project.id, `connect_project:${index + offset}`, { requestId, projectId: project.id })) });
+  return blocks;
+}
 export function nodesOf(map) {
   const nodes = [], seen = new Set();
   const visit = (node, depth = 0) => { if (!node || typeof node !== 'object' || seen.has(node.id)) return; seen.add(node.id); nodes.push({ ...node, depth }); for (const child of node.children || []) visit(child, depth + 1); };
@@ -21,13 +29,13 @@ export function homeView({ projects, project, cloudOrigin, userId }) {
   if (project) {
     const url = `${cloudOrigin}/projects/${encodeURIComponent(project.id)}`;
     blocks.push(section(`*${escape(project.name || project.id)}*\n<${url}|打开完整 Map>`));
-    blocks.push({ type: 'actions', elements: [button('新建 TODO', 'open_item', { projectId: project.id, kind: 'todo' }), button('报告 Bug', 'open_item', { projectId: project.id, kind: 'bug' }), button('编辑记忆', 'open_memory', { projectId: project.id }), button('关联频道/对话', 'open_binding', { projectId: project.id })] });
+    blocks.push({ type: 'actions', elements: [button('开始对话', 'start_chat', { projectId: project.id, text: '你好，我想和你讨论项目。' }), button('讨论 TODO', 'open_item', { projectId: project.id, kind: 'todo' }), button('讨论 Bug', 'open_item', { projectId: project.id, kind: 'bug' }), button('修改记忆', 'open_memory', { projectId: project.id })] });
     const nodes = nodesOf(project.map);
     blocks.push(section('*节点导航*\n' + nodes.slice(0, 22).map(node => `${'　'.repeat(Math.min(node.depth, 4))}• ${escape(node.title)} \`${escape(node.id)}\``).join('\n')));
     if (nodes.length > 22) blocks.push(section(`还有 ${nodes.length - 22} 个节点，请打开完整 Map。`));
     const items = nodes.flatMap(node => ['todos', 'bugs'].flatMap(field => (node[field] || []).map(item => ({ ...item, nodeId: node.id, kind: field === 'bugs' ? 'bug' : 'todo' }))));
     blocks.push(section('*TODO / Bug*'));
-    for (const item of items.slice(0, 12)) blocks.push({ ...section(`${item.kind === 'bug' ? '🐞' : '☐'} ${escape(item.title || item.text)} · ${escape(item.status || 'pending')}\n\`${escape(item.nodeId)} / ${escape(item.id)}\``), accessory: button('编辑', 'open_item', { projectId: project.id, nodeId: item.nodeId, itemId: item.id, kind: item.kind }) });
+    for (const item of items.slice(0, 12)) blocks.push({ ...section(`${item.kind === 'bug' ? '🐞' : '☐'} ${escape(item.title || item.text)} · ${escape(item.status || 'pending')}`), accessory: button('讨论', 'open_item', { projectId: project.id, nodeId: item.nodeId, itemId: item.id, kind: item.kind }) });
     blocks.push(section('*Session 状态*\n' + (project.sessions || []).slice(0, 12).map(session => `${escape(session.id || session.sessionId)} · ${escape(session.status || session.state || 'unknown')}`).join('\n')));
   }
   blocks.push({ type: 'context', elements: [plain(`操作者 ${userId} · 自动派发暂缓 · 按钮按当前 Main 版本校验`)] });
@@ -45,9 +53,8 @@ export function messageBlocks(message, key) {
   for (const attachment of message.attachments || []) blocks.push({ type: 'context', elements: [plain(`附件：${attachment.filename || attachment.id}`)] });
   for (const question of message.questions || []) if (!question.answer) {
     blocks.push(section(escape(question.text)));
-    const options = question.options || [];
-    for (let index = 0; index < options.length; index += 5) blocks.push({ type: 'actions', elements: options.slice(index, index + 5).map(option => button(option, 'answer_question', { key, questionId: question.id, text: option })) });
-    blocks.push({ type: 'actions', elements: [button('填写回答', 'open_answer', { key, questionId: question.id })] });
+    if (question.options?.length) blocks.push(section('可参考：\n' + question.options.map(option => `• ${escape(option)}`).join('\n')));
+    blocks.push(section('直接在这个线程回复即可，不需要填写表单。'));
   }
   return blocks.slice(0, 49);
 }
