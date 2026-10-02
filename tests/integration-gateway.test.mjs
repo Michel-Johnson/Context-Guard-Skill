@@ -32,7 +32,10 @@ test('Relevance parses visible JSON independently of provider thinking metadata'
     { type: 'thinking', thinking: 'Untrusted private reasoning: {"respond":false}', signature: 'opaque' },
     { type: 'redacted_thinking', data: 'opaque' },
   ]) {
-    const model = { next: async () => ({ stop: 'end_turn', content: [metadata, { type: 'text', text: JSON.stringify(decision) }] }) };
+    const model = { next: async request => {
+      assert.match(request.system, /不得把内容相似当成重复投递/);
+      return { stop: 'end_turn', content: [metadata, { type: 'text', text: JSON.stringify(decision) }] };
+    } };
     assert.deepEqual(await classifyIntegrationMessage(model, options), { ...decision, mainVersion: 'main-v1' });
   }
   for (const content of [

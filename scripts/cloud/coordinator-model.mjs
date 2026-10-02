@@ -249,8 +249,30 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
+  // Private operator diagnostics only; public timing and transcript contracts
+  // stay unchanged. No prompts, arguments, results or provider IDs are copied.
+  if (state.activeTurnId && state.performance?.turnId !== state.activeTurnId) state.performance = {
+    turnId: state.activeTurnId, models: [], tools: [],
+  };
   if (!state.pending) {
-    const next = await model.next({ system, messages: materializeMessages ? await materializeMessages(state) : coordinatorModelMessages(state), tools, onText, onToolStart });
+    const messages = materializeMessages ? await materializeMessages(state) : coordinatorModelMessages(state);
+    const measurement = state.performance && { startedAt: new Date().toISOString(), firstTextMs: null };
+    const started = Date.now();
+    let next;
+    try {
+      next = await model.next({ system, messages, tools, onText: measurement ? async text => {
+        if (text && measurement.firstTextMs === null) measurement.firstTextMs = Date.now() - started;
+        await onText?.(text);
+      } : onText, onToolStart });
+      if (measurement) Object.assign(measurement, { durationMs: Date.now() - started,
+        stop: next.stop, inputTokens: coordinatorInputTokens(next.usage),
+        cacheReadTokens: Number.isSafeInteger(next.usage?.cache_read_input_tokens) && next.usage.cache_read_input_tokens >= 0 ? next.usage.cache_read_input_tokens : null });
+    } catch (cause) {
+      if (measurement) Object.assign(measurement, { durationMs: Date.now() - started, errorCode: cause.code || 'MODEL_UNAVAILABLE' });
+      throw cause;
+    } finally {
+      if (measurement) state.performance.models = [...state.performance.models, measurement].slice(-60);
+    }
     if (next.content.some(block => ['image', 'image_url'].includes(block.type))) {
       throw problem('MODEL_INVALID_RESPONSE', 'Coordinator responses cannot persist raw image payloads');
     }
@@ -282,10 +304,16 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
       else if (!tools.some(tool => tool.name === call.name)) receipt = { fingerprint,
         ...failedTool('TOOL_FORBIDDEN', '工具名未注册；只能使用本轮提供的工具，不得猜测接口。') };
       else {
+        const started = Date.now();
+        let errorCode = null;
         try { receipt = { fingerprint, result: await execute(call.name, call.input, { operationId }) }; }
         catch (error) {
+          errorCode = error.code || 'TOOL_FAILED';
           if (!correctableToolError(error.code)) throw error;
           receipt = { fingerprint, ...failedTool(error.code, error.toolHint) };
+        } finally {
+          if (state.performance) state.performance.tools = [...state.performance.tools,
+            { name: call.name, durationMs: Date.now() - started, ...(errorCode ? { errorCode } : {}) }].slice(-120);
         }
       }
       state.toolReceipts[operationId] = receipt;

@@ -865,6 +865,37 @@ test('Coordinator context carries the full static directory and only the mounted
   assert.doesNotMatch(limited.text, /reader memory|article memory/);
 });
 
+test('Main overview is fresh, bounded and never leaks ancestor or sibling items outside scope', () => {
+  const snapshot = { version: 'overview-v1', memory: { map: { root: { id: 'T0', title: 'Project',
+    todos: [{ id: 'root-secret', title: 'Private root item', status: 'pending' }], children: [
+      { id: 'N1', title: 'Reader', todos: [
+        { id: 'pending', title: 'Return to top', desc: 'Unneeded long requirement', status: 'pending' },
+        { id: 'done', title: 'Finished TODO', status: 'done' },
+      ], bugs: [{ id: 'open', title: 'Broken query', status: 'open' }, { id: 'fixed', title: 'Needs human review', status: 'fixed' },
+        ...['resolved', 'unfixable', 'dormant', 'wontfix', 'deferred'].map(status => ({ id: status, title: 'Finished Bug', status }))],
+      children: [{ id: 'N-private-child', title: 'Unassigned child', todos: [{ id: 'child-secret', title: 'Private child item', status: 'pending' }], children: [] }] },
+      { id: 'N2', title: 'Admin', todos: [{ id: 'sibling-secret', title: 'Private sibling item', status: 'pending' }], children: [] },
+    ] } } } };
+  const options = { nodeIds: ['N1'], conversation: { id: 'chat-overview', scope: 'project' } };
+  const result = buildCoordinatorContext(snapshot, options);
+  assert.match(result.text, /TODO 1 条，Bug 2 条/);
+  assert.match(result.text, /TODO｜Reader \[N1\]｜Return to top（pending）/);
+  assert.match(result.text, /Bug｜Reader \[N1\]｜Broken query（open）/);
+  assert.match(result.text, /Needs human review（fixed）/);
+  assert.match(result.text, /不是执行阶段或完成证据/);
+  assert.doesNotMatch(result.text, /Private root item|Private sibling item|Private child item|Finished TODO|Finished Bug|Unneeded long requirement/);
+  assert.doesNotMatch(buildCoordinatorContext(snapshot, { ...options,
+    conversation: { id: 'item-only', nodeId: 'N1', itemId: 'pending', kind: 'todo' } }).text, /未完成事项概览|Broken query/);
+  snapshot.memory.map.root.children[0].todos[0].status = 'done';
+  assert.match(buildCoordinatorContext(snapshot, options).text, /TODO 0 条，Bug 2 条/);
+  snapshot.memory.map.root.children[0].todos = Array.from({ length: 25 }, (_, i) => ({ id: `TD${i}`, title: `Task ${i}`, status: 'pending' }));
+  const bounded = buildCoordinatorContext(snapshot, options);
+  assert.match(bounded.text, /TODO 25 条，Bug 2 条/);
+  assert.match(bounded.text, /另有 7 条未展开；需要完整清单时调用 list_tasks/);
+  assert.doesNotMatch(bounded.text, /Task 20/);
+  assert.equal((bounded.text.match(/^- TODO｜/gm) || []).length, 20);
+});
+
 test('Coordinator loads project memory before dialogue and one relevant node document on focus', () => {
   const snapshot = { version: 'main-memory-1', memory: { map: { root: {
     id: 'T0', title: '实验博客', purpose: '验证博客', memoryDocument: '# 实验博客 · 项目记忆\n\n## 目标\n\n实验不得发布生产。',
@@ -1086,6 +1117,106 @@ test('Completed tool turns retain previously shown text and structured actions',
   assert.equal(assistant[0].text, '我先找到了节点。');
   assert.deepEqual(assistant[0].actions[0].nodes, [{ id: 'N1', title: '阅读' }]);
   assert.equal(assistant[1].text, '推荐阅读节点。');
+});
+
+test('Private turn metrics separate model rounds and tools without changing public state or replaying receipts', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-turn-metrics-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  let calls = 0, executions = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [{ name: 'probe' }],
+    execute: async () => { executions++; return { privateResult: 'not-in-metrics' }; },
+    model: { next: async ({ onText }) => {
+      if (++calls === 1) return { stop: 'tool_use', usage: { input_tokens: 40, cache_read_input_tokens: 200 },
+        content: [{ type: 'tool_use', id: 'probe', name: 'probe', input: { privateInput: 'not-in-metrics' } }] };
+      await onText('已读取。');
+      return { stop: 'end_turn', content: [{ type: 'text', text: '已读取。' }], usage: { input_tokens: 50, cache_read_input_tokens: 300 } };
+    } } });
+  await service.submit({ id: 'measured-turn', text: 'private-request-not-in-metrics' }); await service.close();
+  const file = path.join(directory, 'conversation.json');
+  const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(raw.performance.turnId, 'measured-turn');
+  assert.equal(raw.performance.models.length, 2);
+  assert.deepEqual(raw.performance.models.map(x => [x.stop, x.inputTokens, x.cacheReadTokens]),
+    [['tool_use', 240, 200], ['end_turn', 350, 300]]);
+  assert.equal(raw.performance.models[0].firstTextMs, null);
+  assert.ok(raw.performance.models[1].firstTextMs >= 0);
+  for (const timing of raw.performance.models) assert.ok(Number.isSafeInteger(timing.durationMs) && timing.durationMs >= 0);
+  assert.equal(raw.performance.tools.length, 1);
+  assert.equal(raw.performance.tools[0].name, 'probe');
+  assert.equal(executions, 1);
+  assert.doesNotMatch(JSON.stringify(raw.performance), /privateInput|privateResult|private-request|not-in-metrics/);
+  assert.equal((await service.state()).performance, undefined);
+  const resumed = structuredClone(raw);
+  resumed.activeTurnId = 'measured-turn';
+  resumed.pending = { stop: 'tool_use', content: [{ type: 'tool_use', id: 'probe', name: 'probe', input: { privateInput: 'not-in-metrics' } }] };
+  await coordinatorStep({ turnId: 'measured-turn', state: resumed, model: { next: () => assert.fail('Pending response must not call model') },
+    system: 'Coordinator', tools: [{ name: 'probe' }], save: async () => {}, execute: () => assert.fail('Receipt must not rerun tool') });
+  assert.equal(resumed.performance.models.length, 2);
+  assert.equal(resumed.performance.tools.length, 1);
+  const fresh = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    model: { next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: '新轮次。' }] }) } });
+  await fresh.submit({ id: 'fresh-turn', text: '下一轮' }); await fresh.close();
+  const freshRaw = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(freshRaw.performance.turnId, 'fresh-turn');
+  assert.equal(freshRaw.performance.models.length, 1);
+  assert.equal(freshRaw.performance.tools.length, 0);
+  assert.ok(freshRaw.messages.length > raw.messages.length, 'Metrics reset without deleting conversation history');
+});
+
+test('Private model metrics retain failed attempts without copying exception text', async () => {
+  const state = { activeTurnId: 'failed', messages: [], toolReceipts: {} };
+  await assert.rejects(coordinatorStep({ turnId: 'failed', state, system: 'role', tools: [], save: async () => {}, execute: async () => {},
+    model: { next: async () => { throw Object.assign(new Error('private-provider-body'), { code: 'MODEL_TIMEOUT' }); } } }), { code: 'MODEL_TIMEOUT' });
+  assert.equal(state.performance.models.length, 1);
+  assert.equal(state.performance.models[0].errorCode, 'MODEL_TIMEOUT');
+  assert.doesNotMatch(JSON.stringify(state.performance), /private-provider-body/);
+});
+
+test('Private timing persists failures and resumes pending tools with their original operation ID', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-timing-recovery-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'conversation.json');
+  const failedModel = new CoordinatorService({ directory, system: 'role', tools: [], execute: async () => {}, maxModelRetries: 0,
+    model: { next: async () => { throw Object.assign(new Error('private-provider-failure'), { code: 'MODEL_TIMEOUT' }); } } });
+  await failedModel.submit({ id: 'model-recovery', text: 'Retry safely' }); await failedModel.close();
+  const failed = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(failed.status, 'error');
+  assert.equal(failed.performance.models[0].errorCode, 'MODEL_TIMEOUT');
+  const resumedModel = new CoordinatorService({ directory, system: 'role', tools: [], execute: async () => {}, retryDelayMs: 0,
+    model: { next: async () => ({ stop: 'end_turn', content: [{ type: 'text', text: 'Recovered' }] }) } });
+  resumedModel.kick(); await resumedModel.close();
+  const recovered = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(recovered.status, 'waiting-for-user');
+  assert.equal(recovered.performance.models.length, 2);
+  assert.equal(recovered.messages.filter(m => m.role === 'user').length, 1);
+  assert.doesNotMatch(JSON.stringify(recovered.performance), /private-provider-failure/);
+
+  let modelCalls = 0, executions = 0;
+  const operations = [];
+  const successfulEffects = new Set();
+  const options = { directory, system: 'role', tools: [{ name: 'probe' }],
+    execute: async (_name, _input, { operationId }) => {
+      operations.push(operationId); successfulEffects.add(operationId);
+      if (++executions === 1) throw Object.assign(new Error('private-tool-failure'), { code: 'TOOL_UNAVAILABLE' });
+      return { replayed: true };
+    }, model: { next: async () => ++modelCalls === 1
+      ? { stop: 'tool_use', content: [{ type: 'tool_use', id: 'original-probe', name: 'probe', input: {} }] }
+      : { stop: 'end_turn', content: [{ type: 'text', text: 'Tool recovered' }] } } };
+  const firstTool = new CoordinatorService(options);
+  await firstTool.submit({ id: 'tool-recovery', text: 'Use original receipt' }); await firstTool.close();
+  const toolFailure = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(toolFailure.performance.tools[0].errorCode, 'TOOL_UNAVAILABLE');
+  assert.ok(toolFailure.pending, 'Unknown tool result stays pending');
+  const restoredTool = new CoordinatorService(options);
+  await restoredTool.submit({ id: 'tool-recovery', text: 'Use original receipt', retry: true }); await restoredTool.close();
+  const toolRecovered = JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.equal(toolRecovered.status, 'waiting-for-user');
+  assert.equal(modelCalls, 2, 'Pending response is not requested from the model again');
+  assert.equal(successfulEffects.size, 1);
+  assert.equal(operations[0], operations[1]);
+  assert.equal(toolRecovered.performance.models.length, 2);
+  assert.equal(toolRecovered.performance.tools.length, 2);
+  assert.doesNotMatch(JSON.stringify(toolRecovered.performance), /private-tool-failure/);
 });
 
 test('Coordinator keeps streamed text visible while its next model call is pending', async t => {

@@ -18,7 +18,7 @@ const browserCredential = 'fixture-browser-credential';
 const headers = { Authorization: `Bearer ${browserCredential}`, 'Content-Type': 'application/json' };
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';
 
-async function fixture(t, { enabled = true, visionProvider } = {}) {
+async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes = [] } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-slack-cloud-'));
   let cloud;
   const held = new Set();
@@ -29,14 +29,14 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
   const visionProviderFile = path.join(directory, 'vision-provider.json');
   if (visionProvider) await fs.writeFile(visionProviderFile, JSON.stringify({ token: 'synthetic', baseUrl: 'https://fixture.invalid', ...visionProvider }));
   const projects = Object.fromEntries([projectId, otherProjectId].map(id => [id, { root: directory, ref: 'refs/heads/main',
-    coordinator: { enabled: true, providerFile, bindings: {}, mapWrite: true } }]));
+    coordinator: { enabled: true, providerFile, bindings: {}, mapWrite: true, ...(nodeIds ? { nodeIds } : {}) } }]));
   const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'fixture-memory-credential', projects };
   await fs.writeFile(path.join(directory, 'projects.json'), JSON.stringify({ v: 2, projects: [projectId, otherProjectId].map(id => ({ id, name: id, description: 'Isolated synthetic project' })) }));
   for (const id of Object.keys(projects)) {
     const file = legacyProjectMemoryFile(memoryConfig.dataDir, id);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify({ revision: 1, main: { version: 'main-initial', memory: { records: {}, map: {
-      project: 'Fixture', root: { id: 'T0', title: 'Fixture', kind: 'module', state: 'dirty', owns: ['src/'], memoryDocument: 'Current project facts', children: [],
+      project: 'Fixture', root: { id: 'T0', title: 'Fixture', kind: 'module', state: 'dirty', owns: ['src/'], memoryDocument: 'Current project facts', children: childNodes,
         todos: [{ id: 'TD-old', title: 'Existing original TODO', status: 'pending', createdAt: 'original-todo' }],
         bugs: [{ id: 'B1', title: 'Existing original Bug', status: 'open', createdAt: 'original-bug', attempts: [{ status: 'Confirmed', cause: 'Token expired' }] }] },
     } } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
@@ -56,6 +56,7 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
           ? 'not a decision' : JSON.stringify({ respond: input.message.text === '登录刷新 Bug，请分析。', reason: 'Controlled decision' }) }] };
       }
       const message = request.messages.at(-1), text = typeof message?.content === 'string' ? message.content : '';
+      if (text === 'list-scoped-tasks') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'list-scoped', name: 'list_tasks', input: {} }] };
       if (message?.role === 'user' && text === 'failure-then-browser-retry' && !failedTurns.has(text)) {
         failedTurns.add(text); throw Object.assign(new Error('Controlled provider failure'), { code: 'FIXTURE_PROVIDER_FAILURE' });
       }
@@ -121,6 +122,20 @@ test('Cloud integration listener is disabled by default and plugin credentials c
   assert.equal((await enabled.browser('main', { authorization: integrationCredential })).status, 401);
   const projects = await enabled.gateway('project.list');
   assert.equal(projects.status, 200); assert.deepEqual(projects.body.data.projects.map(item => item.id).sort(), [projectId, otherProjectId].sort());
+});
+
+test('list_tasks uses the same exact node scope as reads, not inherited access to children', async t => {
+  const f = await fixture(t, { nodeIds: ['T0'], childNodes: [{ id: 'N-private', title: 'Unassigned child', children: [],
+    todos: [{ id: 'TD-private', title: 'Unassigned child TODO', status: 'pending' }],
+    bugs: [{ id: 'B-private', title: 'Unassigned child Bug', status: 'open' }] }] });
+  const conversation = await f.newConversation('scope-list-chat');
+  assert.equal((await f.gateway('conversation.submit', { text: 'list-scoped-tasks' }, { id: 'scope-list-turn', conversationId: conversation })).status, 200);
+  await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
+  const reply = f.modelCalls.at(-1).messages.at(-1).content.find(block => block.type === 'tool_result');
+  const result = JSON.parse(reply.content);
+  assert.ok(JSON.stringify(result).includes('Existing original TODO'));
+  assert.ok(JSON.stringify(result).includes('Existing original Bug'));
+  assert.doesNotMatch(JSON.stringify(result), /TD-private|B-private|Unassigned child/);
 });
 
 test('relevance endpoint reads current Main but never creates conversations, work items or execution state', async t => {
