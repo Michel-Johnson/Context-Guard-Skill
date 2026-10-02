@@ -65,6 +65,8 @@ Context Guard
 
 CLI 负责写和状态变化。
 
+Cloud 的 `POST /api/v2/coordinator-tools` 复用当前对话启用的工具名单。外部 device/coordinator 凭据只能操作同时获项目 Coordinator 与调用者授权的执行 Session；列表也按调用者权限过滤，节点访问保留调用者的 `nodeIds` 限制。对话禁用的工具返回 `FORBIDDEN`，不读取任务或产生执行副作用。
+
 | Domain | 接口 | Caller | 动作 |
 | --- | --- | --- | --- |
 | map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点，也可按 Main 版本更新项目或节点记忆文档。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
