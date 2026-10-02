@@ -155,5 +155,6 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | memory | `getMainMemory` `getSessionMemory` `updateMemory` | |
 | memory | `getMemoryFile` | 按 Main/Session 和版本读取单个文件，包括项目或节点 `memory.md`；版本变化时返回冲突 |
 | memory | 恢复 Main | 只保留最近 5 个 Main 版本。更早的版本自动删除 |
+| integration | 消息相关性判断 | 在已开放项目内根据消息、有限线程上下文及项目概览判断是否需要 Coordinator 回应；不创建对话、不写 Map、不调用业务工具。无关消息保持安静，判断失败不得当作相关。决定带原消息 ID 与所读 Main 版本；插件持久保存后按原 ID 重试 |
 | recovery | `retrySync` `recoverSession` | 保留原事项、Session 与消息 ID；明确未执行的失败可重试，结果未知先核对；失败可见，不把排队或接收显示为完成 |
 | heartbeat | `heartbeat` `getPresence` | |

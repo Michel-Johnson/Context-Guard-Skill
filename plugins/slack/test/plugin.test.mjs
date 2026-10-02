@@ -41,6 +41,7 @@ async function fixture(t) {
     if (type === 'conversation.create') return { conversationId: `chat-${args.payload.operationId}` };
     if (type === 'conversation.bind') return { conversationId: args.payload.conversationId };
     if (type === 'conversation.state') return { status: 'idle', messages: [], approvals: [] };
+    if (type === 'conversation.relevance') return { respond: true, reason: 'Controlled relevant message', mainVersion: 'v1' };
     if (type === 'attachment.upload') return { id: 'attachment-1' };
     if (type === 'prompt.read') return { text: 'execute login', filename: 'prompt.md' };
     return { accepted: true };
@@ -88,6 +89,188 @@ test('tracked replies reuse conversation, new roots have independent conversatio
   await f.plugin.message('E3', event({ ts: '124.001' }));
   assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 2);
   const submits = f.calls.filter(call => call.type === 'conversation.submit'); assert.equal(submits[0].conversationId, submits[1].conversationId); assert.notEqual(submits[1].conversationId, submits[2].conversationId);
+});
+test('related unmentioned message is classified before creating its conversation', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  await f.plugin.message('related-root', event({ text: '登录模块刷新 token 有 Bug，请分析。' }));
+  assert.deepEqual(f.calls.map(call => call.type), ['conversation.relevance', 'conversation.create', 'conversation.submit']);
+  const decision = f.store.data.inbox['related-root'].relevance;
+  assert.equal(decision.respond, true); assert.equal(decision.mainVersion, 'v1'); assert.equal(decision.projectId, 'lab');
+  assert.equal(f.calls[0].conversationId, undefined);
+});
+test('unrelated roots and replies to other people are silent, with no attachment upload or business writes', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  await f.plugin.message('seed', event()); f.calls.length = 0; f.sent.length = 0;
+  const original = f.gateway.command;
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.relevance') { f.calls.push({ type, ...input }); return { respond: false, reason: 'Addressed to another person', mainVersion: 'v1' }; }
+    return original(type, input);
+  };
+  f.io.download = async () => { assert.fail('An unrelated attachment must not be downloaded'); };
+  await f.plugin.message('unrelated-root', event({ ts: '999.001', text: '午饭去哪吃？', files: [{ name: 'food.png', mimetype: 'image/png' }] }));
+  await f.plugin.message('unrelated-reply', event({ ts: '123.002', thread_ts: '123.001', text: '<@UOTHER> 中午去哪吃饭？' }));
+  assert.deepEqual(f.calls.map(call => call.type), ['conversation.relevance', 'conversation.relevance']);
+  assert.equal(f.sent.some(call => !call.method || call.method !== 'conversations.replies'), false);
+  assert.equal(Object.keys(f.store.data.threads).length, 1);
+});
+test('relevance failure is recorded privately and cannot start a turn or spam a channel', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  f.gateway.command = async () => { throw Object.assign(new Error('Controlled classification failure'), { code: 'MODEL_TIMEOUT' }); };
+  const envelope = { type: 'events_api', body: { event: event({ text: '相关吗？' }) } };
+  await f.store.receive('failed-relevance', envelope);
+  await f.plugin.runEntry('failed-relevance', f.store.data.inbox['failed-relevance']);
+  assert.equal(f.store.data.inbox['failed-relevance'].status, 'attention');
+  assert.equal(f.store.data.inbox['failed-relevance'].error, 'MODEL_TIMEOUT');
+  assert.equal(f.sent.length, 0); assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('relevance request is durable before calling the gateway and replays unchanged after thread edits', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const original = f.gateway.command; let unavailable = true, contextReads = 0;
+  f.io.call = async method => method === 'conversations.replies' ? { messages: [{ ts: '122.001', user, text: `Original context ${++contextReads}` }] } : {};
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.relevance' && unavailable) {
+      unavailable = false;
+      const disk = JSON.parse(await fs.readFile(f.store.file, 'utf8'));
+      assert.deepEqual(disk.inbox.replay.relevanceRequest, input);
+      f.calls.push({ type, ...input }); throw Object.assign(new Error('Unavailable'), { code: 'BUSY' });
+    }
+    return original(type, input);
+  };
+  const message = event({ thread_ts: '122.001', text: '登录 Bug 怎么办？' });
+  await f.store.receive('replay', { type: 'events_api', body: { event: message } });
+  await f.plugin.runEntry('replay', f.store.data.inbox.replay);
+  assert.equal(f.store.data.inbox.replay.status, 'pending');
+  await f.plugin.runEntry('replay', f.store.data.inbox.replay);
+  assert.equal(contextReads, 1);
+  const judgments = f.calls.filter(call => call.type === 'conversation.relevance');
+  assert.deepEqual(judgments[0], judgments[1]);
+  assert.equal(f.calls.filter(call => call.type === 'conversation.submit').length, 1);
+});
+test('restart after relevant decision reuses it and does not classify or create twice', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const original = f.gateway.command; let busy = true;
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.submit' && busy) { busy = false; throw Object.assign(new Error('Busy'), { code: 'BUSY' }); }
+    return original(type, input);
+  };
+  await f.store.receive('restart', { type: 'events_api', body: { event: event({ text: '登录刷新失败，需要分析。' }) } });
+  await f.plugin.runEntry('restart', f.store.data.inbox.restart);
+  const reopened = await new Store(f.directory).open();
+  const restarted = new SlackPlugin({ store: reopened, gateway: f.gateway, io: f.io, teamId, botUserId: bot,
+    cloudOrigin: 'https://map.example.com', logger: { warn() {}, error() {} } });
+  await restarted.runEntry('restart', reopened.data.inbox.restart);
+  assert.equal(reopened.data.inbox.restart.status, 'done');
+  assert.equal(f.calls.filter(call => call.type === 'conversation.relevance').length, 1);
+  assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 1);
+});
+test('channel rebind cannot redirect a saved relevance request to another project', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  f.gateway.command = async () => { throw Object.assign(new Error('Busy'), { code: 'BUSY' }); };
+  await f.store.receive('rebind', { type: 'events_api', body: { event: event({ text: '登录刷新失败' }) } });
+  await f.plugin.runEntry('rebind', f.store.data.inbox.rebind);
+  await f.store.update(state => { state.channels[channel] = 'other'; });
+  await f.plugin.runEntry('rebind', f.store.data.inbox.rebind);
+  assert.equal(f.store.data.inbox.rebind.error, 'CONFLICT'); assert.equal(f.sent.length, 0);
+  assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('channel rebind during the relevance model call cannot create or submit in the new project', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const original = f.gateway.command; let release, entered;
+  const began = new Promise(resolve => { entered = resolve; });
+  const held = new Promise(resolve => { release = resolve; });
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.relevance') { entered(); await held; }
+    return original(type, input);
+  };
+  const pending = f.plugin.message('inflight-rebind', event({ text: '登录 Bug 需要分析。' }));
+  await began;
+  await f.store.update(state => { state.channels[channel] = 'other'; });
+  release();
+  await assert.rejects(pending, error => error.code === 'CONFLICT' && error.silent === true);
+  assert.deepEqual(f.calls.map(call => call.type), ['conversation.relevance']);
+  assert.equal(Object.keys(f.store.data.threads).length, 0); assert.equal(f.sent.length, 0);
+});
+test('long thread relevance reads the latest six preceding messages, not the earliest page', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const reads = [];
+  f.io.call = async (method, input) => {
+    if (method !== 'conversations.replies') return {};
+    reads.push(input); assert.equal(input.latest, '300.001'); assert.equal(input.inclusive, false);
+    return !input.cursor ? { has_more: true, response_metadata: { next_cursor: 'page-2' },
+      messages: Array.from({ length: 100 }, (_, index) => ({ ts: `${100 + index}.001`, user, text: `Earlier ${index}` })) }
+      : { messages: [...Array.from({ length: 6 }, (_, index) => ({ ts: `${200 + index}.001`, user, text: `Recent ${index}` })),
+        { ts: '300.001', user, text: 'Current message' }, { ts: '350.001', user, text: 'Future message' }] };
+  };
+  await f.plugin.message('long-thread', event({ ts: '300.001', thread_ts: '100.001', text: '接着讨论登录 Bug。' }));
+  assert.equal(reads.length, 2); assert.equal(reads[1].cursor, 'page-2');
+  assert.deepEqual(f.calls.find(call => call.type === 'conversation.relevance').payload.context.map(item => item.text),
+    Array.from({ length: 6 }, (_, index) => `Recent ${index}`));
+});
+test('incomplete or looping thread pagination cannot feed stale context to the model', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  let count = 0;
+  f.io.call = async () => { count++; return { has_more: true, response_metadata: { next_cursor: 'same-cursor' }, messages: [{ ts: '120.001', user, text: 'Stale context' }] }; };
+  await f.store.receive('incomplete-context', { type: 'events_api', body: { event: event({ thread_ts: '120.001', text: '这个怎么办？' }) } });
+  await f.plugin.runEntry('incomplete-context', f.store.data.inbox['incomplete-context']);
+  assert.equal(count, 2); assert.equal(f.store.data.inbox['incomplete-context'].error, 'RELEVANCE_CONTEXT_INCOMPLETE');
+  assert.equal(f.calls.length, 0); assert.equal(f.sent.length, 0); assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('slow overheard classifiers cannot block explicit messages or conversation mirroring', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const original = f.gateway.command; let release, classifications = 0;
+  const held = new Promise(resolve => { release = resolve; });
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.relevance') { classifications++; await held; }
+    return original(type, input);
+  };
+  for (let index = 0; index < 3; index++) await f.store.receive(`indirect-${index}`, { type: 'events_api', body: {
+    event: event({ ts: `150.00${index}`, text: '登录 Bug 请分析。' }) } });
+  await f.store.receive('explicit-priority', { type: 'events_api', body: { event: event({ ts: '160.001', text: `<@${bot}> direct` }) } });
+  f.plugin.stopped = false;
+  try {
+    await f.plugin.tick();
+    assert.equal(classifications, 2); assert.equal(f.plugin.classifying.size, 2);
+    assert.equal(f.store.data.inbox['explicit-priority'].status, 'done');
+    assert.equal(f.store.data.inbox['indirect-2'].status, 'pending');
+    assert.ok(f.calls.some(call => call.type === 'conversation.submit' && call.payload.text === 'direct'));
+    assert.ok(f.calls.some(call => call.type === 'conversation.state'));
+  } finally {
+    const stopping = f.plugin.stop(); release(); await stopping;
+  }
+  assert.equal(f.plugin.classifying.size, 0); assert.equal(f.plugin.processing.size, 0);
+});
+test('same-thread corrections and explicit replies cannot overtake an earlier classification or BUSY retry', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  await f.plugin.message('seed', event());
+  const original = f.gateway.command; let release, busy = true, judgments = 0;
+  const held = new Promise(resolve => { release = resolve; }), submitted = [];
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.relevance') { judgments++; if (input.payload.text === '原需求') await held; }
+    if (type === 'conversation.submit') {
+      if (input.payload.text === '原需求' && busy) { busy = false; throw Object.assign(new Error('Busy'), { code: 'BUSY' }); }
+      submitted.push(input.payload.text);
+    }
+    return original(type, input);
+  };
+  for (const [id, ts, text] of [['first', '123.002', '原需求'], ['correction', '123.003', '修正'], ['explicit', '123.004', `<@${bot}> 最后确认`]]) {
+    await f.store.receive(id, { type: 'events_api', body: { event: event({ ts, text, thread_ts: '123.001' }) } });
+  }
+  // Manually advance cycles while retaining the real journal and runEntry.
+  f.plugin.kick = () => {}; f.plugin.stopped = false;
+  try {
+    await f.plugin.tick(); const first = f.plugin.processing.get('first');
+    assert.equal(judgments, 1); assert.deepEqual(submitted, []);
+    release(); await first;
+    assert.equal(f.store.data.inbox.first.status, 'pending');
+    await f.plugin.tick(); assert.equal(judgments, 1); assert.deepEqual(submitted, []);
+    await f.store.update(state => { state.inbox.first.next = 0; });
+    await f.plugin.tick(); await Promise.all([...f.plugin.processing.values()]);
+    assert.deepEqual(submitted, ['原需求']);
+    await f.plugin.tick(); await Promise.all([...f.plugin.processing.values()]);
+    assert.deepEqual(submitted, ['原需求', '修正']);
+    await f.plugin.tick(); assert.deepEqual(submitted, ['原需求', '修正', '最后确认']);
+  } finally { release(); await f.plugin.stop(); }
+  assert.equal(f.plugin.messageLanes.size, 0);
 });
 test('DM requires explicit project selection and immutable thread cannot be rebound', async t => {
   const f = await fixture(t); await f.plugin.message('E1', event({ channel: 'D000001', text: 'hello' })); assert.equal(f.calls.length, 0); assert.match(f.sent[0].text, /选择项目/);
