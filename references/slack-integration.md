@@ -43,7 +43,7 @@
 | `conversation.create` / `conversation.bind` | 创建人工执行对话 / 关联无活动自动执行工作的对话；关联后项目及执行模式不变 |
 | `conversation.state` / `conversation.submit` | 公共消息、问题、审批及状态 / 提交文本、附件、问题答案或原 ID 重试 |
 | `conversation.relevance` | `text`（最多 10000 字符）、`context`（最多 6 条 `{speaker,text}`，每条文本 800 字符）、`files`（最多 6 个 `{name,mimeType}`）；可不带对话 ID。返回 `{respond,reason,mainVersion}`，网关按原 ID 保存判断回执；不创建对话、不写 Map、不调用业务工具 |
-| `map.write` | `baseVersion`、`operations`；复用 Main 事务校验，新 TODO/Bug 显式标记人工执行 |
+| `map.write` | `baseVersion`、`operations`；复用 Main 事务校验，新 TODO/Bug 显式标记人工执行，包含数组、直接 Bug 操作和未归属 Bug；后续编辑必须保留已有人工执行标记，拒绝时不写 Main 或事件 |
 | `brief.review` | `proposalId`、`version`、`decision`、`reason`；指定版本确认或拒绝；确认不调用派发器 |
 | `prompt.read` | `proposalId`；读取已批准 brief 的完整执行提示 |
 | `attachment.upload` / `attachment.read` | filename、MIME、base64 / 项目隔离的附件引用及原文；不接受任意磁盘路径 |
