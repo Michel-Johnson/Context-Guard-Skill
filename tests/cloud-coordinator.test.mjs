@@ -2081,10 +2081,24 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
     id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
   } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  const store = new ProtocolStore(path.join(directory, 'interface-v2', createHash('sha256').update('123').digest('hex')));
+  const owner = { repositoryId: '123', deviceId: 'owner-device', agentId: 'owner-agent', role: 'executor' };
+  const bound = await store.handle(owner, { v: 2, id: 'seed-session', type: 'session.bind', payload: {
+    sessionId: 'template', worktreeId: 'template-tree', agentId: owner.agentId, expectedBindingVersion: '',
+  } }, { verifyBinding: async () => true });
+  const session = bound.data.session;
+  const granted = { ...owner, role: 'coordinator', bindings: { template: 'template-tree' } };
+  await store.handle(granted, { v: 2, id: 'seed-brief', type: 'brief.submit', session,
+    payload: { taskId: 'existing-task', text: 'Existing execution' } });
+  await store.transaction(state => { for (const task of Object.values(state.tasks)) task.stage = 'assigned'; });
+  const manualConversation = await new CoordinatorConversations(path.join(directory, 'coordinators', projectId))
+    .createChat('external-manual', { executionMode: 'manual' });
   server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
     browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
     protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab', clients: {
       executor: { deviceId: 'exec-device', agentId: 'exec-agent', role: 'executor' },
+      restricted: { deviceId: 'limited-device', agentId: 'limited-agent', role: 'coordinator', bindings: {}, nodeIds: [] },
+      granted: { deviceId: 'granted-device', agentId: 'granted-agent', role: 'coordinator', bindings: { template: 'template-tree' } },
     } }] },
     coordinatorModelFactory: () => ({ next: async () => { throw new Error('external tool calls must not start a model turn'); } }),
   });
@@ -2097,6 +2111,7 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   };
   const deviceHeaders = await open('device');
   const executorHeaders = await open('executor');
+  const restrictedHeaders = await open('restricted'), grantedHeaders = await open('granted');
   const callTool = async (headers, body) => {
     const response = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json() };
@@ -2119,6 +2134,35 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   const sessions = await callTool(deviceHeaders, { operationId: 'external-sessions', name: 'list_sessions', input: {} });
   assert.equal(sessions.status, 200, JSON.stringify(sessions.body));
   assert.ok(Array.isArray(sessions.body.data.sessions));
+  assert.deepEqual(sessions.body.data.sessions, []); // This device does not own the seeded Session.
+  const permittedSessions = await callTool(grantedHeaders, { operationId: 'granted-sessions', name: 'list_sessions', input: {} });
+  assert.equal(permittedSessions.status, 200);
+  assert.deepEqual(permittedSessions.body.data.sessions.map(item => item.executionSessionId), ['template']);
+  const guidanceInput = { executionSessionId: 'template', taskId: 'existing-task', message: 'Continue existing execution' };
+  for (const authorization of [restrictedHeaders, deviceHeaders]) {
+    for (const name of ['guide_task', 'read_task']) {
+      const input = name === 'guide_task' ? guidanceInput : { executionSessionId: 'template', taskId: 'existing-task' };
+      const denied = await callTool(authorization, { operationId: `denied-${name}`, name, input });
+      assert.equal(denied.status, 403, JSON.stringify(denied.body));
+      assert.equal(denied.body.error.code, 'FORBIDDEN');
+    }
+  }
+  const deniedNode = await callTool(restrictedHeaders, { operationId: 'denied-root', name: 'read_map', input: {} });
+  assert.equal(deniedNode.status, 403, JSON.stringify(deniedNode.body));
+  const deniedEdit = await callTool(restrictedHeaders, { operationId: 'denied-edit', name: 'edit_map', input: {
+    mainVersion: memory.main.version, actions: [{ op: 'update', id: 'T0', title: 'Unauthorized' }],
+  } });
+  assert.equal(deniedEdit.status, 403, JSON.stringify(deniedEdit.body));
+  assert.equal((await readMemoryView(memoryConfig, projectId)).main.version, memory.main.version);
+  const guided = await callTool(grantedHeaders, { operationId: 'granted-guidance', name: 'guide_task', input: guidanceInput });
+  assert.equal(guided.status, 200, JSON.stringify(guided.body));
+  assert.ok(guided.body.data.notificationId);
+  for (const name of ['guide_task', 'resume_task']) {
+    const input = name === 'guide_task' ? guidanceInput : { executionSessionId: 'template', taskId: 'existing-task', reason: 'Resume' };
+    const denied = await callTool(grantedHeaders, { operationId: `manual-${name}`, conversationId: manualConversation, name, input });
+    assert.equal(denied.status, 403, JSON.stringify(denied.body));
+    assert.match(denied.body.error.message, /not enabled/);
+  }
   const forbidden = await callTool(executorHeaders, { operationId: 'executor-list', name: 'list_tasks', input: {} });
   assert.equal(forbidden.status, 403);
   assert.equal(forbidden.body.error.code, 'FORBIDDEN');

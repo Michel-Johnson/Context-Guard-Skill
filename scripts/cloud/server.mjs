@@ -647,7 +647,58 @@ export async function startCloudServer({
           return { id, generation: binding.generation };
         };
         const references = new Set(coordinatorReferences);
+        const tools = selectCoordinatorTools(manual ? filterManualTools(coordinatorTools) : coordinatorTools, { fileWrite: config.fileWrite === true });
+        const callerBinding = async (caller, id) => {
+          try { return await store.registeredBinding(caller, id); }
+          catch (error) { if (error.code === 'FORBIDDEN') return null; throw error; }
+        };
+        const executionPrincipal = async (caller, id) => {
+          if (!caller) return principal;
+          const binding = await store.registeredBinding(caller, id);
+          if (!binding) protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+          // Device credentials may delegate Coordinator actions only to their
+          // own current worktree. ProtocolStore rechecks this grant on commit.
+          return caller.role === 'device' ? { ...caller, role: 'coordinator', bindings: { [id]: binding.worktreeId } } : caller;
+        };
         const execute = createCoordinatorExecutor({
+          authorizeTool: async (name, input, { caller }) => {
+            if (!tools.some(tool => tool.name === name)) protocolFail('FORBIDDEN', 'Tool is not enabled for this conversation');
+            if (!caller) return;
+            if (input.executionSessionId && !await callerBinding(caller, input.executionSessionId)) {
+              protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+            }
+            if (Array.isArray(caller.nodeIds)) {
+              const ids = [input.nodeId, input.parentId, ...(input.nodeIds || []),
+                ...((input.actions || []).flatMap(action => [action.op === 'create' ? null : action.nodeId || action.id, action.parentId]))].filter(Boolean);
+              if (name === 'read_map' && !input.nodeId) ids.push((await readMemoryProject(configuredMemory, project.id)).main?.memory?.map?.root?.id);
+              if (name === 'prepare_task' && conversation.nodeId) ids.push(conversation.nodeId);
+              if (ids.some(id => !caller.nodeIds.includes(id))) protocolFail('FORBIDDEN', 'Requested Main node is not in the caller scope');
+            }
+          },
+          filterResult: async (name, result, { caller }) => {
+            if (!caller) return result;
+            const inScope = id => !Array.isArray(caller.nodeIds) || caller.nodeIds.includes(id);
+            if (name === 'list_sessions') {
+              const sessions = [];
+              for (const item of result.sessions) if (await callerBinding(caller, item.executionSessionId)) sessions.push(item);
+              return { ...result, sessions };
+            }
+            if (name === 'list_tasks') {
+              const tasks = [];
+              for (const item of result.tasks) if ((!item.nodeId || inScope(item.nodeId)) &&
+                (!item.executionSessionId || await callerBinding(caller, item.executionSessionId))) tasks.push(item);
+              return { ...result, tasks };
+            }
+            if (name === 'list_conversations') {
+              const visible = [];
+              for (const item of result.conversations) if ((!item.nodeId || inScope(item.nodeId)) &&
+                (!item.conversationId.startsWith('session:') || await callerBinding(caller, item.conversationId.slice(8)))) visible.push(item);
+              return { ...result, conversations: visible };
+            }
+            if (name === 'read_map' && Array.isArray(caller.nodeIds)) return { ...result,
+              node: { ...result.node, children: result.node.children.filter(item => inScope(item.id)) } };
+            return result;
+          },
           listSessions: async () => {
             const sessions = [];
             for (const id of await refreshBindings()) {
@@ -822,10 +873,11 @@ export async function startCloudServer({
           // Conversation ownership is a UI routing hint, not an authorization
           // boundary. Every Coordinator conversation uses the same project
           // identity and may operate on tasks in explicitly assigned Sessions.
-          readTask: async (id, taskId) => {
+          readTask: async (id, taskId, { caller } = {}) => {
             const session = await sessionFor(id);
+            const identity = await executionPrincipal(caller, id);
             const [task, delivery, publication] = await Promise.all([
-              store.taskRecord(principal, session, taskId), store.taskStatus(principal, session, taskId),
+              store.taskRecord(identity, session, taskId), store.taskStatus(identity, session, taskId),
               publicationState(project, `session:${id}`),
             ]);
             const { status, reason, sessionVersion, sourceCommit, mainSha, publishedAt } = publication;
@@ -843,16 +895,17 @@ export async function startCloudServer({
             receiptFile: path.join(dataDir, 'coordinators', project.id, 'file-writes.json'),
             operationId, relativePath: input.path, content: input.content, expectedSha: input.expectedSha,
           }),
-          exchange: async (sessionId, id, type, payload) => {
+          exchange: async (sessionId, id, type, payload, { caller } = {}) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
+            const identity = await executionPrincipal(caller, sessionId);
             if (type === 'brief.submit') {
-              const existing = (await store.workflowTasks(principal, message.session)).find(task => task.id === payload.taskId);
+              const existing = (await store.workflowTasks(identity, message.session)).find(task => task.id === payload.taskId);
               // Do not let a second conversation redefine an existing brief.
               // Later lifecycle operations remain available project-wide.
               if (existing && coordinatorTaskOwnerRequired(type)) await assertTaskOwner(sessionId, payload.taskId);
               await conversations.bind(conversationId, sessionId, payload.taskId);
             }
-            return (await store.handle(principal, message, { workflow: interfaceWorkflow })).data;
+            return (await store.handle(identity, message, { workflow: interfaceWorkflow })).data;
           },
         });
         const itemScoped = conversationId.startsWith('item-');
@@ -866,7 +919,7 @@ export async function startCloudServer({
         const visionProvider = integrations?.visionProviderFile ? await readJson(integrations.visionProviderFile) : null;
         if (visionProvider && visionProvider.model !== 'glm-5.3-flash') throw new MapError('INVALID_VISION_PROVIDER', 'Slack image turns require glm-5.3-flash', 503);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
-          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: selectCoordinatorTools(manual ? filterManualTools(coordinatorTools) : coordinatorTools, { fileWrite: config.fileWrite === true }), execute,
+          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools, execute,
           ...(visionProvider ? { visionModel: coordinatorModelFactory({ ...visionProvider, supportsImages: true }) } : {}),
           ...(integrationAttachments ? { resolveAttachment: (id, options) => integrationAttachments.resolve({ teamId: integrations.teamId, projectId: project.id, id, ...options }) } : {}),
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
@@ -1810,9 +1863,12 @@ export async function startCloudServer({
         const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
         const project = repository?.projectId && projectById(repository.projectId);
         if (!project) protocolFail('NOT_FOUND', 'Project is not configured');
+        if (conversationId.startsWith('session:') && !await interfaceStorage(principal).store.registeredBinding(principal, conversationId.slice(8))) {
+          protocolFail('FORBIDDEN', 'This Session is not assigned to the caller');
+        }
         const service = await coordinatorFor(project, conversationId);
         try {
-          const data = await service.execute(body.name, body.input, { operationId: body.operationId });
+          const data = await service.execute(body.name, body.input, { operationId: body.operationId, caller: principal });
           return send(res, 200, { ok: true, data });
         } catch (error) {
           if (error.status && error.code) throw error;

@@ -66,12 +66,14 @@ function validateInput(tool, input) {
 // ctx is constructed by the authenticated Cloud project, never from model input.
 // exchange must reuse ProtocolStore authorization and idempotency receipts.
 export function createCoordinatorExecutor(ctx) {
-  return async (name, input, { operationId }) => {
+  const execute = async (name, input, options) => {
+    const { operationId } = options;
     const tool = coordinatorTools.find(item => item.name === name);
     if (!tool) fail('Tool is not registered');
     if (name === 'read_reference' && typeof input?.name === 'string') input = { ...input,
       name: input.name.replace(/^references\//, '').replace(/\.md$/, '') + '.md' };
     validateInput(tool, input);
+    await ctx.authorizeTool?.(name, input, options);
     if (name === 'list_tasks') return ctx.listTasks();
     if (name === 'list_sessions') return ctx.listSessions();
     if (name === 'list_conversations') return ctx.listConversations();
@@ -96,9 +98,9 @@ export function createCoordinatorExecutor(ctx) {
       if (input.owns.some(value => value.startsWith('/') || value.includes('..') || value.includes('\\'))) fail('Node ownership must use repository-relative paths');
       return { kind: 'mount-proposal', proposalId: operationId, ...input, requiresHumanApproval: true };
     }
-    const exchange = (type, payload, suffix = '') => ctx.exchange(input.executionSessionId, operationId + suffix, type, payload);
+    const exchange = (type, payload, suffix = '') => ctx.exchange(input.executionSessionId, operationId + suffix, type, payload, options);
     if (name === 'read_object') return exchange('object.read', { ref: input.ref, version: input.version });
-    if (name === 'read_task') return ctx.readTask(input.executionSessionId, input.taskId);
+    if (name === 'read_task') return ctx.readTask(input.executionSessionId, input.taskId, options);
     if (name === 'prepare_task') {
       for (const id of input.nodeIds) if ((await ctx.readMap(id)).version !== input.mainVersion) fail('Main changed; re-confirm task routing');
       if (ctx.prepareProjectTask) {
@@ -112,7 +114,7 @@ export function createCoordinatorExecutor(ctx) {
       return { ...requested, sessionId: input.executionSessionId, taskId: input.taskId, text: input.text, acceptance: input.acceptance,
         nodeIds: input.nodeIds, mainVersion: input.mainVersion, brief, requiresHumanApproval: true };
     }
-    const current = await ctx.readTask(input.executionSessionId, input.taskId);
+    const current = await ctx.readTask(input.executionSessionId, input.taskId, options);
     if (name === 'guide_task') return exchange('task.message', { taskId: input.taskId, text: input.message,
       ...(current.plan ? { planRef: current.plan.ref, planVersion: current.plan.version } : {}) });
     if (name === 'resume_task') return exchange('task.control', { taskId: input.taskId, action: 'resume', expectedVersion: current.version,
@@ -147,5 +149,9 @@ export function createCoordinatorExecutor(ctx) {
         ...(current.stage === 'acceptance-rejected' ? { reason: current.acceptanceReview.reason } : {}) });
     }
     fail('Tool is not implemented');
+  };
+  return async (name, input, options) => {
+    const result = await execute(name, input, options);
+    return ctx.filterResult ? ctx.filterResult(name, result, options) : result;
   };
 }
