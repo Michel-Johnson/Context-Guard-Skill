@@ -612,7 +612,9 @@ export class CoordinatorService {
           state.activeTiming ||= {};
           state.activeTiming.modelStartedAt ||= new Date().toISOString();
           await save(state);
-          const runtimeSystem = this.system + (state.activeContext?.text || '');
+          const runtimeSystem = this.system + (state.activeContext?.text || '') + (state.activeInput?.source === 'slack'
+            ? '\n\n本轮答复发往 Slack：使用纯文本，不用 Markdown 标题、星号、反引号或表格。普通聊天约 100 字、最多 200 字；直接回答当前问题，不加同义总结。清单只写短标题和必要状态，不主动展开路径、内部 ID 或历史；只问 TODO 就只列 TODO，不附 Bug。用户明确要完整报告或详细步骤时才扩展；完整 brief、执行提示与必要风险/确认不裁切。'
+            : '');
           try {
             const model = this.modelForTurn(state);
             await this.ensureVisualSummary(state, save);

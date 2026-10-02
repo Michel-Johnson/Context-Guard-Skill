@@ -1172,6 +1172,26 @@ test('Private model metrics retain failed attempts without copying exception tex
   assert.doesNotMatch(JSON.stringify(state.performance), /private-provider-body/);
 });
 
+test('Slack reply policy is supplied as system instructions without changing native tools or other sources', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-slack-reply-policy-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const calls = [];
+  const tools = [{ name: 'probe', input_schema: { type: 'object', properties: {} } }];
+  const service = new CoordinatorService({ directory, system: 'role', tools, context: async () => ({ text: '\nCurrent Main' }), execute: async () => {},
+    model: { next: async request => { calls.push(request); return { stop: 'end_turn', content: [{ type: 'text', text: '简短回复' }] }; } } });
+  await service.submit({ id: 'slack-query', text: '有哪些TODO' }, { source: 'slack', actor: {
+    kind: 'human', sessionId: 'slack-human', teamId: 'TTESTWORKSPACE', userId: 'UTESTUSER',
+  } });
+  await service.running;
+  assert.match(calls[0].system, /本轮答复发往 Slack：使用纯文本/);
+  assert.match(calls[0].system, /最多 200 字/);
+  assert.match(calls[0].system, /只问 TODO 就只列 TODO，不附 Bug/);
+  assert.deepEqual(calls[0].tools, tools, 'Delivery format does not replace JSON Schema tool definitions');
+  await service.submit({ id: 'browser-query', text: '浏览器接续' }); await service.close();
+  assert.equal(calls[1].system, 'role\nCurrent Main');
+  assert.ok(calls[1].messages.some(m => m.content === '有哪些TODO'), 'Cross-client history remains shared');
+});
+
 test('Private timing persists failures and resumes pending tools with their original operation ID', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-timing-recovery-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
