@@ -11,7 +11,7 @@ import { hash, readJSON } from '../scripts/shared/io.mjs';
 import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import { filterManualTools } from '../scripts/cloud/coordinator-manual.mjs';
 import { coordinatorStep } from '../scripts/cloud/coordinator-model.mjs';
-import { publicMessages } from '../scripts/cloud/coordinator-service.mjs';
+import { publicMessages, CoordinatorConversations } from '../scripts/cloud/coordinator-service.mjs';
 import { createCoordinatorExecutor } from '../scripts/cloud/coordinator-tools.mjs';
 import { SlackPlugin } from '../plugins/slack/src/plugin.mjs';
 import { Store, threadKey } from '../plugins/slack/src/store.mjs';
@@ -63,7 +63,7 @@ test('Native Coordinator read_map projection produces no empty Slack reply befor
     'Cloud tool provenance remains complete');
 });
 
-async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes = [] } = {}) {
+async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes = [], prepareInput } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-slack-cloud-'));
   let cloud;
   const held = new Set();
@@ -110,11 +110,17 @@ async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes 
         failedTurns.add(text); throw Object.assign(new Error('Controlled provider failure'), { code: 'FIXTURE_PROVIDER_FAILURE' });
       }
       if (message?.role === 'user' && text === 'hold-busy-turn') await new Promise(resolve => held.add(resolve));
-      if (message?.role === 'user' && text === 'mount-bug') {
+      if (message?.role === 'user' && ['mount-bug', 'mount-todo'].includes(text)) {
         const version = (await readMemoryView(memoryConfig, projectId)).main.version;
         return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'tool-mount-bug', name: 'mount_conversation', input: {
-          mainVersion: version, nodeId: 'T0', kind: 'bug', title: 'Mounted refresh failure', description: 'Expired tokens produce a reproducible renewal failure',
+          mainVersion: version, nodeId: 'T0', kind: text === 'mount-bug' ? 'bug' : 'todo', title: 'Mounted refresh failure', description: 'Expired tokens produce a reproducible renewal failure',
         } }] };
+      }
+      if (message?.role === 'user' && text === 'prepare-explicit-routing' && prepareInput) {
+        const version = (await readMemoryView(memoryConfig, projectId)).main.version;
+        return { stop:'tool_use',content:[{type:'tool_use',id:'tool-explicit-routing',name:'prepare_task',input:{
+          text:'Fix existing B1 only',acceptance:'Keep the requested item identity',nodeIds:['T0'],mainVersion:version,...prepareInput,
+        }}] };
       }
       if (message?.role === 'user' && /^prepare-(new|bug|stale)$/.test(text)) {
         const version = (await readMemoryView(memoryConfig, projectId)).main.version;
@@ -380,6 +386,30 @@ test('Stale brief confirmation fails without Main or Agent mutations after a con
     { id: 'stale-approval', conversationId: conversation });
   assert.equal(rejected.status, 409); assert.equal(rejected.body.error.code, 'VERSION_CONFLICT');
   const after = await f.main(); assert.equal(after.revision, changed.revision); assert.deepEqual(after.main.memory.map, changed.main.memory.map);
+  await assertNoDispatch(f);
+});
+
+for (const scenario of [
+  { name:'explicit Bug intent in a TODO-focused conversation', mount:'mount-todo', input:{taskId:'B1',kind:'bug'} },
+  { name:'explicit Bug intent in another Bug-focused conversation', mount:'mount-bug', input:{taskId:'B1',kind:'bug'} },
+  { name:'explicit other node in a Bug-focused conversation', mount:'mount-bug', input:{taskId:'B1',nodeId:'OTHER'} },
+  { name:'explicit TODO intent in a Bug-focused conversation', mount:'mount-bug', input:{taskId:'new-todo',kind:'todo'} },
+]) test(`Manual focus cannot replace ${scenario.name} when item identity is incomplete`, async t => {
+  const f = await fixture(t,{prepareInput:scenario.input}),conversation=await f.newConversation('partial-identity');
+  assert.equal((await f.gateway('conversation.submit',{text:scenario.mount},{id:'mount-focus',conversationId:conversation})).status,200);
+  const mounted=await f.wait(conversation,value=>value.status==='waiting-for-user'&&!value.activeTurnId&&value.acceptedRequestIds.includes('mount-focus'));
+  const focus=mounted.conversations.find(item=>item.id===conversation);
+  assert.ok(focus.itemId); assert.notEqual(focus.itemId,'B1','The current focus is not the Bug explicitly named by this request');
+  const before=await f.main();
+  assert.equal((await f.gateway('conversation.submit',{text:'prepare-explicit-routing'},{id:'partial-prepare',conversationId:conversation})).status,200);
+  const settled=await f.wait(conversation,value=>value.status==='waiting-for-user'&&!value.activeTurnId&&value.acceptedRequestIds.includes('partial-prepare'));
+  assert.equal(settled.approvals.filter(x=>x.manual).length,0,'No brief may silently adopt the focus instead of the explicit routing');
+  const registry=new CoordinatorConversations(path.join(f.directory,'coordinators',projectId));
+  const raw=await readJSON(registry.conversationFile(conversation));
+  const reply=raw.messages.flatMap(m=>Array.isArray(m.content)?m.content:[]).find(b=>b.type==='tool_result'&&b.tool_use_id==='tool-explicit-routing');
+  assert.equal(reply?.is_error,true);
+  assert.equal(JSON.parse(reply.content).error.code,'INVALID_ARGUMENT');
+  assert.deepEqual(await f.main(),before,'A failed proposal must not mutate any Main item');
   await assertNoDispatch(f);
 });
 

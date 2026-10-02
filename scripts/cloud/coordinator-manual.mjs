@@ -10,8 +10,11 @@ export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_
   if (tool.input_schema?.properties) {
     const properties = { ...tool.input_schema.properties };
     for (const [field, description] of [
-      ['taskId', 'Required task identifier; it does not set the saved Main item ID or title.'],
+      ['taskId', 'Required task identifier; it does not set the saved Main item ID or title and does not associate an existing TODO/Bug. To reuse an item, provide itemId, nodeId and kind.'],
       ['text', 'For a new TODO, the first line becomes the Main item title (up to 200 characters). Put the user-requested title there, followed by the complete requirements on subsequent lines. An existing TODO/Bug keeps its current title; do not claim this brief renames it.'],
+      ['itemId', 'To reuse an existing TODO/Bug, copy its exact Main item ID here and also provide nodeId and kind. Omit for a new TODO in a project conversation. An item-focused conversation may inherit its trusted item only when itemId, nodeId and kind are all omitted; partial routing is rejected.'],
+      ['nodeId', 'For an existing item, copy its owning Main node ID and include it in nodeIds. This is required with itemId.'],
+      ['kind', 'Existing item type: todo or bug. A bug brief requires itemId and nodeId; kind=bug alone must not create a TODO. New TODO briefs may omit this field.'],
     ]) if (properties[field]) properties[field] = { ...properties[field], description };
     result.input_schema = { ...tool.input_schema, properties };
   }
@@ -50,6 +53,7 @@ export function manualBriefInput(input) {
       new Set(input.nodeIds).size !== input.nodeIds.length || input.nodeId !== undefined && !identifier(input.nodeId) ||
       input.itemId !== undefined && !identifier(input.itemId) || input.kind !== undefined && !['todo', 'bug'].includes(input.kind)) fail('INVALID_ARGUMENT', 'Provide a brief, acceptance criteria, Main version and exact node IDs');
   if (input.itemId && (!input.nodeId || !input.kind)) fail('INVALID_ARGUMENT', 'An existing item requires its node and TODO/Bug kind');
+  if (input.kind === 'bug' && !input.itemId) fail('INVALID_ARGUMENT', 'A Bug brief requires the existing itemId and nodeId; taskId alone does not associate an item. Create a new Bug through edit_map before preparing its brief.');
   return { text: input.text.trim(), acceptance: input.acceptance.trim(), mainVersion: input.mainVersion, nodeIds: [...input.nodeIds],
     nodeId: input.nodeId || input.nodeIds[0], ...(input.itemId ? { itemId: input.itemId, kind: input.kind } : { kind: 'todo' }) };
 }

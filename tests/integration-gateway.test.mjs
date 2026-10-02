@@ -61,6 +61,16 @@ async function temporary(t) {
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   return directory;
 }
+test('Manual native brief explains the complete existing-item identity rather than taskId alone', () => {
+  const before = structuredClone(coordinatorTools);
+  const fields = filterManualTools(coordinatorTools).find(tool => tool.name === 'prepare_task').input_schema.properties;
+  assert.match(fields.taskId.description || '', /does not associate.*existing.*TODO\/Bug/i);
+  assert.match(fields.itemId.description || '', /existing.*exact.*item ID/i);
+  assert.match(fields.itemId.description || '', /nodeId.*kind/i);
+  assert.match(fields.nodeId.description || '', /existing.*owning Main node/i);
+  assert.match(fields.kind.description || '', /bug.*requires.*itemId/i);
+  assert.deepEqual(coordinatorTools, before, 'Automatic tools remain unchanged');
+});
 const input = (id, type, payload = {}, extra = {}) => ({ id, type, teamId, userId, projectId, conversationId: 'chat-fixture', payload, ...extra });
 async function call(gateway, body, credential = token) {
   const response = await fetch(gateway.url + '/v1/command', { method: 'POST', headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -209,6 +219,24 @@ async function manualFixture(t) {
 const brief = version => ({ text: 'Correct token renewal', acceptance: 'Expired tokens are refreshed once', nodeIds: ['LOGIN'], mainVersion: version });
 const review = (proposal, decision = 'approved') => ({ proposalId: proposal.id, version: proposal.version, decision, reason: 'Human reviewed this exact brief' });
 const context = (operationId = 'review-first') => ({ operationId, conversationId: 'chat-fixture', actor });
+
+test('Manual Bug intent without item identity is rejected instead of silently proposing a new TODO', async t => {
+  const fixture = await manualFixture(t), { service } = fixture;
+  const before = await fixture.readMain();
+  for (const [index, fields] of [
+    { taskId: 'B1', kind: 'bug' },
+    { taskId: 'B1', kind: 'bug', nodeId: 'LOGIN' },
+    { taskId: 'B1', kind: 'bug', itemId: 'B1' },
+  ].entries()) {
+    await assert.rejects(service.prepare({ ...brief(before.version), ...fields }, context(`invalid-bug-${index}`)),
+      error => error.code === 'INVALID_ARGUMENT');
+    assert.equal((await service.approvals('chat-fixture')).length, 0, 'No misleading pending card is persisted');
+    assert.deepEqual(await fixture.readMain(), before, 'Main and the original Bug remain unchanged');
+    assert.equal(fixture.commits, 0);
+  }
+  const valid = await service.prepare({ ...brief(before.version), taskId:'B1',itemId:'B1',nodeId:'LOGIN',kind:'bug' }, context('valid-bug'));
+  assert.equal(valid.itemId, 'B1'); assert.equal(valid.kind, 'bug'); assert.equal(fixture.commits, 0);
+});
 
 test('Manual brief creates one Main TODO and pasteable fs-v2.1 prompt without any execution Session', async t => {
   const fixture = await manualFixture(t), { service } = fixture;

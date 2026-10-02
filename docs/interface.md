@@ -87,6 +87,7 @@ CLI 负责写和状态变化。
 | bug | 写文件 | | 不因缺少 Plan 或缺少节点授权而阻止写入。另一任务可以更新同一份 Bug 记录 |
 | idea | `createIdea` `updateIdea` | human 或 coordinator | 创建、更新 Idea |
 | brief | 签发 brief | human | 人对指定 brief 版本批准或拒绝并取得服务端回执；对话回答不是签发 |
+| brief | `prepare_task`（人工模式） | Coordinator | 显式选择事项须提供 `itemId`、`nodeId`、`kind`；`taskId` 不关联事项。已关联事项对话仅三字段全缺省时继承可信焦点，显式局部身份返回 `INVALID_ARGUMENT`；无焦点时 `kind=bug` 缺 `itemId` 同样拒绝，不生成 TODO 提案。新 Bug 先通过 `edit_map` 创建。确认仍按指定版本，不自动派发 |
 | plan | `submitPlan` | C / E | 提交 Plan |
 | plan | `approvePlan` `rejectPlan` | Coordinator | Coordinator 签发 Plan。不能在本地自行批准 |
 | ask | 向人提问 | Coordinator | 提问不是批准，也不是签发 |

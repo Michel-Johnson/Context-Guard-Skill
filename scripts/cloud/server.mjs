@@ -713,8 +713,11 @@ export async function startCloudServer({
               const state = await service.state();
               const actor = [...state.messages].reverse().find(message => message.role === 'user' && message.actor)?.actor
                 || { kind: 'human', sessionId: 'cloud-workbench' };
-              const requirements = !input.itemId && conversation.itemId && ['todo', 'bug'].includes(conversation.kind)
-                ? { ...input, itemId: conversation.itemId, nodeId: conversation.nodeId, kind: conversation.kind } : input;
+              const focused = !input.itemId && conversation.itemId && ['todo', 'bug'].includes(conversation.kind);
+              if (focused && (input.nodeId !== undefined || input.kind !== undefined)) {
+                protocolFail('INVALID_ARGUMENT', 'Provide the complete itemId, nodeId and kind to select an existing item; only fully omitted routing may inherit this conversation focus.');
+              }
+              const requirements = focused ? { ...input, itemId: conversation.itemId, nodeId: conversation.nodeId, kind: conversation.kind } : input;
               return manualBriefsFor(project).prepare(requirements, { operationId, conversationId, actor });
             }
             const requirements = conversation?.itemId
