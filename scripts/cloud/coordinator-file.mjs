@@ -69,9 +69,14 @@ export async function writeProjectFile({ root, receiptFile, operationId, relativ
     } catch (error) {
       if (error instanceof MapError || error.code !== 'ENOENT') throw error;
     }
+    const currentSha = current === null ? null : hash(current);
+    const sha256 = hash(content);
+    // A pending receipt proves the request, not ownership of the current file.
+    // Only the original base or our exact unacknowledged output may be replayed.
+    if ((expectedSha || null) !== currentSha && (!previous || currentSha !== sha256)) {
+      fail('VERSION_CONFLICT', 'File changed; read it again before writing', 409);
+    }
     if (!previous) {
-      const currentSha = current === null ? null : hash(current);
-      if ((expectedSha || null) !== currentSha) fail('VERSION_CONFLICT', 'File changed; read it again before writing', 409);
       state.operations[operationId] = { fingerprint, committed: false, result: null };
       await atomicWrite(receiptFile, encode(state));
     }
@@ -79,12 +84,11 @@ export async function writeProjectFile({ root, receiptFile, operationId, relativ
     const parentReal = await fs.realpath(path.dirname(target));
     const rootReal = await fs.realpath(root);
     if (!insideRoot(rootReal, parentReal) || !insideRoot(rootReal, path.resolve(parentReal, path.basename(target)))) fail('INVALID_ARGUMENT', 'File path escapes the repository');
-    const sha256 = hash(content);
     if (current === null || hash(current) !== sha256) await atomicWrite(target, content);
     const written = await fs.readFile(target);
     if (hash(written) !== sha256) fail('UNAVAILABLE', 'File write did not persist', 503);
     const saved = await readJSON(receiptFile, { operations: {} });
-    const result = { kind: 'file-write', path: relativePath, sha256, created: current === null, bytes: Buffer.byteLength(content), committedToGit: false };
+    const result = { kind: 'file-write', path: relativePath, sha256, created: expectedSha === undefined, bytes: Buffer.byteLength(content), committedToGit: false };
     saved.operations[operationId] = { fingerprint, committed: true, result };
     await atomicWrite(receiptFile, encode(saved));
     return result;

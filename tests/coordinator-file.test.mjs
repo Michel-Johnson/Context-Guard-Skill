@@ -29,6 +29,39 @@ test('write_file stays hidden until the project allows one repository text file'
   assert.equal(coordinatorTools.find(tool => tool.name === 'write_file').input_schema.required.includes('expectedSha'), false);
 });
 
+test('Unfinished file writes preserve intervening edits and recover only the original or already-written content', async t => {
+  for (const expected of [null, 'original content']) {
+    for (const crashContent of [expected, 'requested content']) {
+      await t.test(`${expected === null ? 'create' : 'replace'} interrupted ${crashContent === expected ? 'before' : 'after'} write`, async t => {
+        const { directory, receiptFile, root } = await fixture();
+        t.after(() => fs.rm(directory, { recursive: true, force: true }));
+        await fs.mkdir(root);
+        await fs.mkdir(path.dirname(receiptFile));
+        const target = path.join(root, 'notes.md'), content = 'requested content';
+        const expectedSha = expected === null ? undefined : hash(expected);
+        const input = { root, receiptFile, enabled: true, operationId: 'pending-write', relativePath: 'notes.md', content, expectedSha };
+        // A legacy pending receipt must remain recoverable without a migration.
+        const fingerprint = hash(JSON.stringify({ path: input.relativePath, content, expectedSha: expectedSha || null }));
+        await fs.writeFile(receiptFile, JSON.stringify({ operations: { [input.operationId]: { fingerprint, committed: false, result: null } } }));
+        await fs.writeFile(target, 'new external edit');
+        const pendingReceipt = await fs.readFile(receiptFile, 'utf8');
+        await assert.rejects(writeProjectFile(input), { code: 'VERSION_CONFLICT' });
+        assert.equal(await fs.readFile(target, 'utf8'), 'new external edit');
+        assert.equal(await fs.readFile(receiptFile, 'utf8'), pendingReceipt);
+        await fs.rm(target);
+        if (expected !== null) await assert.rejects(writeProjectFile(input), { code: 'VERSION_CONFLICT' });
+        if (crashContent !== null) await fs.writeFile(target, crashContent);
+        const recovered = await writeProjectFile(input);
+        assert.equal(recovered.created, expected === null);
+        assert.equal(await fs.readFile(target, 'utf8'), content);
+        await fs.writeFile(target, 'edit after acknowledgment');
+        assert.deepEqual(await writeProjectFile(input), recovered);
+        assert.equal(await fs.readFile(target, 'utf8'), 'edit after acknowledgment');
+      });
+    }
+  }
+});
+
 test('Coordinator writes one feedback file and refuses a second path, a hidden path, or an escaped symlink', async t => {
   const { directory, receiptFile, root } = await fixture();
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
