@@ -68,6 +68,7 @@ CLI 负责写和状态变化。
 | Domain | 接口 | Caller | 动作 |
 | --- | --- | --- | --- |
 | map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点，也可按 Main 版本更新项目或节点记忆文档。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
+| file | `write_file` | Coordinator | 在项目仓库检出中新建或替换一个 UTF-8 文本文件。项目须显式允许。一次一个仓库相对路径。不提交、不推送、不改 Main。替换已有文件时必须带当前内容的 SHA-256；同一操作 ID 重试返回原回执 |
 | map | 提议 Main 节点 | | 人同意前不写入。唯一的提议 |
 | map | 任务复查 | | 不写入 Main 节点 |
 | map | 挂载 | | 将 Coordinator 挂载到节点；执行 Session 仍须等该事项的 brief 获批后创建，不写入 Main 节点 |
