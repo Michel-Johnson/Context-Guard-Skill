@@ -158,3 +158,38 @@ Codex、Cursor、Claude 等宿主与 Context Guard 的连接。
 | integration | 消息相关性判断 | 在已开放项目内根据消息、有限线程上下文及项目概览判断是否需要 Coordinator 回应；不创建对话、不写 Map、不调用业务工具。无关消息保持安静，判断失败不得当作相关。决定带原消息 ID 与所读 Main 版本；插件持久保存后按原 ID 重试 |
 | recovery | `retrySync` `recoverSession` | 保留原事项、Session 与消息 ID；明确未执行的失败可重试，结果未知先核对；失败可见，不把排队或接收显示为完成 |
 | heartbeat | `heartbeat` `getPresence` | |
+
+### 读取已发布 Main
+
+`references/map-read.md` 指向本节。Cloud 读取已发布 Main 调用 `workbench.read`，`POST /api/v2/messages`。
+
+认证：请求头 `Authorization: Bearer <credential>`。凭证来自 `auth.open` 返回的设备连接，或已注册的 Agent 连接。人类浏览器也可以用工作台 cookie，并在 URL 上带已授权项目的 `?project=`。
+
+调用参数在消息的 `payload` 里：
+
+| 字段 | 要求 |
+| --- | --- |
+| `scope` | `main` 或 `session`。读已发布 Main 用 `main` |
+| `cursor` | 字符串，可以为空，最长 4096。第一页用空字符串 |
+| `limit` | 整数，1–100 |
+| `version` | 可选。省略时取当前已发布版本；后面的分页和路由必须固定响应里的这一版 |
+| `nodeIds` | 可选的节点 ID 列表 |
+| `recovery` | 只有 `scope` 为 `session` 且没有 `nodeIds` 时才能为 true |
+
+消息还要带调用方自己的 `session`：`id` 与 `generation`。读 Main 时这个 Session 是调用身份，不是另一张地图。
+
+最小示例：
+
+```http
+POST /api/v2/messages
+Authorization: Bearer <credential>
+Content-Type: application/json
+
+{
+  "v": 2,
+  "id": "read-main",
+  "type": "workbench.read",
+  "session": { "id": "s", "generation": 1 },
+  "payload": { "scope": "main", "cursor": "", "limit": 20 }
+}
+```
