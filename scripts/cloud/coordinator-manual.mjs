@@ -5,6 +5,16 @@ import { buildFilesystemV2 } from '../shared/filesystem-v2.mjs';
 
 export const MANUAL_DISABLED_TOOLS = Object.freeze(['dispatch_task', 'review_plan', 'request_ci', 'request_rework', 'resume_task', 'guide_task', 'complete_task']);
 export const filterManualTools = tools => tools.filter(tool => !MANUAL_DISABLED_TOOLS.includes(tool.name)).map(tool => {
+  if (tool.name === 'edit_map') {
+    const result = { ...tool, description: 'Create, update, move or delete Main nodes and TODO/Bug records at the observed mainVersion. For a memory update on an existing node, use read_map on that target node before editing; navigation and read_reference do not supply its current contents.' };
+    const actions = tool.input_schema?.properties?.actions, item = actions?.items, memory = item?.properties?.memoryDocument;
+    if (memory) result.input_schema = { ...tool.input_schema, properties: { ...tool.input_schema.properties,
+      actions: { ...actions, items: { ...item, properties: { ...item.properties,
+        memoryDocument: { ...memory, description: 'Full Markdown document: change only the requested sections and preserve all other sections verbatim. If there is no existing memory, write only applicable confirmed sections; do not fill six sections from guesses or task-local requirements. Use memoryDocument, not a filename such as memoryDocument.md.' },
+      } } },
+    } };
+    return result;
+  }
   if (tool.name !== 'prepare_task') return tool;
   const result = { ...tool, description: 'Prepare a brief for human confirmation; confirmation creates or updates a Main TODO/Bug and a pasteable execution prompt. Execution is manual.' };
   if (tool.input_schema?.properties) {

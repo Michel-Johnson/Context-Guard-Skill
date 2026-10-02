@@ -49,7 +49,7 @@ test('Manual brief native tool identifies the stored title field without changin
   const stripDescriptions = value => Array.isArray(value) ? value.map(stripDescriptions) : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'description').map(([key, entry]) => [key, stripDescriptions(entry)])) : value;
   assert.deepEqual(stripDescriptions(prepared.input_schema), stripDescriptions(original.input_schema), 'Native validation contract stays identical');
-  for (const tool of tools.filter(tool => tool.name !== 'prepare_task')) assert.deepEqual(tool, before.find(item => item.name === tool.name));
+  for (const tool of tools.filter(tool => !['prepare_task', 'edit_map'].includes(tool.name))) assert.deepEqual(tool, before.find(item => item.name === tool.name));
   assert.deepEqual(filterManualTools(coordinatorTools), tools, 'Repeated compilation keeps the same definitions');
   const partial = [{ name: 'prepare_task' }, { name: 'prepare_task', input_schema: { type: 'object', properties: { acceptance: { type: 'string' } } } }];
   const projected = filterManualTools(partial);
@@ -70,6 +70,38 @@ test('Manual native brief explains the complete existing-item identity rather th
   assert.match(fields.nodeId.description || '', /existing.*owning Main node/i);
   assert.match(fields.kind.description || '', /bug.*requires.*itemId/i);
   assert.deepEqual(coordinatorTools, before, 'Automatic tools remain unchanged');
+});
+test('Manual memory tool describes read-before-write and scoped full-document replacement without changing the schema', () => {
+  const before = structuredClone(coordinatorTools);
+  const tools = filterManualTools(coordinatorTools);
+  const tool = tools.find(x => x.name === 'edit_map'), original = before.find(x => x.name === 'edit_map');
+  assert.match(tool.description, /Create, update, move or delete.*TODO\/Bug/);
+  assert.match(tool.description, /For a memory update on an existing node/);
+  assert.match(tool.description, /read_map.*target.*before.*edit/i);
+  const memory = tool.input_schema.properties.actions.items.properties.memoryDocument;
+  assert.match(memory.description || '', /only.*requested.*sections/i);
+  assert.match(memory.description || '', /preserve.*other.*sections/i);
+  assert.match(memory.description || '', /no.*memory.*only.*applicable.*sections/i);
+  assert.match(memory.description || '', /memoryDocument.*not.*filename/i);
+  const stripDescriptions = x => Array.isArray(x) ? x.map(stripDescriptions) : x && typeof x === 'object'
+    ? Object.fromEntries(Object.entries(x).filter(([k]) => k !== 'description').map(([k,v]) => [k,stripDescriptions(v)])) : x;
+  assert.deepEqual(stripDescriptions(tool.input_schema), stripDescriptions(original.input_schema));
+  assert.deepEqual(coordinatorTools, before, 'No mutation of automatic native tools');
+  assert.deepEqual(filterManualTools(coordinatorTools), tools, 'Repeated compilation is stable');
+  for (const name of ['read_map','list_tasks','ask_user']) assert.deepEqual(tools.find(x=>x.name===name), before.find(x=>x.name===name));
+  for (const partial of [{name:'edit_map'}, {name:'edit_map',input_schema:{type:'object',properties:{mainVersion:{type:'string'}}}}]) {
+    assert.deepEqual(filterManualTools([partial])[0].input_schema, partial.input_schema, 'Do not invent absent native properties');
+  }
+});
+test('Manual role limits memory editing to requested sections and reads the target first', async () => {
+  const document = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');
+  const manual = coordinatorRolePrompt(document, {manual:true});
+  assert.match(manual, /先用 read_map 读取目标节点/);
+  assert.match(manual, /只修改用户指定的部分/);
+  assert.match(manual, /没有记忆文档时.*只写适用且已确认的章节/);
+  assert.match(manual, /不为凑齐六部分补写/);
+  assert.match(manual, /其他章节保持原文/);
+  assert.doesNotMatch(coordinatorRolePrompt(document), /先用 read_map 读取目标节点/);
 });
 const input = (id, type, payload = {}, extra = {}) => ({ id, type, teamId, userId, projectId, conversationId: 'chat-fixture', payload, ...extra });
 async function call(gateway, body, credential = token) {

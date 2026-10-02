@@ -2174,9 +2174,19 @@ function taskSummaryHtml(item){
   return result?.summary ? `<details><summary>${uiLang==="en"?"Agent result":"Agent 结果与经验"}</summary><p style="white-space:pre-wrap">${esc(result.summary)}</p></details>` : "";
 }
 function bugProgress(bug,nodeId=""){
+  const status = String(bug?.status||"open");
+  // Manual execution has no current automatic task. Keep historical receipts,
+  // but never let them replace the human-maintained Main status label.
+  if(bug?.executionMode==="manual"){
+    if(status==="fixed") return {kind:"fixed",label:t("bugFixed"),detail:""};
+    if(status==="resolved"||status==="dormant") return {kind:"resolved",label:t("bugResolved"),detail:""};
+    if(["unfixable","deferred","wontfix"].includes(status)) return {kind:"unfixable",label:t("bugUnfixable"),detail:""};
+    if(status==="pending") return {kind:"settling",label:t("bugSettling"),detail:""};
+    if(["handling","inprogress","recurred"].includes(status)) return {kind:"processing",label:t("bugProcessing"),detail:""};
+    return {kind:"waiting",label:t("bugWaiting"),detail:""};
+  }
   const human = humanReviewProgress(bug);
   if(human) return human;
-  const status = String(bug?.status||"open");
   const summaryId = bug?.resolution?.dispatch?.task_id;
   if(summaryId){
     const state = workbenchSync?.taskState(summaryId) || bug.resolution.dispatch.status;
@@ -2234,9 +2244,14 @@ function bugProgressHtml(bug,nodeId=""){
 }
 function todoSessionsOf(todo){ return bugSessionsOf(todo); }
 function todoProgress(todo,nodeId=""){
+  const status = String(todo?.status||"pending");
+  if(todo?.executionMode==="manual"){
+    if(status==="done") return {kind:"resolved",label:t("todoDone"),detail:""};
+    if(status==="processing") return {kind:"processing",label:t("todoProcessing"),detail:""};
+    return {kind:"waiting",label:t("todoPending"),detail:""};
+  }
   const human = humanReviewProgress(todo);
   if(human) return human;
-  const status = String(todo?.status||"pending");
   const projectTask = workbenchSync?.projectTaskState("todo",nodeId,todo?.id);
   if(status==="done"&&!projectTask) return {kind:"resolved",label:t("todoDone"),detail:""};
   const task = projectTask || workbenchSync?.taskStates.get(todo?.dispatch?.task_id);
