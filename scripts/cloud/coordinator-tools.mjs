@@ -2,6 +2,8 @@ const string = { type: 'string', minLength: 1 };
 const strings = { type: 'array', items: string, minItems: 1 };
 const nodeIds = { type: 'array', items: string, minItems: 1, maxItems: 3 };
 const tourNodeIds = { type: 'array', items: string, minItems: 2, maxItems: 6, uniqueItems: true };
+const replyComplete = { type: 'boolean', default: false,
+  description: 'True only when accompanying assistant text fully answers the user and no further reading, writing or checking remains. Progress text is not a complete answer.' };
 const definition = (name, description, properties, required = Object.keys(properties)) => ({ name, description,
   input_schema: { type: 'object', properties, required, additionalProperties: false } });
 const executionSessionId = { type: 'string', minLength: 1,
@@ -15,9 +17,9 @@ export const coordinatorTools = [
   definition('list_sessions', 'List assigned execution Sessions and their exact executionSessionId.', {}),
   definition('list_conversations', 'List saved Coordinator conversations; their IDs are not executionSessionId.', {}),
   definition('read_map', 'Read one published Main node and its direct children; omit nodeId for root.', { nodeId: string }, []),
-  definition('show_nodes', 'Show 1–3 Main node recommendation buttons.', { message: string, nodeIds }),
-  definition('open_node', 'Open one Main node in the workbench.', { nodeId: string }),
-  definition('tour_nodes', 'Show a visible tour of 2–6 Main nodes in order.', { nodeIds: tourNodeIds }),
+  definition('show_nodes', 'Show 1–3 Main node recommendation buttons.', { message: string, nodeIds, replyComplete }, ['message', 'nodeIds']),
+  definition('open_node', 'Open one Main node in the workbench.', { nodeId: string, replyComplete }, ['nodeId']),
+  definition('tour_nodes', 'Show a visible tour of 2–6 Main nodes in order.', { nodeIds: tourNodeIds, replyComplete }, ['nodeIds']),
   definition('read_reference', 'Read a workflow reference when needed.', { name: { type: 'string', enum: coordinatorReferences } }),
   definition('read_task', 'Read the authoritative task stage and evidence refs.', task),
   definition('read_object', 'Read a versioned object in an assigned Session.', { executionSessionId, ref: string, version: string }),
@@ -48,7 +50,8 @@ function validateInput(tool, input) {
   if (Object.keys(input).some(key => !Object.hasOwn(properties, key)) || required.some(key => !Object.hasOwn(input, key))) fail('Tool fields differ from its schema');
   for (const [key, value] of Object.entries(input)) {
     const rule = properties[key];
-    if (rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > (rule.maxLength || 8000)) || rule.enum && !rule.enum.includes(value) ||
+    if (rule.type === 'boolean' && typeof value !== 'boolean' ||
+        rule.type === 'string' && (typeof value !== 'string' || !value.trim() || value.length > (rule.maxLength || 8000)) || rule.enum && !rule.enum.includes(value) ||
         rule.type === 'array' && (!Array.isArray(value) || value.length < (rule.minItems || 1) || value.length > (rule.maxItems || 100) ||
           rule.items?.type === 'string' && value.some(item => typeof item !== 'string' || !item.trim()))) fail('Invalid tool field');
   }

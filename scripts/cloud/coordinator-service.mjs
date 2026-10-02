@@ -278,7 +278,7 @@ export class CoordinatorMapIntake {
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
   constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, maxModelRetries = 2, retryDelayMs = 250,
-    compactAtTokens = COORDINATOR_COMPACT_AT_TOKENS, compactMinTurns = 1, simulated = false, namespace = '', visionModel = null, resolveAttachment = null }) {
+    compactAtTokens = COORDINATOR_COMPACT_AT_TOKENS, compactMinTurns = 1, simulated = false, namespace = '', visionModel = null, resolveAttachment = null, completePresentations = false }) {
     if (!Number.isSafeInteger(compactMinTurns) || compactMinTurns < 1) throw error('INVALID_ARGUMENT', 'Compaction requires a positive completed-turn interval');
     this.file = path.join(directory, 'conversation.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
@@ -286,6 +286,7 @@ export class CoordinatorService {
     this.maxSteps = maxSteps; this.maxModelRetries = maxModelRetries; this.retryDelayMs = retryDelayMs; this.simulated = simulated; this.running = null;
     this.compactAtTokens = compactAtTokens; this.compactMinTurns = compactMinTurns; this.compacting = null; this.compactionRequested = false;
     this.namespace = namespace;
+    this.completePresentations = completePresentations;
     this.visionModel = visionModel; this.resolveAttachment = resolveAttachment;
   }
   async state() {
@@ -646,6 +647,7 @@ export class CoordinatorService {
             state = await coordinatorStep({ turnId: this.namespace ? `${this.namespace}:${state.activeTurnId}` : state.activeTurnId, state, model,
               materializeMessages: value => this.materializeMessages(value, { currentImages: value.activeModelRoute?.kind === 'vision' }),
               system: runtimeSystem, promptVersion: hash(this.system), tools: this.tools, save, execute: this.execute,
+              completePresentations: this.completePresentations,
               onText: async text => { state.streaming = { turnId: state.activeTurnId, text };
                 state.activeTiming.firstTextAt ||= new Date().toISOString(); await save(state); },
               onToolStart: async name => {

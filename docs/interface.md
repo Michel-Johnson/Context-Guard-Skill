@@ -68,6 +68,7 @@ CLI 负责写和状态变化。
 | Domain | 接口 | Caller | 动作 |
 | --- | --- | --- | --- |
 | map | `edit_map` | Coordinator | 创建、修改、移动、删除 Main 节点，也可按 Main 版本更新项目或节点记忆文档。删除时如果下面还有子页或关联，先问人。人同意就可以删 |
+| map | `show_nodes` / `open_node` / `tour_nodes` | Coordinator | 可选布尔值 `replyComplete`，默认 false；仅人工对话、文本已完整答复且本步全为成功展示时结束本轮，不再请求模型复述。进度说明、无文本、读写、混合调用或失败仍继续核验；不跳过审批。Slack 按已绑定项目生成节点链接，不采用模型提供的 URL |
 | map | 提议 Main 节点 | | 人同意前不写入。唯一的提议 |
 | map | 任务复查 | | 不写入 Main 节点 |
 | map | 挂载 | | 将 Coordinator 挂载到节点；执行 Session 仍须等该事项的 brief 获批后创建，不写入 Main 节点 |

@@ -48,6 +48,42 @@ test('Slack post and update disable markdown in fallback text and streamed outpu
   assert.equal(calls.at(-1).args.parse, 'none'); assert.equal(calls.at(-1).args.link_names, false);
 });
 
+test('Completed node presentations render plain Slack links from the trusted project binding', () => {
+  const context = { cloudOrigin: 'https://map.example.com', projectId: 'test-project' };
+  const blocks = messageBlocks({ text: '首页负责入口，文章页负责正文。', actions: [
+    { kind: 'node-references', nodes: [{ id: 'HOME', title: '**首页**', url: 'https://attacker.example/' }] },
+    { kind: 'node-navigation', node: { id: 'POST & 阅读', title: '文章页' } },
+    { kind: 'node-tour', nodes: [{ id: 'HOME', title: '重复首页' }, { id: 'LOGIN', title: '<@U000001>' }] },
+    { kind: 'node-read', node: { id: 'OTHER', title: '仅读取不展示' } },
+  ] }, 'thread', context);
+  assert.equal(blocks[0].text.type, 'plain_text');
+  const buttons = blocks.filter(block => block.type === 'actions').flatMap(block => block.elements);
+  assert.deepEqual(buttons.map(button => button.text.text), ['首页', '文章页', '<@U000001>']);
+  assert.equal(new Set(buttons.map(button => button.action_id)).size, 3);
+  assert.deepEqual(buttons.map(button => new URL(button.url).searchParams.get('relation')), ['HOME', 'POST & 阅读', 'LOGIN']);
+  for (const button of buttons) {
+    const url = new URL(button.url);
+    assert.equal(url.origin, context.cloudOrigin); assert.equal(url.pathname, '/projects/test-project');
+    assert.equal(button.text.type, 'plain_text'); assert.equal(button.value, undefined);
+  }
+  assert.doesNotMatch(JSON.stringify(blocks), /attacker/);
+  const message = { text: '入口', actions: [{ kind: 'node-navigation', node: { id: 'HOME', title: '首页' } }] };
+  for (const invalid of [undefined, { ...context, cloudOrigin: 'javascript:alert(1)' },
+    { ...context, cloudOrigin: 'https://secret@map.example.com' }, { ...context, projectId: '..' }]) {
+    assert.equal(messageBlocks(message, 'thread', invalid).some(block => block.type === 'actions'), false);
+  }
+  const many = messageBlocks({ text: '入口', actions: [{ kind: 'node-tour', nodes: Array.from({ length: 30 }, (_, index) => ({ id: `N${index}`, title: '标题'.repeat(100) })) }] }, 'thread', context);
+  const links = many.filter(block => block.type === 'actions');
+  assert.equal(links.flatMap(block => block.elements).length, 30, 'Do not silently omit valid nodes from a multi-tool presentation');
+  assert.ok(links.every(block => block.elements.length <= 5));
+  assert.ok(links.flatMap(block => block.elements).every(button => button.text.text.length <= 75));
+  const overflow = messageBlocks({ text: '段'.repeat(110000), actions: [{ kind: 'node-tour', nodes: Array.from({ length: 70 }, (_, index) => ({ id: `N${index}`, title: `节点${index}` })) }] }, 'thread', context);
+  assert.ok(overflow.length <= 49);
+  assert.equal(overflow.filter(block => block.type === 'actions').flatMap(block => block.elements).filter(button => button.url.includes('relation=')).length, 60);
+  assert.ok(overflow.some(block => block.elements?.some(element => element.type === 'plain_text' && element.text.includes('还有 10 个'))));
+  assert.equal(overflow.find(block => block.type === 'actions' && block.elements[0].action_id === 'map_all').elements[0].url, 'https://map.example.com/projects/test-project');
+});
+
 test('plugin lockfile is portable outside the developer registry', async () => {
   const lock = JSON.parse(await fs.readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
   const manifest = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -637,6 +673,41 @@ test('mirror sends browser user and coordinator once, omits original Slack user 
   const f = await fixture(t), key = threadKey(teamId, channel, '123.001'); await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['slack-request'] });
   f.gateway.command = async () => ({ status: 'idle', messages: [{ id: 'm1', role: 'user', requestId: 'slack-request', text: 'Slack origin' }, { id: 'm2', role: 'user', text: 'Browser user' }, { id: 'm3', role: 'assistant', text: 'Hello' }], approvals: [] });
   await f.plugin.mirror(key); await f.plugin.mirror(key); assert.equal(f.sent.filter(call => call.channel).length, 2); assert.equal(f.sent.some(call => call.text?.includes('Slack origin')), false);
+});
+test('mirror finalizes one complete answer with node links and keeps it stable after restart', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.links');
+  await f.store.bind(key, { channel, threadTs: '123.links', projectId: 'lab', conversationId: 'chat-links', userId: user, ownRequests: ['request-links'] });
+  let complete = false;
+  const userMessage = { id: 'u1', role: 'user', requestId: 'request-links', text: '介绍并展示登录入口' };
+  const answer = { id: 'a1', role: 'assistant', requestId: 'request-links', text: '登录负责身份验证。',
+    actions: [{ kind: 'node-references', nodes: [{ id: 'login', title: '登录' }] }] };
+  f.gateway.command = async () => complete ? { status: 'waiting-for-user', activeTurnId: null, messages: [userMessage, answer], approvals: [] }
+    : { status: 'running', activeTurnId: 'request-links', streamingText: '登录负责身份验证。', messages: [userMessage], approvals: [] };
+  await f.plugin.mirror(key); complete = true;
+  f.plugin.store = await new Store(f.directory).open();
+  await f.plugin.mirror(key); await f.plugin.mirror(key);
+  assert.equal(f.sent.filter(call => call.channel).length, 1, 'Complete answer reuses the stream, not another message');
+  const updates = f.sent.filter(call => call.update);
+  assert.equal(updates.length, 1);
+  const button = updates[0].update[3].find(block => block.type === 'actions').elements[0];
+  assert.equal(button.url, 'https://map.example.com/projects/lab?relation=login');
+  f.plugin.store = await new Store(f.directory).open();
+  await f.plugin.mirror(key); assert.equal(f.sent.length, 2, 'Restart does not duplicate or update unchanged answer');
+});
+test('mirror adds links to existing presentation replies in place without resending ordinary history', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.upgrade');
+  await f.store.bind(key, { channel, threadTs: '123.upgrade', projectId: 'lab', conversationId: 'chat-upgrade', userId: user, ownRequests: [] });
+  const messages = [{ id: 'old', role: 'assistant', text: '旧答复' },
+    { id: 'link', role: 'assistant', text: '登录入口', actions: [{ kind: 'node-navigation', node: { id: 'login', title: '登录' } }] },
+    { id: 'only-actions', role: 'assistant', text: '', actions: [{ kind: 'node-tour', nodes: [{ id: 'login', title: '登录' }] }] }];
+  await f.store.update(state => { for (const [index, message] of messages.slice(0, 2).entries())
+    state.threads[key].mirrored[message.id] = { ts: `${index + 1}.0`, hash: digest({ format: 'plain-text-v2', message }) }; });
+  f.gateway.command = async () => ({ status: 'idle', messages, approvals: [] });
+  await f.plugin.mirror(key); await f.plugin.mirror(key);
+  assert.equal(f.sent.filter(call => call.update).length, 1);
+  assert.equal(f.sent.find(call => call.update).update[1], '2.0');
+  assert.equal(f.sent.filter(call => call.channel).length, 1, 'Action-only presentation is visible too');
+  assert.ok(f.sent.find(call => call.channel).blocks.some(block => block.type === 'actions'));
 });
 test('real waiting-for-user state finalizes streamed reply in place after restart', async t => {
   const f = await fixture(t), key = threadKey(teamId, channel, '123.001'); await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'chat-one', userId: user, ownRequests: ['request-one'] });

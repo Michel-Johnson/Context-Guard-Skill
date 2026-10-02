@@ -1206,6 +1206,91 @@ test('Completed tool turns retain previously shown text and structured actions',
   assert.equal(assistant[1].text, '推荐阅读节点。');
 });
 
+test('Manual presentation finishes one visible answer with durable tool pairs and receipts', async t => {
+  for (const [name, input] of [['show_nodes', { message: '入口', nodeIds: ['N1'] }],
+    ['open_node', { nodeId: 'N1' }], ['tour_nodes', { nodeIds: ['N1', 'N2'] }]]) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-manual-presentation-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let calls = 0;
+    const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, completePresentations: true,
+      execute: createCoordinatorExecutor({ resolveNodes: async ids => ids.map(id => ({ id, title: id })) }),
+      model: { next: async () => { calls++; return { stop: 'tool_use', content: [
+        { type: 'text', text: '首页提供文章入口，文章页提供正文阅读。' },
+        { type: 'tool_use', id: 'presentation', name, input: { ...input, replyComplete: true } },
+      ] }; } } });
+    await service.submit({ id: 'one-answer', text: '解释并展示相关节点' }); await service.close();
+    const state = await service.state(), raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+    assert.equal(calls, 1); assert.equal(state.activeTurnId, null); assert.equal(state.status, 'waiting-for-user');
+    assert.equal(state.messages.filter(m => m.role === 'assistant').length, 1);
+    assert.equal(raw.messages.length, 3); assert.equal(raw.messages.at(-1).content[0].type, 'tool_result');
+    assert.equal(Object.keys(raw.toolReceipts).length, 1); assert.equal(raw.pending, null);
+    assert.ok(state.messages.find(m => m.role === 'assistant').actions.length);
+    await service.submit({ id: 'one-answer', text: '解释并展示相关节点' }); await service.close();
+    assert.equal(calls, 1, 'Same human request never duplicates the model or presentation');
+    assert.equal(coordinatorModelMessages(raw).length, 3, 'Native tool pair remains available to a later turn');
+    const restored = structuredClone(raw);
+    restored.messages.pop();
+    restored.pending = { stop: 'tool_use', content: restored.messages.at(-1).content };
+    await coordinatorStep({ turnId: 'one-answer', state: restored, system: 'Coordinator', tools: coordinatorTools,
+      completePresentations: true, model: { next: () => assert.fail('Pending presentation must not request model again') },
+      execute: () => assert.fail('Persisted receipt must not run presentation again'), save: async () => {} });
+    assert.equal(restored.status, 'waiting-for-user'); assert.equal(restored.messages.length, 3);
+  }
+});
+
+test('Presentation shortcut excludes textless, failed, mixed, read/write and ordinary execution turns', async t => {
+  const cases = [
+    { name: 'progress-without-completion', names: ['show_nodes'], text: '我先展示登录入口，再核对最新Bug。', complete: true, mark: undefined },
+    { name: 'explicitly-incomplete', names: ['show_nodes'], text: '我先展示入口，再核对最新Bug。', complete: true, mark: false },
+    { name: 'partial-completion', names: ['show_nodes', 'open_node'], text: '核对中', complete: true, partial: true },
+    { name: 'textless', names: ['show_nodes'], text: '', complete: true },
+    { name: 'ordinary', names: ['show_nodes'], text: '已说明', complete: false },
+    { name: 'read', names: ['read_map'], text: '读取中', complete: true },
+    { name: 'write', names: ['edit_map'], text: '修改中', complete: true },
+    { name: 'mixed', names: ['show_nodes', 'list_tasks'], text: '查阅中', complete: true },
+    { name: 'failed', names: ['show_nodes'], text: '准备展示', complete: true, failed: true },
+    { name: 'missing-visible-result', names: ['show_nodes'], text: '准备展示', complete: true, missing: true },
+  ];
+  for (const scenario of cases) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-presentation-excluded-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let calls = 0;
+    const service = new CoordinatorService({ directory, system: 'Coordinator', tools: coordinatorTools, completePresentations: scenario.complete,
+      execute: async name => {
+        if (scenario.failed) throw Object.assign(new Error('No node'), { code: 'INVALID_ARGUMENT' });
+        return scenario.missing ? {} : name === 'show_nodes' ? { kind: 'node-references', nodes: [{ id: 'N1', title: '入口' }] }
+          : name === 'read_map' ? { kind: 'map-read', node: { id: 'N1', title: '入口' } } : name === 'edit_map' ? { kind: 'map-action' } : { tasks: [] };
+      },
+      model: { next: async () => ++calls === 1 ? { stop: 'tool_use', content: [
+        ...(scenario.text ? [{ type: 'text', text: scenario.text }] : []),
+        ...scenario.names.map((name, index) => ({ type: 'tool_use', id: `call-${index}`, name,
+          input: scenario.name === 'progress-without-completion' || scenario.partial && index ? {} :
+            { replyComplete: Object.hasOwn(scenario, 'mark') ? scenario.mark : true } })),
+      ] } : { stop: 'end_turn', content: [{ type: 'text', text: '已核对实际结果。' }] } } });
+    await service.submit({ id: 'requires-followup', text: '继续核对' }); await service.close();
+    assert.equal(calls, 2, `${scenario.name} must not skip the result-dependent model round`);
+    assert.equal((await service.state()).messages.filter(m => m.role === 'assistant').at(-1).text, '已核对实际结果。');
+  }
+});
+
+test('Presentation completion is a backward-compatible optional boolean and does not broaden tool writes', async () => {
+  let resolutions = 0;
+  const execute = createCoordinatorExecutor({ resolveNodes: async ids => { resolutions++; return ids.map(id => ({ id, title: id })); } });
+  for (const [name, input, required] of [['show_nodes', { message: '入口', nodeIds: ['N1'] }, ['message', 'nodeIds']],
+    ['open_node', { nodeId: 'N1' }, ['nodeId']], ['tour_nodes', { nodeIds: ['N1', 'N2'] }, ['nodeIds']]]) {
+    const schema = coordinatorTools.find(tool => tool.name === name).input_schema;
+    assert.deepEqual(schema.required, required); assert.equal(schema.properties.replyComplete.default, false);
+    const legacy = await execute(name, input, { operationId: 'legacy' });
+    assert.deepEqual(await execute(name, { ...input, replyComplete: true }, { operationId: 'legacy' }), legacy);
+    assert.deepEqual(await execute(name, { ...input, replyComplete: false }, { operationId: 'legacy' }), legacy);
+    const before = resolutions;
+    for (const flag of ['true', 1, null, {}, []]) await assert.rejects(
+      execute(name, { ...input, replyComplete: flag }, { operationId: 'invalid' }), { code: 'INVALID_ARGUMENT' });
+    assert.equal(resolutions, before, 'Invalid completion marker never resolves or displays nodes');
+  }
+  await assert.rejects(execute('read_map', { replyComplete: true }, { operationId: 'wrong-tool' }), { code: 'INVALID_ARGUMENT' });
+});
+
 test('Private turn metrics separate model rounds and tools without changing public state or replaying receipts', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-turn-metrics-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));

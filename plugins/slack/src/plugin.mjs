@@ -527,7 +527,7 @@ export class SlackPlugin {
       return { message, index, requestId, id };
     });
     for (const { message, index, requestId, id } of entries) {
-      if (!message.text && !message.questions?.length && !message.attachments?.length) continue;
+      if (!message.text && !message.questions?.length && !message.attachments?.length && !message.actions?.length) continue;
       if (message.role === 'user' && (message.source === 'workflow' || String(message.text || '').trimStart().startsWith('[服务器工作流事件'))) continue;
       if (message.role === 'user' && this.store.data.threads[key].ownRequests.includes(message.requestId)) continue;
       if (state.status === 'running' && state.streamingText && index === lastAssistant && requestId === state.activeTurnId) continue;
@@ -537,17 +537,20 @@ export class SlackPlugin {
       // turn ID. Keep the existing partial message until that durable boundary
       // settles, rather than posting a second final and later updating both.
       if (stream && message.role === 'assistant' && stream.turnId === requestId && !settled) continue;
-      const content = digest({ format: 'plain-text-v2', message }), prior = this.store.data.threads[key].mirrored[id];
+      const blocks = messageBlocks(message, key, { cloudOrigin: this.cloudOrigin, projectId: binding.projectId });
+      const content = digest({ format: 'plain-text-v2', message,
+        ...(blocks.some(block => block.type === 'actions') ? { nodeLinks: blocks.filter(block => block.type === 'actions') } : {}) }),
+        prior = this.store.data.threads[key].mirrored[id];
       // Older versions could append an earlier model step after the stream.
       // Rotate those occupied slots forward until a pending reply consumes the
       // final slot, without deleting Slack history or duplicating the content.
       const moveEarlier = !!stream && settled && message.role === 'assistant' && stream.turnId === requestId &&
         !!prior && Number(prior.ts) > Number(stream.ts) && entries.some(entry =>
           entry.message.role === 'assistant' && entry.requestId === stream.turnId &&
-          (entry.message.text || entry.message.questions?.length || entry.message.attachments?.length) &&
+          (entry.message.text || entry.message.questions?.length || entry.message.attachments?.length || entry.message.actions?.length) &&
           !this.store.data.threads[key].mirrored[entry.id]);
       if (prior?.hash === content && !moveEarlier) continue;
-      const text = `${message.role === 'user' ? '工作台用户' : 'Coordinator'}：${message.text || '附件'}`, blocks = messageBlocks(message, key);
+      const text = `${message.role === 'user' ? '工作台用户' : 'Coordinator'}：${message.text || (message.actions?.length ? '节点入口' : '附件')}`;
       // The retained placeholder has the earliest Slack timestamp. Finalize
       // it with the first pending reply, then append later model steps in order.
       const replaceStream = !!stream && (!prior || moveEarlier) && message.role === 'assistant' && settled && stream.turnId === requestId;

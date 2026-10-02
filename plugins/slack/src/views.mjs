@@ -51,8 +51,38 @@ export function modal({ callback, draftId, title, fields, initial = {} }) {
       { type: 'plain_text_input', action_id: 'value', ...(field.multiline ? { multiline: true } : {}), ...(initial[field.id] ? { initial_value: String(initial[field.id]).slice(0, 2900) } : {}), max_length: field.multiline ? 2900 : 500 } })) };
 }
 export function formValues(view) { return Object.fromEntries(Object.entries(view.state?.values || {}).map(([key, actions]) => [key, Object.values(actions)[0]?.value ?? Object.values(actions)[0]?.selected_option?.value ?? ''])); }
-export function messageBlocks(message, key) {
+function nodeLinkBlocks(actions, { cloudOrigin, projectId } = {}) {
+  let origin;
+  try { origin = new URL(cloudOrigin); } catch { return []; }
+  if (!['https:', 'http:'].includes(origin.protocol) || origin.username || origin.password ||
+      typeof projectId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(projectId)) return [];
+  const nodes = [], seen = new Set();
+  for (const action of actions || []) {
+    const candidates = action.kind === 'node-navigation' ? [action.node] :
+      ['node-references', 'node-tour'].includes(action.kind) ? action.nodes || [] : [];
+    for (const node of candidates) {
+      if (typeof node?.id !== 'string' || !node.id.trim() || node.id.length > 256 || seen.has(node.id)) continue;
+      seen.add(node.id);
+      if (nodes.length < 60) nodes.push(node);
+    }
+  }
+  const blocks = Array.from({ length: Math.ceil(nodes.length / 5) }, (_, group) => ({ type: 'actions',
+    elements: nodes.slice(group * 5, group * 5 + 5).map((node, offset) => {
+      // Use only the authenticated binding and server-resolved ID. Never use
+      // a model-supplied URL, project, mrkdwn title or interaction payload.
+      const url = new URL(`/projects/${encodeURIComponent(projectId)}`, origin.origin);
+      url.searchParams.set('relation', node.id);
+      return { type: 'button', text: plain(plainText(node.title) || '打开节点', 75),
+        action_id: `map_node:${group * 5 + offset}`, url: url.href };
+    }) }));
+  if (seen.size > nodes.length) blocks.push({ type: 'context', elements: [plain(`还有 ${seen.size - nodes.length} 个节点入口未展开，请打开完整 Map 查看。`)] },
+    { type: 'actions', elements: [{ type: 'button', text: plain('打开完整 Map'), action_id: 'map_all',
+      url: new URL(`/projects/${encodeURIComponent(projectId)}`, origin.origin).href }] });
+  return blocks;
+}
+export function messageBlocks(message, key, context) {
   const blocks = plainSections(message.text || (message.attachments?.length ? '收到附件' : 'Coordinator 回复')).slice(0, 35);
+  blocks.push(...nodeLinkBlocks(message.actions, context));
   for (const attachment of message.attachments || []) blocks.push({ type: 'context', elements: [plain(`附件：${attachment.filename || attachment.id}`)] });
   for (const question of message.questions || []) if (!question.answer) {
     blocks.push(...plainSections(question.text));

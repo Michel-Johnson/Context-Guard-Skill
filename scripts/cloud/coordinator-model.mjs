@@ -245,7 +245,7 @@ export class CoordinatorModel {
 
 // Persist every assistant response and tool receipt through the caller. Stable
 // operation IDs let protocol-backed tools replay a lost response idempotently.
-export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, materializeMessages = null, onText = null, onToolStart = null }) {
+export async function coordinatorStep({ turnId, state, model, system, promptVersion = hash(system), tools, save, execute, materializeMessages = null, onText = null, onToolStart = null, completePresentations = false }) {
   if (state.promptVersion && state.promptVersion !== promptVersion) throw problem('PROMPT_CHANGED', 'Resume with the same Coordinator prompt version');
   state.promptVersion = promptVersion;
   state.messages ||= []; state.toolReceipts ||= {};
@@ -330,7 +330,15 @@ export async function coordinatorStep({ turnId, state, model, system, promptVers
   if (visible.length) state.messages.at(-1).actions = visible;
   state.messages.push({ role: 'user', content: responses });
   state.pending = null;
-  state.status = transferred || !failed && next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user') ? 'waiting-for-user' : 'running';
+  // Successful UI-only actions do not supply new business facts to explain.
+  // The model must explicitly mark the accompanying answer complete. Nonempty
+  // progress text alone cannot terminate pending reading/checking. Preserve the
+  // native tool pair and receipts even when no further model round is needed.
+  const presentationOnly = completePresentations && !failed && responses.length > 0 && visible.length === responses.length &&
+    next.content.some(block => block.type === 'text' && block.text?.trim()) &&
+    next.content.filter(block => block.type === 'tool_use').every(call =>
+      ['show_nodes', 'open_node', 'tour_nodes'].includes(call.name) && call.input?.replyComplete === true);
+  state.status = transferred || !failed && (presentationOnly || next.content.some(block => block.type === 'tool_use' && block.name === 'ask_user')) ? 'waiting-for-user' : 'running';
   await save(state);
   return state;
 }

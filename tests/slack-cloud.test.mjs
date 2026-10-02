@@ -58,6 +58,10 @@ async function fixture(t, { enabled = true, visionProvider, nodeIds, childNodes 
           ? 'not a decision' : JSON.stringify({ respond: input.message.text === '登录刷新 Bug，请分析。', reason: 'Controlled decision' }) }] };
       }
       const message = request.messages.at(-1), text = typeof message?.content === 'string' ? message.content : '';
+      if (text === 'show-node-complete') return { stop: 'tool_use', content: [
+        { type: 'text', text: 'This is the complete read-only answer.' },
+        { type: 'tool_use', id: 'tool-show-complete', name: 'show_nodes', input: { message: 'Project entry', nodeIds: ['T0'], replyComplete: true } },
+      ] };
       if (text === 'list-scoped-tasks') return { stop: 'tool_use', content: [{ type: 'tool_use', id: 'list-scoped', name: 'list_tasks', input: {} }] };
       if (message?.role === 'user' && text === 'failure-then-browser-retry' && !failedTurns.has(text)) {
         failedTurns.add(text); throw Object.assign(new Error('Controlled provider failure'), { code: 'FIXTURE_PROVIDER_FAILURE' });
@@ -235,6 +239,13 @@ test('Public manual conversation uses lean role and unchanged native schemas wit
   assert.match(manualCall.system, /Current project facts/);
   assert.match(manualCall.system, /本轮答复发往 Slack/);
   assert.deepEqual(manualCall.tools, filterManualTools(coordinatorTools), 'Retain all manual native definitions, not a text-only substitute');
+  const callsBefore = f.modelCalls.length;
+  assert.equal((await f.gateway('conversation.submit', { text: 'show-node-complete' }, { id: 'role-show', conversationId: conversation })).status, 200);
+  const shown = await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId && value.acceptedRequestIds.includes('role-show'));
+  assert.equal(f.modelCalls.length, callsBefore + 1, 'Successful presentation of an existing answer needs no second model round');
+  const replies = shown.messages.filter(m => m.role === 'assistant' && m.requestId === 'role-show');
+  assert.equal(replies.length, 1); assert.equal(replies[0].text, 'This is the complete read-only answer.');
+  assert.equal(replies[0].actions[0].kind, 'node-references');
   assert.equal((await f.browser('main', { body: { id: 'role-automatic', text: 'role-automatic' } })).status, 202);
   await f.wait('main', value => value.status === 'waiting-for-user' && !value.activeTurnId);
   const automaticCall = f.modelCalls.at(-1);
