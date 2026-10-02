@@ -46,7 +46,7 @@ async function fixture(t) {
     if (type === 'prompt.read') return { text: 'execute login', filename: 'prompt.md' };
     return { accepted: true };
   } };
-  const io = { async post(input) { sent.push(input); return String(100 + sent.length) + '.001'; }, async update(...args) { sent.push({ update: args }); }, async call(method, input) { sent.push({ method, input }); if (method === 'conversations.info') return { channel: { user, id: input.channel } }; if (method === 'conversations.members') return { members: [user] }; return {}; },
+  const io = { async post(input) { sent.push(input); return String(100 + sent.length) + '.001'; }, async update(...args) { sent.push({ update: args }); }, async call(method, input) { sent.push({ method, input }); if (method === 'conversations.open') return { channel: { id: 'D000001' } }; if (method === 'conversations.info') return { channel: { user, id: input.channel } }; if (method === 'conversations.members') return { members: [user] }; return {}; },
     async download() { return { filename: 'screen.png', mimeType: 'image/png', base64: 'aGVsbG8=' }; }, async uploadPrompt(input) { sent.push({ export: input }); } };
   const plugin = new SlackPlugin({ store, gateway, io, teamId, cloudOrigin: 'https://map.example.com', botUserId: bot, logger: { warn() {}, error() {} } });
   return { plugin, store, gateway, io, calls, sent, directory };
@@ -82,6 +82,188 @@ test('ordinary message with bot mention creates same binding before app_mention 
 test('untracked channel messages and bots cannot start model turns', async t => {
   const f = await fixture(t); await f.plugin.process('E1', { type: 'events_api', body: { event: event({ text: 'normal message' }) } });
   await f.plugin.process('E2', { type: 'events_api', body: { event: event({ bot_id: 'B', user: bot }) } }); assert.equal(f.calls.length, 0);
+});
+function projectChoice(f, requestId, projectId = 'lab') {
+  const original = f.store.data.inbox[requestId];
+  return { type: 'block_actions', user: { id: user }, channel: { id: original.projectPromptEvent.channel },
+    message: { ts: original.projectPromptTs }, actions: [{ action_id: 'connect_project:0', value: JSON.stringify({ requestId, projectId }) }] };
+}
+async function runPluginCycle(plugin) {
+  plugin.stopped = false;
+  try { await plugin.tick(); await Promise.all([...plugin.processing.values()]); }
+  finally { await plugin.stop(); }
+}
+test('unbound explicit message offers clickable projects and resumes its original query', async t => {
+  const f = await fixture(t), original = event({ text: `<@${bot}> 登录刷新有 Bug，请分析` });
+  await f.store.receive('onboard', { type: 'events_api', body: { team_id: teamId, event: original } });
+  await f.plugin.runEntry('onboard', f.store.data.inbox.onboard);
+  const prompt = f.sent.find(input => input.blocks);
+  assert.equal(prompt.threadTs, original.ts);
+  const button = prompt.blocks.flatMap(block => block.elements || []).find(element => element.action_id === 'connect_project:0');
+  assert.equal(button.text.text, 'Lab');
+  assert.deepEqual(JSON.parse(button.value), { requestId: 'onboard', projectId: 'lab' });
+  assert.equal(f.calls.some(call => call.type.startsWith('conversation.')), false);
+  await f.plugin.process('choice', { type: 'interactive', body: projectChoice(f, 'onboard') });
+  await runPluginCycle(f.plugin);
+  assert.equal(f.store.data.channels[channel], 'lab');
+  const submitted = f.calls.find(call => call.type === 'conversation.submit');
+  assert.equal(submitted.userId, user); assert.equal(submitted.payload.text, '登录刷新有 Bug，请分析');
+  assert.equal(Object.values(f.store.data.threads)[0].threadTs, original.ts);
+  assert.ok(f.sent.some(input => input.update?.[2].includes('已关联 Lab')));
+  assert.ok(f.sent.some(input => input.method === 'views.publish'));
+});
+test('project choice duplicate clicks and restart preserve original conversation and submit ID', async t => {
+  const f = await fixture(t); await f.plugin.message('onboard', event());
+  const body = projectChoice(f, 'onboard');
+  await f.plugin.process('choice-1', { type: 'interactive', body });
+  await runPluginCycle(f.plugin);
+  const restartedStore = await new Store(f.directory).open();
+  const restarted = new SlackPlugin({ store: restartedStore, gateway: f.gateway, io: f.io, teamId, cloudOrigin: 'https://map.example.com', botUserId: bot });
+  await restarted.process('choice-2', { type: 'interactive', body });
+  await runPluginCycle(restarted);
+  assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 1);
+  const submitted = f.calls.filter(call => call.type === 'conversation.submit');
+  assert.equal(submitted.length, 1);
+  assert.equal(restartedStore.data.inbox.onboard.status, 'done');
+  assert.equal(Object.keys(restartedStore.data.threads).length, 1);
+});
+test('unbound DM offers projects and selects only the requesting users preference', async t => {
+  const f = await fixture(t); await f.plugin.message('dm-choice', event({ channel: 'D000001', channel_type: 'im', text: '看看登录模块' }));
+  await f.plugin.process('dm-select', { type: 'interactive', body: projectChoice(f, 'dm-choice') });
+  await runPluginCycle(f.plugin);
+  assert.equal(f.store.data.preferences[user], 'lab'); assert.deepEqual(f.store.data.channels, {});
+  assert.equal(f.calls.find(call => call.type === 'conversation.submit').payload.text, '看看登录模块');
+});
+test('project choice rejects another user, channel, message or unoffered project without binding', async t => {
+  const f = await fixture(t); await f.plugin.message('onboard', event());
+  const body = projectChoice(f, 'onboard');
+  for (const changed of [{ ...body, user: { id: 'UOTHER' } }, { ...body, channel: { id: 'COTHER' } },
+    { ...body, message: { ts: '999.001' } }, projectChoice(f, 'onboard', 'other')]) {
+    await assert.rejects(f.plugin.process('invalid-choice', { type: 'interactive', body: changed }), error => error.code === 'CONFLICT');
+  }
+  assert.deepEqual(f.store.data.channels, {}); assert.equal(Object.keys(f.store.data.threads).length, 0);
+  assert.equal(f.calls.some(call => call.type.startsWith('conversation.')), false);
+});
+test('stale project buttons cannot overwrite a changed channel or revoked project', async t => {
+  const f = await fixture(t); await f.plugin.message('onboard', event());
+  await f.store.update(state => { state.channels[channel] = 'other'; });
+  await assert.rejects(f.plugin.process('stale-choice', { type: 'interactive', body: projectChoice(f, 'onboard') }), error => error.code === 'CONFLICT');
+  assert.equal(f.store.data.channels[channel], 'other');
+  await f.store.update(state => { delete state.channels[channel]; });
+  f.gateway.command = async type => type === 'project.list' ? { projects: [] } : assert.fail('No conversation should start');
+  await assert.rejects(f.plugin.process('revoked-choice', { type: 'interactive', body: projectChoice(f, 'onboard') }), error => error.code === 'CONFLICT');
+  assert.deepEqual(f.store.data.channels, {}); assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('project choice verifies channel membership before changing binding', async t => {
+  const f = await fixture(t); await f.plugin.message('onboard', event());
+  f.io.call = async method => method === 'conversations.members' ? { members: ['UOTHER'] } : { channel: {} };
+  await assert.rejects(f.plugin.process('nonmember-choice', { type: 'interactive', body: projectChoice(f, 'onboard') }), error => error.code === 'CONFLICT');
+  assert.deepEqual(f.store.data.channels, {}); assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('unbound explicit message with no open projects explains unavailable setup without empty actions', async t => {
+  const f = await fixture(t); f.gateway.command = async () => ({ projects: [] });
+  await f.plugin.message('empty-projects', event());
+  assert.ok(f.sent[0].text.includes('没有开放的项目'));
+  assert.equal(f.sent[0].blocks.some(block => block.type === 'actions'), false);
+  assert.equal(Object.keys(f.store.data.threads).length, 0);
+});
+test('onboarding continuation uses the normal FIFO lane through held create and BUSY backoff', async t => {
+  const f = await fixture(t);
+  await f.store.receive('original', { type: 'events_api', body: { event: event({ text: `<@${bot}> 原需求` }) } });
+  await f.plugin.runEntry('original', f.store.data.inbox.original);
+  await f.plugin.process('select', { type: 'interactive', body: projectChoice(f, 'original') });
+  await f.store.receive('correction', { type: 'events_api', body: { event: event({ ts: '123.002', thread_ts: '123.001', text: `<@${bot}> 后续修正` }) } });
+  const gateway = f.gateway.command;
+  let release, started; const held = new Promise(resolve => { release = resolve; });
+  const entered = new Promise(resolve => { started = resolve; });
+  let busy = true;
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.create') { started(); await held; }
+    if (type === 'conversation.submit' && busy) { busy = false; throw Object.assign(new Error('Controlled busy'), { code: 'BUSY' }); }
+    return gateway(type, input);
+  };
+  f.plugin.stopped = false;
+  try {
+    const first = f.plugin.tick(); await entered; await f.plugin.tick();
+    assert.equal(f.store.data.inbox.correction.status, 'pending'); assert.equal(Object.keys(f.store.data.threads).length, 0);
+    release(); await first;
+    assert.equal(f.store.data.inbox.original.status, 'pending');
+    assert.equal(f.store.data.inbox.original.error, 'BUSY');
+    await f.plugin.tick(); assert.equal(f.calls.some(call => call.type === 'conversation.submit'), false);
+    await f.store.update(state => { state.inbox.original.next = 0; });
+    await f.plugin.tick(); await f.plugin.tick();
+    assert.deepEqual(f.calls.filter(call => call.type === 'conversation.submit').map(call => call.payload.text), ['原需求', '后续修正']);
+    assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 1);
+  } finally { release(); await f.plugin.stop(); }
+  assert.equal(f.plugin.messageLanes.size, 0);
+});
+test('project selection survives restart before execution and repeated clicks preserve backoff', async t => {
+  const f = await fixture(t); await f.plugin.message('original', event());
+  const body = projectChoice(f, 'original');
+  await f.plugin.process('select', { type: 'interactive', body });
+  assert.equal(f.store.data.inbox.original.status, 'pending');
+  await f.store.update(state => { state.inbox.original.next = 9999999999999; });
+  const store = await new Store(f.directory).open();
+  const plugin = new SlackPlugin({ store, gateway: f.gateway, io: f.io, teamId, cloudOrigin: 'https://map.example.com', botUserId: bot });
+  await plugin.process('duplicate-select', { type: 'interactive', body });
+  assert.equal(store.data.inbox.original.next, 9999999999999);
+  await store.update(state => { state.inbox.original.next = 0; });
+  await runPluginCycle(plugin);
+  assert.equal(store.data.inbox.original.status, 'done');
+  assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 1);
+  assert.equal(f.calls.filter(call => call.type === 'conversation.submit').length, 1);
+});
+test('unbound slash ask resumes in the project-choice root instead of opening a second thread', async t => {
+  const f = await fixture(t), body = { command: '/cg', text: 'ask 原问题', user_id: user, channel_id: channel, trigger_id: 'fixture-trigger' };
+  await f.store.receive('ask', { type: 'slash_commands', body }); await f.plugin.runEntry('ask', f.store.data.inbox.ask);
+  const promptTs = f.store.data.inbox.ask.projectPromptTs;
+  await f.plugin.process('ask-select', { type: 'interactive', body: projectChoice(f, 'ask') });
+  await runPluginCycle(f.plugin);
+  assert.equal(Object.values(f.store.data.threads)[0].threadTs, promptTs);
+  assert.equal(f.sent.filter(input => input.text?.startsWith('Coordinator ·')).length, 0);
+  assert.equal(f.calls.find(call => call.type === 'conversation.submit').payload.text, '原问题');
+  await f.store.receive('follow-up', { type: 'events_api', body: { event: event({ ts: '124.001', thread_ts: promptTs, text: `<@${bot}> 继续` }) } });
+  await runPluginCycle(f.plugin);
+  assert.equal(f.calls.filter(call => call.type === 'conversation.create').length, 1);
+  const submitted = f.calls.filter(call => call.type === 'conversation.submit');
+  assert.equal(submitted[0].conversationId, submitted[1].conversationId);
+});
+test('project choice menu stays stable on retry and its buttons have distinct Slack action IDs', async t => {
+  const f = await fixture(t), gateway = f.gateway.command;
+  f.gateway.command = async (type, input) => type === 'project.list' ? { projects: [{ id: 'lab', name: 'Lab' }, { id: 'other', name: 'Other' }] } : gateway(type, input);
+  await f.plugin.message('menu', event()); const original = f.sent.find(input => input.blocks);
+  const actions = original.blocks.flatMap(block => block.elements || []);
+  assert.equal(new Set(actions.map(action => action.action_id)).size, 2);
+  f.gateway.command = async () => ({ projects: [{ id: 'new', name: 'New' }] });
+  await f.plugin.message('menu', event());
+  const retried = f.sent.filter(input => input.blocks).at(-1);
+  assert.deepEqual(retried.blocks, original.blocks);
+});
+test('stale tick snapshot cannot overwrite a project-choice lane or overtake a requeued request', async t => {
+  const f = await fixture(t); await f.plugin.message('original', event({ text: `<@${bot}> 原需求` }));
+  await f.store.receive('home', { type: 'events_api', body: { event: { type: 'app_home_opened', user } } });
+  await f.store.receive('correction', { type: 'events_api', body: { event: event({ ts: '123.002', thread_ts: '123.001', text: `<@${bot}> 后续修正` }) } });
+  let releaseHome, enteredHome, releaseChoice, enteredChoice, holdHome = true;
+  const homeHeld = new Promise(resolve => { releaseHome = resolve; }), homeEntered = new Promise(resolve => { enteredHome = resolve; });
+  const choiceHeld = new Promise(resolve => { releaseChoice = resolve; }), choiceEntered = new Promise(resolve => { enteredChoice = resolve; });
+  const call = f.io.call;
+  f.io.call = async (method, input) => {
+    if (method === 'views.publish' && holdHome) { holdHome = false; enteredHome(); await homeHeld; }
+    return call(method, input);
+  };
+  f.io.update = async () => { enteredChoice(); await choiceHeld; };
+  f.plugin.stopped = false;
+  try {
+    const tick = f.plugin.tick(); await homeEntered;
+    const select = f.plugin.process('choice', { type: 'interactive', body: projectChoice(f, 'original') });
+    await choiceEntered; releaseHome(); await tick;
+    assert.equal(f.plugin.messageLanes.get(`${channel}:123.001`), 'choice');
+    assert.equal(f.store.data.inbox.original.status, 'pending');
+    assert.equal(f.calls.some(input => input.type === 'conversation.submit'), false);
+    f.plugin.stopped = true; releaseChoice(); await select; f.plugin.stopped = false;
+    await f.plugin.tick(); await f.plugin.tick();
+    assert.deepEqual(f.calls.filter(input => input.type === 'conversation.submit').map(input => input.payload.text), ['原需求', '后续修正']);
+  } finally { releaseHome(); releaseChoice(); await f.plugin.stop(); }
 });
 test('tracked replies reuse conversation, new roots have independent conversations', async t => {
   const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
@@ -273,7 +455,8 @@ test('same-thread corrections and explicit replies cannot overtake an earlier cl
   assert.equal(f.plugin.messageLanes.size, 0);
 });
 test('DM requires explicit project selection and immutable thread cannot be rebound', async t => {
-  const f = await fixture(t); await f.plugin.message('E1', event({ channel: 'D000001', text: 'hello' })); assert.equal(f.calls.length, 0); assert.match(f.sent[0].text, /选择项目/);
+  const f = await fixture(t); await f.plugin.message('E1', event({ channel: 'D000001', text: 'hello' }));
+  assert.deepEqual(f.calls.map(call => call.type), ['project.list']); assert.match(f.sent[0].text, /请选择/);
   await f.store.update(state => { state.preferences[user] = 'lab'; }); await f.plugin.message('E2', event({ channel: 'D000001', text: 'hello' }));
   const key = threadKey(teamId, 'D000001', '123.001'); await assert.rejects(f.store.bind(key, { projectId: 'other', conversationId: 'different' }), /immutable/);
 });
@@ -302,6 +485,79 @@ test('Home renders Map, work items and public session status using free native b
   const f = await fixture(t); await f.store.update(state => { state.preferences[user] = 'lab'; }); await f.plugin.publishHome(user, 'E1');
   const view = f.sent.find(call => call.method === 'views.publish').input.view;
   assert.equal(view.type, 'home'); assert.match(JSON.stringify(view), /登录/); assert.match(JSON.stringify(view), /session-1/); assert.ok(view.blocks.length < 100);
+});
+test('Home TODO Bug memory and existing-item entrypoints start natural conversations without forms or Map writes', async t => {
+  for (const [action, value] of [['open_item', { projectId: 'lab', kind: 'todo' }], ['open_item', { projectId: 'lab', kind: 'bug', nodeId: 'login', itemId: 'B1' }],
+    ['open_memory', { projectId: 'lab' }], ['start_chat', { projectId: 'lab', text: '一起讨论项目' }]]) {
+    const f = await fixture(t), body = { type: 'block_actions', user: { id: user }, actions: [{ action_id: action, value: JSON.stringify(value) }] };
+    await f.store.update(state => { state.drafts.existing = { text: 'Existing unsent draft' }; });
+    await f.store.receive('home-action', { type: 'interactive', body }); await f.plugin.runEntry('home-action', f.store.data.inbox['home-action']);
+    await runPluginCycle(f.plugin);
+    assert.equal(f.sent.some(input => input.method === 'views.open'), false);
+    assert.equal(f.calls.some(input => input.type === 'map.write'), false);
+    assert.ok(f.calls.find(input => input.type === 'conversation.submit').payload.text.includes('讨论'));
+    assert.equal(f.store.data.drafts.existing.text, 'Existing unsent draft');
+    assert.equal(Object.keys(f.store.data.threads).length, 1);
+  }
+});
+test('global TODO shortcut prompts project choice then continues as a DM conversation', async t => {
+  const f = await fixture(t), body = { type: 'shortcut', callback_id: 'cg_todo', user: { id: user } };
+  await f.store.receive('shortcut', { type: 'interactive', body }); await f.plugin.runEntry('shortcut', f.store.data.inbox.shortcut);
+  await runPluginCycle(f.plugin);
+  const originalId = Object.keys(f.store.data.inbox).find(id => id.startsWith('chat-'));
+  assert.equal(f.sent.some(input => input.method === 'views.open'), false);
+  assert.equal(f.calls.some(input => input.type === 'conversation.submit'), false);
+  await f.plugin.process('project-selection', { type: 'interactive', body: projectChoice(f, originalId) });
+  await runPluginCycle(f.plugin);
+  assert.equal(f.calls.find(input => input.type === 'conversation.submit').payload.text, '我想和你讨论一条 TODO。');
+  assert.equal(Object.values(f.store.data.threads)[0].channel, 'D000001');
+});
+test('plain cg command opens project choice rather than an ID binding form', async t => {
+  const f = await fixture(t), body = { command: '/cg', text: '', user_id: user, channel_id: channel };
+  await f.store.receive('cg', { type: 'slash_commands', body }); await f.plugin.runEntry('cg', f.store.data.inbox.cg); await runPluginCycle(f.plugin);
+  assert.equal(f.sent.some(input => input.method === 'views.open'), false);
+  assert.ok(f.sent.some(input => input.blocks?.some(block => block.elements?.some(element => element.action_id.startsWith('connect_project:')))));
+});
+test('natural thread reply answers the pending question with a pinned identity, never a modal', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.001');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'question-chat', userId: user, ownRequests: [] });
+  const gateway = f.gateway.command;
+  f.gateway.command = async (type, input) => type === 'conversation.state' ? { status: 'waiting-for-user', messages: [{ id: 'q-message', role: 'assistant', questions: [{ id: 'q1', text: '期望是什么？' }] }] } : gateway(type, input);
+  await f.plugin.mirror(key);
+  await f.plugin.message('answer', event({ ts: '123.002', thread_ts: '123.001', text: `<@${bot}> 先修复刷新逻辑` }));
+  assert.equal(f.calls.find(input => input.type === 'conversation.submit').payload.answerTo, 'q1');
+  assert.equal(f.calls.find(input => input.type === 'conversation.submit').payload.text, '先修复刷新逻辑');
+  assert.equal(f.sent.some(input => input.method === 'views.open'), false);
+  assert.equal(messageBlocks({ questions: [{ id: 'q1', text: '问你', options: ['a', 'b'] }] }, key).some(block => block.type === 'actions'), false);
+  assert.match(JSON.stringify(messageBlocks({ questions: [{ id: 'q1', text: '问你', options: ['只改刷新', '完整登录'] }] }, key)), /只改刷新/);
+});
+test('BUSY retry without an initial question cannot become the answer to a later question', async t => {
+  const f = await fixture(t); await f.store.update(state => { state.channels[channel] = 'lab'; });
+  const gateway = f.gateway.command; let busy = true;
+  f.gateway.command = async (type, input) => {
+    if (type === 'conversation.submit' && busy) { busy = false; f.calls.push({ type, ...input }); throw Object.assign(new Error('Busy'), { code: 'BUSY' }); }
+    if (type === 'conversation.state') return { messages: [{ role: 'assistant', questions: [{ id: 'later-question', text: 'later' }] }] };
+    return gateway(type, input);
+  };
+  await assert.rejects(f.plugin.message('original', event()), error => error.code === 'BUSY');
+  assert.deepEqual(f.store.data.inbox.original.replyContext, { answerTo: null });
+  const key = threadKey(teamId, channel, '123.001');
+  await f.store.update(state => { state.threads[key].pendingQuestionId = 'later-question'; });
+  await f.plugin.message('original', event());
+  const submits = f.calls.filter(input => input.type === 'conversation.submit');
+  assert.deepEqual(submits[0].payload, submits[1].payload); assert.equal(submits[0].id, submits[1].id);
+});
+test('message shortcut retains its original thread project after the channel mapping changes', async t => {
+  const f = await fixture(t), key = threadKey(teamId, channel, '123.001');
+  await f.store.bind(key, { channel, threadTs: '123.001', projectId: 'lab', conversationId: 'original-chat', userId: user, ownRequests: [] });
+  await f.store.update(state => { state.channels[channel] = 'other'; });
+  const body = { type: 'message_action', callback_id: 'cg_bug_message', user: { id: user }, channel: { id: channel }, message: { ts: '123.002', thread_ts: '123.001', text: '原项目登录有 Bug' } };
+  await f.store.receive('shortcut', { type: 'interactive', body }); await f.plugin.runEntry('shortcut', f.store.data.inbox.shortcut); await runPluginCycle(f.plugin);
+  const submit = f.calls.find(input => input.type === 'conversation.submit');
+  assert.equal(submit.projectId, 'lab'); assert.equal(submit.conversationId, 'original-chat');
+  assert.equal(f.store.data.channels[channel], 'other');
+  assert.equal(f.calls.some(input => input.type === 'conversation.create'), false);
+  assert.equal(Object.keys(f.store.data.threads).length, 1);
 });
 test('item forms use original CAS version, update existing ID and never invoke dispatch', async t => {
   const f = await fixture(t); await f.plugin.publishHome(user, 'E0');
