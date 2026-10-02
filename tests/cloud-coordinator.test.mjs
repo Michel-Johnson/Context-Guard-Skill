@@ -933,6 +933,173 @@ test('Coordinator streams text deltas while retaining one complete assistant mes
   assert.equal(result.stop, 'end_turn');
 });
 
+test('Coordinator retains split thinking and signatures without exposing them as streamed text', async () => {
+  const thinking = { type: 'thinking', thinking: '私有测试推理：先核对，再回答。', signature: 'synthetic-signature-part-1-part-2' };
+  const redacted = { type: 'redacted_thinking', data: 'synthetic-opaque-redacted-data' };
+  const values = [
+    { type: 'message_start', message: { model: config.model } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '私有测试推理：' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '先核对，' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '再回答。' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-signature-part-1' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: '-part-2' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: redacted },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '可见' } },
+    { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: '答复' } },
+    { type: 'content_block_stop', index: 2 },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    { type: 'message_stop' },
+  ];
+  const bytes = Buffer.from(values.map(value => `event: ${value.type}\r\ndata: ${JSON.stringify(value)}\r\n\r\n`).join(''));
+  const observed = [];
+  const model = new CoordinatorModel({ ...config, fetch: async () => new Response(new ReadableStream({
+    start(controller) { for (let offset = 0; offset < bytes.length; offset += 7) controller.enqueue(bytes.subarray(offset, offset + 7)); controller.close(); }
+  }), { headers: { 'content-type': 'text/event-stream' } }) });
+  const result = await model.next({ system: 'role', messages: [], onText: text => observed.push(text) });
+  assert.deepEqual(result.content, [thinking, redacted, { type: 'text', text: '可见答复' }]);
+  assert.deepEqual(observed, ['可见', '可见答复']);
+  const body = JSON.parse(model.prepareRequest({ system: 'role', messages: [{ role: 'assistant', content: result.content }] }));
+  assert.deepEqual(body.messages[0].content, result.content, 'next request preserves the original completed blocks');
+});
+
+test('Coordinator tool continuation and restarted conversation return full private stream blocks only to the provider', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-thinking-stream-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const thinking = { type: 'thinking', thinking: 'synthetic-private-part-one-part-two', signature: 'synthetic-private-signature' };
+  let requests = 0, executions = 0;
+  const tools = [{ name: 'read_map', input_schema: { type: 'object' } }];
+  const model = new CoordinatorModel({ ...config, fetch: async (_url, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    if (requests > 1) {
+      assert.deepEqual(body.messages[1].content[0], thinking);
+      assert.deepEqual(body.messages[1].content[1], { type: 'tool_use', id: 'synthetic-read-1', name: 'read_map', input: { nodeId: 'N1' } });
+      assert.equal(body.messages[2].content[0].tool_use_id, 'synthetic-read-1');
+      return Response.json(text);
+    }
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'synthetic-private-part-one' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '-part-two' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-private-signature' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'synthetic-read-1', name: 'read_map', input: {} } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"nodeId":"N1"}' } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      { type: 'message_stop' },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    return new Response(events, { headers: { 'content-type': 'text/event-stream' } });
+  } });
+  const settings = { directory, system: 'Coordinator', model, tools, execute: async () => { executions++; return { current: true }; } };
+  let service = new CoordinatorService(settings);
+  await service.submit({ id: 'synthetic-turn-1', text: '读取实际节点' });
+  await service.close();
+  assert.equal(requests, 2); assert.equal(executions, 1);
+  assert.equal((await service.state()).status, 'waiting-for-user');
+  assert.doesNotMatch(JSON.stringify(await service.state()), /synthetic-private/);
+  assert.deepEqual(JSON.parse(await fs.readFile(service.file, 'utf8')).messages[1].content[0], thinking);
+  service = new CoordinatorService(settings);
+  await service.submit({ id: 'synthetic-turn-2', text: '继续解释' });
+  await service.close();
+  assert.equal(requests, 3); assert.equal(executions, 1);
+  assert.doesNotMatch(JSON.stringify(await service.state()), /synthetic-private/);
+});
+
+test('Coordinator rejects malformed private stream deltas without leaking their values', async () => {
+  const privateMarker = 'synthetic-private-error-value';
+  const cases = [
+    [undefined, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'text', text: '' }, { type: 'signature_delta', signature: privateMarker }],
+    [{ type: 'redacted_thinking', data: 'opaque' }, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'thinking', thinking: '' }, { type: 'thinking_delta', thinking: { privateMarker } }],
+    [{ type: 'thinking', thinking: '' }, { type: 'signature_delta', signature: { privateMarker } }],
+    [{ type: 'thinking', thinking: 1 }, { type: 'thinking_delta', thinking: privateMarker }],
+    [{ type: 'thinking', signature: 1 }, { type: 'signature_delta', signature: privateMarker }],
+  ];
+  for (const [block, delta] of cases) {
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      ...(block ? [{ type: 'content_block_start', index: 0, content_block: block }] : []),
+      { type: 'content_block_delta', index: 0, delta },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const visible = [];
+    const model = new CoordinatorModel({ ...config, fetch: async () => new Response(events, { headers: { 'content-type': 'text/event-stream' } }) });
+    await assert.rejects(model.next({ system: '', messages: [], onText: value => visible.push(value) }),
+      cause => cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes(privateMarker));
+    assert.deepEqual(visible, []);
+  }
+});
+
+test('Coordinator does not accept an incomplete private stream as a successful assistant turn', async () => {
+  const events = [
+    { type: 'message_start', message: { model: config.model } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'synthetic-private-partial' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'synthetic-signature' } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: 'max_tokens' } },
+  ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+  const visible = [];
+  const model = new CoordinatorModel({ ...config, fetch: async () => new Response(events, { headers: { 'content-type': 'text/event-stream' } }) });
+  await assert.rejects(model.next({ system: '', messages: [], onText: value => visible.push(value) }), { code: 'MODEL_INVALID_RESPONSE' });
+  assert.deepEqual(visible, []);
+});
+
+test('Coordinator validates both private block fields even without a matching delta or in JSON responses', async () => {
+  const blocks = [
+    [{ type: 'thinking', thinking: '', signature: { invalid: 'synthetic-private-start' } }, { type: 'thinking_delta', thinking: 'valid' }],
+    [{ type: 'thinking', thinking: { invalid: 'synthetic-private-start' }, signature: '' }, { type: 'signature_delta', signature: 'valid' }],
+    [{ type: 'thinking', thinking: '', signature: { invalid: 'synthetic-private-start' } }, null],
+    [{ type: 'thinking', thinking: { invalid: 'synthetic-private-start' } }, null],
+  ];
+  for (const [block, delta] of blocks) for (const streamed of [true, false]) {
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: block },
+      ...(delta ? [{ type: 'content_block_delta', index: 0, delta }] : []),
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const model = new CoordinatorModel({ ...config, fetch: async () => streamed
+      ? new Response(events, { headers: { 'content-type': 'text/event-stream' } })
+      : Response.json({ ...text, content: [block] }) });
+    await assert.rejects(model.next({ system: '', messages: [] }), cause =>
+      cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes('synthetic-private-start'));
+  }
+});
+
+test('Coordinator cancels an open invalid stream without waiting on cleanup or hiding its original error', async () => {
+  for (const cancelResult of ['resolved', 'rejected', 'pending']) {
+    let cancellations = 0, signal;
+    const events = [
+      { type: 'message_start', message: { model: config.model } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: { private: 'synthetic' } } },
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const model = new CoordinatorModel({ ...config, timeoutMs: 1000, fetch: async (_url, options) => {
+      signal = options.signal;
+      return new Response(new ReadableStream({
+        start(controller) { controller.enqueue(Buffer.from(events)); },
+        cancel() {
+          cancellations++;
+          if (cancelResult === 'rejected') return Promise.reject(new Error('synthetic-private-cleanup-error'));
+          if (cancelResult === 'pending') return new Promise(() => {});
+        },
+      }), { headers: { 'content-type': 'text/event-stream' } });
+    } });
+    await assert.rejects(model.next({ system: '', messages: [] }), cause =>
+      cause.code === 'MODEL_INVALID_RESPONSE' && !cause.message.includes('synthetic-private-cleanup-error'));
+    assert.equal(cancellations, 1);
+    assert.equal(signal.aborted, true);
+  }
+});
+
 test('Coordinator compacts at actual input-token usage without changing the saved conversation', async t => {
   assert.equal(COORDINATOR_COMPACT_AT_TOKENS, 500_000);
   assert.equal(coordinatorInputTokens({ input_tokens: 499_000, cache_read_input_tokens: 1_000 }), 500_000);

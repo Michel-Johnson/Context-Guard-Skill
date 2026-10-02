@@ -94,6 +94,13 @@ async function readBoundedJson(response, deadlineAt, abort) {
   catch { throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid JSON'); }
 }
 
+function validatePrivateBlock(block) {
+  if (block?.type === 'thinking' && ['thinking', 'signature'].some(field =>
+    block[field] !== undefined && typeof block[field] !== 'string')) {
+    throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid private stream data');
+  }
+}
+
 async function readEventStream(response, onText, onToolStart, deadlineAt, abort) {
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let buffer = '', size = 0, model = '', stopReason = '', usage = {}, visibleText = '';
@@ -106,6 +113,7 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
     if (value.type === 'message_start') { model = value.message?.model || ''; usage = value.message?.usage || {}; }
     if (value.type === 'content_block_start') {
       const block = value.content_block || {};
+      validatePrivateBlock(block);
       blocks[value.index] = block.type === 'tool_use' ? { type: 'tool_use', id: block.id, name: block.name, input: block.input || {}, _json: '' }
         : block.type === 'text' ? { type: 'text', text: block.text || '' } : { ...block };
       if (block.type === 'tool_use') await onToolStart?.(block.name);
@@ -115,6 +123,17 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
       const block = blocks[value.index], delta = value.delta || {};
       if (block?.type === 'text' && delta.type === 'text_delta') { block.text += delta.text || ''; visibleText += delta.text || ''; await onText?.(visibleText); }
       if (block?.type === 'tool_use' && delta.type === 'input_json_delta') block._json += delta.partial_json || '';
+      // Thinking is private provider history, not visible streaming text. Keep
+      // both opaque signature and exact content for subsequent native tool
+      // rounds; dropping deltas silently corrupts the accepted assistant turn.
+      if (['thinking_delta', 'signature_delta'].includes(delta.type)) {
+        const field = delta.type === 'thinking_delta' ? 'thinking' : 'signature';
+        if (block?.type !== 'thinking' || typeof delta[field] !== 'string' ||
+            block[field] !== undefined && typeof block[field] !== 'string') {
+          throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned invalid private stream data');
+        }
+        block[field] = (block[field] || '') + delta[field];
+      }
     }
     if (value.type === 'content_block_stop') {
       const block = blocks[value.index];
@@ -139,6 +158,12 @@ async function readEventStream(response, onText, onToolStart, deadlineAt, abort)
       }
     }
     buffer += decoder.decode(); if (buffer.trim()) await event(buffer);
+  } catch (cause) {
+    // Parsing failures must cancel the still-open response. Cleanup itself can
+    // stall or reject; initiate it without replacing or delaying the original
+    // failure. The outer transport also aborts its request signal.
+    void reader.cancel().catch(() => {});
+    throw cause;
   } finally { try { reader.releaseLock(); } catch {} }
   return { model, stop_reason: stopReason, content: blocks.filter(Boolean), usage };
 }
@@ -229,6 +254,7 @@ export class CoordinatorModel {
       if (result.model !== this.model || !Array.isArray(result.content) || !['end_turn', 'tool_use'].includes(result.stop_reason)) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned a different model or an incomplete turn');
       }
+      for (const block of result.content) validatePrivateBlock(block);
       const calls = result.content.filter(block => block.type === 'tool_use');
       if (new Set(calls.map(call => call.id)).size !== calls.length || calls.some(call => typeof call.id !== 'string' || !call.id || typeof call.name !== 'string' || !call.input || typeof call.input !== 'object' || Array.isArray(call.input))) {
         throw problem('MODEL_INVALID_RESPONSE', 'Coordinator returned malformed tool calls');
@@ -236,7 +262,9 @@ export class CoordinatorModel {
       if ((result.stop_reason === 'tool_use') !== Boolean(calls.length)) throw problem('MODEL_INVALID_RESPONSE', 'Coordinator stop reason does not match its tool calls');
       return { content: result.content, stop: result.stop_reason, usage: result.usage || {}, model: result.model, requestId: response.headers.get('request-id') || '' };
     } catch (error) {
-      if (abort.signal.aborted) throw problem('MODEL_TIMEOUT', 'Coordinator model timed out; no automatic retry was made');
+      const timedOut = abort.signal.aborted;
+      abort.abort();
+      if (timedOut) throw problem('MODEL_TIMEOUT', 'Coordinator model timed out; no automatic retry was made');
       if (String(error.code || '').startsWith('MODEL_') || error.code === 'CONTEXT_TOO_LARGE') throw error;
       throw problem('MODEL_UNAVAILABLE', 'Coordinator model connection failed; no automatic retry was made');
     } finally { clearTimeout(timer); }
