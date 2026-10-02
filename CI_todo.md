@@ -23,7 +23,7 @@
 
 - [ ] 本机 Coordinator 快聊 / brief 双模式：按需取 Map 小切片、提前 compact、缓存 Main 前缀；真实 Bug + attempt 问答首次有意义回复 ≤2 秒，连续 5–10 轮准确且不让用户等待。
 - [ ] 拍板 Agent 打开模块的唯一默认目录，随后同步 Skill + hooks 的读法；fs-v2.1 格式与用户所有的 Map 不变。
-- [ ] 人确认 brief 后建立 Main TODO，生成带 Map 切片和读写路径的跨客户端可粘贴执行提示；不自动创建/驱动执行 Session。现有 `dispatch_task` 位于 Cloud，与“第 5 步前不碰 Cloud/派发”冲突，待用户澄清前不改实现。
+- [ ] 人确认 brief 后建立 Main TODO，生成带 Map 切片和读写路径的跨客户端可粘贴执行提示。人批准 brief 后由系统创建执行 Session 并派发；挂载不写入 Main，也不在挂载时创建 Session。不新增心跳、耐久队列、自动 worktree 或中断恢复。
 - [ ] 在自己的真实项目录屏验证本机闭环，与 Cursor Projects 用同一任务比较到“用户无需再改的任务”的耗时、修订次数及等待时间。
 - [ ] 仅在录屏证明价值后改 README 首句，突出“能和你对话的项目 coordinator”。
 

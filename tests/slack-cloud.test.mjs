@@ -287,33 +287,34 @@ test('Stale brief confirmation fails without Main or Agent mutations after a con
   await assertNoDispatch(f);
 });
 
-test('Manual Bug mount keeps its conversation focus across restart and implicit prepare approves the same Bug', async t => {
+test('Manual mount does not write Main and keeps node focus without an execution Session', async t => {
   const f = await fixture(t), conversation = await f.newConversation('create-mounted-bug');
+  const before = await f.main();
   const mounted = await f.gateway('conversation.submit', { text: 'mount-bug' }, { id: 'mount-bug-message', conversationId: conversation });
   assert.equal(mounted.status, 200, JSON.stringify(mounted.body));
   const settled = await f.wait(conversation, value => value.status === 'waiting-for-user' && !value.activeTurnId);
   assert.equal(settled.conversationId, conversation); assert.equal(settled.executionMode, 'manual');
-  const main = await f.main(), bug = main.main.memory.map.root.bugs.find(item => item.title === 'Mounted refresh failure');
-  assert.ok(bug, 'Mount tool must save an actual Main Bug'); assert.equal(bug.executionMode, 'manual');
-  assert.equal(main.main.memory.map.root.bugs.length, 2); assert.equal(main.main.memory.map.root.todos.length, 1);
+  const main = await f.main();
+  assert.equal(main.revision, before.revision);
+  assert.equal(main.main.memory.map.root.bugs.length, 1);
+  assert.equal(main.main.memory.map.root.bugs[0].id, 'B1');
+  assert.equal(main.main.memory.map.root.todos.length, 1);
   const focus = settled.conversations.find(item => item.id === conversation);
-  assert.equal(focus.nodeId, 'T0'); assert.equal(focus.kind, 'bug'); assert.equal(focus.itemId, bug.id);
+  assert.equal(focus.nodeId, 'T0'); assert.equal(focus.kind, 'bug'); assert.equal(focus.itemId, undefined);
   await assertNoDispatch(f);
   await f.restart();
   const restored = (await f.browser(conversation)).body.conversations.find(item => item.id === conversation);
-  assert.equal(restored.itemId, bug.id); assert.equal(restored.kind, 'bug'); assert.equal(restored.executionMode, 'manual');
-  // The controlled provider's prepare-new call intentionally supplies no itemId,
-  // nodeId or kind; the persisted conversation focus must route it to this Bug.
+  assert.equal(restored.itemId, undefined); assert.equal(restored.kind, 'bug'); assert.equal(restored.nodeId, 'T0'); assert.equal(restored.executionMode, 'manual');
   const proposal = await prepared(f, conversation, 'prepare-new', 'prepare-mounted-bug-message');
-  assert.equal(proposal.itemId, bug.id); assert.equal(proposal.kind, 'bug'); assert.equal(proposal.nodeId, 'T0');
+  assert.equal(proposal.kind, 'todo'); assert.equal(proposal.nodeId, 'T0'); assert.notEqual(proposal.itemId, 'B1');
   const approved = await f.gateway('brief.review', { proposalId: proposal.id, version: proposal.version,
-    decision: 'approved', reason: 'Approve the mounted Bug in its original conversation' }, { id: 'approve-mounted-bug', conversationId: conversation });
-  assert.equal(approved.status, 200, JSON.stringify(approved.body)); assert.equal(approved.body.data.itemId, bug.id); assert.equal(approved.body.data.kind, 'bug');
+    decision: 'approved', reason: 'Approve the brief after mount' }, { id: 'approve-mounted-bug', conversationId: conversation });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.data.itemId, proposal.itemId); assert.equal(approved.body.data.kind, 'todo');
   const after = (await f.main()).main.memory.map.root;
-  assert.equal(after.todos.length, 1, 'Implicit prepare cannot fork the Bug into a new TODO'); assert.equal(after.bugs.length, 2);
-  assert.equal(after.bugs.find(item => item.id === bug.id).approvedBrief.proposalId, proposal.id);
-  assert.equal(after.bugs.find(item => item.id === bug.id).executionMode, 'manual');
-  assert.equal(after.bugs.find(item => item.id === 'B1').createdAt, 'original-bug'); await assertNoDispatch(f);
+  assert.equal(after.bugs.length, 1); assert.equal(after.bugs[0].id, 'B1'); assert.equal(after.bugs[0].createdAt, 'original-bug');
+  assert.equal(after.todos.find(item => item.id === proposal.itemId).executionMode, 'manual');
+  await assertNoDispatch(f);
 });
 
 test('Brief confirmation while Coordinator is busy survives restart and notifies exactly once with a persisted acknowledgement', async t => {

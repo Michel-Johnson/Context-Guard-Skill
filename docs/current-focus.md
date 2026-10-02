@@ -12,13 +12,13 @@
 
 Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢复、`resumed` 回执）、Quark 附件、CI 接收器匹配、人工验收回执自动化均**暂缓**。不删除现有代码，也不把既有 `[x]` 验收改成失败；只停止新增功能、专项联调和优化投入。维护既有安全门禁及正常回归，不用“暂缓”绕过必需检查。相关未完成项在 [CI_todo.md](../CI_todo.md) 标注。
 
-第 5 步完成前，不改 Cloud 或现有自动派发实现；不因旧 TODO、历史设计或页面按钮继续推进这些链路。`dispatch_task` 目前是 Cloud 工具，因此第 3 步与这条冻结边界的实现顺序待用户确认；确认前只记录目标语义，不修改该工具。
+第 5 步完成前，不新增心跳、耐久队列、自动 worktree 或中断恢复，也不扩写现有自动派发实现。人批准 brief 之后由系统创建执行 Session 并派发，以 [interface.md](interface.md) 为准。挂载不写入 Main，也不在挂载时创建 Session。不因旧 TODO、历史设计或页面按钮继续推进其余暂缓链路。
 
 ## 唯一 MVP 场景与验收
 
 在用户自己的真实项目、本机工作台、已建立的 Map 上，用户就某条真实 Bug 与 Coordinator 连续讨论 5–10 轮。Coordinator 首次有意义回复应在用户发送后 **2 秒内**开始，引用准确模块、Bug 和既有 attempt 结论；每轮都要让用户继续思考，而非等待系统。
 
-讨论收敛后，Coordinator 提出 brief；人确认后形成 Main TODO，同时提供可粘贴到 Codex、Cursor 或 Claude 的执行提示，内含必要 Map 切片和读写路径。厂商 Agent 自行执行，现有 hooks 将结果写回 Session；用户在工作台审核后再进入 Main。本场景**不依赖 Cloud**，也不自动创建或驱动本地执行 Session。
+讨论收敛后，Coordinator 提出 brief；人确认后形成 Main TODO，同时提供可粘贴到 Codex、Cursor 或 Claude 的执行提示，内含必要 Map 切片和读写路径。厂商 Agent 自行执行，现有 hooks 将结果写回 Session；用户在工作台审核后再进入 Main。本场景**不依赖 Cloud**。人批准 brief 后，系统创建执行 Session 并派发。挂载不写入 Main，也不在挂载时创建该 Session。
 
 用同一个真实任务与直接使用 Cursor Projects 比较：从提问到得到一条用户无需再改的任务所花的时间，以及等待与思考各占多少。录屏保留原始时间点和修订次数；没有对照与用户验收，不宣称 MVP 更快。
 
@@ -26,7 +26,7 @@ Cloud 自动派发链（心跳、耐久队列、自动建 worktree、中断恢�
 
 1. 瘦身 Coordinator：快速讨论 / brief 两种模式，小上下文、提前 compact、缓存 Main 前缀；先量准确率与首字延迟，再调 token。
 2. 裁定 Agent 打开模块优先读哪套目录（旧 FIND/snapshot 或 fs-v2.1 Markdown），随后让 Skill 只教一种默认读法；旧入口仅作为明确的迁移/恢复路径。
-3. 目标是“确认 brief → Main TODO + 可粘贴执行提示”，不再以驱动本地 Session 为派发目标。现有 `dispatch_task` 位于 Cloud；在用户澄清第 5 步前的冻结边界前，不改其实现。
+3. 人批准 brief 后，系统创建执行 Session 并派发，同时仍可提供可粘贴执行提示。挂载不写入 Main，也不在挂载时创建 Session。不新增心跳、耐久队列、自动 worktree 或中断恢复。
 4. 用自己的项目跑唯一 MVP 场景、录屏，并与 Cursor Projects 做同任务对照。
 5. 根据录屏改 README：第一句话突出“能和你对话的项目 coordinator”，不以“范式”开场。此前不提前改营销文案。
 
