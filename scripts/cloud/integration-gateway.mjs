@@ -115,7 +115,7 @@ export async function startIntegrationGateway({ config, command, state, stateDir
   const verified = validateIntegrationConfig(config);
   if (typeof command !== 'function' || typeof state !== 'function') fail('INVALID_INTEGRATION_CONFIG', 'Integration callbacks are required');
   if (!stateDir || !path.isAbsolute(stateDir)) fail('INVALID_INTEGRATION_CONFIG', 'Private integration state directory is required');
-  const clients = new Set(), handshakes = new Set(), inflight = new Map();
+  const clients = new Set(), handshakes = new Set(), handshakeScopes = new WeakMap(), inflight = new Map();
   let closed = false, activeCommands = 0;
   const authenticated = req => {
     const actual = Buffer.from(String(req.headers.authorization || '')), expected = Buffer.from(`Bearer ${verified.token}`);
@@ -173,6 +173,7 @@ export async function startIntegrationGateway({ config, command, state, stateDir
         if (Object.keys(scope).some(key => !['teamId', 'userId', 'projectId', 'conversationId'].includes(key)) ||
             [...url.searchParams.keys()].length !== Object.keys(scope).length) fail('INVALID_ARGUMENT', 'Invalid event subscription');
         const { actor } = validateIntegrationCommand(verified, { id: 'events', ...scope, type: 'conversation.state', payload: {} });
+        const handshake = { scope, dirty: false }; handshakeScopes.set(res, handshake);
         handshakes.add(res);
         let snapshot;
         try { snapshot = await state(scope, { actor }); }
@@ -180,7 +181,7 @@ export async function startIntegrationGateway({ config, command, state, stateDir
         if (closed) fail('STOPPING', 'Integration listener is stopping', 503);
         if (req.destroyed || res.destroyed || res.writableEnded) return;
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-        const client = { res, timer: null, fingerprint: null }; clients.add(client);
+        const client = { res, scope, timer: null, fingerprint: null, polling: true, dirty: handshake.dirty, poll: null }; clients.add(client);
         const finish = () => { clearTimeout(client.timer); clients.delete(client); };
         res.once('close', finish); res.once('error', finish);
         const write = async value => {
@@ -206,11 +207,25 @@ export async function startIntegrationGateway({ config, command, state, stateDir
         };
         const poll = async () => {
           if (closed || res.destroyed || !clients.has(client)) return;
-          try { if (!await write({ type: 'state', data: await state(scope, { actor }) })) return; }
-          catch (error) { logger({ code: errorBody(error).code }); res.end(); finish(); return; }
-          if (clients.has(client)) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
+          if (client.polling) { client.dirty = true; return; }
+          client.polling = true; clearTimeout(client.timer);
+          try {
+            do {
+              client.dirty = false;
+              const data = await state(scope, { actor });
+              if (closed || res.destroyed || !clients.has(client) || !await write({ type: 'state', data })) return;
+            } while (client.dirty);
+          } catch (error) { logger({ code: errorBody(error).code }); res.end(); finish(); }
+          finally {
+            client.polling = false;
+            if (!closed && clients.has(client)) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
+          }
         };
-        if (await write({ type: 'state', data: snapshot })) { client.timer = setTimeout(poll, Math.max(250, pollIntervalMs)); client.timer.unref(); }
+        client.poll = poll;
+        if (await write({ type: 'state', data: snapshot })) {
+          client.polling = false;
+          if (!closed && clients.has(client)) { client.timer = setTimeout(poll, client.dirty ? 0 : Math.max(250, pollIntervalMs)); client.timer.unref(); }
+        }
         return;
       }
       fail('NOT_FOUND', 'Integration endpoint does not exist', 404);
@@ -226,6 +241,18 @@ export async function startIntegrationGateway({ config, command, state, stateDir
   const address = server.address();
   return { server, address, url: `http://${verified.host === '::1' ? '[::1]' : verified.host}:${address.port}`,
     subscriberCount: () => clients.size,
+    notify({ projectId, conversationId }) {
+      if (closed || typeof projectId !== 'string' || typeof conversationId !== 'string') return;
+      const matches = scope => scope.projectId === projectId && scope.conversationId === conversationId;
+      for (const res of handshakes) {
+        const pending = handshakeScopes.get(res);
+        if (pending && matches(pending.scope)) pending.dirty = true;
+      }
+      for (const client of clients) if (matches(client.scope)) {
+        client.dirty = true; clearTimeout(client.timer);
+        if (!client.polling) { client.timer = setTimeout(client.poll, 0); client.timer.unref(); }
+      }
+    },
     async close() {
       closed = true;
       // A request awaiting its initial snapshot is not in clients yet. End

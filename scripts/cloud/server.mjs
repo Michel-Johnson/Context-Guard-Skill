@@ -554,6 +554,7 @@ export async function startCloudServer({
 
   const projectById = id => registry.projects.find(project => project.id === id);
   const coordinators = new Map();
+  let integrationGateway = null;
   const conversationsFor = project => new CoordinatorConversations(path.join(dataDir, 'coordinators', project.id));
   const normalizedSessions = item => (Array.isArray(item?.sessions) ? item.sessions : [])
     .map(value => String(value || '').trim()).filter(Boolean);
@@ -886,6 +887,7 @@ export async function startCloudServer({
           ...(manual ? { compactAtTokens: COORDINATOR_MANUAL_COMPACT_AT_TOKENS, compactMinTurns: 8, completePresentations: true } : {}),
           ...(visionProvider ? { visionModel: coordinatorModelFactory({ ...visionProvider, supportsImages: true }) } : {}),
           ...(integrationAttachments ? { resolveAttachment: (id, options) => integrationAttachments.resolve({ teamId: integrations.teamId, projectId: project.id, id, ...options }) } : {}),
+          ...(integrations ? { onStateChange: () => integrationGateway?.notify({ projectId: project.id, conversationId }) } : {}),
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
             { conversation, nodeIds: config.nodeIds || null }), simulated: config.simulated === true });
         const intake = conversationId === 'legacy' ? mapIntakeFor(project, { submit: async (request, options) => {
@@ -2456,7 +2458,7 @@ export async function startCloudServer({
   });
   server.requestTimeout = 10 * 60_000;
   server.headersTimeout = 15_000;
-  const integrationGateway = await startIntegrationGateway({ config: integrations,
+  integrationGateway = await startIntegrationGateway({ config: integrations,
     stateDir: path.join(dataDir, 'integration-gateway'), command: integrationCommand,
     state: async scope => {
       const project = integrationProject(scope.projectId);

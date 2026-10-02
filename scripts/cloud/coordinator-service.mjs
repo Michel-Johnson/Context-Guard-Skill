@@ -278,8 +278,9 @@ export class CoordinatorMapIntake {
 // provider work runs outside the request and outside ProtocolStore transactions.
 export class CoordinatorService {
   constructor({ directory, model, system, tools, execute, context = null, maxSteps = 12, maxModelRetries = 2, retryDelayMs = 250,
-    compactAtTokens = COORDINATOR_COMPACT_AT_TOKENS, compactMinTurns = 1, simulated = false, namespace = '', visionModel = null, resolveAttachment = null, completePresentations = false }) {
+    compactAtTokens = COORDINATOR_COMPACT_AT_TOKENS, compactMinTurns = 1, simulated = false, namespace = '', visionModel = null, resolveAttachment = null, completePresentations = false, onStateChange = null }) {
     if (!Number.isSafeInteger(compactMinTurns) || compactMinTurns < 1) throw error('INVALID_ARGUMENT', 'Compaction requires a positive completed-turn interval');
+    if (onStateChange !== null && typeof onStateChange !== 'function') throw error('INVALID_ARGUMENT', 'State observer must be a function');
     this.file = path.join(directory, 'conversation.json');
     this.mountFile = path.join(directory, 'mount-reviews.json');
     this.model = model; this.system = system; this.tools = tools; this.execute = execute; this.context = context;
@@ -288,6 +289,15 @@ export class CoordinatorService {
     this.namespace = namespace;
     this.completePresentations = completePresentations;
     this.visionModel = visionModel; this.resolveAttachment = resolveAttachment;
+    this.onStateChange = onStateChange;
+  }
+  async saveState(state) {
+    await atomicWrite(this.file, encode(state));
+    // Persist first. Optional observers are notifications, not transactions:
+    // never await their network work or let a rejected observer fail a turn.
+    if (this.onStateChange) queueMicrotask(() => {
+      try { Promise.resolve(this.onStateChange()).catch(() => {}); } catch {}
+    });
   }
   async state() {
     const state = await readJSON(this.file, { messages: [], requests: {}, status: 'idle', toolReceipts: {} });
@@ -450,7 +460,7 @@ export class CoordinatorService {
         state.activeTurnId = id; state.steps = 0; state.modelRetries = 0;
       }
       state.status = 'running'; state.error = null; state.activity = null;
-      await atomicWrite(this.file, encode(state));
+      await this.saveState(state);
     });
     this.kick();
     return { accepted: true, id };
@@ -583,7 +593,7 @@ export class CoordinatorService {
       latest.compaction = { through, sourceHash, summary, triggerInputTokens: source.lastInputTokens, at: new Date().toISOString() };
       latest.lastInputTokens = null;
       delete latest.compactionError;
-      await atomicWrite(this.file, encode(latest));
+      await this.saveState(latest);
       committed = true;
     });
     return committed;
@@ -601,7 +611,7 @@ export class CoordinatorService {
             const state = await readJSON(this.file, null);
             if (!state || state.activeTurnId || state.status !== 'waiting-for-user') return;
             state.compactionError = { code: cause.code || 'COMPACTION_FAILED', at: new Date().toISOString() };
-            await atomicWrite(this.file, encode(state));
+            await this.saveState(state);
           });
         }
       }
@@ -628,9 +638,9 @@ export class CoordinatorService {
       if (state.status === 'error') {
         if (!coordinatorCanAutoResume(state, this.maxModelRetries)) return false;
         state.status = 'running'; state.error = null;
-        await atomicWrite(this.file, encode(state));
+        await this.saveState(state);
       }
-      const save = async value => atomicWrite(this.file, encode(value));
+      const save = value => this.saveState(value);
       try {
         while (!this.stopping && state.activeTurnId && state.steps < this.maxSteps) {
           state.steps++;

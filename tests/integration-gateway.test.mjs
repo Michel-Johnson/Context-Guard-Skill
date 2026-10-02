@@ -19,6 +19,98 @@ const token = 'integration-test-credential-not-an-admin-token';
 const config = { host: '127.0.0.1', port: 0, token, teamId, projectIds: [projectId] };
 const actor = { kind: 'human', sessionId: `slack:${teamId}:${userId}`, integration: 'slack', teamId, userId };
 
+test('Committed Coordinator progress wakes only its scoped event subscription without waiting for fallback polling', async t => {
+  const directory = await temporary(t), notifications = [];
+  let gateway, otherReads = 0;
+  const service = new CoordinatorService({ directory: path.join(directory, 'chat'), system: 'Coordinator', tools: [], execute: async () => {},
+    onStateChange: () => { notifications.push(true); gateway.notify({ projectId, conversationId: 'chat-live' }); },
+    model: { next: async ({ onText }) => {
+      await onText('这是第一段真实内容。');
+      return { stop: 'end_turn', content: [{ type: 'text', text: '这是完整答复。' }] };
+    } } });
+  gateway = await startIntegrationGateway({ config, stateDir: directory, pollIntervalMs: 60000,
+    command: async () => ({}), state: async scope => scope.conversationId === 'chat-live'
+      ? { ...(await service.state()), conversationId: scope.conversationId }
+      : { conversationId: scope.conversationId, marker: 'unrelated', reads: ++otherReads } });
+  t.after(async () => { await gateway.close(); await service.close({ stop: true }); });
+  const client = new Gateway({ url: gateway.url, token, teamId });
+  const abort = new AbortController(); t.after(() => abort.abort());
+  const states = client.events({ userId, projectId, conversationId: 'chat-live', signal: abort.signal });
+  assert.equal((await states.next()).value.status, 'idle');
+  const other = client.events({ userId, projectId, conversationId: 'chat-other', signal: abort.signal });
+  assert.equal((await other.next()).value.marker, 'unrelated');
+  assert.equal(gateway.subscriberCount(), 2);
+  await service.submit({ id: 'first-turn', text: '请回答' });
+  await service.close();
+  let timer;
+  try {
+    const final = await Promise.race([(async () => {
+      for await (const state of states) if (state.status === 'waiting-for-user') return state;
+      throw new Error('Subscription ended before final response');
+    })(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Waiting for the 60-second fallback is not an immediate notification')), 1500); })]);
+    assert.equal(final.messages.at(-1).text, '这是完整答复。');
+    assert.ok(notifications.length > 0);
+    assert.equal(otherReads, 1, 'Unrelated conversation is not awakened');
+  } finally { clearTimeout(timer); abort.abort(); }
+});
+
+test('Coordinator state observers cannot hold or fail the model run and observe only persisted state', async t => {
+  const directory = await temporary(t), observed = [];
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    onStateChange: () => {
+      observed.push(fs.readFile(path.join(directory, 'conversation.json'), 'utf8').then(JSON.parse));
+      return observed.length % 2 ? Promise.reject(new Error('Disconnected optional observer')) : new Promise(() => {});
+    }, model: { next: async ({ onText }) => { await onText('正文'); return { stop: 'end_turn', content: [{ type: 'text', text: '完成' }] }; } } });
+  await service.submit({ id: 'observer-turn', text: '请回答' }); await service.close();
+  const states = await Promise.all(observed);
+  assert.ok(states.length > 0);
+  assert.equal((await service.state()).status, 'waiting-for-user');
+  assert.equal((await service.state()).messages.at(-1).text, '完成');
+  assert.ok(states.every(state => state.requests['observer-turn']), 'No event can precede the durable accepted request');
+});
+
+test('Event notifications during an initial snapshot or in-flight read are not lost and never create concurrent reads', async t => {
+  const directory = await temporary(t);
+  let release, reading, captured, reads = 0, concurrent = 0, maximum = 0, version = 0;
+  const gate = () => { reading = new Promise(resolve => { captured = resolve; }); return new Promise(resolve => { release = resolve; }); };
+  let barrier = gate();
+  const gateway = await startIntegrationGateway({ config, stateDir: directory, pollIntervalMs: 60000, command: async () => ({}),
+    state: async scope => {
+      ++reads; maximum = Math.max(maximum, ++concurrent);
+      const snapshot = { conversationId: scope.conversationId, version };
+      if (barrier) { const waiting = barrier; captured(); await waiting; }
+      --concurrent; return snapshot;
+    } });
+  t.after(() => gateway.close());
+  const client = new Gateway({ url: gateway.url, token, teamId }), abort = new AbortController(); t.after(() => abort.abort());
+  const states = client.events({ userId, projectId, conversationId: 'chat-race', signal: abort.signal });
+  const first = states.next(); await reading;
+  version = 1; gateway.notify({ projectId, conversationId: 'chat-race' }); barrier = null; release();
+  assert.equal((await first).value.version, 0);
+  let timer;
+  const nextVersion = expected => Promise.race([(async () => {
+    for (;;) { const result = await states.next(); if (result.done) throw new Error('Stream closed'); if (result.value.version === expected) return result.value; }
+  })(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Notification was lost')), 1500); })]).finally(() => clearTimeout(timer));
+  await nextVersion(1);
+  barrier = gate(); version = 2; gateway.notify({ projectId, conversationId: 'chat-race' }); await reading;
+  version = 3;
+  for (let i = 0; i < 50; i++) gateway.notify({ projectId, conversationId: 'chat-race' });
+  barrier = null; release();
+  await nextVersion(3);
+  assert.equal(maximum, 1, 'Only one state read is active per subscription');
+  assert.equal(reads, 4, 'The burst coalesces into one fresh follow-up read');
+  abort.abort();
+});
+
+test('A failed Coordinator persistence never notifies optional observers', async t => {
+  const directory = await temporary(t); let notifications = 0;
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {}, model: {},
+    onStateChange: () => { notifications++; } });
+  await fs.mkdir(service.file);
+  await assert.rejects(service.saveState({ status: 'running' }));
+  assert.equal(notifications, 0);
+});
+
 test('Manual role is selected explicitly without changing legacy execution instructions', async () => {
   const document = await fs.readFile(new URL('../Coordinator.md', import.meta.url), 'utf8');
   const automatic = coordinatorRolePrompt(document), manual = coordinatorRolePrompt(document, { manual: true });
