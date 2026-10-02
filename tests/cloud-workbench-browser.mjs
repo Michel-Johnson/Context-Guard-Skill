@@ -440,6 +440,8 @@ try {
     if(request.url()==='https://example.invalid/private.png')markdownImageRequests.push(request.url());
     if(request.url().includes('/working-blot-atlas.png'))workingBlotRequests.push(request.url());
   });
+  const staleAtlasRoute=/\/assets\/[a-f0-9]{16}\/prototype\/working-blot-atlas\.png$/;
+  await page.route(staleAtlasRoute,route=>route.fulfill({status:404,body:'old asset version'}));
   let runningPreview = false;
   let coordinatorState = { status: 'waiting-for-user', simulated: true, messages: [{ role: 'assistant', text: '<img src=x onerror=alert(1)>', tools: [] }],
     sessionTemplates: [{ id: 'developer-template', name: 'Claude Developer' }], sessionCreations: [],
@@ -478,6 +480,7 @@ try {
   await page.route(/\/api\/coordinator(?:\?|$)/, async route => {
     if (route.request().method() === 'POST') {
       submissions.push(route.request().postDataJSON());
+      if(submissions.at(-1).text==='明确拒绝后恢复草稿')return route.fulfill({status:409,json:{error:{code:'COORDINATOR_BUSY',message:'Previous turn is running'}}});
       if (submissions.at(-1).text === 'Ready 一次性回复') {
         coordinatorState = { ...coordinatorState, status: 'waiting-for-user', streamingText: '', error: null,
           messages: [...coordinatorState.messages,{role:'user',text:'Ready 一次性回复'},{role:'assistant',text:'完整段落一次返回。\n\n第二段保持稳定。'}] };
@@ -900,6 +903,8 @@ try {
     return canvas&&getComputedStyle(canvas).opacity==='1'&&getComputedStyle(send.querySelector('svg')).opacity==='0';
   });
   assert.ok(workingBlotRequests.length,'Ready atlas is fetched through the authenticated Cloud asset route');
+  assert.ok(workingBlotRequests.some(url=>url.endsWith('/prototype/working-blot-atlas.png')&&!url.includes('/assets/')),
+    'a stale versioned atlas recovers through the authenticated current asset');
   await coordinator.screenshot({path:path.join(output,'coordinator-ready-working.png')});
   await page.setViewportSize({width:390,height:844});
   assert.equal(await coordinator.locator('.coordinator-message.user').last().evaluate(node=>node.nextElementSibling?.className),'coordinator-planning','mobile M03 shimmer stays below the user message');
@@ -1039,7 +1044,7 @@ try {
   assert.equal(await coordinator.locator('.coordinator-typing').textContent(),'Working · 正在整理选项','question-stage activity remains accessible');
   assert.equal(await coordinator.locator('.coordinator-planning').count(),0,'M03 exits when visible reply text arrives');
   assert.equal(await coordinator.locator('.coordinator-send.is-working').count(),1,'M04 continues after M03 exits');
-  assert.equal(await coordinator.locator('.coordinator-send.is-working-ready svg').count(),1,'arrow and ink remain mounted during the working transition');
+  assert.equal(await coordinator.locator('.coordinator-send.is-working-ready svg').count(),2,'arrow and network-independent ink remain mounted during the working transition');
   await coordinator.locator('.coordinator-streaming').evaluate(node=>{
     node.dataset.questionTransitionProbe='kept';
     node.querySelector('.coordinator-streaming-text > :first-child').__questionLeadProbe='kept';
@@ -1174,7 +1179,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('可补充纠正意见'));
   await coordinator.locator('textarea').fill('更正审批 ID，先核对当前 Plan');
   await coordinator.getByRole('button', { name: '发送', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
+  await page.waitForFunction(() => document.querySelector('#coordinator-panel > [role=status]')?.textContent === '' && document.querySelector('#coordinator-panel button[type=submit]').disabled && !document.querySelector('.coordinator-send.is-working') && document.querySelector('textarea[aria-label="发送给 Coordinator"]')?.value === '');
   assert.notEqual(submissions.at(-1).id, submissions[0].id);
   assert.equal(submissions.at(-1).retry, undefined, 'human correction is a new message, not an unsafe replay');
   record('Coordinator feature gate, safe Markdown rendering and durable explicit retries');
@@ -1186,6 +1191,7 @@ try {
     const panel = document.querySelector('#coordinator-panel');
     const retry = panel.querySelector('button[aria-label="重试原请求"]');
     return panel.querySelector(':scope > [role=status]').textContent === '' && retry.hidden &&
+      !panel.querySelector('.coordinator-send.is-working') &&
       panel.querySelector('button[type=submit]').disabled && panel.querySelector('textarea[aria-label="发送给 Coordinator"]').value === '';
   });
   assert.equal(submissions.length, beforeLostReply + 1, 'durable receipt reconciliation never submits a second model turn');
@@ -1207,6 +1213,7 @@ try {
   await coordinator.locator('.coordinator-planning').waitFor({state:'visible'});
   await coordinator.locator('.coordinator-send.is-working canvas').waitFor({state:'visible'});
   assert.equal(typeof releaseDelayedSubmission, 'function', 'the delayed request is still waiting for the server receipt');
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'','sending clears the composer before the server acknowledgement');
   assert.equal(await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({ hasText: '立即显示测试' }).textContent(), '立即显示测试', 'the sent message appears before the network response');
   const sentTurnPlacement=await coordinator.locator('.coordinator-message.coordinator-optimistic').filter({hasText:'立即显示测试'}).evaluate(node=>{
     const pane=node.closest('.coordinator-messages'),box=node.getBoundingClientRect(),view=pane.getBoundingClientRect();
@@ -1216,6 +1223,7 @@ try {
   assert.ok(sentTurnPlacement.bottomRatio>.38&&sentTurnPlacement.bottomRatio<.7,`Ready-style send pins the new turn near the middle: ${JSON.stringify(sentTurnPlacement)}`);
   assert.ok(sentTurnPlacement.tailHeight>0,'the message list reserves scroll room below the new turn');
   assert.equal(sentTurnPlacement.inkInComposer,true,'M04 ink appears in the composer while M03 shimmers under the new message');
+  await coordinator.getByLabel('发送给 Coordinator').fill('立即显示测试');
   releaseDelayedSubmission();
   await page.waitForFunction(() => !document.querySelector('.coordinator-message.coordinator-optimistic'));
   assert.equal(await coordinator.locator('.coordinator-message.user').filter({ hasText: '立即显示测试' }).count(), 1, 'server confirmation reconciles the optimistic message without duplication');
@@ -1224,6 +1232,8 @@ try {
     return (box.bottom-view.top)/view.height;
   });
   assert.ok(confirmedTurnRatio>.38&&confirmedTurnRatio<.7,`server confirmation keeps the pinned turn stable: ${confirmedTurnRatio}`);
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'立即显示测试','a late acknowledgement preserves even an identical newly typed draft');
+  await coordinator.getByLabel('发送给 Coordinator').fill('');
   const longReplyBlocks=Array.from({length:16},(_,index)=>`回复第 ${index+1} 段：这里是已经完成的一段内容。`);
   const longReply=longReplyBlocks.join('\n\n')+'\n\n';
   coordinatorState.status='running';
@@ -1290,6 +1300,37 @@ try {
   });
   assert.ok(oneShotLongPlacement.top<oneShotLongPlacement.viewportBottom-64&&oneShotLongPlacement.bottom>oneShotLongPlacement.viewportBottom,
     `a one-shot long reply reveals its beginning rather than snapping to its middle: ${JSON.stringify(oneShotLongPlacement)}`);
+
+  const failedAtlasRoute=/\/working-blot-atlas\.png$/;
+  const failAtlas=route=>route.fulfill({status:404,body:'unavailable atlas'});
+  await page.route(failedAtlasRoute,failAtlas);
+  coordinatorState.status='running';coordinatorState.streamingText='';
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
+  await coordinator.locator('.coordinator-send.is-working-fallback').waitFor();
+  await page.waitForFunction(()=>{
+    const send=document.querySelector('.coordinator-send');
+    return getComputedStyle(send.querySelector('.coordinator-ink-fallback')).opacity==='1'&&getComputedStyle(send.querySelector('svg')).opacity==='0';
+  });
+  assert.equal(await coordinator.locator('.coordinator-ink-fallback').evaluate(node=>getComputedStyle(node).animationPlayState),'running',
+    'network-independent ink keeps the hue effect when atlas loading fails');
+  await coordinator.locator('.coordinator-input-shell').screenshot({path:path.join(output,'coordinator-offline-ink.png')});
+  await page.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await coordinator.locator('.coordinator-ink-fallback').evaluate(node=>getComputedStyle(node).animationName),'none');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  coordinatorState.status='waiting-for-user';
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
+  await page.waitForTimeout(1050);
+  await page.unroute(failedAtlasRoute,failAtlas);
+  coordinatorState.status='running';
+  await coordinator.locator('.coordinator-send.is-working-ready').waitFor();
+  coordinatorState.status='waiting-for-user';
+  await page.waitForFunction(()=>!document.querySelector('.coordinator-send.is-working'));
+  record('Coordinator ink survives stale and unavailable assets, then recovers the original animation');
+  await coordinator.getByLabel('发送给 Coordinator').fill('明确拒绝后恢复草稿');
+  await coordinator.getByLabel('发送给 Coordinator').press('Enter');
+  await page.waitForFunction(()=>document.querySelector('#coordinator-panel > [role=status]')?.textContent.includes('COORDINATOR_BUSY'));
+  assert.equal(await coordinator.getByLabel('发送给 Coordinator').inputValue(),'明确拒绝后恢复草稿','a definitive rejection restores the unsent original input');
+  await page.reload();await synchronized();await page.locator('#btn-coordinator').click();
 
   const itemConversations=[];
   await page.route(/\/api\/coordinator\/conversations(?:\?|$)/,async route=>{

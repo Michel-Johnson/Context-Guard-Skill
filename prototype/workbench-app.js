@@ -4488,6 +4488,9 @@ async function installCoordinatorPanel(sync){
   const send=document.createElement('button');send.type='submit';send.className='coordinator-send';send.setAttribute('aria-label','发送');send.title='发送';
   const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');sendIcon.setAttribute('viewBox','0 0 24 24');sendIcon.setAttribute('aria-hidden','true');
   const sendPath=document.createElementNS('http://www.w3.org/2000/svg','path');sendPath.setAttribute('d','M12 19V5m0 0-6 6m6-6 6 6');sendPath.setAttribute('fill','none');sendPath.setAttribute('stroke','currentColor');sendPath.setAttribute('stroke-width','2.4');sendPath.setAttribute('stroke-linecap','round');sendPath.setAttribute('stroke-linejoin','round');sendIcon.append(sendPath);send.append(sendIcon);
+  // Network-independent silhouette traced from the original atlas's first frame.
+  const inkFallback=document.createElementNS('http://www.w3.org/2000/svg','svg');inkFallback.classList.add('coordinator-ink-fallback');inkFallback.setAttribute('viewBox','0 0 160 160');inkFallback.setAttribute('aria-hidden','true');
+  const inkPath=document.createElementNS('http://www.w3.org/2000/svg','path');inkPath.setAttribute('d','M66,32 69,33 69,36 66,36 66,35 65,35Z M58,34 61,34 61,35 64,37 64,39 66,40 66,42 67,42 68,44 70,44 70,45 72,45 72,46 75,46 75,47 77,47 77,48 83,50 83,51 87,54 87,56 88,56 89,58 91,58 91,59 94,59 94,58 96,58 96,57 98,57 98,56 104,54 104,58 103,58 103,60 102,60 102,62 101,62 101,64 100,64 100,68 99,68 98,72 91,78 91,80 93,80 93,81 108,82 108,83 113,83 113,84 122,86 122,87 124,87 124,88 130,90 131,92 133,92 133,93 136,94 137,96 139,96 139,97 145,102 145,105 144,105 144,106 141,106 141,107 132,107 132,108 123,108 123,109 105,109 105,110 103,110 102,113 101,113 101,115 100,115 100,117 99,117 98,122 96,123 96,125 95,125 93,128 91,128 89,140 86,140 81,134 77,134 77,133 72,133 72,132 70,132 70,131 65,127 65,125 63,124 62,119 61,119 61,117 60,117 60,112 59,112 59,104 60,104 60,102 59,102 59,103 55,103 59,96 56,96 56,97 53,97 53,98 49,98 49,99 44,99 44,100 28,100 28,99 23,98 22,95 21,95 23,89 25,89 27,86 29,86 29,85 31,85 31,84 33,84 33,83 39,81 39,79 33,75 33,73 34,73 36,70 35,70 35,68 33,67 33,65 31,64 31,62 29,61 29,58 28,58 28,55 27,55 27,50 28,50 28,48 29,48 31,45 34,45 34,44 54,43 54,42 56,42 56,40 57,40Z M92,38 95,38 95,42 94,42 94,43 91,42 91,39 92,39Z M44,118 47,120 47,123 46,123 45,125 42,124 42,119 44,119Z');inkFallback.append(inkPath);send.append(inkFallback);
   const workingBlot=createCoordinatorWorkingBlot?.(document,()=>{send.classList.add('is-working-fallback');send.classList.remove('is-working-ready');});
   if(workingBlot)send.append(workingBlot.canvas);
   const inputShell=document.createElement('div');inputShell.className='coordinator-input-shell';inputShell.append(input,send);
@@ -4767,8 +4770,8 @@ async function installCoordinatorPanel(sync){
   });
   window.addEventListener('workbench-session-changed',()=>selectConversation(scopeConversation()));
   const confirmSubmitted=(id,request)=>{
-    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';pendingTransportUnknown=false;transportRecoveryAttempted.delete(request.id);if(input.value.trim()===request.text)input.value='';setRetryMode(null);}
-    else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';draft.transportUnknown=false;transportRecoveryAttempted.delete(request.id);if(draft.text.trim()===request.text)draft.text='';}}
+    if(id===selected&&pending?.id===request.id){pending=null;pendingError='';pendingTransportUnknown=false;transportRecoveryAttempted.delete(request.id);setRetryMode(null);}
+    else{const draft=drafts.get(id);if(draft?.pending?.id===request.id){draft.pending=null;draft.error='';draft.transportUnknown=false;transportRecoveryAttempted.delete(request.id);}}
   };
   const visibleConversationMessage=message=>(message?.text||message?.attachments?.length||message?.questions?.length||message?.actions?.some(action=>!['node-navigation','node-tour','node-read'].includes(action.kind)))&&
     !(message.role==='user'&&(message.text||'').startsWith('[服务器工作流事件，不是新的用户授权]\n'));
@@ -5082,11 +5085,13 @@ async function installCoordinatorPanel(sync){
     if(review)return submitReviewDirective(request,review);
     reviewFeedback='';
     const id=selected;
+    const composerDraft=!request.retry&&!request.answerTo&&!optimisticRequests.has(request.id)&&input.value.trim()===request.text?input.value:null;
     liveReplyAwaiting=true;
     liveReplyAssistantCount=messages.querySelectorAll('.coordinator-message.assistant').length;
     optimisticRequests.set(request.id,{conversationId:id,request});
     appendOptimisticMessage(request);
     busy=true; busyConversation=id; pending=request; pendingError=''; pendingTransportUnknown=false; setSendBlocked(true); retry.disabled=true; status.textContent='';
+    if(composerDraft!==null){input.value='';resizeInput();}
     const answeringCard=[...messages.querySelectorAll('.coordinator-question')].find(card=>card.dataset.questionId===request.answerTo);
     typing.textContent='Working · 正在连接';typing.setAttribute('aria-label','Working · 正在连接');
     setTyping(true);
@@ -5099,6 +5104,10 @@ async function installCoordinatorPanel(sync){
       await sync.call(conversationUrl('/api/coordinator',id),payload,'POST','main');
       confirmSubmitted(id,request);
     }catch(error){
+      if(error.serverResponse&&composerDraft!==null){
+        if(id===selected&&!input.value){input.value=composerDraft;resizeInput();}
+        else if(id!==selected){const draft=drafts.get(id);if(draft&&!draft.text)draft.text=composerDraft;}
+      }
       const message=error.serverResponse?error.message:'连接暂时中断，正在自动核对；原消息已保留';
       if(id===selected){pendingError=message;pendingTransportUnknown=!error.serverResponse;setPlanningVisible(false);setTyping(false);for(const item of messages.querySelectorAll('.coordinator-question-status'))item.hidden=true;status.textContent='尚未确认提交：'+message;setRetryMode('request');}
       else{const draft=drafts.get(id);if(draft){draft.error=message;draft.transportUnknown=!error.serverResponse;}}
