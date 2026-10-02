@@ -66,6 +66,24 @@ export class DeviceConnection {
     }
   }
   async connected() { const value = await readJSON(this.file, null); return value?.origin === this.origin && !!value.credential; }
+  async callCoordinatorTool(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) fail('INVALID_ARGUMENT', 'Coordinator tool request must be an object');
+    const connection = await readJSON(this.file, null);
+    if (!connection?.credential || connection.origin !== this.origin) fail('UNAUTHORIZED', 'Local backend must connect first');
+    const base = new URL(this.origin);
+    if (base.username || base.password || base.protocol !== 'https:' && !(this.allowLoopback && base.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname))) fail('FORBIDDEN', 'Invalid coordinator tool origin');
+    const response = await fetch(new URL('/api/v2/coordinator-tools', base), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${connection.credential}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      redirect: 'error',
+      signal: AbortSignal.timeout(40000),
+    });
+    let value = null;
+    try { value = await response.json(); } catch { fail('UNAVAILABLE', 'Coordinator tool response was not JSON'); }
+    if (!response.ok || value?.ok !== true) fail(value?.error?.code || 'UNAVAILABLE', value?.error?.message || 'Coordinator tool failed');
+    return value.data;
+  }
   async recordCreationFailure(id, error) {
     if (!/^[a-f0-9]{64}$/.test(id || '')) fail('INVALID_ARGUMENT', 'Invalid creation identity');
     const file = path.join(this.directory, 'creation-results.json');
