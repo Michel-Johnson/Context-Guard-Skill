@@ -596,12 +596,20 @@ export class SlackPlugin {
     const cached = sameScope ? stream.latest : null;
     if (stream) { stream.latest = null; stream.lastFallbackAt = Date.now(); }
     const state = cached || await this.command('conversation.state', binding, binding.userId, operationId(`${key}:${Date.now()}`, 'state'));
-    const receivedAt = Date.parse(state.timing?.receivedAt);
-    if (Number.isFinite(receivedAt) && receivedAt < (binding.lastStateReceivedAt || 0)) return;
+    const messages = state.messages || [];
+    const userRequestIds = messages.filter(message => message.role === 'user' && message.requestId).map(message => message.requestId);
+    const accepted = state.acceptedRequestIds || [];
+    const lastRequestId = userRequestIds.at(-1) || state.activeTurnId;
+    // Context loading happens before submission takes the lock. receivedAt is
+    // diagnostic wall time, not a revision; use the existing append history.
+    // Legacy snapshots without visible user identities have no append-order
+    // proof. Retain polling compatibility rather than guessing their order.
+    if (binding.lastStateRequestId && userRequestIds.length && lastRequestId !== binding.lastStateRequestId &&
+        !userRequestIds.includes(binding.lastStateRequestId) && !accepted.includes(binding.lastStateRequestId)) return;
     // Polling and event snapshots may complete out of order. A turn that was
     // durably settled cannot become a partial stream again (including restart).
     if (state.activeTurnId && binding.settledRequestIds?.includes(state.activeTurnId)) return;
-    const messages = state.messages || [], lastAssistant = messages.findLastIndex(message => message.role === 'assistant');
+    const lastAssistant = messages.findLastIndex(message => message.role === 'assistant');
     let currentRequest = null;
     const entries = messages.map((message, index) => {
       if (message.role === 'user') currentRequest = message.requestId;
@@ -672,7 +680,7 @@ export class SlackPlugin {
     const openQuestions = messages.flatMap(message => message.questions || []).filter(question => !question.answer);
     await this.store.update(data => {
       const thread = data.threads[key];
-      if (Number.isFinite(receivedAt)) thread.lastStateReceivedAt = receivedAt;
+      if (lastRequestId) thread.lastStateRequestId = lastRequestId;
       thread.live = state.status === 'running' || !!state.activeTurnId && state.status !== 'error';
       if (!state.activeTurnId && ['waiting-for-user', 'idle'].includes(state.status)) {
         const completed = state.acceptedRequestIds || [];

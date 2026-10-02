@@ -10,6 +10,9 @@ import { coordinatorTools } from '../scripts/cloud/coordinator-tools.mjs';
 import { applyOperations, MapError } from '../scripts/shared/map-model.mjs';
 import { hash, readJSON } from '../scripts/shared/io.mjs';
 import { Gateway } from '../plugins/slack/src/gateway.mjs';
+import { Store, threadKey } from '../plugins/slack/src/store.mjs';
+import { SlackPlugin } from '../plugins/slack/src/plugin.mjs';
+import { CoordinatorService } from '../scripts/cloud/coordinator-service.mjs';
 
 const teamId = 'TTESTWORKSPACE', userId = 'UTESTUSER', projectId = 'fixture-project';
 const token = 'integration-test-credential-not-an-admin-token';
@@ -264,6 +267,35 @@ test('SSE capacity includes pending handshakes before any snapshot is available'
   const second = await fetch(`${gateway.url}/v1/events?${query}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1000) });
   assert.equal(second.status, 503); assert.equal((await second.json()).error.code, 'BUSY'); assert.equal(reads, 1);
   release(); await first;
+});
+
+test('Slack mirrors actual Coordinator append order when an earlier received request finishes context last', { timeout: 10000 }, async t => {
+  const directory = await temporary(t); let entered, release, contextCalls = 0, modelCalls = 0, contextStartedAt;
+  const firstContext = new Promise(resolve => { entered = resolve; });
+  const contextGate = new Promise(resolve => { release = resolve; });
+  const service = new CoordinatorService({ directory: path.join(directory, 'coordinator'), system: 'Controlled model fixture', tools: [],
+    context: async () => { if (++contextCalls === 1) { contextStartedAt = Date.now(); entered(); await contextGate; } return null; },
+    model: { async next() { modelCalls++; return { stop: 'end_turn', content: [{ type: 'text', text: modelCalls === 1 ? 'DONE B' : 'DONE A late context' }] }; } },
+    execute: async () => { throw new Error('No tool call is allowed in this fixture'); } });
+  const store = await new Store(path.join(directory, 'plugin')).open(), sent = [];
+  const key = threadKey(teamId, 'CFIXTURE', '1.0');
+  await store.bind(key, { projectId, conversationId: 'chat-fixture', userId, channel: 'CFIXTURE', threadTs: '1.0', ownRequests: ['A', 'B'] });
+  const plugin = new SlackPlugin({ store, teamId, botUserId: 'BTEST', cloudOrigin: 'https://example.invalid',
+    gateway: { command: async () => ({ ...await service.state(), conversationId: 'chat-fixture' }) },
+    io: { async post(input) { sent.push(input); return `${100 + sent.length}.0`; }, async update(...args) { sent.push({ update: args }); } } });
+  t.after(async () => { release(); await service.close({ stop: true }); await plugin.stop(); });
+  const delayed = service.submit({ id: 'A', text: 'First received, context waits' }); delayed.catch(() => {});
+  await firstContext;
+  const deadline = Date.now() + 1000;
+  while (Date.now() <= contextStartedAt) { assert.ok(Date.now() < deadline); await new Promise(resolve => setImmediate(resolve)); }
+  await service.submit({ id: 'B', text: 'Accepted before the delayed request' }); await service.close();
+  const before = await service.state(); await plugin.mirror(key); assert.match(sent.at(-1).text, /DONE B/);
+  release(); await delayed; await service.close();
+  const after = await service.state();
+  assert.deepEqual(after.acceptedRequestIds, ['B', 'A']);
+  assert.ok(Date.parse(after.timing.receivedAt) < Date.parse(before.timing.receivedAt), 'Producer timing and append order genuinely differ');
+  await plugin.mirror(key);
+  assert.equal(modelCalls, 2); assert.equal(sent.length, 2); assert.match(sent.at(-1).text, /DONE A late context/);
 });
 
 const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN5kAAAAASUVORK5CYII=';

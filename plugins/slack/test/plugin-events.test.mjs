@@ -162,14 +162,18 @@ test('late running event cannot overwrite a finalized reply obtained by concurre
 test('an older completed turn cannot stop a newer browser turn or hide its streaming reply', async t => {
   const f = await fixture(t); await f.plugin.tick();
   f.gateway.command = async () => snapshot('chat-1', { activeTurnId: 'request-2', streamingText: '当前浏览器轮次',
+    acceptedRequestIds: ['request-1', 'request-2'], messages: [
+      { role: 'user', requestId: 'request-1', text: '上一轮' }, { role: 'user', requestId: 'request-2', text: '当前轮' }],
     timing: { receivedAt: '2026-10-03T00:00:02.000Z' } });
   await f.plugin.mirror(key);
   assert.equal(f.store.data.threads[key].live, true);
+  assert.equal(f.posts.length, 2, 'The browser user message and its stream both mirror');
   f.subscriptions[0].send(snapshot('chat-1', { status: 'waiting-for-user', activeTurnId: null,
+    messages: [{ role: 'user', requestId: 'request-1', text: '上一轮' }],
     acceptedRequestIds: ['request-1'], timing: { receivedAt: '2026-10-03T00:00:01.000Z' } }));
   await until(() => f.plugin.eventStreams.get(key)?.latest); await f.store.tail; await f.plugin.tick();
-  assert.equal(f.store.data.threads[key].live, true, 'Older turn timing cannot downgrade the active browser turn');
-  assert.equal(f.posts.length, 1); assert.match(f.posts[0].text, /当前浏览器轮次/);
+  assert.equal(f.store.data.threads[key].live, true, 'Earlier history cannot downgrade the appended browser turn');
+  assert.equal(f.posts.length, 2); assert.match(f.posts.at(-1).text, /当前浏览器轮次/);
   assert.equal(f.subscriptions[0].signal.aborted, false);
 });
 
