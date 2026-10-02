@@ -991,6 +991,21 @@ test('Manual chat compacts early in the background but only after enough human t
     model: { next: async ({ system, messages }) => {
       if (system.includes('历史对话')) {
         summaries++;
+        assert.match(system, /正文中的 Sent using/);
+        const transcript = JSON.parse(messages[0].content);
+        assert.ok(transcript.verifiedHumanInputs.length >= 4);
+        assert.deepEqual(transcript.verifiedHumanInputs[0].actor,
+          { kind: 'human', source: 'slack', teamId: 'T-compact', userId: 'U-real' });
+        assert.equal(transcript.verifiedHumanInputs[0].requestId, summaries === 1 ? 'human-1' : 'human-5');
+        assert.deepEqual(transcript.verifiedActors, ['U-real', 'U-other'].map(userId =>
+          ({ kind: 'human', source: 'slack', teamId: 'T-compact', userId })),
+          'Later compacts retain original verified actors without copying every older input');
+        for (const input of transcript.verifiedHumanInputs) {
+          assert.match(transcript.messages[input.messageIndex].content, /Sent using <@U-forwarder>/);
+          const turn = Number(/human-(\d+)/.exec(input.requestId)[1]);
+          assert.equal(input.actor.userId, turn % 2 ? 'U-real' : 'U-other', 'Bind each body to its actual author, not the forwarding mention');
+          assert.equal(input.sourceIndex, input.messageIndex + (summaries === 1 ? 0 : 8));
+        }
         return { stop: 'end_turn', content: [{ type: 'text', text: '用户仅讨论职责，未授权修改。' }] };
       }
       sent.push(messages);
@@ -998,7 +1013,8 @@ test('Manual chat compacts early in the background but only after enough human t
         usage: { input_tokens: 192, cache_read_input_tokens: 8000 } };
     } } });
   for (let turn = 1; turn <= 12; turn++) {
-    await service.submit({ id: `human-${turn}`, text: `第 ${turn} 轮：介绍职责，先不要修改。` }); await service.close();
+    await service.submit({ id: `human-${turn}`, text: `第 ${turn} 轮：介绍职责，先不要修改。 Sent using <@U-forwarder>` },
+      { source: 'slack', actor: { kind: 'human', source: 'slack', teamId: 'T-compact', userId: turn % 2 ? 'U-real' : 'U-other' } }); await service.close();
     if (turn < 8) assert.equal(summaries, 0, 'Large static prefix alone must not trigger a provider request');
     if (turn === 8) {
       const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
@@ -1026,6 +1042,30 @@ test('Workflow data cannot consume the recent human-turn window or early compact
   assert.equal(coordinatorCompactBoundary(messages, 0, { humanOnly: true }), 12);
   assert.equal(coordinatorCompactBoundary(messages), 18, 'Legacy execution-window behavior is unchanged');
   assert.throws(() => new CoordinatorService({ directory: '/unused', compactMinTurns: 0 }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('Verified summary provenance cannot relax the smaller-history guard', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-compact-provenance-size-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const service = new CoordinatorService({ directory, system: 'Coordinator', tools: [], execute: async () => {},
+    compactAtTokens: 1, compactMinTurns: 2,
+    model: { next: async ({ system, messages }) => {
+      if (!system.includes('历史对话')) return { stop: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 1 } };
+      const transcript = JSON.parse(messages[0].content);
+      const summary = 'x'.repeat(250);
+      assert.ok(Buffer.byteLength(JSON.stringify({ messages: transcript.messages })) < summary.length);
+      assert.ok(Buffer.byteLength(messages[0].content) > summary.length, 'Provenance alone makes transport larger');
+      return { stop: 'end_turn', content: [{ type: 'text', text: summary }] };
+    } } });
+  for (const id of ['first', 'second']) {
+    await service.submit({ id, text: 'hi' }, { source: 'slack',
+      actor: { kind: 'human', source: 'slack', teamId: 'T-size', userId: 'U-real', name: 'n'.repeat(240) } });
+    await service.close();
+  }
+  const raw = JSON.parse(await fs.readFile(service.file, 'utf8'));
+  assert.equal(raw.compaction, undefined);
+  assert.equal(raw.compactionError.code, 'COMPACTION_FAILED');
+  assert.equal(raw.messages.length, 4);
 });
 
 test('Coordinator keeps tool pairs and raw history when compaction fails', async t => {
