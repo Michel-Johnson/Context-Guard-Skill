@@ -4589,7 +4589,7 @@ async function installCoordinatorPanel(sync){
         const rise=document.createElement('div'),body=document.createElement('div');
         rise.className='coordinator-rise';body.className='coordinator-rise-body';
         if(!prefersReducedMotion())rise.classList.add('is-entering');
-        body.append(markdownFragment(piece,document));rise.append(body);output.append(rise);
+        body.append(markdownFragment(piece,document,{readableWorkItems:true}));rise.append(body);output.append(rise);
         setPlanningVisible(false);
         // The sent bubble stays centered only until the reply starts. Follow
         // the visible reply edge, not the spacer below the conversation.

@@ -694,6 +694,35 @@ try {
     };
   });
   assert.deepEqual(segmentBoundaries,{paragraph:'第一段。\n\n'.length,openFence:0,closedFence:'```js\nconst value = 1;\n```\n'.length,brokenFence:'```js\nconst value = 1;'.length,final:'没有空行的一整段回复。'.length},'reveal boundaries preserve Markdown blocks and drain the final paragraph');
+  const readableItems=await page.evaluate(async()=>{
+    const {conversationFragments,markdownFragment}=await import('/prototype/coordinator-markdown.mjs');
+    const text='- Bug B399679682924：静态服务路径越界（工程）\n- **TD-438cae5ce21911a**: 边界回归测试（测试）\n- B505917140400 | 空值搜索崩溃\n\n```text\n- Bug B399679682924: 精确诊断编号\n```\n\n- `B399679682924`: 用户要求的编号\n- [诊断链接](/tasks/TD-438cae5ce21911a)\n- TD-example: 非内部编号\n- 部署到 8.218.56.89:8000';
+    const messages=[{role:'assistant',text},{role:'user',text}];
+    const container=document.createElement('div');container.append(conversationFragments(messages,document).body);
+    const stream=document.createElement('div');stream.append(markdownFragment(text,document,{readableWorkItems:true}));
+    const result={assistant:[...container.querySelectorAll('.assistant li')].map(x=>x.textContent),
+      user:[...container.querySelectorAll('.user li')].map(x=>x.textContent),
+      code:container.querySelector('.assistant pre code').textContent,
+      link:new URL(container.querySelector('.assistant a').href).pathname,
+      stream:[...stream.querySelectorAll('li')].map(x=>x.textContent),unchanged:messages[0].text===text};
+    container.replaceChildren(container.querySelector('.assistant ul'));
+    container.dataset.testid='readable-work-items-preview';
+    container.style.cssText='position:fixed;inset:24px auto auto 24px;width:420px;padding:24px;background:#fffdf7;color:#333;z-index:100000;font:18px/1.8 sans-serif';
+    document.body.append(container);
+    return result;
+  });
+  assert.deepEqual(readableItems.assistant.slice(0,3),['静态服务路径越界（工程）','边界回归测试（测试）','空值搜索崩溃']);
+  assert.equal(readableItems.user[0],'Bug B399679682924：静态服务路径越界（工程）','user-authored text remains verbatim');
+  assert.equal(readableItems.code,'- Bug B399679682924: 精确诊断编号');
+  assert.ok(readableItems.assistant.includes('B399679682924: 用户要求的编号'),'explicit code IDs remain available for diagnostics');
+  assert.ok(readableItems.assistant.includes('TD-example: 非内部编号'));
+  assert.ok(readableItems.assistant.includes('部署到 8.218.56.89:8000'));
+  assert.equal(readableItems.link,'/tasks/TD-438cae5ce21911a');
+  assert.deepEqual(readableItems.stream,readableItems.assistant,'streaming and committed lists use the same presentation');
+  assert.equal(readableItems.unchanged,true,'readable presentation never rewrites durable conversation data');
+  await page.getByTestId('readable-work-items-preview').screenshot({path:path.join(output,'coordinator-readable-work-items.png')});
+  await page.getByTestId('readable-work-items-preview').evaluate(node=>node.remove());
+  record('Coordinator work-item lists show names without exposing internal IDs; user text, code and links stay exact');
   runningPreview=false;coordinatorState.status='waiting-for-user';
   await page.locator('#btn-coordinator').click();
   await page.locator('#btn-coordinator').click();

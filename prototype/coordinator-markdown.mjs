@@ -103,7 +103,24 @@ export function legacyQuestionList(source) {
 
 // Build a restricted DOM from Markdown tokens. Never insert model-provided HTML,
 // fetch remote images, or attach an unvalidated URL to an active element.
-export function markdownFragment(text, doc = document) {
+// Presentation-only compatibility for old assistant lists. Keep user messages,
+// code, links and the persisted transcript verbatim; never infer a task identity.
+function readableWorkItemLists(source) {
+  let fence = null;
+  const id = '(?:B\\d{6,}|TD-[A-Za-z0-9]{8,})';
+  const label = '(?:(?:Bug|TODO|任务|缺陷)\\s+)?' + id;
+  const prefix = new RegExp('^( {0,3}(?:[-*+]|\\d+[.)])\\s+)(?:\\*\\*' + label + '\\*\\*|' + label + ')\\s*[：:|｜]\\s*(?=\\S)', 'i');
+  return String(source || '').split('\n').map(line => {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker) {
+      if (!fence) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length && /^\s*(`+|~+)\s*$/.test(line)) fence = null;
+      return line;
+    }
+    return fence ? line : line.replace(prefix, '$1');
+  }).join('\n');
+}
+export function markdownFragment(text, doc = document, { readableWorkItems = false } = {}) {
   const root = doc.createDocumentFragment();
   const append = (parent, tokens, depth = 0) => {
     for (const token of tokens || []) {
@@ -153,7 +170,7 @@ export function markdownFragment(text, doc = document) {
       append(node, token.tokens || [{ type: 'text', text: token.text || '' }], depth + 1); parent.append(node);
     }
   };
-  const source = paragraphize(String(text || ''));
+  const source = paragraphize(readableWorkItems ? readableWorkItemLists(text) : String(text || ''));
   try { if (source.length > 64000) throw new Error('Large response'); append(root, lexer(source, { gfm: true })); }
   catch { root.replaceChildren(doc.createTextNode(source)); }
   return root;
@@ -185,7 +202,8 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
     const cleanText = String(message.text || '').replace(/^\[实验：模拟人工输入\]\n/, '');
     const legacy = !message.questions?.length && message.role === 'assistant' ? legacyQuestionList(cleanText) : null;
     const lead = message.questionOnly ? '' : cleanText;
-    if (lead && !legacy) content.append(markdownFragment(lead, doc));
+    const replyOptions = { readableWorkItems: message.role === 'assistant' };
+    if (lead && !legacy) content.append(markdownFragment(lead, doc, replyOptions));
     for (const attachment of message.attachments || []) {
       const url = attachmentUrl?.(attachment);
       if (typeof url !== 'string' || !url.startsWith('/api/workbench/')) continue;
@@ -197,20 +215,20 @@ export function conversationFragments(messages, doc = document, { nodes = [], on
       }
       const line = doc.createElement('p'); line.append(link); content.append(line);
     }
-    if (legacy?.before) content.append(markdownFragment(legacy.before, doc));
+    if (legacy?.before) content.append(markdownFragment(legacy.before, doc, replyOptions));
     for (const question of legacy?.items || []) {
       const card = doc.createElement('section'); card.className = 'coordinator-question coordinator-legacy-question'; card.dataset.questionId = question.id;
-      const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);
+      const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc, replyOptions)); card.append(title);
       const draft = questionDrafts.get(question.id) || { option: '', text: '' }; questionDrafts.set(question.id, draft);
       const answerQuestion = { ...question, legacy: true };
       card.append(answerComposer(answerQuestion, draft, () => draft.text.trim()).compose); content.append(card);
     }
-    if (legacy?.after) content.append(markdownFragment(legacy.after, doc));
+    if (legacy?.after) content.append(markdownFragment(legacy.after, doc, replyOptions));
     for (const question of message.questions || []) {
       const card = doc.createElement('section'); card.className = 'coordinator-question'; card.dataset.questionId = question.id;
       const prompt = String(question.text || '').trim();
       if (!prompt || !lead.trimEnd().endsWith(prompt)) {
-        const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc)); card.append(title);
+        const title = doc.createElement('div'); title.append(markdownFragment(question.text, doc, replyOptions)); card.append(title);
       }
       const activity = doc.createElement('p'); activity.className = 'coordinator-question-status'; activity.setAttribute('role', 'status');
       activity.textContent = '正在回复…'; activity.hidden = !(running && question.answer?.requestId === activeTurnId);
