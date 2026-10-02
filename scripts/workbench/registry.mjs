@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite, encode, readJSON, withFileLock } from '../shared/io.mjs';
@@ -9,6 +10,31 @@ export const globalWorkbenchDirectory = () => path.resolve(
 );
 
 export const projectRegistryPath = (dir = globalWorkbenchDirectory()) => path.join(dir, 'projects.json');
+
+const directoryFailureCodes = new Set(['EACCES', 'EPERM', 'ENOTDIR', 'EROFS', 'EEXIST', 'EISDIR']);
+
+// Missing directories are normal; recursive creation makes them. Unavailable
+// means the default path cannot be used: not a directory, or not writable.
+export async function defaultDirectoryAvailability() {
+  const overridden = process.env.CONTEXT_GUARD_NAMED_STATE_DIR !== undefined && process.env.CONTEXT_GUARD_NAMED_STATE_DIR !== '';
+  const dir = globalWorkbenchDirectory();
+  const unavailable = (code = 'EACCES') => ({ path: dir, overridden, unavailable: true, code });
+  const available = { path: dir, overridden, unavailable: false, code: '' };
+  try {
+    const stat = await fs.stat(dir);
+    if (!stat.isDirectory()) return unavailable('ENOTDIR');
+    await fs.access(dir, fsConstants.W_OK);
+    return available;
+  } catch (error) {
+    if (error.code !== 'ENOENT') return unavailable(directoryFailureCodes.has(error.code) ? error.code : 'EACCES');
+    try {
+      await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+      return available;
+    } catch (mkdirError) {
+      return unavailable(directoryFailureCodes.has(mkdirError.code) ? mkdirError.code : 'EACCES');
+    }
+  }
+}
 
 function normalize(raw) {
   if (raw === null) return { version: 1, projects: [] };

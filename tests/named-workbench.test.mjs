@@ -8,7 +8,7 @@ import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { WORKBENCH_BUILD } from '../scripts/workbench/runtime.mjs';
-import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, stopServer, request } from '../scripts/workbench/cli.mjs';
+import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, startFailedMessage, stopServer, request } from '../scripts/workbench/cli.mjs';
 import { startNamedProxy } from '../scripts/workbench/named-proxy.mjs';
 import { namedWorkbench, ensureNamedProxy } from '../scripts/workbench/named.mjs';
 import { bindProject, resolveProjectRoot, projectId, projectName, resolveProject, saveMainBinding } from '../scripts/workbench/project.mjs';
@@ -478,4 +478,48 @@ test('named entry keeps Git Session views isolated and survives a backend worktr
   const restored = await namedWorkbench(restarted.state, request, { dir });
   assert.equal(restored.url, named.url);
   assert.equal((await call(restored.url, '/__context_guard/health')).status, 200);
+});
+
+test('START_FAILED mentions the default directory only when that directory caused the failure', async t => {
+  const base = 'Node workbench did not become healthy; inspect private/node-workbench.log';
+  const dir = '/tmp/context-guard-default';
+  assert.equal(startFailedMessage({ log: 'listen EADDRINUSE', directory: { path: dir, overridden: false, unavailable: false } }), base);
+  assert.equal(startFailedMessage({ log: `${dir} is unavailable (EACCES)`, directory: { path: dir, overridden: false, unavailable: false } }), base);
+  assert.equal(startFailedMessage({ log: `${dir} is unavailable (EACCES)`, directory: { path: dir, overridden: true, unavailable: true } }), base);
+  assert.equal(startFailedMessage({ log: 'the process exited before listen', directory: { path: dir, overridden: false, unavailable: true } }), base);
+  const named = startFailedMessage({ log: `The default directory ${dir} is unavailable (ENOTDIR)`, directory: { path: dir, overridden: false, unavailable: true } });
+  assert.match(named, new RegExp(`The default directory ${dir} is unavailable`));
+  assert.match(named, /references\/named-workbench\.md/);
+  assert.match(named, new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const home = await fs.mkdtemp(path.join(cwd, 'temp/default-dir-home-'));
+  fixtureRoots.push(home);
+  await fs.mkdir(path.join(home, '.context-guard'), { recursive: true });
+  await fs.writeFile(path.join(home, '.context-guard/named-workbench'), 'not-a-directory\n');
+  const root = await fixture(t, 'Blocked Directory');
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  delete env.CONTEXT_GUARD_NAMED_STATE_DIR;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { ensureServer } from ${JSON.stringify(path.join(cwd, 'scripts/workbench/cli.mjs'))};
+    try {
+      await ensureServer(${JSON.stringify(root)}, 0);
+      console.log(JSON.stringify({ ok: true }));
+    } catch (error) {
+      console.log(JSON.stringify({ code: error.code, message: error.message }));
+    }
+  `], { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.on('data', chunk => stdout += chunk);
+  child.stderr.on('data', chunk => stderr += chunk);
+  const code = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error(`startup hung\n${stdout}\n${stderr}`)); }, 20000);
+    child.on('exit', status => { clearTimeout(timer); resolve(status); });
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+  });
+  assert.equal(code, 0, stderr || stdout);
+  const result = JSON.parse(stdout);
+  assert.equal(result.code, 'START_FAILED');
+  assert.match(result.message, /The default directory .+ is unavailable/);
+  assert.match(result.message, /references\/named-workbench\.md/);
+  assert.match(result.message, /inspect private\/node-workbench\.log/);
 });
