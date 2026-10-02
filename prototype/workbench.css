@@ -1032,9 +1032,15 @@ html.cg-phone .drawer h2{font-size:18px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:not(:disabled):active{transform:translateY(-50%) scale(.94)}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:focus-visible{outline:2px solid #2f6fd6;outline-offset:2px}
 #coordinator-panel .coordinator-input-shell > .coordinator-send:disabled{background:#deddd9;color:#8e8d89;opacity:1}
-#coordinator-panel .coordinator-input-shell > .coordinator-send.is-working-ready:disabled{background:transparent;color:#b8891b;overflow:visible}
+#coordinator-panel .coordinator-input-shell > .coordinator-send.is-working:disabled{background:transparent;color:#b8891b;overflow:visible}
+#coordinator-panel .coordinator-input-shell > .coordinator-send .coordinator-ink-fallback{position:absolute;left:50%;top:50%;width:36px;height:36px;margin:-18px 0 0 -18px;opacity:0;fill:#bd391e;pointer-events:none;animation:coordinator-ink-hue 16s linear infinite paused}
+#coordinator-panel .coordinator-send.is-working svg:not(.coordinator-ink-fallback){opacity:0}
+#coordinator-panel .coordinator-send.is-working .coordinator-ink-fallback{opacity:1;animation-play-state:running}
 #coordinator-panel .coordinator-send.is-working-ready svg{opacity:0}
+#coordinator-panel .coordinator-send.is-working-ready .coordinator-ink-fallback{opacity:0}
 #coordinator-panel .coordinator-send.is-working-ready .coordinator-working-blot{opacity:1;clip-path:circle(75% at 50% 50%)}
+@keyframes coordinator-ink-hue{to{filter:hue-rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#coordinator-panel .coordinator-input-shell > .coordinator-send .coordinator-ink-fallback{animation:none}}
 @media (prefers-reduced-motion:reduce){#coordinator-panel .coordinator-input-shell > .coordinator-send,#coordinator-panel .coordinator-input-shell > .coordinator-send svg,#coordinator-panel .coordinator-working-blot{transition:none}#coordinator-panel .coordinator-typing-phase{animation:none;background-image:none;-webkit-text-fill-color:currentColor}}
 #coordinator-panel button[type=submit] { background: #ffe87e; font-weight: 600; }
 #coordinator-panel button:disabled { opacity: .5; cursor: default; }

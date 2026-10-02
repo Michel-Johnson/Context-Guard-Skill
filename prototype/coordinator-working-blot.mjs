@@ -35,10 +35,25 @@ function loadFrames(doc) {
   if (alphaFrames) return Promise.resolve(alphaFrames);
   atlasPromise ||= new Promise((resolve, reject) => {
     const image = new Image();
+    const source = new URL('./working-blot-atlas.png', import.meta.url);
+    let refreshed = false;
     image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Coordinator working animation could not load'));
-    image.src = new URL('./working-blot-atlas.png', import.meta.url).href;
+    image.onload = () => {
+      if (image.naturalWidth === COLS * TILE && image.naturalHeight === 6 * TILE) resolve(image);
+      else { atlasPromise = null; reject(new Error('Coordinator working animation has an invalid atlas')); }
+    };
+    image.onerror = () => {
+      // A tab can outlive a deployment and its content-versioned asset URL.
+      // The atlas layout is fixed; retry the authenticated current asset once.
+      if (!refreshed && /^\/assets\/[a-f0-9]{16}\//.test(source.pathname)) {
+        refreshed = true;
+        image.src = new URL(source.pathname.replace(/^\/assets\/[a-f0-9]{16}/, ''), source.origin).href;
+        return;
+      }
+      atlasPromise = null;
+      reject(new Error('Coordinator working animation could not load'));
+    };
+    image.src = source.href;
   });
   return atlasPromise.then(image => {
     if (alphaFrames) return alphaFrames;
