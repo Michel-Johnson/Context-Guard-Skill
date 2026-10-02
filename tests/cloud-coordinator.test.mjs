@@ -2122,6 +2122,58 @@ test('An external device calls the same Coordinator tools as the built-in Coordi
   const forbidden = await callTool(executorHeaders, { operationId: 'executor-list', name: 'list_tasks', input: {} });
   assert.equal(forbidden.status, 403);
   assert.equal(forbidden.body.error.code, 'FORBIDDEN');
+  const fileDenied = await callTool(deviceHeaders, { operationId: 'external-file', name: 'write_file', input: { path: 'docs/feedback.md', content: '未允许' } });
+  assert.equal(fileDenied.status, 403);
+  assert.equal(fileDenied.body.error.code, 'FORBIDDEN');
+  assert.equal(await fs.access(path.join(directory, 'docs', 'feedback.md')).then(() => true, () => false), false);
   const anonymous = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: 'anon', name: 'list_tasks', input: {} }) });
   assert.equal(anonymous.status, 401);
+});
+
+test('An external device writes one repository file through the Coordinator tool endpoint', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-external-file-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  const checkout = path.join(directory, 'checkout');
+  await fs.mkdir(checkout);
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    [projectId]: { root: checkout, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, mapWrite: true, fileWrite: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'],
+    } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
+    id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
+  } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab', clients: {
+      executor: { deviceId: 'exec-device', agentId: 'exec-agent', role: 'executor' },
+    } }] },
+    coordinatorModelFactory: () => ({ next: async () => { throw new Error('file writes must not start a model turn'); } }),
+  });
+  const response = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    v: 2, id: 'login-device', type: 'auth.open', payload: { repository: 'https://github.com/example/lab', clientId: 'device', password: 'synthetic-password' },
+  }) });
+  assert.equal(response.status, 200, await response.clone().text());
+  const headers = { Authorization: `Bearer ${response.headers.get('x-context-guard-credential')}`, 'Content-Type': 'application/json' };
+  const content = '# 回答质量反馈\n\n本文记录用户对 Coordinator 回答质量的反馈，供后续改进参考。\n\n1. 希望 Coordinator 回复附带处理用时。\n2. Coordinator 回复过长、不够简短易懂，需要改进。\n';
+  const callTool = async body => {
+    const result = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers, body: JSON.stringify(body) });
+    return { status: result.status, body: await result.json() };
+  };
+  const written = await callTool({ operationId: 'feedback-file', name: 'write_file', input: { path: 'docs/feedback.md', content } });
+  assert.equal(written.status, 200, JSON.stringify(written.body));
+  assert.equal(written.body.data.kind, 'file-write');
+  assert.equal(written.body.data.committedToGit, false);
+  assert.equal(await fs.readFile(path.join(checkout, 'docs/feedback.md'), 'utf8'), content);
+  const again = await callTool({ operationId: 'feedback-file', name: 'write_file', input: { path: 'docs/feedback.md', content } });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(again.body.data.sha256, written.body.data.sha256);
+  const conflict = await callTool({ operationId: 'feedback-replace', name: 'write_file', input: { path: 'docs/feedback.md', content: `${content}\n更多\n` } });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.body.error.code, 'VERSION_CONFLICT');
 });

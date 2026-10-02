@@ -71,6 +71,7 @@
     "tests/quark-provider.test.mjs",
     "tests/claude-runtime.test.mjs",
     "tests/cloud-coordinator.test.mjs",
+    "tests/coordinator-file.test.mjs",
     "tests/coordinator-multimodal.test.mjs",
     "tests/integration-gateway.test.mjs",
     "tests/slack-cloud.test.mjs",

@@ -40,7 +40,12 @@ export const coordinatorTools = [
     mainVersion: string, nodeId: string, kind: { enum: ['todo', 'bug', 'idea'] }, title: string, description: string,
   }),
   definition('ask_user', 'Ask one clarification; not for brief approval or final acceptance.', { question: string, options: { type: 'array', items: { ...string, maxLength: 120 }, minItems: 2, maxItems: 6, uniqueItems: true }, nodeIds }, ['question']),
+  definition('write_file', 'Write exactly one UTF-8 text file at a repository-relative path. Does not commit, push, or change Main. When the file already exists, pass expectedSha as the SHA-256 of its current bytes.', {
+    path: { ...string, maxLength: 240 }, content: { ...string, maxLength: 65536 }, expectedSha: { ...string, minLength: 64, maxLength: 64 },
+  }, ['path', 'content']),
 ];
+
+export const selectCoordinatorTools = (tools, { fileWrite = false } = {}) => fileWrite ? tools : tools.filter(tool => tool.name !== 'write_file');
 
 function validateInput(tool, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Tool input must be an object');
@@ -84,6 +89,7 @@ export function createCoordinatorExecutor(ctx) {
     }
     if (name === 'edit_map') return ctx.editMap(input, operationId);
     if (name === 'mount_conversation') return ctx.mountConversation(input, operationId);
+    if (name === 'write_file') return ctx.writeFile(input, operationId);
     if (name === 'propose_mount') {
       const parent = await ctx.readMap(input.parentId);
       if (parent.version !== input.mainVersion) fail('Main changed; read the parent again');

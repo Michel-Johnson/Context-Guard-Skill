@@ -18,7 +18,8 @@ import { ProtocolBlobs, serveBlob } from '../shared/protocol-blobs.mjs';
 import { validateMessage, errorReply, fail as protocolFail, MAX_MESSAGE_BYTES } from '../shared/protocol.mjs';
 import { CoordinatorModel } from './coordinator-model.mjs';
 import { CoordinatorService, CoordinatorInbox, CoordinatorMapIntake, CoordinatorConversations, coordinatorCanAutoResume } from './coordinator-service.mjs';
-import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor } from './coordinator-tools.mjs';
+import { coordinatorTools, coordinatorReferences, createCoordinatorExecutor, selectCoordinatorTools } from './coordinator-tools.mjs';
+import { writeProjectFile } from './coordinator-file.mjs';
 import { buildCoordinatorContext } from './coordinator-context.mjs';
 import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady, isExperimentTask } from './completion.mjs';
 import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
@@ -836,6 +837,12 @@ export async function startCloudServer({
               publication: { status, ...(reason ? { reason } : {}), sessionVersion, sourceCommit, mainSha, publishedAt },
               ...(delivery.queue ? { queue: delivery.queue } : {}) };
           },
+          writeFile: (input, operationId) => writeProjectFile({
+            enabled: config.fileWrite === true,
+            root: configuredMemory.projects[project.id].root,
+            receiptFile: path.join(dataDir, 'coordinators', project.id, 'file-writes.json'),
+            operationId, relativePath: input.path, content: input.content, expectedSha: input.expectedSha,
+          }),
           exchange: async (sessionId, id, type, payload) => {
             const message = validateMessage({ v: 2, id, type, session: await sessionFor(sessionId), payload });
             if (type === 'brief.submit') {
@@ -849,14 +856,17 @@ export async function startCloudServer({
           },
         });
         const itemScoped = conversationId.startsWith('item-');
+        const fileWriteNote = config.fileWrite === true
+          ? '\n项目允许 write_file 写入一个仓库相对路径的 UTF-8 文本文件。用户明确要求新建或替换单个文件时使用它，一次一个路径；不提交、不推送、不修改 Main。文件已存在时传入当前内容的 expectedSha。多文件修改和代码开发仍使用 brief。'
+          : '';
         const system = await fs.readFile(path.join(root, 'Coordinator.md'), 'utf8') + (!itemScoped ? '' :
           '\n本对话仅负责下方「当前事项」；先读取其所在节点的最新原文，不处理其他事项。') + (!manual ? '' :
-          '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。');
+          '\n本对话采用人工执行模式：讨论、读取和编辑 Map；prepare_task 只生成待人工确认的 brief。人确认后保存 Main TODO/Bug 和可粘贴执行提示，不创建、派发或恢复执行 Session。保持当前对话继续讨论。') + fileWriteNote;
         const directory = conversations.conversationDirectory(conversationId);
         const visionProvider = integrations?.visionProviderFile ? await readJson(integrations.visionProviderFile) : null;
         if (visionProvider && visionProvider.model !== 'glm-5.3-flash') throw new MapError('INVALID_VISION_PROVIDER', 'Slack image turns require glm-5.3-flash', 503);
         const service = new CoordinatorService({ directory, namespace: conversationId === 'legacy' ? '' : conversationId,
-          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: manual ? filterManualTools(coordinatorTools) : coordinatorTools, execute,
+          model: coordinatorModelFactory(await readJson(config.providerFile)), system, tools: selectCoordinatorTools(manual ? filterManualTools(coordinatorTools) : coordinatorTools, { fileWrite: config.fileWrite === true }), execute,
           ...(visionProvider ? { visionModel: coordinatorModelFactory({ ...visionProvider, supportsImages: true }) } : {}),
           ...(integrationAttachments ? { resolveAttachment: (id, options) => integrationAttachments.resolve({ teamId: integrations.teamId, projectId: project.id, id, ...options }) } : {}),
           context: async () => buildCoordinatorContext((await readMemoryProject(configuredMemory, project.id)).main,
