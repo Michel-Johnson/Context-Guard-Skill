@@ -2064,3 +2064,64 @@ test('CI delegation requires server registration, the owning device and an indep
   assert.ok((await store.handle(createdPrincipal, createdMessage)).data.version);
   await assert.rejects(authorizeCiReceiver({ ...options, message: createdMessage, templates: ['developer'], principal: { ...principal, deviceId: 'other' } }), { code: 'FORBIDDEN' });
 });
+
+test('An external device calls the same Coordinator tools as the built-in Coordinator', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'cg-external-tools-'));
+  let server;
+  t.after(async () => { await server?.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const projectId = 'context-guard', providerFile = path.join(directory, 'provider.json');
+  await fs.writeFile(providerFile, JSON.stringify({ baseUrl: 'https://provider.example', model: 'test', token: 'synthetic' }));
+  const memoryConfig = { dataDir: path.join(directory, 'memory'), adminToken: 'synthetic', projects: {
+    [projectId]: { root: directory, token: 'synthetic', ref: 'refs/heads/main', coordinator: {
+      enabled: true, mapWrite: true, providerFile, bindings: { template: 'template-tree' }, sessionTemplates: ['template'],
+    } },
+  } };
+  const memoryFile = path.join(memoryConfig.dataDir, createHash('sha256').update(projectId).digest('hex'), 'memory.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true });
+  await fs.writeFile(memoryFile, JSON.stringify({ revision: 1, main: { version: 'v1', memory: { map: { v: 1, bootstrap: 'ready', project: 'Lab', flows: [], root: {
+    id: 'T0', title: 'Lab', kind: 'module', state: 'dirty', purpose: '', memories: [], ideas: [], todos: [], bugs: [], dormant: [], files: [], owns: [], children: [], proposal: 'accepted',
+  } }, records: {} } }, sessions: {}, closedSessions: {}, receipts: {}, history: [], events: [], eventCursors: {} }));
+  server = await startCloudServer({ dataDir: directory, port: 0, browserToken: 'test-browser', memoryConfig,
+    browserPasswordHash: await createWorkbenchPasswordHash('synthetic-password'),
+    protocolConfig: { repositories: [{ repositoryId: '123', projectId, slug: 'example/lab', clients: {
+      executor: { deviceId: 'exec-device', agentId: 'exec-agent', role: 'executor' },
+    } }] },
+    coordinatorModelFactory: () => ({ next: async () => { throw new Error('external tool calls must not start a model turn'); } }),
+  });
+  const open = async clientId => {
+    const response = await fetch(`${server.url}/api/v2/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      v: 2, id: `login-${clientId}`, type: 'auth.open', payload: { repository: 'https://github.com/example/lab', clientId, password: 'synthetic-password' },
+    }) });
+    assert.equal(response.status, 200, await response.clone().text());
+    return { Authorization: `Bearer ${response.headers.get('x-context-guard-credential')}`, 'Content-Type': 'application/json' };
+  };
+  const deviceHeaders = await open('device');
+  const executorHeaders = await open('executor');
+  const callTool = async (headers, body) => {
+    const response = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers, body: JSON.stringify(body) });
+    return { status: response.status, body: await response.json() };
+  };
+  const listed = await callTool(deviceHeaders, { operationId: 'external-list', name: 'list_tasks', input: {} });
+  assert.equal(listed.status, 200, JSON.stringify(listed.body));
+  assert.equal(listed.body.ok, true);
+  assert.deepEqual(listed.body.data.tasks, []);
+  const invalid = await callTool(deviceHeaders, { operationId: 'external-invalid', name: 'edit_map', input: { unexpected: true } });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error.code, 'INVALID_ARGUMENT');
+  const edited = await callTool(deviceHeaders, { operationId: 'external-edit', name: 'edit_map', input: {
+    mainVersion: 'v1', actions: [{ op: 'create', parentId: 'T0', title: '外部节点', purpose: '同一执行器', owns: ['src/'] }],
+  } });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.equal(edited.body.data.kind, 'map-action');
+  assert.equal(edited.body.data.nodes[0].title, '外部节点');
+  const memory = await readMemoryView(memoryConfig, projectId);
+  assert.equal(memory.main.memory.map.root.children[0].title, '外部节点');
+  const sessions = await callTool(deviceHeaders, { operationId: 'external-sessions', name: 'list_sessions', input: {} });
+  assert.equal(sessions.status, 200, JSON.stringify(sessions.body));
+  assert.ok(Array.isArray(sessions.body.data.sessions));
+  const forbidden = await callTool(executorHeaders, { operationId: 'executor-list', name: 'list_tasks', input: {} });
+  assert.equal(forbidden.status, 403);
+  assert.equal(forbidden.body.error.code, 'FORBIDDEN');
+  const anonymous = await fetch(`${server.url}/api/v2/coordinator-tools`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: 'anon', name: 'list_tasks', input: {} }) });
+  assert.equal(anonymous.status, 401);
+});

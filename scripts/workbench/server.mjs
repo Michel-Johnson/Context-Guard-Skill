@@ -736,6 +736,18 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
         }
         if (route === '/__context_guard/health' && req.method === 'GET') return send(res, 200, { ok: true, ...runtimeIdentity(), root, projectId: project.projectId, worktreeRoot: project.worktreeRoot, worktreeId: project.worktreeId, pid: process.pid, instance, namedEntry: true, namedRoot: project.kind === 'git' ? project.sharedDir : root, recovery: mainStore.blocked, rss: process.memoryUsage().rss });
         if (route === '/__context_guard/bootstrap' && req.method === 'GET') return send(res, 200, { token: humanToken, root: `project:${project.projectId}`, projectId: project.projectId, bindingRequired: project.bindingRequired, instance, interfaceCapabilities: { deviceLogin: true }, ...runtimeIdentity() });
+        if (route === '/api/v2/coordinator-tools' && req.method === 'POST') {
+          const actor = auth(req, url);
+          if (actor.kind !== 'agent') throw new MapError('FORBIDDEN', 'Coordinator tools require a coordinator Session', 403);
+          if (access.binding(actor.sessionId)?.role !== 'coordinator') throw new MapError('FORBIDDEN', 'This Session is not a Coordinator', 403);
+          const connection = await projectDevice();
+          if (!connection || !await connection.connected()) throw new MapError('UNAVAILABLE', 'Cloud connection unavailable', 503);
+          try {
+            return send(res, 200, await connection.callCoordinatorTool(await body(req)));
+          } catch (error) {
+            throw new MapError(error.code || 'UNAVAILABLE', error.message || 'Coordinator tool failed', error.status || 503);
+          }
+        }
         if (route === '/api/v2/messages') return messageHandler({
           allowedOrigin: requestOrigin,
           authenticate: request => {

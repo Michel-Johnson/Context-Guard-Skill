@@ -106,6 +106,14 @@ test('an explicit local Coordinator role persists without granting Main write au
   assert.equal(rejected.code, 'INVALID_ROLE');
   assert.equal((await cliJSON(['workbench', '--binding-status', '--root', root, '--session', 'test-0'])).session.role, 'coordinator');
   await assert.rejects(cliJSON(['map', 'main', 'apply', '--root', root, '--session', 'test-0']), /FORBIDDEN/);
+  const coordinator = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-0', worktreeRoot: root } });
+  const executor = await request(backend.state, '/api/session', { method: 'POST', body: { sessionId: 'test-1', worktreeRoot: root } });
+  const tool = { operationId: 'list-1', name: 'list_tasks', input: {} };
+  const unavailable = await request(backend.state, '/api/v2/coordinator-tools', { method: 'POST', token: coordinator.token, body: tool }).catch(error => error);
+  assert.equal(unavailable.code, 'UNAVAILABLE');
+  assert.match(unavailable.message, /Cloud connection unavailable/);
+  const forbidden = await request(backend.state, '/api/v2/coordinator-tools', { method: 'POST', token: executor.token, body: tool }).catch(error => error);
+  assert.equal(forbidden.code, 'FORBIDDEN');
 });
 test('five live SSE pages suppress automatic duplicate opens; first parallel claim wins', async t => {
   const { backend, named } = await environment(t);

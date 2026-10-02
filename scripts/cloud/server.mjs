@@ -1783,6 +1783,32 @@ export async function startCloudServer({
           return await serveBlob(req, res, { blobs, principal, session, blobId: binaryRoute[1] });
         } catch (error) { return send(res, error.status || 503, errorReply('', error)); }
       }
+      if (route === '/api/v2/coordinator-tools') {
+        if (!interfaceAuth) protocolFail('INVALID_ARGUMENT', 'Interface v2 is not configured');
+        if (req.method !== 'POST') protocolFail('INVALID_ARGUMENT', 'Use POST');
+        if (req.headers.origin && req.headers.origin !== allowedOrigin) protocolFail('FORBIDDEN', 'Untrusted browser origin');
+        const principal = await interfaceAuth.authenticate(bearer(req));
+        if (principal.role !== 'device' && principal.role !== 'coordinator') protocolFail('FORBIDDEN', 'Coordinator tools use the same device or coordinator credential as the built-in Coordinator');
+        const body = await requestBody(req, MAX_MESSAGE_BYTES);
+        const fields = ['conversationId', 'name', 'input', 'operationId'];
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !fields.includes(key))) protocolFail('INVALID_ARGUMENT', 'Provide name, input and operationId');
+        if (typeof body.name !== 'string' || !body.name || body.name.length > 64) protocolFail('INVALID_ARGUMENT', 'Provide a Coordinator tool name');
+        if (typeof body.operationId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(body.operationId)) protocolFail('INVALID_ARGUMENT', 'Provide a stable operationId');
+        if (!body.input || typeof body.input !== 'object' || Array.isArray(body.input)) protocolFail('INVALID_ARGUMENT', 'Tool input must be an object');
+        const conversationId = body.conversationId === undefined ? 'legacy' : body.conversationId;
+        if (typeof conversationId !== 'string' || !conversationId || conversationId.length > 180) protocolFail('INVALID_ARGUMENT', 'Unknown Coordinator conversation');
+        const repository = interfaceConfig.repositories.find(item => item.repositoryId === principal.repositoryId);
+        const project = repository?.projectId && projectById(repository.projectId);
+        if (!project) protocolFail('NOT_FOUND', 'Project is not configured');
+        const service = await coordinatorFor(project, conversationId);
+        try {
+          const data = await service.execute(body.name, body.input, { operationId: body.operationId });
+          return send(res, 200, { ok: true, data });
+        } catch (error) {
+          if (error.status && error.code) throw error;
+          protocolFail(error.code || 'UNAVAILABLE', error.message || 'Coordinator tool failed');
+        }
+      }
       if (route === '/api/v2/messages') {
         let id = '';
         try {
