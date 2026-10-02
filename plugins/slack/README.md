@@ -36,6 +36,8 @@
 
 停用时用 `sudo systemctl stop context-guard-slack.service`，只关闭 Socket 和插件进程；恢复时启动同一 unit 并保留私有状态目录。备份必须包含 `state.json`，不得用空目录替换已有回执。attention/unknown 条目需要在工作区按原线程、操作 ID 核对；核对前不删回执或重新发送同一需求。应用凭据与日志不参与 Map、Git 或 npm 分发，启动错误日志只输出错误代码，不输出响应正文。
 
+启动或升级后，`systemctl active` 和 Cloud health 不能证明 Slack 已接通。发送验收问题前，在有权读取该 unit 日志的服务器账户下执行 `node plugins/slack/scripts/wait-ready.mjs`；实验 unit 使用 `--unit context-guard-slack-candidate.service`。管理员需先把经过审核的脚本安装为 root-owned 副本再运行，不从服务可写目录直接以 root 执行。该只读检查有界等待本次 PID、当前 boot 及启动代次的 Socket 初始连接成功日志，读日志后复查同一启动代次；超时或无法核验返回失败，不输出日志正文，不启动第二个 Socket 客户端。它只证明本次初始连接曾成功，不证明之后的持续在线，仍须用真实 Slack 问答完成当前功能验收。
+
 Slack 免费版的历史保留与应用数量有限，长期项目记录在 Map 和 Cloud。此插件不启动 Executor、Tester、worktree 或自动派发；人工 brief 确认只写 Main 事项并生成粘贴提示。更多节点和超长内容可通过 Home 的完整 Map 链接查看。
 
 ## 验证

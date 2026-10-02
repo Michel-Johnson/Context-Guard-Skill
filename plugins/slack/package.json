@@ -1,6 +1,6 @@
 {
   "name": "@context-guard/slack-plugin",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22.19.0", "npm": ">=9.6.4" },
