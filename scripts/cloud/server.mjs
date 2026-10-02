@@ -23,7 +23,7 @@ import { buildCoordinatorContext } from './coordinator-context.mjs';
 import { verifyTaskCompletion, verifyTaskClose, taskSessionPublicationReady, isExperimentTask } from './completion.mjs';
 import { CloudAttachments, attachmentInput, attachmentPatch } from './attachments.mjs';
 import { createQuarkProvider } from './quark-provider.mjs';
-import { startIntegrationGateway, validateIntegrationConfig } from './integration-gateway.mjs';
+import { startIntegrationGateway, validateIntegrationConfig, relevanceInput, relevanceOverview, classifyIntegrationMessage } from './integration-gateway.mjs';
 import { IntegrationAttachmentStore } from './integration-attachments.mjs';
 import { CoordinatorManualBriefs, filterManualTools } from './coordinator-manual.mjs';
 
@@ -1006,6 +1006,15 @@ export async function startCloudServer({
     if (type === 'project.list') return { projects: registry.projects.filter(project => integrations.projectIds.includes(project.id) &&
       configuredMemory?.projects?.[project.id]?.coordinator?.enabled).map(({ id, name, description }) => ({ id, name, description })) };
     const project = integrationProject(projectId);
+    if (type === 'conversation.relevance') {
+      const input = relevanceInput(payload);
+      if (conversationId) await requireManualConversation(project, conversationId);
+      const config = configuredMemory.projects[projectId].coordinator;
+      if (!config?.enabled || !path.isAbsolute(config.providerFile || '')) protocolFail('COORDINATOR_DISABLED', 'Coordinator is unavailable for relevance checks');
+      const memory = await readMemoryProject(configuredMemory, projectId);
+      const model = coordinatorModelFactory({ ...await readJson(config.providerFile), timeoutMs: 12000 });
+      return classifyIntegrationMessage(model, { overview: relevanceOverview(memory.main, config.nodeIds), input });
+    }
     if (type === 'project.read') {
       const memory = await readMemoryProject(configuredMemory, project.id);
       const sessions = (await memorySessions(project)).map(({ id, name, state, status, connection, activity, lastSeen }) =>

@@ -48,7 +48,13 @@ async function fixture(t, { enabled = true, visionProvider } = {}) {
     ...(enabled ? { integrationConfig: { host: '127.0.0.1', port: 0, token: integrationCredential, teamId, projectIds: [projectId, otherProjectId],
       ...(visionProvider ? { visionProviderFile } : {}) } } : {}),
     coordinatorModelFactory: () => ({ model: 'fixture-model', next: async request => {
-      modelCalls.push({ messages: request.messages, tools: request.tools });
+      modelCalls.push({ messages: request.messages, tools: request.tools, maxTokens: request.maxTokens });
+      if (request.system?.startsWith('你仅判断 Slack 消息')) {
+        const input = JSON.parse(request.messages[0].content);
+        if (input.message.text === 'relevance-tool') return { stop: 'tool_use', content: [{ type: 'tool_use', name: 'edit_map', id: 'forbidden-relevance-tool', input: {} }] };
+        return { stop: 'end_turn', content: [{ type: 'text', text: input.message.text === 'invalid-relevance'
+          ? 'not a decision' : JSON.stringify({ respond: input.message.text === '登录刷新 Bug，请分析。', reason: 'Controlled decision' }) }] };
+      }
       const message = request.messages.at(-1), text = typeof message?.content === 'string' ? message.content : '';
       if (message?.role === 'user' && text === 'failure-then-browser-retry' && !failedTurns.has(text)) {
         failedTurns.add(text); throw Object.assign(new Error('Controlled provider failure'), { code: 'FIXTURE_PROVIDER_FAILURE' });
@@ -115,6 +121,53 @@ test('Cloud integration listener is disabled by default and plugin credentials c
   assert.equal((await enabled.browser('main', { authorization: integrationCredential })).status, 401);
   const projects = await enabled.gateway('project.list');
   assert.equal(projects.status, 200); assert.deepEqual(projects.body.data.projects.map(item => item.id).sort(), [projectId, otherProjectId].sort());
+});
+
+test('relevance endpoint reads current Main but never creates conversations, work items or execution state', async t => {
+  const f = await fixture(t), before = await f.main();
+  const originalFiles = await fs.readdir(path.join(f.directory, 'coordinators'), { recursive: true }).catch(error => {
+    if (error.code !== 'ENOENT') throw error; return [];
+  });
+  const conversationFiles = files => files.filter(file => /(?:conversations|conversation|state\.json|chat-)/.test(file)).sort();
+  const result = await f.gateway('conversation.relevance', { text: '登录刷新 Bug，请分析。' }, { id: 'relevance-related' });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data, { respond: true, reason: 'Controlled decision', mainVersion: before.main.version });
+  const request = f.modelCalls.at(-1);
+  assert.deepEqual(request.tools, []); assert.equal(request.maxTokens, 160);
+  assert.equal(JSON.parse(request.messages[0].content).overview.memory, 'Current project facts');
+  assert.deepEqual(await f.main(), before);
+  assert.deepEqual(conversationFiles(await fs.readdir(path.join(f.directory, 'coordinators'), { recursive: true }).catch(error => {
+    if (error.code !== 'ENOENT') throw error; return [];
+  })), conversationFiles(originalFiles));
+  const calls = f.modelCalls.length;
+  await f.restart();
+  assert.deepEqual((await f.gateway('conversation.relevance', { text: '登录刷新 Bug，请分析。' }, { id: 'relevance-related' })).body.data, result.body.data);
+  assert.equal(f.modelCalls.length, calls);
+  assert.equal((await f.gateway('conversation.relevance', { text: 'changed text' }, { id: 'relevance-related' })).status, 409);
+});
+
+test('unrelated and invalid relevance decisions cannot become submitted turns', async t => {
+  const f = await fixture(t), before = await f.main();
+  const unrelated = await f.gateway('conversation.relevance', { text: '<@UOTHER> 中午吃什么？' }, { id: 'relevance-unrelated' });
+  assert.equal(unrelated.status, 200); assert.equal(unrelated.body.data.respond, false);
+  const invalid = await f.gateway('conversation.relevance', { text: 'invalid-relevance' }, { id: 'relevance-malformed' });
+  assert.equal(invalid.status, 502); assert.equal(invalid.body.error.code, 'RELEVANCE_INVALID_RESPONSE');
+  const forbiddenTool = await f.gateway('conversation.relevance', { text: 'relevance-tool' }, { id: 'relevance-tool' });
+  assert.equal(forbiddenTool.status, 502); assert.equal(forbiddenTool.body.error.code, 'RELEVANCE_INVALID_RESPONSE');
+  assert.equal(invalid.body.data, undefined); assert.deepEqual(await f.main(), before);
+});
+
+test('relevance input, workspace, project and conversation boundaries are checked before the model', async t => {
+  const f = await fixture(t), calls = f.modelCalls.length;
+  for (const payload of [{ text: '' }, { text: 'x', tool: 'map.write' }, { text: 'x', context: [{ speaker: userId, text: 'x'.repeat(801) }] },
+    { text: 'x', files: [{ name: 'x', mimeType: 'image/png', path: '/private' }] }, { text: 'x'.repeat(10001) }]) {
+    assert.equal((await f.gateway('conversation.relevance', payload)).status, 400);
+  }
+  assert.equal((await f.gateway('conversation.relevance', { text: 'x' }, { project: 'unavailable-project' })).status, 403);
+  assert.equal((await f.gateway('conversation.relevance', { text: 'x' }, { user: 'fake-device' })).status, 403);
+  assert.equal((await f.gateway('conversation.relevance', { text: 'x' }, { credential: browserCredential })).status, 401);
+  assert.equal((await f.gateway('conversation.relevance', { text: 'x' }, { conversationId: 'legacy' })).status, 403);
+  assert.equal(f.modelCalls.length, calls);
 });
 
 test('Slack vision configuration cannot silently select a different model', async t => {

@@ -27,6 +27,11 @@
 - [ ] 在自己的真实项目录屏验证本机闭环，与 Cursor Projects 用同一任务比较到“用户无需再改的任务”的耗时、修订次数及等待时间。
 - [ ] 仅在录屏证明价值后改 README 首句，突出“能和你对话的项目 coordinator”。
 
+## Slack 插件（用户明确批准的接入专项，不恢复自动派发）
+
+- [ ] 真实 Jerry Family 验收：App 已安装；仍需私有 Token 配置和服务启动。验证 Home、DM、双端接续、并发线程、事项/记忆表单、brief/执行提示、附件、Map 预览及插件重启/停用边界。隔离测试与模型可用性探测不代表 Slack 闭环。
+- [ ] B121 未 @ 消息相关性：已补只读模型入口与持久判断，隔离回归覆盖相关消息新建对话、无关消息静默、失败不写业务状态、原 ID 重放及跨项目拒绝；真实模型的正反语义判断、延迟和 Slack 结果仍待部署验收。
+
 ## 历史未完成项与暂缓范围
 
 - [ ] 暂缓｜宣传站分支迁移（2026-09-30）：website 保留完整站点和工作台构建依赖；main 清理站点专属源码及 CI，产品前端、docs/design 画廊不动。站点构建及 21 项测试、影响选择器 11 项、工作流与测试治理检查通过；产品本地浏览器 55 项通过。Cloud 工作台与日志恢复浏览器、npm 打包及 CLI smoke（29 项安装边界）通过。双向 Cloud 同步浏览器在 `tests/cloud-sync-browser.mjs:94` 初始 Session 选择等待 12 秒超时。完整 Node 产品回归已发现既有 Claude CI 精确 handoff SHA 校验和 filesystem scoped Markdown 用例失败；最终全量结论待收口，不宣称全绿。首次 `npm test` 因默认缓存 EPERM 停止，隔离缓存重跑的安全套件通过；首次 Cloud 浏览器 vendor 字节断言受 Windows checkout 换行影响，仅恢复工作区为原 Git blob 后通过。日志保留在本任务 `temp/`。Pages 环境当前仅允许 main；未授权切换，迁移 PR 保持 Draft，部署步骤见 [宣传站分支](docs/website.md)。

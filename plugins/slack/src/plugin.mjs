@@ -4,6 +4,10 @@ import { homeView, nodesOf, modal, formValues, messageBlocks, approvalBlocks, se
 
 const operationId = (id, suffix) => `slack-${digest(`${id}:${suffix}`)}`;
 const isMessage = event => ['message', 'app_mention'].includes(event?.type) && !event.bot_id && !event.bot_profile && !event.hidden && (!event.subtype || event.subtype === 'file_share');
+const indirectMessage = (event, botUserId) => isMessage(event) && event.user !== botUserId &&
+  event.channel_type !== 'im' && !event.channel?.startsWith('D') && event.type !== 'app_mention' && !String(event.text || '').includes(`<@${botUserId}>`);
+const messageLane = envelope => envelope?.type === 'events_api' && isMessage(envelope.body?.event)
+  ? `${envelope.body.event.channel}:${envelope.body.event.thread_ts || envelope.body.event.ts}` : null;
 export function envelopeId(type, body, fallback) {
   if (isMessage(body.event)) return `message:${body.team_id}:${body.event.channel}:${body.event.ts}`;
   return `${type}:${body.event_id || digest([body.team?.id || body.team_id, body.trigger_id || body.view?.id || fallback, body.view?.hash, body.view?.state?.values, body.actions?.map(action => [action.action_id, action.action_ts, action.value, action.selected_option?.value])])}`;
@@ -21,6 +25,8 @@ export class SlackPlugin {
     this.store = store; this.gateway = gateway; this.io = io; this.teamId = teamId; this.cloudOrigin = new URL(cloudOrigin).origin; this.botUserId = botUserId;
     this.pollMs = Math.max(1000, pollMs); this.logger = logger; this.projects = new Map(); this.maps = new Map(); this.stopped = true; this.active = null; this.cursor = 0;
     this.processing = new Map();
+    this.classifying = new Set();
+    this.messageLanes = new Map();
   }
   async receive({ type, body, envelope_id, ack }) {
     const team = body.team_id || body.team?.id || body.event?.team;
@@ -47,9 +53,36 @@ export class SlackPlugin {
     });
   }
   async tick() {
-    for (const [id, entry] of Object.entries(this.store.data.inbox).filter(([id, item]) => item.status === 'pending' && item.next <= Date.now() && !this.processing.has(id)).slice(0, 8)) {
+    const occupied = new Set(this.messageLanes.keys());
+    const pending = Object.entries(this.store.data.inbox).filter(([id, item]) => {
+      if (item.status !== 'pending' || this.processing.has(id)) return false;
+      const lane = messageLane(item.envelope);
+      if (lane && occupied.has(lane)) return false;
+      if (lane) occupied.add(lane);
+      // A later correction must not overtake this thread's earlier BUSY retry.
+      return item.next <= Date.now();
+    });
+    const needsClassification = entry => entry.envelope?.type === 'events_api' && indirectMessage(entry.envelope.body.event, this.botUserId);
+    const run = (id, entry, classifying = false) => {
+      const lane = messageLane(entry.envelope);
+      if (lane) this.messageLanes.set(lane, id);
+      if (classifying) this.classifying.add(id);
+      const running = this.runEntry(id, entry).finally(() => {
+        this.processing.delete(id); this.classifying.delete(id);
+        if (lane && this.messageLanes.get(lane) === id) this.messageLanes.delete(lane);
+        if (classifying) this.kick();
+      });
+      this.processing.set(id, running); return running;
+    };
+    // Overheard messages must not put model latency in front of explicit calls,
+    // interactive actions or existing conversation mirroring.
+    for (const [id, entry] of pending.filter(([, entry]) => needsClassification(entry)).slice(0, Math.max(0, 2 - this.classifying.size))) {
       if (this.stopped) return;
-      const running = this.runEntry(id, entry).finally(() => this.processing.delete(id)); this.processing.set(id, running); await running;
+      run(id, entry, true);
+    }
+    for (const [id, entry] of pending.filter(([, entry]) => !needsClassification(entry)).slice(0, 8)) {
+      if (this.stopped) return;
+      await run(id, entry);
     }
     const bindings = Object.entries(this.store.data.threads);
     if (!bindings.length || this.stopped) return;
@@ -76,7 +109,7 @@ export class SlackPlugin {
         item.next = Date.now() + Math.max(Math.min(60000, 1000 * 2 ** item.attempts), validDelay ? retryAfter * 1000 : 0);
       });
       this.logger.warn('Slack operation failed', { id: digest(id).slice(0, 12), code: error.code || 'PLUGIN_ERROR' });
-      if (!transient) await this.reportError(id, entry.envelope.body, error).catch(() => {});
+      if (!transient && !error.silent) await this.reportError(id, entry.envelope.body, error).catch(() => {});
     }
   }
   async command(type, binding, userId, id, payload = {}) { return this.gateway.command(type, { ...contextFrom(binding, userId, id), payload }); }
@@ -130,13 +163,18 @@ export class SlackPlugin {
     const project = projectId && projects.some(item => item.id === projectId) ? await this.readProject(projectId, userId, id) : null;
     return this.io.call('views.publish', { user_id: userId, view: homeView({ projects, project, cloudOrigin: this.cloudOrigin, userId }) });
   }
-  async ensureBinding(id, event) {
+  async ensureBinding(id, event, expectedProjectId = null) {
     const rootTs = event.thread_ts || event.ts;
     let key = threadKey(this.teamId, event.channel, rootTs), existing = this.store.data.threads[key];
-    if (existing) return [key, existing];
+    if (existing) {
+      if (expectedProjectId && existing.projectId !== expectedProjectId) throw Object.assign(new Error('Thread project changed after the relevance decision'), { code: 'CONFLICT', silent: true });
+      return [key, existing];
+    }
     const direct = event.channel_type === 'im' || event.channel?.startsWith('D');
-    if (!direct && event.type !== 'app_mention' && !String(event.text || '').includes(`<@${this.botUserId}>`)) return [];
+    const explicit = event.type === 'app_mention' || String(event.text || '').includes(`<@${this.botUserId}>`);
+    if (!direct && !explicit && !this.store.data.inbox[id]?.relevance?.respond) return [];
     const projectId = direct ? this.store.data.preferences[event.user] : this.store.data.channels[event.channel];
+    if (expectedProjectId && projectId !== expectedProjectId) throw Object.assign(new Error('Channel project changed after the relevance decision'), { code: 'CONFLICT', silent: true });
     if (!projectId) {
       await this.io.post({ id: operationId(id, 'choose'), channel: event.channel, threadTs: event.ts?.startsWith('command-') ? undefined : rootTs, text: '请先在 App Home 选择项目；频道请使用 /cg 关联项目。' });
       return [];
@@ -148,9 +186,69 @@ export class SlackPlugin {
     const binding = await this.store.bind(key, { channel: event.channel, threadTs, projectId, conversationId: created.conversationId, userId: event.user, ownRequests: [] });
     return [key, binding];
   }
+  async recentThreadContext(event) {
+    if (!event.thread_ts) return [];
+    const context = []; let cursor;
+    const seen = new Set();
+    for (let page = 0; page < 4; page++) {
+      const thread = await this.io.call('conversations.replies', { channel: event.channel, ts: event.thread_ts,
+        latest: event.ts, inclusive: false, limit: 100, ...(cursor ? { cursor } : {}) });
+      for (const message of thread.messages || []) {
+        if (!/^\d+\.\d+$/.test(message.ts || '') || Number(message.ts) >= Number(event.ts) || !message.text) continue;
+        context.push({ ts: message.ts, speaker: String(message.user || message.bot_id || 'unknown').slice(0, 80), text: message.text.slice(0, 800) });
+      }
+      context.sort((a, b) => Number(a.ts) - Number(b.ts));
+      context.splice(0, Math.max(0, context.length - 6));
+      const next = thread.response_metadata?.next_cursor;
+      if (!thread.has_more && !next) return context.map(({ speaker, text }) => ({ speaker, text }));
+      if (!next || seen.has(next)) break;
+      seen.add(next); cursor = next;
+    }
+    throw Object.assign(new Error('Recent thread context is unavailable within the bounded read; no relevance decision was made'), { code: 'RELEVANCE_CONTEXT_INCOMPLETE' });
+  }
   async message(id, event) {
-    if ((event.files || []).length > 6) throw new Error('每条消息最多 6 个附件');
-    const [key, binding] = await this.ensureBinding(id, event);
+    const direct = event.channel_type === 'im' || event.channel?.startsWith('D');
+    const explicit = event.type === 'app_mention' || String(event.text || '').includes(`<@${this.botUserId}>`);
+    let expectedProjectId = null;
+    if ((event.files || []).length > 6) throw Object.assign(new Error('每条消息最多 6 个附件'), { silent: !direct && !explicit });
+    if (!direct && !explicit) {
+      const existing = this.store.data.threads[threadKey(this.teamId, event.channel, event.thread_ts || event.ts)];
+      const projectId = existing?.projectId || this.store.data.channels[event.channel];
+      if (!projectId) return;
+      let decision = this.store.data.inbox[id]?.relevance;
+      if (!decision) {
+        try {
+          let request = this.store.data.inbox[id]?.relevanceRequest;
+          if (!request) {
+            const context = await this.recentThreadContext(event);
+            request = { id: operationId(id, 'relevance'), userId: event.user, projectId,
+              ...(existing ? { conversationId: existing.conversationId } : {}),
+              payload: { text: String(event.text || ''), context, files: (event.files || []).map(file => ({
+                name: String(file.name || file.title || '').slice(0, 200), mimeType: String(file.mimetype || '').slice(0, 100) })) } };
+            await this.store.update(state => {
+              state.inbox[id] ||= { status: 'pending', attempts: 0, at: Date.now(), next: 0 };
+              state.inbox[id].relevanceRequest = request;
+            });
+          }
+          if (request.projectId !== projectId) throw Object.assign(new Error('Channel project changed before the relevance decision'), { code: 'CONFLICT' });
+          decision = await this.gateway.command('conversation.relevance', request);
+          if (typeof decision?.respond !== 'boolean' || typeof decision?.mainVersion !== 'string') {
+            throw Object.assign(new Error('Message relevance could not be determined'), { code: 'RELEVANCE_INVALID_RESPONSE' });
+          }
+          decision = { ...decision, projectId };
+          await this.store.update(state => {
+            state.inbox[id] ||= { status: 'pending', attempts: 0, at: Date.now(), next: 0 };
+            state.inbox[id].relevance = decision;
+          });
+        } catch (error) { error.silent = true; throw error; }
+      }
+      const currentBinding = this.store.data.threads[threadKey(this.teamId, event.channel, event.thread_ts || event.ts)];
+      const currentProject = currentBinding?.projectId || this.store.data.channels[event.channel];
+      if (decision.projectId !== currentProject) throw Object.assign(new Error('Channel project changed after the relevance decision'), { code: 'CONFLICT', silent: true });
+      if (!decision.respond) return;
+      expectedProjectId = decision.projectId;
+    }
+    const [key, binding] = await this.ensureBinding(id, event, expectedProjectId);
     if (!binding) return;
     const attachments = [], inputs = []; let imageBytes = 0;
     for (const file of event.files || []) {
