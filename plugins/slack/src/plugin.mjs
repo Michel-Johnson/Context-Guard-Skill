@@ -706,7 +706,8 @@ export class SlackPlugin {
     await this.store.update(data => { data.threads[key].nextItemPoll = Date.now() + 30000; });
   }
   async unfurl(id, event) {
-    const projectId = this.store.data.channels[event.channel] || this.store.data.preferences[event.user];
+    const binding = this.store.data.threads[threadKey(this.teamId, event.channel, event.thread_ts || event.message_ts)];
+    const projectId = binding?.projectId || this.store.data.channels[event.channel] || this.store.data.preferences[event.user];
     if (!projectId) return;
     const unfurls = {};
     for (const link of (event.links || []).slice(0, 5)) {

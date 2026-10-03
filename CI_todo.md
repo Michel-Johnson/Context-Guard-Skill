@@ -29,9 +29,14 @@
 
 ## Slack 插件（用户明确批准的接入专项，不恢复自动派发）
 
+- B154本地0.1.13候选：Map预览优先读取同channel、thread_ts或根message_ts的既有项目绑定，频道/用户改选不让旧线程串项目；未绑定仍沿用原选择规则。正式三项基线2FAIL/1PASS，修后含旧origin过滤4/4，插件126/126，Cloud/网关49/49。独立复审4/4及126/126、冻结npm test退出0（基础672项668PASS/4SKIP，插件126/126，安装边界30与smoke通过）；待实验部署，不改核心网关、Coordinator模型或自动派发。
+- 真实R20开启unfurl_app_links后仍无link_shared，Bot安装的links:read/write已确认；一次受控现有handler调用被Slack拒绝cannot_unfurl_message，未自动重试/注入事件/伪造回执。该受控调用不是实际自动事件路径，预览仍未通过；实际原生Mac确认锁屏，Home及按钮验收未执行。原项目Main全部字段与25执行Session哈希未变。
+- R20后续定位为测试消息的裸URL被发送入口转换成rich_text的text节点，实际link节点为0，不能作为自动预览失败反例。保留原失败记录，另发R21明确链接后真实link_shared为done，正确App预览附件1个、链接与Main版本均正确；无受控回调或假事件注入，0.1.12实际自动链路通过，未代替原生客户端视觉验收或尚未部署的B154跨项目修复。R19/R20/R21的Main地图、记忆、事项及25执行Session全部哈希一致。
 - B151真实只读流诊断：同一R18静止检查点，原glm-5.3完整输入与15个native工具、不执行工具、不写对话；disabled配置仍出现44个thinking_delta及1个signature_delta，headers4.005s、首正文4.920s。仅诊断设置enabled+reasoning_effort=low的同输入回放headers4.002s、首正文5.569s，正确答未修复/open；两次缓存条件不同，不是严谨AB，不能宣称参数生效或更快。对话文件哈希未变，线上配置未改，B151仍未解决。
+- B151诊断保真补注：回放使用相同历史与Main检查点，但省略Slack专用轮次后缀；它不是实际原请求的完整重放或性能/质量验收。类型/长度观察仍成立，不把该参数对照当作业务效果证明。
 - B152/B153本地0.1.12候选：修复私有thinking/signature增量丢失及错误流不取消；两项原始正式反例2FAIL→2PASS，独立复审另发现起始字段/JSON绕过和开放错误流残留，两项追加反例各FAIL后已补修。当前六项新正式测试加原transport/deadline定向9/9，覆盖Unicode分块、精确签名、工具后第二轮、重启、公开不泄漏、起始/JSON异常和取消拒绝/挂起不遮蔽原错误。等待冻结源码的独立复审、全量及真实候选部署，不作为2秒或完整业务验收通过。
 - 0.1.12冻结源码最终回归：准确npm test退出0，基础672项中668PASS/4SKIP、插件123/123、安装边界30和smoke通过。独立复审11/11、完整Coordinator87项86PASS/1真实模型SKIP；真实本机HTTP+native fetch仍开非法流的服务端close=1、signal已abort且保持MODEL_INVALID_RESPONSE，工具重试/重载回传私有块与原operationId精确。以上分别为隔离和真实本机传输，不冒充真实GLM/Slack；候选仍待实验部署，线上配置未改、旧丢失历史未重建。
+- 随后已备份部署138c380d/0.1.12实验候选，备份pre-slack-candidate-20261002T235337Z.tar.zst校验通过（SHA-256：4ee81ae11e65fcf3ad76fe5c7e26edcbcaac814548cb7d52dac91533a220f392）；双服务active/health3，本次Socket PID1512029初始就绪后才提交R19。真实原glm-5.3实际read_map读取BLOG-ENG-SCRIPTS，两个模型轮次后56字纯文本正确答Bug未修复；Slack正文9.298s、从首模型启动至正文8.565s，不和之前零工具样本混成AB。Main地图/记忆/事项/25执行Session及三条旧停止错误哈希未变。私有块观察器退出1：本轮provider没有返回thinking块，私有签名实际往返未触发，结果UNKNOWN而非通过，不归因为产品丢失。B152/B153的解析/资源缺陷已在开发Session记修复，真实私有块链路、2秒、原生客户端/附件/导出与永久main交付仍未完成；PR保持Draft且无GitHub推送。
 - 已完整备份后部署0ad47fe/插件0.1.10即时通知候选，双服务active/health3。R16首次只读查询45秒观察FAIL，随后只补回唯一正确81字答复，但真实Slack首条正文65.746秒；模型首段4.798秒、单glm-5.3轮/零工具，不把冷启动失败删除。启动日志表明首次发送尚未完成Socket启动，另记B149：active不能代替Slack就绪；事件投递等待仍未完全归因。确认本次启动成功后新R17只读问答：Slack5.321秒、模型首段4.701秒、78字正确、单轮零工具；2秒仍FAIL，条件不同不做严格AB/普遍提速结论。
 - B149 本地只读上线门禁候选0.1.11：限定已安装Slack unit，按current boot的本次MainPID与启动monotonic代次核对Socket初始成功日志；旧PID/旧代次/active无日志不能通过，超时/读权限错误明确失败，日志正文不输出，不另开Socket。不将“曾初始连接”说成持续在线证明，仍要求真实问答。正式4/4隔离用例通过，尚未部署该门禁；不是Socket网络故障根因修复。
 - B150 独立审查阻断未部署的首版门禁：systemctl读42后journal期间重启为43，仍误认旧42为ready。补正式命令边界反例后6项4PASS/2FAIL；修为日志后再次核对active/PID/monotonic代次，变化继续等待，三个命令共享剩余预算。门禁6/6、插件123/123，非法CLI真实退出1且只输出code。上一快照全量退出0、154.706s但仅覆盖121插件项，不代替最终修复快照；待独立复审与新全量/实际门禁核验。

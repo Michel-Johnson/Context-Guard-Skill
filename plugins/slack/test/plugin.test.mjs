@@ -1022,6 +1022,53 @@ test('only configured-origin and selected-project links are unfolded', async t =
   await f.plugin.unfurl('E1', { user, channel, message_ts: '1.0', links: [{ url: 'https://evil.example/projects/lab' }, { url: 'https://map.example.com/projects/private' }, { url: 'https://map.example.com/projects/lab' }] });
   assert.deepEqual(Object.keys(f.sent.find(call => call.method === 'chat.unfurl').input.unfurls), ['https://map.example.com/projects/lab']);
 });
+test('linked thread unfurls retain their immutable project after channel or user selection changes', async t => {
+  const f = await fixture(t), root = '120.001';
+  await f.store.bind(threadKey(teamId, channel, root), { channel, threadTs: root, projectId: 'lab', conversationId: 'original-chat', userId: user });
+  await f.store.update(state => { state.channels[channel] = 'other-project'; state.preferences[user] = 'other-project'; });
+  const saved = structuredClone(f.store.data);
+  const original = 'https://map.example.com/projects/lab?relation=login';
+  await f.store.receive('unfurl-bound-thread', { type: 'events_api', body: { team_id: teamId, event: {
+    type: 'link_shared', user, channel, thread_ts: root, message_ts: '130.001', links: [
+      { url: original }, { url: 'https://map.example.com/projects/other-project' },
+      { url: 'https://evil.example/projects/lab' },
+    ],
+  } } });
+  await f.plugin.runEntry('unfurl-bound-thread', f.store.data.inbox['unfurl-bound-thread']);
+  const unfurl = f.sent.find(call => call.method === 'chat.unfurl');
+  assert.ok(unfurl, 'the original linked project still has a preview');
+  assert.equal(unfurl.input.channel, channel); assert.equal(unfurl.input.ts, '130.001');
+  assert.deepEqual(Object.keys(unfurl.input.unfurls), [original]);
+  assert.deepEqual(f.calls.map(call => [call.type, call.projectId, call.userId]), [['project.read', 'lab', user]]);
+  assert.deepEqual(f.store.data.threads, saved.threads);
+  assert.deepEqual(f.store.data.channels, saved.channels); assert.deepEqual(f.store.data.preferences, saved.preferences);
+  assert.equal(f.store.data.inbox['unfurl-bound-thread'].status, 'done');
+});
+test('linked root and direct-message previews do not require a new project preference', async t => {
+  for (const channelId of [channel, 'D000001']) {
+    const f = await fixture(t), root = '140.001';
+    await f.store.bind(threadKey(teamId, channelId, root), { channel: channelId, threadTs: root, projectId: 'lab', conversationId: 'original-chat', userId: user });
+    await f.plugin.unfurl('bound-root', { user, channel: channelId, message_ts: root, links: [{ url: 'https://map.example.com/projects/lab' }] });
+    assert.equal(f.sent.filter(call => call.method === 'chat.unfurl').length, 1);
+    assert.deepEqual(f.calls.map(call => [call.type, call.projectId]), [['project.read', 'lab']]);
+    assert.deepEqual(f.store.data.channels, {}); assert.deepEqual(f.store.data.preferences, {});
+  }
+});
+test('unlinked preview keeps current selection and never borrows a binding from another thread or channel', async t => {
+  const f = await fixture(t);
+  await f.store.bind(threadKey(teamId, channel, '150.001'), { channel, threadTs: '150.001', projectId: 'private', conversationId: 'unrelated-chat', userId: user });
+  await f.store.bind(threadKey(teamId, 'COTHER', '160.001'), { channel: 'COTHER', threadTs: '160.001', projectId: 'private', conversationId: 'other-channel-chat', userId: user });
+  await f.store.update(state => { state.channels[channel] = 'lab'; });
+  await f.plugin.unfurl('unlinked', { user, channel, thread_ts: '160.001', message_ts: '170.001', links: [
+    { url: 'https://map.example.com/projects/private' }, { url: 'https://map.example.com/projects/lab' },
+  ] });
+  assert.deepEqual(f.calls.map(call => [call.type, call.projectId]), [['project.read', 'lab']]);
+  assert.deepEqual(Object.keys(f.sent.find(call => call.method === 'chat.unfurl').input.unfurls), ['https://map.example.com/projects/lab']);
+  f.calls.length = 0; f.sent.length = 0;
+  await f.store.update(state => { delete state.channels[channel]; });
+  await f.plugin.unfurl('not-selected', { user, channel, message_ts: '180.001', links: [{ url: 'https://map.example.com/projects/private' }] });
+  assert.deepEqual(f.calls, []); assert.deepEqual(f.sent, []);
+});
 test('gateway forbids remote hosts and passes actor without role escalation', async () => {
   assert.throws(() => new Gateway({ url: 'https://example.com', token: 'test', teamId }), /loopback/);
   let payload; const gateway = new Gateway({ url: 'http://127.0.0.1:8790', token: 'test-only', teamId, fetchImpl: async (_, options) => { payload = JSON.parse(options.body); return { ok: true, async json() { return { ok: true, data: { accepted: true } }; } }; } });
