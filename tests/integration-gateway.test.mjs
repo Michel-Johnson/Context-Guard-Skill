@@ -205,6 +205,27 @@ async function call(gateway, body, credential = token) {
   return { status: response.status, body: await response.json() };
 }
 
+test('Relevance request distinguishes participation intent from project relevance without rewriting user data', async () => {
+  const options = { overview: { version: 'main-v1', project: '项目 Map' }, input: {
+    text: '仅验证链接预览，不用回复、不修改。',
+    context: [{ speaker: 'human', text: '之前需要你回答项目问题' }], files: [],
+  } };
+  const saved = structuredClone(options), decision = { respond: false, reason: '当前消息明确无需回复' };
+  const model = { next: async request => {
+    // This verifies the delivered prompt contract, not real model accuracy.
+    assert.match(request.system, /项目相关不等于需要回复/);
+    assert.match(request.system, /当前消息明确要求无需回复.*respond=false/);
+    assert.match(request.system, /仅预览.*不代表静默/);
+    assert.match(request.system, /只读.*不修改.*仍可回应/);
+    assert.match(request.system, /引用.*历史.*不当作当前.*静默要求/);
+    assert.deepEqual(request.tools, []); assert.equal(request.maxTokens, 160);
+    assert.deepEqual(request.messages, [{ role: 'user', content: JSON.stringify({ overview: saved.overview, message: saved.input }) }]);
+    return { stop: 'end_turn', content: [{ type: 'text', text: JSON.stringify(decision) }] };
+  } };
+  assert.deepEqual(await classifyIntegrationMessage(model, options), { ...decision, mainVersion: 'main-v1' });
+  assert.deepEqual(options, saved);
+});
+
 test('Relevance parses visible JSON independently of provider thinking metadata', async () => {
   const decision = { respond: true, reason: 'Related module follow-up' };
   const options = { overview: { version: 'main-v1' }, input: { text: '那文章列表呢？' } };
