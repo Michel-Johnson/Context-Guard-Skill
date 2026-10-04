@@ -550,7 +550,12 @@ async function stateForWorkbenchUrl(project, value) {
 const directoryFailureLog = /EACCES|EPERM|ENOTDIR|EROFS|EEXIST|permission denied|not a directory|read-only file system/i;
 export function logMentionsDirectoryFailure(log, directory) {
   const text = String(log || '');
-  return !!directory && text.includes(directory) && directoryFailureLog.test(text);
+  // CLI failures are JSON lines: Windows backslashes are escaped on disk.
+  // Compare decoded messages as well as plain logs, keeping the exact path gate.
+  const messages = [text, ...text.split(/\r?\n/).map(line => {
+    try { return JSON.parse(line)?.error?.message; } catch { return null; }
+  })];
+  return !!directory && messages.some(message => typeof message === 'string' && message.includes(directory) && directoryFailureLog.test(message));
 }
 export function startFailedMessage({ log = '', directory } = {}) {
   const base = 'Node workbench did not become healthy; inspect private/node-workbench.log';

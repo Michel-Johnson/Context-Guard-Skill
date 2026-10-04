@@ -6,6 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import { pathToFileURL } from 'node:url';
 import { startServer } from '../scripts/workbench/server.mjs';
 import { WORKBENCH_BUILD } from '../scripts/workbench/runtime.mjs';
 import { diagnoseWorkbench, ensureServer, globalWorkbenchInventory, startFailedMessage, stopServer, request } from '../scripts/workbench/cli.mjs';
@@ -501,6 +502,10 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.match(named, new RegExp(`The default directory ${dir} is unavailable`));
   assert.match(named, /references\/named-workbench\.md/);
   assert.match(named, new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  const windowsDirectory = String.raw`C:\Users\fixture\.context-guard\named-workbench`;
+  const windowsState = { path: windowsDirectory, overridden: false, unavailable: true };
+  assert.match(startFailedMessage({ log: JSON.stringify({ error: { message: `The default directory ${windowsDirectory} is unavailable (ENOTDIR)` } }), directory: windowsState }), /The default directory/);
+  assert.equal(startFailedMessage({ log: JSON.stringify({ error: { message: 'Another directory is unavailable (ENOTDIR)' } }), directory: windowsState }), base);
 
   const home = await fs.mkdtemp(path.join(cwd, 'temp/default-dir-home-'));
   fixtureRoots.push(home);
@@ -510,7 +515,7 @@ test('START_FAILED mentions the default directory only when that directory cause
   const env = { ...process.env, HOME: home, USERPROFILE: home };
   delete env.CONTEXT_GUARD_NAMED_STATE_DIR;
   const child = spawn(process.execPath, ['--input-type=module', '-e', `
-    import { ensureServer } from ${JSON.stringify(path.join(cwd, 'scripts/workbench/cli.mjs'))};
+    import { ensureServer } from ${JSON.stringify(pathToFileURL(path.join(cwd, 'scripts/workbench/cli.mjs')).href)};
     try {
       await ensureServer(${JSON.stringify(root)}, 0);
       console.log(JSON.stringify({ ok: true }));
@@ -529,7 +534,8 @@ test('START_FAILED mentions the default directory only when that directory cause
   assert.equal(code, 0, stderr || stdout);
   const result = JSON.parse(stdout);
   assert.equal(result.code, 'START_FAILED');
-  assert.match(result.message, /The default directory .+ is unavailable/);
+  const startupLog = await fs.readFile(path.join(root, '.codex/context/private/node-workbench.log'), 'utf8');
+  assert.match(result.message, /The default directory .+ is unavailable/, startupLog);
   assert.match(result.message, /references\/named-workbench\.md/);
   assert.match(result.message, /inspect private\/node-workbench\.log/);
 });
