@@ -51,6 +51,10 @@ test("CI selector and governance changes force the complete CI", () => {
     ".github/workflows/ci.yml",
     "docs/test-governance.md",
     "docs/ci.md",
+    "bin/build-runtime.mjs",
+    "package-lock.json",
+    "scripts/cloud/server.mjs",
+    "scripts/sync/client.mjs",
   ]) {
     const plan = selectImpact({ config, eventName: "pull_request", changedPaths: [path] });
     assert.equal(plan.full, true, path);

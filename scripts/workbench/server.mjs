@@ -13,6 +13,7 @@ import { generateProjections } from './projections.mjs';
 import { resolveProject, ensureProjectBinding, refreshMain, sessionBinding, sessionBindingsPath } from './project.mjs';
 import { memoryRequest, sessionMemoryDir, memoryConfigPath } from './memory.mjs';
 import { MemorySyncCoordinator } from './sync-coordinator.mjs';
+import { inspectRetiredSync } from './sync.mjs';
 import { runtimeIdentity } from './runtime.mjs';
 import { Attachments } from './attachments.mjs';
 import { ProtocolStore } from '../shared/protocol-store.mjs';
@@ -151,7 +152,9 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
     throw new MapError('START_FAILED', `The ${which} ${directory.path} is unavailable (${directory.code})`, 503);
   }
   root = await fs.realpath(path.resolve(root));
-  let project = await ensureProjectBinding(await resolveProject(root));
+  let project = await resolveProject(root);
+  await inspectRetiredSync(project);
+  project = await ensureProjectBinding(project);
   const claudeRuntime = new ClaudeRuntime(path.join(project.sharedDir, 'claude-runtime'));
   const ctx = path.join(root, '.codex/context'), lock = projectLockPath(project), sharedState = projectStatePath(project);
   const namedFile = project.kind === 'git' ? path.join(project.sharedDir, 'named-entry.json') : path.join(ctx, 'private/named-entry.json');
@@ -447,6 +450,7 @@ export async function startServer({ root, port = 8877, host = '127.0.0.1', fault
   async function createStore(viewId, storeRoot, options = {}) {
     let target;
     const { syncDirectory, sessionId, ...storeOptions } = options;
+    if (sessionId && syncDirectory) await inspectRetiredSync(await resolveProject(storeRoot));
     const projectionRoot = options.projectionRoot || storeRoot;
     const projectMap = project.kind === 'git' && viewId === 'main'
       ? async () => true

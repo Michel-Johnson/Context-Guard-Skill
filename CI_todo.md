@@ -409,3 +409,26 @@
 - [x] Session 下拉框按 ID 去重且不展示原始 ID，URL 固定当前会话，发布/关闭项移除、失效项禁用；关系模式默认关闭并在 Session 切换时退出（`tests/workbench-browser.mjs`、`tests/cloud-workbench-browser.mjs`）
 - [x] Coordinator TODO/Bug 自动路由：删除手动 Session 选择与认领入口，新事项保留 `itemId/nodeId/kind` 和稳定 `taskId`，后台按项目任务为每项创建独立执行 Session；定向协议 84 项通过、两套浏览器回归通过。生产 E2E 待线上部署恢复后复跑；本轮线上 502 记录为 B108。
 - [x] 用统一清单约束自动测试、独立套件与 helper，禁止遗漏和 `.only`，并明确开发/Review/E2E 的责任边界（`tests/test-manifest.json`、`docs/test-governance.md`）
+
+## Cloud／Skill 拆分验收（2026-10-04；替代旧同仓库与 Map-only 说明）
+
+本节是本次明确授权的交接，历史记录全部保留。上文旧 `sync serve/connect`、legacy 路径和同仓库部署的 `[x]` 仅表示当时的验证，不要求恢复已淘汰实现；未完成的 Cloud 专项在独立 Cloud 仓库继续追踪，不因移动文件而视为通过。manual 审批保存 Main 事项与执行提示，automatic 审批后新建执行 Session；两者挂载均不写 Main。Coordinator／Executor／Tester 分工不变。
+
+### SPLIT-SYNC-01 · 当前 Session 同步与旧状态保护
+
+- [x] Executor：淘汰旧 Map-only daemon/兼容入口，CLI、Hook 转当前 Session 记忆接口；finish 需要服务端快照回执。只读检查旧待发、冲突、活动窗口和旧进程，返回 `UPGRADE_REQUIRED`，不删除私有数据；只有旧配置时要求当前连接，已有当前连接不会被无待发的旧配置阻塞。
+- [x] Executor 定向证据（测试迁移前）：22 项首轮 21 通过，Hook 夹具先后暴露空 sourceCommit 与未带人工审核记录两项失败；修正真实 Git/审核夹具后该项通过，新增后端启动不能绕过 pending guard 单项通过。保留失败经过，不将它写成未经返工的全绿。未运行生产验收。
+- [ ] Tester：对最终 Skill SHA、Cloud SHA 和共享包版本复验 CLI status/ensure、Hook prepare/finish、回执丢失重试、待发数据逐字保留、配置残留重连及后端启动防绕过；覆盖另一 worktree/Session 出错时的隔离，不只验证直接调用函数。
+- [ ] Tester：重跑拆分后的正式用例：Skill `tests/cloud-sync-client.test.mjs`、`tests/hook-lifecycle.test.mjs`、`tests/named-workbench.test.mjs`；Cloud `tests/session-sync-cloud.test.mjs`、`tests/workbench-cloud-sync.test.mjs`、`tests/multiworktree-cloud.test.mjs`、`tests/hook-cloud.test.mjs`。原 SSE 停滞/心跳补漏与双向断网/冲突断言必须保留，迁移前结果不代替迁移后执行。
+
+### SPLIT-BUILD-01 · 固定共享包与独立构建
+
+- [ ] Tester：从没有生成物和另一个本地 checkout 的干净检出执行 `npm ci --ignore-scripts`、`npm run build:runtime`；核对共享包明确版本、锁文件完整性及可重复构建，依赖不可下载或被篡改时必须失败。
+- [ ] Tester：核对 `scripts/shared/`、`prototype/`、角色文件和生成 references 来自固定 Cloud 包，手改生成物不得被静默覆盖；`references/cloud-sync-interface.md` 始终由 Skill 维护。不得靠本机旧文件、浮动 main/latest 或跨仓库相对路径通过。
+- [ ] Tester：两个仓库独立 CI 与 Required 通过；Skill 产物含完整本地运行依赖/UI，却不含 Cloud 服务端、Slack SDK、部署配置、凭据或私有记忆；运行时包中的第三方许可保留。提供两仓库 SHA、共享包版本、安装产物哈希及边界检查输出。
+
+### SPLIT-INSTALL-01 · 安装后的真实入口与升级
+
+- [ ] Tester：Ubuntu/macOS/Windows 从准确 tarball 新装及升级，校验源码版本、生成运行时版本与安装文件一致；用户设置、项目 Map、未发队列及第三方 Hook 不变，用户关闭的 Hook 不被重新启用。
+- [ ] Tester：安装后的入口在无 Cloud 模式启动本地工作台、读取/编辑/刷新；在授权实验项目使用浏览器设备授权连接真实 Cloud，确认双向可见、Session 隔离和重启恢复，不把源码或替身测试当成真实联调。
+- [ ] Tester：安装入口的 `doctor`、宿主 Hook 信任与实际上下文投递分别记录；无法验证的宿主/场景标为 incomplete。完成后保留本节编号、打勾并关联准确测试和证据，不删除条目。

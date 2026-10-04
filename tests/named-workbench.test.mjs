@@ -406,8 +406,10 @@ test('explicit linked-worktree binding reuses server and hook context without ov
   await bindProject(source, root, { keepLocal: true });
   assert.equal(await resolveProjectRoot(source), root);
   assert.equal(await fs.readFile(mapFile, 'utf8'), '{"local":"preserved"}');
-  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/sync/client.mjs'), 'status', '--root', source], { encoding: 'utf8', windowsHide: true });
-  assert.equal(cloud.status, 1); assert.match(cloud.stdout, /BOUND_SYNC_UNSUPPORTED/);
+  const cloud = spawnSync(process.execPath, [path.join(cwd, 'scripts/workbench/cli.mjs'), 'sync', 'status', '--root', source], { encoding: 'utf8', windowsHide: true });
+  assert.equal(cloud.status, 0, cloud.stderr);
+  assert.equal(JSON.parse(cloud.stdout).managedBy, 'workbench');
+  assert.equal(JSON.parse(cloud.stdout).configured, false);
   const results = await Promise.all([ensureServer(root, 0), ensureServer(source, 0)]); t.after(() => stopServer(root));
   assert.equal(results[0].instance, results[1].instance);
   const python = process.platform === 'win32' ? 'python' : 'python3';

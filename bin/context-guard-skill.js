@@ -36,7 +36,7 @@ Usage:
   context-guard doctor [--platform auto|all|codex|cursor|claude] [--root <project>]
                        [--target <dir>] [--hooks-target <file>] [--config-target <file>] [--json]
   context-guard path
-  context-guard sync connect|ensure|status|pull|prepare|track|checkpoint|finish [args...]
+  context-guard sync ensure|status|pull|prepare|checkpoint|finish [args...]
   context-guard <context_guard.py command> [args...]
 
 Examples:
@@ -579,11 +579,7 @@ if (!command || command === "-h" || command === "--help" || command === "help") 
   console.log(sourceSkillDir);
 } else if (command === "doctor") {
   doctor(rest);
-} else if (command === "sync") {
-  const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "sync", "client.mjs"), ...rest], { stdio: "inherit", windowsHide: true });
-  if (result.error) fail(result.error.message);
-  process.exit(result.status === null ? 1 : result.status);
-} else if (["map", "workbench", "memory", "preferences"].includes(command)) {
+} else if (["map", "workbench", "memory", "preferences", "sync"].includes(command)) {
   const result = spawnSync(process.execPath, [path.join(sourceSkillDir, "scripts", "workbench", "cli.mjs"), command, ...rest], { stdio: "inherit", windowsHide: true });
   process.exit(result.status ?? 1);
 } else {

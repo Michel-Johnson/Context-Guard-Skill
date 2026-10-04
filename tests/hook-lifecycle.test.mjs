@@ -5,10 +5,9 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync, execFileSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { connectSync, finishSync, syncStatus } from '../scripts/sync/client.mjs';
 import { resolveProject, saveMainBinding, sessionBinding, sessionBindingsPath } from '../scripts/workbench/project.mjs';
 import { stopServer } from '../scripts/workbench/cli.mjs';
 import { pythonCommand } from '../.github/scripts/python-command.mjs';
@@ -17,7 +16,6 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const hookScript = path.join(repository, 'scripts/context_guard_hook.py');
 const contextScript = path.join(repository, 'scripts/context_guard.py');
 const workbenchCli = path.join(repository, 'scripts/workbench/cli.mjs');
-const cloudServer = path.join(repository, 'scripts/cloud/server.mjs');
 const python = pythonCommand();
 
 function run(command, args, options = {}) {
@@ -428,6 +426,20 @@ test('an initialized Git source checkout can use its own real Map without enabli
   assert.doesNotMatch(installedSessions, /installed-session/);
 });
 
+test('Node diagnostic inspection permits only literal output, not code inside a console.log expression', () => {
+  const result = run(python, ['-c', `import sys;sys.path.insert(0,${JSON.stringify(path.join(repository, 'scripts'))});import context_guard_hook as h
+assert h.read_only_shell('''node -e "console.log('node-ok')"''')
+assert h.node_eval_read_only("console.log('node-ok');")
+assert h.node_eval_read_only('console.log("node-ok")')
+for script in ["console.log('x'+process.exit()+'y')", "console.log('x');process.exit();console.log('y')", "console.log(process.cwd())"]:
+    assert not h.node_eval_read_only(script),script
+assert not h.read_only_shell('''node -e "console.log('node-ok')" && touch changed.txt''')
+assert not h.read_only_shell('''node -e "console.log('node-ok')" --require ./side-effect.cjs''')
+assert not h.read_only_shell('''node -e "console.log('node-ok')" --import ./side-effect.mjs''')
+print('NODE_INSPECTION_OK')`]);
+  assert.equal(result.stdout.trim(), 'NODE_INSPECTION_OK');
+});
+
 test('hooks keep an auditable plan across prompt, tools, compaction, interrupt and stop', async t => {
   const project = await fixture();
   t.after(() => dispose(project));
@@ -450,7 +462,7 @@ test('hooks keep an auditable plan across prompt, tools, compaction, interrupt a
   assert.match(noPlan.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   for (const cmd of ['python3 --version', 'node -v', 'node -e "console.log(\'node-ok\')"', 'python3 -c "print(1)"']) {
     const probe = hook('PreToolUse', project, session, { tool_name: 'Bash', tool_input: { command: cmd } });
-    assert.equal(probe.json.hookSpecificOutput?.permissionDecision, undefined, cmd);
+    assert.equal(probe.json.hookSpecificOutput?.permissionDecision, undefined, `${cmd}: ${probe.stdout}`);
   }
   const pipedRead = hook('PreToolUse', project, session, {
     tool_name: 'Bash',
@@ -588,71 +600,6 @@ test('read-only inspection remains available without a plan while writes stay ga
   assert.equal(protectedTextOnly.json.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /plan-start/);
   assert.doesNotMatch(protectedTextOnly.json.hookSpecificOutput.permissionDecisionReason, /Direct map/);
-});
-
-test('configured Cloud hooks prepare once, track paths, checkpoint and require finish', async t => {
-  const project = await fixture();
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'context-guard-hook-cloud-'));
-  const port = await freePort();
-  const cloudUrl = `http://127.0.0.1:${port}`;
-  const cloud = spawn(process.execPath, [cloudServer], {
-    cwd: project,
-    env: {
-      ...process.env,
-      CONTEXT_GUARD_CLOUD_HOST: '127.0.0.1', CONTEXT_GUARD_CLOUD_PORT: String(port),
-      CONTEXT_GUARD_CLOUD_DATA: dataDir, CONTEXT_GUARD_CLOUD_TOKEN: 'hook-admin',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
-  });
-  t.after(async () => {
-    cloud.kill('SIGTERM');
-    await new Promise(resolve => cloud.once('exit', resolve));
-    await dispose(project);
-    await fs.rm(dataDir, { recursive: true, force: true });
-  });
-  await waitForHealth(cloudUrl);
-  const created = await fetch(new URL('/api/projects', cloudUrl), {
-    method: 'POST', headers: { Authorization: 'Bearer hook-admin', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: 'hook-cloud', name: 'Hook Cloud' }),
-  }).then(response => response.json());
-
-  const session = 'hook-cloud-session';
-  await confirmBinding(project, session);
-  hook('SessionStart', project, session, { source: 'startup', is_background_agent: true });
-  await installMap(project);
-  await seedHumanReview(project, session);
-  await connectSync({ root: project, url: cloudUrl, projectId: 'hook-cloud', token: created.syncToken, startService: false });
-  const ctx = path.join(project, '.codex/context');
-  await fs.writeFile(path.join(ctx, 'sessions/workbench-access.json'), `${JSON.stringify({ sessions: { [session]: { nodes: ['N1'], changedAt: new Date().toISOString() } } }, null, 2)}\n`);
-  await startPlan(t, project, session, ['src/'], { humanReview: false });
-
-  const prepared = hook('PreToolUse', project, session, {
-    tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs'), content: 'ok' },
-  });
-  assert.deepEqual(prepared.json, {});
-  await fs.writeFile(path.join(project, 'src/cloud.mjs'), 'ok\n');
-  hook('PostToolUse', project, session, {
-    tool_name: 'Write', tool_use_id: 'cloud-write', tool_input: { path: path.join(project, 'src/cloud.mjs') },
-  });
-  const deferred = hook('Stop', project, session, { stop_hook_active: false });
-  assert.deepEqual(deferred.json, {});
-  assert.doesNotMatch(deferred.stdout, /finishing the current task|SIG-|Classify pending|plan-[a-f0-9]+|plan-finish/);
-  const beforeFinish = await syncStatus(project);
-  const active = beforeFinish.works.find(item => item.sessionId === session);
-  assert.equal(active.status, 'working');
-  assert.deepEqual(active.paths, ['src/']);
-  archivePlan(project, session, 'src/cloud.mjs');
-  const runtimeDirectory = path.join(ctx, 'private/hook-runtime');
-  const runtimePath = path.join(runtimeDirectory, (await fs.readdir(runtimeDirectory)).find(file => file.endsWith('.json')));
-  const beforeFlush = await fs.readFile(runtimePath, 'utf8');
-  finishPlan(project, session);
-  // Model a process crash after remote completion but before the local receipt.
-  await fs.writeFile(runtimePath, beforeFlush);
-  finishPlan(project, session);
-  const stopped = hook('Stop', project, session, { stop_hook_active: true });
-  assert.deepEqual(stopped.json, {});
-  const afterFinish = await syncStatus(project);
-  assert.equal(afterFinish.works.find(item => item.sessionId === session).status, 'completed');
 });
 
 test('fixture cleanup stops the detached workbench before removing its directory', async t => {
@@ -1392,7 +1339,7 @@ print('verified')
 test('CLI entrypoints work through filesystem aliases, including Windows path casing', async t => {
   const project = await fixture();
   t.after(() => dispose(project));
-  for (const file of [workbenchCli, path.join(repository, 'scripts/sync/client.mjs')]) {
+  for (const file of [workbenchCli]) {
     let alias;
     if (process.platform === 'win32') {
       // Windows resolves directory components case-insensitively, but Node's

@@ -84,6 +84,11 @@ export function wantsHelp(args) {
 }
 const HELP_EXIT_NOTE = '  -h, --help             Print usage and exit. Does not init, start a service, or write .codex/context.';
 function commandHelp(command, parts = []) {
+  if (command === 'sync') return `Usage: context-guard sync [status|ensure|prepare|pull|checkpoint|finish] --root <project> --session <id>
+
+Uses the project workbench and current Session memory protocol. Authentication:
+context-guard workbench connect --url <cloud-origin> --root <project> --session <id> --wait
+${HELP_EXIT_NOTE}`;
   if (command === 'workbench' && parts[0] === 'connect') return `Usage: context-guard workbench connect --root <project> --url <https-origin> --session <id> [--wait]
 
 Default: browser authorization. Show the verification URL/code to the human.
@@ -682,6 +687,17 @@ async function main(args) {
     return;
   }
   const [command, ...rest] = args, opt = options(rest), root = path.resolve(opt.root || process.cwd());
+  if (command === 'sync') {
+    const { sessionSync, syncStatus } = await import('./sync.mjs');
+    const session = String(opt.session || process.env.CODEX_THREAD_ID || process.env.CLAUDE_SESSION_ID || process.env.CURSOR_SESSION_ID || '');
+    const action = opt._[0] || 'status';
+    if (action === 'ensure') {
+      if (!session) throw new MapError('SESSION_REQUIRED', 'Pass the actual --session before synchronization');
+      await syncStatus(root, session);
+      return main(['workbench', '--root', root, '--session', session]);
+    }
+    return sessionSync(root, session, action);
+  }
   if (command === 'workbench' && (opt.list || opt._[0] === 'list')) {
     return globalWorkbenchInventory({ currentRoot: root });
   }
@@ -700,6 +716,10 @@ async function main(args) {
   if (command === 'preferences') return projectPreferences(await resolveProject(root), opt.language);
   if (command === 'memory') {
     const project = await resolveProject(root), session = String(opt.session || process.env.CODEX_THREAD_ID || '');
+    if (['sync', 'prepare'].includes(opt._[0])) {
+      const { inspectRetiredSync } = await import('./sync.mjs');
+      await inspectRetiredSync(project);
+    }
     if (opt._[0] === 'configure') {
       const config = await inputJSON(opt.input);
       if (!config.url || !config.token || !config.projectId) throw new MapError('INVALID_MEMORY_CONFIG', 'Provide url, projectId, and token in the private input file');

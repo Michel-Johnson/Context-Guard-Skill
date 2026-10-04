@@ -19,11 +19,17 @@
     "package.json",
     "package-lock.json",
     "tests/test-manifest.json",
+    "tests/browser-device-login-runner.mjs",
     "plugins/**",
     "RULE.md",
     "docs/engineering/README.md",
     "docs/test-governance.md",
-    "docs/ci.md"
+    "docs/ci.md",
+    "bin/build-runtime.mjs",
+    "scripts/cloud/**",
+    "scripts/legacy/**",
+    "scripts/sync/**",
+    "deploy/**"
   ],
   "rules": [
     {
@@ -49,32 +55,48 @@
         "references/**",
         "licenses/**"
       ],
-      "jobs": ["package"]
+      "jobs": [
+        "package"
+      ]
     },
     {
       "id": "workbench-ui",
-      "patterns": ["prototype/**"],
-      "jobs": ["test", "package", "browser"]
-    },
-    {
-      "id": "cloud-runtime",
-      "patterns": ["scripts/cloud/**"],
-      "jobs": ["test", "package", "minimum-runtime", "browser"]
+      "patterns": [
+        "prototype/**"
+      ],
+      "jobs": [
+        "test",
+        "package",
+        "browser"
+      ]
     },
     {
       "id": "shared-runtime",
-      "patterns": ["scripts/shared/**", "scripts/sync/**"],
-      "jobs": ["test", "package", "install", "minimum-runtime", "browser", "clients"]
-    },
-    {
-      "id": "legacy-runtime",
-      "patterns": ["scripts/legacy/**"],
-      "jobs": ["test", "package", "minimum-runtime"]
+      "patterns": [
+        "scripts/shared/**"
+      ],
+      "jobs": [
+        "test",
+        "package",
+        "install",
+        "minimum-runtime",
+        "browser",
+        "clients"
+      ]
     },
     {
       "id": "local-workbench-runtime",
-      "patterns": ["scripts/workbench/**"],
-      "jobs": ["test", "package", "install", "minimum-runtime", "browser", "clients"]
+      "patterns": [
+        "scripts/workbench/**"
+      ],
+      "jobs": [
+        "test",
+        "package",
+        "install",
+        "minimum-runtime",
+        "browser",
+        "clients"
+      ]
     },
     {
       "id": "python-runtime",
@@ -83,7 +105,13 @@
         "scripts/context_guard_hook.py",
         "scripts/map_owns.py"
       ],
-      "jobs": ["test", "package", "install", "minimum-runtime", "clients"]
+      "jobs": [
+        "test",
+        "package",
+        "install",
+        "minimum-runtime",
+        "clients"
+      ]
     },
     {
       "id": "installation-and-clients",
@@ -94,32 +122,53 @@
         "hooks.json",
         "SKILL.md"
       ],
-      "jobs": ["test", "package", "install", "minimum-runtime", "clients"]
+      "jobs": [
+        "test",
+        "package",
+        "install",
+        "minimum-runtime",
+        "clients"
+      ]
     },
     {
       "id": "node-tests",
-      "patterns": ["tests/*.test.mjs"],
-      "jobs": ["test"]
+      "patterns": [
+        "tests/*.test.mjs"
+      ],
+      "jobs": [
+        "test"
+      ]
     },
     {
       "id": "browser-fixtures",
-      "patterns": ["tests/fixtures/**"],
-      "jobs": ["browser"]
+      "patterns": [
+        "tests/fixtures/**"
+      ],
+      "jobs": [
+        "browser"
+      ]
     },
     {
       "id": "browser-tests",
-      "patterns": ["tests/*-browser.mjs", "tests/workbench-browser.mjs", "tests/browser-device-login-runner.mjs"],
-      "jobs": ["browser"]
+      "patterns": [
+        "tests/*-browser.mjs",
+        "tests/workbench-browser.mjs"
+      ],
+      "jobs": [
+        "browser"
+      ]
     },
     {
       "id": "test-helpers",
-      "patterns": ["tests/ci-smoke.mjs", "tests/crash-worker.mjs", "tests/win-file-lock.py"],
-      "jobs": ["test", "minimum-runtime"]
-    },
-    {
-      "id": "deployment",
-      "patterns": ["deploy/**"],
-      "jobs": ["test"]
+      "patterns": [
+        "tests/ci-smoke.mjs",
+        "tests/crash-worker.mjs",
+        "tests/win-file-lock.py"
+      ],
+      "jobs": [
+        "test",
+        "minimum-runtime"
+      ]
     },
     {
       "id": "repository-security",
@@ -134,7 +183,9 @@
         ".cursor/**",
         "scripts/branch_guard.py"
       ],
-      "jobs": ["test"]
+      "jobs": [
+        "test"
+      ]
     }
   ]
 }

@@ -1,42 +1,45 @@
 # 文档入口
 
-读者：仓库开发 Agent（本目录多数文件未随 Skill 分发）。产品角色请从 [当前设计版本](../references/design-current.md) 和 [SKILL.md](../SKILL.md) 进入。
-
-先区分现行接口、未来设计和历史证据；设计文档存在不代表功能已实现。当前设计版本是 **`fs-v2.1`**，见 [当前设计版本](../references/design-current.md)。`docs/design/` 不是现行法。
+读者：Skill 仓库开发 Agent。产品角色从 [SKILL.md](../SKILL.md) 进入。
+共享角色与参考文档由固定 Cloud 包生成；干净源码检出先执行
+`npm ci --ignore-scripts` 和 `npm run build:runtime`，不要因尚未构建而创建同名规范副本。
 
 ## 现行规则与接口
 
 | 要查什么 | 入口 |
 | --- | --- |
-| 当前开发优先级、MVP 与暂缓范围 | [当前开发方向](current-focus.md) |
-| 记忆的定义、写法与维护职责 | [记忆定义与撰写规范 v0.2](../references/memory-definition.md) |
-| 当前设计版本 | [design-current.md](../references/design-current.md)（`fs-v2.1`） |
-| 开发、PR、交付规则 | [RULE.md](../RULE.md) |
-| 需求到复盘的完整流程、风险与证据 | [开发流程规范](engineering/README.md)、[最小模板](engineering/templates.md) |
-| 已验证范围与未完成验收 | [CI_todo.md](../CI_todo.md)；历史条目不覆盖后续替代说明 |
-| 文件归属与依赖边界 | [仓库布局](repository-layout.md) |
-| Agent 使用入口 | [SKILL.md](../SKILL.md) |
-| 设备 / Session 消息格式与示例 | [接口设计](interface.md)、[机器可读契约](interface-contract-v2.json) |
-| Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md) |
-| 私有 Main / Session 记忆及发布 | [服务器记忆](../references/server-memory.md) |
-| Cloud node/module、Bug、Todo、Idea 文件格式 | [Memory Filesystem v2.1](../references/memory-filesystem-v2/README.md) |
-| Map-only 兼容同步 | [Cloud Sync](../references/cloud-sync-interface.md)；不是新 Session 的默认连接方式 |
-| 部署、发布、安全、测试 | [Cloud 部署](../references/cloud-deployment.md)、[npm 发布](npm-release-runbook.md)、[检查怎样算通过](ci.md)、[测试治理](test-governance.md) |
+| 当前开发方向、模式和暂缓范围 | [当前开发方向](current-focus.md) |
+| 开发、PR 与交付规则 | [RULE.md](../RULE.md)、[开发流程](engineering/README.md) |
+| 验证记录与待 Tester 项 | [CI_todo.md](../CI_todo.md)；历史证据不代表新版本验收 |
+| 源码与生成物边界 | [仓库布局](repository-layout.md) |
+| Skill 安装与 npm 发布 | [npm 发布](npm-release-runbook.md) |
+| 检查标准与责任分工 | [检查怎样算通过](ci.md)、[测试治理](test-governance.md) |
+| Session 同步、连接与旧数据升级 | [Cloud Sync](../references/cloud-sync-interface.md)，由 Skill 维护 |
+| 协议消息、字段和示例 | Cloud 的 [接口设计](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface.md)、[机器契约](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/docs/interface-contract-v2.json) |
+| Cloud 和 Slack 部署 | Cloud 的 [部署手册](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/cloud-deployment.md)、[Slack 接入](https://github.com/Michel-Johnson/Context-Guard-Cloud/blob/main/references/slack-integration.md) |
+| 当前产品设计版本 | [design-current.md](../references/design-current.md)（生成参考） |
+| Map / CLI / 计划与归档 | [工作台接口](../references/workbench-interface.md)（生成参考） |
+| 私有 Main / Session 与发布 | [服务器记忆](../references/server-memory.md)（生成参考） |
+| 节点及事项文件格式 | [Memory Filesystem v2.1](../references/memory-filesystem-v2/README.md)（生成参考） |
+| 记忆定义与维护职责 | [记忆规范](../references/memory-definition.md)（生成参考） |
 
-同一功能只在对应契约维护定义，其他文档引用它；接口变更同时标明实现、测试和部署范围，不用“本轮”“最新”替代版本证据。
+在线 Cloud main 文档用于定位源码；判断已安装客户端实际支持什么，须核对
+Skill 锁定的共享包和服务器能力。文档或源码存在，不等于已部署或已验收。
 
-## 分级 Agent：角色设计，不等于已接通流程
+## 产品角色
 
-[角色入口](../roles.md)及 [Coordinator](../Coordinator.md)、[Executor](../Executor.md)、[Tester](../Tester.md) 是产品角色规范（随包）。
-目标是 Coordinator 理解需求、组织节点和任务，执行 Session 按需读取 Map，流程结束后沉淀经验；不把项目知识永久绑定到某个 Session。
-当前 Cloud 通信实现与未来角色编排分开维护，不能因角色文档已合并就宣称自动多 Agent 已实现。
+[角色入口](../roles.md)与 [Coordinator](../Coordinator.md)、
+[Executor](../Executor.md)、[Tester](../Tester.md) 由 Cloud core 包生成并随 Skill 分发。
+Coordinator 对齐需求和审核计划；Executor 实现与模块测试，写编号 CI_todo；
+Tester 独立验证。拆仓库不改变这套流程，也不将人类审批写成自动通过。
 
-## 设计草案与历史证据
+## 历史和验收
 
-草案不是当前设计版本，禁止当存储、权限或发布协议。要升格必须按 [设计版本管理](../references/design-current.md) 开下一版。
+历史审查与实验保留在 Git 中；尚未完成的事项继续留在 CI_todo，
+完成项打勾并附测试证据，不删除历史。设计草案不代替当前产品规范。
 
-- [工作台设计画廊](design/workbench-gallery/index.html)：浏览器测试仍加载的静态资料；不随生产页面或 Skill 分发。使用 `?gallery=add|trash|chip` 切换分类。
-- 历史审查和实验记录保留在 Git 历史中；当前限制与待验收事项查 [CI_todo.md](../CI_todo.md)。
-- [检查怎样算通过](ci.md)、[真实客户端验收](real-client-acceptance.md)：专项验证说明。
+[真实客户端验收](real-client-acceptance.md) 说明模型宿主和安装入口的验证边界。
+Cloud 专属用例及跨仓库联调在 Cloud 仓库执行；Skill 源码测试通过不代表
+生产 Cloud、Slack 或第三方 Agent 已连通。
 
-开发私有记忆、真实数据与凭据不进入本目录；项目记忆仍由配置的私有服务器管理。
+私有开发记忆、真实数据与凭据不进入本目录；生成参考文档也不是用户的项目记忆。

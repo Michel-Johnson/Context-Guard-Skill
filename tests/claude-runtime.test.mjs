@@ -323,6 +323,9 @@ test('Claude CI checks out the exact handoff SHA and rejects results after sourc
   const root = path.join(directory, 'ci-worktree'); await fs.mkdir(root);
   const git = (...args) => execFileSync('git', args, { cwd: root, windowsHide: true, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: path.join(directory, 'isolated-gitconfig'), GIT_CONFIG_NOSYSTEM: '1' } }).trim();
   git('init', '-b', 'main'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'ci@example.invalid');
+  // The fixture helper isolates system configuration; runtime Git uses the real
+  // environment. Pin both to the same repository-local line-ending policy.
+  git('config', 'core.autocrlf', 'false');
   await fs.writeFile(path.join(root, 'source.txt'), 'approved\n'); git('add', '.'); git('commit', '-m', 'approved');
   const sourceSha = git('rev-parse', 'HEAD');
   await fs.writeFile(path.join(root, 'source.txt'), 'later\n'); git('commit', '-am', 'later');
@@ -338,6 +341,7 @@ test('Claude CI checks out the exact handoff SHA and rejects results after sourc
   await fs.writeFile(path.join(root, 'source.txt'), 'unauthorized change\n');
   await assert.rejects(runtime.ciContext(sessionId, { verifySource: true }), { code: 'CI_SOURCE_CHANGED' });
   await fs.writeFile(path.join(root, 'source.txt'), 'approved\n');
+  assert.equal(git('status', '--porcelain'), '', 'restored CI source must be clean before reassignment');
   await fs.writeFile(gate, 'finish');
   const deadline = Date.now() + 10000;
   while ((await readJSON(runtime.jobFile(sessionId, 'ci-task'))).state !== 'finished' || (await runtime.status(sessionId)).status !== 'stopped') {
