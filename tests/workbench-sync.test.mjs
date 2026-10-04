@@ -266,6 +266,93 @@ test('Session reopen merge preserves disjoint append-only records and rejects co
     { ...main, root: { ...main.root, title: 'Main title' } }), { code: 'MEMORY_CONFLICT' });
 });
 
+for (const localTail of [false, true]) test(`Session reconcile merges the same title and remote-only fields${localTail ? ' while replaying a local tail receipt' : ''}`, async t => {
+  const f = await fixture(), base = structuredClone(f.doc);
+  base.bootstrap = 'ready'; base.root.purpose = 'before'; base.root.memories = [];
+  const local = structuredClone(base); local.root.title = 'shared edit';
+  if (localTail) local.root.memories.push({ archiveKey: 'local-only', text: 'preserve local tail' });
+  const remote = structuredClone(base); remote.root.title = 'shared edit'; remote.root.purpose = 'remote-only';
+  await atomicWrite(path.join(f.ctx, 'map.json'), encode(local));
+  const store = await new MapStore(f.root).init();
+  let uploaded = structuredClone(remote), applied = 0;
+  const requests = [], receipts = new Map();
+  const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: 'merge-session', store, directory: f.root, managed: true,
+    request: async (_project, scope, input) => {
+      assert.equal(scope, 'sessions/merge-session/map'); requests.push(structuredClone(input));
+      if (receipts.has(input.operationId)) return receipts.get(input.operationId);
+      assert.equal(input.baseVersion, 'remote-v1');
+      assert.deepEqual(await readJSON(coordinator.baseFile), remote, 'tail upload starts from the confirmed remote ancestor');
+      uploaded = applyOperations(uploaded, input.operations, human).doc; applied++;
+      const receipt = { version: 'remote-v2', cursor: 2, persistedAt: '2026-10-05T00:00:00Z' };
+      receipts.set(input.operationId, receipt);
+      throw new Error('receipt lost after server commit');
+    },
+  });
+  t.after(async () => { await coordinator.close(); await store.close(); });
+  coordinator.configuration = {};
+  coordinator.status.serverVersion = 'old-version';
+  await atomicWrite(coordinator.baseFile, encode(base));
+  await atomicWrite(coordinator.outboxFile, encode({ operationId: 'superseded-request', baseVersion: 'old-version', operations: diffTrees(base.root, local.root) }));
+  await coordinator.reconcileRemote({ version: 'remote-v1', memory: { map: remote } }, 1);
+  const expected = structuredClone(local); expected.root.purpose = 'remote-only';
+  assert.deepEqual(store.doc, expected);
+  assert.equal(coordinator.snapshot().conflict, null);
+  if (localTail) {
+    assert.equal(coordinator.snapshot().pending, 1);
+    const pending = await readJSON(coordinator.outboxFile);
+    assert.notEqual(pending.operationId, 'superseded-request');
+    assert.deepEqual(pending.operations, [{ type: 'update', id: 'T0', fields: { memories: local.root.memories } }]);
+    assert.deepEqual(await readJSON(coordinator.baseFile), remote, 'unknown receipt cannot advance the ancestor');
+    await coordinator.flush();
+    assert.deepEqual(requests[1], requests[0], 'lost receipt replays the exact operation ID, base and payload');
+    assert.equal(applied, 1);
+    assert.deepEqual(uploaded, expected);
+  } else assert.equal(requests.length, 0, 'identical local edits are already present remotely');
+  assert.equal(coordinator.snapshot().status, 'synced');
+  assert.deepEqual(await readJSON(coordinator.baseFile), expected);
+  assert.equal(await readJSON(coordinator.outboxFile, null), null);
+  await coordinator.reconcileRemote({ version: localTail ? 'remote-v2' : 'remote-v1', memory: { map: expected } }, localTail ? 2 : 1);
+  assert.equal(requests.length, localTail ? 2 : 0, 'duplicate remote delivery never repeats the local tail');
+});
+
+for (const kind of ['different-title', 'delete-vs-edit', 'duplicate-record-id']) test(`Session reconcile preserves evidence for ${kind}`, async t => {
+  const f = await fixture(), base = structuredClone(f.doc);
+  base.root.todos = [{ id: 'TD1', title: 'before', status: 'pending' }];
+  const local = structuredClone(base), remote = structuredClone(base);
+  if (kind === 'different-title') { local.root.title = 'local'; remote.root.title = 'remote'; }
+  else {
+    local.root.todos = kind === 'delete-vs-edit' ? [] : [...local.root.todos, { id: 'TD1', title: 'ambiguous', status: 'pending' }];
+    remote.root.todos[0].title = 'remote edit';
+  }
+  const store = { doc: local, off() {} };
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, sessionId: 'conflict-session', store });
+  t.after(() => coordinator.close());
+  const pending = { operationId: 'unconfirmed-local', baseVersion: 'old', operations: diffTrees(base.root, local.root) };
+  await atomicWrite(coordinator.baseFile, encode(base));
+  await atomicWrite(coordinator.outboxFile, encode(pending));
+  await coordinator.reconcileRemote({ version: 'remote', memory: { map: remote } }, 3);
+  assert.equal(coordinator.snapshot().conflict.code, 'REMOTE_AND_LOCAL_CHANGED');
+  assert.deepEqual(await readJSON(coordinator.baseFile), base);
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.deepEqual(store.doc, local);
+  const conflict = await readJSON(coordinator.conflictFile);
+  assert.deepEqual([conflict.base, conflict.local, conflict.remote], [base, local, remote]);
+});
+
+test('Session reconcile propagates commit permission errors without replacing the base or outbox', async t => {
+  const f = await fixture(), base = f.doc, local = structuredClone(base), remote = structuredClone(base);
+  local.root.title = remote.root.title = 'shared edit'; remote.root.purpose = 'remote-only';
+  const store = { doc: local, version: 'local', off() {}, commit: async () => { throw Object.assign(new Error('permission denied'), { code: 'FORBIDDEN' }); } };
+  const coordinator = new MemorySyncCoordinator({ directory: f.root, sessionId: 'permission-session', store });
+  t.after(() => coordinator.close());
+  const pending = { operationId: 'keep-permission-pending' };
+  await atomicWrite(coordinator.baseFile, encode(base)); await atomicWrite(coordinator.outboxFile, encode(pending));
+  await assert.rejects(coordinator.reconcileRemote({ version: 'remote', memory: { map: remote } }, 1), { code: 'FORBIDDEN' });
+  assert.deepEqual(await readJSON(coordinator.baseFile), base);
+  assert.deepEqual(await readJSON(coordinator.outboxFile), pending);
+  assert.equal(await readJSON(coordinator.conflictFile, null), null);
+});
+
 test('journal recovery retries a bootstrap blocked by a Session reopen conflict', async () => {
   const store = { on() {}, off() {} };
   const coordinator = new MemorySyncCoordinator({ project: {}, sessionId: 'recovery-session', store, directory: '/unused' });
@@ -329,7 +416,7 @@ after(async () => {
     const resolved = await fs.realpath(root);
     assert.equal(path.dirname(resolved), temporary);
     assert.ok(path.basename(resolved).startsWith('cg-sync-'));
-    await fs.rm(resolved, { recursive: true, force: true });
+    await fs.rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 async function fixture() {

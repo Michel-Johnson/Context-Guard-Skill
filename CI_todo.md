@@ -438,6 +438,7 @@
 - [x] Executor：仅在 `/api/stop` 已确认后的原 12 秒等待窗口，重试 `EBUSY` 与 Windows `EPERM`；读取失败不等于实例已释放，不全局忽略权限异常、不删除锁、不延长截止时间。
 - [x] Executor 定向验证：`node --test --test-timeout=30000 --test-name-pattern="stop acknowledgement:" tests/named-workbench.test.mjs`，Windows 9/9 通过（3.09 秒）；覆盖正常释放、state/lock 短暂占用后释放、持续占用或同实例未释放仍失败、其他权限异常及确认前异常不重试。首轮夹具在已删除文件上拦截 readFile 未触发（readJSON 先 stat），修正为拦截实际文件检查入口后通过；未改变业务断言。此为故障注入，不代替安装 smoke。
 - [ ] Tester：对最终 SHA 重跑安装产物 `tests/ci-smoke.mjs` 的 Python `workbench --stop`，并在 Windows/Linux/macOS 复验上述正式回归。此前 367/367 Node 用例及 29 安装边界通过不代表整轮 `npm test` 成功：Windows smoke 的锁读取 `EPERM` 导致整体退出 1；现场锁/state 后来消失只支持删除竞争推断，不证明永远不存在权限问题。
+
 - [x] Tester 本地 Windows 定向验收（2026-10-05，Node 22.18.0）：基线 `efad812eda59a6b713d0b355e6b3ba2bfbeb4b7a` 加本节未提交修复；`cli.mjs` SHA256 `dc086c92ca3075588fa5cdd30ecaf9e2daaf0cdcc9c71204875365fb6771359c`，`named-workbench.test.mjs` SHA256 `43bdc659a0a11633c31b05f85660705747b748e1d2d6f21f3e5b4eaa59c0aa86`。独立审查未发现阻断；上述正式定向命令 9/9 passed（3.25 秒，运行输出 `543fad`）；`node tests/ci-smoke.mjs` passed（运行 `57163`，最终退出 0），29 安装边界通过，实际 npm tarball 安装后的工作台启动、复用及两处 Python `workbench --stop` 均完成。未重跑全量、未接触其他工作台；Linux/macOS 与最终提交 SHA 验证仍为 incomplete，故上一项保留未勾选。故障注入不证明前次失败瞬间的唯一成因。
 - 本次安装烟测打包后 Coordinator 另行补充 Ready 分发许可、重打 UI 包及更新锁文件；运行 `57163` 仅证明当次停止修复安装链路通过，不作为后续许可和包清单变更的最终产物证据。最终包冻结后另做必要安装验收。
 
@@ -452,3 +453,16 @@
 - 独立 Tester 在 `86db875` 的干净 Git 归档构建成功，但产物 SHA256 与 Windows 工作树打包不同；100 文件中的 12 个仅存在 CRLF/LF 差异。旧包的安装烟测通过，不代表可重复构建通过。
 - 两仓库固定 `text=auto eol=lf`、PNG 保持二进制；只机械规范已跟踪文本的换行，不改变 Git 中业务源码内容。共享 Core/UI 重新打包并更新锁完整性，生成物由正式 materializer 更新。
 - 此修复使在跑的最终全量输入过期，已仅终止本任务测试进程树并保留输出，记录为取消而非通过；不清理其他工作台或失败证据。最终干净包逐字节比较、浏览器与集中全量仍待复验。
+- 独立 Tester 对 `f6637d74c6c2231fd8718dacedc926a2ae3cb4ce` 的新 Git 归档，在只预填精确完整性制品的私有缓存下执行未改依赖 URL 的 `npm ci → build:runtime → pack`；100 文件包逐字节相同，SHA256 `55a065ee5bdece9210f6219c00d602edd3add768498c7e4a0f06e9efcdfb351c`。最终安装 smoke 在 Node 24.19.0 退出 0，29 安装边界通过。Node 18.20.8 正式构建测试 8/8、最终 Core 十个模块导入通过。预填缓存不证明发布地址可下载。
+- `f6637d7` 本机 Node 24.19.0 默认全量在 901 秒触发整批 900 秒上限，整体退出 1；可确认 196 项通过、无断言失败，剩余 180 项没有完整结果，不能认为未运行或通过。本轮未进入安装烟测；独立安装结果不是该整轮结果。慢项横跨 worktree、绑定、客户端和 Hook，且期间有隔离 smoke 并行，不能将变慢唯一归因于 Node 版本。保留原时间限制与失败证据。
+
+### SPLIT-MERGE-01 · Session 相同字段同值不应误报冲突（2026-10-05）
+
+- 独立 Tester 首轮：Node 22 全 `workbench-sync` 81/81 通过（23 秒）；Node 18 为 80 通过、1 项预期 SQLite 跳过，但 after 清理夹具发生 `ENOTEMPTY`，整体退出 1，不能记为通过。现场最后只余空 private 目录且未发现对应活进程，不据此断言早期失败的唯一原因。
+- [x] Executor：仅为已验证系统临时目录及 `cg-sync-` 前缀的夹具清理增加 `maxRetries: 5`、`retryDelay: 100`；重试耗尽仍抛错，不改业务、断言或测试时限。
+- [x] Tester：独立复跑 Node 18.20.8 全 `tests/workbench-sync.test.mjs`，80 通过、0 失败、1 项既有 SQLite 版本限制跳过，24.82 秒，进程退出 0。业务 SHA256 `b88895c446815ae3af72d8a14f020f7627f1744a3ae77a5797544d6e535050b5`；测试 SHA256 `d0f5ee93bfd9078901a9dd90db634ec0b1bf6251590a666d128bd27fc1434788`。审查确认异步关闭被等待、安全路径校验不变、重试耗尽仍失败；未放宽断言或时限。此前 Node 22 全套 81/81 通过；最终提交与安装链路仍另行验收。
+- [x] Executor：证实旧逻辑把 `base.title=A / local.title=B / remote.title=B` 加远端独立 purpose 修改误判为 `REMOTE_AND_LOCAL_CHANGED`。同步协调器改为复用既有 `mergeSessionDocuments`；只将 `MEMORY_CONFLICT` 保存为三方冲突，其他异常继续抛出。未引入第二套合并规则。
+- [x] Executor：`node --test --test-timeout=30000 --test-name-pattern="Session reconcile|Session reopen merge|Session sync compares" tests/workbench-sync.test.mjs`，8/8 通过（0.49 秒）。覆盖同值合并、双方非重叠修改、本地尾部上传及回执丢失后原 ID/原内容重放一次、旧 base/outbox 的确认边界；真正不同值、删除与编辑、重复记录身份继续保留三方快照与待发内容；提交权限错误不吞掉。首轮新增夹具缺少运行时规范化的 `bootstrap:ready` 导致两条全量文档断言失败，补齐该字段后通过。
+- [ ] Tester：基于最终 Skill SHA 和对应安装产物独立复验以上正式用例及真实 Cloud 双向同步；确认断网/回执未知时不丢待发内容，不能用单函数测试代替安装后的链路。
+- [ ] 原 Cloud browser 的 line121 同步冲突仍未归因：两次诊断在 line95 初始 Session 选择超时，随后无重型并行任务时，未修的 f663 安装包在原 12/25 秒限制下完整通过，未捕获冲突三方快照。因此本修复只关闭已独立复现的合并误报，不宣称已经修复最初浏览器失败；保留 Cloud `temp/session-sync-diagnostic-*` 与 `temp/same-value-merge-*` 的合成取证，后续复现再关联。
+- 最终本地集中回归：Windows、Node 22.18.0，`npm test` 退出 0；39 项安全检查、382/382 功能测试（815.72 秒、零失败/跳过）、29 项安装边界，以及实际 tarball 安装后的 CLI/工作台/停止烟测通过。日志 `temp/local-ci-skill-merge-final-20261005.log`。输入为 f6637d7 加上述已独立审查的同步及清理修复；未延长 runner 时限、未跳测试，跨平台 Required 与生产验收仍待完成。
